@@ -1,0 +1,613 @@
+---
+sidebar_label: FE/BE 对照矩阵 (自动生成)
+sidebar_position: 10
+---
+
+# FE / BE / 路由对照矩阵（自动生成 v0）
+
+> 由 `scripts/docs/generate_fe_be_matrix.py` 根据 `web/openapi.json`、`web/lib/api/*.ts`、`web/app/**/page.tsx` 生成。
+> 模板字符串与复杂拼接可能未被识别；以 OpenAPI 与源码为准。
+
+## OpenAPI 路径（按 tag）
+
+### (untagged)
+
+| Path |
+| --- |
+| `/` |
+| `/health` |
+
+### Audit
+
+| Path |
+| --- |
+| `/api/v1/audit/access-graph/export` |
+| `/api/v1/audit/access-graph/summary` |
+| `/api/v1/audit/logs` |
+| `/api/v1/audit/logs/export` |
+| `/api/v1/audit/logs/purge` |
+
+### Auth
+
+| Path |
+| --- |
+| `/api/v1/auth/login` |
+| `/api/v1/auth/me` |
+| `/api/v1/auth/register` |
+| `/api/v1/auth/saml/exchange` |
+| `/api/v1/auth/saml/metadata` |
+
+### Chat
+
+| Path |
+| --- |
+| `/api/v1/chat` |
+| `/api/v1/chat/conversations` |
+| `/api/v1/chat/conversations/{conversation_id}` |
+| `/api/v1/chat/conversations/{conversation_id}/checkpoints` |
+| `/api/v1/chat/conversations/{conversation_id}/checkpoints/{checkpoint_id}` |
+| `/api/v1/chat/conversations/{conversation_id}/export` |
+| `/api/v1/chat/conversations/{conversation_id}/messages` |
+| `/api/v1/chat/conversations/{conversation_id}/rag-traces` |
+| `/api/v1/chat/conversations/{conversation_id}/summary` |
+| `/api/v1/chat/conversations/{conversation_id}/summary/update` |
+| `/api/v1/chat/stream` |
+
+### Chunk Preview
+
+| Path |
+| --- |
+| `/api/v1/chunk-presets` |
+| `/api/v1/chunk-presets/{preset_id}` |
+
+### Connectors
+
+| Path |
+| --- |
+| `/api/v1/connectors` |
+| `/api/v1/connectors/configs` |
+| `/api/v1/connectors/configs/{config_id}` |
+| `/api/v1/connectors/configs/{config_id}/reconcile` |
+| `/api/v1/connectors/configs/{config_id}/run` |
+| `/api/v1/connectors/runs` |
+| `/api/v1/connectors/runs/{run_id}` |
+| `/api/v1/connectors/runs/{run_id}/cancel` |
+| `/api/v1/connectors/runs/{run_id}/resume` |
+| `/api/v1/connectors/runs/{run_id}/retry-failed` |
+| `/api/v1/connectors/scheduled/tick` |
+| `/api/v1/connectors/validate` |
+
+### DB Catalog
+
+| Path |
+| --- |
+| `/api/v1/datasets/{dataset_id}/db-catalog/profiles` |
+| `/api/v1/datasets/{dataset_id}/db-catalog/tables` |
+| `/api/v1/datasets/{dataset_id}/db-catalog/tables/{table_id}` |
+
+### Dataset Categories
+
+| Path |
+| --- |
+| `/api/v1/dataset-categories/` |
+| `/api/v1/dataset-categories/{category_id}` |
+| `/api/v1/dataset-categories/{category_id}/move` |
+
+### Dataset Tables (TAG)
+
+| Path |
+| --- |
+| `/api/v1/datasets/{dataset_id}/tables` |
+| `/api/v1/datasets/{dataset_id}/tables/{table_id}` |
+| `/api/v1/datasets/{dataset_id}/tables/{table_id}/ask` |
+| `/api/v1/datasets/{dataset_id}/tables/{table_id}/lotus/sem-filter` |
+| `/api/v1/datasets/{dataset_id}/tables/{table_id}/preview` |
+| `/api/v1/datasets/{dataset_id}/tables/{table_id}/query` |
+
+### Datasets
+
+| Path |
+| --- |
+| `/api/v1/datasets/` |
+| `/api/v1/datasets/{dataset_id}` |
+| `/api/v1/datasets/{dataset_id}/categories` |
+| `/api/v1/datasets/{dataset_id}/clone` |
+| `/api/v1/datasets/{dataset_id}/config/export` |
+| `/api/v1/datasets/{dataset_id}/config/import` |
+| `/api/v1/datasets/{dataset_id}/documents/export` |
+| `/api/v1/datasets/{dataset_id}/export` |
+| `/api/v1/datasets/{dataset_id}/health` |
+| `/api/v1/datasets/{dataset_id}/ingestion-policy` |
+| `/api/v1/datasets/{dataset_id}/ingestion-policy/export` |
+| `/api/v1/datasets/{dataset_id}/ingestion-policy/import` |
+| `/api/v1/datasets/{dataset_id}/ingestion-policy/rollback` |
+| `/api/v1/datasets/{dataset_id}/ingestion-policy/versions` |
+| `/api/v1/datasets/{dataset_id}/ingestion/stats` |
+| `/api/v1/datasets/{dataset_id}/profile/buckets/documents` |
+| `/api/v1/datasets/{dataset_id}/profile/export` |
+| `/api/v1/datasets/{dataset_id}/profile/export-html` |
+| `/api/v1/datasets/{dataset_id}/profile/findings/{finding_key}` |
+| `/api/v1/datasets/{dataset_id}/profile/scan-runs` |
+| `/api/v1/datasets/{dataset_id}/profile/scan-runs/{scan_run_id}` |
+| `/api/v1/datasets/{dataset_id}/profile/summary` |
+| `/api/v1/datasets/{dataset_id}/purge` |
+
+### Datasets Precheck
+
+| Path |
+| --- |
+| `/api/v1/datasets/{dataset_id}/precheck/scan-runs` |
+| `/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}` |
+| `/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/apply-ingestion-policy` |
+| `/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/cancel` |
+| `/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/diff` |
+| `/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/events` |
+| `/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/export` |
+| `/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/export-html` |
+| `/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/files` |
+| `/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/findings/{finding_key}` |
+| `/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/near-dups` |
+| `/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/samples` |
+| `/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/suggest-ingestion-policy` |
+| `/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/summary` |
+
+### Documents
+
+| Path |
+| --- |
+| `/api/v1/documents/` |
+| `/api/v1/documents/batch-delete` |
+| `/api/v1/documents/batch-upload/apply-urls` |
+| `/api/v1/documents/batch-upload/status/{batch_id}` |
+| `/api/v1/documents/batch/access` |
+| `/api/v1/documents/batch/archive` |
+| `/api/v1/documents/batch/disable` |
+| `/api/v1/documents/batch/enable` |
+| `/api/v1/documents/batch/metadata` |
+| `/api/v1/documents/batch/move` |
+| `/api/v1/documents/batch/reingest` |
+| `/api/v1/documents/batch/retry` |
+| `/api/v1/documents/batch/unarchive` |
+| `/api/v1/documents/chunk-preview` |
+| `/api/v1/documents/chunk-preview/by-sha` |
+| `/api/v1/documents/duplicates` |
+| `/api/v1/documents/folders` |
+| `/api/v1/documents/image-url/{img_id}` |
+| `/api/v1/documents/image/{image_id}` |
+| `/api/v1/documents/manual` |
+| `/api/v1/documents/preview` |
+| `/api/v1/documents/stats` |
+| `/api/v1/documents/upload` |
+| `/api/v1/documents/upload-batch` |
+| `/api/v1/documents/upload-url` |
+| `/api/v1/documents/{document_id}` |
+| `/api/v1/documents/{document_id}/access` |
+| `/api/v1/documents/{document_id}/cancel` |
+| `/api/v1/documents/{document_id}/chunks` |
+| `/api/v1/documents/{document_id}/chunks/matches` |
+| `/api/v1/documents/{document_id}/chunks/reembed` |
+| `/api/v1/documents/{document_id}/chunks/{chunk_id}` |
+| `/api/v1/documents/{document_id}/chunks/{chunk_id}/disable` |
+| `/api/v1/documents/{document_id}/chunks/{chunk_id}/enable` |
+| `/api/v1/documents/{document_id}/download` |
+| `/api/v1/documents/{document_id}/health` |
+| `/api/v1/documents/{document_id}/lifecycle-metadata` |
+| `/api/v1/documents/{document_id}/metadata` |
+| `/api/v1/documents/{document_id}/parsed-content` |
+| `/api/v1/documents/{document_id}/pipeline` |
+| `/api/v1/documents/{document_id}/qa/generate` |
+| `/api/v1/documents/{document_id}/retry` |
+| `/api/v1/documents/{document_id}/status` |
+| `/api/v1/documents/{document_id}/timeline` |
+| `/api/v1/documents/{document_id}/versions` |
+| `/api/v1/documents/{document_id}/versions/diff` |
+| `/api/v1/documents/{document_id}/versions/{pipeline_hash}` |
+| `/api/v1/documents/{document_id}/versions/{pipeline_hash}/activate` |
+
+### Evaluations
+
+| Path |
+| --- |
+| `/api/v1/evaluations/kg/quality/report` |
+| `/api/v1/evaluations/kg/search/diagnostics` |
+| `/api/v1/evaluations/kg/search/diagnostics/runs` |
+| `/api/v1/evaluations/kg/search/diagnostics/runs/{run_id}` |
+| `/api/v1/evaluations/ragas/regression/cases` |
+| `/api/v1/evaluations/ragas/regression/cases/export` |
+| `/api/v1/evaluations/ragas/regression/cases/import` |
+| `/api/v1/evaluations/ragas/regression/cases/synthetic-hardcases` |
+| `/api/v1/evaluations/ragas/regression/cases/{case_id}` |
+| `/api/v1/evaluations/ragas/regression/runs` |
+| `/api/v1/evaluations/ragas/regression/runs/leaderboard` |
+| `/api/v1/evaluations/ragas/regression/runs/purge` |
+| `/api/v1/evaluations/ragas/regression/runs/{run_id}` |
+| `/api/v1/evaluations/ragas/regression/runs/{run_id}/diff` |
+| `/api/v1/evaluations/ragas/regression/runs/{run_id}/diff/export-html` |
+| `/api/v1/evaluations/ragas/regression/runs/{run_id}/export-bundle` |
+| `/api/v1/evaluations/ragas/runs` |
+| `/api/v1/evaluations/ragas/runs/{run_id}` |
+| `/api/v1/evaluations/ragas/test-gen/from-conversations` |
+| `/api/v1/evaluations/ragas/test-gen/from-documents` |
+
+### Evidence Capsules
+
+| Path |
+| --- |
+| `/api/v1/evidence/capsules` |
+| `/api/v1/evidence/capsules/verify` |
+| `/api/v1/evidence/capsules/{capsule_id}` |
+
+### Evidence Workbench
+
+| Path |
+| --- |
+| `/api/v1/evidence/datasets/{dataset_id}/drift-audit` |
+| `/api/v1/evidence/items/{item_id}` |
+| `/api/v1/evidence/items/{item_id}/approve` |
+| `/api/v1/evidence/items/{item_id}/archive` |
+| `/api/v1/evidence/items/{item_id}/review` |
+| `/api/v1/evidence/suites` |
+| `/api/v1/evidence/suites/{suite_id}` |
+| `/api/v1/evidence/suites/{suite_id}/dashboard` |
+| `/api/v1/evidence/suites/{suite_id}/drift-audit` |
+| `/api/v1/evidence/suites/{suite_id}/export` |
+| `/api/v1/evidence/suites/{suite_id}/export-ltr-training` |
+| `/api/v1/evidence/suites/{suite_id}/hardcase-candidates` |
+| `/api/v1/evidence/suites/{suite_id}/items` |
+| `/api/v1/evidence/suites/{suite_id}/items/import` |
+| `/api/v1/evidence/suites/{suite_id}/repair-reference-sources` |
+| `/api/v1/evidence/suites/{suite_id}/sync-regression` |
+| `/api/v1/evidence/training-export` |
+
+### Feedback
+
+| Path |
+| --- |
+| `/api/v1/feedback/messages` |
+| `/api/v1/feedback/messages/enriched` |
+| `/api/v1/feedback/messages/{feedback_id}/to-evidence-item` |
+| `/api/v1/feedback/messages/{feedback_id}/to-regression-case` |
+
+### Governance
+
+| Path |
+| --- |
+| `/api/v1/governance/datasets/{dataset_id}/stale-documents` |
+| `/api/v1/governance/rule-packs` |
+
+### Groups
+
+| Path |
+| --- |
+| `/api/v1/groups/` |
+| `/api/v1/groups/{group_id}` |
+| `/api/v1/groups/{group_id}/members` |
+| `/api/v1/groups/{group_id}/members/remove` |
+
+### Health
+
+| Path |
+| --- |
+| `/api/v1/health` |
+| `/api/v1/health/ready` |
+
+### Ingestion Runs
+
+| Path |
+| --- |
+| `/api/v1/ingestion/runs` |
+| `/api/v1/ingestion/runs/{run_id}` |
+| `/api/v1/ingestion/runs/{run_id}/compare/{other_run_id}` |
+| `/api/v1/ingestion/runs/{run_id}/export` |
+| `/api/v1/ingestion/runs/{run_id}/export-html` |
+| `/api/v1/ingestion/runs/{run_id}/replay` |
+
+### Knowledge Graph (KG)
+
+| Path |
+| --- |
+| `/api/v1/kg/documents/{document_id}` |
+| `/api/v1/kg/documents/{document_id}/extract` |
+| `/api/v1/kg/entities/merge` |
+| `/api/v1/kg/entities/merge/preview` |
+| `/api/v1/kg/entities/resolution/actions/{action_id}/undo` |
+| `/api/v1/kg/entities/split` |
+| `/api/v1/kg/entities/{entity_id}` |
+| `/api/v1/kg/entities/{entity_id}/alias_suggestions` |
+| `/api/v1/kg/entities/{entity_id}/aliases` |
+| `/api/v1/kg/entities/{entity_id}/aliases/{alias_id}` |
+| `/api/v1/kg/events/{event_id}` |
+| `/api/v1/kg/graph` |
+| `/api/v1/kg/graph/expand` |
+| `/api/v1/kg/graph/export` |
+| `/api/v1/kg/graph/search` |
+| `/api/v1/kg/ontology/predicates` |
+| `/api/v1/kg/ontology/predicates/{predicate_id}` |
+| `/api/v1/kg/search` |
+| `/api/v1/kg/snapshots/compare` |
+| `/api/v1/kg/snapshots/diff` |
+| `/api/v1/kg/snapshots/export` |
+| `/api/v1/kg/stats` |
+
+### LTR
+
+| Path |
+| --- |
+| `/api/v1/ltr/models` |
+| `/api/v1/ltr/models/activate` |
+| `/api/v1/ltr/models/register` |
+| `/api/v1/ltr/models/rollback` |
+
+### Meta
+
+| Path |
+| --- |
+| `/api/v1/meta` |
+
+### Observability
+
+| Path |
+| --- |
+| `/api/v1/observability/cache/datasets/{dataset_id}/invalidate` |
+| `/api/v1/observability/config/snapshot` |
+| `/api/v1/observability/diagnostics/deps` |
+| `/api/v1/observability/embedding-drift/snapshot` |
+| `/api/v1/observability/index-audit` |
+| `/api/v1/observability/index-drift` |
+| `/api/v1/observability/index-drift/{item_id}/resolve` |
+| `/api/v1/observability/ingestion/summary` |
+| `/api/v1/observability/online-quality/summary` |
+| `/api/v1/observability/perf-suite/run` |
+| `/api/v1/observability/periodic-jobs/freshness` |
+| `/api/v1/observability/queryset-health/diff` |
+| `/api/v1/observability/queryset-health/runs` |
+| `/api/v1/observability/rag-metrics/cost-attribution` |
+| `/api/v1/observability/rag-metrics/query-analytics` |
+| `/api/v1/observability/rag-metrics/summary` |
+| `/api/v1/observability/rag-metrics/tail` |
+| `/api/v1/observability/rag-metrics/trace-bundle` |
+| `/api/v1/observability/rag-metrics/trace-bundle/diff` |
+| `/api/v1/observability/slo/snapshot` |
+| `/api/v1/observability/task-queue/snapshot` |
+
+### Parsing Workspace
+
+| Path |
+| --- |
+| `/api/v1/parsing/documents` |
+| `/api/v1/parsing/documents/{document_id}` |
+| `/api/v1/parsing/documents/{document_id}/content` |
+| `/api/v1/parsing/documents/{document_id}/parse` |
+
+### Pipeline
+
+| Path |
+| --- |
+| `/api/v1/pipeline/capabilities` |
+| `/api/v1/pipeline/chunk-preview` |
+| `/api/v1/pipeline/clean-preview` |
+| `/api/v1/pipeline/clean-rules` |
+| `/api/v1/pipeline/extract-keywords` |
+| `/api/v1/pipeline/governance-analyze` |
+| `/api/v1/pipeline/governance-profiles` |
+| `/api/v1/pipeline/governance-profiles/import` |
+| `/api/v1/pipeline/governance-profiles/{profile_ref}` |
+| `/api/v1/pipeline/governance-profiles/{profile_ref}/export` |
+| `/api/v1/pipeline/governance-profiles/{profile_ref}/export-ingestion-policy` |
+| `/api/v1/pipeline/governance-profiles/{profile_ref}/resolved` |
+| `/api/v1/pipeline/ingestion-preview` |
+| `/api/v1/pipeline/learn-common-lines` |
+| `/api/v1/pipeline/llm-clean-preview` |
+| `/api/v1/pipeline/parse-preview` |
+| `/api/v1/pipeline/upload-zip-with-images` |
+
+### Prompt Templates
+
+| Path |
+| --- |
+| `/api/v1/prompt-templates` |
+| `/api/v1/prompt-templates/{template_id}` |
+| `/api/v1/prompt-templates/{template_id}/duplicate` |
+| `/api/v1/prompt-templates/{template_id}/versions` |
+
+### RAG
+
+| Path |
+| --- |
+| `/api/v1/rag/image-index` |
+| `/api/v1/rag/image-search-preview` |
+| `/api/v1/rag/prompt-preview` |
+| `/api/v1/rag/retrieve` |
+| `/api/v1/rag/retrieve-preview` |
+
+### RAG Config Templates
+
+| Path |
+| --- |
+| `/api/v1/rag-config-templates` |
+| `/api/v1/rag-config-templates/{template_id}` |
+| `/api/v1/rag-config-templates/{template_id}/versions` |
+
+### RAG Visualization (RAGViz)
+
+| Path |
+| --- |
+| `/api/v1/ragviz/similarity/calculate` |
+| `/api/v1/ragviz/similarity/collections` |
+
+### RBAC
+
+| Path |
+| --- |
+| `/api/v1/rbac/members` |
+| `/api/v1/rbac/members/{user_id}` |
+
+### Reports
+
+| Path |
+| --- |
+| `/api/v1/reports/datasets/{dataset_id}` |
+| `/api/v1/reports/datasets/{dataset_id}/export` |
+| `/api/v1/reports/datasets/{dataset_id}/export-bundle` |
+| `/api/v1/reports/datasets/{dataset_id}/export-html` |
+| `/api/v1/reports/datasets/{dataset_id}/rag-audit/export-html` |
+
+### Retrieval
+
+| Path |
+| --- |
+| `/api/v1/retrieval/config-hash` |
+| `/api/v1/retrieval/explain` |
+| `/api/v1/retrieval/profiles` |
+
+### SCIM v2
+
+| Path |
+| --- |
+| `/api/v1/scim/v2/Groups` |
+| `/api/v1/scim/v2/Groups/{group_id}` |
+| `/api/v1/scim/v2/ResourceTypes` |
+| `/api/v1/scim/v2/Schemas` |
+| `/api/v1/scim/v2/ServiceProviderConfig` |
+| `/api/v1/scim/v2/Users` |
+| `/api/v1/scim/v2/Users/{user_id}` |
+
+### Settings
+
+| Path |
+| --- |
+| `/api/v1/settings` |
+| `/api/v1/settings/llm/test` |
+| `/api/v1/settings/status` |
+
+### Usage
+
+| Path |
+| --- |
+| `/api/v1/usage/chat/cost/summary` |
+| `/api/v1/usage/chat/tokens/quota` |
+| `/api/v1/usage/chat/tokens/summary` |
+| `/api/v1/usage/tenant/quotas` |
+
+### prompt-templates
+
+| Path |
+| --- |
+| `/api/v1/prompt-templates` |
+| `/api/v1/prompt-templates/{template_id}` |
+| `/api/v1/prompt-templates/{template_id}/duplicate` |
+| `/api/v1/prompt-templates/{template_id}/versions` |
+
+## `web/lib/api` 中出现的 `/api/v1` 路径片段
+
+| 模块 | Path 片段 |
+| --- | --- |
+| `auth.ts` | `/api/v1/auth/login`, `/api/v1/auth/me`, `/api/v1/auth/register` |
+| `chat.ts` | `/api/v1/chat` |
+| `connectors.ts` | `/api/v1/connectors`, `/api/v1/connectors/configs`, `/api/v1/connectors/configs/{config_id}`, `/api/v1/connectors/configs/{config_id}/run`, `/api/v1/connectors/runs`, `/api/v1/connectors/runs/{run_id}`, `/api/v1/connectors/runs/{run_id}/cancel`, `/api/v1/connectors/runs/{run_id}/resume`, `/api/v1/connectors/runs/{run_id}/retry-failed`, `/api/v1/connectors/scheduled/tick`, `/api/v1/connectors/validate` |
+| `datasets.ts` | `/api/v1/dataset-categories/`, `/api/v1/dataset-categories/{category_id}`, `/api/v1/dataset-categories/{category_id}/move`, `/api/v1/datasets/`, `/api/v1/datasets/{dataset_id}`, `/api/v1/datasets/{dataset_id}/categories`, `/api/v1/datasets/{dataset_id}/clone`, `/api/v1/datasets/{dataset_id}/config/export`, `/api/v1/datasets/{dataset_id}/config/import`, `/api/v1/datasets/{dataset_id}/health`, `/api/v1/datasets/{dataset_id}/ingestion-policy`, `/api/v1/datasets/{dataset_id}/ingestion-policy/rollback` … |
+| `documents.ts` | `/api/v1/documents/`, `/api/v1/documents/batch-delete`, `/api/v1/documents/batch-upload/apply-urls`, `/api/v1/documents/batch-upload/status/{batch_id}`, `/api/v1/documents/batch/access`, `/api/v1/documents/batch/archive`, `/api/v1/documents/batch/disable`, `/api/v1/documents/batch/enable`, `/api/v1/documents/batch/metadata`, `/api/v1/documents/batch/move`, `/api/v1/documents/batch/reingest`, `/api/v1/documents/batch/retry` … |
+| `evidence.ts` | `/api/v1/evidence/datasets/{dataset_id}/drift-audit`, `/api/v1/evidence/items/{item_id}`, `/api/v1/evidence/items/{item_id}/approve`, `/api/v1/evidence/items/{item_id}/archive`, `/api/v1/evidence/items/{item_id}/review`, `/api/v1/evidence/suites`, `/api/v1/evidence/suites/{suite_id}`, `/api/v1/evidence/suites/{suite_id}/dashboard`, `/api/v1/evidence/suites/{suite_id}/drift-audit`, `/api/v1/evidence/suites/{suite_id}/export`, `/api/v1/evidence/suites/{suite_id}/hardcase-candidates`, `/api/v1/evidence/suites/{suite_id}/items` … |
+| `health.ts` | `/api/v1/health`, `/api/v1/health/ready` |
+| `meta.ts` | `/api/v1/meta` |
+| `parsing.ts` | `/api/v1/parsing/documents/{document_id}/content`, `/api/v1/parsing/documents/{document_id}/parse` |
+| `pipeline.ts` | `/api/v1/pipeline/capabilities`, `/api/v1/pipeline/chunk-preview`, `/api/v1/pipeline/clean-preview`, `/api/v1/pipeline/clean-rules`, `/api/v1/pipeline/extract-keywords`, `/api/v1/pipeline/governance-analyze`, `/api/v1/pipeline/governance-profiles`, `/api/v1/pipeline/governance-profiles/import`, `/api/v1/pipeline/governance-profiles/{profile_ref}`, `/api/v1/pipeline/governance-profiles/{profile_ref}/resolved`, `/api/v1/pipeline/learn-common-lines`, `/api/v1/pipeline/llm-clean-preview` |
+| `rag.ts` | `/api/v1/rag/retrieve` |
+
+## Next.js `page.tsx` 路由（去重）
+
+| Route |
+| --- |
+| `/` |
+| `/[locale]` |
+| `/[locale]/access-review` |
+| `/[locale]/audit` |
+| `/[locale]/auth` |
+| `/[locale]/auth/oidc/callback` |
+| `/[locale]/auth/saml/callback` |
+| `/[locale]/chunk-preview` |
+| `/[locale]/data-governance` |
+| `/[locale]/data-governance/common-lines` |
+| `/[locale]/data-governance/profiles` |
+| `/[locale]/datasets` |
+| `/[locale]/datasets/[id]/db-catalog` |
+| `/[locale]/datasets/[id]/evidence` |
+| `/[locale]/datasets/[id]/health` |
+| `/[locale]/datasets/[id]/ingestion` |
+| `/[locale]/datasets/[id]/kg` |
+| `/[locale]/datasets/[id]/precheck` |
+| `/[locale]/datasets/[id]/profile` |
+| `/[locale]/datasets/[id]/tables` |
+| `/[locale]/datasets/[id]/workflow` |
+| `/[locale]/diagnostics` |
+| `/[locale]/evaluation` |
+| `/[locale]/evaluations` |
+| `/[locale]/evaluations/ablations` |
+| `/[locale]/graph` |
+| `/[locale]/graph/diagnostics` |
+| `/[locale]/graph/snapshots` |
+| `/[locale]/history` |
+| `/[locale]/knowledge` |
+| `/[locale]/knowledge/[id]/health` |
+| `/[locale]/knowledge/evidence` |
+| `/[locale]/knowledge/feedback` |
+| `/[locale]/knowledge/ingestion` |
+| `/[locale]/knowledge/nebula` |
+| `/[locale]/knowledge/quarantine` |
+| `/[locale]/knowledge/similarity` |
+| `/[locale]/logos-preview` |
+| `/[locale]/observability` |
+| `/[locale]/parsing` |
+| `/[locale]/prompts` |
+| `/[locale]/reports` |
+| `/[locale]/settings` |
+| `/[locale]/settings/groups` |
+| `/[locale]/settings/groups/[id]` |
+| `/[locale]/settings/rbac` |
+| `/[locale]/usage` |
+| `/access-review` |
+| `/audit` |
+| `/auth` |
+| `/auth/oidc/callback` |
+| `/auth/saml/callback` |
+| `/chunk-preview` |
+| `/data-governance` |
+| `/data-governance/common-lines` |
+| `/data-governance/profiles` |
+| `/datasets` |
+| `/datasets/[id]/db-catalog` |
+| `/datasets/[id]/evidence` |
+| `/datasets/[id]/health` |
+| `/datasets/[id]/ingestion` |
+| `/datasets/[id]/kg` |
+| `/datasets/[id]/precheck` |
+| `/datasets/[id]/profile` |
+| `/datasets/[id]/tables` |
+| `/datasets/[id]/workflow` |
+| `/diagnostics` |
+| `/evaluation` |
+| `/evaluations` |
+| `/evaluations/ablations` |
+| `/graph` |
+| `/graph/diagnostics` |
+| `/graph/snapshots` |
+| `/history` |
+| `/knowledge` |
+| `/knowledge/[id]/health` |
+| `/knowledge/evidence` |
+| `/knowledge/feedback` |
+| `/knowledge/ingestion` |
+| `/knowledge/nebula` |
+| `/knowledge/quarantine` |
+| `/knowledge/similarity` |
+| `/logos-preview` |
+| `/observability` |
+| `/parsing` |
+| `/prompts` |
+| `/reports` |
+| `/settings` |
+| `/settings/groups` |
+| `/settings/groups/[id]` |
+| `/settings/rbac` |
+| `/usage` |
+

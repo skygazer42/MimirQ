@@ -6,6 +6,12 @@
 - [quickstart.md](./quickstart.md)：5 分钟完成环境准备、服务启动与基础校验。
 - [deployment/docker_compose.md](./deployment/docker_compose.md)：Docker Compose 的开发/生产模式与常见排错。
 
+## API 参考（HTTP / OpenAPI）
+- [api/README.md](./api/README.md)：Base URL、认证、**全量 OpenAPI Tag 对照表**、GitHub Pages 链接与本地静态站构建。
+- [api/workflows.md](./api/workflows.md)：按场景的**端点顺序**（方法 + 完整路径）与依赖说明。
+- 在线交互文档（部署 GitHub Pages 后）：`https://skygazer42.github.io/MimirQ/`（fork 请改为 `https://<owner>.github.io/<repo>/`）。
+- **全栈手册（Docusaurus，可搜索）**：`https://skygazer42.github.io/MimirQ/handbook/`（与 Redoc 同域；源码在仓库 `docs-site/`）。
+
 ## 使用指南
 - [guides/langchain_agent_migration.md](./guides/langchain_agent_migration.md)：当前纯 LangChain RAG 架构说明与迁移记录。
 - [guides/rag_optimization.md](./guides/rag_optimization.md)：检索效果与回答质量优化方案。
