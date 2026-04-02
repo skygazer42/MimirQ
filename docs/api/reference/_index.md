@@ -40,3 +40,10 @@
 
 - [Docusaurus 手册（GitHub Pages）](https://skygazer42.github.io/MimirQ/handbook/)
 - [OpenAPI / Redoc](https://skygazer42.github.io/MimirQ/)
+
+### 联调与业务剧本
+
+- [集成总览](https://skygazer42.github.io/MimirQ/handbook/docs/integration/welcome)
+- [业务剧本：新租户首日上线](https://skygazer42.github.io/MimirQ/handbook/docs/integration/tasks/go-live-tenant)
+- [业务剧本：知识库可对用户问答](https://skygazer42.github.io/MimirQ/handbook/docs/integration/tasks/knowledge-base-qa)
+- [业务剧本：文档卡在解析或索引](https://skygazer42.github.io/MimirQ/handbook/docs/integration/tasks/document-stuck)
