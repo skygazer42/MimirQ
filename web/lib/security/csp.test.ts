@@ -3,14 +3,15 @@ import { describe, expect, it } from 'vitest'
 import { buildCspHeaderValue } from './csp'
 
 describe('buildCspHeaderValue', () => {
-  it('builds a nonce-based production policy without unsafe-inline allowances', () => {
+  it('builds a production policy with nonce-based scripts and inline-style fallback', () => {
     const csp = buildCspHeaderValue({
       isDevelopment: false,
       nonce: 'prod-nonce',
     })
 
     expect(csp).toContain("script-src 'self' 'nonce-prod-nonce' 'strict-dynamic' 'wasm-unsafe-eval'")
-    expect(csp).toContain("style-src 'self' 'nonce-prod-nonce' 'unsafe-inline'")
+    expect(csp).toContain("style-src 'self' 'unsafe-inline'")
+    expect(csp).not.toContain("'nonce-prod-nonce' 'unsafe-inline'")
     expect(csp).toContain("worker-src 'self' blob:")
     expect(csp).toContain("img-src 'self' data: blob: http: https:")
     expect(csp).toContain('upgrade-insecure-requests')
@@ -25,7 +26,8 @@ describe('buildCspHeaderValue', () => {
     })
 
     expect(csp).toContain("script-src 'self' 'nonce-dev-nonce' 'strict-dynamic' 'wasm-unsafe-eval' 'unsafe-eval'")
-    expect(csp).toContain("style-src 'self' 'nonce-dev-nonce' 'unsafe-inline'")
+    expect(csp).toContain("style-src 'self' 'unsafe-inline'")
+    expect(csp).not.toContain("'nonce-dev-nonce' 'unsafe-inline'")
     expect(csp).not.toContain('upgrade-insecure-requests')
   })
 })

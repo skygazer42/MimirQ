@@ -8,6 +8,7 @@ describe('ragApi.retrieveEvidence', () => {
     const src = fs.readFileSync(url, 'utf8')
 
     expect(src).toContain('retrieveEvidence')
-    expect(src).toContain("post('/rag/retrieve'")
+    expect(src).toContain('openapiRequest({')
+    expect(src).toContain("path: '/api/v1/rag/retrieve'")
   })
 })

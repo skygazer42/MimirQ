@@ -11,6 +11,14 @@ function exists(relativePath: string): boolean {
   return fs.existsSync(path.resolve(__dirname, relativePath))
 }
 
+function resolveBoundaryRouteDir(routeDir: string): string {
+  if (routeDir === './[locale]') return '.'
+  if (routeDir.startsWith('./[locale]/')) {
+    return `.${routeDir.slice('./[locale]'.length)}`
+  }
+  return routeDir
+}
+
 function collectRouteDirs(dir: string): string[] {
   const entries = fs.readdirSync(dir, { withFileTypes: true })
   const routeDirs = new Set<string>()
@@ -42,8 +50,9 @@ describe('route boundaries source', () => {
   })
 
   it.each(collectRouteDirs(__dirname))('adds shared loading and error boundaries for %s', (routeDir) => {
-    const loadingPath = routeDir === '.' ? './loading.tsx' : `${routeDir}/loading.tsx`
-    const errorPath = routeDir === '.' ? './error.tsx' : `${routeDir}/error.tsx`
+    const boundaryRouteDir = resolveBoundaryRouteDir(routeDir)
+    const loadingPath = boundaryRouteDir === '.' ? './loading.tsx' : `${boundaryRouteDir}/loading.tsx`
+    const errorPath = boundaryRouteDir === '.' ? './error.tsx' : `${boundaryRouteDir}/error.tsx`
 
     expect(exists(loadingPath)).toBe(true)
     expect(exists(errorPath)).toBe(true)

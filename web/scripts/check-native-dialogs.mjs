@@ -30,6 +30,10 @@ const IGNORE_FILES = new Set([
   path.join("scripts", "check-design-tokens.mjs"),
 ])
 
+const IGNORE_PATH_PREFIXES = new Set([
+  path.join("public", "monaco"),
+])
+
 const INCLUDE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs"])
 
 const RULES = [
@@ -45,6 +49,15 @@ const RULES = [
   },
 ]
 
+function isIgnoredPath(rel) {
+  for (const prefix of IGNORE_PATH_PREFIXES) {
+    if (rel === prefix || rel.startsWith(`${prefix}${path.sep}`)) {
+      return true
+    }
+  }
+  return false
+}
+
 async function collectFiles(dir) {
   const entries = await fs.readdir(dir, { withFileTypes: true })
   const out = []
@@ -58,7 +71,7 @@ async function collectFiles(dir) {
     const rel = path.relative(WEB_ROOT, abs)
 
     if (ent.isDirectory()) {
-      if (IGNORE_DIRS.has(ent.name)) continue
+      if (IGNORE_DIRS.has(ent.name) || isIgnoredPath(rel)) continue
       out.push(...(await collectFiles(abs)))
       continue
     }
@@ -67,7 +80,7 @@ async function collectFiles(dir) {
 
     const ext = path.extname(ent.name)
     if (!INCLUDE_EXTENSIONS.has(ext)) continue
-    if (IGNORE_FILES.has(rel)) continue
+    if (IGNORE_FILES.has(rel) || isIgnoredPath(rel)) continue
 
     out.push({ abs, rel })
   }
@@ -146,4 +159,3 @@ main().catch((err) => {
   process.stderr.write(`ui-check(native-dialogs): ERROR ${String(err?.message || err)}\n`)
   process.exit(2)
 })
-

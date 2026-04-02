@@ -9,7 +9,7 @@ describe('chat area autorun source', () => {
 
     expect(src).toContain('initialAutoSendPrompt')
     expect(src).toContain('autoSendPromptRef')
-    expect(src).toContain('sendMessage(p)')
+    expect(src).toContain('submitMessage(p)')
   })
 
   it('scopes chat requests to the currently opened document when the viewer is active', () => {

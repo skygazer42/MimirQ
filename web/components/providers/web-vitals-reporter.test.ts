@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+vi.mock('@/i18n/navigation', () => ({
+  usePathname: () => '/chat',
+}))
 
 import { canReportWebVital, normalizeWebVitalMetric, shouldReportWebVital } from './web-vitals-reporter'
 

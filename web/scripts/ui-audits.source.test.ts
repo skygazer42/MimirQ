@@ -14,4 +14,10 @@ describe('ui audit scripts', () => {
     expect(fs.existsSync(path.resolve(__dirname, 'check-theme-contrast.mjs'))).toBe(true)
     expect(fs.existsSync(path.resolve(__dirname, 'check-bundle-budget.mjs'))).toBe(true)
   })
+
+  it('skips bundled vendor assets when scanning for native dialogs', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'check-native-dialogs.mjs'), 'utf8')
+
+    expect(src).toContain('path.join("public", "monaco")')
+  })
 })
