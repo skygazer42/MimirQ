@@ -18,10 +18,13 @@ function copy(locale: string) {
     integration: en ? 'Integration' : '集成（Integration）',
     ops: en ? 'Ops' : '运维（Ops）',
     redoc: en ? 'Full OpenAPI (Redoc)' : '全量 OpenAPI（Redoc）',
-    tasksByRole: en ? 'Tasks by role' : '按任务上手',
     searchHint: en
       ? 'Use the top search bar to find operations (e.g. ingestion, datasets).'
       : '使用顶部搜索查找操作名（如 ingestion、datasets）。',
+    rolesTeaser: en ? 'Integration — by role:' : '集成视角 — 按角色入门：',
+    roleAdmin: en ? 'Tenant / admin' : '租户与管理员',
+    roleEngineer: en ? 'Integration engineer' : '集成工程师',
+    roleSre: en ? 'SRE / ops' : '运维 / SRE',
   };
 }
 
@@ -57,17 +60,20 @@ function HomepageHeader() {
           </Link>
         </div>
         <div className="margin-top--md">
-          <Link
-            className="button button--primary button--lg margin-right--md"
-            to="/docs/integration/tasks/task-catalog">
-            {t.tasksByRole}
-          </Link>
           <a
             className="button button--link button--lg"
             href="https://skygazer42.github.io/MimirQ/">
             {t.redoc}
           </a>
         </div>
+        <p className="margin-top--md margin-bottom--none text--center">
+          <span className="text--secondary">{t.rolesTeaser}</span>{' '}
+          <Link to="/docs/integration/roles/admin">{t.roleAdmin}</Link>
+          {' · '}
+          <Link to="/docs/integration/roles/integration-engineer">{t.roleEngineer}</Link>
+          {' · '}
+          <Link to="/docs/integration/roles/sre-ops">{t.roleSre}</Link>
+        </p>
       </div>
     </header>
   );

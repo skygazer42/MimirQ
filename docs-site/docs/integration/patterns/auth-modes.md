@@ -11,7 +11,7 @@ sidebar_position: 2
 
 ## 何时查阅
 
-实现登录态、调试 401、或对比 **开发 Header 模式** 与生产 JWT 时；对应 [首配任务](../tasks/task-new-tenant-setup.md) 中的鉴权步骤。
+实现登录态、调试 401、或对比 **开发 Header 模式** 与生产 JWT 时；对应 [新租户首日上线](../tasks/go-live-tenant.md) 中的鉴权步骤。
 
 ## 业务影响与验收要点
 

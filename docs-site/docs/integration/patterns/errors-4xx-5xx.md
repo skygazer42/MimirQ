@@ -11,7 +11,7 @@ sidebar_position: 1
 
 ## 何时查阅
 
-接口返回非 2xx、客服只截到状态码、或需区分 **鉴权 / ACL / 校验 / 限流** 时；与 [首配任务](../tasks/task-new-tenant-setup.md)、[解析止损](../tasks/task-parse-failure-triage.md) 中的止损表对照阅读。
+接口返回非 2xx、客服只截到状态码、或需区分 **鉴权 / ACL / 校验 / 限流** 时；与 [新租户首日上线](../tasks/go-live-tenant.md)、[文档卡在解析或索引](../tasks/document-stuck.md) 中的止损表对照阅读。
 
 ## 业务影响与验收要点
 

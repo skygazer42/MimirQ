@@ -38,7 +38,11 @@ function checkFile(file) {
     const noHash = href.split("#")[0];
     if (!noHash) continue;
     const target = path.normalize(path.join(base, noHash));
-    if (!fs.existsSync(target)) {
+    const exists =
+      fs.existsSync(target) ||
+      fs.existsSync(`${target}.md`) ||
+      fs.existsSync(`${target}.mdx`);
+    if (!exists) {
       errors.push({ href, target });
     }
   }

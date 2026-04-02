@@ -13,8 +13,8 @@ sidebar_position: 9
 
 ## 与任务的关系
 
-- [数据集上线](../../integration/tasks/task-dataset-go-live.md) 中「画像红线」与默认 RAG/切块策略选型，常需对照画像指标再改 `rag_defaults`。  
-- [检索效果变差](../../integration/tasks/task-retrieval-quality.md) 时，画像用于判断 **数据形态** 是否匹配当前分块/嵌入策略。
+- [新租户首日上线](../../integration/tasks/go-live-tenant.md) 中「画像红线」与默认 RAG/切块策略选型，常需对照画像指标再改 `rag_defaults`。  
+- [知识库可对用户问答](../../integration/tasks/knowledge-base-qa.md) 中检索验收变差时，画像用于判断 **数据形态** 是否匹配当前分块/嵌入策略。
 
 ## 前端入口（对照）
 
