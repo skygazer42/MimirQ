@@ -14,6 +14,7 @@ import { AppFrame } from '@/components/app-frame'
 import { WorkbenchPanelDialog, WorkbenchScaffold } from '@/components/workbench'
 
 import { IconButton } from '@/components/ui/icon-button'
+import { Panel } from '@/components/ui/panel'
 import { useDocuments } from '@/hooks/use-documents'
 import { formatFileSize, cn, detachPromise } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
@@ -349,6 +350,55 @@ export default function KnowledgePage() {
         return lifecycleFilter
     }
   }, [lifecycleFilter, t])
+  const selectedDatasetLabel = useMemo(() => {
+    if (!selectedDatasetId) return undefined
+    return datasets.find((d) => d.id === selectedDatasetId)?.name ?? selectedDatasetId
+  }, [datasets, selectedDatasetId])
+  const handleDatasetScopeChange = useCallback((value: string) => {
+    setDatasetScope(value)
+    setFolderPath(null)
+  }, [])
+  const documentScopeSummary = (
+    <div className="flex flex-wrap items-center gap-2 lg:hidden">
+      <span
+        className="inline-flex items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5 text-xs text-muted-foreground"
+        title={
+          selectedDatasetId
+            ? t('scopeSummary.datasetTitleScoped', { datasetId: selectedDatasetId })
+            : t('scopeSummary.datasetTitleAll')
+        }
+      >
+        {t('scopeSummary.labels.scope')}:{' '}
+        <span className="ml-1 font-medium text-foreground">
+          {selectedDatasetId ? selectedDatasetLabel : t('scopeSummary.allDatasets')}
+        </span>
+      </span>
+
+      {selectedDatasetId && folderPath ? (
+        <span
+          className="inline-flex max-w-xs items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5 text-xs text-muted-foreground truncate"
+          title={folderPath}
+        >
+          {t('scopeSummary.labels.directory')}:{' '}
+          <span className="ml-1 truncate font-medium text-foreground">{folderPath}</span>
+        </span>
+      ) : null}
+
+      {statusFilter === 'all' ? null : (
+        <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5 text-xs text-muted-foreground">
+          {t('scopeSummary.labels.status')}:{' '}
+          <span className="ml-1 font-medium text-foreground">{statusSummaryLabel}</span>
+        </span>
+      )}
+
+      {lifecycleFilter === 'active' ? null : (
+        <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5 text-xs text-muted-foreground">
+          {t('scopeSummary.labels.lifecycle')}:{' '}
+          <span className="ml-1 font-medium text-foreground">{lifecycleSummaryLabel}</span>
+        </span>
+      )}
+    </div>
+  )
 
   const toggleDocSelection = useCallback((docId: string) => {
     setSelectedDocIds((prev) => (prev.includes(docId) ? prev.filter((id) => id !== docId) : [...prev, docId]))
@@ -550,37 +600,8 @@ export default function KnowledgePage() {
           icon={Database}
           iconColor="text-primary"
           description={t('header.description')}
-          leftPanel={
-            <KnowledgeScopePanel
-              datasets={datasets}
-              datasetsLoading={datasetsLoading}
-              datasetScope={datasetScope}
-              datasetAllValue={DATASET_ALL}
-              selectedDatasetId={selectedDatasetId}
-              lifecycleFilter={lifecycleFilter}
-              setLifecycleFilter={setLifecycleFilter}
-              folderPath={folderPath}
-              setFolderPath={setFolderPath}
-              statusFilter={statusFilter}
-              setStatusFilter={setStatusFilter}
-              totalDocs={totalDocs}
-              completedDocsValue={completedDocsValue}
-              processingDocsValue={processingDocsValue}
-              failedDocsValue={failedDocsValue}
-              quarantinedDocsValue={quarantinedDocsValue}
-              setDatasetScope={(v) => {
-                setDatasetScope(v)
-                setFolderPath(null)
-              }}
-            />
-          }
-          rightPanel={
-            <KnowledgeInspector selectedDocs={selectedDocs}>
-              {activeTab === 'retrieval' ? (
-                <RetrievePreviewPanel selectedDatasetId={selectedDatasetId} />
-              ) : null}
-            </KnowledgeInspector>
-          }
+          leftPanel={null}
+          rightPanel={null}
 
           actions={
             <KnowledgeWorkbenchActions
@@ -694,10 +715,7 @@ export default function KnowledgePage() {
                       processingDocsValue={processingDocsValue}
                       failedDocsValue={failedDocsValue}
                       quarantinedDocsValue={quarantinedDocsValue}
-                      setDatasetScope={(v) => {
-                        setDatasetScope(v)
-                        setFolderPath(null)
-                      }}
+                      setDatasetScope={handleDatasetScopeChange}
                     />
                   </WorkbenchPanelDialog>
                 </div>
@@ -810,138 +828,183 @@ export default function KnowledgePage() {
                 layoutId="knowledge-documents-surface"
                 transition={layoutTransition}
               >
-	            <KnowledgeDocumentsPanel
-	              isLoading={isLoading}
-	              documents={documents}
-	              filteredDocuments={filteredDocuments}
-	              selectedDatasetId={selectedDatasetId}
-	              selectedDatasetLabel={
-	                selectedDatasetId
-	                  ? (datasets.find((d) => d.id === selectedDatasetId)?.name ?? selectedDatasetId)
-	                  : undefined
-	              }
-	              datasetLabelById={datasetLabelById}
-	              hasActiveFilters={Boolean(docFilter.trim()) || statusFilter !== 'all' || lifecycleFilter !== 'active' || Boolean(folderPath)}
-	              onSwitchToAllDatasets={() => {
-	                setDatasetScope(DATASET_ALL)
-	                setFolderPath(null)
-	              }}
-	              scopeSummary={
-	                <div className="flex flex-wrap items-center gap-2">
-		                  <span
-		                    className="inline-flex items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5 text-xs text-muted-foreground"
-		                    title={
-                          selectedDatasetId
-                            ? t('scopeSummary.datasetTitleScoped', { datasetId: selectedDatasetId })
-                            : t('scopeSummary.datasetTitleAll')
-                        }
-		                  >
-		                    {t('scopeSummary.labels.scope')}:{' '}
-		                    <span className="font-medium text-foreground ml-1">
-		                      {selectedDatasetId
-		                        ? (datasets.find((d) => d.id === selectedDatasetId)?.name ?? selectedDatasetId)
-		                        : t('scopeSummary.allDatasets')}
-		                    </span>
-		                  </span>
+                <Panel
+                  padding="none"
+                  className="overflow-hidden rounded-[28px] border-border/70 bg-card/95 shadow-soft"
+                >
+                  <div className="grid grid-cols-1 lg:grid-cols-[18.5rem_minmax(0,1fr)] xl:grid-cols-[18.5rem_minmax(0,1fr)_20rem]">
+                    <aside className="hidden border-r border-border/60 bg-muted/[0.14] lg:block">
+                      <KnowledgeScopePanel
+                        surface="embedded"
+                        datasets={datasets}
+                        datasetsLoading={datasetsLoading}
+                        datasetScope={datasetScope}
+                        datasetAllValue={DATASET_ALL}
+                        selectedDatasetId={selectedDatasetId}
+                        lifecycleFilter={lifecycleFilter}
+                        setLifecycleFilter={setLifecycleFilter}
+                        folderPath={folderPath}
+                        setFolderPath={setFolderPath}
+                        statusFilter={statusFilter}
+                        setStatusFilter={setStatusFilter}
+                        totalDocs={totalDocs}
+                        completedDocsValue={completedDocsValue}
+                        processingDocsValue={processingDocsValue}
+                        failedDocsValue={failedDocsValue}
+                        quarantinedDocsValue={quarantinedDocsValue}
+                        setDatasetScope={handleDatasetScopeChange}
+                      />
+                    </aside>
 
-	                  {selectedDatasetId && folderPath ? (
-	                    <span
-	                      className="inline-flex items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5 text-xs text-muted-foreground max-w-xs truncate"
-	                      title={folderPath}
-	                    >
-	                      {t('scopeSummary.labels.directory')}:{' '}
-                        <span className="ml-1 truncate font-medium text-foreground">{folderPath}</span>
-	                    </span>
-	                  ) : null}
+                    <div className="min-w-0">
+                      <KnowledgeDocumentsPanel
+                        embedded
+                        isLoading={isLoading}
+                        documents={documents}
+                        filteredDocuments={filteredDocuments}
+                        selectedDatasetId={selectedDatasetId}
+                        selectedDatasetLabel={selectedDatasetLabel}
+                        datasetLabelById={datasetLabelById}
+                        hasActiveFilters={Boolean(docFilter.trim()) || statusFilter !== 'all' || lifecycleFilter !== 'active' || Boolean(folderPath)}
+                        onSwitchToAllDatasets={() => {
+                          setDatasetScope(DATASET_ALL)
+                          setFolderPath(null)
+                        }}
+                        scopeSummary={documentScopeSummary}
+                        docFilter={docFilter}
+                        setDocFilter={setDocFilter}
+                        onClearFilters={() => {
+                          setDocFilter('')
+                          setStatusFilter('all')
+                          setLifecycleFilter('active')
+                          setFolderPath(null)
+                        }}
+                        sortKey={sortKey}
+                        sortDir={sortDir}
+                        setSortKey={setSortKey}
+                        setSortDir={setSortDir}
+                        viewMode={viewMode}
+                        docGridColumns={docGridColumns}
+                        docGridRowCount={docGridRowCount}
+                        docsGridVirtualizer={docsGridVirtualizer}
+                        docsTableVirtualizer={docsTableVirtualizer}
+                        selectedDocIds={selectedDocIds}
+                        setSelectedDocIds={setSelectedDocIds}
+                        selectedSet={selectedSet}
+                        allVisibleSelected={allVisibleSelected}
+                        toggleSelectAllVisible={toggleSelectAllVisible}
+                        toggleDocSelection={toggleDocSelection}
+                        batchDeleteOpen={batchDeleteOpen}
+                        setBatchDeleteOpen={setBatchDeleteOpen}
+                        batchDeleting={batchDeleting}
+                        confirmBatchDelete={confirmBatchDelete}
+                        batchLifecycleWorking={batchLifecycleWorking}
+                        batchReingestWorking={batchReingestWorking}
+                        runBatchReingest={runBatchReingest}
+                        runBatchLifecycle={runBatchLifecycle}
+                        anySelectedDisabled={anySelectedDisabled}
+                        anySelectedEnabled={anySelectedEnabled}
+                        anySelectedArchived={anySelectedArchived}
+                        anySelectedNotArchived={anySelectedNotArchived}
+                        deleteDocument={deleteDocument}
+                        handleFileUpload={handleFileUpload}
+                      />
+                    </div>
 
-		                  {statusFilter === 'all' ? null : (
-		                    <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5 text-xs text-muted-foreground">
-		                      {t('scopeSummary.labels.status')}:{' '}
-		                      <span className="ml-1 font-medium text-foreground">{statusSummaryLabel}</span>
-                    </span>
-	                  )}
-
-		                  {lifecycleFilter === 'active' ? null : (
-		                    <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5 text-xs text-muted-foreground">
-		                      {t('scopeSummary.labels.lifecycle')}:{' '}
-		                      <span className="ml-1 font-medium text-foreground">{lifecycleSummaryLabel}</span>
-                    </span>
-                  )}
-                </div>
-              }
-
-	              docFilter={docFilter}
-	              setDocFilter={setDocFilter}
-	              onClearFilters={() => {
-	                setDocFilter('')
-	                setStatusFilter('all')
-	                setLifecycleFilter('active')
-	                setFolderPath(null)
-	              }}
-
-              sortKey={sortKey}
-              sortDir={sortDir}
-              setSortKey={setSortKey}
-              setSortDir={setSortDir}
-
-              viewMode={viewMode}
-              docGridColumns={docGridColumns}
-              docGridRowCount={docGridRowCount}
-              docsGridVirtualizer={docsGridVirtualizer}
-              docsTableVirtualizer={docsTableVirtualizer}
-
-              selectedDocIds={selectedDocIds}
-              setSelectedDocIds={setSelectedDocIds}
-              selectedSet={selectedSet}
-              allVisibleSelected={allVisibleSelected}
-              toggleSelectAllVisible={toggleSelectAllVisible}
-              toggleDocSelection={toggleDocSelection}
-
-              batchDeleteOpen={batchDeleteOpen}
-              setBatchDeleteOpen={setBatchDeleteOpen}
-              batchDeleting={batchDeleting}
-              confirmBatchDelete={confirmBatchDelete}
-
-              batchLifecycleWorking={batchLifecycleWorking}
-              batchReingestWorking={batchReingestWorking}
-              runBatchReingest={runBatchReingest}
-              runBatchLifecycle={runBatchLifecycle}
-
-              anySelectedDisabled={anySelectedDisabled}
-              anySelectedEnabled={anySelectedEnabled}
-              anySelectedArchived={anySelectedArchived}
-              anySelectedNotArchived={anySelectedNotArchived}
-
-	              deleteDocument={deleteDocument}
-	              handleFileUpload={handleFileUpload}
-	            />
+                    <aside className="hidden border-l border-border/60 bg-muted/[0.1] xl:block">
+                      <KnowledgeInspector embedded selectedDocs={selectedDocs} />
+                    </aside>
+                  </div>
+                </Panel>
               </motion.div>
           ) : null}
 
           {/* 检索测试 */}
-			          {activeTab === 'retrieval' && (
-			            <KnowledgeRetrievalPanel
-			              selectedDatasetId={selectedDatasetId}
-			            />
-			          )}
+          {activeTab === 'retrieval' && (
+            <Panel padding="none" className="overflow-hidden rounded-[28px] border-border/70 bg-card/95 shadow-soft">
+              <div className="grid grid-cols-1 lg:grid-cols-[18.5rem_minmax(0,1fr)] xl:grid-cols-[18.5rem_minmax(0,1fr)_20rem]">
+                <aside className="hidden border-r border-border/60 bg-muted/[0.14] lg:block">
+                  <KnowledgeScopePanel
+                    surface="embedded"
+                    datasets={datasets}
+                    datasetsLoading={datasetsLoading}
+                    datasetScope={datasetScope}
+                    datasetAllValue={DATASET_ALL}
+                    selectedDatasetId={selectedDatasetId}
+                    lifecycleFilter={lifecycleFilter}
+                    setLifecycleFilter={setLifecycleFilter}
+                    folderPath={folderPath}
+                    setFolderPath={setFolderPath}
+                    statusFilter={statusFilter}
+                    setStatusFilter={setStatusFilter}
+                    totalDocs={totalDocs}
+                    completedDocsValue={completedDocsValue}
+                    processingDocsValue={processingDocsValue}
+                    failedDocsValue={failedDocsValue}
+                    quarantinedDocsValue={quarantinedDocsValue}
+                    setDatasetScope={handleDatasetScopeChange}
+                  />
+                </aside>
 
-	          {/* 设置 */}
-	          {activeTab === 'settings' && (
-	            <KnowledgeSettingsPanel
-	              selectedDatasetId={selectedDatasetId}
-	              connectorRuns={connectorRuns}
-	              connectorRunsLoading={connectorRunsLoading}
-                connectorRunsUpdatedAt={connectorRunsUpdatedAt}
-	              onLoadConnectorRuns={loadConnectorRuns}
-	              expandedConnectorRunId={expandedConnectorRunId}
-	              onToggleExpandedConnectorRun={(runId) =>
-	                setExpandedConnectorRunId((prev) => (prev === runId ? null : runId))
-	              }
-	              onCancelConnectorRun={cancelConnectorRun}
-	              onResumeConnectorRun={resumeConnectorRun}
-	              onRetryFailedConnectorRun={retryFailedConnectorRun}
-	            />
-	          )}
+                <div className="min-w-0 px-4 py-5 md:px-5">
+                  <KnowledgeRetrievalPanel selectedDatasetId={selectedDatasetId} />
+                </div>
+
+                <aside className="hidden border-l border-border/60 bg-muted/[0.1] xl:block">
+                  <KnowledgeInspector embedded selectedDocs={selectedDocs}>
+                    <RetrievePreviewPanel selectedDatasetId={selectedDatasetId} />
+                  </KnowledgeInspector>
+                </aside>
+              </div>
+            </Panel>
+          )}
+
+          {/* 设置 */}
+          {activeTab === 'settings' && (
+            <Panel padding="none" className="overflow-hidden rounded-[28px] border-border/70 bg-card/95 shadow-soft">
+              <div className="grid grid-cols-1 lg:grid-cols-[18.5rem_minmax(0,1fr)]">
+                <aside className="hidden border-r border-border/60 bg-muted/[0.14] lg:block">
+                  <KnowledgeScopePanel
+                    surface="embedded"
+                    datasets={datasets}
+                    datasetsLoading={datasetsLoading}
+                    datasetScope={datasetScope}
+                    datasetAllValue={DATASET_ALL}
+                    selectedDatasetId={selectedDatasetId}
+                    lifecycleFilter={lifecycleFilter}
+                    setLifecycleFilter={setLifecycleFilter}
+                    folderPath={folderPath}
+                    setFolderPath={setFolderPath}
+                    statusFilter={statusFilter}
+                    setStatusFilter={setStatusFilter}
+                    totalDocs={totalDocs}
+                    completedDocsValue={completedDocsValue}
+                    processingDocsValue={processingDocsValue}
+                    failedDocsValue={failedDocsValue}
+                    quarantinedDocsValue={quarantinedDocsValue}
+                    setDatasetScope={handleDatasetScopeChange}
+                  />
+                </aside>
+
+                <div className="min-w-0 px-4 py-5 md:px-5">
+                  <KnowledgeSettingsPanel
+                    selectedDatasetId={selectedDatasetId}
+                    connectorRuns={connectorRuns}
+                    connectorRunsLoading={connectorRunsLoading}
+                    connectorRunsUpdatedAt={connectorRunsUpdatedAt}
+                    onLoadConnectorRuns={loadConnectorRuns}
+                    expandedConnectorRunId={expandedConnectorRunId}
+                    onToggleExpandedConnectorRun={(runId) =>
+                      setExpandedConnectorRunId((prev) => (prev === runId ? null : runId))
+                    }
+                    onCancelConnectorRun={cancelConnectorRun}
+                    onResumeConnectorRun={resumeConnectorRun}
+                    onRetryFailedConnectorRun={retryFailedConnectorRun}
+                  />
+                </div>
+              </div>
+            </Panel>
+          )}
 
         </WorkbenchScaffold>
     </AppFrame>

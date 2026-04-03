@@ -1,3 +1,5 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
@@ -43,5 +45,11 @@ describe('DatasetCategoryTreeView', () => {
     expect(html).toContain('Root')
     expect(html).toContain('Child')
   })
-})
 
+  it('exposes a create-category entry in the category tree source', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'category-tree.tsx'), 'utf8')
+
+    expect(src).toContain('新建分类')
+    expect(src).toContain('datasetCategoryApi.create')
+  })
+})

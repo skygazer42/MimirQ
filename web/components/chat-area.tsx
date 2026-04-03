@@ -587,18 +587,25 @@ export function ChatArea({
     }
   }, [handleSend])
 
+  const isWelcomeState = messages.length === 0 && !isLoading
+
   return (
     <div className="flex-1 min-h-0 flex flex-col bg-background relative transition-colors duration-200 motion-reduce:transition-none">
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto overscroll-contain px-4 pb-4 scroll-smooth no-scrollbar"
+        className="flex-1 overflow-y-auto overscroll-contain px-4 pb-4 scroll-smooth no-scrollbar md:px-6"
         role="log"
         aria-live="polite"
         aria-busy={isLoading}
       >
-        <div className="max-w-3xl mx-auto flex flex-col min-h-full py-10">
-          {messages.length === 0 && !isLoading && (
+        <div
+          className={cn(
+            'mx-auto flex min-h-full w-full flex-col py-8 md:py-10',
+            isWelcomeState ? 'max-w-6xl' : 'max-w-4xl'
+          )}
+        >
+          {isWelcomeState && (
             <div className="flex-1 flex items-center justify-center">
               <WelcomeScreen
                 onSelectPrompt={handlePrefillInput}
@@ -673,8 +680,13 @@ export function ChatArea({
         </div>
       )}
 
-      <div className="px-4 pt-2 z-10 pb-[calc(env(safe-area-inset-bottom)+1.5rem)]">
-        <div className="max-w-3xl mx-auto space-y-4">
+      <div className="px-4 pt-2 z-10 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] md:px-6">
+        <div
+          className={cn(
+            'mx-auto w-full space-y-4',
+            isWelcomeState ? 'max-w-6xl' : 'max-w-4xl'
+          )}
+        >
 
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1.5rem] border border-border/60 bg-background/80 px-3 py-2 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/70">
             <div className="flex min-w-0 items-center gap-2">
@@ -1120,85 +1132,108 @@ function WelcomeScreen({
   const hasKnowledge = !stats.loading && documentCount > 0
 
   return (
-    <div className="relative z-10 w-full max-w-4xl space-y-8 px-4 py-10">
-      <div className="mx-auto flex max-w-3xl flex-col items-center space-y-5 text-center">
-        <div className="flex size-24 items-center justify-center rounded-[2rem] border border-border bg-card shadow-soft">
-          <Bot className="h-12 w-12 text-primary" aria-hidden="true" />
+    <div className="relative z-10 w-full px-1 py-4 md:px-2">
+      <div className="relative overflow-hidden rounded-[2.5rem] border border-border/60 bg-background/85 p-4 shadow-soft backdrop-blur supports-[backdrop-filter]:bg-background/72 md:p-6 xl:p-7">
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="absolute -left-16 top-0 h-56 w-56 rounded-full bg-primary/[0.08] blur-3xl" />
+          <div className="absolute -right-10 bottom-[-15%] h-64 w-64 rounded-full bg-accent/[0.08] blur-3xl" />
+          <div className="absolute inset-x-12 top-[44%] h-px bg-gradient-to-r from-transparent via-border/80 to-transparent xl:hidden" />
         </div>
 
-        <div className="space-y-3">
-          <h2 className="text-balance text-3xl font-semibold leading-tight text-foreground md:text-4xl">
-            {greeting}，<span className="text-primary">{t('explorer')}</span>
-          </h2>
-          <p className="mx-auto max-w-2xl text-pretty text-sm leading-7 text-muted-foreground/90 md:text-base">
-            {t('welcomeLead')}
-          </p>
-        </div>
-      </div>
+        <div className="relative grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.95fr)] xl:items-stretch">
+          <div className="space-y-4">
+            <section className="rounded-[2rem] border border-border/50 bg-card/80 p-5 shadow-sm md:p-6">
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                <div className="space-y-4 text-left">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/85 px-3 py-1 text-[11px] font-medium tracking-[0.12em] text-muted-foreground shadow-sm">
+                    <Sparkles className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                    <span>{t('quickStart.title')}</span>
+                  </div>
+                  <div className="space-y-3">
+                    <h2 className="text-balance text-3xl font-semibold leading-tight text-foreground md:text-4xl xl:text-[2.85rem]">
+                      {greeting}，<span className="text-primary">{t('explorer')}</span>
+                    </h2>
+                    <p className="max-w-2xl text-pretty text-sm leading-7 text-muted-foreground/90 md:text-base">
+                      {t('welcomeLead')}
+                    </p>
+                  </div>
+                </div>
 
-      <div className="mx-auto max-w-3xl rounded-[2rem] border border-border/60 bg-background/80 p-4 shadow-soft backdrop-blur supports-[backdrop-filter]:bg-background/70">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground/80">
-              {t('quickStart.title')}
-            </div>
-            <div className="mt-1 text-sm leading-6 text-muted-foreground">
-              {t('quickStart.description')}
-            </div>
+                <div className="flex size-20 shrink-0 items-center justify-center rounded-[1.75rem] border border-primary/15 bg-primary/10 text-primary shadow-inner md:size-24">
+                  <Bot className="h-10 w-10 md:h-12 md:w-12" aria-hidden="true" />
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-[2rem] border border-border/60 bg-background/78 p-5 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/72 md:p-6">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="text-left">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground/80">
+                    {t('quickStart.title')}
+                  </div>
+                  <div className="mt-1 text-sm leading-6 text-muted-foreground">
+                    {t('quickStart.description')}
+                  </div>
+                </div>
+                <div className="inline-flex items-center gap-2 self-start rounded-full border border-border/60 bg-card px-3 py-1 text-[11px] font-medium tracking-[0.08em] text-muted-foreground shadow-sm">
+                  <span className="font-mono text-foreground/80">/</span>
+                  <span>{t('quickStart.slashCommands')}</span>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:auto-rows-fr md:grid-cols-2">
+                {quickStartPrompts.map((item) => (
+                  <QuickStartChip
+                    key={item.title}
+                    icon={item.icon}
+                    title={item.title}
+                    prompt={item.prompt}
+                    onSelect={onSelectPrompt}
+                  />
+                ))}
+              </div>
+            </section>
           </div>
-          <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card px-3 py-1 text-[11px] font-medium tracking-[0.08em] text-muted-foreground shadow-sm">
-            <span className="font-mono text-foreground/80">/</span>
-            <span>{t('quickStart.slashCommands')}</span>
-          </div>
-        </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          {quickStartPrompts.map((item) => (
-            <QuickStartChip
-              key={item.title}
-              icon={item.icon}
-              title={item.title}
-              prompt={item.prompt}
-              onSelect={onSelectPrompt}
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+            <WelcomeStatusCard
+              icon={Database}
+              title={
+                stats.loading
+                  ? t('knowledgeStatus.loadingTitle')
+                  : hasKnowledge
+                    ? t('knowledgeStatus.readyTitle', { count: documentCount })
+                    : t('knowledgeStatus.emptyTitle')
+              }
+              desc={
+                stats.loading
+                  ? t('knowledgeStatus.loadingDescription')
+                  : hasKnowledge
+                    ? t('knowledgeStatus.readyDescription', { count: datasetCount })
+                    : t('knowledgeStatus.emptyDescription')
+              }
+              badge={!stats.loading && hasKnowledge ? String(documentCount) : undefined}
+              actionLabel={stats.loading ? undefined : t('knowledgeStatus.actionLabel')}
+              onAction={stats.loading ? undefined : onOpenKnowledge}
+              tone={hasKnowledge ? 'primary' : 'neutral'}
             />
-          ))}
+            <WelcomeStatusCard
+              icon={Wand2}
+              title={promptTemplateCount > 0 ? t('promptTemplatesAvailable', { count: promptTemplateCount }) : t('startFromDefaultTemplate')}
+              desc={
+                promptTemplateCount > 0
+                  ? t('promptTemplatesAvailableDescription')
+                  : t('noPromptTemplateDescription')
+              }
+              badge={promptTemplateCount > 0 ? String(promptTemplateCount) : undefined}
+            />
+            <WelcomeStatusCard
+              icon={Sparkles}
+              title={t('firstUseAdviceTitle')}
+              desc={t('firstUseAdviceDescription')}
+            />
+          </div>
         </div>
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-3">
-        <WelcomeStatusCard
-          icon={Database}
-          title={
-            stats.loading
-              ? t('knowledgeStatus.loadingTitle')
-              : hasKnowledge
-                ? t('knowledgeStatus.readyTitle', { count: documentCount })
-                : t('knowledgeStatus.emptyTitle')
-          }
-          desc={
-            stats.loading
-              ? t('knowledgeStatus.loadingDescription')
-              : hasKnowledge
-                ? t('knowledgeStatus.readyDescription', { count: datasetCount })
-                : t('knowledgeStatus.emptyDescription')
-          }
-          actionLabel={stats.loading ? undefined : t('knowledgeStatus.actionLabel')}
-          onAction={stats.loading ? undefined : onOpenKnowledge}
-        />
-        <WelcomeStatusCard
-          icon={Wand2}
-          title={promptTemplateCount > 0 ? t('promptTemplatesAvailable', { count: promptTemplateCount }) : t('startFromDefaultTemplate')}
-          desc={
-            promptTemplateCount > 0
-              ? t('promptTemplatesAvailableDescription')
-              : t('noPromptTemplateDescription')
-          }
-        />
-        <WelcomeStatusCard
-          icon={Sparkles}
-          title={t('firstUseAdviceTitle')}
-          desc={t('firstUseAdviceDescription')}
-        />
       </div>
     </div>
   )
@@ -1219,8 +1254,9 @@ function QuickStartChip({
     <button
       type="button"
       onClick={() => onSelect(prompt)}
-      className="group rounded-[1.5rem] border border-border/60 bg-card/90 p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:bg-card hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+      className="group relative h-full overflow-hidden rounded-[1.75rem] border border-border/60 bg-card/90 p-5 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:bg-card hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
     >
+      <div aria-hidden="true" className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
       <div className="flex items-start gap-3">
         <div className="mt-0.5 flex size-10 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 text-primary">
           <Icon className="h-4 w-4" aria-hidden="true" />
@@ -1240,27 +1276,72 @@ function WelcomeStatusCard({
   icon: Icon,
   title,
   desc,
+  badge,
   actionLabel,
   onAction,
+  tone = 'neutral',
 }: Readonly<{
   icon: LucideIcon
   title: string
   desc: string
+  badge?: string
   actionLabel?: string
   onAction?: () => void
+  tone?: 'primary' | 'neutral'
 }>) {
+  const isPrimary = tone === 'primary'
+
   return (
-    <div className="rounded-[1.5rem] border border-border/60 bg-card/90 p-5 text-left shadow-soft">
-      <div className="mb-3 flex size-11 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 text-primary">
-        <Icon className="h-5 w-5" aria-hidden="true" />
+    <div
+      className={cn(
+        'relative h-full overflow-hidden rounded-[1.75rem] border p-5 text-left shadow-soft md:p-6',
+        isPrimary ? 'border-primary/20 bg-primary/[0.07]' : 'border-border/60 bg-card/90'
+      )}
+    >
+      <div
+        aria-hidden="true"
+        className={cn(
+          'pointer-events-none absolute inset-0 bg-gradient-to-br',
+          isPrimary ? 'from-primary/[0.10] via-transparent to-transparent' : 'from-primary/[0.05] via-transparent to-transparent'
+        )}
+      />
+      <div className="relative flex h-full flex-col">
+        <div className="flex items-start justify-between gap-3">
+          <div
+            className={cn(
+              'flex size-11 items-center justify-center rounded-2xl border text-primary',
+              isPrimary ? 'border-primary/20 bg-background/80' : 'border-primary/15 bg-primary/10'
+            )}
+          >
+            <Icon className="h-5 w-5" aria-hidden="true" />
+          </div>
+          {badge ? (
+            <div
+              className={cn(
+                'rounded-full border px-3 py-1 text-xs font-semibold tracking-[0.08em] shadow-sm',
+                isPrimary ? 'border-primary/15 bg-background/85 text-foreground' : 'border-border/60 bg-background/85 text-foreground/80'
+              )}
+            >
+              {badge}
+            </div>
+          ) : null}
+        </div>
+        <div className="mt-5">
+          <h3 className="text-sm font-semibold leading-snug text-foreground/95">{title}</h3>
+          <p className="mt-2 text-xs leading-6 text-muted-foreground/90">{desc}</p>
+        </div>
+        {actionLabel && onAction ? (
+          <Button
+            type="button"
+            variant={isPrimary ? 'default' : 'outline'}
+            size="sm"
+            className="mt-5 h-10 self-start rounded-full px-4"
+            onClick={onAction}
+          >
+            {actionLabel}
+          </Button>
+        ) : null}
       </div>
-      <h3 className="text-sm font-semibold leading-snug text-foreground/95">{title}</h3>
-      <p className="mt-2 text-xs leading-6 text-muted-foreground/90">{desc}</p>
-      {actionLabel && onAction ? (
-        <Button type="button" variant="outline" size="sm" className="mt-4 rounded-full" onClick={onAction}>
-          {actionLabel}
-        </Button>
-      ) : null}
     </div>
   )
 }

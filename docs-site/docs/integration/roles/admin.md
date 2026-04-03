@@ -3,35 +3,82 @@ sidebar_label: "租户与系统管理员"
 sidebar_position: 1
 ---
 
-# 租户与系统管理员 — 从哪开始
+# 租户与系统管理员
 
-## 本页回答的业务问题
+管理员负责 MimirQ 平台的租户管理、权限配置与数据集治理，确保团队成员能安全、高效地使用知识库。
 
-你是 **管理员或数据负责人**：要在组织内把 MimirQ 用起来，让用户能 **安全地** 使用知识库与对话，而不是自己啃完整套 API。
+## 职责概览
 
-## 建议阅读路径
+| 职责 | 说明 |
+|------|------|
+| 租户管理 | 创建与配置租户，管理租户级别的功能开关与配额 |
+| 用户与权限 | 导入用户、分配角色（RBAC）、管理 API Key |
+| 数据集治理 | 创建数据集、配置预检规则、监控数据集健康度 |
+| 安全合规 | 审计日志查阅、隔离区审批、敏感内容治理 |
 
-1. **首日上线**（业务结果：有人能登录、有数据集、能试传文档）：[业务剧本：新租户首日上线](../tasks/go-live-tenant)。
-2. **让知识库真正可问答**（业务结果：文档进库且对话能命中）：[业务剧本：知识库可对用户问答](../tasks/knowledge-base-qa)。
-3. **文档一直处理不完**（业务影响：用户看不到内容、投诉增加）：[业务剧本：文档卡在解析或索引](../tasks/document-stuck)。
+## 推荐阅读路径
 
-## 你在 Web 上常去的模块（路径以实际部署为准）
+| 阶段 | 目标 | 推荐页面 |
+|------|------|----------|
+| 1. 环境就绪 | 理解认证与租户模型 | [认证模式](../patterns/auth-modes.md) / [租户 Header](../patterns/tenant-headers.md) |
+| 2. 首日上线 | 创建租户、导入用户、建库 | [新租户首日上线](../tasks/go-live-tenant.md) |
+| 3. 知识可用 | 文档入库、验证问答 | [知识库问答](../tasks/knowledge-base-qa.md) |
+| 4. 运营排障 | 文档卡住、健康监控 | [文档卡住排障](../tasks/document-stuck.md) |
+| 5. 持续治理 | 错误码、审计、环境管理 | [错误码](../patterns/errors-4xx-5xx.md) / [环境矩阵](../patterns/env-matrix.md) |
 
-| 目的 | 典型入口（仓库内路由） |
-| --- | --- |
-| 数据集总览与配置 | `/datasets`、各数据集子页（预检、画像、健康等） |
-| 知识入库 | `/knowledge/ingestion` |
-| 隔离与审核 | `/knowledge/quarantine` |
-| 系统设置 | Settings 相关页（见 OpenAPI **settings** / **meta**） |
+## 首日清单
 
-## 需要深入时
+完成以下步骤即可达到"有人能登录、有数据集、能试传文档"的最小验收状态。
 
-- **契约与权限边界**：[API_CONTRACT](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/API_CONTRACT.md)
-- **端点调用顺序（集成向）**：[workflows.md](https://github.com/skygazer42/MimirQ/blob/main/docs/api/workflows.md)
-- **全量 Schema**：[Redoc](https://skygazer42.github.io/MimirQ/)
+- [ ] **获取管理员凭证** — 登录或注册，确认 `access_token` 有效
+- [ ] **创建租户**（如为多租户部署）— 调用租户管理 API 或在 Web 控制台操作
 
-## 与其他视角的关系
+```bash
+curl -X POST "$BASE_URL/api/v1/tenants" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "engineering-team"}'
+```
 
-- **Frontend 侧栏**：页面、组件与 `web/lib/api` 调用细节。
-- **Backend 侧栏**：各域 API 与状态机说明。
-- **Ops 侧栏**：探针、部署与 Runbook。
+- [ ] **配置 RBAC** — 为团队成员分配 admin / editor / viewer 等角色
+- [ ] **导入用户** — 手动添加或通过 SCIM 同步（参见[场景: SCIM 同步](../scenarios/s10-scim-sync.md)）
+- [ ] **创建首个数据集** — 作为文档上传的挂载点
+
+```bash
+curl -X POST "$BASE_URL/api/v1/datasets/" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "product-docs", "description": "产品文档知识库"}'
+```
+
+- [ ] **上传测试文档** — 验证入库链路畅通
+
+:::tip 验收标准
+首日结束时，团队中至少一名非管理员用户能登录、看到数据集列表、并确认测试文档处理完成。
+:::
+
+## 关键 API 端点
+
+| 操作 | 方法 & 路径 | 说明 |
+|------|-------------|------|
+| 创建租户 | `POST /api/v1/tenants` | 多租户部署必需 |
+| 用户管理 | `GET/POST /api/v1/users` | 列表与创建用户 |
+| 创建数据集 | `POST /api/v1/datasets/` | 返回 `dataset_id` |
+| 数据集健康 | `GET /api/v1/datasets/{id}/health` | 检查数据集状态 |
+| 审计日志 | `GET /api/v1/audit/logs` | 查阅操作记录 |
+| 系统健康 | `GET /api/v1/health` | 存活探针 |
+
+:::info 以 OpenAPI 为准
+具体字段名、参数与响应结构以 [Redoc](https://skygazer42.github.io/MimirQ/) 中最新定义为权威依据。
+:::
+
+## 与其他角色的协作
+
+- **集成工程师** — 管理员提供 API Key 与租户上下文，集成工程师负责对接外部系统
+- **SRE/运维** — 管理员关注业务层面的数据集健康，运维关注基础设施与探针
+
+## 相关链接
+
+- [Redoc — API 完整参考](https://skygazer42.github.io/MimirQ/)
+- [认证模式](../patterns/auth-modes.md) | [错误码](../patterns/errors-4xx-5xx.md)
+- [FE/BE 对照矩阵](../generated/fe-be-matrix.mdx)

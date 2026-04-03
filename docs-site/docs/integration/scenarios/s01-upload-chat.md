@@ -3,36 +3,99 @@ sidebar_label: "上传后对话"
 sidebar_position: 1
 ---
 
-# 场景 — 上传后对话
+# 场景: 上传文档并对话
 
-## 概述
+最小端到端路径：登录 → 上传文档 → 等待处理完成 → 发起 RAG 对话。
 
-本页属于 **集成** 域的 **E2E** 视角。权威契约以 OpenAPI（Redoc）为准；前端路由以 `web/app/**/page.tsx` 为准。
+## 场景描述
 
-最小路径：注册/登录 → 上传 → 等状态 → chat stream。
+验证从文档上传到 RAG 对话的完整链路，确认用户上传的内容能被正确检索和引用。
 
-## 推荐步骤（可勾选）
+## API 调用时序
 
-1. **身份**：完成注册/登录，确认 `Authorization: Bearer` 随请求发送（[认证](../patterns/auth-modes.md)）。  
-2. **数据集**：选用已有 `dataset_id`，或先走 [数据集上线任务](../tasks/task-dataset-go-live.md)。  
-3. **上传**：`POST /api/v1/documents/upload`（multipart），字段名以 Redoc 为准（[multipart](../patterns/multipart-upload.md)）。  
-4. **等待**：轮询 `GET .../documents/{id}/status` 至完成或失败终态。  
-5. **对话**：调用流式 chat 接口，确认代理 **未缓冲 SSE**（[SSE](../patterns/sse-streaming.md)）。
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API as MimirQ API
+    participant Store as 对象存储
+    participant Worker as 处理 Worker
+    participant LLM
 
-## 业务验收
+    Client->>API: 1. POST /auth/login
+    API-->>Client: access_token
 
-- [ ] 同一会话内可 **稳定复现**：上传 → 完成 → 命中该文档的回答（或明确未命中原因）。  
-- [ ] 失败路径有 **可解释错误**（4xx/5xx + 业务码），便于开单。
+    Client->>API: 2. POST /documents/upload (multipart)
+    API->>Store: 存储文件
+    API-->>Client: document_id + pending
 
-## 典型失败与影响
+    Worker->>Store: 3. 读取文件
+    Worker->>Worker: 解析 → 切块 → embedding
 
-| 现象 | 用户体感 | 下一步 |
-| --- | --- | --- |
-| 长期 processing | 「传了没用」 | [解析止损](../tasks/task-parse-failure-triage.md) |
-| 对话首字极慢 | 「AI 卡死」 | 查 SSE 缓冲与网关超时 |
-| 401 中途出现 | 突然不能用 | Token 过期与刷新 |
+    loop 轮询状态
+        Client->>API: 4. GET /documents/{id}/status
+        API-->>Client: processing / completed
+    end
+
+    Client->>API: 5. POST /chat/completions (stream=true)
+    API->>LLM: RAG prompt + 检索片段
+    loop SSE chunks
+        LLM-->>API: token
+        API-->>Client: data: {...}
+    end
+```
+
+## curl 示例
+
+```bash
+# 1. 登录
+TOKEN=$(curl -s -X POST "$BASE_URL/api/v1/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"username": "user@example.com", "password": "pass"}' | jq -r '.access_token')
+
+# 2. 上传文档
+DOC_ID=$(curl -s -X POST "$BASE_URL/api/v1/documents/upload" \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "file=@knowledge.pdf" \
+  -F "dataset_id=$DATASET_ID" | jq -r '.id')
+
+# 3. 轮询状态
+while true; do
+  STATUS=$(curl -s "$BASE_URL/api/v1/documents/$DOC_ID/status" \
+    -H "Authorization: Bearer $TOKEN" | jq -r '.status')
+  echo "Status: $STATUS"
+  [ "$STATUS" = "completed" ] && break
+  sleep 5
+done
+
+# 4. 发起对话
+curl -N "$BASE_URL/api/v1/chat/completions" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [{"role": "user", "content": "文档中提到了什么？"}],
+    "dataset_ids": ["'"$DATASET_ID"'"],
+    "stream": true
+  }'
+```
+
+## 预期结果
+
+| 步骤 | 预期 |
+|------|------|
+| 上传 | 返回 `document_id`，状态为 `pending` |
+| 处理 | 状态经 `processing` 最终变为 `completed` |
+| 对话 | 回答内容引用了上传文档的信息 |
+
+## 排障
+
+| 问题 | 参考 |
+|------|------|
+| 上传 415/400 | [文件上传](../patterns/multipart-upload.md) |
+| 文档一直 processing | [文档卡住排障](../tasks/document-stuck.md) |
+| 对话无相关回答 | [知识库问答](../tasks/knowledge-base-qa.md) |
+| 流式无输出 | [SSE 流式](../patterns/sse-streaming.md) |
 
 ## 相关链接
 
-- [OpenAPI / Redoc](https://skygazer42.github.io/MimirQ/)
-- 仓库内：[API 契约说明](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/API_CONTRACT.md) · [前后端排障](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/FE_BE_DEBUG.md)
+- [Redoc — API 完整参考](https://skygazer42.github.io/MimirQ/)
+- [场景: 数据集绑定 RAG](./s02-dataset-rag.md)

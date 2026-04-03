@@ -3,42 +3,91 @@ sidebar_label: "分页"
 sidebar_position: 4
 ---
 
-# 列表分页与查询参数
+# 分页模式
 
-## 概述
+MimirQ 列表接口采用 offset/limit 分页模式，部分接口可能支持 cursor 分页。
 
-本页属于 **集成** 域的 **联调模式** 视角。权威契约以 OpenAPI（Redoc）为准；前端路由以 `web/app/**/page.tsx` 为准。
+## 基本参数
 
-## 何时查阅
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `skip` / `offset` | int | `0` | 跳过的记录数 |
+| `limit` | int | `20` | 每页返回数量 |
 
-实现表格翻页、导出大量 ID、或脚本扫列表时；任何 **列表类** 任务（数据集、文档、任务队列）都应与此页约定一致。
+:::info
+参数名以 [Redoc](https://skygazer42.github.io/MimirQ/) 中各接口的实际定义为准，部分接口使用 `skip`，部分使用 `offset`。
+:::
 
-## 业务影响与验收要点
+## Offset/Limit 分页
 
-- 翻页 **不丢查询条件**；深链 URL 可分享且可复现。  
-- 大 `limit` 不被静默截断却不提示（应 422 或明确上限）。
+```bash
+# 第一页
+curl "$BASE_URL/api/v1/datasets/?skip=0&limit=20" \
+  -H "Authorization: Bearer $TOKEN"
 
-## 典型失败与对策
+# 第二页
+curl "$BASE_URL/api/v1/datasets/?skip=20&limit=20" \
+  -H "Authorization: Bearer $TOKEN"
+```
 
-| 症状 | 业务影响 | 优先动作 |
-| --- | --- | --- |
-| 重复或漏行 | 对账错误 | 固定排序键；避免并发写时盲翻页 |
-| 422 on limit | 集成脚本失败 | 读 Redoc 上限；分批 |
+典型响应结构：
 
-## 常见约定
+```json
+{
+  "items": [...],
+  "total": 150,
+  "skip": 0,
+  "limit": 20
+}
+```
 
-- 多数列表支持 `skip`、`limit`（或 `offset`/`page`，以 OpenAPI 为准）。
-- 默认值与上限以 Redoc 中参数说明为准；超出上限可能 422。
+## 分页最佳实践
 
-## 前端
+### 固定排序键
 
-- 表格翻页时避免在路由中丢失 `limit`；大页 deep link 注意 URL 长度。
+```bash
+# 带排序的分页，避免数据变动导致重复或遗漏
+curl "$BASE_URL/api/v1/documents/?skip=0&limit=50&sort_by=created_at&order=desc" \
+  -H "Authorization: Bearer $TOKEN"
+```
 
-## 集成测试
+:::warning 并发写入时的分页
+在数据频繁变动的场景下，offset 分页可能出现重复或遗漏记录。建议固定排序键（如 `created_at`），或在批处理脚本中使用时间窗口过滤。
+:::
 
-- 断言总数与当前页条数；空列表与最后一页边界。
+### 边界处理
+
+| 场景 | 预期行为 |
+|------|----------|
+| `skip` 超过总数 | 返回空 `items`，`total` 不变 |
+| `limit` 超过上限 | 返回 422 或被截断为最大值 |
+| `limit=0` | 以 OpenAPI 定义为准 |
+| 空列表 | `items: []`，`total: 0` |
+
+## 集成建议
+
+- **前端翻页**：URL 中保留完整查询参数（包括 `limit`），支持深链分享
+- **导出脚本**：设置合理的 `limit`（如 100），循环翻页直到 `items` 为空
+- **大 limit 警告**：过大的 `limit` 值可能导致响应缓慢或 422，以 Redoc 中标注的上限为准
+
+```python
+# Python 分页遍历示例
+skip = 0
+limit = 100
+while True:
+    resp = requests.get(
+        f"{BASE_URL}/api/v1/datasets/",
+        params={"skip": skip, "limit": limit},
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    data = resp.json()
+    process(data["items"])
+    if len(data["items"]) < limit:
+        break
+    skip += limit
+```
 
 ## 相关链接
 
-- [OpenAPI / Redoc](https://skygazer42.github.io/MimirQ/)
-- 仓库内：[API 契约说明](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/API_CONTRACT.md) · [前后端排障](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/FE_BE_DEBUG.md)
+- [Redoc — API 完整参考](https://skygazer42.github.io/MimirQ/)
+- [错误码与响应体](./errors-4xx-5xx.md) — 分页参数错误时的 422 响应

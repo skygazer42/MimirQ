@@ -1,10 +1,15 @@
 'use client'
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, FolderOpen, FolderTree, Loader2, RefreshCw } from 'lucide-react'
+import { ChevronDown, ChevronRight, FolderOpen, FolderPlus, FolderTree, Loader2, Plus, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { cn, detachPromise } from '@/lib/utils'
 import { datasetCategoryApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
@@ -168,6 +173,9 @@ type DatasetCategoryTreeProps = {
 export function DatasetCategoryTree({ selectedId, onSelect, className }: Readonly<DatasetCategoryTreeProps>) {
   const [resp, setResp] = useState<DatasetCategoryTreeResponse | null>(null)
   const [loading, setLoading] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [categoryName, setCategoryName] = useState('')
+  const [creating, setCreating] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -187,31 +195,131 @@ export function DatasetCategoryTree({ selectedId, onSelect, className }: Readonl
     detachPromise(load())
   }, [load])
 
-  const items = resp?.items || []
+  const items = useMemo(() => resp?.items || [], [resp])
+  const selectedNodeName = useMemo(() => {
+    if (!selectedId) return null
+
+    const walk = (nodes: DatasetCategoryNode[]): string | null => {
+      for (const node of nodes) {
+        if (node.id === selectedId) return node.name
+        const childMatch = walk(node.children || [])
+        if (childMatch) return childMatch
+      }
+      return null
+    }
+
+    return walk(items)
+  }, [items, selectedId])
+
+  const resetCreateState = () => {
+    setCategoryName('')
+    setCreating(false)
+  }
+
+  const handleCreate = async () => {
+    const name = categoryName.trim()
+    if (!name || creating) return
+
+    setCreating(true)
+    try {
+      const created = await datasetCategoryApi.create({
+        name,
+        parent_id: selectedId || null,
+      })
+      toast.success(selectedId ? '已创建子分类' : '已创建分类')
+      setCreateOpen(false)
+      resetCreateState()
+      await load()
+      onSelect(created.id)
+    } catch (e: any) {
+      toast.error(formatApiError(e, '创建分类失败'))
+    } finally {
+      setCreating(false)
+    }
+  }
 
   return (
-    <div className={cn('space-y-3', className)}>
-      <div className="flex items-center justify-between gap-2">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+    <div className={cn('space-y-2.5', className)}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 space-y-1">
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
             <FolderTree className="h-3.5 w-3.5 text-primary" />
-            <span>目录导航</span>
+            <span>目录</span>
           </div>
-          <div className="text-xs text-muted-foreground">像文件夹一样筛选数据集目录</div>
+          <div className="truncate text-[11px] text-muted-foreground">
+            {selectedNodeName ? `当前：${selectedNodeName}` : '分类导航'}
+          </div>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 w-8 rounded-full p-0 text-muted-foreground"
-          onClick={() => detachPromise(load())}
-          disabled={loading}
-          aria-label="刷新分类树"
-        >
-          {loading ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-4 w-4" />}
-        </Button>
+        <div className="flex items-center gap-1.5">
+          <Dialog
+            open={createOpen}
+            onOpenChange={(open) => {
+              setCreateOpen(open)
+              if (!open) resetCreateState()
+            }}
+          >
+            <DialogTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 rounded-full p-0 text-foreground"
+                aria-label="新建分类"
+                title="新建分类"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-sm sm:rounded-2xl">
+              <DialogHeader>
+                <DialogTitle>{selectedId ? '新建子分类' : '新建分类'}</DialogTitle>
+                <DialogDescription>
+                  {selectedId ? `将在“${selectedNodeName || '当前分类'}”下创建新的子分类。` : '创建一个新的顶级分类，用于组织数据集目录。'}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="grid gap-4 py-1">
+                <div className="rounded-2xl border border-border/60 bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-2">
+                    <FolderPlus className="h-3.5 w-3.5 text-primary" />
+                    <span>{selectedId ? `父级：${selectedNodeName || '当前分类'}` : '父级：顶级分类'}</span>
+                  </div>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="dataset-category-name">分类名称</Label>
+                  <Input
+                    id="dataset-category-name"
+                    value={categoryName}
+                    onChange={(e) => setCategoryName(e.target.value)}
+                    placeholder="例如：产品文档 / 规范 / 会议纪要"
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button variant="ghost" onClick={() => setCreateOpen(false)}>取消</Button>
+                <Button onClick={handleCreate} disabled={!categoryName.trim() || creating}>
+                  {creating ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Plus className="mr-1.5 h-4 w-4" />}
+                  确认创建
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 rounded-full p-0 text-muted-foreground"
+            onClick={() => detachPromise(load())}
+            disabled={loading}
+            aria-label="刷新分类树"
+          >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-4 w-4" />}
+          </Button>
+        </div>
       </div>
 
-      <div className="rounded-[1.25rem] border border-border/60 bg-background/55 p-2.5 shadow-sm">
+      <div className="rounded-[1rem] border border-border/60 bg-background/55 p-1.5 shadow-sm">
         {loading && !resp ? (
           <div className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
@@ -220,16 +328,8 @@ export function DatasetCategoryTree({ selectedId, onSelect, className }: Readonl
         ) : items.length ? (
           <DatasetCategoryTreeView items={items} selectedId={selectedId} onSelect={onSelect} />
         ) : (
-          <div className="rounded-xl border border-dashed border-border/60 bg-background/70 p-3">
-            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-              <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-border/60 bg-card text-muted-foreground">
-                <FolderTree className="h-4 w-4" />
-              </span>
-              暂无分类
-            </div>
-            <div className="mt-2 text-xs leading-6 text-muted-foreground">
-              新建分类后，这里会像文件夹导航一样组织数据集。
-            </div>
+          <div className="px-1 py-0.5 text-[11px] text-muted-foreground">
+            暂无分类
           </div>
         )}
       </div>

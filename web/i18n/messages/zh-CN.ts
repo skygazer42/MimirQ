@@ -250,6 +250,8 @@ const zhCNMessages = {
     evaluateConversation: 'RAGAS 评测',
     ragTrace: 'RAG Trace',
     messageCount: '{count} 条消息',
+    speakerQuestion: '提问',
+    speakerAnswer: '回答',
     justNow: '刚刚',
     groupToday: '今天',
     groupYesterday: '昨天',

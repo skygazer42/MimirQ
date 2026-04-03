@@ -3,42 +3,84 @@ sidebar_label: "租户 / 可见性"
 sidebar_position: 3
 ---
 
-# 租户与可见性边界
+# 多租户 Header 与可见性
 
-## 概述
+MimirQ 支持多租户隔离，通过 JWT claims 或 Header 传递租户上下文，资源可见性受租户边界与 ACL 双重约束。
 
-本页属于 **集成** 域的 **联调模式** 视角。权威契约以 OpenAPI（Redoc）为准；前端路由以 `web/app/**/page.tsx` 为准。
+## 租户上下文传递
 
-## 何时查阅
+### 方式一：JWT Claims（推荐）
 
-列表与详情结果「对不上」、或同一 ID 在不同账号下表现不同时；对应 [新租户首日上线](../tasks/go-live-tenant.md) 中的数据集与文档上传、ACL 验收。
+生产环境中，租户 ID 从 JWT Token 的 claims 中自动提取，无需额外 Header。
 
-## 业务影响与验收要点
+```json
+{
+  "sub": "user-123",
+  "tenant_id": "tenant-abc",
+  "roles": ["admin"],
+  "exp": 1700000000
+}
+```
 
-- 产品文案与 **404/403** 策略一致：不可见资源是隐藏还是显式无权限。  
-- 集成测试覆盖 **多租户** 与 **partial 成员列表** 边界，避免上线后批量投诉。
+### 方式二：Header 注入（仅开发）
 
-## 典型失败与对策
+```bash
+# 仅限开发/联调环境
+curl "$BASE_URL/api/v1/datasets/" \
+  -H "X-User-ID: demo-user" \
+  -H "X-Tenant-ID: dev-tenant"
+```
 
-| 症状 | 业务影响 | 优先动作 |
-| --- | --- | --- |
-| 列表可见、详情 404 | 信任崩塌 | 核对租户上下文与 partial 列表语义 |
-| 管理端与普通用户列表不一致 | 运营误操作 | 对照 OpenAPI scope；分角色测 |
+:::danger
+Header 注入方式**仅用于开发环境**，生产部署必须通过网关入口强制 Bearer Token 认证，禁止 Header 伪造。
+:::
 
-## 原则
+## 可见性规则
 
-- 多租户下，资源列表与单资源 GET 均受 **租户 + ACL** 约束；404 有时表示「不可见」而非不存在。
+资源列表与详情接口均受**租户 + ACL**双重约束：
 
-## 联调
+| 场景 | 列表 API | 详情 API | 说明 |
+|------|----------|----------|------|
+| 本租户资源 | 可见 | 可访问 | 正常 |
+| 其他租户资源 | 不可见 | 404 | 隔离生效 |
+| 本租户无权资源 | 可能不可见 | 403 或 404 | 取决于产品策略 |
 
-- 用同一 Token 分别请求列表与详情，确认 `dataset_id` / `document_id` 属于当前租户。
-- 管理端与普通用户可见集合可能不同；对照 OpenAPI 上 **依赖与 scope 说明**。
+:::note 404 vs 403
+不可见资源返回 404 而非 403，这是防止资源枚举攻击的安全设计。不要将此类 404 误判为"系统故障"。
+:::
 
-## 文档
+## 联调验证
 
-- [API_CONTRACT.md](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/API_CONTRACT.md)
+### 验证租户隔离
+
+```bash
+# 使用租户 A 的 Token 创建数据集
+curl -X POST "$BASE_URL/api/v1/datasets/" \
+  -H "Authorization: Bearer $TOKEN_A" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "tenant-a-dataset"}'
+
+# 使用租户 B 的 Token 尝试访问（应返回 404）
+curl "$BASE_URL/api/v1/datasets/$DATASET_ID" \
+  -H "Authorization: Bearer $TOKEN_B"
+```
+
+### 验证一致性
+
+用同一 Token 分别请求列表与详情，确认：
+- 列表中出现的 `dataset_id` / `document_id` 均可通过详情接口访问
+- 管理员与普通用户看到的列表范围符合 RBAC 预期
+
+## 常见问题
+
+| 现象 | 可能原因 | 解决方案 |
+|------|----------|----------|
+| 列表可见但详情 404 | 租户上下文不一致或竞态删除 | 核对 Token 中的 `tenant_id` |
+| 管理端与用户端列表不一致 | 角色权限差异（符合预期） | 对照 OpenAPI scope 说明 |
+| 跨租户数据泄露 | 租户隔离配置错误 | 紧急排查中间件与 ACL 逻辑 |
 
 ## 相关链接
 
-- [OpenAPI / Redoc](https://skygazer42.github.io/MimirQ/)
-- 仓库内：[API 契约说明](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/API_CONTRACT.md) · [前后端排障](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/FE_BE_DEBUG.md)
+- [Redoc — API 完整参考](https://skygazer42.github.io/MimirQ/)
+- [认证模式](./auth-modes.md) | [错误码](./errors-4xx-5xx.md)
+- [场景: 多租户隔离](../scenarios/s14-multi-tenant.md)

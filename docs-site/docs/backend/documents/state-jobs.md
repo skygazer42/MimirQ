@@ -3,33 +3,101 @@ sidebar_label: "状态与任务"
 sidebar_position: 4
 ---
 
-# 文档 — 状态与任务
+# 文档处理状态与异步任务
 
-## 概述
+文档从上传到可检索，需经过异步处理流水线。本页详解状态机、webhook 通知和监控策略。
 
-本页属于 **文档与入库** 域的 **后端** 视角。权威契约以 OpenAPI（Redoc）为准；前端路由以 `web/app/**/page.tsx` 为准。
+## 文档处理状态机
 
-解析与索引流水线异步阶段；轮询间隔与超时建议。
+```mermaid
+stateDiagram-v2
+    [*] --> pending : 上传成功
+    pending --> processing : enqueue_document_processing
 
-## 与任务的关系
+    state processing {
+        [*] --> parsing
+        parsing --> chunking
+        chunking --> embedding
+        embedding --> vector_write
+        vector_write --> stage_completed
+    }
 
-- [文档入库](../../integration/tasks/task-ingest-documents.md) 的 **业务验收** 依赖状态从 processing → 完成/失败的可见性。  
-- [解析止损](../../integration/tasks/task-parse-failure-triage.md) 需 `status` + `timeline`（或等价）与日志 **同一 request** 对齐。
+    processing --> completed : 全阶段完成
+    processing --> failed : 异常
+    processing --> quarantined : 治理拦截
+    processing --> cancelled : 用户取消
 
-## 前端入口（对照）
+    failed --> pending : retry
+    completed --> pending : reingest
+```
 
-- 入库/解析进度 UI：Frontend [文档 — 用户路径](../../frontend/documents/overview.md)。
+## 状态字段
 
-## 联调要点
+| 字段 | 值域 | 说明 |
+|------|------|------|
+| `status` | pending/processing/completed/failed/quarantined/cancelled | 主状态 |
+| `current_stage` | parsing/chunking/embedding/vector_write/completed | 处理子阶段 |
+| `processing_progress` | 0-100 | 百分比进度 |
+| `error_message` | text | 失败时的错误详情 |
 
-| 关注点 | 说明 |
-| --- | --- |
-| 轮询 | 使用退避；参见 Integration [重试/幂等](../../integration/patterns/idempotency-retries.md) |
-| 终态 | 失败须带可展示原因，便于运营重试 |
-| 与流水线 | 对照 [流水线阶段](./pipeline.md) 理解阶段名 |
+## 状态查询接口
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/{document_id}/status` | 返回 `DocumentStatus`（轻量） |
+| `GET` | `/{document_id}` | 返回 `DocumentDetail`（完整） |
+| `GET` | `/{document_id}/timeline` | 处理时间线事件列表 |
+
+## 前端轮询策略
+
+```mermaid
+sequenceDiagram
+    participant FE as 前端
+    participant API as Backend
+    participant Worker as 处理 Worker
+
+    FE->>API: POST /upload (文件)
+    API-->>FE: 201 {id, status: "pending"}
+    API->>Worker: enqueue task
+    loop 轮询（2-5s 间隔）
+        FE->>API: GET /{id}/status
+        API-->>FE: {status, current_stage, progress}
+    end
+    Worker->>API: 更新 status=completed
+    FE->>API: GET /{id}/status
+    API-->>FE: {status: "completed", chunk_count: 42}
+```
+
+:::tip 轮询建议
+- 初始间隔 2 秒，逐步退避到 5 秒
+- `processing_progress` 可驱动进度条
+- 到达终态（completed/failed/quarantined/cancelled）后停止轮询
+- 批量上传场景建议用 `GET /documents/?dataset_id=X&status=processing` 统一查询
+:::
+
+## 操作控制
+
+| 操作 | 路径 | 前置条件 |
+|------|------|----------|
+| 取消 | `POST /{id}/cancel` | status 为 pending 或 processing |
+| 重试 | `POST /{id}/retry` | status 为 failed |
+| 重新入库 | `POST /batch/reingest` | status 为 completed |
+| 批量重试 | `POST /batch/retry` | 批量操作失败文档 |
+
+## Timeline 事件
+
+`GET /{document_id}/timeline` 返回按时间排序的处理事件列表（`DocumentTimelineResponse`），每个事件包含：
+
+| 字段 | 说明 |
+|------|------|
+| `event` | 事件类型 |
+| `stage` | 关联阶段 |
+| `timestamp` | 事件时间 |
+| `details` | 事件详情（JSON） |
 
 ## 相关链接
 
-- [文档 — API 索引](./api-index.md) · [排障](./troubleshooting.md) · [流水线阶段](./pipeline.md)
-- [OpenAPI / Redoc](https://skygazer42.github.io/MimirQ/)
-- 仓库内：[API 契约说明](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/API_CONTRACT.md) · [前后端排障](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/FE_BE_DEBUG.md)
+- [流水线阶段](./pipeline.md)
+- [概述](./overview.md)
+- [排障](./troubleshooting.md)
+- [Redoc API 文档](https://skygazer42.github.io/MimirQ/)

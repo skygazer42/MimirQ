@@ -8,6 +8,8 @@
 
 <p>
   <a href="https://github.com/skygazer42/MimirQ/wiki"><b>Docs</b></a> ·
+  <a href="https://skygazer42.github.io/MimirQ/"><b>API (Pages)</b></a> ·
+  <a href="./docs/api/README.md"><b>API Guide</b></a> ·
   <a href="#-quick-start"><b>Quick Start</b></a> ·
   <a href="https://github.com/skygazer42/MimirQ/issues"><b>Feedback</b></a> ·
   <a href="./CHANGELOG.md"><b>Changelog</b></a> ·
@@ -47,6 +49,7 @@
 - [RAG Pipeline](#-rag-pipeline)
 - [Tech Stack](#-tech-stack)
 - [Quick Start](#-quick-start)
+- [API Reference (OpenAPI / GitHub Pages)](#-api-referenceopenapi--github-pages)
 - [Deployment Options](#-deployment-options)
 - [Feature Guides](#-feature-guides)
 - [Development](#-development)
@@ -271,6 +274,21 @@ After startup:
 
 ---
 
+## 📡 API Reference (OpenAPI / GitHub Pages)
+
+| Resource | Link / notes |
+|:---|:---|
+| **Hosted API browser (GitHub Pages)** | [https://skygazer42.github.io/MimirQ/](https://skygazer42.github.io/MimirQ/) (Redoc + full `openapi.json`; use `https://<owner>.github.io/<repo>/` after fork) |
+| **Repository guide** | [docs/api/README.md](./docs/api/README.md) (auth, base path, full OpenAPI tag map) |
+| **Scenario flows** | [docs/api/workflows.md](./docs/api/workflows.md) |
+| **Local Swagger** | [http://localhost:8000/docs](http://localhost:8000/docs) when the backend is running |
+| **Export OpenAPI** | `make openapi-export` → `web/openapi.json` |
+| **Build static site** | `make api-docs-build` → `docs/api/site/` |
+
+Enable **Settings → Pages → GitHub Actions** on the repository; pushes to `main` run [`.github/workflows/api-docs.yml`](./.github/workflows/api-docs.yml). Set **About → Website** to the Pages URL.
+
+---
+
 ## 📦 Deployment Options
 
 MimirQ supports multiple deployment modes for different scenarios:
@@ -317,7 +335,9 @@ For Kubernetes production deployment, see the [Helm Guide](./docs/deployment/hel
 | [RAG Optimization](./docs/guides/rag_optimization.md) | Retrieval and answer quality optimization |
 | [Retrieval Debugging](./docs/guides/retrieval_debugging.md) | Retrieval issue diagnosis |
 | [SAML SSO](./docs/guides/saml_sso.md) | SAML single sign-on integration |
-| [API Reference](./docs/API.md) | Complete REST API documentation |
+| [API guide](./docs/api/README.md) | OpenAPI tag map, Pages link, static build |
+| [API workflows](./docs/api/workflows.md) | Endpoint order by scenario |
+| [API tutorial](./docs/API.md) | Quick start and code-oriented examples |
 | [Quick Start](./docs/quickstart.md) | Development from source |
 | [Runbook](./docs/deployment/runbook.md) | Production operations & troubleshooting |
 

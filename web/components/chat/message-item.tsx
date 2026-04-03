@@ -546,6 +546,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
         transition={streamingLayoutTransition}
 	      className={cn(
 	        'flex gap-4 px-2 group animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none',
+          isUser ? 'pb-4' : undefined,
 	        isUser ? 'justify-end' : 'justify-start'
 	      )}
 	    >
@@ -561,7 +562,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 	        className={cn(
 	          'max-w-3xl px-6 py-4 shadow-sm relative text-[15px] transition-shadow duration-200 motion-reduce:transition-none',
 	          isUser
-	            ? 'bg-primary text-primary-foreground rounded-2xl rounded-tr-sm shadow-strong border border-primary/20 backdrop-blur-sm'
+	            ? 'rounded-2xl rounded-tr-sm border border-[#8FC8E8] bg-[#AAD9F2] text-[#17384D] shadow-sm backdrop-blur-sm'
 	            : cn(
 	                'glass-card text-foreground rounded-2xl rounded-tl-sm border border-border/60 border-l-4 hover:shadow-lg hover:shadow-primary/10',
 	                confidenceMeta?.lineClass || 'border-l-primary/20'
@@ -841,11 +842,12 @@ export const ChatMessageItem = memo(function ChatMessageItem({
           aria-label={copied ? 'Copied' : 'Copy message'}
           title={copied ? 'Copied' : 'Copy'}
 	          className={cn(
-	            'absolute bottom-2 right-2 z-10 rounded-md p-1.5 transition-opacity transition-transform transition-colors duration-200 motion-reduce:transition-none',
+	            'absolute z-10 rounded-md p-1.5 transition-opacity transition-transform transition-colors duration-200 motion-reduce:transition-none',
+              isUser ? 'bottom-0 right-0 translate-x-1/4 translate-y-1/4 border border-border/60 bg-background/95 shadow-sm' : 'bottom-2 right-2',
 	            'opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100',
 	            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60',
 	            isUser
-	              ? 'text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10'
+	              ? 'text-muted-foreground hover:text-foreground hover:bg-background'
 	              : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
 	          )}
 	        >
@@ -913,7 +915,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
         <div
           className={cn(
             isUser
-              ? 'max-w-none break-words leading-relaxed text-primary-foreground [&>*]:text-inherit'
+              ? 'max-w-none break-words leading-relaxed text-[#17384D] [&>*]:text-inherit'
               : 'prose prose-neutral dark:prose-invert max-w-none break-words leading-relaxed prose-p:my-2 prose-p:leading-7 prose-pre:bg-secondary/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-foreground prose-pre:rounded-xl prose-pre:p-4 prose-pre:my-3 prose-code:bg-secondary/50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:text-sm prose-code:font-mono prose-code:text-primary prose-code:before:content-none prose-code:after:content-none'
           )}
         >
@@ -1157,7 +1159,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
        </motion.div>
 
       {isUser && (
-        <div className="flex-shrink-0 w-8 h-8 rounded-xl bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold shadow-md shadow-primary/20 mt-0.5">
+        <div className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-[#8FC8E8] bg-[#AAD9F2] text-[#17384D] text-xs font-bold shadow-sm">
           <User className="h-4 w-4" />
         </div>
       )}
