@@ -1,23 +1,130 @@
-/**
- * CSS files with the .module.css suffix will be treated as CSS modules
- * and scoped locally.
- */
-
 .heroBanner {
   padding: 4rem 0;
   text-align: center;
   position: relative;
   overflow: hidden;
+  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 40%, #818cf8 100%);
+  color: #fff;
 }
 
-@media screen and (max-width: 996px) {
-  .heroBanner {
-    padding: 2rem;
-  }
+[data-theme='dark'] .heroBanner {
+  background: linear-gradient(135deg, #312e81 0%, #3730a3 40%, #4338ca 100%);
+}
+
+.heroBanner .hero__title {
+  color: #fff;
+}
+
+.heroBanner .hero__subtitle {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.heroLead {
+  max-width: 640px;
+  margin: 0 auto 1.5rem;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 1.05rem;
+  line-height: 1.7;
 }
 
 .buttons {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.buttons .button {
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #fff;
+}
+.buttons .button:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: #fff;
+  color: #fff;
+}
+
+.redocLink {
+  color: rgba(255, 255, 255, 0.8);
+}
+.redocLink:hover {
+  color: #fff;
+}
+
+.rolesTeaser {
+  color: rgba(255, 255, 255, 0.7);
+}
+.rolesTeaser a {
+  color: rgba(255, 255, 255, 0.95);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.rolesTeaser a:hover {
+  color: #fff;
+}
+
+/* ── Sections ── */
+.section {
+  padding: 3rem 0;
+}
+.sectionAlt {
+  padding: 3rem 0;
+  background: var(--ifm-color-emphasis-100);
+}
+
+/* ── Feature table ── */
+.featureTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+.featureTable th,
+.featureTable td {
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--ifm-color-emphasis-200);
+  text-align: left;
+}
+.featureTable th {
+  font-weight: 600;
+  background: var(--ifm-color-emphasis-100);
+}
+
+/* ── Use-case cards ── */
+.useCaseGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+.useCaseCard {
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 10px;
+  padding: 1.25rem;
+  text-align: center;
+}
+
+/* ── Pipeline (flow text) ── */
+.pipelineBox {
+  background: var(--ifm-color-emphasis-100);
+  border-radius: 10px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  overflow-x: auto;
+}
+.pipelineBox pre {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+/* ── Quick links ── */
+.quickLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+@media screen and (max-width: 996px) {
+  .heroBanner {
+    padding: 2rem;
+  }
 }

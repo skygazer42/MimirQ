@@ -49,10 +49,30 @@ type DatasetFormState = {
   pipelineOptions: DocumentPipelineOptions
 }
 
-const PERMISSION_CONFIG: Record<PermissionEnum, { label: string; variant: 'soft' | 'secondary' | 'outline'; color: string }> = {
-  all_team_members: { label: '全员', variant: 'soft', color: 'text-success' },
-  only_me: { label: '仅自己', variant: 'secondary', color: 'text-warning' },
-  partial_members: { label: '部分成员', variant: 'outline', color: 'text-info' },
+const PERMISSION_CONFIG: Record<PermissionEnum, {
+  label: string
+  className: string
+  metricClassName: string
+  dotClassName: string
+}> = {
+  all_team_members: {
+    label: '全员',
+    className: 'border-violet-200/80 bg-violet-500/10 text-violet-700 dark:border-violet-400/25 dark:bg-violet-400/15 dark:text-violet-200',
+    metricClassName: 'text-violet-700 dark:text-violet-200',
+    dotClassName: 'bg-violet-500 dark:bg-violet-300',
+  },
+  only_me: {
+    label: '仅自己',
+    className: 'border-sky-200/80 bg-sky-500/10 text-sky-700 dark:border-sky-400/25 dark:bg-sky-400/15 dark:text-sky-200',
+    metricClassName: 'text-sky-700 dark:text-sky-200',
+    dotClassName: 'bg-sky-500 dark:bg-sky-300',
+  },
+  partial_members: {
+    label: '部分成员',
+    className: 'border-amber-200/90 bg-amber-400/16 text-amber-800 dark:border-amber-400/25 dark:bg-amber-400/15 dark:text-amber-200',
+    metricClassName: 'text-amber-800 dark:text-amber-200',
+    dotClassName: 'bg-amber-500 dark:bg-amber-300',
+  },
 }
 
 function parseMembers(text: string): string[] {
@@ -307,8 +327,8 @@ export default function DatasetsPage() {
             </div>
           </div>
 
-          <div className="grid flex-1 grid-cols-1 lg:grid-cols-[196px_minmax(0,1fr)]">
-            <aside className="border-b border-border/60 bg-muted/15 px-2.5 py-3 lg:border-b-0 lg:border-r lg:px-3">
+          <div className="grid flex-1 grid-cols-1 lg:grid-cols-[176px_minmax(0,1fr)]">
+            <aside className="border-b border-border/60 bg-muted/15 px-2 py-3 lg:border-b-0 lg:border-r lg:px-2.5">
               <DatasetCategoryTree
                 className="sticky top-0"
                 selectedId={selectedCategoryId}
@@ -382,9 +402,7 @@ export default function DatasetsPage() {
                                   <span className="truncate text-base font-semibold text-foreground">
                                     {ds.name}
                                   </span>
-                                  <Badge variant={perm(ds).variant} className="px-1.5 py-0 text-[10px]">
-                                    {perm(ds).label}
-                                  </Badge>
+                                  <PermissionBadge permission={perm(ds)} />
                                   <DatasetMetaPill icon={Settings2}>
                                     {ds.pipeline ? '已配置管线' : '未配置管线'}
                                   </DatasetMetaPill>
@@ -424,27 +442,47 @@ export default function DatasetsPage() {
                   </div>
 
                   <aside className="border-t border-border/60 bg-muted/15 xl:border-t-0">
-                    <div className="sticky top-0 space-y-4 p-4 md:p-5">
+                    <div className="sticky top-0 space-y-3 p-4 md:p-5">
                       {selectedDataset ? (
                         <>
                           <div className="rounded-[1.5rem] border border-border/60 bg-background/85 p-4 shadow-sm">
-                            <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card px-3 py-1 text-[11px] font-semibold tracking-[0.12em] text-muted-foreground">
-                              <Layers className="h-3.5 w-3.5 text-primary" />
-                              <span>数据集检视器</span>
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card px-3 py-1 text-[11px] font-semibold tracking-[0.12em] text-muted-foreground">
+                                <Layers className="h-3.5 w-3.5 text-primary" />
+                                <span>数据集检视器</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 rounded-full border border-border/60 bg-card/80"
+                                  onClick={() => openEdit(selectedDataset)}
+                                  aria-label="编辑数据集"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 rounded-full border border-destructive/20 bg-card/80 text-destructive hover:bg-destructive/5 hover:text-destructive"
+                                  onClick={() => setDeleteTarget(selectedDataset)}
+                                  aria-label="删除数据集"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
                             </div>
 
-                            <div className="mt-4 flex items-start gap-3">
-                              <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-primary/15 bg-card text-primary shadow-sm">
-                                <Layers className="h-5 w-5" />
+                            <div className="mt-3 flex items-start gap-3">
+                              <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl border border-primary/15 bg-card text-primary shadow-sm">
+                                <Layers className="h-4 w-4" />
                               </div>
                               <div className="min-w-0">
-                                <h3 className="text-lg font-semibold leading-6 text-foreground">
-                                  {selectedDataset.name}
-                                </h3>
-                                <div className="mt-2 flex flex-wrap items-center gap-2">
-                                  <Badge variant={perm(selectedDataset).variant} className="px-1.5 py-0 text-[10px]">
-                                    {perm(selectedDataset).label}
-                                  </Badge>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <h3 className="text-base font-semibold leading-6 text-foreground">
+                                    {selectedDataset.name}
+                                  </h3>
+                                  <PermissionBadge permission={perm(selectedDataset)} />
                                 </div>
                                 <p className="mt-1 text-sm leading-6 text-muted-foreground">
                                   {selectedDataset.description || '暂无描述。这个数据集已经可以继续做预检、画像和入库策略配置。'}
@@ -452,116 +490,108 @@ export default function DatasetsPage() {
                               </div>
                             </div>
 
-                            <div className="mt-4 flex flex-wrap items-center gap-2">
-                              <DatasetMetaPill icon={Database}>ID {selectedDataset.id.slice(0, 8)}</DatasetMetaPill>
-                              <DatasetMetaPill icon={FolderOpen}>
-                                {selectedCategoryId ? '当前分类筛选' : '全部分类视图'}
-                              </DatasetMetaPill>
-                              <DatasetMetaPill icon={Settings2}>
-                                {selectedDataset.pipeline ? '默认管线已启用' : '默认管线未启用'}
-                              </DatasetMetaPill>
+                            <div className="mt-4 grid grid-cols-2 gap-2">
+                              <DatasetInspectorMetric icon={Database} label="数据集 ID" value={selectedDataset.id.slice(0, 8)} mono />
+                              <DatasetInspectorMetric
+                                icon={FolderOpen}
+                                label="当前范围"
+                                value={selectedCategoryId ? '当前分类筛选' : '全部分类视图'}
+                              />
+                              <DatasetInspectorMetric
+                                icon={ShieldCheck}
+                                label="访问权限"
+                                value={perm(selectedDataset).label}
+                                valueClassName={perm(selectedDataset).metricClassName}
+                              />
+                              <DatasetInspectorMetric
+                                icon={Settings2}
+                                label="默认管线"
+                                value={selectedDataset.pipeline ? '已启用' : '未启用'}
+                              />
+                              <DatasetInspectorMetric
+                                icon={Users}
+                                label="成员 allowlist"
+                                value={`${selectedDataset.partial_member_list?.length ?? 0} 人`}
+                              />
+                              <DatasetInspectorMetric
+                                icon={Users}
+                                label="组 allowlist"
+                                value={`${selectedDataset.partial_group_list?.length ?? 0} 组`}
+                              />
                             </div>
                           </div>
 
                           <div className="rounded-[1.5rem] border border-border/60 bg-background/80 p-4 shadow-sm">
-                            <div className="mb-3">
-                              <div className="text-sm font-semibold text-foreground">快捷入口</div>
-                              <div className="mt-1 text-xs leading-5 text-muted-foreground">
-                                保持常用动作固定在检视器里，列表区只负责筛选和切换。
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="text-sm font-semibold text-foreground">操作台</div>
+                                <div className="mt-1 text-xs leading-5 text-muted-foreground">
+                                  常用动作保持一级可见，次级能力压缩成更紧凑的入口区。
+                                </div>
+                              </div>
+                              <div className="rounded-full border border-border/60 bg-card px-2.5 py-1 text-[11px] text-muted-foreground">
+                                Dense
                               </div>
                             </div>
-                            <div className="grid gap-2">
+
+                            <div className="mt-3 grid gap-2">
                               <DatasetShortcutButton
                                 icon={FileSearch}
                                 title="预检扫描"
                                 description="检查文档质量、重复与结构风险"
                                 onClick={() => router.push(`/datasets/${selectedDataset.id}/precheck`)}
                                 emphasis
+                                compact
                               />
                               <DatasetShortcutButton
                                 icon={BarChart3}
                                 title="数据画像"
-                                description="查看数据规模、分布和结构特征"
+                                description="查看规模、分布和结构特征"
                                 onClick={() => router.push(`/datasets/${selectedDataset.id}/profile`)}
+                                compact
                               />
                               <DatasetShortcutButton
                                 icon={Settings2}
                                 title="入库策略"
                                 description="调整解析、索引和治理管线"
                                 onClick={() => router.push(`/datasets/${selectedDataset.id}/ingestion`)}
+                                compact
                               />
                             </div>
-                          </div>
 
-                          <div className="rounded-[1.5rem] border border-border/60 bg-background/80 p-4 shadow-sm">
-                            <div className="mb-3">
-                              <div className="text-sm font-semibold text-foreground">访问与配置</div>
-                              <div className="mt-1 text-xs leading-5 text-muted-foreground">
-                                用更接近 collection console 的方式，直接在侧栏读出关键配置。
+                            <div className="mt-3 border-t border-border/60 pt-3">
+                              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                                扩展能力
                               </div>
-                            </div>
-                            <div className="space-y-1.5">
-                              <DatasetInspectorRow label="数据集 ID" value={selectedDataset.id.slice(0, 8)} mono />
-                              <DatasetInspectorRow label="当前范围" value={selectedCategoryId ? '当前分类筛选' : '全部分类视图'} />
-                              <DatasetInspectorRow label="访问权限" value={perm(selectedDataset).label} />
-                              <DatasetInspectorRow label="成员 allowlist" value={`${selectedDataset.partial_member_list?.length ?? 0} 人`} />
-                              <DatasetInspectorRow label="组 allowlist" value={`${selectedDataset.partial_group_list?.length ?? 0} 组`} />
-                              <DatasetInspectorRow label="默认管线" value={selectedDataset.pipeline ? '已启用' : '未启用'} />
-                            </div>
-                          </div>
-
-                          <div className="rounded-[1.5rem] border border-border/60 bg-background/80 p-4 shadow-sm">
-                            <div className="mb-3">
-                              <div className="text-sm font-semibold text-foreground">扩展能力</div>
-                              <div className="mt-1 text-xs leading-5 text-muted-foreground">
-                                将次级能力收进右侧，而不是继续把列表卡片做得越来越重。
+                              <div className="grid grid-cols-4 gap-2">
+                                <DatasetMiniAction
+                                  icon={Layers}
+                                  title="Workflow"
+                                  description="查看流程编排"
+                                  onClick={() => router.push(`/datasets/${selectedDataset.id}/workflow`)}
+                                />
+                                <DatasetMiniAction
+                                  icon={Table2}
+                                  title="表格 / TAG"
+                                  description="管理结构化资产"
+                                  onClick={() => router.push(`/datasets/${selectedDataset.id}/tables`)}
+                                />
+                                <DatasetMiniAction
+                                  icon={ShieldCheck}
+                                  title="证据库"
+                                  description="查看证据与审计"
+                                  onClick={() => router.push(`/datasets/${selectedDataset.id}/evidence`)}
+                                />
+                                <DatasetMiniAction
+                                  icon={Database}
+                                  title="数据库目录"
+                                  description="浏览数据库映射"
+                                  onClick={() => router.push(`/datasets/${selectedDataset.id}/db-catalog`)}
+                                />
                               </div>
-                            </div>
-
-                            <div className="grid gap-2">
-                              <DatasetShortcutButton
-                                icon={Layers}
-                                title="Workflow"
-                                description="查看当前数据集的流程编排"
-                                onClick={() => router.push(`/datasets/${selectedDataset.id}/workflow`)}
-                              />
-                              <DatasetShortcutButton
-                                icon={Table2}
-                                title="表格 / TAG"
-                                description="管理结构化资产与标签挂载"
-                                onClick={() => router.push(`/datasets/${selectedDataset.id}/tables`)}
-                              />
-                              <DatasetShortcutButton
-                                icon={ShieldCheck}
-                                title="证据库"
-                                description="查看可追溯证据与审计视图"
-                                onClick={() => router.push(`/datasets/${selectedDataset.id}/evidence`)}
-                              />
-                              <DatasetShortcutButton
-                                icon={Database}
-                                title="数据库目录"
-                                description="浏览数据库侧映射和目录结构"
-                                onClick={() => router.push(`/datasets/${selectedDataset.id}/db-catalog`)}
-                              />
-                            </div>
-
-                            <div className="mt-4 flex flex-wrap gap-2 border-t border-border/60 pt-4">
-                              <Button
-                                variant="outline"
-                                className="h-10 flex-1 min-w-[8rem]"
-                                onClick={() => openEdit(selectedDataset)}
-                              >
-                                <Pencil className="mr-1.5 h-4 w-4" />
-                                编辑数据集
-                              </Button>
-                              <Button
-                                variant="outline"
-                                className="h-10 flex-1 min-w-[8rem] border-destructive/30 text-destructive hover:bg-destructive/5 hover:text-destructive"
-                                onClick={() => setDeleteTarget(selectedDataset)}
-                              >
-                                <Trash2 className="mr-1.5 h-4 w-4" />
-                                删除
-                              </Button>
+                              <div className="mt-2 text-[11px] leading-4 text-muted-foreground">
+                                悬停可查看说明，点击直接进入。
+                              </div>
                             </div>
                           </div>
                         </>
@@ -637,24 +667,46 @@ function DatasetMetaPill({
   )
 }
 
+function PermissionBadge({
+  permission,
+}: Readonly<{
+  permission: typeof PERMISSION_CONFIG[PermissionEnum]
+}>) {
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        'gap-1.5 px-2 py-0.5 text-[10px] font-semibold shadow-sm',
+        permission.className
+      )}
+    >
+      <span className={cn('h-1.5 w-1.5 rounded-full', permission.dotClassName)} />
+      <span>{permission.label}</span>
+    </Badge>
+  )
+}
+
 function DatasetShortcutButton({
   icon: Icon,
   title,
   description,
   onClick,
   emphasis = false,
+  compact = false,
 }: Readonly<{
   icon: LucideIcon
   title: string
   description: string
   onClick: () => void
   emphasis?: boolean
+  compact?: boolean
 }>) {
   return (
     <button
       type="button"
       className={cn(
-        'focus-ring flex w-full items-center gap-3 rounded-[1.15rem] border px-3.5 py-3 text-left transition-colors duration-200 motion-reduce:transition-none',
+        'focus-ring flex w-full items-center gap-3 border text-left transition-colors duration-200 motion-reduce:transition-none',
+        compact ? 'rounded-[1rem] px-3 py-2.5' : 'rounded-[1.15rem] px-3.5 py-3',
         emphasis
           ? 'border-primary/20 bg-primary/[0.08] hover:bg-primary/[0.12]'
           : 'border-border/60 bg-card hover:bg-muted/45'
@@ -662,34 +714,76 @@ function DatasetShortcutButton({
       onClick={onClick}
     >
       <span className={cn(
-        'flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border shadow-sm',
+        'flex shrink-0 items-center justify-center rounded-2xl border shadow-sm',
+        compact ? 'h-9 w-9' : 'h-10 w-10',
         emphasis ? 'border-primary/15 bg-card text-primary' : 'border-border/60 bg-background/85 text-muted-foreground'
       )}>
         <Icon className="h-4 w-4" />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-semibold text-foreground">{title}</span>
-        <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">{description}</span>
+        <span className={cn('block text-xs text-muted-foreground', compact ? 'mt-0.5 leading-[1.15rem]' : 'mt-0.5 leading-5')}>
+          {description}
+        </span>
       </span>
       <ChevronRight className={cn('h-4 w-4 shrink-0', emphasis ? 'text-primary' : 'text-muted-foreground')} />
     </button>
   )
 }
 
-function DatasetInspectorRow({
+function DatasetInspectorMetric({
+  icon: Icon,
   label,
   value,
   mono = false,
+  valueClassName,
 }: Readonly<{
+  icon: LucideIcon
   label: string
   value: string
   mono?: boolean
+  valueClassName?: string
 }>) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-card px-3 py-2.5">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className={cn('text-sm font-medium text-foreground', mono && 'font-mono tabular-nums')}>{value}</span>
+    <div className="rounded-[1rem] border border-border/60 bg-card px-3 py-2.5 shadow-sm">
+      <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+        <Icon className="h-3.5 w-3.5 text-primary" />
+        <span>{label}</span>
+      </div>
+      <div className={cn('mt-1 text-sm font-semibold text-foreground', mono && 'font-mono tabular-nums', valueClassName)}>
+        {value}
+      </div>
     </div>
+  )
+}
+
+function DatasetMiniAction({
+  icon: Icon,
+  title,
+  description,
+  onClick,
+}: Readonly<{
+  icon: LucideIcon
+  title: string
+  description: string
+  onClick: () => void
+}>) {
+  return (
+    <button
+      type="button"
+      className="focus-ring group relative flex h-12 items-center justify-center rounded-[0.95rem] border border-border/60 bg-card text-left transition-colors duration-200 hover:border-primary/20 hover:bg-muted/45 motion-reduce:transition-none"
+      onClick={onClick}
+      title={title}
+      aria-label={`${title}：${description}`}
+    >
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-background/85 text-muted-foreground transition-colors group-hover:border-primary/20 group-hover:text-primary">
+        <Icon className="h-3.5 w-3.5" />
+      </span>
+      <span className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 w-[9.5rem] -translate-x-1/2 translate-y-1 rounded-[1rem] border border-border/70 bg-popover/95 px-3 py-2 text-left opacity-0 shadow-lg backdrop-blur transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100 motion-reduce:transition-none">
+        <span className="block text-xs font-semibold text-foreground">{title}</span>
+        <span className="mt-1 block text-[11px] leading-4 text-muted-foreground">{description}</span>
+      </span>
+    </button>
   )
 }
 

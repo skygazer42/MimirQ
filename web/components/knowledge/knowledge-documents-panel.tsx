@@ -48,6 +48,7 @@ type KnowledgeDocumentsPanelProps = {
   isLoading: boolean
   documents: Document[]
   filteredDocuments: Document[]
+  embedded?: boolean
 
   selectedDatasetId?: string
   selectedDatasetLabel?: string
@@ -135,6 +136,7 @@ export function KnowledgeDocumentsPanel({
   isLoading,
   documents,
   filteredDocuments,
+  embedded = false,
   selectedDatasetId,
   selectedDatasetLabel,
   datasetLabelById,
@@ -199,6 +201,10 @@ export function KnowledgeDocumentsPanel({
   const docsTablePaddingBottom = docsTableVirtualRows.length
     ? docsTableVirtualizer.getTotalSize() - docsTableVirtualRows[docsTableVirtualRows.length - 1].end
     : 0
+  const controlsClassName = embedded
+    ? 'border-b border-border/60 bg-background/65 px-4 py-4 backdrop-blur-sm md:px-5'
+    : 'mb-4'
+  const sectionInsetClassName = embedded ? 'px-4 py-5 md:px-5' : ''
   const sortOptions = [
     { value: 'created_at:desc', label: t('sort.createdDesc') },
     { value: 'created_at:asc', label: t('sort.createdAsc') },
@@ -296,7 +302,12 @@ export function KnowledgeDocumentsPanel({
   }
 
   return (
-    <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 motion-reduce:animate-none motion-reduce:transition-none">
+    <div
+      className={cn(
+        'animate-in fade-in slide-in-from-bottom-4 duration-300 motion-reduce:animate-none motion-reduce:transition-none',
+        embedded && 'h-full'
+      )}
+    >
       <AlertDialog
         open={Boolean(singleDeleteDoc)}
         onOpenChange={(open) => {
@@ -389,34 +400,37 @@ export function KnowledgeDocumentsPanel({
                 }
                 else {
                     return (<>
-          <div className="mb-4 flex flex-col lg:flex-row lg:items-center gap-3">
-            <div className="flex w-full lg:max-w-2xl flex-col sm:flex-row gap-3">
+          <div className={controlsClassName}>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+              <div className="flex w-full flex-col gap-3 sm:flex-row lg:max-w-2xl">
               <SearchInput value={docFilter} onValueChange={setDocFilter} placeholder={t('search.placeholder')} containerClassName="w-full" inputClassName="h-9 rounded-lg border-border/60 bg-background placeholder:text-muted-foreground/60 focus:border-primary/40"/>
 
-              <Select value={`${sortKey}:${sortDir}`} onValueChange={(value) => {
-                            const [k, d] = String(value || '').split(':');
-                            if (k === 'created_at' || k === 'filename' || k === 'file_size')
-                                setSortKey(k);
-                            if (d === 'asc' || d === 'desc')
-                                setSortDir(d);
-                        }}>
-                <SelectTrigger className="h-9 w-full sm:w-[200px] rounded-lg border-border/60 bg-background" aria-label={t("sort.ariaLabel")}>
-                  <SelectValue placeholder={t("sort.placeholder")}/>
-                </SelectTrigger>
-                <SelectContent>
-                  {sortOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+                <Select value={`${sortKey}:${sortDir}`} onValueChange={(value) => {
+                  const [k, d] = String(value || '').split(':')
+                  if (k === 'created_at' || k === 'filename' || k === 'file_size') setSortKey(k)
+                  if (d === 'asc' || d === 'desc') setSortDir(d)
+                }}>
+                  <SelectTrigger className="h-9 w-full rounded-lg border-border/60 bg-background sm:w-[200px]" aria-label={t("sort.ariaLabel")}>
+                    <SelectValue placeholder={t("sort.placeholder")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sortOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-            {scopeSummary ? <div className="text-xs">{scopeSummary}</div> : null}
+              {scopeSummary ? <div className="text-xs">{scopeSummary}</div> : null}
+            </div>
           </div>
 
-          {selectedDocIds.length > 0 ? (<div className="mb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+          {selectedDocIds.length > 0 ? (<div className={cn(
+              'flex flex-col gap-3 border border-border/60 bg-muted/20 px-3 py-2 md:flex-row md:items-center md:justify-between',
+              embedded ? 'mx-4 my-4 rounded-2xl md:mx-5' : 'mb-4 rounded-lg'
+            )}>
               <div className="text-sm text-foreground">
                 {t('selection.selectedCount', { count: selectedDocIds.length })}
               </div>
@@ -477,13 +491,14 @@ export function KnowledgeDocumentsPanel({
               </EmptyState>
             </div>);
                             }
-	                            else if (viewMode === 'grid') {
-	                                    return (<div aria-label={t('grid.ariaLabel')} style={{
+                            else if (viewMode === 'grid') {
+                                    return (<div className={sectionInsetClassName}>
+              <div aria-label={t('grid.ariaLabel')} style={{
 	                                            height: `${docsGridVirtualizer.getTotalSize()}px`,
 	                                            width: '100%',
 	                                            position: 'relative',
 	                                        }}>
-	              {docsGridVirtualRows.map((virtualRow: any) => {
+	                {docsGridVirtualRows.map((virtualRow: any) => {
                                             const cols = Math.max(1, docGridColumns);
                                             const startIndex = virtualRow.index * cols;
                                             const rowDocs = filteredDocuments.slice(startIndex, startIndex + cols);
@@ -495,15 +510,16 @@ export function KnowledgeDocumentsPanel({
 		                                                    width: '100%',
 		                                                    transform: `translateY(${virtualRow.start}px)`,
 		                                                }} className={isLastRow ? undefined : 'pb-5'}>
-		                    <div className={cn('grid items-stretch gap-5', docsGridColsClassName)}>
-		                      {rowDocs.map(renderGridDocCard)}
-		                    </div>
-		                  </div>);
+		                      <div className={cn('grid items-stretch gap-5', docsGridColsClassName)}>
+		                        {rowDocs.map(renderGridDocCard)}
+		                      </div>
+		                    </div>);
 		                                        })}
+              </div>
             </div>);
                                 }
                                 else {
-                                    return (<Panel padding="none" className="rounded-xl overflow-hidden">
+                                    return (<div className={cn(embedded ? 'overflow-hidden border-t border-border/60 bg-background/20' : 'rounded-xl overflow-hidden')}>
 	              <table aria-label={t('table.ariaLabel')} className="w-full text-sm text-left">
 	                <thead className="text-xs text-muted-foreground uppercase border-b border-border/60">
 	                  <tr>
@@ -627,12 +643,12 @@ export function KnowledgeDocumentsPanel({
                       </tr>);
                                         })}
 
-		                  {docsTablePaddingBottom > 0 ? (<tr>
+	                  {docsTablePaddingBottom > 0 ? (<tr>
 		                      <td colSpan={tableColumnCount} className="p-0" style={{ height: `${docsTablePaddingBottom}px` }}/>
 		                    </tr>) : null}
 	                </tbody>
 	              </table>
-	            </Panel>);
+	            </div>);
                                 }
                         })()}
         </>);

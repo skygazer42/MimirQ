@@ -8,6 +8,8 @@
 
 <p>
   <a href="https://github.com/skygazer42/MimirQ/wiki"><b>文档</b></a> ·
+  <a href="https://skygazer42.github.io/MimirQ/"><b>在线 API</b></a> ·
+  <a href="./docs/api/README.md"><b>API 导读</b></a> ·
   <a href="#-快速开始"><b>快速开始</b></a> ·
   <a href="https://github.com/skygazer42/MimirQ/issues"><b>反馈</b></a> ·
   <a href="./CHANGELOG.md"><b>更新日志</b></a> ·
@@ -47,6 +49,7 @@
 - [RAG Pipeline](#-rag-pipeline)
 - [技术栈](#-技术栈)
 - [快速开始](#-快速开始)
+- [API 参考（OpenAPI / Pages）](#-api-参考openapi--github-pages)
 - [部署方式](#-部署方式)
 - [功能指南](#-功能指南)
 - [开发自检](#-开发自检)
@@ -271,6 +274,21 @@ curl http://localhost:8000/api/v1/health/ready
 
 ---
 
+## 📡 API 参考（OpenAPI / GitHub Pages）
+
+| 资源 | 链接 / 说明 |
+|:---|:---|
+| **在线交互文档（GitHub Pages）** | [https://skygazer42.github.io/MimirQ/](https://skygazer42.github.io/MimirQ/)（Redoc，全量 `openapi.json`；fork 后请改为 `https://<owner>.github.io/<repo>/`） |
+| **仓库内导读** | [docs/api/README.md](./docs/api/README.md)（认证、Base path、**全量 Tag 对照表**） |
+| **场景化调用顺序** | [docs/api/workflows.md](./docs/api/workflows.md) |
+| **本地 Swagger** | 后端启动后 [http://localhost:8000/docs](http://localhost:8000/docs) |
+| **导出 OpenAPI** | `make openapi-export` → `web/openapi.json` |
+| **构建静态站（与 CI 一致）** | `make api-docs-build` → `docs/api/site/` |
+
+首次启用 Pages：仓库 **Settings → Pages → Source: GitHub Actions**，推送 `main` 后由 [`.github/workflows/api-docs.yml`](./.github/workflows/api-docs.yml) 部署。建议将 **About → Website** 设为上述 Pages URL。
+
+---
+
 ## 📦 部署方式
 
 MimirQ 提供多种部署方式，适应从开发到生产的各种场景：
@@ -317,7 +335,9 @@ Kubernetes 生产部署请参考 [Helm 部署文档](./docs/deployment/helm.md) 
 | [RAG 优化](./docs/guides/rag_optimization.md) | 检索效果与回答质量优化 |
 | [检索排障](./docs/guides/retrieval_debugging.md) | 检索问题诊断 |
 | [SAML SSO](./docs/guides/saml_sso.md) | SAML 单点登录集成 |
-| [API 文档](./docs/API.md) | 完整 REST API 参考 |
+| [API 参考导读](./docs/api/README.md) | OpenAPI Tag 全表、GitHub Pages、静态站构建 |
+| [API 场景流程](./docs/api/workflows.md) | 认证 / 入库 / 检索 / 对话等端点顺序 |
+| [API 文档（教程）](./docs/API.md) | 快速入门与示例代码 |
 | [快速开始](./docs/quickstart.md) | 从源码开发部署 |
 | [运维手册](./docs/deployment/runbook.md) | 生产运维与排障 |
 

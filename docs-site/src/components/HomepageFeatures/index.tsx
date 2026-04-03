@@ -1,57 +1,64 @@
 import type {ReactNode} from 'react';
-import clsx from 'clsx';
 import Heading from '@theme/Heading';
 import styles from './styles.module.css';
 
 type FeatureItem = {
+  icon: string;
   title: string;
-  Svg: React.ComponentType<React.ComponentProps<'svg'>>;
   description: ReactNode;
 };
 
 const FeatureList: FeatureItem[] = [
   {
-    title: 'Easy to Use',
-    Svg: require('@site/static/img/undraw_docusaurus_mountain.svg').default,
+    icon: '\u{1F50D}',
+    title: '混合检索',
     description: (
-      <>
-        Docusaurus was designed from the ground up to be easily installed and
-        used to get your website up and running quickly.
-      </>
+      <>Vector + BM25 + SPLADE + ColBERT ANN 四路召回，RRF 融合排序，开箱即用。</>
     ),
   },
   {
-    title: 'Focus on What Matters',
-    Svg: require('@site/static/img/undraw_docusaurus_tree.svg').default,
+    icon: '\u{1F4C4}',
+    title: '可视化切片',
     description: (
-      <>
-        Docusaurus lets you focus on your docs, and we&apos;ll do the chores. Go
-        ahead and move your docs into the <code>docs</code> directory.
-      </>
+      <>PyMuPDF / MinerU / Marker 等多引擎 PDF 解析，自动分块与元数据提取。</>
     ),
   },
   {
-    title: 'Powered by React',
-    Svg: require('@site/static/img/undraw_docusaurus_react.svg').default,
+    icon: '\u{1F578}\u{FE0F}',
+    title: '知识图谱',
     description: (
-      <>
-        Extend or customize your website layout by reusing React. Docusaurus can
-        be extended while reusing the same header and footer.
-      </>
+      <>实体与关系自动抽取，KG 增强 RAG 检索，社区发现与子图扩展。</>
+    ),
+  },
+  {
+    icon: '\u{1F4CA}',
+    title: 'RAGAS 评测',
+    description: (
+      <>Faithfulness / Relevancy / Context Recall 自动评测，回归门禁集成 CI。</>
+    ),
+  },
+  {
+    icon: '\u{1F512}',
+    title: '文档 ACL',
+    description: (
+      <>Security Trimming + RBAC 文档级权限控制，查询时过滤不可见分片。</>
+    ),
+  },
+  {
+    icon: '\u{1F3E2}',
+    title: '企业架构',
+    description: (
+      <>多租户隔离 / SCIM 用户同步 / 审计日志，满足企业合规要求。</>
     ),
   },
 ];
 
-function Feature({title, Svg, description}: FeatureItem) {
+function Feature({icon, title, description}: FeatureItem) {
   return (
-    <div className={clsx('col col--4')}>
-      <div className="text--center">
-        <Svg className={styles.featureSvg} role="img" />
-      </div>
-      <div className="text--center padding-horiz--md">
-        <Heading as="h3">{title}</Heading>
-        <p>{description}</p>
-      </div>
+    <div className={styles.card}>
+      <div className={styles.icon}>{icon}</div>
+      <Heading as="h3">{title}</Heading>
+      <p>{description}</p>
     </div>
   );
 }
@@ -60,7 +67,10 @@ export default function HomepageFeatures(): ReactNode {
   return (
     <section className={styles.features}>
       <div className="container">
-        <div className="row">
+        <Heading as="h2" className="text--center margin-bottom--lg">
+          核心特性
+        </Heading>
+        <div className={styles.grid}>
           {FeatureList.map((props, idx) => (
             <Feature key={idx} {...props} />
           ))}

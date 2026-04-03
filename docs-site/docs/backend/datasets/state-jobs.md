@@ -3,33 +3,86 @@ sidebar_label: "状态与任务"
 sidebar_position: 4
 ---
 
-# 数据集 — 状态与任务
+# 数据集后台任务与状态
 
-## 概述
+数据集域有两类主要的异步后台任务：**预检扫描**（Precheck Scan）和**画像扫描**（Profile Scan），均遵循相同的状态生命周期。
 
-本页属于 **数据集** 域的 **后端** 视角。权威契约以 OpenAPI（Redoc）为准；前端路由以 `web/app/**/page.tsx` 为准。
+## 任务状态机
 
-数据集元数据与关联任务（若有异步预检/画像）在 UI 与 API 之间的刷新策略；长耗时操作建议轮询任务状态端点（以 OpenAPI 为准）。
+```mermaid
+stateDiagram-v2
+    [*] --> pending : 创建 ScanRun
+    pending --> running : Worker 拾取
+    running --> completed : 扫描成功
+    running --> failed : 异常退出
+    running --> cancelled : 用户取消
+    failed --> pending : 重试（重新发起）
+```
 
-## 与任务的关系
+| 状态 | 含义 | 是否终态 |
+|------|------|----------|
+| `pending` | 已入队，等待 Worker | No |
+| `running` | 正在执行扫描 | No |
+| `completed` | 扫描完成，summary 已持久化 | Yes |
+| `failed` | 执行异常，error_message 有详情 | Yes |
+| `cancelled` | 被用户或系统取消 | Yes |
 
-- [数据集上线](../../integration/tasks/task-dataset-go-live.md) 与 [解析止损](../../integration/tasks/task-parse-failure-triage.md) 都依赖 **可轮询的任务 ID** 与明确终态。  
-- 前端需避免 **过频轮询** 与无退避重试（参见 Integration [重试/幂等](../../integration/patterns/idempotency-retries.md)）。
+## 预检扫描（Precheck Scan）
 
-## 前端入口（对照）
+| 字段 | 说明 |
+|------|------|
+| `kind` | 扫描类型，目前支持 `path`（本地目录扫描） |
+| `progress` | 0-100 进度百分比 |
+| `config` | 用户提供的选项/阈值（JSONB，可复现） |
+| `summary` | 完成后的摘要快照（JSONB） |
+| `artifacts` | 磁盘产物路径（JSONL/HTML） |
 
-- 数据集详情内 **异步任务** 或进度展示：见 Frontend [数据集 — 用户路径](../../frontend/datasets/overview.md)。
+## 画像扫描（Profile Scan）
 
-## 联调要点
+| 字段 | 说明 |
+|------|------|
+| `kind` | 扫描类型，目前支持 `deep`（回填缺失指标） |
+| `progress` | 0-100 进度百分比 |
+| `config` | 用户提供的选项/阈值（JSONB） |
+| `summary` | 完成后的画像摘要（JSONB） |
 
-| 关注点 | 说明 |
-| --- | --- |
-| 终态 | 区分 success / failed / cancelled，勿永远转圈 |
-| 与预检/画像 | 同一任务模型若复用，文档要写清 **类型字段** |
-| 超时 | 产品承诺的 SLA 应 ≥ 后端最坏耗时 + 余量 |
+## 前端轮询策略
+
+```mermaid
+sequenceDiagram
+    participant FE as 前端
+    participant API as Backend API
+    participant Worker as 后台 Worker
+
+    FE->>API: POST /profile/scan-runs（发起扫描）
+    API-->>FE: 201 {id, status: "pending"}
+    loop 每 3-5 秒
+        FE->>API: GET /profile/scan-runs/{id}
+        API-->>FE: {status, progress}
+    end
+    Worker->>API: 更新 status=completed
+    FE->>API: GET /profile/scan-runs/{id}
+    API-->>FE: {status: "completed", summary: {...}}
+```
+
+:::tip 轮询建议
+- 初始间隔 2 秒，后续退避到 5 秒
+- `progress` 字段可用于进度条展示
+- 终态（completed/failed/cancelled）到达后停止轮询
+:::
+
+## 错误恢复
+
+| 场景 | 处理方式 |
+|------|----------|
+| Worker 崩溃 | `status` 停在 `running`，需人工检查或超时清理 |
+| 扫描失败 | 查看 `error_message`，修正后重新 POST 创建新 ScanRun |
+| 取消 | 预检支持 `POST .../cancel`；画像扫描目前不支持中途取消 |
+| 重试 | 不修改原 Run，创建新的 ScanRun 即可 |
 
 ## 相关链接
 
-- [预检](./precheck.md) · [画像](./profile.md) · [API 索引](./api-index.md)
-- [OpenAPI / Redoc](https://skygazer42.github.io/MimirQ/)
-- 仓库内：[API 契约说明](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/API_CONTRACT.md) · [前后端排障](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/FE_BE_DEBUG.md)
+- [预检（Precheck）](./precheck.md)
+- [画像（Profile）](./profile.md)
+- [API 参考索引](./api-index.md)
+- [Redoc API 文档](https://skygazer42.github.io/MimirQ/)

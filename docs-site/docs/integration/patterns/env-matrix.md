@@ -3,41 +3,71 @@ sidebar_label: "环境变量导读"
 sidebar_position: 8
 ---
 
-# 环境变量索引（导读）
+# 环境矩阵
 
-## 概述
+MimirQ 的多环境（dev / staging / prod）部署涉及不同的配置策略，本页说明关键配置差异与注意事项。
 
-本页属于 **集成** 域的 **联调模式** 视角。权威契约以 OpenAPI（Redoc）为准；前端路由以 `web/app/**/page.tsx` 为准。
+## 环境对比
 
-## 何时查阅
+| 配置项 | Development | Staging | Production |
+|--------|-------------|---------|------------|
+| 认证模式 | Header 调试 + JWT | JWT | JWT（强制） |
+| 日志级别 | DEBUG | INFO | WARNING |
+| CORS | 宽松（`*`） | 限定域名 | 限定域名 |
+| 限流 | 关闭或宽松 | 与生产一致 | 严格 |
+| SSL/TLS | 可选 | 启用 | 强制 |
+| 健康探针 | 手动检查 | K8s 集成 | K8s 集成 + 外部监控 |
 
-新环境首配、CORS、**错端口**、或「本地能连预发不能」时；对应 [首配任务](../tasks/task-new-tenant-setup.md)。
+## 后端关键环境变量
 
-## 业务影响与验收要点
+:::info
+完整配置清单以部署文档与 `.env.example` 为准。以下仅列出联调中最常遇到的变量。
+:::
 
-- 每个环境有 **一页纸**：Base URL、是否 TLS、`NEXT_PUBLIC_API` 等。  
-- 变更 env 后 **构建与发布流程** 写清，避免「改了没生效」。
+| 变量 | 说明 | 典型值 |
+|------|------|--------|
+| `DATABASE_URL` | PostgreSQL 连接串 | `postgresql://...` |
+| `REDIS_URL` | Redis 连接地址 | `redis://...` |
+| `MILVUS_HOST` / `MILVUS_PORT` | 向量数据库地址 | `localhost:19530` |
+| `JWT_SECRET_KEY` | JWT 签名密钥 | 随机字符串 |
+| `EMBEDDING_MODEL` | 默认 embedding 模型 | `BAAI/bge-m3` |
+| `LOG_LEVEL` | 日志级别 | `INFO` |
 
-## 典型失败与对策
+:::danger 密钥管理
+生产环境中，`JWT_SECRET_KEY`、数据库密码等敏感信息**不应写在 `.env` 文件中**，应使用 Secret Manager 或 K8s Secrets 管理。
+:::
 
-| 症状 | 业务影响 | 优先动作 |
-| --- | --- | --- |
-| CORS 红 | 前端全挂 | 对齐 origin；勿误判后端 |
-| 指错 API 域名 | 写到隔壁环境 | 用健康检查与数据指纹校验 |
+## 前端环境变量
 
-## 后端
+| 变量 | 说明 | 注意事项 |
+|------|------|----------|
+| `NEXT_PUBLIC_API_BASE_URL` | 后端 API 地址 | 修改后需重新构建 |
+| `NEXT_PUBLIC_*` | 其他公开配置 | 会暴露到客户端 |
 
-- 完整清单以部署文档与 `.env.example` 为准：[docker_compose](https://github.com/skygazer42/MimirQ/blob/main/docs/deployment/docker_compose.md)、仓库根 `.env.example`。
+:::warning
+`NEXT_PUBLIC_` 前缀的变量会被打包到客户端 JS 中，**不要放置敏感信息**。修改后需要重新构建前端。
+:::
 
-## 前端
+## 联调常见问题
 
-- `NEXT_PUBLIC_*` 在 [web/lib/env](https://github.com/skygazer42/MimirQ/tree/main/web/lib) 及相关构建说明中消费；修改后需重新构建。
+| 问题 | 原因 | 解决方案 |
+|------|------|----------|
+| CORS 错误 | 前端与后端 origin 不一致 | 检查后端 CORS 配置与前端 base URL |
+| API 请求到错误端口 | 环境变量未更新 | 确认 `NEXT_PUBLIC_API_BASE_URL` |
+| SSL 证书错误 | 自签名证书在 staging | 配置证书信任或使用 HTTP |
+| 配置不生效 | 缓存或未重启 | 清除缓存、重启服务/重新构建前端 |
 
-## 联调
+## 环境切换检查清单
 
-- 同一浏览器会话中，前端 base URL 与后端实际 origin 必须一致，避免 CORS 与错误端口。
+切换环境时确认：
+
+- [ ] `NEXT_PUBLIC_API_BASE_URL` 指向正确的后端地址
+- [ ] 认证方式与目标环境一致（dev 可用 Header，prod 必须 JWT）
+- [ ] CORS 配置允许当前前端域名
+- [ ] 数据库与向量库连接指向正确的实例
 
 ## 相关链接
 
-- [OpenAPI / Redoc](https://skygazer42.github.io/MimirQ/)
-- 仓库内：[API 契约说明](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/API_CONTRACT.md) · [前后端排障](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/FE_BE_DEBUG.md)
+- [Redoc — API 完整参考](https://skygazer42.github.io/MimirQ/)
+- [认证模式](./auth-modes.md) | [租户 Header](./tenant-headers.md)
+- [运维 / SRE 角色](../roles/sre-ops.md)

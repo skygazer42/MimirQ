@@ -3,48 +3,111 @@ sidebar_label: "API 参考索引"
 sidebar_position: 2
 ---
 
-# 数据集 — API 参考索引
+# 数据集 API 参考索引
 
-## 概述
+所有数据集 API 挂载在 `/api/v1/datasets` 路由下。请求需携带 `X-Tenant-ID` 和认证 Header。
 
-本页属于 **数据集** 域的 **后端** 视角。完整路径、请求/响应模型以 OpenAPI **Datasets** 标签与 [Redoc](https://skygazer42.github.io/MimirQ/) 为准；下列表格便于复制检索（与当前 `web/openapi.json` 一致）。
+## 路径总览
 
-## OpenAPI 路径（Tag: Datasets）
+### CRUD
 
-| 方法 | Path |
-| --- | --- |
-| DELETE | `/api/v1/datasets/{dataset_id}` |
-| GET | `/api/v1/datasets/` |
-| GET | `/api/v1/datasets/{dataset_id}` |
-| GET | `/api/v1/datasets/{dataset_id}/categories` |
-| GET | `/api/v1/datasets/{dataset_id}/config/export` |
-| GET | `/api/v1/datasets/{dataset_id}/documents/export` |
-| GET | `/api/v1/datasets/{dataset_id}/export` |
-| GET | `/api/v1/datasets/{dataset_id}/health` |
-| GET | `/api/v1/datasets/{dataset_id}/ingestion-policy` |
-| GET | `/api/v1/datasets/{dataset_id}/ingestion-policy/export` |
-| GET | `/api/v1/datasets/{dataset_id}/ingestion-policy/versions` |
-| GET | `/api/v1/datasets/{dataset_id}/ingestion/stats` |
-| GET | `/api/v1/datasets/{dataset_id}/profile/buckets/documents` |
-| GET | `/api/v1/datasets/{dataset_id}/profile/export` |
-| GET | `/api/v1/datasets/{dataset_id}/profile/export-html` |
-| GET | `/api/v1/datasets/{dataset_id}/profile/findings/{finding_key}` |
-| GET | `/api/v1/datasets/{dataset_id}/profile/scan-runs` |
-| GET | `/api/v1/datasets/{dataset_id}/profile/scan-runs/{scan_run_id}` |
-| GET | `/api/v1/datasets/{dataset_id}/profile/summary` |
-| PATCH | `/api/v1/datasets/{dataset_id}` |
-| POST | `/api/v1/datasets/` |
-| POST | `/api/v1/datasets/{dataset_id}/clone` |
-| POST | `/api/v1/datasets/{dataset_id}/config/import` |
-| POST | `/api/v1/datasets/{dataset_id}/ingestion-policy/import` |
-| POST | `/api/v1/datasets/{dataset_id}/ingestion-policy/rollback` |
-| POST | `/api/v1/datasets/{dataset_id}/profile/scan-runs` |
-| POST | `/api/v1/datasets/{dataset_id}/purge` |
-| PUT | `/api/v1/datasets/{dataset_id}/categories` |
-| PUT | `/api/v1/datasets/{dataset_id}/ingestion-policy` |
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST` | `/datasets/` | 创建数据集 |
+| `GET` | `/datasets/` | 分页查询列表 |
+| `GET` | `/datasets/{dataset_id}` | 获取详情 |
+| `PATCH` | `/datasets/{dataset_id}` | 更新名称/描述/权限/配置 |
+| `DELETE` | `/datasets/{dataset_id}` | 删除（级联删除文档） |
+| `POST` | `/datasets/{dataset_id}/clone` | 克隆配置到新数据集 |
+| `POST` | `/datasets/{dataset_id}/purge` | 清除所有文档保留壳 |
+
+### 配置导入导出
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/{dataset_id}/config/export` | 导出完整配置 JSON |
+| `POST` | `/{dataset_id}/config/import` | 导入 pipeline/retention/ingestion 配置 |
+
+### 分类管理
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/{dataset_id}/categories` | 获取数据集所属分类 |
+| `PUT` | `/{dataset_id}/categories` | 设置分类（覆盖） |
+
+### Ingestion Policy
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/{dataset_id}/ingestion-policy` | 获取当前策略（含审计） |
+| `PUT` | `/{dataset_id}/ingestion-policy` | 更新策略 |
+| `GET` | `/{dataset_id}/ingestion-policy/versions` | 版本历史 |
+| `POST` | `/{dataset_id}/ingestion-policy/rollback` | 回滚到指定版本 |
+| `POST` | `/{dataset_id}/ingestion-policy/import` | 从 JSON 导入策略 |
+| `GET` | `/{dataset_id}/ingestion-policy/export` | 导出策略 JSON |
+
+### 画像与健康度
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/{dataset_id}/health` | 健康度仪表盘 |
+| `GET` | `/{dataset_id}/profile/summary` | 实时画像摘要 |
+| `GET` | `/{dataset_id}/profile/findings/{key}` | 画像发现明细 |
+| `GET` | `/{dataset_id}/profile/buckets/documents` | 按桶分组文档 |
+| `POST` | `/{dataset_id}/profile/scan-runs` | 发起深度扫描 |
+| `GET` | `/{dataset_id}/profile/scan-runs` | 扫描历史列表 |
+| `GET` | `/{dataset_id}/profile/scan-runs/{id}` | 单次扫描详情 |
+| `GET` | `/{dataset_id}/profile/export` | 导出画像 JSON |
+| `GET` | `/{dataset_id}/profile/export-html` | 导出画像 HTML 报告 |
+
+### 统计与导出
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/{dataset_id}/ingestion/stats` | 入库统计 |
+| `GET` | `/{dataset_id}/documents/export` | 导出文档列表 |
+| `GET` | `/{dataset_id}/export` | 导出整个数据集（含文件） |
+
+## curl 示例
+
+### 创建数据集
+
+```bash
+curl -X POST http://localhost:8000/api/v1/datasets/ \
+  -H "Content-Type: application/json" \
+  -H "X-Tenant-ID: $TENANT_ID" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "name": "产品文档库",
+    "description": "存放产品手册与FAQ",
+    "permission": "all_team_members"
+  }'
+```
+
+### 查询列表（带分类过滤）
+
+```bash
+curl "http://localhost:8000/api/v1/datasets/?page=1&page_size=20&category_id=$CAT_ID" \
+  -H "X-Tenant-ID: $TENANT_ID" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+:::tip 响应分页
+列表接口返回 `DatasetListResponse`，包含 `items`（数据集数组）和 `total`（总数），支持 `page`、`page_size`、`category_id`（含 `include_descendants`）等参数。
+:::
+
+## 通用错误码
+
+| 状态码 | 场景 |
+|--------|------|
+| 400 | 参数校验失败、名称不合法 |
+| 403 | 无数据集访问权限 |
+| 404 | 数据集不存在或已删除 |
+| 409 | 名称冲突（租户内唯一） |
+| 416 | Range 不满足（导出场景） |
 
 ## 相关链接
 
-- [OpenAPI / Redoc](https://skygazer42.github.io/MimirQ/)
-- [API 契约说明](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/API_CONTRACT.md) · [前后端排障](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/FE_BE_DEBUG.md)
-- 路由注册：[app/api/v1](https://github.com/skygazer42/MimirQ/tree/main/app/api/v1)
+- [Schema 详解](./schemas.md)
+- [权限与安全](./permissions.md)
+- [Redoc API 文档](https://skygazer42.github.io/MimirQ/)

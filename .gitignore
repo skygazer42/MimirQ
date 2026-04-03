@@ -75,6 +75,8 @@ web/public/monaco/
 web/public/pdfjs/
 web/openapi.json
 web/types/openapi.ts
+# Generated copy for static API docs site (source: make api-docs-build)
+docs/api/site/openapi.json
 *.sqlite
 *.db
 *.tsbuildinfo

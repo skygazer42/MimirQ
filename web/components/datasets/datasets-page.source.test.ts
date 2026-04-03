@@ -16,7 +16,7 @@ describe('datasets page source', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'datasets-page.tsx'), 'utf8')
 
     expect(src).toContain('flex min-h-[calc(100vh-11.5rem)] flex-col overflow-hidden rounded-[1.75rem] border border-border/60 bg-card/90 shadow-soft')
-    expect(src).toContain('lg:grid-cols-[196px_minmax(0,1fr)]')
+    expect(src).toContain('lg:grid-cols-[176px_minmax(0,1fr)]')
     expect(src).toContain('xl:grid-cols-[minmax(0,1.15fr)_320px]')
     expect(src).toContain('数据集检视器')
     expect(src).toContain('选择一个数据集以查看快捷入口与访问配置')

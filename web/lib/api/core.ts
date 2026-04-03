@@ -90,6 +90,17 @@ export function formatRateLimitLogMessage({
   }
 }
 
+function isRequestCancellationError(error: unknown): boolean {
+  const candidate = error as { code?: unknown; name?: unknown; message?: unknown } | null
+  if (!candidate || typeof candidate !== 'object') return false
+
+  if (candidate.code === 'ERR_CANCELED') return true
+  if (candidate.name === 'AbortError' || candidate.name === 'CanceledError') return true
+
+  const message = typeof candidate.message === 'string' ? candidate.message.trim().toLowerCase() : ''
+  return message === 'canceled'
+}
+
 async function handleUnauthorizedApiError(error: any, requestId?: string) {
   logRequestScopedError('[API] 未授权，请检查登录状态', requestId)
 
@@ -152,6 +163,10 @@ function handleResponseStatusError(status: number, detail: string, requestId: st
 }
 
 async function handleApiClientError(error: any) {
+  if (isRequestCancellationError(error)) {
+    throw error
+  }
+
   if (error.response) {
     const status = error.response.status
     const data = error.response.data

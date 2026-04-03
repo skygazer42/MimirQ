@@ -3,41 +3,123 @@ sidebar_label: "可观测性"
 sidebar_position: 10
 ---
 
-# 请求关联：日志与排障
+# 请求追踪与可观测性
 
-## 概述
+通过 Request-ID 关联前端、网关与后端日志，实现跨层级的故障定位。
 
-本页属于 **集成** 域的 **联调模式** 视角。权威契约以 OpenAPI（Redoc）为准；前端路由以 `web/app/**/page.tsx` 为准。
+## Request-ID 关联
 
-## 何时查阅
+MimirQ 在响应中返回 `X-Request-ID`（或类似 Header），可用于跨层日志关联：
 
-跨团队排障、需要把 **浏览器一条失败** 与 **后端日志** 对齐时；[检索效果](../tasks/task-retrieval-quality.md) 与 [解析止损](../tasks/task-parse-failure-triage.md) 的深度调查都依赖此习惯。
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Gateway as 反向代理
+    participant API as MimirQ API
+    participant DB as 数据库
+    Client->>Gateway: 请求 (X-Request-ID: req-123)
+    Gateway->>API: 转发 (保留 Request-ID)
+    API->>DB: 查询 (日志含 req-123)
+    DB-->>API: 结果
+    API-->>Gateway: 响应 (X-Request-ID: req-123)
+    Gateway-->>Client: 响应
+```
 
-## 业务影响与验收要点
+### 客户端发送 Request-ID
 
-- 支持人员能向用户索要 **时间与 request_id**，并在日志中 **唯一定位** 一次请求链。  
-- 健康探针与业务指标 **分开展示**，避免把「能登录」当成「解析队列正常」。
+```bash
+curl "$BASE_URL/api/v1/datasets/" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "X-Request-ID: $(uuidgen)"
+```
 
-## 典型失败与对策
+如果客户端不发送，服务端会自动生成。
 
-| 症状 | 业务影响 | 优先动作 |
-| --- | --- | --- |
-| 无 request_id | 无法对齐 | 推动网关与后端统一字段 |
-| 就绪探针绿但业务红 | 误判可用 | 增加队列/依赖子检查 |
+### 错误场景中的日志关联
 
-## 后端
+```bash
+# 请求失败时记录 Request-ID
+response=$(curl -s -w "\n%{http_code}" "$BASE_URL/api/v1/datasets/$ID" \
+  -H "Authorization: Bearer $TOKEN")
 
-- 关注结构化日志中的 `request_id` / 租户 / 用户字段（以后端实现为准）。
+status_code=$(echo "$response" | tail -1)
+if [ "$status_code" -ge 400 ]; then
+  echo "Error $status_code — 请将 Request-ID 提供给后端排查"
+fi
+```
 
-## 前端
+## 健康检查
 
-- 在开发环境对失败请求记录 **path + status + 响应体摘要**（注意脱敏）。
+| 端点 | 用途 | 建议间隔 |
+|------|------|----------|
+| `GET /api/v1/health` | 存活探针（进程存活） | 10s |
+| `GET /api/v1/health/ready` | 就绪探针（依赖可用） | 5s |
 
-## 运维
+### K8s 探针配置
 
-- 健康检查：`GET /api/v1/health`、`GET /api/v1/health/ready`（见 OpenAPI **health**）；与 K8s 探针配置对齐。
+```yaml
+livenessProbe:
+  httpGet:
+    path: /api/v1/health
+    port: 8000
+  periodSeconds: 10
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /api/v1/health/ready
+    port: 8000
+  periodSeconds: 5
+  failureThreshold: 2
+```
+
+## 前端日志建议
+
+在开发环境对失败请求记录关键信息：
+
+```javascript
+async function apiCall(url, options) {
+  const response = await fetch(url, options);
+  if (!response.ok) {
+    const requestId = response.headers.get('X-Request-ID');
+    console.error(`[API Error] ${response.status} ${url}`, {
+      requestId,
+      // 注意生产环境脱敏
+    });
+  }
+  return response;
+}
+```
+
+:::tip 生产脱敏
+生产环境日志中不要记录完整的请求体和 Token，仅保留 path、status、request_id 等用于定位的最小信息。
+:::
+
+## 后端结构化日志
+
+MimirQ 后端使用结构化日志，包含以下关键字段：
+
+| 字段 | 说明 |
+|------|------|
+| `request_id` | 请求唯一标识 |
+| `tenant_id` | 租户标识 |
+| `user_id` | 用户标识 |
+| `method` | HTTP 方法 |
+| `path` | 请求路径 |
+| `status` | 响应状态码 |
+| `duration_ms` | 请求耗时 |
+
+## 监控维度
+
+| 指标 | 告警阈值建议 | 说明 |
+|------|-------------|------|
+| 请求延迟 P99 | > 5s | API 响应过慢 |
+| 错误率（5xx） | > 1% | 服务端异常 |
+| 队列深度 | > 1000 | 文档处理积压 |
+| 健康探针失败 | 连续 3 次 | 服务不可用 |
 
 ## 相关链接
 
-- [OpenAPI / Redoc](https://skygazer42.github.io/MimirQ/)
-- 仓库内：[API 契约说明](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/API_CONTRACT.md) · [前后端排障](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/FE_BE_DEBUG.md)
+- [Redoc — API 完整参考](https://skygazer42.github.io/MimirQ/)
+- [错误码与响应体](./errors-4xx-5xx.md)
+- [运维 / SRE 角色](../roles/sre-ops.md)

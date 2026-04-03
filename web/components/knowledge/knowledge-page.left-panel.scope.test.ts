@@ -3,11 +3,11 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-describe('KnowledgePage left panel scope', () => {
-  it('mounts KnowledgeScopePanel in WorkbenchScaffold.leftPanel', () => {
+describe('KnowledgePage embedded scope panel', () => {
+  it('renders KnowledgeScopePanel inside the shared workbench surface', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'knowledge-page.tsx'), 'utf8')
 
-    expect(src).toContain('leftPanel={')
+    expect(src).toContain('surface="embedded"')
     expect(src).toContain('<KnowledgeScopePanel')
   })
 })

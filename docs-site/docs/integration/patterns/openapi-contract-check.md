@@ -3,42 +3,90 @@ sidebar_label: "契约对照"
 sidebar_position: 9
 ---
 
-# OpenAPI 与前端调用对照
+# OpenAPI 契约检查
 
-## 概述
+确保前端调用、后端实现与 OpenAPI spec 三者一致，避免接口漂移导致集成故障。
 
-本页属于 **集成** 域的 **联调模式** 视角。权威契约以 OpenAPI（Redoc）为准；前端路由以 `web/app/**/page.tsx` 为准。
+## 单一事实源（SSOT）
 
-## 何时查阅
+MimirQ 的 API 契约以 OpenAPI spec 为权威来源：
 
-后端合入改路径、前端升依赖、或 CI 报 **类型与 OpenAPI 不一致** 时；发布前门禁应跑在本页所列步骤上。
+| 层级 | 来源 | 说明 |
+|------|------|------|
+| 定义 | `openapi.json` / Redoc | 权威契约 |
+| 后端 | FastAPI 自动生成 | 路由装饰器 → spec |
+| 前端 | `web/types/openapi.ts` | openapi-typescript 生成 |
 
-## 业务影响与验收要点
+```mermaid
+flowchart LR
+    A[FastAPI 路由] --> B[openapi.json]
+    B --> C[Redoc 文档]
+    B --> D[openapi-typescript]
+    D --> E[前端类型]
+```
 
-- **任何** 对外 path 变更同时更新：OpenAPI、生成类型、`web/lib/api` 调用点。  
-- 手册 [FE/BE 矩阵](../generated/fe-be-matrix.mdx) 与 Redoc **无结构性漂移**（以 CI 为准）。
+## 日常检查流程
 
-## 典型失败与对策
+### 后端变更后
 
-| 症状 | 业务影响 | 优先动作 |
-| --- | --- | --- |
-| 前端 404 而后端有路由 | 发版事故 | 补 openapi-export 与 gen:api-types |
-| 矩阵与手工文不一致 | 读者困惑 | 以 OpenAPI 为 SSOT，更矩阵而非抄路径 |
+```bash
+# 1. 导出最新 spec
+make openapi-export
 
-## SSOT
+# 2. 重新生成前端类型
+pnpm gen:api-types
 
-- **路径与模型** 以 `web/openapi.json` / Redoc 为准；前端 `web/lib/api/*.ts` 应对齐生成的类型与 path。
+# 3. 检查类型是否有 breaking change
+pnpm typecheck
+```
 
-## 日常检查
+:::warning Breaking Change
+路径重命名、必填字段新增、响应结构变更均属于 breaking change。变更前需通知所有集成方，建议在 CI 中加入契约检查。
+:::
 
-- 改后端路由后执行 `make openapi-export` 与前端 `gen:api-types`（以 Makefile / package.json 脚本为准）。
-- 自动化对照见 [API_CONTRACT.md](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/API_CONTRACT.md)。
+### CI 集成
 
-## 手册内矩阵
+在 CI 管道中自动检查契约一致性：
 
-- [FE/BE 对照矩阵（自动生成）](../generated/fe-be-matrix.mdx)
+1. **Spec 导出** — 确保提交的 `openapi.json` 与代码一致
+2. **类型生成** — 确保前端类型与 spec 同步
+3. **Breaking Change 检测** — 对比 main 分支的 spec，发现不兼容变更时阻断合并
+
+```bash
+# 示例: 检查 spec 是否已更新
+make openapi-export
+git diff --exit-code openapi.json || echo "OpenAPI spec 需要更新"
+```
+
+## FE/BE 对照矩阵
+
+自动生成的对照矩阵展示前端路由与后端 API 的映射关系：
+
+- [FE/BE 对照矩阵](../generated/fe-be-matrix.mdx)
+
+:::info
+修改 API 路径或前端路由后，需重新生成矩阵并提交。
+:::
+
+## 常见契约不一致问题
+
+| 问题 | 表现 | 解决方案 |
+|------|------|----------|
+| 字段名不一致 | 422（snake_case vs camelCase） | 以 spec 为准，统一前端类型生成 |
+| 必填字段新增 | 旧客户端 422 | 版本化或渐进式迁移 |
+| 响应字段移除 | 前端 undefined | 前端做可选处理或同步更新 |
+| 路径变更 | 404 | 保留旧路径重定向或通知集成方 |
+
+## 手动对照检查清单
+
+- [ ] 请求 Content-Type 与 spec 一致（JSON / multipart）
+- [ ] 路径参数、查询参数名称与 spec 一致
+- [ ] 请求体字段名遵循 spec 的命名约定（蛇形/驼峰）
+- [ ] 响应结构与 spec 中的 schema 一致
+- [ ] 错误响应格式与 `ErrorResponse` schema 一致
 
 ## 相关链接
 
-- [OpenAPI / Redoc](https://skygazer42.github.io/MimirQ/)
-- 仓库内：[API 契约说明](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/API_CONTRACT.md) · [前后端排障](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/FE_BE_DEBUG.md)
+- [Redoc — API 完整参考](https://skygazer42.github.io/MimirQ/)
+- [FE/BE 对照矩阵](../generated/fe-be-matrix.mdx)
+- [错误码与响应体](./errors-4xx-5xx.md)
