@@ -68,7 +68,7 @@ export function DocumentChunkCard({
               aria-label="复制切片内容"
               title="复制切片内容"
             >
-              <Copy className="h-4 w-4" />
+              <Copy className="size-4" />
             </Button>
             <Button
               type="button"
@@ -79,7 +79,7 @@ export function DocumentChunkCard({
               aria-label="复制定位链接"
               title="复制定位链接"
             >
-              <Link2 className="h-4 w-4" />
+              <Link2 className="size-4" />
             </Button>
             <Button
               type="button"
@@ -91,7 +91,7 @@ export function DocumentChunkCard({
               aria-label="Edit chunk"
               title="Edit chunk"
             >
-              <Pencil className="h-4 w-4" />
+              <Pencil className="size-4" />
             </Button>
             <ConfirmDialog
               title={`Delete chunk #${chunk.chunk_index}?`}
@@ -112,9 +112,9 @@ export function DocumentChunkCard({
                 title="Delete chunk"
               >
                 {chunkDeleteSubmitting === chunk.id ? (
-                  <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                  <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
                 ) : (
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="size-4" />
                 )}
               </Button>
             </ConfirmDialog>

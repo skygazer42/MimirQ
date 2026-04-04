@@ -193,7 +193,7 @@ export function DataAnnotator({ content, annotations = [], onAnnotate }: Readonl
   return (
     <div className="space-y-6 p-6">
       <div className="flex items-center gap-2">
-        <Tag className="h-5 w-5 text-primary" />
+        <Tag className="size-5 text-primary" />
         <h3 className="font-bold text-foreground">{t('header.title')}</h3>
       </div>
 
@@ -256,7 +256,7 @@ export function DataAnnotator({ content, annotations = [], onAnnotate }: Readonl
       {selection ? (
         <div className="rounded-xl border border-primary/20 bg-primary/10 p-4">
           <div className="mb-2 flex items-center gap-2">
-            <Search className="h-4 w-4 text-primary" />
+            <Search className="size-4 text-primary" />
             <span className="text-sm font-medium text-primary">{t('selection.title')}</span>
           </div>
           <div className="mb-3 rounded border border-primary/20 bg-card p-2">
@@ -279,7 +279,7 @@ export function DataAnnotator({ content, annotations = [], onAnnotate }: Readonl
           size="sm"
           className="w-full gap-2"
         >
-          <Highlighter className="h-4 w-4" />
+          <Highlighter className="size-4" />
           {isSelecting ? t('selection.activePrompt') : t('selection.start')}
         </Button>
       )}
@@ -304,7 +304,7 @@ export function DataAnnotator({ content, annotations = [], onAnnotate }: Readonl
                 className="flex w-full items-center justify-between p-3 transition-colors hover:bg-muted motion-reduce:transition-none"
               >
                 <div className="flex items-center gap-2">
-                  <Icon className={cn('h-4 w-4', getToneStyles(type.tone).icon)} />
+                  <Icon className={cn('size-4', getToneStyles(type.tone).icon)} />
                   <span className="text-sm font-medium text-foreground/80">{type.label}</span>
                   <span
                     className={cn(
@@ -316,9 +316,9 @@ export function DataAnnotator({ content, annotations = [], onAnnotate }: Readonl
                   </span>
                 </div>
                 {isExpanded ? (
-                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  <ChevronDown className="size-4 text-muted-foreground" />
                 ) : (
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  <ChevronRight className="size-4 text-muted-foreground" />
                 )}
               </button>
 
@@ -358,7 +358,7 @@ export function DataAnnotator({ content, annotations = [], onAnnotate }: Readonl
 
         {localAnnotations.length === 0 && (
           <div className="py-8 text-center text-muted-foreground">
-            <Tag className="mx-auto mb-2 h-10 w-10 opacity-30" />
+            <Tag className="mx-auto mb-2 size-10 opacity-30" />
             <p className="text-sm">{t('empty.title')}</p>
             <p className="mt-1 text-xs">{t('empty.description')}</p>
           </div>

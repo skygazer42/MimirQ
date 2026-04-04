@@ -427,7 +427,7 @@ export function ProfileEditorDrawer({
         <div className="border-b border-border bg-popover/80 backdrop-blur-md p-5">
           <DialogHeader className="space-y-2">
             <DialogTitle className="flex items-center gap-2">
-              <Braces className="w-5 h-5 text-primary" />
+              <Braces className="size-5 text-primary" />
               {(() => {
     if (isCreate) {
         return '新建治理 Profile';
@@ -480,9 +480,9 @@ export function ProfileEditorDrawer({
                   disabled={testRunning}
                 >
                   {testRunning ? (
-                    <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+                    <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
                   ) : (
-                    <Play className="w-4 h-4" />
+                    <Play className="size-4" />
                   )}
                   运行
                 </Button>
@@ -495,9 +495,9 @@ export function ProfileEditorDrawer({
                   disabled={!canSave}
                 >
                   {saving ? (
-                    <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+                    <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
                   ) : (
-                    <Save className="w-4 h-4" />
+                    <Save className="size-4" />
                   )}
                   保存
                 </Button>
@@ -509,7 +509,7 @@ export function ProfileEditorDrawer({
         <div className="min-h-0 overflow-auto p-5">
           {loadingProfile ? (
             <div className="flex h-full items-center justify-center text-sm text-muted-foreground gap-2">
-              <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+              <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
               加载中…
             </div>
           ) : (
@@ -703,7 +703,7 @@ export function ProfileEditorDrawer({
                       </div>
                       {loadingRulePacks ? (
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                          <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
                           Loading...
                         </div>
                       ) : (
@@ -737,7 +737,7 @@ export function ProfileEditorDrawer({
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <div className="font-semibold text-foreground flex items-center gap-2">
-                          <Braces className="w-4 h-4 text-muted-foreground" />
+                          <Braces className="size-4 text-muted-foreground" />
                           Advanced JSON (pipeline_patch)
                         </div>
                         <div className="text-[12px] text-muted-foreground mt-1">
@@ -891,7 +891,7 @@ export function ProfileEditorDrawer({
                     <div className="grid grid-cols-1 gap-4">
                       <Panel padding="lg" className="rounded-2xl">
                         <div className="flex items-center gap-2">
-                          <FileText className="w-4 h-4 text-muted-foreground" />
+                          <FileText className="size-4 text-muted-foreground" />
                           <div className="font-semibold text-foreground">输出（markdown）</div>
                         </div>
                         <Textarea
@@ -906,7 +906,7 @@ export function ProfileEditorDrawer({
                       {testResp.diff_unified ? (
                         <Panel padding="lg" className="rounded-2xl">
                           <div className="flex items-center gap-2">
-                            <Braces className="w-4 h-4 text-muted-foreground" />
+                            <Braces className="size-4 text-muted-foreground" />
                             <div className="font-semibold text-foreground">Diff（unified）</div>
                           </div>
                           <Textarea
@@ -923,7 +923,7 @@ export function ProfileEditorDrawer({
                   ) : (
                     <Panel padding="lg" className="rounded-2xl border-dashed">
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Play className="w-4 h-4" />
+                        <Play className="size-4" />
                         点击“运行”调用 clean-preview 查看清洗效果与 diff
                       </div>
                     </Panel>

@@ -105,7 +105,7 @@ export default function SettingsPage() {
             <div className="space-y-3">
               {state.loadError ? (
                 <Alert variant="destructive" className="shadow-soft/40">
-                  <XCircle className="h-4 w-4" />
+                  <XCircle className="size-4" />
                   <div>
                     <AlertTitle>加载失败</AlertTitle>
                     <AlertDescription className="text-foreground/80">
@@ -120,9 +120,9 @@ export default function SettingsPage() {
                   className="shadow-soft/40"
                 >
                   {state.saveMessage.type === 'success' ? (
-                    <CheckCircle2 className="h-4 w-4" />
+                    <CheckCircle2 className="size-4" />
                   ) : (
-                    <XCircle className="h-4 w-4" />
+                    <XCircle className="size-4" />
                   )}
                   <div>
                     <AlertTitle>
@@ -151,7 +151,7 @@ export default function SettingsPage() {
               disabled={state.loading}
               className="gap-2"
             >
-              <RefreshCw className={cn('h-4 w-4', state.loading && 'animate-spin motion-reduce:animate-none')} />
+              <RefreshCw className={cn('size-4', state.loading && 'animate-spin motion-reduce:animate-none')} />
               刷新
             </Button>
             <Button
@@ -159,7 +159,7 @@ export default function SettingsPage() {
               disabled={!state.hasChanges || state.saving}
               className="gap-2"
             >
-              <Save className={cn('h-4 w-4', state.saving && 'animate-pulse motion-reduce:animate-none')} />
+              <Save className={cn('size-4', state.saving && 'animate-pulse motion-reduce:animate-none')} />
               {state.saving ? '保存中...' : '保存配置'}
             </Button>
           </>
@@ -167,7 +167,7 @@ export default function SettingsPage() {
       >
         {state.loading ? (
           <div className="flex h-64 items-center justify-center">
-            <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground motion-reduce:animate-none" />
+            <RefreshCw className="size-8 animate-spin text-muted-foreground motion-reduce:animate-none" />
           </div>
         ) : (
           <SettingsContent state={state} parserBackend={parserBackend} setParserBackend={setParserBackend} chunkStrategy={chunkStrategy} setChunkStrategy={setChunkStrategy} />
@@ -196,7 +196,7 @@ function SettingsContent({ state, parserBackend, setParserBackend, chunkStrategy
 
   return (
     <div className="flex gap-8">
-      <nav className="hidden lg:block w-44 shrink-0 sticky top-0 self-start pt-1">
+      <nav className="hidden lg:block w-44 shrink-0 sticky top-4 self-start pt-1">
         <ul className="space-y-0.5">
           {SETTINGS_SECTIONS.map((sec) => (
             <li key={sec.id}>
@@ -204,9 +204,9 @@ function SettingsContent({ state, parserBackend, setParserBackend, chunkStrategy
                 type="button"
                 onClick={() => scrollTo(sec.id)}
                 className={cn(
-                  'w-full text-left text-xs px-3 py-1.5 rounded-md transition-colors truncate',
+                  'relative w-full text-left text-xs px-3 py-2 rounded-lg transition-colors truncate',
                   activeId === sec.id
-                    ? 'bg-primary/10 text-primary font-semibold'
+                    ? 'bg-primary/10 text-primary font-semibold before:absolute before:left-0 before:top-1 before:bottom-1 before:w-[2px] before:rounded-full before:bg-primary'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
                 )}
               >

@@ -75,6 +75,7 @@ export function StatusBadge({
         "inline-flex items-center gap-1.5 rounded-full border font-medium",
         dense ? "px-2 py-0.5 text-[11px]" : "px-2.5 py-1 text-xs",
         meta.className,
+        status === "processing" && "animate-pulse-subtle motion-reduce:animate-none",
         className
       )}
     >

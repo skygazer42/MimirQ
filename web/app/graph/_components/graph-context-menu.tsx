@@ -156,7 +156,7 @@ export function GraphContextMenu({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-8 w-full justify-start text-red-600 hover:text-red-700 dark:text-red-300 dark:hover:text-red-200"
+                    className="h-8 w-full justify-start text-destructive hover:text-destructive"
                     onClick={() => {
                       onClose()
                       onDeleteNode(node)

@@ -15,21 +15,22 @@ import {
   Clock,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import { Progress } from '@/components/ui/progress'
 
-// 文件类型配置
+// 文件类型配置 — 使用 token 色
 const FILE_TYPE_CONFIG: Record<
   string,
   { icon: typeof FileText; color: string; bg: string }
 > = {
-  pdf: { icon: FileText, color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-900/20' },
-  pptx: { icon: Presentation, color: 'text-orange-700 dark:text-orange-400', bg: 'bg-orange-50 dark:bg-orange-900/20' },
-  ppt: { icon: Presentation, color: 'text-orange-700 dark:text-orange-400', bg: 'bg-orange-50 dark:bg-orange-900/20' },
-  xlsx: { icon: FileSpreadsheet, color: 'text-emerald-700 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
-  xls: { icon: FileSpreadsheet, color: 'text-emerald-700 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
-  docx: { icon: FileType, color: 'text-blue-700 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-900/20' },
-  doc: { icon: FileType, color: 'text-blue-700 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-900/20' },
-  txt: { icon: File, color: 'text-slate-600 dark:text-slate-300', bg: 'bg-slate-50 dark:bg-slate-800/60' },
-  md: { icon: FileText, color: 'text-purple-700 dark:text-purple-300', bg: 'bg-purple-50 dark:bg-purple-900/20' },
+  pdf: { icon: FileText, color: 'text-destructive', bg: 'bg-destructive/10' },
+  pptx: { icon: Presentation, color: 'text-warning', bg: 'bg-warning/10' },
+  ppt: { icon: Presentation, color: 'text-warning', bg: 'bg-warning/10' },
+  xlsx: { icon: FileSpreadsheet, color: 'text-success', bg: 'bg-success/10' },
+  xls: { icon: FileSpreadsheet, color: 'text-success', bg: 'bg-success/10' },
+  docx: { icon: FileType, color: 'text-info', bg: 'bg-info/10' },
+  doc: { icon: FileType, color: 'text-info', bg: 'bg-info/10' },
+  txt: { icon: File, color: 'text-muted-foreground', bg: 'bg-muted/60' },
+  md: { icon: FileText, color: 'text-accent', bg: 'bg-accent/10' },
 }
 
 export type FileStatus = 'pending' | 'parsing' | 'parsed' | 'error'
@@ -81,8 +82,8 @@ export function FileQueueItem({
     switch (file.status) {
       case 'pending':
         return (
-          <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
-            <Clock className="w-3 h-3" />
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Clock className="size-3" />
             <span>{t("fileQueueItem.pending")}</span>
           </div>
         )
@@ -90,41 +91,36 @@ export function FileQueueItem({
         return (
           <div className="space-y-1.5">
             <div className="flex items-center gap-1.5 text-xs text-info">
-              <Loader2 className="w-3 h-3 animate-spin motion-reduce:animate-none" />
+              <Loader2 className="size-3 animate-spin motion-reduce:animate-none" />
               <span>{t("fileQueueItem.parsing")} {file.progress == null ? '' : `${progressPct}%`}</span>
             </div>
             {file.progress !== undefined && (
-              <div className="w-full h-1.5 bg-secondary rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-primary rounded-full origin-left transition-transform duration-200 ease-out motion-reduce:transition-none"
-                  style={{ transform: `scaleX(${progressPct / 100})` }}
-                />
-              </div>
+              <Progress value={progressPct} className="h-1.5" />
             )}
           </div>
         )
       case 'parsed':
         return (
           <div className="flex items-center gap-2 text-xs">
-            <span className="flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
-              <CheckCircle className="w-3 h-3" />
+            <span className="flex items-center gap-1 text-success">
+              <CheckCircle className="size-3" />
               {t("fileQueueItem.parsed")}
             </span>
             {file.parser && (
-              <span className="text-slate-500 dark:text-slate-400">· {file.parser}</span>
+              <span className="text-muted-foreground">· {file.parser}</span>
             )}
             {file.chunkStrategyLabel && (
-              <span className="text-slate-500 dark:text-slate-400">· {file.chunkStrategyLabel}</span>
+              <span className="text-muted-foreground">· {file.chunkStrategyLabel}</span>
             )}
             {typeof file.duration === 'number' && Number.isFinite(file.duration) ? (
-              <span className="text-slate-500 dark:text-slate-400">· {file.duration}s</span>
+              <span className="text-muted-foreground">· {file.duration}s</span>
             ) : null}
           </div>
         )
       case 'error':
         return (
-          <span className="flex items-center gap-1 text-xs text-red-700 dark:text-red-400">
-            <XCircle className="w-3 h-3" />
+          <span className="flex items-center gap-1 text-xs text-destructive">
+            <XCircle className="size-3" />
             {t("fileQueueItem.error")}
           </span>
         )
@@ -134,17 +130,17 @@ export function FileQueueItem({
   const fileContent = (
     <>
       <div className={cn('p-2.5 rounded-lg flex-shrink-0', config.bg)}>
-        <Icon className={cn('w-5 h-5', config.color)} />
+        <Icon className={cn('size-5', config.color)} />
       </div>
 
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+        <p className="text-sm font-medium text-foreground truncate">
           {file.name}
         </p>
 
         {(file.folderPathLabel || file.sourcePath) && (
           <p
-            className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 truncate"
+            className="mt-0.5 text-xs text-muted-foreground truncate"
             title={[file.folderPathLabel, file.sourcePath].filter(Boolean).join(' · ')}
           >
             {file.folderPathLabel ? `${t("fileQueueItem.folderLabel")}${file.folderPathLabel}` : ''}
@@ -152,7 +148,7 @@ export function FileQueueItem({
           </p>
         )}
 
-        <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+        <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
           <span>{formatFileSize(file.size)}</span>
           {file.pageCount && (
             <>
@@ -201,7 +197,7 @@ export function FileQueueItem({
                 onClick={onRetry}
                 className="flex items-center gap-1 text-xs text-info hover:text-info/90 focus-ring rounded px-1.5 py-1"
               >
-                <RotateCcw className="w-3 h-3" />
+                <RotateCcw className="size-3" />
                 {t("fileQueueItem.retry")}
               </button>
             )}
@@ -213,7 +209,7 @@ export function FileQueueItem({
                 title={t("fileQueueItem.removeTitle")}
                 className="opacity-0 group-hover:opacity-100 p-1 rounded flex-shrink-0 focus-ring transition-opacity transition-colors duration-200 motion-reduce:transition-none hover:bg-destructive/10"
               >
-                <Trash2 className="w-3.5 h-3.5 text-muted-foreground transition-colors duration-200 motion-reduce:transition-none hover:text-destructive" />
+                <Trash2 className="size-3.5 text-muted-foreground transition-colors duration-200 motion-reduce:transition-none hover:text-destructive" />
               </button>
             )}
           </div>
@@ -221,7 +217,7 @@ export function FileQueueItem({
       </div>
 
       {file.status === 'error' && file.error && (
-        <p className="mt-2 text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded">
+        <p className="mt-2 text-xs text-destructive bg-destructive/10 px-2 py-1 rounded">
           {file.error}
         </p>
       )}

@@ -148,7 +148,7 @@ export function TaskCenter() {
                         {totalActive > 0 && (
                           <div className="space-y-2">
                             <div className="flex items-center justify-between px-1">
-                              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t('sectionActive')}</span>
+                              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t('sectionActive')}</span>
                               <span className="text-xs tabular-nums text-muted-foreground">{totalActive}</span>
                             </div>
                             <div className="space-y-2">
@@ -203,7 +203,7 @@ export function TaskCenter() {
                         {totalFailed > 0 && (
                           <div className="space-y-2">
                             <div className="flex items-center justify-between px-1">
-                              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t('sectionFailed')}</span>
+                              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t('sectionFailed')}</span>
                               <span className="text-xs tabular-nums text-muted-foreground">{totalFailed}</span>
                             </div>
                             <div className="space-y-2">

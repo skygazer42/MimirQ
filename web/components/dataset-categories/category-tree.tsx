@@ -242,7 +242,7 @@ export function DatasetCategoryTree({ selectedId, onSelect, className }: Readonl
     <div className={cn('space-y-2.5', className)}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 space-y-1">
-          <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             <FolderTree className="h-3.5 w-3.5 text-primary" />
             <span>目录</span>
           </div>

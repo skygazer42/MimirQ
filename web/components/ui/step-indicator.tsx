@@ -84,7 +84,7 @@ export function StepIndicator({
                   <div
                     className={cn(
                       'h-0.5 transition-colors duration-200 motion-reduce:transition-none',
-                      isCompleted ? 'bg-primary' : 'bg-border'
+                      isCompleted ? 'bg-primary/80' : 'bg-border'
                     )}
                   />
                 </div>

@@ -105,7 +105,7 @@ export default function AuditLogsPage() {
           title={t('title')}
           description={t('description')}
           icon={ShieldCheck}
-          iconColor="text-emerald-600 dark:text-emerald-400"
+          iconColor="text-success"
           size="7xl"
           actions={
             <div className="flex items-center gap-2">

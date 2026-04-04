@@ -746,7 +746,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2 text-[10px]">
                   {selectedDataset.pipeline.governance_enabled ? (
-                    <span className="px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-700 dark:text-sky-200 border border-sky-500/20">
+                    <span className="px-2 py-0.5 rounded-full bg-info/10 text-info border border-info/20">
                       {t('sidebar.dataset.badges.governanceOn')}
                     </span>
                   ) : (

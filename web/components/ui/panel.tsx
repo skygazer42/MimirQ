@@ -8,9 +8,9 @@ const panelVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-card/95",
+        default: "bg-card/95 transition-shadow duration-200 hover:shadow-md motion-reduce:transition-none",
         muted: "bg-muted/35",
-        glass: "border-sidebar-border/70 bg-sidebar/72 backdrop-blur-xl",
+        glass: "border-border/40 bg-card/50 backdrop-blur-xl",
       },
       padding: {
         none: "p-0",

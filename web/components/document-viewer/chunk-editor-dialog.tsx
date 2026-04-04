@@ -119,7 +119,7 @@ export function ChunkEditorDialog({
             disabled={submitting || !canEditChunks || !content.trim()}
             className="gap-2"
           >
-            {submitting ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : null}
+            {submitting ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : null}
             Save
           </Button>
           <Button
@@ -129,7 +129,7 @@ export function ChunkEditorDialog({
             disabled={submitting || !canEditChunks || !content.trim()}
             className="gap-2"
           >
-            {submitting ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : null}
+            {submitting ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : null}
             保存并重新嵌入
           </Button>
           <Button
@@ -138,7 +138,7 @@ export function ChunkEditorDialog({
             disabled={submitting || !canEditChunks || !content.trim() || !canRerunRetrieve}
             className="gap-2"
           >
-            {submitting ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : null}
+            {submitting ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : null}
             保存后复跑检索
           </Button>
         </DialogFooter>

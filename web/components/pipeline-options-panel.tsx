@@ -732,7 +732,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                 compact ? "text-[11px]" : "text-xs"
               )}>
                 <span className="text-muted-foreground">查看变更</span>
-                <ChevronDown className="h-3 w-3 text-muted-foreground transition-transform group-open/details:rotate-180" />
+                <ChevronDown className="size-3 text-muted-foreground transition-transform group-open/details:rotate-180" />
               </summary>
               <div className="mt-2 grid gap-1.5 px-2">
                 {pendingPresetDiff.map((d) => {
@@ -857,7 +857,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                   <details className="group/details">
                     <summary className={cn("flex items-center justify-between cursor-pointer select-none px-3 py-2 text-muted-foreground hover:text-foreground/80 hover:bg-muted transition-colors", descClasses)}>
                       <span>高级治理参数</span>
-                      <ChevronDown className="h-3 w-3 transition-transform group-open/details:rotate-180" />
+                      <ChevronDown className="size-3 transition-transform group-open/details:rotate-180" />
                     </summary>
                     <div className="p-3 pt-0 space-y-4 bg-muted/30">
                       <div className="space-y-2 pt-2">
@@ -1171,7 +1171,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
 
               {group.title === '知识图谱' && !kgEnabled && (
                 <div className={cn("px-3 py-2 bg-muted border-t border-border flex items-center gap-2 text-muted-foreground italic", descClasses)}>
-                  <Sparkles className="h-3 w-3" />
+                  <Sparkles className="size-3" />
                   需先开启 KG 抽取才能配置索引
                 </div>
               )}
@@ -1182,7 +1182,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
 
       {enabled && (
         <div className={cn("flex items-center justify-center gap-1.5 text-muted-foreground mt-2", descClasses)}>
-          <CheckCircle2 className="h-3 w-3" />
+          <CheckCircle2 className="size-3" />
           <span>自定义配置已生效</span>
         </div>
       )}

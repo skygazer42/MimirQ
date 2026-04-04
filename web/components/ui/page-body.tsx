@@ -11,7 +11,7 @@ export function PageBody({ children, className, compact = true }: Readonly<PageB
     <section
       data-page-scroll-container="true"
       className={cn(
-        "flex-1 min-h-0 overflow-y-auto overscroll-contain pb-8 no-scrollbar",
+        "flex-1 min-h-0 overflow-y-auto overscroll-contain pb-8 no-scrollbar scroll-fade-bottom",
         compact ? "px-4 md:px-6" : "px-6 md:px-8",
         className
       )}

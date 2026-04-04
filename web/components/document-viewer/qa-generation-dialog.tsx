@@ -117,7 +117,7 @@ export function QAGenerationDialog({
             disabled={!canEditChunks || qaSubmitting || !documentId}
             className="gap-2"
           >
-            {qaSubmitting ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Sparkles className="h-4 w-4" />}
+            {qaSubmitting ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : <Sparkles className="size-4" />}
             Generate
           </Button>
         </DialogFooter>

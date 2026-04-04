@@ -55,7 +55,7 @@ export function PageScaffold({
         <div className={cn(
           "flex-shrink-0 relative z-10",
           compact
-            ? "px-4 md:px-6 pt-3 md:pt-4 pb-2 md:pb-3"
+            ? "px-5 md:px-8 pt-5 md:pt-6 pb-3 md:pb-4"
             : "px-6 md:px-8 pt-6 md:pt-8 pb-5 md:pb-6"
         )}>
           <PageContainer size={size}>

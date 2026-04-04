@@ -101,7 +101,7 @@ export function ChunksToolbarPanel({
           disabled={!canEditChunks}
           title={canEditChunks ? "Add a new chunk" : "Document is processing; editing disabled"}
         >
-          <Plus className="h-4 w-4" />
+          <Plus className="size-4" />
           Add chunk
         </Button>
         <Button
@@ -113,7 +113,7 @@ export function ChunksToolbarPanel({
           disabled={!canEditChunks}
           title={canEditChunks ? "Generate FAQ-style Q&A chunks" : "Document is processing; editing disabled"}
         >
-          <Sparkles className="h-4 w-4" />
+          <Sparkles className="size-4" />
           Q&A
         </Button>
       </div>
@@ -142,7 +142,7 @@ export function ChunksToolbarPanel({
           <div className="mt-3">
             {highlightChunkLoading ? (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
                 <span>加载命中切片…</span>
               </div>
             ) : highlightChunk ? (

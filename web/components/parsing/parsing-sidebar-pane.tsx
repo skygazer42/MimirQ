@@ -276,7 +276,7 @@ export function ParsingSidebarPane({
               <Loader2 className="h-3 w-3" />
               {t('sidebar.parsingCount', { count: parsingCount })}
             </span>
-            <span className="flex items-center gap-1 text-green-700 dark:text-green-400">
+            <span className="flex items-center gap-1 text-success">
               <Check className="h-3 w-3" />
               {t('sidebar.completedCount', { count: parsedCount })}
             </span>

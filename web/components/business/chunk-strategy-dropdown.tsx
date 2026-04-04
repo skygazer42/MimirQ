@@ -104,7 +104,7 @@ export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<C
         )}
       >
         <div className={cn('p-1.5 rounded-lg', selectedColor.bg)}>
-          <SelectedIcon className={cn('w-4 h-4', selectedColor.text)} />
+          <SelectedIcon className={cn('size-4', selectedColor.text)} />
         </div>
         <div className="flex-1 text-left min-w-0">
           <div className="flex items-center gap-2">
@@ -169,7 +169,7 @@ export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<C
                   )}
                 >
                   <div className={cn('p-1.5 rounded-lg', color.bg)}>
-                    <Icon className={cn('w-4 h-4', color.text)} />
+                    <Icon className={cn('size-4', color.text)} />
                   </div>
                   <div className="flex-1 text-left min-w-0">
                     <div className="flex items-center gap-2">
@@ -205,7 +205,7 @@ export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<C
                     <p className="text-xs text-muted-foreground truncate">{option.description}</p>
                   </div>
                   {isSelected && (
-                    <Check className="w-4 h-4 text-sky-600 dark:text-sky-300 flex-shrink-0" />
+                    <Check className="size-4 text-sky-600 dark:text-sky-300 flex-shrink-0" />
                   )}
                 </button>
               )

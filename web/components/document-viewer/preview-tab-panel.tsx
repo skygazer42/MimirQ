@@ -37,7 +37,7 @@ export function PreviewTabPanel({
   if (isLoading && !doc) {
     return (
       <div className="flex h-full items-center justify-center text-muted-foreground">
-        <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none" />
+        <Loader2 className="size-8 animate-spin motion-reduce:animate-none" />
       </div>
     )
   }
@@ -83,7 +83,7 @@ export function PreviewTabPanel({
   if (canInlinePreview && rawFileUrl) {
     return (
       <div className="flex h-full items-center justify-center text-muted-foreground">
-        <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none" />
+        <Loader2 className="size-8 animate-spin motion-reduce:animate-none" />
       </div>
     )
   }
@@ -93,7 +93,7 @@ export function PreviewTabPanel({
       <div className="w-full max-w-md rounded-xl border border-border bg-background p-6 shadow-sm">
         <div className="flex items-start gap-3">
           <div className="rounded-lg bg-primary/10 p-2">
-            <FileText className="h-5 w-5 text-primary" />
+            <FileText className="size-5 text-primary" />
           </div>
           <div className="flex-1">
             <h4 className="text-sm font-semibold">暂不支持内嵌预览</h4>

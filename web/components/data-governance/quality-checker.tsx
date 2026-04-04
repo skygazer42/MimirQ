@@ -342,7 +342,7 @@ export function QualityChecker({
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <ScanLine className="h-5 w-5 text-info" />
+            <ScanLine className="size-5 text-info" />
             <h3 className="font-bold text-foreground">{t("header.title")}</h3>
           </div>
           <div className="flex items-center gap-2">
@@ -361,7 +361,7 @@ export function QualityChecker({
                 </>
               ) : (
                 <>
-                  <Play className="h-4 w-4" />
+                  <Play className="size-4" />
                   {t("actions.scan")}
                 </>
               )}
@@ -431,7 +431,7 @@ export function QualityChecker({
               >
                 <div className="flex items-center gap-3">
                   <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted">
-                    <Icon className="h-4 w-4 text-muted-foreground" />
+                    <Icon className="size-4 text-muted-foreground" />
                   </div>
                   <span className="text-sm font-medium text-foreground/80">{item.label}</span>
                   {item.id === 'issues' && issueCount > 0 && (
@@ -441,9 +441,9 @@ export function QualityChecker({
                   )}
                 </div>
                 {isExpanded ? (
-                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  <ChevronDown className="size-4 text-muted-foreground" />
                 ) : (
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  <ChevronRight className="size-4 text-muted-foreground" />
                 )}
               </button>
 
@@ -497,7 +497,7 @@ export function QualityChecker({
                     <div className="space-y-2">
                       {issues.length === 0 ? (
                         <div className="flex items-center gap-2 py-2 text-sm text-success">
-                          <CheckCircle className="h-4 w-4" />
+                          <CheckCircle className="size-4" />
                           {t('issues.none')}
                         </div>
                       ) : (
@@ -512,12 +512,12 @@ export function QualityChecker({
                             )}
                           >
                             {issue.type === 'error' && (
-                              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-destructive" />
+                              <AlertTriangle className="mt-0.5 size-4 flex-shrink-0 text-destructive" />
                             )}
                             {issue.type === 'warning' && (
-                              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-warning" />
+                              <AlertTriangle className="mt-0.5 size-4 flex-shrink-0 text-warning" />
                             )}
-                            {issue.type === 'info' && <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-info" />}
+                            {issue.type === 'info' && <Info className="mt-0.5 size-4 flex-shrink-0 text-info" />}
                             <span
                               className={cn(
                                 'text-sm',

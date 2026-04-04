@@ -81,14 +81,14 @@ export function Sidebar({ variant = 'app' }: SidebarProps = {}) {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'completed':
-        return <CheckCircle2 className="h-4 w-4 text-success" />
+        return <CheckCircle2 className="size-4 text-success" />
       case 'failed':
-        return <AlertCircle className="h-4 w-4 text-destructive" />
+        return <AlertCircle className="size-4 text-destructive" />
       case 'processing':
       case 'pending':
-        return <Loader2 className="h-4 w-4 text-primary animate-spin motion-reduce:animate-none" />
+        return <Loader2 className="size-4 text-primary animate-spin motion-reduce:animate-none" />
       default:
-        return <Clock className="h-4 w-4 text-muted-foreground" />
+        return <Clock className="size-4 text-muted-foreground" />
     }
   }
 
@@ -104,7 +104,7 @@ export function Sidebar({ variant = 'app' }: SidebarProps = {}) {
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
             <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center">
-              <FileText className="h-4 w-4 text-primary" />
+              <FileText className="size-4 text-primary" />
             </div>
             <h2 className="text-lg font-semibold text-foreground/90">知识库</h2>
           </div>
@@ -115,7 +115,7 @@ export function Sidebar({ variant = 'app' }: SidebarProps = {}) {
 
         <div className="space-y-3">
           <div className="relative group">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground group-focus-within:text-primary transition-colors" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground group-focus-within:text-primary transition-colors" />
             <input
               type="text"
               value={term}
@@ -129,7 +129,7 @@ export function Sidebar({ variant = 'app' }: SidebarProps = {}) {
                 aria-label="清除搜索"
                 className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-secondary rounded-md focus-ring"
               >
-                <X className="h-3 w-3 text-muted-foreground" />
+                <X className="size-3 text-muted-foreground" />
               </button>
             )}
           </div>
@@ -139,7 +139,7 @@ export function Sidebar({ variant = 'app' }: SidebarProps = {}) {
               htmlFor="file-upload"
               className="group relative flex items-center justify-center gap-2 w-full px-4 py-3 bg-primary text-primary-foreground rounded-xl border border-primary/30 shadow-sm hover:bg-primary/90 transition-colors duration-200 cursor-pointer"
             >
-              <Upload className="h-4 w-4" />
+              <Upload className="size-4" />
               <span className="text-sm font-medium">上传文档</span>
               <input
                 id="file-upload"
@@ -167,7 +167,7 @@ export function Sidebar({ variant = 'app' }: SidebarProps = {}) {
               aria-label="清除已选"
               className="p-1 hover:bg-background rounded-sm transition-colors"
             >
-              <X className="h-3 w-3 text-muted-foreground" />
+              <X className="size-3 text-muted-foreground" />
             </button>
           </div>
         )}
@@ -182,7 +182,7 @@ export function Sidebar({ variant = 'app' }: SidebarProps = {}) {
         {(() => {
     if (isLoading && documents.length === 0) {
         return (<div className="flex flex-col items-center justify-center h-40 gap-3">
-            <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none text-primary/30"/>
+            <Loader2 className="size-8 animate-spin motion-reduce:animate-none text-primary/30"/>
             <p className="text-sm text-muted-foreground animate-pulse motion-reduce:animate-none">加载中...</p>
           </div>);
     }
@@ -271,7 +271,7 @@ function DocumentCard({
           "p-2 rounded-lg transition-colors flex items-center justify-center",
           isSelected ? "bg-primary/10 text-primary" : "bg-secondary/70 text-muted-foreground group-hover:text-foreground"
         )}>
-          <FileTypeIcon type={document.file_type} className="h-5 w-5" />
+          <FileTypeIcon type={document.file_type} className="size-5" />
         </div>
 
         {/* 文档信息 */}

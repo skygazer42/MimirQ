@@ -551,7 +551,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
       <Panel padding="none" className={cn("rounded-2xl p-8 text-center relative overflow-hidden", className)}>
         <div className="mb-8">
           <div className="w-16 h-16 bg-primary/10 text-primary rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-soft">
-            <Sparkles className="w-8 h-8" />
+            <Sparkles className="size-8" />
           </div>
           <h3 className="text-xl font-bold text-foreground text-balance">语义检索测试</h3>
           <p className="text-muted-foreground mt-2 text-pretty">
@@ -566,7 +566,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
               "focus-within:border-primary/60 focus-within:ring-4 focus-within:ring-ring/15 focus-within:shadow-strong/10"
             )}
           >
-            <Search className="w-5 h-5 text-muted-foreground ml-3" />
+            <Search className="size-5 text-muted-foreground ml-3" />
             <input
               type="text"
               value={searchQuery}
@@ -582,7 +582,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
             >
               {isSearching ? (
                 <span className="inline-flex items-center gap-2">
-                  <Loader2 className="w-5 h-5 animate-spin motion-reduce:animate-none" />
+                  <Loader2 className="size-5 animate-spin motion-reduce:animate-none" />
                   检索中…
                 </span>
               ) : (
@@ -788,7 +788,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                               })()
                             ) : null}
                             <span className="inline-flex items-center gap-1 text-muted-foreground min-w-0">
-                              <FileIcon className="w-3 h-3" />
+                              <FileIcon className="size-3" />
                               <span className="truncate max-w-[180px]" title={docName}>
                                 {docName || 'Unknown'}
                               </span>
@@ -830,7 +830,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                               onFocus={() => handlePrefetchHitDocument(hit)}
                               disabled={!documentId}
                             >
-                              <ExternalLink className="w-4 h-4" />
+                              <ExternalLink className="size-4" />
                             </IconButton>
                             <IconButton
                               label="复制 chunk_id"
@@ -839,7 +839,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                               onClick={() => detachPromise(copyToClipboard(chunkId, 'chunk_id'))}
                               disabled={!chunkId}
                             >
-                              <Copy className="w-4 h-4" />
+                              <Copy className="size-4" />
                             </IconButton>
                             <Button
                               type="button"
@@ -860,7 +860,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
 
             <details className="px-2">
               <summary className="cursor-pointer select-none text-xs font-semibold text-foreground inline-flex items-center gap-2">
-                <Zap className="h-4 w-4 text-primary" />
+                <Zap className="size-4 text-primary" />
                 检索 Debug（RRF / trimming / per-query metrics）
               </summary>
               <div className="mt-3 rounded-xl border border-border/60 bg-background/60 p-4 space-y-3">
@@ -1215,7 +1215,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                       onClick={() => detachPromise(copyToClipboard(String(activeHit.chunk_id || ''), 'chunk_id'))}
                       disabled={!activeHit.chunk_id}
                     >
-                      <Copy className="h-4 w-4" />
+                      <Copy className="size-4" />
                       复制 chunk_id
                     </Button>
                     <Button
@@ -1225,7 +1225,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                       onClick={() => detachPromise(copyToClipboard(String(activeHit.doc_pipeline_key || ''), 'doc_pipeline_key'))}
                       disabled={!activeHit.doc_pipeline_key}
                     >
-                      <Copy className="h-4 w-4" />
+                      <Copy className="size-4" />
                       复制 doc_pipeline_key
                     </Button>
                     <Button
@@ -1235,7 +1235,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                       onClick={() => detachPromise(copyToClipboard((activeMatchedTerms || []).join(' '), 'matched_terms'))}
                       disabled={!activeMatchedTerms.length}
                     >
-                      <Copy className="h-4 w-4" />
+                      <Copy className="size-4" />
                       复制 matched_terms
                     </Button>
                   </div>
@@ -1329,7 +1329,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                             ))
                           }
                         >
-                          <Copy className="h-4 w-4" />
+                          <Copy className="size-4" />
                           复制 kg_path
                         </Button>
                       </div>
@@ -1367,7 +1367,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                             ))
                           }
                         >
-                          <Copy className="h-4 w-4" />
+                          <Copy className="size-4" />
                           复制 provenance
                         </Button>
                       </div>

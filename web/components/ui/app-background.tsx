@@ -10,8 +10,8 @@ export function AppBackground({ className }: Readonly<AppBackgroundProps>) {
       <div className="absolute inset-0 bg-background" />
 
       {/* Subtle color accents in corners break the monotone feel */}
-      <div className="absolute -top-[30%] -right-[20%] h-[600px] w-[600px] rounded-full bg-primary/[0.03] blur-3xl dark:bg-primary/[0.04]" />
-      <div className="absolute -bottom-[20%] -left-[15%] h-[500px] w-[500px] rounded-full bg-accent/[0.03] blur-3xl dark:bg-accent/[0.05]" />
+      <div className="absolute -top-[30%] -right-[20%] h-[800px] w-[800px] rounded-full bg-primary/[0.02] blur-[128px]" />
+      <div className="absolute -bottom-[20%] -left-[15%] h-[700px] w-[700px] rounded-full bg-accent/[0.02] blur-[128px]" />
 
       {/* Lightweight "instrument paper" grid; token-driven. */}
       <svg
@@ -19,9 +19,9 @@ export function AppBackground({ className }: Readonly<AppBackgroundProps>) {
         xmlns="http://www.w3.org/2000/svg"
       >
         <defs>
-          <pattern id="mimirq-grid" width="48" height="48" patternUnits="userSpaceOnUse">
-            <path d="M48 0H0V48" fill="none" className="stroke-border/60" strokeWidth="1" />
-            <circle cx="24" cy="24" r="1" className="fill-border/70" />
+          <pattern id="mimirq-grid" width="64" height="64" patternUnits="userSpaceOnUse">
+            <path d="M64 0H0V64" fill="none" className="stroke-border/60" strokeWidth="1" />
+            <circle cx="32" cy="32" r="0.5" className="fill-border/70" />
           </pattern>
         </defs>
         <rect width="100%" height="100%" fill="url(#mimirq-grid)" />

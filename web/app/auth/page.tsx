@@ -107,11 +107,11 @@ export default function AuthPage() {
                                       >
                                         <span className="inline-flex items-center">
                                           {working ? (
-                                            <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
+                                            <Loader2 className="mr-2 size-4 animate-spin motion-reduce:animate-none" />
                                           ) : null}
                                           {working ? 'Signing in…' : label}
                                         </span>
-                                        <ArrowRight className="ml-2 h-4 w-4 opacity-70" aria-hidden="true" />
+                                        <ArrowRight className="ml-2 size-4 opacity-70" aria-hidden="true" />
                                       </Button>
                                     )
                                   })}
@@ -126,13 +126,13 @@ export default function AuthPage() {
                                 >
                                   {isSsoSubmitting ? (
                                     <>
-                                      <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
+                                      <Loader2 className="mr-2 size-4 animate-spin motion-reduce:animate-none" />
                                       Signing in...
                                     </>
                                   ) : (
                                     <>
                                       {oidcProviders[0]?.name ? `Continue with ${oidcProviders[0]?.name}` : 'Continue with SSO'}
-                                      <ArrowRight className="ml-2 h-4 w-4 opacity-70" aria-hidden="true" />
+                                      <ArrowRight className="ml-2 size-4 opacity-70" aria-hidden="true" />
                                     </>
                                   )}
                                 </Button>
@@ -181,7 +181,7 @@ export default function AuthPage() {
                                 <div className="space-y-2">
                                     <Label htmlFor="email" className="text-xs text-muted-foreground">邮箱地址</Label>
                                     <div className="relative group">
-                                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors motion-reduce:transition-none" />
+                                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground group-focus-within:text-primary transition-colors motion-reduce:transition-none" />
                                         <Input
                                             id="email"
                                             type="email"
@@ -196,7 +196,7 @@ export default function AuthPage() {
                                 <div className="space-y-2">
                                     <Label htmlFor="username" className="text-xs text-muted-foreground">用户名</Label>
                                     <div className="relative group">
-                                        <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors motion-reduce:transition-none" />
+                                        <User className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground group-focus-within:text-primary transition-colors motion-reduce:transition-none" />
                                         <Input
                                             id="username"
                                             placeholder="设置用户名"
@@ -214,7 +214,7 @@ export default function AuthPage() {
                             <div className="space-y-2 motion-safe:animate-fade-in">
                                 <Label htmlFor="identifier" className="text-xs text-muted-foreground">账号</Label>
                                 <div className="relative group">
-                                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors motion-reduce:transition-none" />
+                                    <User className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground group-focus-within:text-primary transition-colors motion-reduce:transition-none" />
                                     <Input
                                         id="identifier"
                                         placeholder="输入邮箱或用户名"
@@ -232,7 +232,7 @@ export default function AuthPage() {
                                 {mode === 'login' ? '密码' : '设置密码'}
                             </Label>
                             <div className="relative group">
-                                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors motion-reduce:transition-none" />
+                                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground group-focus-within:text-primary transition-colors motion-reduce:transition-none" />
                                 <Input
                                     id="password"
                                     type="password"
@@ -249,7 +249,7 @@ export default function AuthPage() {
                             <div className="space-y-2 motion-safe:animate-fade-in">
                                 <Label htmlFor="confirmPassword" className="text-xs text-muted-foreground">确认密码</Label>
                                 <div className="relative group">
-                                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors motion-reduce:transition-none" />
+                                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground group-focus-within:text-primary transition-colors motion-reduce:transition-none" />
                                     <Input
                                         id="confirmPassword"
                                         type="password"
@@ -296,13 +296,13 @@ export default function AuthPage() {
                         >
 	                            {isSubmitting ? (
 	                                <>
-	                                    <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
+	                                    <Loader2 className="mr-2 size-4 animate-spin motion-reduce:animate-none" />
 	                                    处理中...
 	                                </>
 	                            ) : (
                                 <>
                                     {mode === 'login' ? '登 录' : '创建账户'}
-                                    <ArrowRight className="ml-2 h-4 w-4 opacity-70" />
+                                    <ArrowRight className="ml-2 size-4 opacity-70" />
                                 </>
                             )}
                         </Button>

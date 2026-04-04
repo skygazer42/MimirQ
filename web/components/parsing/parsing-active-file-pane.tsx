@@ -79,12 +79,12 @@ function readBackendName(value: unknown): string | null {
 
 function getQualityBadgeClass(qualityGrade: string): string {
   if (qualityGrade === 'fail') {
-    return 'border-red-500/20 bg-red-500/10 text-red-700 dark:text-red-300'
+    return 'border-destructive/20 bg-destructive/10 text-destructive'
   }
   if (qualityGrade === 'warn') {
-    return 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+    return 'border-warning/20 bg-warning/10 text-warning'
   }
-  return 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+  return 'border-success/20 bg-success/10 text-success'
 }
 
 function buildQualityEvidenceSummary(qualityGate: unknown, pdfQuality: unknown): string {
@@ -421,7 +421,7 @@ export function ParsingActiveFilePane({
                     </Button>
 
                     <Button variant="outline" size="sm" onClick={onCopyMarkdown} className="gap-1.5">
-                      {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                      {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
                       {copied ? '已复制' : '复制'}
                     </Button>
 
@@ -503,10 +503,10 @@ export function ParsingActiveFilePane({
           {activeFile.status === 'error' ? (
             <div className="flex h-full items-center justify-center">
               <div className="max-w-md text-center">
-                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-xl bg-red-100 dark:bg-red-900/30">
-                  <FileText className="h-8 w-8 text-red-600 dark:text-red-400" />
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-xl bg-destructive/10">
+                  <FileText className="h-8 w-8 text-destructive" />
                 </div>
-                <p className="mb-2 font-medium text-red-700 dark:text-red-400">解析失败</p>
+                <p className="mb-2 font-medium text-destructive">解析失败</p>
                 <p className="text-sm text-muted-foreground dark:text-muted-foreground">{activeFile.error}</p>
 
                 {Array.isArray(activeFile.parseDiagnostics?.suggested_backends) &&

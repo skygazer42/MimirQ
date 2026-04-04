@@ -126,7 +126,7 @@ export default function DocumentHealthPage({ documentId }: Readonly<{ documentId
               className="rounded-xl"
               onClick={() => router.push('/knowledge')}
             >
-              <ArrowLeft className="mr-2 h-4 w-4" />
+              <ArrowLeft className="mr-2 size-4" />
               返回知识库
             </Button>
             <Button
@@ -137,7 +137,7 @@ export default function DocumentHealthPage({ documentId }: Readonly<{ documentId
               disabled={loading}
               onClick={() => detachPromise(load())}
             >
-              <RefreshCw className={cn('mr-2 h-4 w-4', loading ? 'animate-spin motion-reduce:animate-none' : '')} />
+              <RefreshCw className={cn('mr-2 size-4', loading ? 'animate-spin motion-reduce:animate-none' : '')} />
               刷新
             </Button>
           </div>

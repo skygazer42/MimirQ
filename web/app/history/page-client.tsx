@@ -313,10 +313,10 @@ function HistoryPageContent({
         }
       >
         <div className="h-full p-3 md:p-4">
-          <section className="relative flex h-full min-h-0 overflow-hidden rounded-[2rem] border border-border/70 bg-gradient-to-br from-background via-background to-muted/20 shadow-soft">
+          <section className="relative flex h-full min-h-0 overflow-hidden rounded-[2rem] border border-border/70 bg-background shadow-soft">
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-primary/[0.07] via-primary/[0.02] to-transparent"
+              className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-primary/[0.04]"
             />
 
             {/* 侧边栏 - 对话列表 */}
@@ -388,7 +388,7 @@ function HistoryPageContent({
                               <div className={cn("h-px flex-1", groupTone.lineClass)} />
                               <div className={cn("inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] shadow-sm", groupTone.chipClass)}>
                                 <span>{group}</span>
-                                <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-semibold tracking-normal", groupTone.countClass)}>
+                                <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-semibold", groupTone.countClass)}>
                                   {convs.length}
                                 </span>
                               </div>
@@ -490,7 +490,7 @@ function HistoryPageContent({
                               </Button>
                             </div>) : null}
                           {groupedMessages.map((group) => (<section key={group.key} className="relative overflow-hidden rounded-[1.9rem] border border-border/70 bg-card/55 p-4 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/45 md:p-5">
-                              <div aria-hidden="true" className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-primary/35 to-transparent" />
+                              <div aria-hidden="true" className="absolute inset-x-8 top-0 h-px bg-primary/35 opacity-70" />
                               <div className="mb-5 flex items-center gap-3">
                                 <div className="h-px flex-1 bg-border/60" />
                                 <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/90 px-3 py-1.5 text-[11px] font-semibold text-foreground shadow-sm">
@@ -533,11 +533,11 @@ function HistoryPageContent({
                       >
                         {t('startNewConversation')}
                       </Button>
-                      <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700 shadow-sm dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
+                      <div className="inline-flex items-center gap-2 rounded-full border border-warning/20 bg-warning/10 px-3 py-2 text-xs font-medium text-warning shadow-sm">
                         <BarChart3 className="h-3.5 w-3.5" />
                         {t('evaluateConversation')}
                       </div>
-                      <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-medium text-sky-700 shadow-sm dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-300">
+                      <div className="inline-flex items-center gap-2 rounded-full border border-info/20 bg-info/10 px-3 py-2 text-xs font-medium text-info shadow-sm">
                         <Route className="h-3.5 w-3.5" />
                         {t('ragTrace')}
                       </div>
@@ -593,8 +593,8 @@ function ConversationItem({
       <div
         aria-hidden="true"
         className={cn(
-          'absolute inset-x-4 top-0 h-px bg-gradient-to-r from-transparent opacity-0 transition-opacity duration-200',
-          isSelected ? 'via-sky-300/55 to-transparent opacity-100' : 'via-sky-200/65 to-transparent opacity-100 dark:via-sky-900/70'
+          'absolute inset-x-4 top-0 h-px opacity-0 transition-opacity duration-200',
+          isSelected ? 'bg-sky-300/55 opacity-100' : 'bg-sky-200/65 opacity-100 dark:bg-sky-900/70'
         )}
       />
       <div className="flex items-start justify-between gap-2">
@@ -703,14 +703,14 @@ function HistoryMessageEntry({
                 )}
               />
               {!isLast ? (
-                <span className="mt-2 w-px flex-1 bg-gradient-to-b from-border/80 via-border/60 to-transparent" />
+                <span className="mt-2 w-px flex-1 bg-border/70" />
               ) : null}
             </div>
           </div>
         </div>
 
         <div className="relative overflow-hidden rounded-[1.75rem] border border-border/70 bg-background/90 p-2 shadow-sm transition-all duration-200 group-hover/entry:border-primary/20 group-hover/entry:shadow-md">
-          <div aria-hidden="true" className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-primary/35 to-transparent" />
+          <div aria-hidden="true" className="absolute inset-x-6 top-0 h-px bg-primary/35 opacity-75" />
           <div className="mb-2 flex items-center justify-between gap-2 px-4 pt-3 md:hidden">
             <HistoryMessageRoleBadge role={message.role} />
             <span className="text-[11px] font-medium tabular-nums text-muted-foreground">
@@ -729,7 +729,7 @@ function HistoryMessageEntry({
       {!isLast ? (
         <div
           aria-hidden="true"
-          className="h-px bg-gradient-to-r from-transparent via-border/70 to-transparent md:ml-[7.25rem]"
+          className="h-px bg-border/70 opacity-80 md:ml-[7.25rem]"
         />
       ) : null}
     </div>
@@ -802,9 +802,9 @@ function getConversationGroupTone(
   }
 
   return {
-    chipClass: 'border-slate-200/90 bg-slate-50/95 text-slate-600 dark:border-slate-700/70 dark:bg-slate-900/60 dark:text-slate-300',
-    countClass: 'bg-slate-200/80 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
-    lineClass: 'bg-slate-200/80 dark:bg-slate-700/70',
+    chipClass: 'border-border/60 bg-muted/60 text-muted-foreground',
+    countClass: 'bg-muted text-muted-foreground',
+    lineClass: 'bg-border',
   }
 }
 

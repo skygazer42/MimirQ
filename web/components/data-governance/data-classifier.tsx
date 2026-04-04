@@ -247,7 +247,7 @@ export function DataClassifier({
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <FolderTree className="h-5 w-5 text-primary" />
+          <FolderTree className="size-5 text-primary" />
           <h3 className="font-bold text-foreground">{t('header.title')}</h3>
         </div>
         <Button
@@ -290,12 +290,12 @@ export function DataClassifier({
                 )}
               >
                 <div className={cn('flex h-8 w-8 items-center justify-center rounded-lg', tone.iconWrap)}>
-                  <Icon className={cn('h-4 w-4', tone.icon)} />
+                  <Icon className={cn('size-4', tone.icon)} />
                 </div>
                 <span className={cn('text-sm font-medium', isSelected ? tone.text : 'text-foreground/80')}>
                   {category.label}
                 </span>
-                {isSelected && <Check className={cn('ml-auto h-4 w-4', tone.icon)} />}
+                {isSelected && <Check className={cn('ml-auto size-4', tone.icon)} />}
               </button>
             )
           })}
@@ -312,7 +312,7 @@ export function DataClassifier({
                 key={tag}
                 className="inline-flex items-center gap-1 rounded-lg border border-border/60 bg-secondary/60 px-2.5 py-1 text-sm text-foreground"
               >
-                <Tag className="h-3 w-3" />
+                <Tag className="size-3" />
                 {tag}
                 <button
                   type="button"
@@ -320,7 +320,7 @@ export function DataClassifier({
                   aria-label={t('a11y.removeTagWithValue', { tag })}
                   className="ml-1 text-muted-foreground hover:text-destructive"
                 >
-                  <X className="h-3 w-3" aria-hidden="true" />
+                  <X className="size-3" aria-hidden="true" />
                 </button>
               </span>
             ))}
@@ -347,7 +347,7 @@ export function DataClassifier({
             size="sm"
             aria-label={newTag ? t('a11y.addTagWithValue', { tag: newTag }) : t('a11y.addTag')}
           >
-            <Plus className="h-4 w-4" aria-hidden="true" />
+            <Plus className="size-4" aria-hidden="true" />
           </Button>
         </div>
 
@@ -376,7 +376,7 @@ export function DataClassifier({
                       getSuggestionChipClassName(isAdded, isRecommended)
                     )}
                   >
-                    {isRecommended && !isAdded && <Sparkles className="h-3 w-3" />}
+                    {isRecommended && !isAdded && <Sparkles className="size-3" />}
                     {tag}
                   </button>
                 )
@@ -399,7 +399,7 @@ export function DataClassifier({
       {(selectedCategory || tags.length > 0) && (
         <div className="rounded-xl border border-border/60 bg-muted/40 p-4">
           <div className="mb-3 flex items-center gap-2">
-            <Check className="h-4 w-4 text-success" />
+            <Check className="size-4 text-success" />
             <span className="text-sm font-medium text-foreground">{t('summary.title')}</span>
           </div>
           <div className="space-y-1 text-sm text-foreground/80">

@@ -504,7 +504,7 @@ export function KnowledgeJiraProjectDialog({
               Cancel
             </Button>
             <Button onClick={handleSubmit} disabled={submitting} className="gap-2">
-              {submitting ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : null}
+              {submitting ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : null}
               Start Jira Sync
             </Button>
           </div>
