@@ -219,7 +219,7 @@ function QuarantineListPanel({
                     onPreview(doc.id)
                   }}
                 >
-                  <Eye className="mr-1 h-4 w-4" />
+                  <Eye className="mr-1 size-4" />
                   预览
                 </Button>
                 <Button
@@ -233,7 +233,7 @@ function QuarantineListPanel({
                     onTune(doc)
                   }}
                 >
-                  <Settings2 className="mr-1 h-4 w-4" />
+                  <Settings2 className="mr-1 size-4" />
                   调参
                 </Button>
               </div>
@@ -341,7 +341,7 @@ function QuarantineDetailPanel({
           disabled={acting?.id === selected.id}
           onClick={() => onTune(selected)}
         >
-          <Settings2 className="mr-1 h-4 w-4" />
+          <Settings2 className="mr-1 size-4" />
           调参回放
         </Button>
         <Button
@@ -351,7 +351,7 @@ function QuarantineDetailPanel({
           disabled={acting?.id === selected.id}
           onClick={() => onPreview(selected.id)}
         >
-          <Eye className="mr-1 h-4 w-4" />
+          <Eye className="mr-1 size-4" />
           预览原文
         </Button>
         <Button
@@ -360,7 +360,7 @@ function QuarantineDetailPanel({
           className="rounded-xl"
           onClick={() => onShowDetails(selected.id)}
         >
-          <Settings2 className="mr-1 h-4 w-4" />
+          <Settings2 className="mr-1 size-4" />
           任务详情
         </Button>
         <Button
@@ -392,7 +392,7 @@ function QuarantineDetailPanel({
             className="rounded-xl"
             disabled={acting?.id === selected.id}
           >
-            <Trash2 className="mr-1 h-4 w-4" />
+            <Trash2 className="mr-1 size-4" />
             删除
           </Button>
         </ConfirmDialog>
@@ -635,7 +635,7 @@ export default function QuarantineQueuePage() {
           <div className="space-y-3">
 	            <div className="flex flex-col lg:flex-row lg:items-center gap-3 bg-background/70 border border-border/60 shadow-soft rounded-2xl p-3 transition-colors transition-shadow duration-200 motion-reduce:transition-none hover:shadow-strong hover:border-primary/20">
 	              <div className="relative flex-1 group">
-	                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-hover:text-sky-500 dark:group-hover:text-sky-400 transition-colors" />
+	                <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground group-hover:text-sky-500 dark:group-hover:text-sky-400 transition-colors" />
 	                <Input
 	                  value={search}
                   onChange={(e) => setSearch(e.target.value)}
@@ -728,7 +728,7 @@ export default function QuarantineQueuePage() {
         <DialogContent className="sm:max-w-[720px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Settings2 className="h-5 w-5 text-amber-600" />
+              <Settings2 className="size-5 text-amber-600" />
               调参回放
             </DialogTitle>
             <DialogDescription>
@@ -888,7 +888,7 @@ export default function QuarantineQueuePage() {
               onClick={() => saveTune({ retryAfterSave: false })}
               disabled={acting?.action === 'tune'}
             >
-              <Settings2 className={cn('h-4 w-4 mr-1', acting?.action === 'tune' ? 'animate-spin motion-reduce:animate-none' : '')} />
+              <Settings2 className={cn('size-4 mr-1', acting?.action === 'tune' ? 'animate-spin motion-reduce:animate-none' : '')} />
               保存配置
             </Button>
 	            <Button
@@ -898,7 +898,7 @@ export default function QuarantineQueuePage() {
 	              onClick={() => saveTune({ retryAfterSave: true })}
 	              disabled={acting?.action === 'tune'}
 	            >
-              <RotateCcw className={cn('h-4 w-4 mr-1', acting?.action === 'tune' ? 'animate-spin motion-reduce:animate-none' : '')} />
+              <RotateCcw className={cn('size-4 mr-1', acting?.action === 'tune' ? 'animate-spin motion-reduce:animate-none' : '')} />
               保存并重试
             </Button>
           </DialogFooter>

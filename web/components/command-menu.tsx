@@ -646,7 +646,7 @@ export function CommandMenu() {
     <CommandDialog open={open} onOpenChange={setOpen}>
       <div
         id="mimirq-command-menu"
-        className="flex items-center justify-between border-b border-border/50 bg-muted/50 px-3 py-2 text-[11px] text-muted-foreground"
+        className="flex items-center justify-between border-b border-border/50 bg-card/95 px-3 py-2 text-[11px] text-muted-foreground"
       >
         <span className="font-medium text-foreground/80">{t("header.title")}</span>
         <span>{t("header.hint")}</span>
@@ -664,11 +664,11 @@ export function CommandMenu() {
                   <CommandItem
                     key={command.id}
                     value={`${command.shortcut} ${command.label} ${command.keywords.join(" ")}`}
-                    className="gap-3 rounded-xl px-3 py-3"
+                    className="gap-3 rounded-lg px-3 py-2.5"
                     onSelect={() => runCommand(command.run)}
                   >
                     <div className="flex size-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                      <Icon className="h-4 w-4" />
+                      <Icon className="size-4" />
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-medium text-foreground">{command.label}</div>
@@ -686,7 +686,7 @@ export function CommandMenu() {
         <CommandGroup heading={t("groups.keyboardWorkflow")}>
           {keyChordCommands.map((command) => (
             <CommandItem key={command.key} onSelect={() => runCommand(command.run)}>
-              <Workflow className="mr-2 h-4 w-4" />
+              <Workflow className="mr-2 size-4" />
               <div className="flex min-w-0 flex-1 flex-col">
                 <span>{command.label}</span>
                 <span className="truncate text-xs text-muted-foreground">{command.description}</span>
@@ -701,7 +701,7 @@ export function CommandMenu() {
         <CommandGroup heading={t('groups.viewerShortcuts')}>
           {viewerShortcutDocs.map((shortcut) => (
             <CommandItem key={shortcut.key} value={`viewer-shortcut ${shortcut.key} ${shortcut.label}`} disabled>
-              <FileText className="mr-2 h-4 w-4" />
+              <FileText className="mr-2 size-4" />
               <div className="flex min-w-0 flex-1 flex-col">
                 <span>{shortcut.label}</span>
                 <span className="truncate text-xs text-muted-foreground">{shortcut.description}</span>
@@ -716,7 +716,7 @@ export function CommandMenu() {
         <CommandGroup heading={t('groups.shortcutMap')}>
           {shortcutGuideItems.map((item) => (
             <CommandItem key={`${item.shortcut}:${item.label}`} disabled value={`${item.shortcut} ${item.label}`}>
-              <Keyboard className="mr-2 h-4 w-4" />
+              <Keyboard className="mr-2 size-4" />
               <div className="flex min-w-0 flex-1 flex-col">
                 <span>{item.label}</span>
                 <span className="truncate text-xs text-muted-foreground">{item.description}</span>
@@ -731,7 +731,7 @@ export function CommandMenu() {
         <CommandGroup heading={t('groups.navigation')}>
           {navigationItems.map((item) => (
             <CommandItem key={item.label} onSelect={() => runCommand(item.run)}>
-              <item.icon className="mr-2 h-4 w-4" />
+              <item.icon className="mr-2 size-4" />
               <span>{item.label}</span>
             </CommandItem>
           ))}
@@ -756,7 +756,7 @@ export function CommandMenu() {
                       })
                     }
                   >
-                    <Sparkles className="mr-2 h-4 w-4" />
+                    <Sparkles className="mr-2 size-4" />
                     <div className="flex min-w-0 flex-1 flex-col">
                       <span>{t("aiAction.label")}</span>
                       <span className="truncate text-xs text-muted-foreground">{t("aiAction.description")}</span>
@@ -778,7 +778,7 @@ export function CommandMenu() {
                       value={`${item.label} ${item.description} ${item.keywords.join(" ")}`}
                       onSelect={() => runCommand(item.run)}
                     >
-                      <Icon className="mr-2 h-4 w-4" />
+                      <Icon className="mr-2 size-4" />
                       <div className="flex min-w-0 flex-1 flex-col">
                         <span>{item.label}</span>
                         <span className="truncate text-xs text-muted-foreground">{item.description}</span>
@@ -788,7 +788,7 @@ export function CommandMenu() {
                 })
               ) : (
                 <CommandItem disabled value="workbench:empty">
-                  <Workflow className="mr-2 h-4 w-4" />
+                  <Workflow className="mr-2 size-4" />
                   <span>{t("results.modulesEmpty")}</span>
                 </CommandItem>
               )}
@@ -799,7 +799,7 @@ export function CommandMenu() {
             <CommandGroup heading={t('groups.documents')}>
               {docLoading ? (
                 <CommandItem disabled value="doc:loading">
-                  <FileText className="mr-2 h-4 w-4" />
+                  <FileText className="mr-2 size-4" />
                   <span>{t("results.documentsLoading")}</span>
                 </CommandItem>
               ) : docResults.length ? (
@@ -814,13 +814,13 @@ export function CommandMenu() {
                       })
                     }
                   >
-                    <FileText className="mr-2 h-4 w-4" />
+                    <FileText className="mr-2 size-4" />
                     <span className="truncate">{doc.filename}</span>
                   </CommandItem>
                 ))
               ) : (
                 <CommandItem disabled value="doc:empty">
-                  <FileText className="mr-2 h-4 w-4" />
+                  <FileText className="mr-2 size-4" />
                   <span>{t("results.documentsEmpty")}</span>
                 </CommandItem>
               )}
@@ -831,7 +831,7 @@ export function CommandMenu() {
             <CommandGroup heading={t('groups.datasets')}>
               {datasetLoading ? (
                 <CommandItem disabled value="dataset:loading">
-                  <Database className="mr-2 h-4 w-4" />
+                  <Database className="mr-2 size-4" />
                   <span>{t("results.datasetsLoading")}</span>
                 </CommandItem>
               ) : datasetResults.length ? (
@@ -841,7 +841,7 @@ export function CommandMenu() {
                     value={`${dataset.name} ${dataset.description || ""}`}
                     onSelect={() => runCommand(() => router.push(`/datasets/${dataset.id}/profile`))}
                   >
-                    <Database className="mr-2 h-4 w-4" />
+                    <Database className="mr-2 size-4" />
                     <div className="flex min-w-0 flex-1 flex-col">
                       <span className="truncate">{dataset.name}</span>
                       {dataset.description ? (
@@ -852,7 +852,7 @@ export function CommandMenu() {
                 ))
               ) : (
                 <CommandItem disabled value="dataset:empty">
-                  <Database className="mr-2 h-4 w-4" />
+                  <Database className="mr-2 size-4" />
                   <span>{t("results.datasetsEmpty")}</span>
                 </CommandItem>
               )}
@@ -863,7 +863,7 @@ export function CommandMenu() {
             <CommandGroup heading={t('groups.conversations')}>
               {conversationLoading ? (
                 <CommandItem disabled value="conversation:loading">
-                  <MessageSquare className="mr-2 h-4 w-4" />
+                  <MessageSquare className="mr-2 size-4" />
                   <span>{t("results.conversationsLoading")}</span>
                 </CommandItem>
               ) : conversationResults.length ? (
@@ -873,7 +873,7 @@ export function CommandMenu() {
                     value={`${conversation.title || ""} ${conversation.last_message || ""}`}
                     onSelect={() => runCommand(() => router.push(`/history?id=${conversation.id}`))}
                   >
-                    <MessageSquare className="mr-2 h-4 w-4" />
+                    <MessageSquare className="mr-2 size-4" />
                     <div className="flex min-w-0 flex-1 flex-col">
                       <span className="truncate">{conversation.title || t("results.untitledConversation")}</span>
                       {conversation.last_message ? (
@@ -884,7 +884,7 @@ export function CommandMenu() {
                 ))
               ) : (
                 <CommandItem disabled value="conversation:empty">
-                  <MessageSquare className="mr-2 h-4 w-4" />
+                  <MessageSquare className="mr-2 size-4" />
                   <span>{t("results.conversationsEmpty")}</span>
                 </CommandItem>
               )}
@@ -897,7 +897,7 @@ export function CommandMenu() {
         <CommandGroup heading={t("groups.actions")}>
           {actionItems.map((item) => (
             <CommandItem key={item.label} onSelect={() => runCommand(item.run)}>
-              <item.icon className="mr-2 h-4 w-4" />
+              <item.icon className="mr-2 size-4" />
               <span>{item.label}</span>
             </CommandItem>
           ))}
@@ -908,7 +908,7 @@ export function CommandMenu() {
         <CommandGroup heading={t('groups.theme')}>
           {themeItems.map((item) => (
             <CommandItem key={item.label} onSelect={() => runCommand(item.run)}>
-              <item.icon className="mr-2 h-4 w-4" />
+              <item.icon className="mr-2 size-4" />
               <span>{item.label}</span>
             </CommandItem>
           ))}

@@ -140,8 +140,8 @@ export default function FeedbackTriagePage() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
             {[
               { label: '总反馈量', value: stats.total, icon: MessageSquare, color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-50 dark:bg-indigo-500/10', border: 'hover:border-indigo-200 dark:hover:border-indigo-800' },
-              { label: '点赞 (Like)', value: stats.upvotes, icon: ThumbsUp, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-500/10', border: 'hover:border-emerald-200 dark:hover:border-emerald-800' },
-              { label: '点踩 (Dislike)', value: stats.downvotes, icon: ThumbsDown, color: 'text-rose-600 dark:text-rose-400', bg: 'bg-rose-50 dark:bg-rose-500/10', border: 'hover:border-rose-200 dark:hover:border-rose-800' },
+              { label: '点赞 (Like)', value: stats.upvotes, icon: ThumbsUp, color: 'text-success', bg: 'bg-success/10', border: 'hover:border-success/20' },
+              { label: '点踩 (Dislike)', value: stats.downvotes, icon: ThumbsDown, color: 'text-destructive', bg: 'bg-destructive/10', border: 'hover:border-destructive/20' },
               { label: '中立反馈', value: stats.total - stats.upvotes - stats.downvotes, icon: MessageSquare, color: 'text-sky-600 dark:text-sky-400', bg: 'bg-sky-50 dark:bg-sky-500/10', border: 'hover:border-sky-200 dark:hover:border-sky-800' },
 	            ].map((stat) => (
 	              <div
@@ -154,7 +154,7 @@ export default function FeedbackTriagePage() {
                 <div className="p-5 flex flex-col justify-between h-full relative z-10">
                   <div className="flex items-center justify-between mb-4">
                     <div className={cn("p-2 rounded-lg transition-colors", stat.bg)}>
-                      <stat.icon className={cn("w-5 h-5", stat.color)} />
+                      <stat.icon className={cn("size-5", stat.color)} />
                     </div>
                     <div className="text-[10px] font-bold uppercase text-muted-foreground">{stat.label}</div>
                   </div>
@@ -169,7 +169,7 @@ export default function FeedbackTriagePage() {
 	        toolbar={
 	          <div className="flex flex-col md:flex-row md:items-center gap-0 bg-card/80 border border-border shadow-soft rounded-full p-1.5 max-w-4xl mx-auto md:mx-0">
 		            <div className="relative flex-1 group pl-2">
-		              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-colors" />
+		              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground group-hover:text-indigo-500 dark:group-hover:text-indigo-400 transition-colors" />
 		              <Input
 	                value={searchTerm}
 	                onChange={(e) => setSearchTerm(e.target.value)}
@@ -230,13 +230,13 @@ export default function FeedbackTriagePage() {
                       "absolute left-0 top-0 bottom-0 w-1 transition-colors",
                       (() => {
     if (isUp) {
-        return "bg-emerald-500 group-hover:bg-emerald-400";
+        return "bg-success group-hover:bg-success/80";
     }
     else if (isDown) {
-            return "bg-rose-500 group-hover:bg-rose-400";
+            return "bg-destructive group-hover:bg-destructive/80";
         }
         else {
-            return "bg-slate-300 group-hover:bg-slate-400 dark:bg-slate-700 dark:group-hover:bg-slate-600";
+            return "bg-muted-foreground/30 group-hover:bg-muted-foreground/40";
         }
 })()
                     )}
@@ -248,26 +248,26 @@ export default function FeedbackTriagePage() {
                         "w-10 h-10 rounded-full flex items-center justify-center shrink-0 border",
                         (() => {
     if (isUp) {
-        return "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-100 dark:border-emerald-500/20 text-emerald-600 dark:text-emerald-400";
+        return "bg-success/10 border-success/20 text-success";
     }
     else if (isDown) {
-            return "bg-rose-50 dark:bg-rose-500/10 border-rose-100 dark:border-rose-500/20 text-rose-600 dark:text-rose-400";
+            return "bg-destructive/10 border-destructive/20 text-destructive";
         }
         else {
-            return "bg-slate-50 dark:bg-slate-800/60 border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-300";
+            return "bg-muted border-border text-muted-foreground";
         }
 })()
                       )}
                     >
                       {(() => {
     if (isUp) {
-        return (<ThumbsUp className="w-5 h-5"/>);
+        return (<ThumbsUp className="size-5"/>);
     }
     else if (isDown) {
-            return (<ThumbsDown className="w-5 h-5"/>);
+            return (<ThumbsDown className="size-5"/>);
         }
         else {
-            return (<Star className="w-5 h-5"/>);
+            return (<Star className="size-5"/>);
         }
 })()}
                     </div>
@@ -275,19 +275,19 @@ export default function FeedbackTriagePage() {
                     <div className="flex-1 min-w-0 pt-0.5">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
-                          <span className="text-xs font-mono text-slate-400 dark:text-slate-500">{item.id.slice(0, 8)}</span>
-                          <span className="text-xs font-medium text-slate-300 dark:text-slate-600">·</span>
-                        <span className="text-xs text-slate-500 dark:text-slate-400">{formatDate(item.created_at)}</span>
+                          <span className="text-xs font-mono text-muted-foreground">{item.id.slice(0, 8)}</span>
+                          <span className="text-xs font-medium text-muted-foreground/40">·</span>
+                        <span className="text-xs text-muted-foreground">{formatDate(item.created_at)}</span>
                       </div>
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <span className="text-xs font-bold text-indigo-500 dark:text-indigo-400">查看详情</span>
-                        <ArrowRight className="w-3 h-3 text-indigo-500 dark:text-indigo-400" />
+                        <ArrowRight className="size-3 text-indigo-500 dark:text-indigo-400" />
                       </div>
                     </div>
 
-	                    <h3 className="text-base font-bold text-slate-800 dark:text-slate-100 mb-2 truncate pr-4">{item.reason || "用户未填写原因"}</h3>
-	                    <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3 border border-slate-100 dark:border-slate-800/50">
-	                      <p className="text-sm text-slate-600 dark:text-slate-300 line-clamp-2 font-medium leading-relaxed">
+	                    <h3 className="text-base font-bold text-foreground mb-2 truncate pr-4">{item.reason || "用户未填写原因"}</h3>
+	                    <div className="bg-muted rounded-lg p-3 border border-border">
+	                      <p className="text-sm text-muted-foreground line-clamp-2 font-medium leading-relaxed">
 	                        {item.message_content || "（无消息内容）"}
 	                      </p>
 	                    </div>
@@ -345,7 +345,7 @@ export default function FeedbackTriagePage() {
 	            <DialogHeader className="px-8 pt-8 pb-4 border-b border-border/60 bg-card relative z-10">
 	              <DialogTitle className="flex items-center justify-between gap-3">
 	                <div className="flex items-center gap-3">
-	                  <span className="text-lg font-bold  text-slate-900 dark:text-slate-100">反馈详情报告</span>
+	                  <span className="text-lg font-bold  text-foreground">反馈详情报告</span>
 	                </div>
 	                {detail && (
 	                  <Button size="sm" variant="outline" className="border-border/80 text-xs bg-card" onClick={() => copyDetail(detail)}>
@@ -362,10 +362,10 @@ export default function FeedbackTriagePage() {
                 {/* Meta Card */}
 	                <div className="rounded-2xl border border-border bg-card p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
 	                  <div>
-	                    <div className="text-sm font-bold text-slate-900 dark:text-slate-100 mb-1">{detail.conversation_title || `对话 ${detail.conversation_id}`}</div>
-	                    <div className="text-xs text-slate-500 dark:text-slate-400 font-mono flex items-center gap-3">
+	                    <div className="text-sm font-bold text-foreground mb-1">{detail.conversation_title || `对话 ${detail.conversation_id}`}</div>
+	                    <div className="text-xs text-muted-foreground font-mono flex items-center gap-3">
                       <span>ID: {detail.id.slice(0, 8)}</span>
-                      <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-600" />
+                      <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
                       <span>Msg: {detail.message_id.slice(0, 8)}</span>
                     </div>
                   </div>
@@ -379,11 +379,11 @@ export default function FeedbackTriagePage() {
                 <div className="grid grid-cols-1 gap-8">
                   {detail.reason && (
                     <div className="space-y-3">
-                      <div className="flex items-center gap-2 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase  pl-1">
+                      <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground uppercase  pl-1">
                         <MessageSquare className="w-3.5 h-3.5" />
                         User Feedback
                       </div>
-                      <div className="rounded-2xl border border-rose-100 dark:border-rose-900/30 bg-rose-50/50 dark:bg-rose-900/10 p-5 text-sm leading-relaxed text-rose-900 dark:text-rose-100 shadow-sm">
+                      <div className="rounded-2xl border border-destructive/20 bg-destructive/10 p-5 text-sm leading-relaxed text-destructive shadow-sm">
                         {detail.reason}
                       </div>
                     </div>
@@ -391,11 +391,11 @@ export default function FeedbackTriagePage() {
 
                   {detail.expected_answer && (
                     <div className="space-y-3">
-                      <div className="flex items-center gap-2 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase  pl-1">
+                      <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground uppercase  pl-1">
                         <Star className="w-3.5 h-3.5" />
                         Expected Output
                       </div>
-                      <div className="rounded-2xl border border-emerald-100 dark:border-emerald-900/30 bg-emerald-50/50 dark:bg-emerald-900/10 p-5 text-sm leading-relaxed text-emerald-900 dark:text-emerald-100 shadow-sm font-medium">
+                      <div className="rounded-2xl border border-success/20 bg-success/10 p-5 text-sm leading-relaxed text-success shadow-sm font-medium">
                         {detail.expected_answer}
                       </div>
                     </div>
@@ -403,18 +403,18 @@ export default function FeedbackTriagePage() {
 
                   {detail.message_content && (
                     <div className="space-y-3">
-                      <div className="flex items-center gap-2 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase  pl-1">
+                      <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground uppercase  pl-1">
                         <Loader2 className="w-3.5 h-3.5" />
                         AI Response
                       </div>
-                      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 p-5 text-sm leading-relaxed text-slate-600 dark:text-slate-300 font-mono text-[13px] whitespace-pre-wrap max-h-80 overflow-y-auto overscroll-contain no-scrollbar shadow-inner">
+                      <div className="rounded-2xl border border-border bg-muted p-5 text-sm leading-relaxed text-muted-foreground font-mono text-[13px] whitespace-pre-wrap max-h-80 overflow-y-auto overscroll-contain no-scrollbar shadow-inner">
                         {detail.message_content}
                       </div>
                     </div>
                   )}
                 </div>
 
-                <div className="flex items-center justify-end gap-3 pt-6 border-t border-slate-200/60 dark:border-slate-800/60">
+                <div className="flex items-center justify-end gap-3 pt-6 border-t border-border/60">
                   <Button
                     variant="outline"
                     disabled={!detail?.id || creatingCase}
@@ -431,7 +431,7 @@ export default function FeedbackTriagePage() {
                         setCreatingCase(false)
                       }
                     }}
-                    className="rounded-full border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 gap-2"
+                    className="rounded-full border-border hover:bg-muted gap-2"
                   >
                     {creatingCase ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
@@ -445,7 +445,7 @@ export default function FeedbackTriagePage() {
                     <Button
                       variant="outline"
                       onClick={() => router.push(`/evaluations?tab=regression`)}
-                      className="rounded-full border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 gap-2"
+                      className="rounded-full border-border hover:bg-muted gap-2"
                       title={`case_id=${createdCaseId}`}
                     >
                       前往回归测试
@@ -456,7 +456,7 @@ export default function FeedbackTriagePage() {
                   <Button
                     variant="outline"
                     onClick={() => router.push(`/history?id=${encodeURIComponent(detail.conversation_id)}`)}
-                    className="rounded-full border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 gap-2"
+                    className="rounded-full border-border hover:bg-muted gap-2"
                   >
                     跳转至对话上下文
                     <ArrowUpRight className="h-3.5 w-3.5" />

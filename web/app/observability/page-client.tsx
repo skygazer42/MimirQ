@@ -277,7 +277,7 @@ export default function ObservabilityPage() {
                 }}
                 disabled={loading}
               >
-                <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin motion-reduce:animate-none')} />
+                <RefreshCw className={cn('size-4', loading && 'animate-spin motion-reduce:animate-none')} />
                 刷新
               </Button>
               <Link
@@ -304,7 +304,7 @@ export default function ObservabilityPage() {
                 <div className="space-y-6">
                   {!summary.enabled && (
                     <Alert className="mt-4">
-                      <AlertTriangle className="h-4 w-4" />
+                      <AlertTriangle className="size-4" />
                       <AlertTitle>Metrics 日志未开启</AlertTitle>
                       <AlertDescription>
                         当前 ENABLE_METRICS_LOG=false。你仍可能看到少量历史数据，但建议到“设置 → 观测与调试”开启。
@@ -314,7 +314,7 @@ export default function ObservabilityPage() {
 
                   {summary.truncated && (
                     <Alert className="mt-4">
-                      <AlertTriangle className="h-4 w-4" />
+                      <AlertTriangle className="size-4" />
                       <AlertTitle>数据可能不完整</AlertTitle>
                       <AlertDescription>
                         本次查询仅读取 metrics 文件尾部（max_bytes）。若窗口内数据量过大，请缩短时间窗口或调整后端 max_bytes。
@@ -433,7 +433,7 @@ export default function ObservabilityPage() {
                 </div>
               ) : (
                 <Alert variant="destructive" className="mt-4">
-                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTriangle className="size-4" />
                   <AlertTitle>无法加载监控数据</AlertTitle>
                   <AlertDescription>
                     请确认你是 owner/admin，并且后端已更新到包含 /api/v1/observability 的版本。
@@ -470,7 +470,7 @@ export default function ObservabilityPage() {
                 if (analytics.rag_trace_count <= 0) {
                     return (<EmptyState title="暂无 Query Analytics 数据" description="提示：只有走到检索链路（rag_trace）时才会计入统计；可尝试先发起一次检索请求再刷新。" icon={TriangleAlert} iconClassName="text-sky-600 dark:text-sky-400">
                   <Button variant="outline" className="rounded-xl" onClick={() => void analyticsQuery.refetch()} disabled={loadingAnalytics}>
-                    <RefreshCw className={cn('h-4 w-4', loadingAnalytics && 'animate-spin motion-reduce:animate-none')}/>
+                    <RefreshCw className={cn('size-4', loadingAnalytics && 'animate-spin motion-reduce:animate-none')}/>
                     刷新
                   </Button>
                 </EmptyState>);
@@ -478,7 +478,7 @@ export default function ObservabilityPage() {
                 else {
                     return (<div className="space-y-6">
                   {analytics.truncated ? (<Alert className="mt-4">
-                      <AlertTriangle className="h-4 w-4"/>
+                      <AlertTriangle className="size-4"/>
                       <AlertTitle>数据可能不完整</AlertTitle>
                       <AlertDescription>
                         本次查询仅读取 metrics 文件尾部（max_bytes）。若窗口内数据量过大，请缩短时间窗口或调整后端 max_bytes。
@@ -555,7 +555,7 @@ export default function ObservabilityPage() {
                               <div className="flex items-center gap-2 shrink-0">
                                 <div className="tabular-nums text-muted-foreground">{it.count}</div>
                                 <Button size="icon" variant="ghost" className="size-8 rounded-lg" aria-label="复制 query_hash" onClick={() => detachPromise(copyText(it.query_hash, '已复制 query_hash'))}>
-                                  <Copy className="h-4 w-4"/>
+                                  <Copy className="size-4"/>
                                 </Button>
                               </div>
                             </div>))}
@@ -580,7 +580,7 @@ export default function ObservabilityPage() {
                               <div className="flex items-center gap-2 shrink-0">
                                 <div className="tabular-nums text-muted-foreground">{it.count}</div>
                                 <Button size="icon" variant="ghost" className="size-8 rounded-lg" aria-label="复制 query_hash" onClick={() => detachPromise(copyText(it.query_hash, '已复制 query_hash'))}>
-                                  <Copy className="h-4 w-4"/>
+                                  <Copy className="size-4"/>
                                 </Button>
                               </div>
                             </div>))}
@@ -604,7 +604,7 @@ export default function ObservabilityPage() {
             }
             else {
                 return (<Alert className="mt-4">
-                  <AlertTriangle className="h-4 w-4"/>
+                  <AlertTriangle className="size-4"/>
                   <AlertTitle>Metrics 日志未开启</AlertTitle>
                   <AlertDescription>
                     当前 ENABLE_METRICS_LOG=false。Query Analytics 只基于 rag_trace 指标聚合。
@@ -614,7 +614,7 @@ export default function ObservabilityPage() {
         }
         else {
             return (<Alert variant="destructive" className="mt-4">
-                  <AlertTriangle className="h-4 w-4"/>
+                  <AlertTriangle className="size-4"/>
                   <AlertTitle>无法加载 Query Analytics</AlertTitle>
                   <AlertDescription>
                     请确认你是 owner/admin，并且后端已更新到包含 /api/v1/observability/rag-metrics/query-analytics 的版本。

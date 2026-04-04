@@ -159,10 +159,10 @@ export function FeatureFlagsSection({
     <section>
       <div className="mb-6 flex items-center justify-between">
         <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground">
-          <Zap className="h-5 w-5 text-amber-500 dark:text-amber-300" />
+          <Zap className="h-5 w-5 text-warning" />
           功能开关
         </h2>
-        <div className="flex items-center gap-2 rounded-full border border-amber-100 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+        <div className="flex items-center gap-2 rounded-full border border-warning/20 bg-warning/10 px-3 py-1 text-xs font-medium text-warning">
           <AlertCircle className="h-3 w-3" />
           <span>更改后需重启后端生效</span>
         </div>

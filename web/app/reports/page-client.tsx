@@ -426,11 +426,11 @@ export default function ReportsCenterPage() {
               </div>
               <div className="flex items-center gap-2">
                 <Button variant="secondary" onClick={() => detachPromise(loadDatasets())} disabled={isLoadingDatasets} aria-label="刷新数据集列表">
-                  {isLoadingDatasets ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-4 w-4" />}
+                  {isLoadingDatasets ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="size-4" />}
                   <span className="ml-2">刷新数据集</span>
                 </Button>
                 <Button onClick={() => detachPromise(loadReport())} disabled={!datasetId || isLoadingReport} aria-label="刷新报告预览">
-                  {isLoadingReport ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-4 w-4" />}
+                  {isLoadingReport ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="size-4" />}
                   <span className="ml-2">刷新预览</span>
                 </Button>
               </div>
@@ -497,7 +497,7 @@ export default function ReportsCenterPage() {
                   disabled={!datasetId || isExportingJson}
                   aria-label="导出 JSON 报告"
                 >
-                  {isExportingJson ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Download className="h-4 w-4" />}
+                  {isExportingJson ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : <Download className="size-4" />}
                   <span className="ml-2">导出 JSON</span>
                 </Button>
                 <Button
@@ -506,7 +506,7 @@ export default function ReportsCenterPage() {
                   disabled={!datasetId || !report}
                   aria-label="导出 Charts JSON"
                 >
-                  <Download className="h-4 w-4" />
+                  <Download className="size-4" />
                   <span className="ml-2">导出 Charts</span>
                 </Button>
                 <Button
@@ -515,9 +515,9 @@ export default function ReportsCenterPage() {
                   aria-label="导出 RAG Audit 报告"
                 >
                   {isExportingRagAuditHtml ? (
-                    <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                    <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
                   ) : (
-                    <Download className="h-4 w-4" />
+                    <Download className="size-4" />
                   )}
                   <span className="ml-2">导出 RAG Audit</span>
                 </Button>
@@ -527,7 +527,7 @@ export default function ReportsCenterPage() {
                   disabled={!datasetId || isExportingHtml}
                   aria-label="导出 HTML 报告"
                 >
-                  {isExportingHtml ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Download className="h-4 w-4" />}
+                  {isExportingHtml ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : <Download className="size-4" />}
                   <span className="ml-2">导出 HTML</span>
                 </Button>
               </div>
@@ -728,7 +728,7 @@ export default function ReportsCenterPage() {
                     if (folderTree) {
                         if (flatFolders === null) {
                             return (<div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
-                      <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none"/>
+                      <Loader2 className="size-4 animate-spin motion-reduce:animate-none"/>
                       <span>目录统计计算中...</span>
                     </div>);
                         }
@@ -790,7 +790,7 @@ export default function ReportsCenterPage() {
 	                    <div className="flex items-center gap-2">
 	                      <SearchInput value={categoryQuery} onValueChange={setCategoryQuery} placeholder="搜索分类…" containerClassName="w-44" inputClassName="h-8 text-xs" disabled={isLoadingCategories}/>
 	                      <Button variant="ghost" size="sm" className="h-8 px-2 text-muted-foreground" onClick={() => detachPromise(loadCategories())} disabled={isLoadingCategories} aria-label="刷新分类">
-                        {isLoadingCategories ? (<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none"/>) : (<RefreshCw className="h-4 w-4"/>)}
+                        {isLoadingCategories ? (<Loader2 className="size-4 animate-spin motion-reduce:animate-none"/>) : (<RefreshCw className="size-4"/>)}
                       </Button>
                     </div>
                   </div>

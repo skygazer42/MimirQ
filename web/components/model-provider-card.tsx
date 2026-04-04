@@ -29,8 +29,8 @@ export function ModelProviderCard({ provider, onConfigure }: Readonly<ModelProvi
       {/* 头部：Logo 和状态 */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3 min-w-0">
-          <div className="h-11 w-11 shrink-0 rounded-xl border border-border bg-muted/50 flex items-center justify-center transition-transform duration-200 motion-reduce:transition-none group-hover:motion-safe:scale-105">
-            <ProviderIcon providerId={provider.id} className="w-8 h-8 object-contain" />
+          <div className="h-11 w-11 shrink-0 rounded-xl border border-border bg-muted/30 flex items-center justify-center transition-all duration-200 motion-reduce:transition-none group-hover:motion-safe:scale-105 group-hover:bg-muted/60">
+            <ProviderIcon providerId={provider.id} className="size-8 object-contain" />
           </div>
 
           <div className="min-w-0">
@@ -49,12 +49,12 @@ export function ModelProviderCard({ provider, onConfigure }: Readonly<ModelProvi
         >
           {provider.isConfigured ? (
             <>
-              <CheckCircle2 className="h-3.5 w-3.5" />
+              <CheckCircle2 className="size-3.5" />
               <span>已连接</span>
             </>
           ) : (
             <>
-              <CircleDashed className="h-3.5 w-3.5" />
+              <CircleDashed className="size-3.5" />
               <span>未配置</span>
             </>
           )}
@@ -79,19 +79,19 @@ export function ModelProviderCard({ provider, onConfigure }: Readonly<ModelProvi
       </div>
 
       {/* 底部操作 */}
-      <div className="mt-auto pt-4 border-t border-border/60 flex items-center justify-between text-xs">
+      <div className="mt-auto pt-4 border-t border-border/40 flex items-center justify-between text-xs">
         <span
           className={cn(
             'font-medium flex items-center gap-1.5 transition-colors motion-reduce:transition-none',
             provider.isConfigured ? 'text-primary' : 'text-muted-foreground group-hover:text-primary'
           )}
         >
-          <Settings className="h-3.5 w-3.5" />
+          <Settings className="size-3.5" />
           {provider.isConfigured ? '管理配置' : '去配置'}
         </span>
         
         {/* 仅在 Hover 时显示的箭头或图标 */}
-        <ChevronRight className="h-4 w-4 text-muted-foreground/60 opacity-0 translate-x-[-4px] group-hover:opacity-100 group-hover:translate-x-0 transition-opacity transition-transform duration-200 motion-reduce:transition-none" />
+        <ChevronRight className="size-4 text-muted-foreground/60 opacity-0 translate-x-[-4px] group-hover:opacity-100 group-hover:translate-x-0 transition-opacity transition-transform duration-200 motion-reduce:transition-none" />
       </div>
     </button>
   )

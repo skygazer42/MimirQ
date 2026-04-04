@@ -187,9 +187,10 @@ const markdownBaseComponents = {
     ) : (
       <code
         className={cn(
-          'bg-secondary/50 px-1.5 py-0.5 rounded-md text-sm font-mono text-primary',
+          'px-1.5 py-0.5 rounded-md text-sm font-mono text-primary',
           className
         )}
+        style={{ backgroundColor: 'hsl(var(--code-background))' }}
         {...props}
       >
         {children}
@@ -551,8 +552,8 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 	      )}
 	    >
       {!isUser && (
-        <div className="flex-shrink-0 w-8 h-8 rounded-xl bg-background border border-border flex items-center justify-center shadow-sm mt-0.5">
-          <Bot className="h-4 w-4 text-primary" />
+        <div className="flex-shrink-0 w-8 h-8 rounded-xl bg-accent/15 border border-accent/30 flex items-center justify-center shadow-sm mt-0.5">
+          <Bot className="size-4 text-accent" />
         </div>
       )}
 
@@ -612,13 +613,13 @@ export const ChatMessageItem = memo(function ChatMessageItem({
               aria-label="Diagnostics"
               title="检索诊断"
               className={cn(
-                'absolute bottom-2 right-11 z-10 rounded-md p-1.5 transition-opacity transition-transform transition-colors duration-200 motion-reduce:transition-none',
-                'opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100',
+                'absolute bottom-2 right-11 z-10 rounded-md p-1 transition-colors duration-200 motion-reduce:transition-none',
+                'opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100 transition-opacity transition-transform',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60',
-                'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                'text-muted-foreground hover:text-foreground hover:bg-muted/60'
               )}
             >
-              <BarChart3 className="h-3.5 w-3.5" />
+              <BarChart3 className="size-3.5" />
             </button>
 
 	            <Dialog open={diagOpen} onOpenChange={setDiagOpen}>
@@ -635,7 +636,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                         </div>
                       </DialogTitle>
                       <Button size="sm" variant="outline" onClick={handleCopyDiagnostics} className="text-xs">
-                        <Copy className="w-3.5 h-3.5 mr-2" />
+                        <Copy className="size-3.5 mr-2" />
                         复制 JSON
                       </Button>
                     </div>
@@ -842,19 +843,17 @@ export const ChatMessageItem = memo(function ChatMessageItem({
           aria-label={copied ? 'Copied' : 'Copy message'}
           title={copied ? 'Copied' : 'Copy'}
 	          className={cn(
-	            'absolute z-10 rounded-md p-1.5 transition-opacity transition-transform transition-colors duration-200 motion-reduce:transition-none',
+	            'absolute z-10 rounded-md p-1 transition-colors duration-200 motion-reduce:transition-none',
               isUser ? 'bottom-0 right-0 translate-x-1/4 translate-y-1/4 border border-border/60 bg-background/95 shadow-sm' : 'bottom-2 right-2',
-	            'opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100',
+	            'opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100 transition-opacity transition-transform',
 	            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60',
-	            isUser
-	              ? 'text-muted-foreground hover:text-foreground hover:bg-background'
-	              : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+	            'text-muted-foreground hover:text-foreground hover:bg-muted/60'
 	          )}
 	        >
           {copied ? (
-            <Check className="h-3.5 w-3.5" />
+            <Check className="size-3.5" />
           ) : (
-            <Copy className="h-3.5 w-3.5" />
+            <Copy className="size-3.5" />
           )}
         </button>
 
@@ -868,7 +867,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                     confidenceMeta.badgeClass
                   )}
                 >
-                  <BarChart3 className="h-3 w-3" />
+                  <BarChart3 className="size-3" />
                   <span>{confidenceMeta.label}</span>
                   <span>{Math.round(confidenceScore * 100)}%</span>
                 </div>
@@ -915,8 +914,8 @@ export const ChatMessageItem = memo(function ChatMessageItem({
         <div
           className={cn(
             isUser
-              ? 'max-w-none break-words leading-relaxed text-[#17384D] [&>*]:text-inherit'
-              : 'prose prose-neutral dark:prose-invert max-w-none break-words leading-relaxed prose-p:my-2 prose-p:leading-7 prose-pre:bg-secondary/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-foreground prose-pre:rounded-xl prose-pre:p-4 prose-pre:my-3 prose-code:bg-secondary/50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:text-sm prose-code:font-mono prose-code:text-primary prose-code:before:content-none prose-code:after:content-none'
+              ? 'max-w-none break-words leading-relaxed text-primary-foreground [&>*]:text-inherit'
+              : 'prose prose-neutral dark:prose-invert max-w-none break-words leading-relaxed prose-p:my-2 prose-p:leading-7 prose-pre:bg-secondary/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-foreground prose-pre:rounded-xl prose-pre:p-4 prose-pre:my-3 prose-code:bg-[hsl(var(--code-background))] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:text-sm prose-code:font-mono prose-code:text-primary prose-code:before:content-none prose-code:after:content-none'
           )}
         >
           {renderedContent}
@@ -962,7 +961,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
               {citationRows.length > 0 && (
                 <div className="space-y-3">
                   <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/80">
-                    <Database className="h-3 w-3" />
+                    <Database className="size-3" />
                     参考来源
                   </div>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1101,7 +1100,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                       title={`${v} 星`}
                     >
                       <Star
-                        className={cn('h-4 w-4', active ? 'text-yellow-500' : 'text-muted-foreground')}
+                        className={cn('size-4', active ? 'text-yellow-500' : 'text-muted-foreground')}
                         fill={active ? 'currentColor' : 'none'}
                       />
                     </button>
@@ -1129,9 +1128,9 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                        className="h-8 rounded-full gap-2"
                      >
                        {expertAction === 'evidence' ? (
-                         <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+                         <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
                        ) : (
-                         <Database className="h-3.5 w-3.5" />
+                         <Database className="size-3.5" />
                        )}
                        送入证据库
                      </Button>
@@ -1144,9 +1143,9 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                        className="h-8 rounded-full gap-2"
                      >
                        {expertAction === 'regression' ? (
-                         <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+                         <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
                        ) : (
-                         <TestTube2 className="h-3.5 w-3.5" />
+                         <TestTube2 className="size-3.5" />
                        )}
                        转为回归用例
                      </Button>
@@ -1159,8 +1158,8 @@ export const ChatMessageItem = memo(function ChatMessageItem({
        </motion.div>
 
       {isUser && (
-        <div className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-[#8FC8E8] bg-[#AAD9F2] text-[#17384D] text-xs font-bold shadow-sm">
-          <User className="h-4 w-4" />
+        <div className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-primary/30 bg-primary/15 text-primary text-xs font-bold shadow-sm">
+          <User className="size-4" />
         </div>
       )}
     </motion.div>
@@ -1243,7 +1242,7 @@ const CitationCard = memo(function CitationCard({
 
   return (
     <>
-      <div className="group/card text-xs rounded-lg p-3 border bg-card border-border/60 shadow-sm transition-colors transition-shadow duration-200 motion-reduce:transition-none hover:bg-muted/40 hover:border-primary/25 hover:shadow-md">
+      <div className="group/card text-xs rounded-lg p-3 border bg-card border-border/60 shadow-sm transition-all duration-200 motion-reduce:transition-none hover:bg-muted/40 hover:border-primary/25 hover:shadow-md hover:-translate-y-px">
         <button
           type="button"
           onClick={handleClick}

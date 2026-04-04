@@ -278,12 +278,12 @@ export function EvidenceWorkbench() {
               <Button type="button" onClick={() => detachPromise(run())} disabled={!query.trim() || running}>
                 {running ? (
                   <span className="inline-flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                    <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
                     {t("actions.searching")}
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-2">
-                    <Search className="h-4 w-4" />
+                    <Search className="size-4" />
                     {t("actions.search")}
                   </span>
                 )}
@@ -291,14 +291,14 @@ export function EvidenceWorkbench() {
 
               <Button type="button" variant="outline" onClick={reset} disabled={running && !result && !error}>
                 <span className="inline-flex items-center gap-2">
-                  <X className="h-4 w-4" />
+                  <X className="size-4" />
                   {t("actions.reset")}
                 </span>
               </Button>
 
               <Button type="button" variant="outline" onClick={exportPack} disabled={!result || running}>
                 <span className="inline-flex items-center gap-2">
-                  <Download className="h-4 w-4" />
+                  <Download className="size-4" />
                   {t("actions.export")}
                 </span>
               </Button>

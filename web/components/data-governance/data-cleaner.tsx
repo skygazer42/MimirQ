@@ -277,7 +277,7 @@ export function DataCleaner({
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Wrench className="h-5 w-5 text-primary" />
+          <Wrench className="size-5 text-primary" />
           <h3 className="font-bold text-foreground">{t("header.title")}</h3>
         </div>
         <div className="flex items-center gap-2">
@@ -314,7 +314,7 @@ export function DataCleaner({
 
       {backendError && (
         <Alert variant="warning">
-          <AlertTriangle className="h-4 w-4" />
+          <AlertTriangle className="size-4" />
           <div>
             <AlertTitle>{t('alerts.warningTitle')}</AlertTitle>
             <AlertDescription className="text-foreground/80">{backendError}</AlertDescription>
@@ -323,7 +323,7 @@ export function DataCleaner({
       )}
       {backendInfo && (
         <Alert variant="info">
-          <Info className="h-4 w-4" />
+          <Info className="size-4" />
           <div>
             <AlertTitle>{t('alerts.infoTitle')}</AlertTitle>
             <AlertDescription className="whitespace-pre-line text-foreground/80">{backendInfo}</AlertDescription>
@@ -338,9 +338,9 @@ export function DataCleaner({
         </Button>
         <Button onClick={handleApply} disabled={isApplying} className="flex-1 gap-2">
           {isApplying ? (
-            <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+            <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
           ) : (
-            <Sparkles className="h-4 w-4" />
+            <Sparkles className="size-4" />
           )}
           {isApplying ? t('actions.applying') : t("actions.apply")}
         </Button>
@@ -349,7 +349,7 @@ export function DataCleaner({
       <div className="rounded-xl border border-border bg-card p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-primary" />
+            <Sparkles className="size-4 text-primary" />
             <span className="text-sm font-medium text-foreground">{t('llm.title')}</span>
           </div>
           <Button variant={llmEnabled ? 'default' : 'outline'} size="sm" onClick={() => setLlmEnabled((value) => !value)}>
@@ -389,7 +389,7 @@ export function DataCleaner({
           className="flex w-full items-center justify-between p-3 transition-colors hover:bg-muted"
         >
           <span className="text-sm font-medium text-foreground/80">{t('diff.title')}</span>
-          <TextCursorInput className="h-4 w-4 text-muted-foreground" />
+          <TextCursorInput className="size-4 text-muted-foreground" />
         </button>
         {previewDiff && (
           <div className="max-h-80 space-y-3 overflow-y-auto border-t border-border bg-muted p-4 no-scrollbar overscroll-contain">

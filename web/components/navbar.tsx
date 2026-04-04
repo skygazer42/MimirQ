@@ -408,18 +408,18 @@ export function Navbar({
         className={cn(
           'peer flex-shrink-0 border-r border-sidebar-border/80 bg-sidebar/85 text-sidebar-foreground backdrop-blur-xl supports-[backdrop-filter]:bg-sidebar/72 flex flex-col transition-transform duration-200 ease-out z-50',
           'fixed inset-y-0 left-0 md:relative', // Mobile: fixed, Desktop: relative
-          isSidebarOpen ? 'w-[280px] translate-x-0' : 'w-[280px] -translate-x-full md:w-0 md:translate-x-0 md:overflow-hidden'
+          isSidebarOpen ? 'w-[260px] translate-x-0' : 'w-[260px] -translate-x-full md:w-0 md:translate-x-0 md:overflow-hidden'
         )}
       >
         {/* Logo 区域 */}
-        <div className="h-16 px-6 border-b border-sidebar-border flex items-center gap-3">
+        <div className="h-14 px-5 border-b border-sidebar-border/50 flex items-center gap-3">
           <Link href="/" className="flex items-center gap-3 group rounded-xl focus-ring">
             <div className="size-8 rounded-xl bg-primary text-primary-foreground flex items-center justify-center shadow-sm border border-primary/20 transition-colors duration-200 group-hover:border-primary/30">
               <span className="text-primary-foreground font-bold text-lg">M</span>
             </div>
             <div className="flex flex-col">
               <span className="font-semibold text-foreground leading-none">MimirQ</span>
-              <span className="text-[10px] text-muted-foreground font-medium mt-1">{t('brand.tagline')}</span>
+              <span className="text-micro text-muted-foreground font-medium mt-1">{t('brand.tagline')}</span>
             </div>
           </Link>
         </div>
@@ -439,7 +439,7 @@ export function Navbar({
               closeSidebarOnMobile()
             }}
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="size-4" />
             <span>{t('actions.newConversation')}</span>
           </Button>
         </div>
@@ -460,14 +460,14 @@ export function Navbar({
           >
             <div className="flex min-w-0 items-center gap-3">
               <div className="flex size-9 items-center justify-center rounded-xl bg-muted text-muted-foreground transition-colors duration-200 group-hover:bg-primary/10 group-hover:text-primary">
-                <Search className="h-4 w-4" />
+                <Search className="size-4" />
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-medium text-foreground">{t('command.triggerLabel')}</p>
                 <p className="text-[11px] text-muted-foreground">{t('command.triggerHint')}</p>
               </div>
             </div>
-            <span className="rounded-lg border border-border bg-card px-2 py-1 text-[11px] font-semibold text-muted-foreground shadow-sm">⌘K</span>
+            <span className="rounded-md border border-border/50 bg-muted/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground shadow-subtle">⌘K</span>
           </button>
         </div>
 
@@ -483,7 +483,7 @@ export function Navbar({
               return (
                 <section
                   key={section.id}
-                  className={cn('space-y-1.5', index > 0 ? 'border-t border-sidebar-border/70 pt-3' : '')}
+                  className={cn('space-y-1.5', index > 0 ? 'border-t border-sidebar-border/50 pt-3' : '')}
                 >
                   <button
                     type="button"
@@ -503,7 +503,7 @@ export function Navbar({
                       {hasActiveItem ? (
                         <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">{t('sections.current')}</span>
                       ) : null}
-                      <ToggleIcon className="h-4 w-4 shrink-0" />
+                      <ToggleIcon className="size-4 shrink-0" />
                     </div>
                   </button>
 
@@ -529,15 +529,15 @@ export function Navbar({
                                 aria-current={isActive ? 'page' : undefined}
                                 className={cn(
                                   'relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors duration-200 group focus-ring',
-                                  'before:pointer-events-none before:absolute before:left-1 before:top-2 before:bottom-2 before:w-0.5 before:rounded-full before:bg-transparent',
+                                  'before:pointer-events-none before:absolute before:left-1 before:top-2 before:bottom-2 before:w-[2.5px] before:rounded-full before:bg-transparent',
                                   isActive
-                                    ? 'bg-muted text-foreground font-medium before:bg-primary/80'
+                                    ? 'bg-primary/8 text-foreground font-medium before:bg-primary/80'
                                     : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
                                 )}
                               >
                                 <Icon
                                   className={cn(
-                                    'h-4 w-4 transition-colors',
+                                    'size-4 transition-colors',
                                     isActive ? 'text-primary' : 'text-muted-foreground/70 group-hover:text-foreground'
                                   )}
                                 />
@@ -556,7 +556,7 @@ export function Navbar({
         </div>
 
         {/* 底部信息 */}
-        <div className="p-4 border-t border-sidebar-border bg-background/60">
+        <div className="p-4 border-t border-sidebar-border/50 bg-transparent">
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -575,7 +575,7 @@ export function Navbar({
               <div className="relative w-10 h-10 flex-shrink-0">
                 <div className="absolute inset-0 rounded-xl border border-border bg-muted/50 shadow-sm group-hover:border-primary/30 transition-colors duration-200" />
                 <div className="absolute inset-0 flex items-center justify-center text-muted-foreground group-hover:text-primary transition-colors">
-                  <User className="h-5 w-5" />
+                  <User className="size-5" />
                 </div>
                 {isAuthenticated && (
                   <div className="absolute -right-0.5 -bottom-0.5 size-3 bg-success border-2 border-background rounded-full" />
@@ -606,9 +606,9 @@ export function Navbar({
                 aria-label={isAuthenticated ? t('auth.logout') : t('auth.login')}
               >
                 {isAuthenticated ? (
-                  <LogOut className="h-4 w-4" />
+                  <LogOut className="size-4" />
                 ) : (
-                  <LogIn className="h-4 w-4" />
+                  <LogIn className="size-4" />
                 )}
               </Button>
               <ModeToggle />
@@ -765,9 +765,9 @@ export function Navbar({
         onClick={() => setSidebarOpen(!isSidebarOpen)}
       >
         {isSidebarOpen ? (
-          <PanelLeftClose className="h-5 w-5" />
+          <PanelLeftClose className="size-5" />
         ) : (
-          <PanelLeftOpen className="h-5 w-5" />
+          <PanelLeftOpen className="size-5" />
         )}
       </Button>
     </>

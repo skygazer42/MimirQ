@@ -288,11 +288,11 @@ export function TestGenerationDialog({
 	                  className={cn(
 	                    'p-4 rounded-xl border-2 transition text-left',
 	                    sourceType === 'documents'
-	                      ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20'
+	                      ? 'border-info bg-info/10'
 	                      : 'border-border/60 hover:border-border'
 	                  )}
 	                >
-                  <FileText className="w-6 h-6 mb-2 text-sky-600" />
+                  <FileText className="w-6 h-6 mb-2 text-info" />
                   <div className="font-medium text-foreground mb-1">
                     从文档生成
                   </div>
@@ -306,7 +306,7 @@ export function TestGenerationDialog({
 	                  className={cn(
 	                    'p-4 rounded-xl border-2 transition text-left',
 	                    sourceType === 'conversations'
-	                      ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20'
+	                      ? 'border-info bg-info/10'
 	                      : 'border-border/60 hover:border-border'
 	                  )}
 	                >
@@ -460,7 +460,7 @@ export function TestGenerationDialog({
                         className={cn(
                           'px-4 py-2 rounded-lg border-2 transition text-sm',
                           questionTypes.includes(type.key)
-                            ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20 text-sky-700 dark:text-sky-300'
+                            ? 'border-info bg-info/10 text-info'
                             : 'border-border/60 text-muted-foreground hover:border-border'
                         )}
                       >
@@ -509,9 +509,9 @@ export function TestGenerationDialog({
 
               {/* 错误提示 */}
               {error && (
-                <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
-                  <AlertCircle className="w-4 h-4 text-red-600 mt-0.5" />
-                  <div className="text-sm text-red-600 dark:text-red-400">{error}</div>
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+                  <AlertCircle className="w-4 h-4 text-destructive mt-0.5" />
+                  <div className="text-sm text-destructive">{error}</div>
                 </div>
               )}
             </div>
@@ -529,7 +529,7 @@ export function TestGenerationDialog({
               ) : (
                 <>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <CheckCircle2 className="w-4 h-4 text-green-600" />
+                    <CheckCircle2 className="w-4 h-4 text-success" />
                     成功生成 {generatedQuestions.length} 个问题
                     {autoSave && `（已自动保存 ${savedCaseIds.length} 个用例）`}
                   </div>
@@ -554,7 +554,7 @@ export function TestGenerationDialog({
                               </div>
                             )}
                             {questionType && (
-                              <span className="inline-block mt-2 px-2 py-0.5 rounded-full bg-sky-100 dark:bg-sky-900/30 text-[10px] text-sky-700 dark:text-sky-300">
+                              <span className="inline-block mt-2 px-2 py-0.5 rounded-full bg-info/10 text-[10px] text-info">
                                 {questionType}
                               </span>
                             )}

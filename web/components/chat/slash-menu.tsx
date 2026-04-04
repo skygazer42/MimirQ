@@ -83,7 +83,7 @@ export function SlashMenu({ open, onOpenChange, onSelect, position }: Readonly<S
                   className="items-start gap-3 rounded-xl px-3 py-3"
                 >
                   <div className="mt-0.5 flex size-8 items-center justify-center rounded-xl border border-primary/15 bg-primary/10 text-primary">
-                    <cmd.icon className="h-4 w-4" />
+                    <cmd.icon className="size-4" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium text-foreground">{cmd.label}</div>

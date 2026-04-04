@@ -88,11 +88,11 @@ export default function SettingsRbacPage() {
         title="RBAC（成员权限）"
         description="管理 tenant 成员角色（影响 datasets/connectors 的可写权限）"
         icon={ShieldCheck}
-        iconColor="text-emerald-600 dark:text-emerald-400"
+        iconColor="text-success"
         size="6xl"
         actions={
           <Button variant="outline" size="sm" className="gap-2 rounded-xl" disabled={loading} onClick={() => detachPromise(refresh())}>
-            <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin motion-reduce:animate-none')} />
+            <RefreshCw className={cn('size-4', loading && 'animate-spin motion-reduce:animate-none')} />
             刷新
           </Button>
         }
@@ -101,7 +101,7 @@ export default function SettingsRbacPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Users className="w-5 h-5" />
+                <Users className="size-5" />
                 Tenant Members
               </CardTitle>
             </CardHeader>
@@ -153,7 +153,7 @@ export default function SettingsRbacPage() {
                         </div>
                         <div className="col-span-2">
                           {m.is_current ? (
-                            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">yes</span>
+                            <span className="text-success font-semibold">yes</span>
                           ) : (
                             <span className="text-muted-foreground">no</span>
                           )}

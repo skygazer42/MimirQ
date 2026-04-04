@@ -5,15 +5,15 @@ import { cn } from "@/lib/utils"
 import type { RadixRef } from "@/lib/radix-utils"
 
 const alertVariants = cva(
-  "relative w-full rounded-lg border p-4 [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground/80 [&>svg+div]:pl-7",
+  "relative w-full rounded-lg border border-l-4 p-4 [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground/80 [&>svg+div]:pl-7",
   {
     variants: {
       variant: {
-        default: "bg-card text-foreground border-border",
-        success: "bg-success/10 border-success/25 text-foreground [&>svg]:text-success",
-        warning: "bg-warning/10 border-warning/25 text-foreground [&>svg]:text-warning",
-        info: "bg-info/10 border-info/25 text-foreground [&>svg]:text-info",
-        destructive: "bg-destructive/10 border-destructive/25 text-foreground [&>svg]:text-destructive",
+        default: "bg-card text-foreground border-border border-l-border",
+        success: "bg-success/10 border-success/25 border-l-success text-foreground [&>svg]:text-success",
+        warning: "bg-warning/10 border-warning/25 border-l-warning text-foreground [&>svg]:text-warning",
+        info: "bg-info/10 border-info/25 border-l-info text-foreground [&>svg]:text-info",
+        destructive: "bg-destructive/10 border-destructive/25 border-l-destructive text-foreground [&>svg]:text-destructive",
       },
     },
     defaultVariants: {

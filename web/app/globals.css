@@ -3,14 +3,13 @@
 
 @layer base {
   :root {
-    /* Typography - System font stack (avoids build-time Google Fonts fetch) */
-    --font-sans: "Geist Sans", Geist, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    /* Typography - System font stack with Inter preferred */
+    --font-sans: "Inter Variable", Inter, "Geist Sans", Geist, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
       Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
-    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 
-    /* Base - Modern Clean Light (Ice/Slate based) */
-    --background: 210 40% 98%;
-    /* Very faint cool white */
+    /* Base - Warm gray-white */
+    --background: 220 25% 97.5%;
     --foreground: 222.2 84% 4.9%;
     /* Deepest Blue-Black */
 
@@ -21,9 +20,8 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
 
-    /* Primary - Cyber Cyan (Future Tech) */
-    --primary: 190 90% 50%;
-    /* Vivid Cyan */
+    /* Primary - Ocean Teal (沉稳海洋蓝绿) */
+    --primary: 192 85% 46%;
     --primary-foreground: 222.2 47.4% 11.2%;
 
     /* Secondary - Soft Cool Gray */
@@ -32,7 +30,7 @@
 
     /* Muted - For background/disabled text */
     --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted-foreground: 215 16% 42%;
 
     /* Accent - Violet (a warm counterpoint to the cool cyan primary) */
     --accent: 262 83% 58%;
@@ -61,7 +59,7 @@
     --indigo-foreground: 0 0% 100%;
 
     /* Chart palette (8 visually distinct hues for Recharts/data viz) */
-    --chart-1: 190 90% 50%;
+    --chart-1: 192 85% 46%;
     --chart-2: 142 76% 36%;
     --chart-3: 262 83% 58%;
     --chart-4: 38 92% 50%;
@@ -70,49 +68,53 @@
     --chart-7: 172 66% 40%;
     --chart-8: 24 95% 53%;
 
-    /* Borders & Inputs - Subtle Cool Gray */
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 190 90% 50%;
+    /* Borders & Inputs - Neutral Cool Gray */
+    --border: 220 20% 92%;
+    --input: 220 20% 92%;
+    --ring: 192 60% 50%;
 
     /* Radius - Consistent Curves */
     --radius: 0.75rem;
     --radius-xl: 1rem;
+    --radius-2xl: 1.25rem;
+    --radius-3xl: 1.5rem;
+
+    /* Code block background */
+    --code-background: 220 25% 95%;
 
     /* Sidebar - Slightly distinct from main background */
-    --sidebar-background: 0 0% 100%;
+    --sidebar-background: 220 20% 99%;
     --sidebar-foreground: 222.2 84% 4.9%;
-    --sidebar-border: 214.3 31.8% 91.4%;
+    --sidebar-border: 220 20% 92%;
 
     /* Custom Shadows for depth */
+    --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.03);
     --shadow-soft: 0 2px 10px rgba(0, 0, 0, 0.05);
     --shadow-strong: 0 10px 30px rgba(0, 0, 0, 0.08);
   }
 
   html.dark {
-    /* Base - Deep Space Void (Not pure black) */
-    --background: 222 47% 11%;
+    /* Base - Deep Ink (更深邃的墨色) */
+    --background: 225 35% 9%;
     --foreground: 210 40% 98%;
 
-    /* Cards - Layered Dark (Slightly lighter than BG) */
-    --card: 217 33% 17%;
+    /* Cards - Layered Dark */
+    --card: 220 28% 14%;
     --card-foreground: 210 40% 98%;
 
-    --popover: 217 33% 17%;
+    --popover: 220 28% 14%;
     --popover-foreground: 210 40% 98%;
 
-    /* Primary - Neon Cyan */
-    --primary: 190 90% 60%;
-    /* Brighter Cyan for dark mode */
+    /* Primary - Ocean Teal (dark mode) */
+    --primary: 192 85% 56%;
     --primary-foreground: 222.2 47.4% 11.2%;
 
     /* Secondary - Deep Gray/Blue */
-    --secondary: 217 33% 17%;
-    /* Same as card */
+    --secondary: 220 28% 14%;
     --secondary-foreground: 210 40% 98%;
 
     /* Muted - Subtle */
-    --muted: 217 33% 17%;
+    --muted: 220 28% 14%;
     --muted-foreground: 215 20% 65%;
 
     /* Accent - Violet (brighter in dark mode) */
@@ -142,7 +144,7 @@
     --indigo-foreground: 222.2 47.4% 11.2%;
 
     /* Chart palette (dark mode - brighter for contrast) */
-    --chart-1: 190 90% 60%;
+    --chart-1: 192 85% 56%;
     --chart-2: 142 70% 45%;
     --chart-3: 262 83% 68%;
     --chart-4: 38 92% 55%;
@@ -152,16 +154,20 @@
     --chart-8: 24 95% 60%;
 
     /* Borders & Inputs */
-    --border: 217 33% 20%;
-    --input: 217 33% 20%;
-    --ring: 190 90% 60%;
+    --border: 220 20% 18%;
+    --input: 220 20% 18%;
+    --ring: 192 60% 56%;
+
+    /* Code block background */
+    --code-background: 220 20% 12%;
 
     /* Sidebar - Darker than main content to recede */
-    --sidebar-background: 222 47% 10%;
+    --sidebar-background: 225 35% 7.5%;
     --sidebar-foreground: 210 40% 98%;
-    --sidebar-border: 217 33% 17%;
+    --sidebar-border: 220 28% 14%;
 
     /* Shadows */
+    --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.12);
     --shadow-soft: 0 2px 10px rgba(0, 0, 0, 0.3);
     --shadow-strong: 0 10px 30px rgba(0, 0, 0, 0.5);
   }
@@ -179,18 +185,26 @@
   }
 
   body {
-    @apply bg-background text-foreground antialiased selection:bg-primary/20 selection:text-primary;
+    @apply bg-background text-foreground antialiased selection:bg-primary/15 selection:text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
-    /* Smart OpenType features */
+    line-height: 1.65;
   }
 
-  h1,
-  h2,
+  h1 {
+    @apply font-bold text-balance;
+    letter-spacing: -0.025em;
+  }
+
+  h2 {
+    @apply font-semibold text-balance;
+    letter-spacing: -0.015em;
+  }
+
   h3,
   h4,
   h5,
   h6 {
-    @apply font-semibold text-balance;
+    @apply font-medium text-balance;
   }
 
   p {
@@ -199,8 +213,31 @@
 }
 
 @layer utilities {
+  /* Icon Scale: size-3(12px) meta/badge | size-3.5(14px) inline | size-4(16px) default | size-5(20px) section-header | size-6(24px) hero */
+
+  .section-heading {
+    @apply text-sm font-semibold text-foreground;
+  }
+
+  .section-description {
+    @apply text-xs text-muted-foreground leading-relaxed;
+  }
+
+  .data-text {
+    @apply tabular-nums font-mono text-sm;
+  }
+
+  .text-micro {
+    font-size: 0.6875rem;
+    line-height: 1rem;
+  }
+
   .focus-ring {
     @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+  }
+
+  .focus-ring-soft {
+    @apply focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/50;
   }
 
   .glass {
@@ -210,6 +247,15 @@
 
   .glass-card {
     @apply bg-card/60 dark:bg-card/40 backdrop-blur-md border border-border/50 shadow-sm transition-shadow duration-200 hover:border-primary/20 hover:shadow-md;
+  }
+
+  /* Scroll fade masks */
+  .scroll-fade-top {
+    mask-image: linear-gradient(to bottom, transparent, black 24px);
+  }
+
+  .scroll-fade-bottom {
+    mask-image: linear-gradient(to top, transparent, black 24px);
   }
 
   /* On touch devices (no hover), make group-hover actions always visible */
@@ -241,6 +287,7 @@
     scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
     scrollbar-gutter: stable;
     overscroll-behavior: contain;
+    transition: scrollbar-color 0.2s ease;
   }
 
   html.dark .custom-scrollbar {
@@ -266,6 +313,24 @@ html.dark .custom-scrollbar::-webkit-scrollbar-thumb {
   @apply bg-muted-foreground/30 hover:bg-primary/60;
 }
 
+/* Prose code block styling with theme-aware background */
+.prose code {
+  background-color: hsl(var(--code-background));
+  border-radius: 0.25rem;
+  padding: 0.125rem 0.375rem;
+  font-size: 0.875em;
+}
+
+.prose pre {
+  background-color: hsl(var(--code-background));
+}
+
+.prose pre code {
+  background-color: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+
 /* Typing Cursor Animation */
 .typing-cursor {
   display: inline-block;
@@ -275,4 +340,37 @@ html.dark .custom-scrollbar::-webkit-scrollbar-thumb {
   margin-left: 1px;
   vertical-align: text-bottom;
   @apply animate-blink;
+}
+
+/* Global hover acceleration (120ms — Vercel standard) */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 120ms;
+  }
+}
+
+/* Shimmer gradient refinement */
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer {
+  background: linear-gradient(100deg, transparent, hsl(var(--primary) / 0.04), transparent);
+}
+
+/* Dark mode noise texture for depth */
+html.dark body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.015;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
 }

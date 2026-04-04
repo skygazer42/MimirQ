@@ -674,7 +674,7 @@ export function ChatArea({
             aria-label={t('jumpToLatestMessage')}
             title={t('jumpToLatestMessage')}
           >
-            <ArrowDown className="h-4 w-4 mr-1" />
+            <ArrowDown className="size-4 mr-1" />
             {t('jumpToLatest')}
           </Button>
         </div>
@@ -691,7 +691,7 @@ export function ChatArea({
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1.5rem] border border-border/60 bg-background/80 px-3 py-2 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/70">
             <div className="flex min-w-0 items-center gap-2">
               <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm">
-                <Sparkles className="h-3.5 w-3.5 text-primary" />
+                <Sparkles className="size-3.5 text-primary" />
                 <span>{t('conversationTools')}</span>
               </div>
               <div className="hidden text-[11px] text-muted-foreground md:block">
@@ -975,7 +975,7 @@ export function ChatArea({
 	          <div className={cn(
 	            "relative group rounded-[2rem] glass border-border/60 transition-colors transition-shadow duration-200 motion-reduce:transition-none",
 	            "shadow-soft hover:shadow-strong",
-	            "focus-within:ring-1 focus-within:ring-primary/30 focus-within:border-primary/50"
+	            "focus-within:ring-0 focus-within:border-primary/50 focus-within:shadow-[0_0_0_3px_hsl(var(--primary)/0.06)]"
 	          )}>
             <Label htmlFor="chat-composer" className="sr-only">
                 {t('messageInput')}
@@ -1003,7 +1003,7 @@ export function ChatArea({
 	                  title={t('voiceMode')}
 	                  aria-label={t('voiceMode')}
 	                >
-	                  <Mic className="h-5 w-5" />
+	                  <Mic className="size-5" />
 	                </Button>
 	              </Magnetic>
 
@@ -1016,7 +1016,7 @@ export function ChatArea({
 	                    title={t('stopGeneration')}
 	                    aria-label={t('stopGeneration')}
 	                  >
-	                    <StopCircle className="h-4 w-4" />
+	                    <StopCircle className="size-4" />
 	                  </Button>
                 </Magnetic>
               ) : (
@@ -1029,12 +1029,12 @@ export function ChatArea({
                       "rounded-full size-9 shadow-sm transition-colors transition-shadow transition-transform duration-200 motion-reduce:transition-none",
                       inputValue.trim() && hasChatScope
                         ? "bg-primary text-primary-foreground hover:bg-primary/90 motion-safe:hover:scale-105 hover:shadow-md"
-                        : "bg-secondary text-muted-foreground cursor-not-allowed"
+                        : "bg-muted/50 text-muted-foreground/50 cursor-not-allowed"
                     )}
                     title={hasChatScope ? t('send') : (datasetsLoading ? t('datasetScopeLoading') : t('datasetScopeRequired'))}
                     aria-label={t('send')}
                   >
-	                    <Send className="h-4 w-4" />
+	                    <Send className="size-4" />
 	                  </Button>
                 </Magnetic>
               )}
@@ -1135,9 +1135,9 @@ function WelcomeScreen({
     <div className="relative z-10 w-full px-1 py-4 md:px-2">
       <div className="relative overflow-hidden rounded-[2.5rem] border border-border/60 bg-background/85 p-4 shadow-soft backdrop-blur supports-[backdrop-filter]:bg-background/72 md:p-6 xl:p-7">
         <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
-          <div className="absolute -left-16 top-0 h-56 w-56 rounded-full bg-primary/[0.08] blur-3xl" />
-          <div className="absolute -right-10 bottom-[-15%] h-64 w-64 rounded-full bg-accent/[0.08] blur-3xl" />
-          <div className="absolute inset-x-12 top-[44%] h-px bg-gradient-to-r from-transparent via-border/80 to-transparent xl:hidden" />
+          <div className="absolute -left-16 top-0 h-56 w-56 rounded-full bg-primary/[0.04] blur-3xl" />
+          <div className="absolute -right-10 bottom-[-15%] h-64 w-64 rounded-full bg-accent/[0.04] blur-3xl" />
+          <div className="absolute inset-x-12 top-[44%] h-px bg-border/70 opacity-80 xl:hidden" />
         </div>
 
         <div className="relative grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.95fr)] xl:items-stretch">
@@ -1145,8 +1145,8 @@ function WelcomeScreen({
             <section className="rounded-[2rem] border border-border/50 bg-card/80 p-5 shadow-sm md:p-6">
               <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
                 <div className="space-y-4 text-left">
-                  <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/85 px-3 py-1 text-[11px] font-medium tracking-[0.12em] text-muted-foreground shadow-sm">
-                    <Sparkles className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                  <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/85 px-3 py-1 text-[11px] font-medium tracking-[0.14em] text-muted-foreground shadow-sm">
+                    <Sparkles className="size-3.5 text-primary" aria-hidden="true" />
                     <span>{t('quickStart.title')}</span>
                   </div>
                   <div className="space-y-3">
@@ -1168,7 +1168,7 @@ function WelcomeScreen({
             <section className="rounded-[2rem] border border-border/60 bg-background/78 p-5 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/72 md:p-6">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div className="text-left">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground/80">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/80">
                     {t('quickStart.title')}
                   </div>
                   <div className="mt-1 text-sm leading-6 text-muted-foreground">
@@ -1256,10 +1256,10 @@ function QuickStartChip({
       onClick={() => onSelect(prompt)}
       className="group relative h-full overflow-hidden rounded-[1.75rem] border border-border/60 bg-card/90 p-5 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:bg-card hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
     >
-      <div aria-hidden="true" className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+      <div aria-hidden="true" className="absolute inset-x-0 top-0 h-px bg-primary/30 opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
       <div className="flex items-start gap-3">
-        <div className="mt-0.5 flex size-10 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 text-primary">
-          <Icon className="h-4 w-4" aria-hidden="true" />
+        <div className="mt-0.5 flex size-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <Icon className="size-4" aria-hidden="true" />
         </div>
         <div className="min-w-0">
           <div className="text-sm font-semibold leading-snug text-foreground">{title}</div>
@@ -1301,19 +1301,19 @@ function WelcomeStatusCard({
       <div
         aria-hidden="true"
         className={cn(
-          'pointer-events-none absolute inset-0 bg-gradient-to-br',
-          isPrimary ? 'from-primary/[0.10] via-transparent to-transparent' : 'from-primary/[0.05] via-transparent to-transparent'
+          'pointer-events-none absolute inset-x-0 top-0 h-24',
+          isPrimary ? 'bg-primary/[0.10]' : 'bg-primary/[0.05]'
         )}
       />
       <div className="relative flex h-full flex-col">
         <div className="flex items-start justify-between gap-3">
           <div
             className={cn(
-              'flex size-11 items-center justify-center rounded-2xl border text-primary',
-              isPrimary ? 'border-primary/20 bg-background/80' : 'border-primary/15 bg-primary/10'
+              'flex size-9 items-center justify-center rounded-xl text-primary',
+              isPrimary ? 'bg-background/80' : 'bg-primary/10'
             )}
           >
-            <Icon className="h-5 w-5" aria-hidden="true" />
+            <Icon className="size-5" aria-hidden="true" />
           </div>
           {badge ? (
             <div

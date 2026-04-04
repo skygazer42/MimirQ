@@ -3,6 +3,7 @@ import * as React from "react"
 import { Button, type ButtonProps } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
+/* Children icon should use size-4 for default, size-3.5 for sm */
 type IconButtonProps = Readonly<Omit<ButtonProps, "children" | "size"> & {
   label: string
   children: React.ReactNode

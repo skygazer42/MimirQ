@@ -53,7 +53,7 @@ export function ParserServicesSection({
     <>
       <section>
         <h2 className="mb-6 flex items-center gap-2 text-lg font-semibold text-foreground">
-          <LayoutGrid className="h-5 w-5 text-emerald-700 dark:text-emerald-300" />
+          <LayoutGrid className="h-5 w-5 text-success" />
           ETL4LLM 配置
         </h2>
 
@@ -106,7 +106,7 @@ export function ParserServicesSection({
             <TogglePill
               enabled={etl4llm.force_ocr}
               onClick={() => updateEtl4Llm({ force_ocr: !etl4llm.force_ocr })}
-              accentClassName="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300"
+              accentClassName="border-success/20 bg-success/10 text-success"
             />
           </div>
 
@@ -118,7 +118,7 @@ export function ParserServicesSection({
             <TogglePill
               enabled={etl4llm.extract_images}
               onClick={() => updateEtl4Llm({ extract_images: !etl4llm.extract_images })}
-              accentClassName="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300"
+              accentClassName="border-success/20 bg-success/10 text-success"
             />
           </div>
 
@@ -130,7 +130,7 @@ export function ParserServicesSection({
             <TogglePill
               enabled={etl4llm.enable_formula}
               onClick={() => updateEtl4Llm({ enable_formula: !etl4llm.enable_formula })}
-              accentClassName="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300"
+              accentClassName="border-success/20 bg-success/10 text-success"
             />
           </div>
 
@@ -146,7 +146,7 @@ export function ParserServicesSection({
                   filter_page_header_footer: !etl4llm.filter_page_header_footer,
                 })
               }
-              accentClassName="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300"
+              accentClassName="border-success/20 bg-success/10 text-success"
             />
           </div>
         </div>
@@ -154,7 +154,7 @@ export function ParserServicesSection({
 
       <section>
         <h2 className="mb-6 flex items-center gap-2 text-lg font-semibold text-foreground">
-          <LayoutGrid className="h-5 w-5 text-emerald-700 dark:text-emerald-300" />
+          <LayoutGrid className="h-5 w-5 text-success" />
           Marker 配置
         </h2>
 

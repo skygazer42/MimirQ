@@ -224,7 +224,7 @@ export default function SettingsGroupDetailPage() {
         actions={
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" className="gap-2 rounded-xl" onClick={() => router.push('/settings/groups')}>
-              <ArrowLeft className="h-4 w-4" />
+              <ArrowLeft className="size-4" />
               返回列表
             </Button>
             <Button
@@ -237,11 +237,11 @@ export default function SettingsGroupDetailPage() {
                 detachPromise(loadMembers())
               }}
             >
-              <RefreshCw className={cn('h-4 w-4', (loadingGroup || loadingMembers) && 'animate-spin motion-reduce:animate-none')} />
+              <RefreshCw className={cn('size-4', (loadingGroup || loadingMembers) && 'animate-spin motion-reduce:animate-none')} />
               刷新
             </Button>
             <Button size="sm" className="gap-2 rounded-xl" disabled={!canSaveGroup || savingGroup} onClick={() => detachPromise(saveGroup())}>
-              {savingGroup ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Save className="h-4 w-4" />}
+              {savingGroup ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : <Save className="size-4" />}
               保存
             </Button>
           </div>
@@ -251,7 +251,7 @@ export default function SettingsGroupDetailPage() {
           <Card className="h-fit">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5" />
+                <Users className="size-5" />
                 基本信息
               </CardTitle>
             </CardHeader>
@@ -300,7 +300,7 @@ export default function SettingsGroupDetailPage() {
             <CardHeader className="space-y-2">
               <CardTitle className="flex items-center justify-between gap-3">
                 <span className="flex items-center gap-2">
-                  <Users className="h-5 w-5" />
+                  <Users className="size-5" />
                   成员
                 </span>
                 <span className="text-xs font-mono text-muted-foreground">{membersTotal} total</span>
@@ -321,7 +321,7 @@ export default function SettingsGroupDetailPage() {
                   >
                     <DialogTrigger asChild>
                       <Button size="sm" className="gap-2 rounded-xl" disabled={!groupId}>
-                        <UserPlus className="h-4 w-4" />
+                        <UserPlus className="size-4" />
                         添加成员
                       </Button>
                     </DialogTrigger>
@@ -350,7 +350,7 @@ export default function SettingsGroupDetailPage() {
                           取消
                         </Button>
                         <Button onClick={() => detachPromise(addMembers())} disabled={adding}>
-                          {adding ? <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" /> : null}
+                          {adding ? <Loader2 className="mr-2 size-4 animate-spin motion-reduce:animate-none" /> : null}
                           添加
                         </Button>
                       </DialogFooter>
@@ -385,15 +385,15 @@ export default function SettingsGroupDetailPage() {
                                 variant="ghost"
                                 size="icon"
                                 className="h-9 w-9"
-                                disabled={!uid || removing}
-                                aria-label={removing ? `正在移除成员 ${uid}` : `移除成员 ${uid}`}
-                              >
-                                {removing ? (
-                                  <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
-                                ) : (
-                                  <Trash2 className="h-4 w-4" />
-                                )}
-                              </Button>
+                                 disabled={!uid || removing}
+                                 aria-label={removing ? `正在移除成员 ${uid}` : `移除成员 ${uid}`}
+                               >
+                                 {removing ? (
+                                   <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+                                 ) : (
+                                   <Trash2 className="h-4 w-4" />
+                                 )}
+                               </Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                               <AlertDialogHeader>

@@ -42,7 +42,7 @@ export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
   }
 
   return (
-    <div className={cn("relative", containerClassName)}>
+    <div className={cn("relative [&:has(input:focus)_svg]:text-primary", containerClassName)}>
       <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/70" />
       <Input
         ref={setRefs}
@@ -58,7 +58,7 @@ export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
           label={t('searchInput.clearLabel')}
           type="button"
           variant="ghost"
-          className="absolute right-1.5 top-1/2 size-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          className="absolute right-1.5 top-1/2 size-7 -translate-y-1/2 text-muted-foreground hover:text-foreground hover:bg-muted/60"
           onClick={() => {
             onValueChange("")
             onClear?.()

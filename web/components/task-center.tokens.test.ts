@@ -12,7 +12,7 @@ describe('task-center typography and token hooks', () => {
     expect(src).toContain('border-warning/20 bg-warning/5 hover:bg-warning/10')
     expect(src).toContain('bg-warning/10 text-warning')
     expect(src).not.toContain('amber-')
-    expect(src).toContain('uppercase tracking-[0.12em] text-muted-foreground')
+    expect(src).toContain('uppercase tracking-[0.14em] text-muted-foreground')
     expect(src).toContain('text-sm font-medium leading-snug truncate')
   })
 })

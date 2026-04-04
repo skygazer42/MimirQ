@@ -27,7 +27,7 @@ export function PageHeader({
       <div className={cn("flex items-start justify-between", compact ? "gap-3" : "gap-4")}>
         <div className={cn("flex items-center min-w-0", compact ? "gap-2.5" : "gap-4")}>
           <div className={cn(
-            "shrink-0 flex items-center justify-center border border-sidebar-border/70 bg-sidebar/80 shadow-sm backdrop-blur-xl",
+            "shrink-0 flex items-center justify-center border-0 bg-primary/10 shadow-subtle backdrop-blur-xl",
             compact ? "size-9 rounded-xl" : "size-14 rounded-2xl"
           )}>
             <Icon className={cn(compact ? "size-[18px]" : "size-6", iconColor)} />
@@ -54,7 +54,7 @@ export function PageHeader({
               <div className={cn(
                 "max-w-[72ch] text-pretty text-muted-foreground",
                 compact
-                  ? "mt-0.5 text-xs leading-normal md:text-sm"
+                  ? "mt-0.5 text-[13px] leading-relaxed md:text-sm"
                   : "mt-2 text-sm leading-[1.75] md:text-[15px]"
               )}>
                 {description}

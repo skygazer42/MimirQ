@@ -158,7 +158,7 @@ export function ModelConfigDialog({
         {/* 头部 */}
         <div className="bg-muted/40 border-b border-border p-6 flex items-start gap-4">
           <div className="h-11 w-11 rounded-xl bg-card border border-border flex items-center justify-center shadow-sm flex-shrink-0">
-            <ProviderIcon providerId={provider.id} className="w-8 h-8 object-contain" />
+            <ProviderIcon providerId={provider.id} className="size-8 object-contain" />
           </div>
           <div>
             <DialogTitle className="text-xl font-semibold text-foreground mb-1">
@@ -202,7 +202,7 @@ export function ModelConfigDialog({
                 title={showApiKey ? '隐藏 API Key' : '显示 API Key'}
                 className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors motion-reduce:transition-none focus-ring"
               >
-                {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                {showApiKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
               </button>
             </div>
           </div>
@@ -255,7 +255,7 @@ export function ModelConfigDialog({
               onClick={() => setShowAdvanced(!showAdvanced)}
               className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none group"
             >
-              <ChevronRight className={cn("h-4 w-4 transition-transform", showAdvanced && "rotate-90")} />
+              <ChevronRight className={cn("size-4 transition-transform", showAdvanced && "rotate-90")} />
               高级设置
             </button>
             
@@ -299,9 +299,9 @@ export function ModelConfigDialog({
               className="animate-in fade-in zoom-in-95 duration-200 motion-reduce:animate-none"
             >
               {testResult.success ? (
-                <CheckCircle2 className="h-5 w-5" />
+                <CheckCircle2 className="size-5" />
               ) : (
-                <AlertCircle className="h-5 w-5" />
+                <AlertCircle className="size-5" />
               )}
               <div>
                 <AlertDescription className="text-foreground font-medium">
@@ -324,7 +324,7 @@ export function ModelConfigDialog({
                 <span className="animate-pulse motion-reduce:animate-none">测试中...</span>
               ) : (
                 <>
-                  <FlaskConical className="h-4 w-4 mr-2" />
+                  <FlaskConical className="size-4 mr-2" />
                   测试连接
                 </>
               )}
@@ -334,7 +334,7 @@ export function ModelConfigDialog({
               disabled={!config.apiKey || !config.model}
               className="flex-1 rounded-xl h-11"
             >
-              <Save className="h-4 w-4 mr-2" />
+              <Save className="size-4 mr-2" />
               保存配置
             </Button>
           </div>

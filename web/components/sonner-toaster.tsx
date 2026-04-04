@@ -14,7 +14,10 @@ export function SonnerToaster() {
       position="top-right"
       richColors
       closeButton
+      gap={6}
+      toastOptions={{
+        className: 'rounded-lg border-border/60 shadow-strong',
+      }}
     />
   )
 }
-

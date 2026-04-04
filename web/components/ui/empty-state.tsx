@@ -23,12 +23,12 @@ export function EmptyState({
   return (
     <section
       className={cn(
-        "flex min-h-[280px] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/40 px-6 py-10 text-center",
+        "group flex min-h-[240px] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/40 px-6 py-10 text-center",
         className
       )}
     >
       {Icon ? (
-        <div className="mb-6 grid size-16 place-items-center rounded-2xl border border-border bg-background/60 shadow-soft">
+        <div className="mb-6 grid size-16 place-items-center rounded-2xl border-0 bg-primary/10 shadow-subtle group-hover:scale-105 transition-transform duration-200 motion-reduce:transition-none">
             <Icon className={cn("size-8 text-primary", iconClassName)} />
         </div>
       ) : null}

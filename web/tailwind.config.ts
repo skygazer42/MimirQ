@@ -16,7 +16,7 @@ const config = {
       center: true,
       padding: "2rem",
       screens: {
-        "2xl": "1400px",
+        "2xl": "1440px",
       },
     },
     extend: {
@@ -31,8 +31,8 @@ const config = {
         100: "100",
       },
       transitionTimingFunction: {
-        // Used for right-panel layout shifts (document viewer) without Tailwind arbitrary-value warnings.
         "out-expo": "cubic-bezier(0.32, 0.72, 0, 1)",
+        "spring": "cubic-bezier(0.22, 1, 0.36, 1)",
       },
       colors: {
         border: "hsl(var(--border))",
@@ -103,12 +103,15 @@ const config = {
         },
       },
       borderRadius: {
+        "3xl": "var(--radius-3xl)",
+        "2xl": "var(--radius-2xl)",
         xl: "var(--radius-xl)",
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
       boxShadow: {
+        'subtle': 'var(--shadow-subtle)',
         'soft': 'var(--shadow-soft)',
         'strong': 'var(--shadow-strong)',
       },
@@ -154,6 +157,10 @@ const config = {
           "0%, 100%": { opacity: "1" },
           "50%": { opacity: "0" },
         },
+        "page-enter": {
+          "0%": { opacity: "0", transform: "translateY(8px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -166,6 +173,7 @@ const config = {
         "pulse-subtle": "pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
         "shimmer": "shimmer 2s infinite",
         "blink": "blink 1s step-end infinite",
+        "page-enter": "page-enter 0.3s cubic-bezier(0.22, 1, 0.36, 1) forwards",
       },
     },
   },

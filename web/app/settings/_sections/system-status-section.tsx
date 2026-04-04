@@ -19,22 +19,22 @@ function StatusCard({
       className={cn(
         'rounded-xl border bg-card p-4 transition-colors',
         connected
-          ? 'border-green-200 dark:border-green-500/40'
-          : 'border-red-200 dark:border-red-500/40'
+          ? 'border-success/20'
+          : 'border-destructive/20'
       )}
     >
       <div className="mb-2 flex items-center justify-between">
         <span className="text-sm font-medium text-foreground/80">{label}</span>
         {connected ? (
-          <CheckCircle2 className="h-5 w-5 text-green-500 dark:text-green-300" />
+          <CheckCircle2 className="h-5 w-5 text-success" />
         ) : (
-          <XCircle className="h-5 w-5 text-red-500 dark:text-red-300" />
+          <XCircle className="h-5 w-5 text-destructive" />
         )}
       </div>
       <p
         className={cn(
           'truncate text-xs',
-          connected ? 'text-green-600 dark:text-green-300' : 'text-red-600 dark:text-red-300'
+          connected ? 'text-success' : 'text-destructive'
         )}
       >
         {message || (connected ? '已连接' : '未连接')}
@@ -116,7 +116,7 @@ export function SystemStatusSection({
                 className={cn(
                   'rounded-full border px-2.5 py-1 text-xs',
                   info.available
-                    ? 'border-green-200 bg-green-50 text-green-700 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-300'
+                    ? 'border-success/20 bg-success/10 text-success'
                     : 'border-border bg-muted text-muted-foreground'
                 )}
               >

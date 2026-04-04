@@ -71,7 +71,7 @@ export function ThemeCustomizer() {
           variant="outline"
           className="fixed bottom-4 right-4 z-50 size-12 rounded-full border-primary/20 bg-background/80 backdrop-blur-md shadow-lg hover:border-primary transition-colors duration-200 motion-reduce:transition-none supports-[padding:env(safe-area-inset-bottom)]:bottom-[calc(env(safe-area-inset-bottom)+1rem)] supports-[padding:env(safe-area-inset-right)]:right-[calc(env(safe-area-inset-right)+1rem)]"
         >
-          <Settings2 className="h-6 w-6 text-primary" />
+          <Settings2 className="size-6 text-primary" />
         </IconButton>
       </PopoverTrigger>
       <PopoverContent className="w-80 p-4" align="end" sideOffset={10}>
@@ -88,7 +88,7 @@ export function ThemeCustomizer() {
               variant="ghost"
               onClick={() => setColor(PRESET_COLORS[0].value)}
             >
-                <RefreshCw className="h-4 w-4" />
+                <RefreshCw className="size-4" />
             </IconButton>
           </div>
           

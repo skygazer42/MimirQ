@@ -120,7 +120,7 @@ export function ChunksTabPanel({
       <div className="no-scrollbar flex-1 overflow-y-auto overscroll-contain p-4 scroll-smooth" ref={chunksListRef}>
         {chunksLoading && chunks.length === 0 ? (
           <div className="flex items-center justify-center py-10 text-muted-foreground">
-            <Loader2 className="h-6 w-6 animate-spin motion-reduce:animate-none" />
+            <Loader2 className="size-6 animate-spin motion-reduce:animate-none" />
           </div>
         ) : null}
 

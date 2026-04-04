@@ -223,12 +223,12 @@ export function LtrModelRegistrySection({
                         key={model.model_id}
                         className={cn(
                           'border-t border-border',
-                          isActive && 'bg-emerald-50/50 dark:bg-emerald-500/10'
+                          isActive && 'bg-success/10'
                         )}
                       >
                         <td className="px-3 py-2">
                           {isActive ? (
-                            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+                            <span className="inline-flex items-center gap-1.5 rounded-full border border-success/20 bg-success/10 px-2 py-0.5 text-xs text-success">
                               <CheckCircle2 className="h-3 w-3" />
                               ACTIVE
                             </span>

@@ -595,7 +595,7 @@ export function GraphCanvas({
           ) : (
             <EmptyState
               icon={Share2}
-              iconClassName="text-sky-500 dark:text-sky-300"
+              iconClassName="text-info"
               title="探索知识网络"
               description={
                 <>

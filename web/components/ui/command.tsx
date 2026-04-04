@@ -32,7 +32,7 @@ const CommandDialog = ({ children, ...props }: CommandDialogProps) => {
 
   return (
     <Dialog {...props}>
-      <DialogContent className="overflow-hidden border border-border/60 bg-popover/92 p-0 shadow-strong backdrop-blur-xl">
+      <DialogContent className="overflow-hidden border border-border/60 bg-popover/88 p-0 shadow-strong backdrop-blur-2xl">
         <DialogTitle className="sr-only">{t('command.title')}</DialogTitle>
         <DialogDescription className="sr-only">
           {t('command.description')}
@@ -49,8 +49,8 @@ const CommandInput = React.forwardRef<
   RadixRef<typeof CommandPrimitive.Input>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive.Input>
 >(({ className, ...props }, ref) => (
-  <div className="flex items-center border-b border-border/40 px-3" cmdk-input-wrapper="">
-    <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+  <div className="flex items-center border-b border-border/40 px-3 [&:has(input:focus)_svg]:text-primary" cmdk-input-wrapper="">
+    <Search className="mr-2 h-4 w-4 shrink-0 opacity-50 transition-colors" />
     <CommandPrimitive.Input
       ref={ref}
       className={cn(
@@ -125,7 +125,7 @@ const CommandItem = React.forwardRef<
   <CommandPrimitive.Item
     ref={ref}
     className={cn(
-      "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none aria-selected:bg-primary/10 aria-selected:text-primary data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-200",
+      "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none aria-selected:bg-primary/10 aria-selected:text-primary aria-selected:before:absolute aria-selected:before:left-0 aria-selected:before:top-1 aria-selected:before:bottom-1 aria-selected:before:w-[2px] aria-selected:before:rounded-full aria-selected:before:bg-primary data-[disabled]:pointer-events-none data-[disabled]:opacity-50 transition-colors duration-200",
       className
     )}
     {...props}

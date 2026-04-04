@@ -280,7 +280,7 @@ export function GraphNodeDetailPanel({
           <div className="p-5 border-b border-border flex items-start justify-between bg-card">
             <div>
               <h2 className="font-bold text-lg text-foreground line-clamp-2">{selectedNode.label}</h2>
-              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-sky-500/10 dark:bg-sky-500/20 text-sky-600 dark:text-sky-300 mt-2 border border-sky-500/30">
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-info/10 text-info mt-2 border border-info/20">
                 <Database className="w-3 h-3" />
                 ID: {selectedNode.id}
               </span>
@@ -372,7 +372,7 @@ export function GraphNodeDetailPanel({
                   variant="outline"
                   onClick={onExpandNode}
                   disabled={isLoading}
-                  className="w-full justify-start text-xs h-9 hover:bg-sky-500/10 dark:hover:bg-sky-500/20 hover:text-sky-600 dark:hover:text-sky-300 text-muted-foreground"
+                  className="w-full justify-start text-xs h-9 hover:bg-info/10 hover:text-info text-muted-foreground"
                 >
                   <Network className="w-3 h-3 mr-2" />
                   {isLoading ? '展开中...' : '展开邻居节点'}
@@ -382,7 +382,7 @@ export function GraphNodeDetailPanel({
                   <Button
                     variant="outline"
                     onClick={onStartConnectMode}
-                    className="w-full justify-start text-xs h-9 hover:bg-emerald-500/10 dark:hover:bg-emerald-500/20 hover:text-emerald-600 dark:hover:text-emerald-300 hover:border-emerald-500/30 text-muted-foreground"
+                    className="w-full justify-start text-xs h-9 hover:bg-success/10 hover:text-success hover:border-success/20 text-muted-foreground"
                   >
                     <LinkIcon className="w-3 h-3 mr-2" />
                     连接
@@ -390,7 +390,7 @@ export function GraphNodeDetailPanel({
                   <Button
                     variant="outline"
                     onClick={onDeleteNode}
-                    className="w-full justify-start text-xs h-9 hover:bg-red-500/10 dark:hover:bg-red-500/20 dark:bg-red-500/20 hover:text-red-600 dark:hover:text-red-300 hover:border-red-500/30 text-muted-foreground"
+                    className="w-full justify-start text-xs h-9 hover:bg-destructive/10 hover:text-destructive hover:border-destructive/20 text-muted-foreground"
                   >
                     <Trash2 className="w-3 h-3 mr-2" />
                     删除
@@ -402,7 +402,7 @@ export function GraphNodeDetailPanel({
                     <Button
                       variant="outline"
                       onClick={onOpenMerge}
-                      className="w-full justify-start text-xs h-9 hover:bg-amber-500/10 dark:hover:bg-amber-500/20 hover:text-amber-700 dark:hover:text-amber-200 hover:border-amber-500/30 text-muted-foreground"
+                      className="w-full justify-start text-xs h-9 hover:bg-warning/10 hover:text-warning hover:border-warning/20 text-muted-foreground"
                     >
                       <BoxSelect className="w-3 h-3 mr-2" />
                       合并
@@ -410,7 +410,7 @@ export function GraphNodeDetailPanel({
                     <Button
                       variant="outline"
                       onClick={onOpenSplit}
-                      className="w-full justify-start text-xs h-9 hover:bg-violet-500/10 dark:hover:bg-violet-500/20 hover:text-violet-700 dark:hover:text-violet-200 hover:border-violet-500/30 text-muted-foreground"
+                      className="w-full justify-start text-xs h-9 hover:bg-accent hover:text-accent-foreground hover:border-accent text-muted-foreground"
                     >
                       <Box className="w-3 h-3 mr-2" />
                       拆分

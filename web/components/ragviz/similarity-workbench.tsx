@@ -782,17 +782,17 @@ export function RagvizSimilarityWorkbench() {
               active={leftTopPanel === 'dataSource'}
               title="数据源配置"
               onClick={() => setLeftTopPanel('dataSource')}
-              icon={<Database className="h-4 w-4" />}
+              icon={<Database className="size-4" />}
             />
             <IconBtn
               active={leftTopPanel === 'operations'}
               title="结果操作"
               onClick={() => setLeftTopPanel('operations')}
-              icon={<Download className="h-4 w-4" />}
+              icon={<Download className="size-4" />}
             />
           </div>
           <div className="mt-auto pt-2">
-            <IconBtn active title="图表选择与控制" onClick={() => {}} icon={<Grid3X3 className="h-4 w-4" />} />
+            <IconBtn active title="图表选择与控制" onClick={() => {}} icon={<Grid3X3 className="size-4" />} />
           </div>
         </div>
 
@@ -813,7 +813,7 @@ export function RagvizSimilarityWorkbench() {
 	              {leftTopPanel === 'dataSource' ? (
 	                <Panel title="数据源配置" rightSlot={
 	                  <Button variant="ghost" size="icon" onClick={loadCollections} disabled={collectionsLoading} title="刷新" aria-label="刷新">
-	                    <RefreshCw className={cn('h-4 w-4', collectionsLoading && 'animate-spin motion-reduce:animate-none')} />
+	                    <RefreshCw className={cn('size-4', collectionsLoading && 'animate-spin motion-reduce:animate-none')} />
 	                  </Button>
 	                }>
                   <p className="text-xs text-muted-foreground">选择横/纵坐标 collections，计算相似度矩阵（Kumi 风格）。</p>
@@ -980,7 +980,7 @@ export function RagvizSimilarityWorkbench() {
 	                                aria-label={`将 ${entry.xCollectionLabel} vs ${entry.yCollectionLabel} 设为显示数据矩阵`}
 	                                onClick={() => toggleApplyData(idx)}
 	                              >
-	                                <Eye className="h-4 w-4" />
+	                                <Eye className="size-4" />
 	                              </Button>
 	                              <Button
 	                                variant={btn?.applyFilter ? 'default' : 'outline'}
@@ -989,7 +989,7 @@ export function RagvizSimilarityWorkbench() {
 	                                aria-label={`将 ${entry.xCollectionLabel} vs ${entry.yCollectionLabel} 的筛选条件加入当前视图`}
 	                                onClick={() => toggleApplyFilter(idx)}
 	                              >
-	                                <Filter className="h-4 w-4" />
+	                                <Filter className="size-4" />
 	                              </Button>
 	                              <Button
 	                                variant={btn?.exclusive ? 'default' : 'outline'}
@@ -1002,7 +1002,7 @@ export function RagvizSimilarityWorkbench() {
                                   }
 	                                onClick={() => (btn?.exclusive ? exitExclusiveMode() : enterExclusiveMode(idx))}
 	                              >
-	                                <Lock className="h-4 w-4" />
+	                                <Lock className="size-4" />
 	                              </Button>
                             </div>
                           </div>
@@ -1128,7 +1128,7 @@ export function RagvizSimilarityWorkbench() {
               active={rightTopPanel === 'statistics'}
               title="统计信息"
               onClick={() => setRightTopPanel((prev) => (prev === 'statistics' ? null : 'statistics'))}
-              icon={<BarChart3 className="h-4 w-4" />}
+              icon={<BarChart3 className="size-4" />}
             />
           </div>
           <div className="mt-auto pt-2">
@@ -1136,7 +1136,7 @@ export function RagvizSimilarityWorkbench() {
               active={rightBottomPanel === 'filters'}
               title="筛选器控制"
               onClick={() => setRightBottomPanel((prev) => (prev === 'filters' ? null : 'filters'))}
-              icon={<Filter className="h-4 w-4" />}
+              icon={<Filter className="size-4" />}
             />
           </div>
         </div>
@@ -1445,7 +1445,7 @@ function SimilarityDiagnosticsView({
                 <LegendPill className="border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/40 dark:bg-sky-900/20 dark:text-sky-200">
                   X 侧项目
                 </LegendPill>
-                <LegendPill className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-200">
+                <LegendPill className="border-success/20 bg-success/10 text-success">
                   Y 侧项目
                 </LegendPill>
                 <LegendPill className="border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900/40 dark:bg-orange-900/20 dark:text-orange-200">
@@ -1494,7 +1494,7 @@ function SimilarityDiagnosticsView({
                         className={cn(
                           'rounded-full border px-2 py-0.5 text-[11px]',
                           isDisabled
-                            ? 'border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-800 dark:bg-slate-900/30 dark:text-slate-300'
+                            ? 'border-border bg-muted text-muted-foreground'
                             : isMarked
                               ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200'
                               : 'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900/40 dark:bg-orange-900/20 dark:text-orange-200'
@@ -2057,7 +2057,7 @@ function StatsItem({
   const toneClass =
     (() => {
     if (tone === 'success') {
-        return 'bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-900/15 dark:text-emerald-200 dark:border-emerald-900/30';
+        return 'bg-success/10 text-success border-success/20';
     }
     else if (tone === 'warning') {
             return 'bg-amber-50 text-amber-800 border-amber-100 dark:bg-amber-900/15 dark:text-amber-200 dark:border-amber-900/30';

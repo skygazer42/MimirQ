@@ -190,8 +190,8 @@ export function GraphPageHeader({
               size="sm"
               onClick={onToggleEntityLinks}
               className={cn(
-                'text-muted-foreground hover:text-sky-600 dark:hover:text-sky-300 hover:bg-sky-500/10 dark:hover:bg-sky-500/20',
-                includeEntityLinks && 'bg-sky-500/10 dark:bg-sky-500/20 text-sky-600 dark:text-sky-300'
+                'text-muted-foreground hover:text-info hover:bg-info/10',
+                includeEntityLinks && 'bg-info/10 text-info'
               )}
               title="实体-实体共现连线"
             >
@@ -215,7 +215,7 @@ export function GraphPageHeader({
               variant="ghost"
               size="sm"
               onClick={onCycleMinSharedEvents}
-              className="text-muted-foreground hover:text-sky-600 dark:hover:text-sky-300 hover:bg-sky-500/10 dark:hover:bg-sky-500/20"
+              className="text-muted-foreground hover:text-info hover:bg-info/10"
               title="最小共现事件数（点击循环）"
             >
               <Filter className="w-4 h-4 mr-2" />
@@ -226,7 +226,7 @@ export function GraphPageHeader({
               size="sm"
               onClick={onExportGraphML}
               disabled={isLoading}
-              className="text-muted-foreground hover:text-sky-600 dark:hover:text-sky-300 hover:bg-sky-500/10 dark:hover:bg-sky-500/20"
+              className="text-muted-foreground hover:text-info hover:bg-info/10"
               title="导出 GraphML"
             >
               <FileCode className="w-4 h-4 mr-2" />

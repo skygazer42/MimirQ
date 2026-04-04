@@ -130,7 +130,7 @@ export default function SettingsGroupsPage() {
               disabled={loading}
               onClick={() => detachPromise(refresh())}
             >
-              <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin motion-reduce:animate-none')} />
+              <RefreshCw className={cn('size-4', loading && 'animate-spin motion-reduce:animate-none')} />
               刷新
             </Button>
 
@@ -146,7 +146,7 @@ export default function SettingsGroupsPage() {
             >
               <DialogTrigger asChild>
                 <Button size="sm" className="gap-2 rounded-xl">
-                  <Plus className="h-4 w-4" />
+                  <Plus className="size-4" />
                   新建组
                 </Button>
               </DialogTrigger>
@@ -202,7 +202,7 @@ export default function SettingsGroupsPage() {
             <CardHeader className="space-y-2">
               <CardTitle className="flex items-center justify-between gap-3">
                 <span className="flex items-center gap-2">
-                  <Users className="h-5 w-5" />
+                  <Users className="size-5" />
                   Groups
                 </span>
                 <span className="text-xs font-mono text-muted-foreground">{filtered.length} items</span>
@@ -256,7 +256,7 @@ export default function SettingsGroupsPage() {
                                 disabled={!gid || deleting}
                                 aria-label="删除组"
                               >
-                                <Trash2 className={cn('h-4 w-4', deleting && 'opacity-60')} />
+                                <Trash2 className={cn('size-4', deleting && 'opacity-60')} />
                               </Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>

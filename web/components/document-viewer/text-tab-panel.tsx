@@ -117,7 +117,7 @@ export function TextTabPanel({
               <Button type="button" size="sm" variant="outline" disabled={!retrieveQuery.trim() || retrieveLoading} onClick={onRunRetrieve}>
                 {retrieveLoading ? (
                   <span className="inline-flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                    <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
                     检索中…
                   </span>
                 ) : (
@@ -192,7 +192,7 @@ export function TextTabPanel({
       <div className="flex-1 overflow-hidden p-4">
         {parsedContentLoading && !parsedContent ? (
           <div className="flex h-full items-center justify-center text-muted-foreground">
-            <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none" />
+            <Loader2 className="size-8 animate-spin motion-reduce:animate-none" />
           </div>
         ) : parsedContent?.available && textValue ? (
           <OriginalPreviewMonaco
@@ -209,7 +209,7 @@ export function TextTabPanel({
             <div className="w-full max-w-md rounded-xl border border-border bg-background p-6 shadow-sm">
               <div className="flex items-start gap-3">
                 <div className="rounded-lg bg-primary/10 p-2">
-                  <FileText className="h-5 w-5 text-primary" />
+                  <FileText className="size-5 text-primary" />
                 </div>
                 <div className="flex-1">
                   <h4 className="text-sm font-semibold">未持久化解析文本</h4>

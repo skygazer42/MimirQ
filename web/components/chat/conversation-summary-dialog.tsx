@@ -141,7 +141,7 @@ export function ConversationSummaryDialog(props: Readonly<{
                   onClick={() => detachPromise(load())}
                   disabled={loading || !hasConversation}
                 >
-                  <RefreshCw className={loading ? 'h-4 w-4 animate-spin motion-reduce:animate-none' : 'h-4 w-4'} />
+                  <RefreshCw className={loading ? 'size-4 animate-spin motion-reduce:animate-none' : 'size-4'} />
                   刷新
                 </Button>
                 <Button
@@ -151,7 +151,7 @@ export function ConversationSummaryDialog(props: Readonly<{
                   onClick={() => detachPromise(update())}
                   disabled={updating || !hasConversation}
                 >
-                  <RefreshCw className={updating ? 'h-4 w-4 animate-spin motion-reduce:animate-none' : 'h-4 w-4'} />
+                  <RefreshCw className={updating ? 'size-4 animate-spin motion-reduce:animate-none' : 'size-4'} />
                   更新
                 </Button>
                 <Button
@@ -161,7 +161,7 @@ export function ConversationSummaryDialog(props: Readonly<{
                   onClick={() => detachPromise(copy())}
                   disabled={!summary.trim()}
                 >
-                  <Copy className="h-4 w-4" />
+                  <Copy className="size-4" />
                   复制
                 </Button>
                 <ConfirmDialog
@@ -179,7 +179,7 @@ export function ConversationSummaryDialog(props: Readonly<{
                     className="h-8 gap-2 text-destructive hover:text-destructive"
                     disabled={clearing || !hasConversation}
                   >
-                    <Trash2 className={clearing ? 'h-4 w-4 animate-pulse' : 'h-4 w-4'} />
+                    <Trash2 className={clearing ? 'size-4 animate-pulse' : 'size-4'} />
                     清空
                   </Button>
                 </ConfirmDialog>
