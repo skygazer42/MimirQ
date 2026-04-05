@@ -24,6 +24,8 @@ describe('Datasets page header', () => {
     const src = fs.readFileSync(path.resolve(__dirname, '../../components/datasets/create-dataset-button.tsx'), 'utf8')
     expect(src).toContain('<svg')
     expect(src).toContain('viewBox="0 0 38 24"')
+    expect(src).toContain('w-[24px]')
+    expect(src).toContain('md:w-[26px]')
     expect(src).not.toContain("from 'lucide-react'")
   })
 

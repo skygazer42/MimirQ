@@ -20,18 +20,18 @@ const CreateDatasetButton = React.forwardRef<HTMLButtonElement, ButtonProps>(
         <span className="flex h-full w-fit items-center justify-center pt-[3px]" aria-hidden="true">
           <svg
             viewBox="0 0 38 24"
-            className="h-[18px] w-[28px] origin-left md:h-[20px] md:w-[30px] motion-safe:group-hover:[animation:dataset-jello-vertical_0.9s_both] motion-reduce:transform-none"
+            className="h-[18px] w-[24px] origin-left md:h-[20px] md:w-[26px] motion-safe:group-hover:[animation:dataset-jello-vertical_0.9s_both] motion-reduce:transform-none"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
           >
             <path
-              d="M4 12H22.5"
+              d="M5 12H21"
               stroke="currentColor"
               strokeWidth="3.25"
               strokeLinecap="round"
             />
             <path
-              d="M20 5.5L33.5 12L20 18.5"
+              d="M18.5 6.5L30.5 12L18.5 17.5"
               stroke="currentColor"
               strokeWidth="3.25"
               strokeLinecap="round"
