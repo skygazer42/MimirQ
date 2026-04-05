@@ -37,6 +37,7 @@ import { GovernanceProfileSelector } from '@/components/governance-profile-selec
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { DatasetCategoryTree } from '@/components/dataset-categories/category-tree'
 import { DatasetCategoryMultiSelect } from '@/components/dataset-categories/category-multi-select'
+import { CreateDatasetButton } from '@/components/datasets/create-dataset-button'
 import { GroupChipsInput } from '@/components/groups/group-chips-input'
 
 type DatasetFormState = {
@@ -267,10 +268,7 @@ export default function DatasetsPage() {
             </Button>
             <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (open) resetForm() }}>
               <DialogTrigger asChild>
-                <Button size="sm" className="gap-1.5">
-                  <Plus className="size-4" />
-                  新建数据集
-                </Button>
+                <CreateDatasetButton />
               </DialogTrigger>
               <DialogContent className="max-w-xl sm:rounded-2xl">
                 <DialogHeader>
