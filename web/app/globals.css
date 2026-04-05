@@ -358,6 +358,36 @@ html.dark .custom-scrollbar::-webkit-scrollbar-thumb {
   }
 }
 
+@keyframes dataset-jello-vertical {
+  0% {
+    transform: scale3d(1, 1, 1);
+  }
+
+  30% {
+    transform: scale3d(0.75, 1.25, 1);
+  }
+
+  40% {
+    transform: scale3d(1.25, 0.75, 1);
+  }
+
+  50% {
+    transform: scale3d(0.85, 1.15, 1);
+  }
+
+  65% {
+    transform: scale3d(1.05, 0.95, 1);
+  }
+
+  75% {
+    transform: scale3d(0.95, 1.05, 1);
+  }
+
+  100% {
+    transform: scale3d(1, 1, 1);
+  }
+}
+
 .animate-shimmer {
   background: linear-gradient(100deg, transparent, hsl(var(--primary) / 0.04), transparent);
 }
