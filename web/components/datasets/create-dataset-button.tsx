@@ -9,31 +9,31 @@ const CreateDatasetButton = React.forwardRef<HTMLButtonElement, ButtonProps>(
       <Button
         ref={ref}
         className={cn(
-          'group h-auto rounded-full border-[8px] border-[#c0dfff] bg-[#006aff] px-5 py-3 text-white shadow-[0_18px_34px_-22px_rgba(0,106,255,1)] transition-all duration-300 hover:border-[#b1d8ff] hover:bg-[#1b7aff] hover:shadow-[0_22px_40px_-22px_rgba(27,122,255,1)] active:border-[5px] focus-visible:ring-4 focus-visible:ring-[#c0dfff]/60 focus-visible:ring-offset-2 dark:border-[#5d9bff] dark:hover:border-[#84b6ff] dark:focus-visible:ring-[#5d9bff]/35 motion-reduce:transition-none md:px-8 md:py-4',
+          'group h-auto gap-1.5 rounded-full border-[6px] border-[#c0dfff] bg-[#006aff] px-[1rem] py-[0.6rem] text-white shadow-[0_14px_28px_-20px_rgba(0,106,255,1)] transition-all duration-300 hover:border-[#b1d8ff] hover:bg-[#1b7aff] hover:shadow-[0_18px_32px_-20px_rgba(27,122,255,1)] active:border-[4px] focus-visible:ring-4 focus-visible:ring-[#c0dfff]/60 focus-visible:ring-offset-2 dark:border-[#5d9bff] dark:hover:border-[#84b6ff] dark:focus-visible:ring-[#5d9bff]/35 motion-reduce:transition-none md:px-[1.2rem] md:py-[0.68rem]',
           className
         )}
         {...props}
       >
-        <span className="text-[1rem] font-bold tracking-[0.06em] md:text-[1.3rem]">
+        <span className="text-[0.92rem] font-bold tracking-[0.04em] md:text-[1rem] leading-none">
           {children}
         </span>
-        <span className="flex h-full w-fit items-center justify-center pt-[5px]" aria-hidden="true">
+        <span className="flex h-full w-fit items-center justify-center pt-[3px]" aria-hidden="true">
           <svg
-            viewBox="0 0 50 30"
-            className="h-[22px] w-[36px] origin-left md:h-[30px] md:w-[50px] motion-safe:group-hover:[animation:dataset-jello-vertical_0.9s_both] motion-reduce:transform-none"
+            viewBox="0 0 38 24"
+            className="h-[18px] w-[28px] origin-left md:h-[20px] md:w-[30px] motion-safe:group-hover:[animation:dataset-jello-vertical_0.9s_both] motion-reduce:transform-none"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
           >
             <path
-              d="M4 15H31.5"
+              d="M4 12H22.5"
               stroke="currentColor"
-              strokeWidth="3.75"
+              strokeWidth="3.25"
               strokeLinecap="round"
             />
             <path
-              d="M28.5 5.5L45 15L28.5 24.5"
+              d="M20 5.5L33.5 12L20 18.5"
               stroke="currentColor"
-              strokeWidth="3.75"
+              strokeWidth="3.25"
               strokeLinecap="round"
               strokeLinejoin="round"
             />

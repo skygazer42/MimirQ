@@ -20,10 +20,16 @@ describe('Datasets page header', () => {
     expect(src).toContain('@keyframes dataset-jello-vertical')
   })
 
-  it('renders the CTA arrow as a custom inline svg with the reference proportions', () => {
+  it('renders the CTA arrow as a custom inline svg with denser proportions', () => {
     const src = fs.readFileSync(path.resolve(__dirname, '../../components/datasets/create-dataset-button.tsx'), 'utf8')
     expect(src).toContain('<svg')
-    expect(src).toContain('viewBox="0 0 50 30"')
+    expect(src).toContain('viewBox="0 0 38 24"')
     expect(src).not.toContain("from 'lucide-react'")
+  })
+
+  it('keeps the CTA text sizing compact for the header layout', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, '../../components/datasets/create-dataset-button.tsx'), 'utf8')
+    expect(src).toContain("text-[0.92rem] font-bold tracking-[0.04em] md:text-[1rem]")
+    expect(src).not.toContain('md:text-[1.3rem]')
   })
 })
