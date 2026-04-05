@@ -19,4 +19,11 @@ describe('Datasets page header', () => {
     const src = fs.readFileSync(path.resolve(__dirname, '../globals.css'), 'utf8')
     expect(src).toContain('@keyframes dataset-jello-vertical')
   })
+
+  it('renders the CTA arrow as a custom inline svg with the reference proportions', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, '../../components/datasets/create-dataset-button.tsx'), 'utf8')
+    expect(src).toContain('<svg')
+    expect(src).toContain('viewBox="0 0 50 30"')
+    expect(src).not.toContain("from 'lucide-react'")
+  })
 })
