@@ -293,7 +293,7 @@ export function ChunkAutoTuneDialog() {
         type="button"
         size="sm"
         variant="outline"
-        className="h-6 rounded-md border-border/50 bg-background/75 px-2 text-[10px] font-medium text-muted-foreground shadow-none hover:bg-muted/45"
+        className="h-6 rounded-md border-border/50 bg-background/75 px-2 text-[10px] font-medium text-muted-foreground shadow-none hover:bg-muted/45 hover:text-muted-foreground"
         onClick={() => setOpen(true)}
         disabled={!previewData || isLoading}
         title={isAutoTuneAvailable ? t('autoTune.trigger.readyTitle') : t('autoTune.trigger.disabledTitle')}

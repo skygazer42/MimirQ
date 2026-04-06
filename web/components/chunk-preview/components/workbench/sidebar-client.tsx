@@ -1480,7 +1480,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 }
                 runPreview({ force: true })
               }}
-              className="h-9 rounded-lg border-border/60 bg-background/80 text-[10.5px] font-medium text-foreground/78 shadow-none transition-colors hover:bg-muted/55"
+              className="h-9 rounded-lg border-border/60 bg-background/80 text-[10.5px] font-medium text-foreground/78 shadow-none transition-colors hover:bg-muted/55 hover:text-foreground/78"
             >
               {(() => {
     if (isLoading) {
@@ -1508,7 +1508,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="h-6 rounded-md border-border/50 bg-background/75 px-2 text-[10px] font-medium text-muted-foreground shadow-none hover:bg-muted/45"
+                  className="h-6 rounded-md border-border/50 bg-background/75 px-2 text-[10px] font-medium text-muted-foreground shadow-none hover:bg-muted/45 hover:text-muted-foreground"
                   onClick={() => setShowAdvancedStats((v) => !v)}
                 >
                   {showAdvancedStats ? t('sidebar.analysis.collapse') : t('sidebar.analysis.expand')}
