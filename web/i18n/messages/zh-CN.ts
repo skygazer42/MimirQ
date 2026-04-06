@@ -767,6 +767,8 @@ const zhCNMessages = {
         title: '预览统计',
         collapse: '收起',
         expand: '展开',
+        detailsShow: '细节',
+        detailsHide: '简略',
       },
       stats: {
         totalChunks: '切片数',
