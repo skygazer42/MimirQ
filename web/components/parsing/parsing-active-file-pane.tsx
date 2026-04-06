@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import dynamic from 'next/dynamic'
 import {
   Blocks,
@@ -33,11 +33,8 @@ import { ParsingRightPanel } from '@/components/parsing/parsing-right-panel'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
-  classifyParsingBlock,
-  countParsingBlockChars,
-  countParsingBlockLines,
+  buildParsingLayoutEntries,
   getParsingLayoutMeta,
-  getPrimaryParsingBlockPage,
   type ParsingLayoutKind,
 } from '@/lib/parsing-layout'
 import { cn } from '@/lib/utils'
@@ -195,21 +192,25 @@ export function ParsingActiveFilePane({
   const qualityGrade = getQualityGateGrade(activeQualityGate)
   const qualityReasons = getQualityGateReasons(activeQualityGate)
   const qualityEvidenceSummary = buildQualityEvidenceSummary(activeQualityGate, activePdfQuality)
-  const layoutBlocks = activeBlocksWithPositions
-    .filter((block) => (block.text || '').trim().length > 0)
-    .map((block, idx) => {
-      const kind = classifyParsingBlock(block)
-      const layoutMeta = getParsingLayoutMeta(kind)
-      return {
-        block,
-        charCount: countParsingBlockChars(block.text),
-        index: idx,
-        isActive: block.id === activeBlockId,
-        layoutMeta,
-        lineCount: countParsingBlockLines(block.text),
-        pageIndex: getPrimaryParsingBlockPage(block),
-      }
-    })
+  const layoutEntries = useMemo(() => buildParsingLayoutEntries(activeBlocksWithPositions), [activeBlocksWithPositions])
+  const layoutBoxesByPage = useMemo(() => {
+    const next = new Map<number, Array<{ id: string; kind: ParsingLayoutKind; position: (typeof layoutEntries)[number]['position'] }>>()
+    for (const entry of layoutEntries) {
+      if (entry.pageIndex == null) continue
+      const list = next.get(entry.pageIndex) || []
+      list.push({ id: entry.id, kind: entry.kind, position: entry.position })
+      next.set(entry.pageIndex, list)
+    }
+    return next
+  }, [layoutEntries])
+  const layoutEntryIdToPageIndex = useMemo(() => {
+    const next = new Map<string, number>()
+    for (const entry of layoutEntries) {
+      if (entry.pageIndex == null) continue
+      next.set(entry.id, entry.pageIndex)
+    }
+    return next
+  }, [layoutEntries])
   const parsedStatItems =
     activeFile.status === 'parsed' && activeFile.stats
       ? [
@@ -593,7 +594,7 @@ export function ParsingActiveFilePane({
                 <div className="flex h-full min-h-[520px] flex-col lg:flex-row">
                   {isPdf ? (
                     <div className="relative flex h-full min-h-0 w-full flex-col border-b border-border/70 bg-muted/70 dark:border-border/60 dark:bg-background/40 lg:w-1/2 lg:border-b-0 lg:border-r">
-                      {layoutBlocks.length > 0 ? (
+                      {layoutEntries.length > 0 ? (
                         <div className="border-b border-border/60 bg-background/88 px-4 py-2.5 dark:bg-background/72">
                           <div className="flex flex-wrap items-start justify-between gap-2.5">
                             <div className="min-w-0">
@@ -603,7 +604,7 @@ export function ParsingActiveFilePane({
                               <div className="mt-0.5 text-[11px] leading-5 text-muted-foreground/78">
                                 <span className="font-medium text-foreground/72">版面图例</span>
                                 <span className="mx-1.5 text-border">·</span>
-                                点击块卡可定位到左侧 PDF 原页
+                                点击右侧片段可定位到左侧 PDF 原页
                               </div>
                             </div>
                             <div className="flex flex-wrap items-center gap-1.5">
@@ -628,6 +629,8 @@ export function ParsingActiveFilePane({
                           key={pdfViewerKey}
                           file={activeFile.file}
                           blocks={activeBlocksWithPositions}
+                          boxesByPage={layoutBoxesByPage}
+                          blockIdToPageIndex={layoutEntryIdToPageIndex}
                           activeBlockIds={activeBlockId ? [activeBlockId] : []}
                           hoveredBlockIds={hoveredBlockId ? [hoveredBlockId] : []}
                         />
@@ -635,69 +638,87 @@ export function ParsingActiveFilePane({
                     </div>
                   ) : null}
                   <div className={isPdf ? 'w-full lg:w-1/2' : 'w-full'}>
-                    {rightPanelMode === 'blocks' && layoutBlocks.length > 0 ? (
-                      <ParsingRightPanel className="h-full no-scrollbar space-y-3 p-4 lg:p-5">
-                        <div className="rounded-xl border border-border/60 bg-background/88 px-3.5 py-2.5 dark:bg-background/72">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="min-w-0">
-                              <div className="text-[11px] font-semibold tracking-[0.06em] text-foreground/78">
-                                版面审阅
+                    {rightPanelMode === 'blocks' && layoutEntries.length > 0 ? (
+                      <ParsingRightPanel className="h-full no-scrollbar p-4 lg:p-5">
+                        <div className="overflow-hidden rounded-xl border border-border/60 bg-card/95">
+                          <div className="border-b border-border/60 bg-background/82 px-4 py-3 dark:bg-background/72">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="text-[11px] font-semibold tracking-[0.06em] text-foreground/78">
+                                  版面定位流
+                                </div>
+                                <div className="mt-0.5 text-[11px] leading-5 text-muted-foreground/78">
+                                  左侧显示原页框选，右侧按定位片段连续审阅
+                                </div>
                               </div>
-                              <div className="mt-0.5 text-[11px] leading-5 text-muted-foreground/78">
-                                点击块卡可定位到左侧 PDF 原页
+                              <div className="font-mono text-[10px] text-muted-foreground">
+                                {layoutEntries.length} segments
                               </div>
-                            </div>
-                            <div className="font-mono text-[10px] text-muted-foreground">
-                              {layoutBlocks.length} blocks
                             </div>
                           </div>
-                        </div>
-                        {layoutBlocks.map(({ block, charCount, index, isActive, layoutMeta, lineCount, pageIndex }) => (
-                          <button
-                            key={block.id}
-                            type="button"
-                            onClick={() => onActiveBlockIdChange(block.id)}
-                            onMouseEnter={() => onHoveredBlockIdChange(block.id)}
-                            onMouseLeave={() => onHoveredBlockIdChange(null)}
-                            className={cn(
-                              'w-full rounded-xl border px-3.5 py-3 text-left transition dark:shadow-none',
-                              isActive
-                                ? 'border-primary/40 bg-primary/5 shadow-sm'
-                                : 'border-border/60 bg-card/95 hover:border-primary/25 hover:bg-accent/35'
-                            )}
-                          >
-                            <div className="flex items-start gap-3">
-                              <span className={cn('mt-1 h-2 w-2 flex-none rounded-full', layoutMeta.dotClassName)} />
-                              <div className="min-w-0 flex-1 space-y-2">
-                                <div className="flex flex-wrap items-center gap-1.5">
-                                  <span
-                                    className={cn(
-                                      'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium',
-                                      layoutMeta.chipClassName
-                                    )}
-                                  >
-                                    {layoutMeta.label}
-                                  </span>
-                                  <span className="font-mono text-[10px] text-muted-foreground">块 {index + 1}</span>
-                                  {Number.isFinite(pageIndex) ? (
-                                    <span className="font-mono text-[10px] text-muted-foreground">
-                                      页 {Number(pageIndex) + 1}
-                                    </span>
-                                  ) : null}
-                                  <span className="font-mono text-[10px] text-muted-foreground">{charCount} 字</span>
-                                  {lineCount > 1 ? (
-                                    <span className="font-mono text-[10px] text-muted-foreground">{lineCount} 行</span>
-                                  ) : null}
-                                </div>
-                                <div className="rounded-lg border border-border/50 bg-background/80 px-3 py-2.5 dark:bg-background/65">
-                                  <div className="prose prose-slate prose-sm max-w-none prose-headings:mb-2 prose-headings:text-foreground prose-p:my-2 prose-p:text-foreground/80 prose-a:text-sky-700 prose-code:rounded prose-code:bg-sky-500/10 prose-code:px-1 prose-code:py-0.5 prose-code:text-sky-700 prose-pre:bg-slate-900 prose-table:border-collapse prose-td:border prose-td:border-sky-200 prose-td:p-2 prose-th:border prose-th:border-sky-200 prose-th:bg-sky-500/10 prose-th:p-2 dark:prose-invert dark:prose-headings:text-foreground dark:prose-p:text-muted-foreground dark:prose-a:text-sky-300 dark:prose-code:bg-muted dark:prose-code:text-sky-300 dark:prose-th:border-sky-500/30 dark:prose-th:bg-sky-500/20 dark:prose-td:border-sky-500/30">
-                                    <MarkdownRenderer markdown={block.text} />
+                          <div className="divide-y divide-border/50">
+                            {layoutEntries.map((entry, index) => {
+                              const layoutMeta = getParsingLayoutMeta(entry.kind)
+                              const isActive = entry.id === activeBlockId
+                              return (
+                                <button
+                                  key={entry.id}
+                                  type="button"
+                                  onClick={() => onActiveBlockIdChange(entry.id)}
+                                  onMouseEnter={() => onHoveredBlockIdChange(entry.id)}
+                                  onMouseLeave={() => onHoveredBlockIdChange(null)}
+                                  className={cn(
+                                    'group w-full px-4 py-3 text-left transition',
+                                    isActive ? 'bg-primary/5' : 'hover:bg-accent/25'
+                                  )}
+                                >
+                                  <div className="flex items-start gap-3">
+                                    <span className={cn('mt-1.5 h-1.5 w-1.5 flex-none rounded-full', layoutMeta.dotClassName)} />
+                                    <div className="min-w-0 flex-1">
+                                      <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                                        <span
+                                          className={cn(
+                                            'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium',
+                                            layoutMeta.chipClassName
+                                          )}
+                                        >
+                                          {layoutMeta.label}
+                                        </span>
+                                        <span className="font-mono text-[10px] text-muted-foreground">
+                                          片段 {index + 1}
+                                        </span>
+                                        {Number.isFinite(entry.pageIndex) ? (
+                                          <span className="font-mono text-[10px] text-muted-foreground">
+                                            页 {Number(entry.pageIndex) + 1}
+                                          </span>
+                                        ) : null}
+                                        <span className="font-mono text-[10px] text-muted-foreground">
+                                          {entry.charCount} 字
+                                        </span>
+                                        {entry.lineCount > 1 ? (
+                                          <span className="font-mono text-[10px] text-muted-foreground">
+                                            {entry.lineCount} 行
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                      <div className="relative pl-3">
+                                        <span
+                                          className={cn(
+                                            'absolute bottom-1 left-0 top-1 w-px rounded-full transition-colors',
+                                            isActive ? 'bg-primary/45' : 'bg-border/50 group-hover:bg-border/70'
+                                          )}
+                                        />
+                                        <div className="prose prose-slate prose-sm max-w-none prose-headings:mb-1 prose-headings:mt-0 prose-headings:text-foreground prose-p:my-0 prose-p:text-foreground/82 prose-a:text-sky-700 prose-code:rounded prose-code:bg-sky-500/10 prose-code:px-1 prose-code:py-0.5 prose-code:text-sky-700 prose-pre:my-1 prose-pre:bg-slate-900 prose-table:my-1 prose-table:border-collapse prose-td:border prose-td:border-sky-200 prose-td:p-2 prose-th:border prose-th:border-sky-200 prose-th:bg-sky-500/10 prose-th:p-2 dark:prose-invert dark:prose-headings:text-foreground dark:prose-p:text-muted-foreground dark:prose-a:text-sky-300 dark:prose-code:bg-muted dark:prose-code:text-sky-300 dark:prose-th:border-sky-500/30 dark:prose-th:bg-sky-500/20 dark:prose-td:border-sky-500/30">
+                                          <MarkdownRenderer markdown={entry.text} />
+                                        </div>
+                                      </div>
+                                    </div>
                                   </div>
-                                </div>
-                              </div>
-                            </div>
-                          </button>
-                        ))}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
                       </ParsingRightPanel>
                     ) : (
                       <ParsingRightPanel

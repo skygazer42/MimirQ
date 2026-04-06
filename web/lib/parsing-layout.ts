@@ -1,13 +1,24 @@
-import type { ParsingBlock } from './parsing-positions'
+import type { ParsingBlock, ParsingPosition } from './parsing-positions'
 
 export type ParsingLayoutKind = 'heading' | 'paragraph' | 'list' | 'table' | 'image' | 'equation'
 
-type ParsingLayoutMeta = {
+export type ParsingLayoutMeta = {
   label: string
   shortLabel: string
   chipClassName: string
   dotClassName: string
   overlayClassName: string
+}
+
+export type ParsingLayoutEntry = {
+  id: string
+  blockId: string
+  text: string
+  kind: ParsingLayoutKind
+  position: ParsingPosition
+  pageIndex: number | null
+  charCount: number
+  lineCount: number
 }
 
 const PARSING_LAYOUT_META: Record<ParsingLayoutKind, ParsingLayoutMeta> = {
@@ -124,6 +135,64 @@ export function countParsingBlockLines(text: string): number {
     .filter(Boolean)
 
   return Math.max(lines.length, 1)
+}
+
+function splitTextForPositions(text: string, positionCount: number): string[] {
+  const normalized = text.trim()
+  if (positionCount <= 1) return [normalized]
+
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  if (lines.length === 0) {
+    return Array.from({ length: positionCount }, () => normalized)
+  }
+
+  if (lines.length === positionCount) {
+    return lines
+  }
+
+  if (lines.length > positionCount) {
+    const groups = Array.from({ length: positionCount }, () => [] as string[])
+    lines.forEach((line, index) => {
+      const bucket = Math.min(positionCount - 1, Math.floor((index * positionCount) / lines.length))
+      groups[bucket].push(line)
+    })
+    return groups.map((group) => group.join('\n').trim() || normalized)
+  }
+
+  return Array.from({ length: positionCount }, (_, index) => lines[index] || normalized)
+}
+
+export function buildParsingLayoutEntries(blocks: ParsingBlock[]): ParsingLayoutEntry[] {
+  const entries: ParsingLayoutEntry[] = []
+
+  for (const block of blocks) {
+    const positions = (block.positions || []).filter((position) => position != null)
+    if (positions.length === 0) continue
+
+    const kind = classifyParsingBlock(block)
+    const texts = splitTextForPositions(block.text, positions.length)
+
+    positions.forEach((position, index) => {
+      const pageIndex = position.pages?.[0]
+      const text = texts[index] || texts[0] || block.text.trim()
+      entries.push({
+        id: positions.length === 1 ? block.id : `${block.id}:${index}`,
+        blockId: block.id,
+        charCount: countParsingBlockChars(text),
+        kind,
+        lineCount: countParsingBlockLines(text),
+        pageIndex: typeof pageIndex === 'number' && Number.isFinite(pageIndex) ? pageIndex : null,
+        position,
+        text,
+      })
+    })
+  }
+
+  return entries
 }
 
 export function getPrimaryParsingBlockPage(block: Pick<ParsingBlock, 'positions'>): number | null {
