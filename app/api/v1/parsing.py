@@ -139,6 +139,37 @@ def _strip_position_tags(markdown: str) -> str:
     return POSITION_TAG_RE.sub("", markdown)
 
 
+def _extract_markdown_pair_from_documents(documents: list[dict[str, Any]] | None) -> tuple[str, str]:
+    original_parts: list[str] = []
+    cleaned_parts: list[str] = []
+    has_position_tagged_override = False
+
+    for item in documents or []:
+        if not isinstance(item, dict):
+            continue
+
+        page_content = str(item.get("page_content") or "")
+        cleaned_parts.append(page_content)
+
+        metadata = item.get("metadata")
+        if isinstance(metadata, dict):
+            tagged = metadata.get("position_tagged_markdown")
+            if isinstance(tagged, str) and tagged.strip():
+                has_position_tagged_override = True
+                original_parts.append(tagged)
+                continue
+
+        original_parts.append(page_content)
+
+    original = "\n\n".join(original_parts).strip()
+    if has_position_tagged_override:
+        cleaned = "\n\n".join(cleaned_parts).strip()
+    else:
+        cleaned = _strip_position_tags(original).strip()
+
+    return original, cleaned
+
+
 def _grade_max(a: str, b: str) -> str:
     order = {"pass": 0, "warn": 1, "fail": 2}
     ra = order.get(str(a), 0)
@@ -640,16 +671,6 @@ async def parse_workspace_document(
     try:
         t0 = time.perf_counter()
 
-        def _extract_markdown(parsed_obj: dict) -> tuple[str, str]:
-            docs = [
-                str(item.get("page_content") or "")
-                for item in (parsed_obj.get("documents") or [])
-                if isinstance(item, dict)
-            ]
-            original = "\n\n".join(docs).strip()
-            cleaned = _strip_position_tags(original).strip()
-            return original, cleaned
-
         parsed = await run_subprocess_worker(
             tenant_id=tenant_id,
             payload={
@@ -675,7 +696,9 @@ async def parse_workspace_document(
             except Exception:
                 cross_page_merge_stats = None
 
-        original_markdown, markdown = _extract_markdown(parsed if isinstance(parsed, dict) else {})
+        original_markdown, markdown = _extract_markdown_pair_from_documents(
+            (parsed.get("documents") if isinstance(parsed, dict) else None)
+        )
 
         captions_added = 0
 
