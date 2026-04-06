@@ -7,9 +7,9 @@ import { toast } from 'sonner'
 import { documentApi, parsingApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { deleteDocContentFromCache, deleteDocSourceFromCache, getDocContentFromCache, getDocSourceFromCache, saveDocSourceToCache } from '@/lib/doc-content-cache'
-import { extractBlocksFromMarkdown, type ParsingBlock } from '@/lib/parsing-positions'
 import { getParserLabel } from '@/lib/parser-options'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
+import { restoreParsingRunFromMarkdown } from '@/lib/parsing-run-restore'
 import { generateRequestId } from '@/lib/request-id'
 import { detachPromise } from '@/lib/utils'
 import { extractZipFiles, isZipFile } from '@/lib/zip'
@@ -161,7 +161,7 @@ export function useParsingLibraryActions({
       let runs: ParseRun[] | undefined
       let activeRunId: string | undefined
       let stats: ParsedFile['stats'] | undefined
-      let blocks: ParsingBlock[] = []
+      let blocks: ParseRun['blocks'] = []
 
       if (autoParse) {
         status = 'pending'
@@ -181,9 +181,12 @@ export function useParsingLibraryActions({
           const cached = await getDocContentFromCache(id)
           const raw = (cached?.originalMarkdownContent || cached?.markdownContent || libEntry.markdownContent || '').trim()
           if (raw) {
-            const parsed = extractBlocksFromMarkdown(raw)
-            markdownContent = parsed.cleanedMarkdown
-            blocks = parsed.blocks.filter((block) => (block.positions || []).length > 0)
+            const restored = restoreParsingRunFromMarkdown({
+              rawMarkdown: raw,
+              cleanedMarkdown: (cached?.markdownContent || libEntry.markdownContent || '').trim(),
+            })
+            markdownContent = restored?.cleanedMarkdown || null
+            blocks = restored?.blocks || []
             const runId = `restored-${Date.now()}`
             runs = [
               {
@@ -191,7 +194,7 @@ export function useParsingLibraryActions({
                 parserBackend: backend,
                 parserLabel: label,
                 rawMarkdown: raw,
-                cleanedMarkdown: markdownContent,
+                cleanedMarkdown: markdownContent || '',
                 blocks,
                 createdAt: Date.now(),
               },

@@ -24,6 +24,10 @@ from langchain_core.documents import Document
 from app.core.config import settings
 from app.core.http_client import get_http_client_pool
 from app.core.jwt_inspect import format_unix_ts_utc, try_get_jwt_exp
+from app.parsing.utils.mineru_layout import (
+    extract_position_tagged_markdown_from_zip_bytes,
+    extract_position_tagged_markdown_from_zip_path,
+)
 from app.parsing.utils.zip_processor import zip_image_processor
 from app.rag.core.logging import get_logger
 
@@ -909,6 +913,7 @@ class MinerUService:
                     markdown=markdown_content,
                     tenant_id=str(tenant_id),
                 )
+        position_tagged_markdown = extract_position_tagged_markdown_from_zip_bytes(zip_bytes)
 
         metadata = {
             "source": file_path.name,
@@ -918,6 +923,8 @@ class MinerUService:
             "data_id": data_id,
             "model_version": self.model_version,
         }
+        if position_tagged_markdown:
+            metadata["position_tagged_markdown"] = position_tagged_markdown
         if images_meta:
             metadata["images"] = images_meta
             metadata["image_count"] = len(images_meta)
@@ -1010,6 +1017,7 @@ class MinerUService:
 
             markdown_content = result["markdown"]
             images = result["images"]
+            position_tagged_markdown = extract_position_tagged_markdown_from_zip_path(tmp_zip_path)
 
             logger.info(
                 "MinerU local parse done (async): %s chars, %s images",
@@ -1024,6 +1032,8 @@ class MinerUService:
                 "image_count": len(images),
                 "images": images,
             }
+            if position_tagged_markdown:
+                metadata["position_tagged_markdown"] = position_tagged_markdown
             return [Document(page_content=markdown_content, metadata=metadata)]
         except Exception as e:  # noqa: BLE001
             logger.error("MinerU local parsing failed (async): %s", str(e)[:200])
@@ -1120,6 +1130,7 @@ class MinerUService:
                     markdown=markdown_content,
                     tenant_id=str(tenant_id),
                 )
+        position_tagged_markdown = extract_position_tagged_markdown_from_zip_bytes(zip_bytes)
 
         # 5. Convert to LangChain Document.
         metadata = {
@@ -1130,6 +1141,8 @@ class MinerUService:
             "data_id": data_id,
             "model_version": self.model_version,
         }
+        if position_tagged_markdown:
+            metadata["position_tagged_markdown"] = position_tagged_markdown
         if images_meta:
             metadata["images"] = images_meta
             metadata["image_count"] = len(images_meta)
@@ -1225,6 +1238,7 @@ class MinerUService:
                 
                 markdown_content = result["markdown"]
                 images = result["images"]
+                position_tagged_markdown = extract_position_tagged_markdown_from_zip_path(tmp_zip_path)
                 
                 logger.info(
                     "MinerU local parse done: %s chars, %s images",
@@ -1240,6 +1254,8 @@ class MinerUService:
                     "image_count": len(images),
                     "images": images,  # [{img_id, original_path, url}]
                 }
+                if position_tagged_markdown:
+                    metadata["position_tagged_markdown"] = position_tagged_markdown
                 
                 return [Document(page_content=markdown_content, metadata=metadata)]
                 

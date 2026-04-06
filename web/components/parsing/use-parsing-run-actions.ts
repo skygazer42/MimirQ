@@ -6,8 +6,8 @@ import { useTranslations } from 'next-intl'
 import { parsingApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { getParserLabel } from '@/lib/parser-options'
-import { extractBlocksFromMarkdown } from '@/lib/parsing-positions'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
+import { restoreParsingRunFromMarkdown } from '@/lib/parsing-run-restore'
 import { type ParsedFileData } from '@/store/use-parsed-files-store'
 import { type FileStatus } from '@/components/ui/file-queue-item'
 
@@ -197,9 +197,12 @@ export function useParsingRunActions({
         const resolvedBackend = data.parser_backend || requestedBackend
         const resolvedLabel = getParserLabel(resolvedBackend)
         const fallbackDurationSec = Number.parseFloat(((Date.now() - startTime) / 1000).toFixed(1))
-        const parsed = extractBlocksFromMarkdown(rawMarkdown)
-        const markdownContent = (data.markdown_content || parsed.cleanedMarkdown).toString()
-        const blocks = parsed.blocks.filter((block) => (block.positions || []).length > 0)
+        const restored = restoreParsingRunFromMarkdown({
+          rawMarkdown,
+          cleanedMarkdown: (data.markdown_content || '').toString(),
+        })
+        const markdownContent = (restored?.cleanedMarkdown || data.markdown_content || '').toString()
+        const blocks = restored?.blocks || []
         const durationSec = Number.isFinite(Number(data.parse_duration_sec))
           ? Number(data.parse_duration_sec)
           : fallbackDurationSec
