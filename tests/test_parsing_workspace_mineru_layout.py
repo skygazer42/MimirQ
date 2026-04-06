@@ -56,3 +56,29 @@ def test_extract_position_tagged_markdown_from_zip_bytes_uses_content_list_bbox(
     assert "![Image](layout://image)@@1\t50.0\t70.0\t60.0\t80.0##" in tagged
     assert "<table><tr><td>A</td></tr></table>" in tagged
     assert "@@2\t100.0\t120.0\t110.0\t130.0##" in tagged
+
+
+def test_extract_position_tagged_markdown_from_zip_bytes_normalizes_mineru_bbox_with_layout_page_size() -> None:
+    payload = [
+        {"type": "text", "text": "Heading", "page_idx": 0, "bbox": [250, 125, 750, 250]},
+        {"type": "text", "text": "Body", "page_idx": 0, "bbox": [100, 500, 900, 900]},
+    ]
+    layout = {
+        "pdf_info": [
+            {
+                "page_idx": 0,
+                "page_size": [612, 792],
+            }
+        ]
+    }
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        zf.writestr("full.md", "# clean only")
+        zf.writestr("sample_content_list.json", json.dumps(payload, ensure_ascii=False))
+        zf.writestr("layout.json", json.dumps(layout, ensure_ascii=False))
+
+    tagged = extract_position_tagged_markdown_from_zip_bytes(buffer.getvalue())
+
+    assert "Heading@@1\t153.0\t459.0\t99.0\t198.0##" in tagged
+    assert "Body@@1\t61.2\t550.8\t396.0\t712.8##" in tagged

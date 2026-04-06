@@ -22,6 +22,7 @@ import type { PdfPageRenderWorkerApi } from '@/workers/pdf-page-render.worker'
 
 type Box = BboxOverlayItem
 type PdfJsModule = typeof import('pdfjs-dist/build/pdf.mjs')
+type PageBaseSize = { width: number; height: number }
 
 interface PdfViewerProps {
   file?: File | null
@@ -161,6 +162,8 @@ export function PdfViewer({
   const [reloadTick, setReloadTick] = useState(0)
   const [defaultPageAspectRatio, setDefaultPageAspectRatio] = useState<number | null>(null)
   const [pageAspectRatios, setPageAspectRatios] = useState<Map<number, number>>(new Map())
+  const [defaultPageBaseSize, setDefaultPageBaseSize] = useState<PageBaseSize | null>(null)
+  const [pageBaseSizes, setPageBaseSizes] = useState<Map<number, PageBaseSize>>(new Map())
   const [renderedPages, setRenderedPages] = useState<Set<number>>(new Set())
   const [loadingPages, setLoadingPages] = useState<Set<number>>(new Set())
   const [failedPages, setFailedPages] = useState<Set<number>>(new Set())
@@ -237,6 +240,8 @@ export function PdfViewer({
         setPageCount(0)
         setDefaultPageAspectRatio(null)
         setPageAspectRatios(new Map())
+        setDefaultPageBaseSize(null)
+        setPageBaseSizes(new Map())
         retainedPageIndicesRef.current.clear()
         renderedPagesRef.current = new Set()
         setRenderedPages(new Set())
@@ -268,6 +273,8 @@ export function PdfViewer({
         setPageCount(doc.numPages)
         setDefaultPageAspectRatio(null)
         setPageAspectRatios(new Map())
+        setDefaultPageBaseSize(null)
+        setPageBaseSizes(new Map())
         retainedPageIndicesRef.current.clear()
         renderedPagesRef.current = new Set()
         setRenderedPages(new Set())
@@ -283,6 +290,8 @@ export function PdfViewer({
           setPageCount(0)
           setDefaultPageAspectRatio(null)
           setPageAspectRatios(new Map())
+          setDefaultPageBaseSize(null)
+          setPageBaseSizes(new Map())
           retainedPageIndicesRef.current.clear()
           renderedPagesRef.current = new Set()
           setRenderedPages(new Set())
@@ -325,6 +334,13 @@ export function PdfViewer({
         const viewport = page.getViewport({ scale: 1 })
         const nextScale = width / viewport.width
         const nextAspectRatio = viewport.width / viewport.height
+        setDefaultPageBaseSize((prev) =>
+          prev != null &&
+          Math.abs(prev.width - viewport.width) < 0.001 &&
+          Math.abs(prev.height - viewport.height) < 0.001
+            ? prev
+            : { width: viewport.width, height: viewport.height }
+        )
         setScale((prev) => (Math.abs(prev - nextScale) > 0.01 ? nextScale : prev))
         setDefaultPageAspectRatio((prev) =>
           prev != null && Math.abs(prev - nextAspectRatio) < 0.001 ? prev : nextAspectRatio
@@ -461,6 +477,25 @@ export function PdfViewer({
 
       const next = new Map(prev)
       next.set(pageIndex, nextAspectRatio)
+      return next
+    })
+  }, [])
+
+  const rememberPageBaseSize = useCallback((pageIndex: number, width: number, height: number) => {
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return
+
+    setPageBaseSizes((prev) => {
+      const current = prev.get(pageIndex)
+      if (
+        current &&
+        Math.abs(current.width - width) < 0.001 &&
+        Math.abs(current.height - height) < 0.001
+      ) {
+        return prev
+      }
+
+      const next = new Map(prev)
+      next.set(pageIndex, { width, height })
       return next
     })
   }, [])
@@ -763,8 +798,10 @@ export function PdfViewer({
           releasePageResources = null
         }
         if (renderGenRef.current !== gen) return
+        const baseViewport = page.getViewport({ scale: 1 })
         const viewport = page.getViewport({ scale })
         rememberPageAspectRatio(pageIndex, viewport.width, viewport.height)
+        rememberPageBaseSize(pageIndex, baseViewport.width, baseViewport.height)
 
         const api = offscreenRenderEnabled ? offscreenRenderApiRef.current : null
         if (api) {
@@ -877,6 +914,7 @@ export function PdfViewer({
       pdfDoc,
       pageCount,
       rememberPageAspectRatio,
+      rememberPageBaseSize,
       setPageRenderError,
       schedulePageRenderRetry,
       scale,
@@ -1152,6 +1190,7 @@ export function PdfViewer({
         {pageNumbers.map((pageNumber) => {
           const index = pageNumber - 1
           const pageBoxes = resolvedBoxesByPage.get(index) || []
+          const pageBaseSize = pageBaseSizes.get(index) ?? defaultPageBaseSize
           const isRendered = renderedPages.has(index)
           const isPageLoading = loadingPages.has(index)
           const isPageFailed = failedPages.has(index)
@@ -1207,6 +1246,8 @@ export function PdfViewer({
               <BboxOverlay
                 items={pageBoxes}
                 scale={scale}
+                pageBaseWidth={pageBaseSize?.width ?? null}
+                pageBaseHeight={pageBaseSize?.height ?? null}
                 showAll={showAllBoxes}
                 activeIds={activeSet}
                 hoveredIds={hoveredSet}

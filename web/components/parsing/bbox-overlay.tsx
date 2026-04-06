@@ -6,6 +6,7 @@
 'use client'
 
 import { getParsingLayoutMeta, type ParsingLayoutKind } from '@/lib/parsing-layout'
+import { computePdfOverlayRect, detectPdfBboxCoordinateSpace } from '@/lib/pdf-bbox'
 import { cn } from '@/lib/utils'
 import type { ParsingPosition } from '@/lib/parsing-positions'
 
@@ -18,13 +19,20 @@ export type BboxOverlayItem = {
 export function BboxOverlay(props: Readonly<{
   items: BboxOverlayItem[]
   scale: number
+  pageBaseWidth?: number | null
+  pageBaseHeight?: number | null
   showAll: boolean
   activeIds: Set<string>
   hoveredIds: Set<string>
   onHoverId?: (id: string | null) => void
   onClickId?: (id: string) => void
 }>) {
-  const { items, scale, showAll, activeIds, hoveredIds, onHoverId, onClickId } = props
+  const { items, scale, pageBaseWidth, pageBaseHeight, showAll, activeIds, hoveredIds, onHoverId, onClickId } = props
+  const coordinateSpace = detectPdfBboxCoordinateSpace({
+    items,
+    pageBaseWidth,
+    pageBaseHeight,
+  })
 
   return (
     <div className="pointer-events-none absolute inset-0">
@@ -33,11 +41,13 @@ export function BboxOverlay(props: Readonly<{
           return null
         }
 
-        const { left, right, top, bottom } = item.position
-        const x = Math.min(left, right) * scale
-        const y = Math.min(top, bottom) * scale
-        const width = Math.abs(right - left) * scale
-        const height = Math.abs(bottom - top) * scale
+        const rect = computePdfOverlayRect({
+          position: item.position,
+          scale,
+          pageBaseWidth,
+          pageBaseHeight,
+          coordinateSpace,
+        })
         const isActive = activeIds.has(item.id)
         const isHovered = hoveredIds.has(item.id)
         const layoutMeta = getParsingLayoutMeta(item.kind || 'paragraph')
@@ -53,7 +63,7 @@ export function BboxOverlay(props: Readonly<{
               isHovered && 'z-10 ring-2 ring-primary/20',
               isActive && 'z-20 ring-2 ring-primary/35 shadow-[0_0_0_1px_hsl(var(--background))]'
             )}
-            style={{ left: x, top: y, width, height }}
+            style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }}
             onMouseEnter={() => onHoverId?.(item.id)}
             onMouseLeave={() => onHoverId?.(null)}
             onClick={() => onClickId?.(item.id)}
