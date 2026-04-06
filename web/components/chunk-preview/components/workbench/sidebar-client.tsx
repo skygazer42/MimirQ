@@ -581,7 +581,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 <div
                   key={f.id}
                   className={cn(
-                    'group flex items-center gap-1 rounded-md border text-[10.5px] transition-colors',
+                    'group flex items-start gap-1 rounded-md border text-[10.5px] transition-colors',
                     isActive
                       ? 'border-primary/25 bg-card shadow-sm ring-1 ring-ring/15'
                       : 'bg-transparent border-transparent hover:bg-primary/10 hover:border-primary/20'
@@ -593,31 +593,33 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                       if (fileIndex >= 0) setCurrentFileIndex(fileIndex)
                     }}
                     aria-label={t('sidebar.fileList.selectFile', { name: f.displayName })}
-                    className="flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-2 rounded-md px-1.5 py-1.5 text-left focus-ring"
+                    className="flex min-w-0 flex-1 cursor-pointer items-start gap-2 rounded-md px-1.5 py-1.5 text-left focus-ring"
                   >
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <div className="flex items-start gap-2 min-w-0 flex-1">
                       <FileIcon
-                        className={cn('h-3.5 w-3.5 flex-shrink-0', isActive ? 'text-primary' : 'text-muted-foreground')}
+                        className={cn('mt-0.5 h-3.5 w-3.5 flex-shrink-0', isActive ? 'text-primary' : 'text-muted-foreground')}
                       />
-                      <span className={cn('truncate font-medium', isActive ? 'text-foreground' : 'text-muted-foreground')}>
-                        {f.displayName}
-                      </span>
-                    </div>
-
-                    <div className="flex flex-shrink-0 items-center gap-1">
-                      {displayTime && (
-                        <span className="mr-1 text-[9px] text-muted-foreground/85">{displayTime}</span>
-                      )}
-                      {f.originalFileType && (
-                        <span className="rounded border border-cyan-200/70 bg-cyan-50/85 px-1.5 py-0.5 font-mono text-[9px] text-cyan-700 dark:border-cyan-900/60 dark:bg-cyan-950/30 dark:text-cyan-200">
-                          {String(f.originalFileType).toUpperCase()}
+                      <div className="min-w-0 flex-1">
+                        <span
+                          title={f.displayName}
+                          className={cn('block truncate font-medium', isActive ? 'text-foreground' : 'text-muted-foreground')}
+                        >
+                          {f.displayName}
                         </span>
-                      )}
-                      {typeof f.originalFileSize === 'number' ? (
-                        <span className="font-mono text-[9px] text-muted-foreground/80">{formatFileSize(f.originalFileSize)}</span>
-                      ) : null}
-                      {processedStatus[f.id] === 'success' && <Check className="w-3.5 h-3.5 text-success" />}
-                      {processedStatus[f.id] === 'error' && <AlertCircle className="w-3.5 h-3.5 text-destructive" />}
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[9px] text-muted-foreground/80">
+                          {displayTime ? <span>{displayTime}</span> : null}
+                          {f.originalFileType ? (
+                            <span className="rounded border border-cyan-200/70 bg-cyan-50/85 px-1.5 py-0.5 font-mono text-[9px] text-cyan-700 dark:border-cyan-900/60 dark:bg-cyan-950/30 dark:text-cyan-200">
+                              {String(f.originalFileType).toUpperCase()}
+                            </span>
+                          ) : null}
+                          {typeof f.originalFileSize === 'number' ? (
+                            <span className="font-mono">{formatFileSize(f.originalFileSize)}</span>
+                          ) : null}
+                          {processedStatus[f.id] === 'success' ? <Check className="h-3 w-3 text-success" /> : null}
+                          {processedStatus[f.id] === 'error' ? <AlertCircle className="h-3 w-3 text-destructive" /> : null}
+                        </div>
+                      </div>
                     </div>
                   </button>
 
