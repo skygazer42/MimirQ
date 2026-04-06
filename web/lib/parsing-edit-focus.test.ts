@@ -30,7 +30,7 @@ describe('parsing-edit-focus', () => {
 
     expect(findEditSelectionForActiveParsingEntry(markdown, entries, 'block-2')).toEqual({
       start: markdown.indexOf('Second paragraph.'),
-      end: markdown.indexOf('Second paragraph.') + 'Second paragraph.'.length,
+      end: markdown.indexOf('Second paragraph.'),
     })
   })
 
@@ -44,7 +44,7 @@ describe('parsing-edit-focus', () => {
 
     expect(findEditSelectionForActiveParsingEntry(markdown, entries, 'toc:1')).toEqual({
       start: markdown.indexOf('1 范围'),
-      end: markdown.indexOf('1 范围') + '1 范围'.length,
+      end: markdown.indexOf('1 范围'),
     })
   })
 
@@ -60,5 +60,18 @@ describe('parsing-edit-focus', () => {
       start: markdown.indexOf('前言') + '前言'.length,
       end: markdown.indexOf('前言') + '前言'.length,
     })
+  })
+
+  it('uses the pdf click ratios to place the caret deeper inside the matched block', () => {
+    const markdown = 'Alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu'
+    const entries = [makeEntry({ id: 'block-1', text: markdown })]
+    const focus = findEditSelectionForActiveParsingEntry(markdown, entries, 'block-1', {
+      xRatio: 0.65,
+      yRatio: 0.75,
+    })
+
+    expect(focus).not.toBeNull()
+    expect((focus?.start || 0) > markdown.indexOf('epsilon')).toBe(true)
+    expect(focus?.start).toBe(focus?.end)
   })
 })
