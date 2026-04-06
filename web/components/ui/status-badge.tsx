@@ -27,7 +27,7 @@ function getStatusMeta(
     processing: {
       label: t('statusBadge.processing'),
       icon: Loader2,
-      className: "bg-info/10 text-info border-info/25",
+      className: "bg-warning/10 text-warning border-warning/20",
       spin: true,
     },
     completed: {
@@ -38,7 +38,7 @@ function getStatusMeta(
     failed: {
       label: t('statusBadge.failed'),
       icon: AlertCircle,
-      className: "bg-destructive/10 text-destructive border-destructive/25",
+      className: "bg-destructive/10 text-destructive border-destructive/20",
     },
     quarantined: {
       label: t('statusBadge.quarantined'),

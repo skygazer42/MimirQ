@@ -131,4 +131,13 @@ describe('command menu source', () => {
     expect(src).toContain('key: "Esc"')
     expect(src).toContain("label: t(`viewerShortcuts.${id}.label`)")
   })
+
+  it('hides disabled shortcut reference groups while the user is actively searching', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'command-menu.tsx'), 'utf8')
+
+    expect(src).toContain('const shouldShowShortcutReference = query.trim().length === 0')
+    expect(src).toContain('{shouldShowShortcutReference ? (')
+    expect(src).toContain("heading={t('groups.viewerShortcuts')}")
+    expect(src).toContain("heading={t('groups.shortcutMap')}")
+  })
 })

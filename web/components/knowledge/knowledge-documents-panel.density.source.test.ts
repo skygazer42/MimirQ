@@ -1,0 +1,14 @@
+import fs from 'node:fs'
+import path from 'node:path'
+
+import { describe, expect, it } from 'vitest'
+
+describe('KnowledgeDocumentsPanel density tuning', () => {
+  it('uses tighter embedded controls and denser table spacing for knowledge workbench layouts', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'knowledge-documents-panel.tsx'), 'utf8')
+
+    expect(src).toContain("const controlsClassName = embedded ? 'border-b border-border/60 bg-background/65 px-4 py-3 backdrop-blur-sm' : 'mb-4'")
+    expect(src).toContain('sticky top-0 z-10 bg-card/95 px-3 py-2.5')
+    expect(src).toContain('className=\"group hover:bg-muted/20 transition-colors\"')
+  })
+})

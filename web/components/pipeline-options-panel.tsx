@@ -197,8 +197,8 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
     }
   }, [options.chunk_strategy_params])
 
-  const titleClasses = compact ? 'text-xs' : 'text-sm'
-  const descClasses = compact ? 'text-[10px]' : 'text-xs'
+  const titleClasses = compact ? 'text-[11px]' : 'text-[13px]'
+  const descClasses = compact ? 'text-[10px]' : 'text-[11px]'
   const activeIndexPreset = useMemo(() => detectPipelineIndexPreset(options), [options])
   const pendingIndexPreset = useMemo(() => {
     if (!indexPresetDraft) return null
@@ -639,14 +639,14 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
   }
 
   return (
-    <div className={cn("space-y-4 font-sans", className)}>
+    <div className={cn("space-y-3.5 font-sans", className)}>
       {!props.hideEnabledToggle && (
-        <div className="flex items-center justify-between p-3 rounded-xl bg-muted border border-border">
+        <div className="flex items-center justify-between rounded-xl border border-border/50 bg-card/85 px-3 py-2.5">
           <div>
-            <div className={cn("font-semibold text-foreground", titleClasses)}>
+            <div className={cn("font-medium tracking-[-0.01em] text-foreground/80", titleClasses)}>
               自定义管线
             </div>
-            <p className={cn("text-muted-foreground", descClasses)}>
+            <p className={cn("mt-0.5 text-muted-foreground/80", descClasses)}>
               开启后可配置详细的处理流程
             </p>
           </div>
@@ -657,11 +657,11 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
         </div>
       )}
 
-      <div className={cn("rounded-xl border border-border bg-muted/30", compact ? "px-2.5 py-2" : "p-3")}>
+      <div className={cn("rounded-xl border border-border/50 bg-card/85", compact ? "px-2.5 py-2" : "px-3 py-2.5")}>
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <div className={cn("font-semibold text-foreground", titleClasses)}>索引模式（成本/质量）</div>
-            <p className={cn("text-muted-foreground", descClasses)}>
+            <div className={cn("font-medium tracking-[-0.01em] text-foreground/80", titleClasses)}>索引模式（成本/质量）</div>
+            <p className={cn("mt-0.5 text-muted-foreground/80", descClasses)}>
               {compact ? 'Economical / High-quality presets' : '先预览改动再应用；你仍可继续逐项微调。'}
             </p>
           </div>
@@ -680,7 +680,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
               setIndexPresetDraft(next)
             }}
           >
-            <SelectTrigger className={cn("h-8", compact ? "w-44" : "w-52")}>
+            <SelectTrigger className={cn("h-8 rounded-lg border-border/50 bg-background/70 text-[11px] text-foreground/80 shadow-none", compact ? "w-44" : "w-52")}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -692,13 +692,13 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
         </div>
 
         {pendingIndexPreset ? (
-          <div className={cn("mt-3 rounded-lg border border-border bg-background/60", compact ? "p-2.5" : "p-3")}>
+          <div className={cn("mt-2.5 rounded-lg border border-border/50 bg-background/55", compact ? "p-2.5" : "p-3")}>
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className={cn("font-semibold text-foreground", compact ? "text-xs" : "text-sm")}>
+                <div className={cn("font-medium text-foreground/80", compact ? "text-xs" : "text-sm")}>
                   将应用：{PIPELINE_INDEX_PRESETS[pendingIndexPreset].label}
                 </div>
-                <div className={cn("text-muted-foreground", compact ? "text-[10px]" : "text-xs")}>
+                <div className={cn("text-muted-foreground/80", compact ? "text-[10px]" : "text-xs")}>
                   {PIPELINE_INDEX_PRESETS[pendingIndexPreset].description} · 预计修改 {pendingPresetDiff.length} 项
                 </div>
               </div>
@@ -707,7 +707,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                   type="button"
                   size="sm"
                   variant="ghost"
-                  className="h-8"
+                  className="h-8 rounded-lg"
                   onClick={() => setIndexPresetDraft(null)}
                 >
                   取消
@@ -715,7 +715,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                 <Button
                   type="button"
                   size="sm"
-                  className="h-8"
+                  className="h-8 rounded-lg shadow-none"
                   onClick={() => {
                     applyIndexPreset(pendingIndexPreset)
                     setIndexPresetDraft(null)
@@ -753,11 +753,12 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
       </div>
 
       {!compact && (
-        <div className="flex items-center justify-end gap-2">
+        <div className="flex items-center justify-end gap-1.5">
           <Button
             type="button"
             variant="ghost"
             size="sm"
+            className="h-8 rounded-lg text-foreground/70"
             onClick={() => {
               ctx.reset()
               toast.message('已重置为默认管线')
@@ -773,7 +774,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
             }}
           >
             <DialogTrigger asChild>
-              <Button type="button" variant="outline" size="sm">
+              <Button type="button" variant="outline" size="sm" className="h-8 rounded-lg border-border/50 bg-background/70 text-foreground/75 shadow-none">
                 导入 JSON
               </Button>
             </DialogTrigger>
@@ -802,7 +803,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
               </DialogFooter>
             </DialogContent>
           </Dialog>
-          <Button type="button" variant="outline" size="sm" onClick={exportPipelineJson}>
+          <Button type="button" variant="outline" size="sm" className="h-8 rounded-lg border-border/50 bg-background/70 text-foreground/75 shadow-none" onClick={exportPipelineJson}>
             导出 JSON
           </Button>
         </div>
@@ -815,18 +816,18 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
             <div
               key={group.title}
               className={cn(
-                "rounded-xl border border-border bg-card overflow-hidden shadow-sm transition-shadow hover:shadow-md",
+                "overflow-hidden rounded-xl border border-border/50 bg-card/90 transition-colors",
                 !enabled && "opacity-60 grayscale-[0.5] pointer-events-none"
               )}
             >
-              <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b border-border">
+              <div className="flex items-center gap-2 border-b border-border/50 bg-muted/20 px-3 py-2">
                 <div className={cn("p-1 rounded-md", group.bgColor)}>
                   <Icon className={cn("h-3.5 w-3.5", group.color)} />
                 </div>
-                <span className={cn("font-semibold text-foreground/80", titleClasses)}>{group.title}</span>
+                <span className={cn("font-medium text-foreground/75", titleClasses)}>{group.title}</span>
               </div>
 
-              <div className="p-3 space-y-3">
+              <div className="space-y-2.5 p-3">
                 {group.items.map((item) => {
                   const depends = item.dependsOn === 'kg_enabled'
                   const disabled = !enabled || (depends && !kgEnabled)
@@ -834,10 +835,10 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                   return (
                     <div key={item.key} className="flex items-center justify-between gap-3">
                       <div className="flex-1 min-w-0">
-                        <div className={cn("font-medium text-foreground/80 truncate", titleClasses)}>
+                        <div className={cn("font-medium text-foreground/75 truncate", titleClasses)}>
                           {item.label}
                         </div>
-                        <p className={cn("text-muted-foreground truncate", descClasses)}>
+                        <p className={cn("text-muted-foreground/80 truncate", descClasses)}>
                           {item.hint}
                         </p>
                       </div>
@@ -853,15 +854,15 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
               </div>
 
               {group.title === '数据治理' && (
-                <div className="border-t border-border">
+                <div className="border-t border-border/50">
                   <details className="group/details">
-                    <summary className={cn("flex items-center justify-between cursor-pointer select-none px-3 py-2 text-muted-foreground hover:text-foreground/80 hover:bg-muted transition-colors", descClasses)}>
+                    <summary className={cn("flex items-center justify-between cursor-pointer select-none px-3 py-2 text-muted-foreground/80 hover:text-foreground/75 hover:bg-muted/20 transition-colors", descClasses)}>
                       <span>高级治理参数</span>
                       <ChevronDown className="size-3 transition-transform group-open/details:rotate-180" />
                     </summary>
-                    <div className="p-3 pt-0 space-y-4 bg-muted/30">
+                    <div className="space-y-4 bg-muted/16 p-3 pt-0">
                       <div className="space-y-2 pt-2">
-                        <div className={cn("text-xs font-semibold text-foreground/70", compact && "text-[10px]")}>
+                        <div className={cn("text-xs font-medium text-foreground/70", compact && "text-[10px]")}>
                           治理清洗
                         </div>
                         <div className="space-y-3">
@@ -872,10 +873,10 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                             return (
                               <div key={item.key} className="flex items-center justify-between gap-3">
                                 <div className="flex-1 min-w-0">
-                                  <div className={cn("font-medium text-foreground/80 truncate", titleClasses)}>
+                                  <div className={cn("font-medium text-foreground/75 truncate", titleClasses)}>
                                     {item.label}
                                   </div>
-                                  <p className={cn("text-muted-foreground truncate", descClasses)}>
+                                  <p className={cn("text-muted-foreground/80 truncate", descClasses)}>
                                     {item.hint}
                                   </p>
                                 </div>

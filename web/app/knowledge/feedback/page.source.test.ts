@@ -4,10 +4,12 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 describe('knowledge feedback page source', () => {
-  it('wraps the description separator and trailing copy in explicit spans', () => {
+  it('renders the refined feedback page description with inline tags', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'page.tsx'), 'utf8')
 
-    expect(src).toContain('<span className="text-muted-foreground/50">|</span>')
-    expect(src).toContain('<span>用户反馈实时监控与优化分析。</span>')
+    expect(src).toContain('汇总点赞、点踩与低分原因，快速定位需要回归验证的反馈。')
+    expect(src).toContain('实时分析')
+    expect(src).toContain('长文本优先')
+    expect(src).toContain('回归线索')
   })
 })

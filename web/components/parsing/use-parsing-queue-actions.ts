@@ -1,5 +1,6 @@
 'use client'
 
+import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, type Dispatch, type DragEvent, type SetStateAction } from 'react'
 import { useTranslations } from 'next-intl'
 
@@ -43,6 +44,7 @@ export function useParsingQueueActions({
   updateParsedFile,
 }: Readonly<UseParsingQueueActionsOptions>) {
   const t = useTranslations('ParsingWorkbench')
+  const queryClient = useQueryClient()
 
   const removeFile = useCallback(
     (fileId: string) => {
@@ -56,6 +58,12 @@ export function useParsingQueueActions({
       }
 
       if (libraryId) {
+        queryClient.setQueryData<ParsedFileData[] | null>(['parsing', 'library-documents'], (current) => {
+          if (!Array.isArray(current)) return current
+          return current.filter((file) => file.id !== libraryId)
+        })
+        queryClient.removeQueries({ queryKey: ['parsing', 'library-content', libraryId], exact: true })
+
         void (async () => {
           try {
             await parsingApi.delete(libraryId)
@@ -77,6 +85,7 @@ export function useParsingQueueActions({
       libraryFiles,
       removeLibraryCaches,
       removeParsedFile,
+      queryClient,
       setActiveFileId,
       setActiveLibraryFileId,
       setFiles,

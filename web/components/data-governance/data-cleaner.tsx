@@ -274,19 +274,19 @@ export function DataCleaner({
   }, [content, onClean])
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-4 p-4 md:space-y-5 md:p-5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Wrench className="size-5 text-primary" />
-          <h3 className="font-bold text-foreground">{t("header.title")}</h3>
+          <Wrench className="size-[18px] text-primary/80" />
+          <h3 className="text-[15px] font-medium tracking-[-0.01em] text-foreground/80">{t("header.title")}</h3>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">{t('inputFormat.label')}</span>
+          <span className="text-[11px] text-muted-foreground/80">{t('inputFormat.label')}</span>
           <Select
             value={inputFormat}
             onValueChange={(value) => setInputFormat(coerceOneOf(DATA_CLEANER_INPUT_FORMAT_VALUES, value, 'markdown'))}
           >
-            <SelectTrigger className="h-8 w-[120px] text-xs">
+            <SelectTrigger className="h-8 w-[112px] rounded-lg border-border/50 bg-background/70 text-[11px] text-foreground/80 shadow-none">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -297,14 +297,14 @@ export function DataCleaner({
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-border/60">
-        <div className="border-b border-border/60 bg-muted/30 px-4 py-2 text-xs font-medium text-muted-foreground">
+      <div className="overflow-hidden rounded-2xl border border-border/50 bg-card/90">
+        <div className="border-b border-border/50 bg-muted/20 px-3.5 py-2 text-[11px] font-medium text-muted-foreground/80">
           {t('rules.title')}
         </div>
-        <div className="bg-card p-4">
-          <div className="space-y-4">
-            <div className="rounded-lg border border-border/60 bg-background/40 p-3">
-              <div className="mb-2 text-xs font-medium text-muted-foreground">{t('rules.profilesTitle')}</div>
+        <div className="p-3.5">
+          <div className="space-y-3">
+            <div className="rounded-xl border border-border/50 bg-muted/[0.16] p-2.5">
+              <div className="mb-1.5 text-[11px] font-medium text-muted-foreground/80">{t('rules.profilesTitle')}</div>
               <GovernanceProfileSelector compact={true} onApplyPatch={applyPipelinePatch} />
             </div>
             <PipelineOptionsPanel compact={false} />
@@ -317,7 +317,7 @@ export function DataCleaner({
           <AlertTriangle className="size-4" />
           <div>
             <AlertTitle>{t('alerts.warningTitle')}</AlertTitle>
-            <AlertDescription className="text-foreground/80">{backendError}</AlertDescription>
+            <AlertDescription className="text-foreground/70">{backendError}</AlertDescription>
           </div>
         </Alert>
       )}
@@ -326,17 +326,17 @@ export function DataCleaner({
           <Info className="size-4" />
           <div>
             <AlertTitle>{t('alerts.infoTitle')}</AlertTitle>
-            <AlertDescription className="whitespace-pre-line text-foreground/80">{backendInfo}</AlertDescription>
+            <AlertDescription className="whitespace-pre-line text-foreground/70">{backendInfo}</AlertDescription>
           </div>
         </Alert>
       )}
 
-      <div className="flex items-center gap-2 border-t border-border pt-4">
-        <Button onClick={handleReset} variant="outline" size="sm" className="flex-1 gap-1.5">
+      <div className="flex items-center gap-2 border-t border-border/50 pt-3.5">
+        <Button onClick={handleReset} variant="outline" size="sm" className="h-8 flex-1 gap-1.5 rounded-lg border-border/50 bg-background/70 text-foreground/75 shadow-none">
           <Undo className="h-3.5 w-3.5" />
           {t('actions.reset')}
         </Button>
-        <Button onClick={handleApply} disabled={isApplying} className="flex-1 gap-2">
+        <Button onClick={handleApply} disabled={isApplying} className="h-8 flex-1 gap-2 rounded-lg shadow-none">
           {isApplying ? (
             <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
           ) : (
@@ -346,13 +346,13 @@ export function DataCleaner({
         </Button>
       </div>
 
-      <div className="rounded-xl border border-border bg-card p-4">
+      <div className="rounded-xl border border-border/50 bg-card/90 p-3.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Sparkles className="size-4 text-primary" />
-            <span className="text-sm font-medium text-foreground">{t('llm.title')}</span>
+            <Sparkles className="size-4 text-primary/75" />
+            <span className="text-sm font-medium text-foreground/80">{t('llm.title')}</span>
           </div>
-          <Button variant={llmEnabled ? 'default' : 'outline'} size="sm" onClick={() => setLlmEnabled((value) => !value)}>
+          <Button variant={llmEnabled ? 'default' : 'outline'} size="sm" className="h-8 rounded-lg shadow-none" onClick={() => setLlmEnabled((value) => !value)}>
             {llmEnabled ? t('llm.enabled') : t('llm.enable')}
           </Button>
         </div>
@@ -365,7 +365,7 @@ export function DataCleaner({
                 value={promptTemplateId || SELECT_DEFAULT_VALUE}
                 onValueChange={(value) => setPromptTemplateId(value === SELECT_DEFAULT_VALUE ? '' : value)}
               >
-                <SelectTrigger className="h-8 w-full text-xs">
+                <SelectTrigger className="h-8 w-full rounded-lg border-border/50 bg-background/70 text-[11px] shadow-none">
                   <SelectValue placeholder={t('llm.promptTemplatePlaceholder')} />
                 </SelectTrigger>
                 <SelectContent>
@@ -382,20 +382,20 @@ export function DataCleaner({
         )}
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-border">
+      <div className="overflow-hidden rounded-xl border border-border/50 bg-card/90">
         <button
           type="button"
           onClick={() => setPreviewDiff((value) => !value)}
-          className="flex w-full items-center justify-between p-3 transition-colors hover:bg-muted"
+          className="flex w-full items-center justify-between px-3 py-2.5 transition-colors hover:bg-muted/30"
         >
-          <span className="text-sm font-medium text-foreground/80">{t('diff.title')}</span>
+          <span className="text-sm font-medium text-foreground/75">{t('diff.title')}</span>
           <TextCursorInput className="size-4 text-muted-foreground" />
         </button>
         {previewDiff && (
-          <div className="max-h-80 space-y-3 overflow-y-auto border-t border-border bg-muted p-4 no-scrollbar overscroll-contain">
+          <div className="max-h-80 space-y-3 overflow-y-auto border-t border-border/50 bg-muted/20 p-3.5 no-scrollbar overscroll-contain">
             {impact ? (
-              <div className="rounded-lg border border-border/60 bg-background/40 p-3">
-                <div className="mb-2 text-xs font-medium text-muted-foreground">{t('diff.impactTitle')}</div>
+              <div className="rounded-lg border border-border/50 bg-background/40 p-3">
+                <div className="mb-2 text-[11px] font-medium text-muted-foreground/80">{t('diff.impactTitle')}</div>
                 <div className="grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
                   <div className="flex items-center justify-between gap-2">
                     <span>{t('diff.impact.chars')}</span>

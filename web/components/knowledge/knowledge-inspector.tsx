@@ -29,7 +29,7 @@ export function KnowledgeInspector({
     <div
       className={cn(
         'flex items-center justify-between gap-3 border-b border-border/60',
-        embedded ? 'bg-background/60 px-5 py-4 backdrop-blur-sm' : 'bg-card/60 px-4 py-3'
+        embedded ? 'bg-background/40 px-4 py-3 backdrop-blur-sm' : 'bg-card/60 px-4 py-3'
       )}
     >
       <div className="text-sm font-semibold text-foreground">Inspector</div>
@@ -40,12 +40,12 @@ export function KnowledgeInspector({
   const summary = (() => {
     if (selected) {
       return (
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-border/60 bg-background/75 p-4 shadow-soft/10">
+        <div className="space-y-3.5">
+          <div className="rounded-xl border border-border/60 bg-background/70 p-3.5 shadow-soft/10">
             <div className="flex items-start gap-3">
               {fileType && TypeIcon ? (
-                <div className={cn('shrink-0 rounded-2xl border p-3 shadow-soft/20', fileType.bg, fileType.border, fileType.color)}>
-                  <TypeIcon className="h-5 w-5" />
+                <div className={cn('shrink-0 rounded-xl border p-2.5 shadow-soft/20', fileType.bg, fileType.border, fileType.color)}>
+                  <TypeIcon className="h-4 w-4" />
                 </div>
               ) : null}
 
@@ -72,25 +72,25 @@ export function KnowledgeInspector({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 text-[11px] text-muted-foreground">
-            <div className="rounded-2xl border border-border/60 bg-muted/20 px-3 py-2">
+          <div className="grid grid-cols-2 gap-2.5 text-[11px] text-muted-foreground">
+            <div className="rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
               <div className="text-[10px] uppercase text-muted-foreground/70">Size</div>
               <div className="font-mono tabular-nums text-foreground">{formatFileSize(Number(selected.file_size || 0))}</div>
             </div>
-            <div className="rounded-2xl border border-border/60 bg-muted/20 px-3 py-2">
+            <div className="rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
               <div className="text-[10px] uppercase text-muted-foreground/70">Created</div>
               <div className="font-mono tabular-nums text-foreground">{formatDate(selected.created_at)}</div>
             </div>
 
             {selected.dataset_id ? (
-              <div className="col-span-2 rounded-2xl border border-border/60 bg-muted/20 px-3 py-2">
+              <div className="col-span-2 rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
                 <div className="text-[10px] uppercase text-muted-foreground/70">Dataset</div>
                 <div className="break-all font-mono text-foreground">{selected.dataset_id}</div>
               </div>
             ) : null}
 
             {sourcePath ? (
-              <div className="col-span-2 rounded-2xl border border-border/60 bg-muted/20 px-3 py-2">
+              <div className="col-span-2 rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-[10px] uppercase text-muted-foreground/70">Source</div>
                   {folderPath ? (
@@ -109,14 +109,14 @@ export function KnowledgeInspector({
 
     if (selectedDocs.length > 1) {
       return (
-        <div className="rounded-2xl border border-dashed border-border/70 bg-muted/15 p-4 text-sm text-muted-foreground">
+        <div className="rounded-xl border border-dashed border-border/60 bg-transparent px-3 py-3 text-xs text-muted-foreground">
           已选择 <span className="font-mono tabular-nums text-foreground">{selectedDocs.length}</span> 份文档。请收窄选择范围以查看单文档详情。
         </div>
       )
     }
 
     return (
-      <div className="rounded-2xl border border-dashed border-border/70 bg-muted/15 p-4 text-sm text-muted-foreground">
+      <div className="rounded-xl border border-dashed border-border/60 bg-transparent px-3 py-3 text-xs text-muted-foreground">
         选择一个文档以查看详情。
       </div>
     )
@@ -126,9 +126,9 @@ export function KnowledgeInspector({
     return (
       <div className={cn('flex flex-col border-0 bg-transparent', className)}>
         {header}
-        <div className="space-y-4 p-4 lg:p-5">
+        <div className="space-y-3.5 p-3.5 lg:p-4">
           {summary}
-          {children ? <div className="rounded-2xl border border-border/60 bg-background/75 p-4">{children}</div> : null}
+          {children ? <div className="rounded-xl border border-border/60 bg-background/70 p-3.5">{children}</div> : null}
         </div>
       </div>
     )

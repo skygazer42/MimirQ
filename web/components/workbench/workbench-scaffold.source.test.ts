@@ -14,4 +14,12 @@ describe('WorkbenchScaffold', () => {
     // baseline-ui: never use h-screen.
     expect(src).not.toMatch(/\bh-screen\b/)
   })
+
+  it('supports a custom header slot for workbenches that need page-specific title composition', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'workbench-scaffold.tsx'), 'utf8')
+
+    expect(src).toContain('header?: React.ReactNode')
+    expect(src).toContain('{header ? (')
+    expect(src).toContain("<div className={cn('p-0', headerClassName)}>{header}</div>")
+  })
 })

@@ -752,7 +752,7 @@ export function DataGovernancePanel() {
         iconColor="text-success"
         compactHeader
         description={
-          <span className="flex items-center gap-2">
+          <span className="flex items-center gap-2 text-[13px] text-muted-foreground/80">
             <span className="h-1.5 w-1.5 rounded-full bg-primary/20" aria-hidden="true" />
             <span>{headerSubtitle}</span>
           </span>
@@ -973,7 +973,7 @@ export function DataGovernancePanel() {
       iconColor="text-sky-400"
       compactHeader
       description={
-        <span className="flex items-center gap-2">
+        <span className="flex items-center gap-2 text-[13px] text-muted-foreground/80">
           <span className="w-1.5 h-1.5 rounded-full bg-sky-500/10 dark:bg-sky-500/20" aria-hidden="true" />
           <span>{t('header.workspaceSubtitle')}</span>
         </span>

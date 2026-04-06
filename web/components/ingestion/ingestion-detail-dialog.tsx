@@ -11,7 +11,7 @@ import type { Document, DocumentVersionDiff, DocumentVersionList } from '@/types
 import { cn, formatDate, formatFileSize } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useDocumentView } from '@/store/document-view'
 import { formatApiError } from '@/lib/api-errors'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -190,47 +190,72 @@ export function IngestionDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl p-0 overflow-hidden sm:rounded-2xl">
-
-        <DialogHeader className="px-8 pt-8 pb-6 border-b border-border/60 bg-card relative z-10">
-          <DialogTitle className="flex items-center justify-between gap-3">
-            <span className="truncate text-xl font-bold text-foreground">{doc?.filename || t("header.fallbackTitle")}</span>
-            {doc && (
-              <Badge variant={statusBadgeVariant(doc.status)} className="shrink-0">
-                {t(`status.${doc.status}`)}
-              </Badge>
-            )}
-          </DialogTitle>
+      <DialogContent className="left-auto right-0 top-0 h-dvh w-[min(560px,100vw)] max-w-[560px] translate-x-0 translate-y-0 rounded-none p-0 overflow-hidden border-l border-border/60 bg-background/95 shadow-strong data-[state=open]:animate-in data-[state=open]:slide-in-from-right-full data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right-full data-[state=closed]:fade-out-0 duration-280 ease-spring data-[state=open]:duration-280 data-[state=closed]:duration-220">
+        <DialogHeader className="sr-only">
+          <DialogTitle>{doc?.filename || t("header.fallbackTitle")}</DialogTitle>
+          <DialogDescription>{documentId || ''}</DialogDescription>
         </DialogHeader>
 
+        <div className="flex h-full min-h-0 flex-col bg-background">
+          <div className="border-b border-border/60 bg-card px-6 py-5">
+            <div className="flex items-start justify-between gap-3 pr-10">
+              <div className="min-w-0">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  {t('pipeline.title')}
+                </div>
+                <div className="mt-1 truncate text-lg font-bold text-foreground">
+                  {doc?.filename || t("header.fallbackTitle")}
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <span className="font-mono">{documentId || '-'}</span>
+                  {doc ? (
+                    <>
+                      <span className="text-muted-foreground/40">·</span>
+                      <span>{formatDate(doc.updated_at)}</span>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+              {doc && (
+                <Badge variant={statusBadgeVariant(doc.status)} className="shrink-0">
+                  {t(`status.${doc.status}`)}
+                </Badge>
+              )}
+            </div>
+          </div>
+
 	        {isLoading && (
-	          <div className="flex items-center justify-center py-20 text-muted-foreground">
+	          <div className="flex flex-1 items-center justify-center text-muted-foreground">
 	            <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none" />
 	          </div>
 	        )}
 
-        {isError && !isLoading && (
-          <div className="m-8 rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-700 relative z-10">
-            <div className="flex items-center gap-2 mb-2">
-              <AlertCircle className="w-5 h-5 text-red-500" />
-              <span className="font-bold">{t('errors.loadTitle')}</span>
+          {isError && !isLoading && (
+            <div className="flex-1 overflow-y-auto overscroll-contain p-6 no-scrollbar">
+              <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-700 relative z-10">
+                <div className="mb-2 flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5 text-red-500" />
+                  <span className="font-bold">{t('errors.loadTitle')}</span>
+                </div>
+                <p>{t('errors.loadDescription')}</p>
+                <div className="mt-4">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="bg-card border-destructive/30 text-destructive hover:bg-destructive/10"
+                    onClick={() => refetch()}
+                  >
+                    {t('actions.reload')}
+                  </Button>
+                </div>
+              </div>
             </div>
-            <p>{t('errors.loadDescription')}</p>
-            <div className="mt-4">
-              <Button
-                size="sm"
-                variant="outline"
-                className="bg-card border-destructive/30 text-destructive hover:bg-destructive/10"
-                onClick={() => refetch()}
-              >
-                {t('actions.reload')}
-              </Button>
-            </div>
-          </div>
-        )}
+          )}
 
-        {!isLoading && doc && (
-          <div className="p-8 space-y-8 max-h-[70vh] overflow-y-auto overscroll-contain no-scrollbar relative z-10">
+          {!isLoading && doc && (
+            <>
+              <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar">
+                <div className="space-y-6 p-6">
 
             {/* Pipeline Stage Card */}
             <div className="rounded-2xl border border-border bg-card shadow-sm p-6 relative overflow-hidden">
@@ -435,34 +460,39 @@ export function IngestionDetailDialog({
                 </div>
               )}
             </div>
+                </div>
+              </div>
 
-            <div className="flex flex-col items-stretch justify-end gap-3 border-t border-border/60 pt-6 sm:flex-row sm:items-center">
-              <Button
-                variant="outline"
-                className="rounded-full"
-                disabled={!doc || isActing}
-                onClick={() => doc && openDocument(doc.id)}
-              >
-                {t('actions.viewParsedContent')}
-              </Button>
-              {canCancel && (
-                <Button variant="destructive" className="rounded-full" disabled={isActing} onClick={handleCancel}>
-                  {t('actions.cancelTask')}
-                </Button>
-              )}
-              {canRetry && (
-                <Button className="rounded-full" disabled={isActing} onClick={() => handleRetry(false)}>
-                  {t("actions.retry")}
-                </Button>
-              )}
-              {canForceRetry && (
-                <Button variant="outline" className="rounded-full hover:border-destructive/30 hover:text-destructive" disabled={isActing} onClick={() => handleRetry(true)}>
-                  {t('actions.forceRetry')}
-                </Button>
-              )}
-            </div>
-          </div>
-        )}
+              <div className="border-t border-border/60 bg-card/95 px-6 py-4">
+                <div className="flex flex-col items-stretch justify-end gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+                  <Button
+                    variant="outline"
+                    className="rounded-full"
+                    disabled={!doc || isActing}
+                    onClick={() => doc && openDocument(doc.id)}
+                  >
+                    {t('actions.viewParsedContent')}
+                  </Button>
+                  {canCancel && (
+                    <Button variant="destructive" className="rounded-full" disabled={isActing} onClick={handleCancel}>
+                      {t('actions.cancelTask')}
+                    </Button>
+                  )}
+                  {canRetry && (
+                    <Button className="rounded-full" disabled={isActing} onClick={() => handleRetry(false)}>
+                      {t("actions.retry")}
+                    </Button>
+                  )}
+                  {canForceRetry && (
+                    <Button variant="outline" className="rounded-full hover:border-destructive/30 hover:text-destructive" disabled={isActing} onClick={() => handleRetry(true)}>
+                      {t('actions.forceRetry')}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
 

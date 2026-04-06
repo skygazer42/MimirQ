@@ -249,6 +249,105 @@
     @apply bg-card/60 dark:bg-card/40 backdrop-blur-md border border-border/50 shadow-sm transition-shadow duration-200 hover:border-primary/20 hover:shadow-md;
   }
 
+  @keyframes select-content-in {
+    0% {
+      opacity: 0;
+      clip-path: inset(0 0 100% 0 round 0.75rem);
+      transform: translate3d(var(--select-enter-x, 0px), var(--select-enter-y, -6px), 0) scaleY(0.98);
+    }
+    100% {
+      opacity: 1;
+      clip-path: inset(0 0 0 0 round 0.75rem);
+      transform: translate3d(0, 0, 0) scaleY(1);
+    }
+  }
+
+  @keyframes select-content-out {
+    0% {
+      opacity: 1;
+      clip-path: inset(0 0 0 0 round 0.75rem);
+      transform: translate3d(0, 0, 0) scaleY(1);
+    }
+    100% {
+      opacity: 0;
+      clip-path: inset(0 0 100% 0 round 0.75rem);
+      transform: translate3d(var(--select-exit-x, 0px), var(--select-exit-y, -4px), 0) scaleY(0.985);
+    }
+  }
+
+  .animate-select-content-in {
+    animation: select-content-in 240ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  .animate-select-content-out {
+    animation: select-content-out 180ms cubic-bezier(0.4, 0, 1, 1) forwards;
+  }
+
+  /* Unified popover / dropdown / dialog keyframes (Task 1) */
+  @keyframes popover-content-in {
+    0% {
+      opacity: 0;
+      clip-path: inset(0 0 100% 0 round 0.75rem);
+      transform: translate3d(0, var(--popover-enter-y, -6px), 0) scale(0.98);
+    }
+    100% {
+      opacity: 1;
+      clip-path: inset(0 0 0 0 round 0.75rem);
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+  }
+
+  @keyframes popover-content-out {
+    0% {
+      opacity: 1;
+      clip-path: inset(0 0 0 0 round 0.75rem);
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+    100% {
+      opacity: 0;
+      clip-path: inset(0 0 100% 0 round 0.75rem);
+      transform: translate3d(0, var(--popover-exit-y, -4px), 0) scale(0.985);
+    }
+  }
+
+  .animate-popover-in {
+    animation: popover-content-in 220ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  .animate-popover-out {
+    animation: popover-content-out 160ms cubic-bezier(0.4, 0, 1, 1) forwards;
+  }
+
+  /* Row highlight for data updates (Task 34) */
+  @keyframes row-highlight {
+    0% {
+      background-color: hsl(var(--primary) / 0.06);
+    }
+    100% {
+      background-color: transparent;
+    }
+  }
+
+  .animate-row-highlight {
+    animation: row-highlight 1s ease-out forwards;
+  }
+
+  /* Fade-in-up for stagger animations */
+  @keyframes fade-in-up {
+    0% {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-fade-in-up {
+    animation: fade-in-up 400ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
   /* Scroll fade masks */
   .scroll-fade-top {
     mask-image: linear-gradient(to bottom, transparent, black 24px);
@@ -342,12 +441,30 @@ html.dark .custom-scrollbar::-webkit-scrollbar-thumb {
   @apply animate-blink;
 }
 
-/* Global hover acceleration (120ms — Vercel standard) */
+/* Global hover acceleration (150ms baseline, 200ms for transforms) */
 @layer base {
   *,
   *::before,
   *::after {
-    transition-duration: 120ms;
+    transition-duration: 150ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, filter, backdrop-filter;
+    transition-timing-function: cubic-bezier(0.25, 0.1, 0.25, 1);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 

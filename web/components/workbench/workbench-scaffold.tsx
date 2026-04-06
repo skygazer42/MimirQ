@@ -14,6 +14,7 @@ type WorkbenchScaffoldProps = {
   iconColor?: string
   badge?: string
   actions?: React.ReactNode
+  header?: React.ReactNode
 
   top?: React.ReactNode
   pipelineRail?: React.ReactNode
@@ -41,6 +42,7 @@ export function WorkbenchScaffold({
   iconColor,
   badge,
   actions,
+  header,
   top,
   pipelineRail,
   toolbar,
@@ -71,17 +73,21 @@ export function WorkbenchScaffold({
           : 'px-6 md:px-8 pt-6 md:pt-8 pb-5 md:pb-6'
       )}>
         <PageContainer size={size}>
-          <PageHeader
-            title={title}
-            description={description}
-            icon={icon}
-            iconColor={iconColor}
-            badge={badge}
-            compact={compactHeader}
-            className={cn('p-0', headerClassName)}
-          >
-            {actions}
-          </PageHeader>
+          {header ? (
+            <div className={cn('p-0', headerClassName)}>{header}</div>
+          ) : (
+            <PageHeader
+              title={title}
+              description={description}
+              icon={icon}
+              iconColor={iconColor}
+              badge={badge}
+              compact={compactHeader}
+              className={cn('p-0', headerClassName)}
+            >
+              {actions}
+            </PageHeader>
+          )}
 
           {top ? <div className={compactHeader ? 'mt-2' : 'mt-4'}>{top}</div> : null}
           {pipelineRail ? <div className={compactHeader ? 'mt-2' : 'mt-4'}>{pipelineRail}</div> : null}

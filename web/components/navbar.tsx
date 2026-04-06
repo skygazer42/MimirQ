@@ -7,7 +7,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import {
   Activity,
-  AlertTriangle,
   BarChart3,
   Braces,
   ChevronDown,
@@ -31,6 +30,7 @@ import {
   Search,
   Settings,
   Share2,
+  ShieldAlert,
   ShieldCheck,
   SlidersHorizontal,
   Star,
@@ -80,7 +80,7 @@ const menuSections: MenuSection[] = [
       { icon: Layers, labelKey: 'items.datasets', href: '/datasets' },
       { icon: Database, labelKey: 'items.knowledgeBase', href: '/knowledge' },
       { icon: Activity, labelKey: 'items.ingestion', href: '/knowledge/ingestion' },
-      { icon: AlertTriangle, labelKey: 'items.quarantine', href: '/knowledge/quarantine' },
+      { icon: ShieldAlert, labelKey: 'items.quarantine', href: '/knowledge/quarantine' },
       { icon: Star, labelKey: 'items.feedback', href: '/knowledge/feedback' },
     ],
   },
@@ -182,6 +182,7 @@ export function Navbar({
   const toggleButtonRef = useRef<HTMLButtonElement | null>(null)
   const firstActionRef = useRef<HTMLButtonElement | null>(null)
   const prevIsSidebarOpenRef = useRef<boolean | null>(null)
+  const restoreToggleFocusOnCloseRef = useRef(false)
   const [internalIsOpen, setInternalIsOpen] = useState(true)
   const [openSections, setOpenSections] = useState<Record<SectionId, boolean>>(createInitialOpenSections)
   const isSidebarOpen = externalIsOpen ?? internalIsOpen
@@ -222,6 +223,23 @@ export function Navbar({
       [sectionId]: !current[sectionId],
     }))
   }, [])
+  const handleSidebarTogglePointerDown = useCallback(() => {
+    restoreToggleFocusOnCloseRef.current = false
+  }, [])
+  const handleSidebarToggleKeyDown = useCallback((event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      restoreToggleFocusOnCloseRef.current = true
+    }
+  }, [])
+  const handleSidebarToggle = useCallback(() => {
+    if (isSidebarOpen) {
+      restoreToggleFocusOnCloseRef.current =
+        restoreToggleFocusOnCloseRef.current || document.activeElement === toggleButtonRef.current
+    } else {
+      restoreToggleFocusOnCloseRef.current = false
+    }
+    setSidebarOpen(!isSidebarOpen)
+  }, [isSidebarOpen, setSidebarOpen])
 
   // Accessibility: prevent focus from entering the sidebar when collapsed/hidden.
   useEffect(() => {
@@ -250,6 +268,7 @@ export function Navbar({
         return
       }
       e.preventDefault()
+      restoreToggleFocusOnCloseRef.current = true
       setSidebarOpen(false)
     }
 
@@ -282,7 +301,9 @@ export function Navbar({
     const navEl = navRef.current
     const shouldRestore =
       !active || active === document.body || Boolean(navEl && active instanceof Node && navEl.contains(active))
-    if (!shouldRestore) return
+    const shouldRestoreToggleFocus = restoreToggleFocusOnCloseRef.current
+    restoreToggleFocusOnCloseRef.current = false
+    if (!shouldRestore || !shouldRestoreToggleFocus) return
 
     requestAnimationFrame(() => {
       toggleButtonRef.current?.focus()
@@ -396,7 +417,10 @@ export function Navbar({
         type="button"
         aria-label={t('toolbar.sidebarClose')}
           className="fixed inset-0 z-40 bg-black/50 transition-opacity md:hidden border-0 p-0 focus:outline-none"
-          onClick={() => setSidebarOpen(false)}
+          onClick={() => {
+            restoreToggleFocusOnCloseRef.current = false
+            setSidebarOpen(false)
+          }}
         />
       ) : null}
 
@@ -748,28 +772,53 @@ export function Navbar({
       </nav>
 
       {/* 侧边栏折叠按钮 */}
-      <Button
-        ref={toggleButtonRef}
-        variant="ghost"
-        size="icon"
-        aria-controls="mimirq-sidebar"
-        aria-expanded={isSidebarOpen}
-        aria-label={isSidebarOpen ? t('toolbar.collapse') : t('toolbar.expand')}
-        title={isSidebarOpen ? t('toolbar.collapse') : t('toolbar.expand')}
-        className={cn(
-          'fixed bottom-4 z-50 size-11 rounded-xl shadow-soft bg-background border border-border text-muted-foreground hover:text-primary hover:bg-muted transition-colors duration-200 ease-out sm:size-10 supports-[padding:env(safe-area-inset-bottom)]:bottom-[calc(env(safe-area-inset-bottom)+1rem)]',
-          isSidebarOpen
-            ? 'left-[260px] opacity-0 pointer-events-none md:peer-hover:opacity-100 md:peer-hover:pointer-events-auto md:peer-focus-within:opacity-100 md:peer-focus-within:pointer-events-auto md:hover:opacity-100 md:hover:pointer-events-auto md:focus-visible:opacity-100 md:focus-visible:pointer-events-auto'
-            : 'left-4 opacity-100 supports-[padding:env(safe-area-inset-left)]:left-[calc(env(safe-area-inset-left)+1rem)]'
-        )}
-        onClick={() => setSidebarOpen(!isSidebarOpen)}
-      >
-        {isSidebarOpen ? (
+      {isSidebarOpen ? (
+        <Button
+          ref={toggleButtonRef}
+          variant="ghost"
+          size="icon"
+          aria-controls="mimirq-sidebar"
+          aria-expanded={true}
+          aria-label={t('toolbar.collapse')}
+          title={t('toolbar.collapse')}
+          className={cn(
+            'fixed z-50 border border-border bg-background/92 text-muted-foreground shadow-soft backdrop-blur transition-colors duration-200 ease-out hover:bg-muted',
+            'bottom-4 left-[260px] size-11 rounded-xl opacity-0 pointer-events-none hover:text-primary supports-[padding:env(safe-area-inset-bottom)]:bottom-[calc(env(safe-area-inset-bottom)+1rem)] md:peer-hover:opacity-100 md:peer-hover:pointer-events-auto md:peer-focus-within:opacity-100 md:peer-focus-within:pointer-events-auto md:hover:opacity-100 md:hover:pointer-events-auto md:focus-visible:opacity-100 md:focus-visible:pointer-events-auto sm:size-10'
+          )}
+          onPointerDown={handleSidebarTogglePointerDown}
+          onKeyDown={handleSidebarToggleKeyDown}
+          onClick={handleSidebarToggle}
+        >
           <PanelLeftClose className="size-5" />
-        ) : (
-          <PanelLeftOpen className="size-5" />
-        )}
-      </Button>
+        </Button>
+      ) : (
+        <div className="fixed left-0 top-0 z-50 h-16 w-4 overflow-visible md:top-14 md:h-14 md:w-5">
+          <div className="group/sidebar-toggle relative h-full w-full overflow-visible">
+            <Button
+              ref={toggleButtonRef}
+              variant="outline"
+              size="icon"
+              aria-controls="mimirq-sidebar"
+              aria-expanded={false}
+              aria-label={t('toolbar.expand')}
+              title={t('toolbar.expand')}
+              className={cn(
+                'absolute z-50 border border-border bg-background/92 text-foreground shadow-soft backdrop-blur transition-all duration-200 ease-out hover:bg-muted',
+                'left-3 top-4 size-9 rounded-full pointer-events-auto md:left-0 md:top-1/2 md:-translate-y-1/2 supports-[padding:env(safe-area-inset-left)]:md:left-[calc(env(safe-area-inset-left)-0.15rem)]',
+                'md:-translate-x-[110%] md:scale-95 md:opacity-0 md:pointer-events-none',
+                'md:group-hover/sidebar-toggle:translate-x-2 md:group-hover/sidebar-toggle:scale-100 md:group-hover/sidebar-toggle:opacity-100 md:group-hover/sidebar-toggle:pointer-events-auto',
+                'md:group-focus-within/sidebar-toggle:translate-x-2 md:group-focus-within/sidebar-toggle:scale-100 md:group-focus-within/sidebar-toggle:opacity-100 md:group-focus-within/sidebar-toggle:pointer-events-auto',
+                'focus-visible:translate-x-0 focus-visible:scale-100 focus-visible:opacity-100 focus-visible:pointer-events-auto md:focus-visible:translate-x-2'
+              )}
+              onPointerDown={handleSidebarTogglePointerDown}
+              onKeyDown={handleSidebarToggleKeyDown}
+              onClick={handleSidebarToggle}
+            >
+              <PanelLeftOpen className="size-4" />
+            </Button>
+          </div>
+        </div>
+      )}
     </>
   )
 }

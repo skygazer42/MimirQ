@@ -32,6 +32,8 @@ type ConfirmDialogProps = {
   cancelLabel?: string
   confirmVariant?: ButtonProps["variant"]
   confirmDisabled?: boolean
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
   onConfirm: () => void | Promise<void>
   children: React.ReactNode
 }
@@ -43,6 +45,8 @@ export function ConfirmDialog({
   cancelLabel,
   confirmVariant = "destructive",
   confirmDisabled = false,
+  open,
+  onOpenChange,
   onConfirm,
   children,
 }: Readonly<ConfirmDialogProps>) {
@@ -51,7 +55,7 @@ export function ConfirmDialog({
   const resolvedCancelLabel = cancelLabel ?? t('confirmDialog.cancel')
 
   return (
-    <AlertDialog>
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogTrigger asChild>{children}</AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
@@ -64,7 +68,7 @@ export function ConfirmDialog({
             type="button"
             disabled={confirmDisabled}
             onClick={() => detachPromise(onConfirm())}
-            className={cn(buttonVariants({ variant: confirmVariant, size: "sm" }))}
+            className={cn(buttonVariants({ variant: confirmVariant, size: "sm" }), "transition-all duration-200 hover:scale-[1.02] hover:shadow-md active:scale-[0.97]")}
           >
             {resolvedConfirmLabel}
           </AlertDialogPrimitive.Action>

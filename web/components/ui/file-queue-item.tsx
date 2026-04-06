@@ -77,12 +77,13 @@ export function FileQueueItem({
     file.progress == null || !Number.isFinite(Number(file.progress))
       ? 0
       : Math.max(0, Math.min(100, Number(file.progress)))
+  const parsedSummary = [file.parser, file.chunkStrategyLabel].filter(Boolean).join(' · ')
 
   const getStatusContent = () => {
     switch (file.status) {
       case 'pending':
         return (
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <Clock className="size-3" />
             <span>{t("fileQueueItem.pending")}</span>
           </div>
@@ -90,7 +91,7 @@ export function FileQueueItem({
       case 'parsing':
         return (
           <div className="space-y-1.5">
-            <div className="flex items-center gap-1.5 text-xs text-info">
+            <div className="flex items-center gap-1.5 text-[11px] text-info">
               <Loader2 className="size-3 animate-spin motion-reduce:animate-none" />
               <span>{t("fileQueueItem.parsing")} {file.progress == null ? '' : `${progressPct}%`}</span>
             </div>
@@ -101,46 +102,52 @@ export function FileQueueItem({
         )
       case 'parsed':
         return (
-          <div className="flex items-center gap-2 text-xs">
-            <span className="flex items-center gap-1 text-success">
-              <CheckCircle className="size-3" />
+          <div className="flex min-w-0 items-center gap-2 text-[11px]">
+            <span className="inline-flex shrink-0 items-center gap-1 text-success">
+              <CheckCircle className="size-3.5" />
               {t("fileQueueItem.parsed")}
             </span>
-            {file.parser && (
-              <span className="text-muted-foreground">· {file.parser}</span>
-            )}
-            {file.chunkStrategyLabel && (
-              <span className="text-muted-foreground">· {file.chunkStrategyLabel}</span>
-            )}
+            {parsedSummary ? (
+              <span className="min-w-0 truncate text-muted-foreground">
+                {parsedSummary}
+              </span>
+            ) : null}
             {typeof file.duration === 'number' && Number.isFinite(file.duration) ? (
-              <span className="text-muted-foreground">· {file.duration}s</span>
+              <span className="ml-auto shrink-0 font-mono tabular-nums text-[10px] text-muted-foreground">
+                {file.duration}s
+              </span>
             ) : null}
           </div>
         )
       case 'error':
         return (
-          <span className="flex items-center gap-1 text-xs text-destructive">
-            <XCircle className="size-3" />
-            {t("fileQueueItem.error")}
-          </span>
+          <div className="flex items-center gap-1.5 text-[11px] text-destructive">
+            <XCircle className="size-3.5" />
+            <span>{t("fileQueueItem.error")}</span>
+            {onRetry ? (
+              <span className="ml-auto shrink-0 font-medium text-destructive/80">
+                {t("fileQueueItem.retry")}
+              </span>
+            ) : null}
+          </div>
         )
     }
   }
 
   const fileContent = (
     <>
-      <div className={cn('p-2.5 rounded-lg flex-shrink-0', config.bg)}>
-        <Icon className={cn('size-5', config.color)} />
+      <div className={cn('flex size-8 shrink-0 items-center justify-center rounded-md', config.bg)}>
+        <Icon className={cn('size-4', config.color)} />
       </div>
 
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-foreground truncate">
+        <p className="truncate text-[13px] font-medium text-foreground">
           {file.name}
         </p>
 
         {(file.folderPathLabel || file.sourcePath) && (
           <p
-            className="mt-0.5 text-xs text-muted-foreground truncate"
+            className="mt-0.5 truncate text-[11px] text-muted-foreground"
             title={[file.folderPathLabel, file.sourcePath].filter(Boolean).join(' · ')}
           >
             {file.folderPathLabel ? `${t("fileQueueItem.folderLabel")}${file.folderPathLabel}` : ''}
@@ -148,7 +155,7 @@ export function FileQueueItem({
           </p>
         )}
 
-        <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
+        <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
           <span>{formatFileSize(file.size)}</span>
           {file.pageCount && (
             <>
@@ -158,7 +165,7 @@ export function FileQueueItem({
           )}
         </div>
 
-        <div className="mt-2">{getStatusContent()}</div>
+        <div className="mt-1.5">{getStatusContent()}</div>
       </div>
     </>
   )
@@ -166,17 +173,17 @@ export function FileQueueItem({
   return (
     <div
       className={cn(
-        'group p-3 rounded-xl border cursor-pointer transition-colors duration-200 motion-reduce:transition-none',
+        'group cursor-pointer rounded-md border border-transparent px-2.5 py-2 transition-colors duration-150 motion-reduce:transition-none',
         isActive
-          ? 'bg-info/10 border-info/25 shadow-sm dark:shadow-none'
-          : 'bg-card border-border hover:border-info/25 hover:bg-muted/40'
+          ? 'bg-primary/[0.055] shadow-none'
+          : 'bg-background/60 hover:bg-muted/35'
       )}
     >
       <div className="flex items-start gap-2">
         {onClick ? (
           <button
             type="button"
-            className="flex min-w-0 flex-1 items-start gap-3 rounded-lg text-left focus-ring"
+            className="flex min-w-0 flex-1 items-start gap-2 rounded-md text-left focus-ring"
             onClick={onClick}
             draggable={draggable}
             onDragStart={onDragStart}
@@ -184,7 +191,7 @@ export function FileQueueItem({
             {fileContent}
           </button>
         ) : (
-          <div className="flex min-w-0 flex-1 items-start gap-3">
+          <div className="flex min-w-0 flex-1 items-start gap-2">
             {fileContent}
           </div>
         )}
@@ -207,7 +214,7 @@ export function FileQueueItem({
                 onClick={onRemove}
                 aria-label={t("fileQueueItem.removeLabel")}
                 title={t("fileQueueItem.removeTitle")}
-                className="opacity-0 group-hover:opacity-100 p-1 rounded flex-shrink-0 focus-ring transition-opacity transition-colors duration-200 motion-reduce:transition-none hover:bg-destructive/10"
+                className="rounded p-1 opacity-0 transition-opacity transition-colors duration-200 focus-ring motion-reduce:transition-none group-hover:opacity-100 hover:bg-destructive/10"
               >
                 <Trash2 className="size-3.5 text-muted-foreground transition-colors duration-200 motion-reduce:transition-none hover:text-destructive" />
               </button>
@@ -217,7 +224,7 @@ export function FileQueueItem({
       </div>
 
       {file.status === 'error' && file.error && (
-        <p className="mt-2 text-xs text-destructive bg-destructive/10 px-2 py-1 rounded">
+        <p className="mt-2 rounded bg-destructive/10 px-2 py-1 text-[11px] text-destructive">
           {file.error}
         </p>
       )}
