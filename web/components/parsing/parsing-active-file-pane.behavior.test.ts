@@ -425,4 +425,47 @@ describe('ParsingActiveFilePane lazy compare interactions', () => {
 
     view.unmount()
   })
+
+  it('moves the edit cursor to the active layout block instead of resetting to the top', async () => {
+    const markdown = '# Summary\n\nFirst paragraph.\n\nSecond paragraph.\n\n## Details'
+    const view = renderComponent(
+      React.createElement(
+        ParsingActiveFilePane,
+        makePaneProps({
+          activeBlockId: 'block-2',
+          activeBlocksWithPositions: [
+            {
+              id: 'block-0',
+              positions: [{ bottom: 0.12, left: 0.08, pages: [0], raw: '@@1', right: 0.84, top: 0.08 }],
+              text: '# Summary',
+            },
+            {
+              id: 'block-1',
+              positions: [{ bottom: 0.22, left: 0.08, pages: [0], raw: '@@2', right: 0.84, top: 0.16 }],
+              text: 'First paragraph.',
+            },
+            {
+              id: 'block-2',
+              positions: [{ bottom: 0.34, left: 0.08, pages: [0], raw: '@@3', right: 0.84, top: 0.24 }],
+              text: 'Second paragraph.',
+            },
+          ],
+          activeMarkdown: markdown,
+          editedContent: markdown,
+          isEditing: true,
+        })
+      )
+    )
+
+    await waitForAssertion(() => {
+      const textarea = view.container.querySelector('textarea')
+      expect(textarea).not.toBeNull()
+      expect((textarea as HTMLTextAreaElement).selectionStart).toBe(markdown.indexOf('Second paragraph.'))
+      expect((textarea as HTMLTextAreaElement).selectionEnd).toBe(
+        markdown.indexOf('Second paragraph.') + 'Second paragraph.'.length
+      )
+    })
+
+    view.unmount()
+  })
 })

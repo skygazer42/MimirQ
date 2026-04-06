@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import {
   Blocks,
@@ -37,6 +37,7 @@ import {
   getParsingLayoutMeta,
   type ParsingLayoutKind,
 } from '@/lib/parsing-layout'
+import { findEditSelectionForActiveParsingEntry } from '@/lib/parsing-edit-focus'
 import { cn } from '@/lib/utils'
 import { getParserLabel } from '@/lib/parser-options'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
@@ -188,6 +189,8 @@ export function ParsingActiveFilePane({
   onHoveredBlockIdChange,
 }: Readonly<ParsingActiveFilePaneProps>) {
   const [compareOpen, setCompareOpen] = useState(false)
+  const editorRef = useRef<HTMLTextAreaElement | null>(null)
+  const didInitializeEditSelectionRef = useRef(false)
   const pdfViewerKey = `${activeFile.id}:${activeFile.activeRunId || activeRun?.id || 'default'}:${pdfPreviewResetToken}`
   const qualityGrade = getQualityGateGrade(activeQualityGate)
   const qualityReasons = getQualityGateReasons(activeQualityGate)
@@ -211,6 +214,34 @@ export function ParsingActiveFilePane({
     }
     return next
   }, [layoutEntries])
+  const activeEditSelection = useMemo(
+    () => findEditSelectionForActiveParsingEntry(editedContent || activeMarkdown, layoutEntries, activeBlockId),
+    [activeBlockId, activeMarkdown, editedContent, layoutEntries]
+  )
+
+  useEffect(() => {
+    if (!isEditing) {
+      didInitializeEditSelectionRef.current = false
+      return
+    }
+    if (didInitializeEditSelectionRef.current) return
+
+    const textarea = editorRef.current
+    if (!textarea) return
+
+    didInitializeEditSelectionRef.current = true
+    const start = activeEditSelection?.start ?? 0
+    const end = activeEditSelection?.end ?? start
+    const rafId = globalThis.window.requestAnimationFrame(() => {
+      textarea.focus()
+      textarea.setSelectionRange(start, end)
+    })
+
+    return () => {
+      globalThis.window.cancelAnimationFrame(rafId)
+    }
+  }, [activeEditSelection, isEditing])
+
   const parsedStatItems =
     activeFile.status === 'parsed' && activeFile.stats
       ? [
@@ -583,6 +614,7 @@ export function ParsingActiveFilePane({
               {isEditing ? (
                 <div className="p-6">
                   <textarea
+                    ref={editorRef}
                     value={editedContent}
                     onChange={(event) => onEditedContentChange(event.target.value)}
                     className="min-h-[500px] w-full resize-none rounded-xl border border-border bg-muted p-4 font-mono text-sm leading-relaxed text-foreground/80 whitespace-pre-wrap focus:border-transparent focus:outline-none focus:ring-2 focus:ring-sky-500 dark:border-border dark:bg-background dark:text-muted-foreground"
