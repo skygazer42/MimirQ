@@ -33,6 +33,13 @@ const config = {
       transitionTimingFunction: {
         "out-expo": "cubic-bezier(0.32, 0.72, 0, 1)",
         "spring": "cubic-bezier(0.22, 1, 0.36, 1)",
+        "smooth": "cubic-bezier(0.25, 0.1, 0.25, 1)",
+        "bounce": "cubic-bezier(0.34, 1.56, 0.64, 1)",
+      },
+      transitionDuration: {
+        "180": "180ms",
+        "220": "220ms",
+        "280": "280ms",
       },
       colors: {
         border: "hsl(var(--border))",
@@ -161,6 +168,22 @@ const config = {
           "0%": { opacity: "0", transform: "translateY(8px)" },
           "100%": { opacity: "1", transform: "translateY(0)" },
         },
+        "slide-up-fade": {
+          "0%": { opacity: "0", transform: "translateY(6px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        "slide-down-fade": {
+          "0%": { opacity: "0", transform: "translateY(-6px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        "scale-fade-in": {
+          "0%": { opacity: "0", transform: "scale(0.95)" },
+          "100%": { opacity: "1", transform: "scale(1)" },
+        },
+        "scale-fade-out": {
+          "0%": { opacity: "1", transform: "scale(1)" },
+          "100%": { opacity: "0", transform: "scale(0.95)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -174,6 +197,10 @@ const config = {
         "shimmer": "shimmer 2s infinite",
         "blink": "blink 1s step-end infinite",
         "page-enter": "page-enter 0.3s cubic-bezier(0.22, 1, 0.36, 1) forwards",
+        "slide-up-fade": "slide-up-fade 220ms cubic-bezier(0.22, 1, 0.36, 1) forwards",
+        "slide-down-fade": "slide-down-fade 220ms cubic-bezier(0.22, 1, 0.36, 1) forwards",
+        "scale-fade-in": "scale-fade-in 200ms cubic-bezier(0.22, 1, 0.36, 1) forwards",
+        "scale-fade-out": "scale-fade-out 150ms cubic-bezier(0.4, 0, 1, 1) forwards",
       },
     },
   },

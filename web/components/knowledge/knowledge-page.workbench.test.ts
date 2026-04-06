@@ -7,6 +7,6 @@ describe('KnowledgePage workbench scaffold', () => {
   it('uses WorkbenchScaffold for the outer layout', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'knowledge-page.tsx'), 'utf8')
     expect(src).toContain('WorkbenchScaffold')
+    expect(src).toContain('size="full"')
   })
 })
-

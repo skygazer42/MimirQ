@@ -144,7 +144,9 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
     }
   }, [selectedRef, selectedSummary])
 
-  const triggerCls = compact ? 'h-8 text-xs' : 'h-9 text-sm'
+  const triggerCls = compact
+    ? 'h-8 rounded-lg border-border/50 bg-background/70 text-[11px] text-foreground/80 shadow-none'
+    : 'h-9 rounded-lg border-border/50 bg-background/70 text-sm text-foreground/80 shadow-none'
 
   const inheritanceText = useMemo(() => {
     const chain = selectedResolved?.chain || []
@@ -153,7 +155,7 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
   }, [selectedResolved?.chain])
 
   return (
-    <div className={cn('space-y-2', className)}>
+    <div className={cn('space-y-1.5', className)}>
       <div className="flex items-center gap-2">
         <div className="flex-1 min-w-0">
           <Select value={selectedRef} onValueChange={setSelectedRef} disabled={loading}>
@@ -177,28 +179,29 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
           disabled={loading}
           aria-label="刷新治理预设"
           title="刷新治理预设"
+          className="h-8 rounded-lg border-border/50 bg-background/70 px-2.5 text-muted-foreground shadow-none hover:text-foreground"
         >
           <RefreshCw className="w-4 h-4" />
         </Button>
       </div>
 
       {selectedSummary?.description && (
-        <div className={cn('text-muted-foreground', compact ? 'text-[11px]' : 'text-xs')}>
+        <div className={cn('text-muted-foreground/80', compact ? 'text-[10.5px]' : 'text-xs')}>
           {selectedSummary.description}
         </div>
       )}
 
       {inheritanceText ? (
-        <div className={cn('text-muted-foreground', compact ? 'text-[11px]' : 'text-xs')}>
+        <div className={cn('text-muted-foreground/75', compact ? 'text-[10.5px]' : 'text-xs')}>
           继承链：{inheritanceText}
         </div>
       ) : null}
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-1.5">
         <Button
           onClick={handleApply}
           size={compact ? 'sm' : 'default'}
-          className="gap-2"
+          className="h-8 gap-2 rounded-lg shadow-none"
           disabled={!selectedResolved}
         >
           <Sparkles className="w-4 h-4" />
@@ -208,7 +211,7 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
           variant="outline"
           onClick={handleImportClick}
           size={compact ? 'sm' : 'default'}
-          className="gap-2"
+          className="h-8 gap-2 rounded-lg border-border/50 bg-background/70 text-foreground/75 shadow-none"
         >
           <FileUp className="w-4 h-4" />
           导入脚本
@@ -217,7 +220,7 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
           variant="outline"
           onClick={handleExport}
           size={compact ? 'sm' : 'default'}
-          className="gap-2"
+          className="h-8 gap-2 rounded-lg border-border/50 bg-background/70 text-foreground/75 shadow-none"
           disabled={!selectedRef || selectedRef === SELECT_NONE}
         >
           <Download className="w-4 h-4" />

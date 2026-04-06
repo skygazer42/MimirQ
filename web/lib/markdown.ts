@@ -363,7 +363,11 @@ export function extractMarkdownHeadings(
 
 export function scrollToElementId(
   id: string,
-  options: { behavior?: ScrollBehavior; block?: ScrollLogicalPosition } = {}
+  options: {
+    behavior?: ScrollBehavior
+    block?: ScrollLogicalPosition
+    scrollContainerSelector?: string
+  } = {}
 ): boolean {
   if (globalThis.window === undefined) return false
   const key = (id || '').replace(/^#/, '').trim()
@@ -374,6 +378,41 @@ export function scrollToElementId(
 
   const behavior = options.behavior ?? 'smooth'
   const block = options.block ?? 'start'
+  const containerSelector = (options.scrollContainerSelector || '').trim()
+  const container = containerSelector
+    ? globalThis.window.document.querySelector<HTMLElement>(containerSelector)
+    : null
+
+  if (container && container.contains(el)) {
+    const containerRect = container.getBoundingClientRect()
+    const elementRect = el.getBoundingClientRect()
+    const elementTop = container.scrollTop + (elementRect.top - containerRect.top)
+    const elementBottom = elementTop + elementRect.height
+    let nextTop = elementTop
+
+    if (block === 'center') {
+      nextTop = elementTop - (container.clientHeight - elementRect.height) / 2
+    } else if (block === 'end') {
+      nextTop = elementBottom - container.clientHeight
+    } else if (block === 'nearest') {
+      const visibleTop = container.scrollTop
+      const visibleBottom = visibleTop + container.clientHeight
+      if (elementTop < visibleTop) {
+        nextTop = elementTop
+      } else if (elementBottom > visibleBottom) {
+        nextTop = elementBottom - container.clientHeight
+      } else {
+        return true
+      }
+    }
+
+    container.scrollTo({
+      top: Math.max(0, nextTop),
+      behavior,
+    })
+    return true
+  }
+
   el.scrollIntoView({ behavior, block })
   return true
 }

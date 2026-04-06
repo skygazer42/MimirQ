@@ -24,18 +24,18 @@ export function ParsingLeftPanel({
   return (
     <aside
       className={cn(
-        'group/sidebar relative flex flex-col flex-shrink-0 min-h-0 overflow-hidden bg-card dark:bg-background border-r border-border/60 z-10',
-        collapsed ? 'w-0 border-r-0' : 'w-80',
+        'group/sidebar relative z-10 flex min-h-0 flex-shrink-0 flex-col overflow-visible border-r border-border/60 bg-card dark:bg-background',
+        collapsed ? 'w-0 border-r-0' : 'w-60',
         className
       )}
-      style={{ width: collapsed ? 0 : 320 }}
+      style={{ width: collapsed ? 0 : 240 }}
     >
       <Button
         variant="ghost"
         size="icon"
         className={cn(
-          'absolute -right-3 top-3 z-30 h-6 w-6 rounded-full border border-border/60 bg-card shadow-sm dark:shadow-none hover:bg-muted dark:hover:bg-muted text-muted-foreground hover:text-muted-foreground transition-opacity opacity-0 group-hover/sidebar:opacity-100 motion-reduce:transition-none',
-          collapsed && 'opacity-100 -right-8 translate-x-2'
+          'absolute top-2 z-30 h-6 w-6 rounded-lg border border-border/50 bg-background/90 text-muted-foreground shadow-none backdrop-blur-sm transition-all duration-200 hover:bg-muted hover:text-foreground motion-reduce:transition-none',
+          collapsed ? 'right-[-2.25rem] opacity-100' : 'right-2 opacity-0 group-hover/sidebar:opacity-100'
         )}
         onClick={onToggleCollapsed}
         title={collapsed ? t('leftPanel.expandSidebar') : t('leftPanel.collapseSidebar')}
@@ -44,7 +44,7 @@ export function ParsingLeftPanel({
         {collapsed ? <PanelRightOpen className="w-3 h-3" /> : <PanelRightClose className="w-3 h-3" />}
       </Button>
 
-      <div className={cn('flex-1 flex flex-col min-h-0 w-full overflow-hidden', collapsed && 'invisible')}>
+      <div className={cn('flex min-h-0 w-full flex-1 flex-col overflow-hidden', collapsed && 'invisible')}>
         {children}
       </div>
     </aside>

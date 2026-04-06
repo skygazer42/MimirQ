@@ -160,9 +160,9 @@ export function ParsingLibraryBrowser({
             key={folder.id}
             type="button"
             className={cn(
-              'group relative flex w-full cursor-pointer items-center gap-3 rounded-xl border border-transparent p-2.5 text-left transition-colors hover:bg-muted dark:hover:bg-muted/40',
-              dragOverFolderId === folder.id && 'bg-muted ring-1 ring-slate-200 dark:bg-muted/40 dark:ring-slate-800',
-              activeFolderId === folder.id && 'bg-muted ring-1 ring-slate-200 dark:bg-muted/40 dark:ring-slate-800'
+              'group relative flex w-full cursor-pointer items-center gap-2.5 rounded-lg p-2 text-left transition-colors hover:bg-muted/55 dark:hover:bg-muted/40',
+              dragOverFolderId === folder.id && 'bg-muted/70 ring-1 ring-border/60 dark:bg-muted/40',
+              activeFolderId === folder.id && 'bg-primary/[0.055] dark:bg-primary/10'
             )}
             draggable
             onDragStart={(event) => {
@@ -178,14 +178,14 @@ export function ParsingLibraryBrowser({
             onDragLeave={onFolderDragLeave}
             onDrop={(event) => onFolderDrop(event, folder.id)}
           >
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground dark:bg-muted dark:text-muted-foreground">
-              <FolderOpen className="h-4 w-4" />
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted/80 text-muted-foreground dark:bg-muted dark:text-muted-foreground">
+              <FolderOpen className="h-3.5 w-3.5" />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between">
                 <div
                   className={cn(
-                    'truncate pr-6 text-sm font-semibold',
+                    'truncate pr-4 text-[13px] font-medium',
                     activeFolderId === folder.id ? 'text-foreground dark:text-foreground' : 'text-foreground/80 dark:text-muted-foreground'
                   )}
                 >
@@ -202,7 +202,7 @@ export function ParsingLibraryBrowser({
                     : ''}
                 </span>
               </div>
-              <div className="mt-1 flex min-h-[16px] items-center gap-2">
+              <div className="mt-0.5 flex min-h-[16px] items-center gap-2">
                 <span className="text-[10px] text-muted-foreground dark:text-muted-foreground">{stats?.count || 0} 项</span>
               </div>
             </div>

@@ -105,13 +105,13 @@ export const MarkdownToc = memo(function MarkdownToc({
     if (globalThis.window !== undefined) {
       globalThis.window.history.replaceState(null, '', `#${encodeURIComponent(id)}`)
     }
-    scrollToElementId(id)
+    scrollToElementId(id, { scrollContainerSelector })
     flashElementId(id, FLASH_CLASS)
   }
 
   return (
     <nav className={cn('text-sm', className)} aria-label="Table of contents">
-      <div className="text-xs font-semibold text-muted-foreground uppercase">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
         {title}
       </div>
       <ul className="mt-2 space-y-0.5">
@@ -125,8 +125,8 @@ export const MarkdownToc = memo(function MarkdownToc({
                 className={cn(
                   'w-full text-left text-[13px] leading-5 truncate rounded-md px-1.5 py-0.5 transition-colors',
                   isActive
-                    ? 'text-primary font-medium bg-primary/5'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                    ? 'font-medium text-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/35'
                 )}
                 style={{ paddingLeft: `${Math.max(0, h.level - 1) * 12 + 6}px` }}
                 title={h.text}

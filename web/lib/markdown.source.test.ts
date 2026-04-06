@@ -24,4 +24,12 @@ describe('markdown source', () => {
     expect(src).not.toContain("replaceAll(/`([^`]+)`/g, '$1')")
     expect(src).not.toContain("replaceAll(/<[^>]+>/g, '')")
   })
+
+  it('supports scrolling to headings within a named scroll container', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'markdown.ts'), 'utf8')
+
+    expect(src).toContain('scrollContainerSelector?: string')
+    expect(src).toContain('document.querySelector<HTMLElement>(containerSelector)')
+    expect(src).toContain('container.scrollTo({')
+  })
 })

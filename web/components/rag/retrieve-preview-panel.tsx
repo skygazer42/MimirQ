@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Copy,
   ExternalLink,
@@ -19,6 +19,7 @@ import type {
   RegressionCaseCreate,
 } from '@/types'
 import { AuthImage, AuthImageLink, useResolvedAuthAssetUrl } from '@/components/auth-image'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { IconButton } from '@/components/ui/icon-button'
@@ -267,6 +268,42 @@ function formatCount(value: unknown): string {
   return typeof n === 'number' ? String(n) : '—'
 }
 
+function formatScore(value: number | undefined, digits = 3): string {
+  return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(digits) : '—'
+}
+
+function toHitKey(hit: Pick<RetrievePreviewCitation, 'document_id' | 'chunk_id' | 'retrieval_role'>): string {
+  return [
+    String(hit.document_id || '').trim(),
+    String(hit.chunk_id || '').trim(),
+    String(hit.retrieval_role || '').trim(),
+  ].join(':')
+}
+
+function previewChunkContent(value: string | undefined, maxLen = 360): string {
+  const text = String(value || '').trim().replaceAll(/\s+/g, ' ')
+  if (!text) return '该命中未返回可预览的 chunk 内容。'
+  if (text.length <= maxLen) return text
+  return `${text.slice(0, maxLen).trimEnd()}…`
+}
+
+const noResultActionTips = ['缩短问题', '切换数据集', '改用原文关键词', '补充条款编号'] as const
+
+const noResultDiagnosticTips = [
+  {
+    title: '问题过长或太泛',
+    description: '先压缩成一个核心问题，减少背景描述和泛化措辞，再观察是否能形成稳定召回。',
+  },
+  {
+    title: '检索范围过窄',
+    description: '切到更大的数据集范围，确认目标文档已经入库、解析完成，并且当前数据集选择正确。',
+  },
+  {
+    title: '表达不贴近原文',
+    description: '优先使用条款编号、章节名、专有名词和文档中的原句关键词，不要只用口语化转述。',
+  },
+] as const
+
 async function copyToClipboard(text: string, label: string): Promise<void> {
   const v = String(text || '')
   if (!v) {
@@ -285,6 +322,7 @@ async function copyToClipboard(text: string, label: string): Promise<void> {
 export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<RetrievePreviewPanelProps>) {
   const { openDocument } = useDocumentView()
   const [searchQuery, setSearchQuery] = useState('')
+  const [hasSearched, setHasSearched] = useState(false)
   const [searchResults, setSearchResults] = useState<RetrievePreviewCitation[]>([])
   const [searchQueryForRetrieval, setSearchQueryForRetrieval] = useState<string>('')
   const [searchMetrics, setSearchMetrics] = useState<JsonRecord | null>(null)
@@ -299,6 +337,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
 
   const [detailOpen, setDetailOpen] = useState(false)
   const [activeHit, setActiveHit] = useState<RetrievePreviewCitation | null>(null)
+  const searchInputRef = useRef<HTMLTextAreaElement | null>(null)
   const prefetchedHitTargetsRef = useRef<Set<string>>(new Set())
   const activeHitImageUrl = useMemo(() => {
     if (!activeHit?.has_image) return null
@@ -354,13 +393,22 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
     return isRecord(fusion) ? fusion : null
   }, [selectedPassTrace])
 
+  const resizeSearchComposer = useCallback((target?: HTMLTextAreaElement | null) => {
+    const el = target ?? searchInputRef.current
+    if (!el) return
+    el.style.height = '0px'
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, 64), 224)}px`
+  }, [])
+
   const handleSearch = useCallback(async () => {
     const q = searchQuery.trim()
     if (!q) return
 
+    setHasSearched(true)
     setIsSearching(true)
     setSearchError(null)
     setSearchResults([])
+    setActiveHit(null)
     setSearchQueryForRetrieval('')
     setSearchMetrics(null)
     setSearchRetrievalTrace(null)
@@ -378,7 +426,9 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
         document_ids: [],
       })
       const citations = Array.isArray(res.citations) ? res.citations : []
-      setSearchResults(citations.map(toCitation).filter((citation): citation is RetrievePreviewCitation => citation !== null))
+      const nextResults = citations.map(toCitation).filter((citation): citation is RetrievePreviewCitation => citation !== null)
+      setSearchResults(nextResults)
+      setActiveHit(nextResults[0] ?? null)
       setSearchQueryForRetrieval(res.query_for_retrieval || '')
       setSearchMetrics(isRecord(res.metrics) ? res.metrics : null)
       setSearchRetrievalTrace(isRecord(res.retrieval_trace) ? res.retrieval_trace : null)
@@ -392,6 +442,23 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
       setIsSearching(false)
     }
   }, [searchQuery, selectedDatasetId])
+
+  useEffect(() => {
+    resizeSearchComposer()
+  }, [resizeSearchComposer, searchQuery])
+
+  useEffect(() => {
+    if (!searchResults.length) {
+      if (!detailOpen) setActiveHit(null)
+      return
+    }
+
+    if (!activeHit) return
+    const activeKey = toHitKey(activeHit)
+    if (!searchResults.some((hit) => toHitKey(hit) === activeKey)) {
+      setActiveHit(searchResults[0])
+    }
+  }, [activeHit, detailOpen, searchResults])
 
   const toggleEvidenceSelection = useCallback((chunkId: string) => {
     const key = String(chunkId || '').trim()
@@ -541,633 +608,921 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
     if (!Array.isArray(terms)) return []
     return terms.filter(Boolean).slice(0, 24).map(String)
   }, [activeHit])
+  const activeResult = activeHit ?? searchResults[0] ?? null
+  const activeResultMatchedTerms = useMemo(() => {
+    const terms = activeResult?.matched_terms
+    if (!Array.isArray(terms)) return []
+    return terms.filter(Boolean).slice(0, 24).map(String)
+  }, [activeResult])
+  const composerPinned = hasSearched || isSearching || Boolean(searchError)
+  const hasResultList = searchResults.length > 0
   const activeKgPath = activeHit?.kg_path || []
   const activeKgPathProvenance = activeHit?.kg_path_provenance
   const activeKgPathNodes = activeKgPathProvenance?.nodes || []
   const activeKgPathEdges = activeKgPathProvenance?.edges || []
+  const noResultQuerySummary = searchQueryForRetrieval || searchQuery.trim()
+  const noResultDatasetSummary = selectedDatasetId || '全部数据集'
 
   return (
     <>
-      <Panel padding="none" className={cn("rounded-2xl p-8 text-center relative overflow-hidden", className)}>
-        <div className="mb-8">
-          <div className="w-16 h-16 bg-primary/10 text-primary rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-soft">
-            <Sparkles className="size-8" />
-          </div>
-          <h3 className="text-xl font-bold text-foreground text-balance">语义检索测试</h3>
-          <p className="text-muted-foreground mt-2 text-pretty">
-            输入问题，模拟 RAG 系统的检索召回过程（包含混合检索、RRF 融合、rerank 等）
-          </p>
-        </div>
-
-        <div className="max-w-2xl mx-auto relative mb-10">
-          <div
-            className={cn(
-              "flex items-center bg-background/60 border-2 border-border/60 rounded-2xl p-2 shadow-soft transition-colors transition-shadow duration-200 motion-reduce:transition-none",
-              "focus-within:border-primary/60 focus-within:ring-4 focus-within:ring-ring/15 focus-within:shadow-strong/10"
-            )}
-          >
-            <Search className="size-5 text-muted-foreground ml-3" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && detachPromise(handleSearch())}
-              placeholder="例如：请按第十二条说明例外条件"
-              className="flex-1 px-4 py-3 bg-transparent outline-none text-foreground placeholder:text-muted-foreground/60 text-lg"
-            />
-            <Button
-              onClick={() => detachPromise(handleSearch())}
-              disabled={isSearching || !searchQuery.trim()}
-              className="rounded-xl px-6 h-12 text-base font-medium shadow-md border border-primary/20"
-            >
-              {isSearching ? (
-                <span className="inline-flex items-center gap-2">
-                  <Loader2 className="size-5 animate-spin motion-reduce:animate-none" />
-                  检索中…
-                </span>
-              ) : (
-                '开始检索'
-              )}
-            </Button>
-          </div>
-        </div>
-
-        {searchError && (
-          <div className="max-w-2xl mx-auto mb-6 text-left">
-            <div className="rounded-xl border border-destructive/25 bg-destructive/10 p-4 text-sm text-destructive">
-              {searchError}
-            </div>
-          </div>
+      <div
+        className={cn(
+          "relative overflow-hidden",
+          className
         )}
-
-        {searchResults.length > 0 && (
-          <div className="text-left space-y-4 animate-in fade-in slide-in-from-bottom-4 motion-reduce:animate-none motion-reduce:transition-none">
-            <div className="flex flex-col gap-2 px-2 sm:flex-row sm:items-center sm:justify-between">
-              <h4 className="text-sm font-semibold text-foreground">召回结果</h4>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-7 rounded-full px-3 gap-1.5 border-border/60 bg-background/60 text-muted-foreground hover:bg-background"
-                  disabled={isCreatingRegressionCase || selectedEvidenceSet.size === 0 || !selectedDatasetId}
-                  onClick={() => detachPromise(handleCreateRegressionCaseFromSelection())}
-                  title={selectedDatasetId ? '用选中的证据创建回归用例' : '请先选择数据集'}
-                >
-                  {isCreatingRegressionCase ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
-                  ) : (
-                    <TestTube2 className="h-3.5 w-3.5" />
+      >
+        <div className="sticky top-0 z-20 border-b border-border/60 bg-background/82 px-4 py-4 backdrop-blur-xl md:px-6">
+          <div className="mx-auto max-w-6xl">
+            <div
+              className={cn(
+                "transition-all duration-300 motion-reduce:transition-none",
+                composerPinned ? "space-y-4" : "space-y-6 py-6"
+              )}
+            >
+              <div className={cn(composerPinned ? "flex items-start gap-4" : "text-center")}>
+                <div
+                  className={cn(
+                    "flex items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-soft",
+                    composerPinned ? "h-12 w-12 shrink-0" : "mx-auto h-16 w-16"
                   )}
-                  创建回归用例
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-7 rounded-full px-3 gap-1.5 border-border/60 bg-background/60 text-muted-foreground hover:bg-background"
-                  onClick={handleExportEvidencePack}
                 >
-                  <FileStack className="h-3.5 w-3.5" />
-                  导出 Evidence Pack
-                </Button>
-
-                {selectedEvidenceSet.size > 0 && (
-                  <span className="text-xs text-muted-foreground bg-muted/60 border border-border/60 px-2 py-1 rounded-full tabular-nums">
-                    已选 {selectedEvidenceSet.size}
-                  </span>
-                )}
-                <span className="text-xs text-muted-foreground bg-muted/60 border border-border/60 px-2 py-1 rounded-full tabular-nums">
-                  Top {searchResults.length}
-                </span>
-              </div>
-            </div>
-
-            {searchQueryForRetrieval && searchQueryForRetrieval !== searchQuery.trim() && (
-              <div className="px-2 text-xs text-muted-foreground">
-                实际检索 Query：<span className="font-mono">{searchQueryForRetrieval}</span>
-              </div>
-            )}
-
-            {(searchHasEvidence !== null || searchAbstainTriggered !== null) && (
-              <div className="px-2 text-xs text-muted-foreground flex flex-wrap items-center gap-2">
-                {searchHasEvidence !== null && (
-                  <span className="font-mono bg-muted/60 border border-border/60 px-2 py-1 rounded-full">
-                    has_evidence={String(searchHasEvidence)}
-                  </span>
-                )}
-                {searchAbstainTriggered !== null && (
-                  <span className="font-mono bg-muted/60 border border-border/60 px-2 py-1 rounded-full">
-                    abstain_triggered={String(searchAbstainTriggered)}
-                  </span>
-                )}
-                {searchAbstainReason ? (
-                  <span className="font-mono bg-muted/60 border border-border/60 px-2 py-1 rounded-full">
-                    abstain_reason={searchAbstainReason}
-                  </span>
-                ) : null}
-              </div>
-            )}
-
-            <div className="rounded-xl border border-border/60 bg-background/60 overflow-auto">
-              <table aria-label="检索结果候选列表" className="min-w-[980px] w-full text-xs">
-                <thead className="bg-muted/30 text-muted-foreground">
-                  <tr className="border-b border-border/60">
-                    <th className="p-3 text-left font-semibold w-10">GT</th>
-                    <th className="p-3 text-left font-semibold w-10">#</th>
-                    <th className="p-3 text-left font-semibold w-20">role</th>
-                    <th className="p-3 text-left font-semibold w-20">chunk</th>
-                    <th className="p-3 text-left font-semibold w-28">clause</th>
-                    <th className="p-3 text-left font-semibold">path</th>
-                    <th className="p-3 text-left font-semibold w-44">doc</th>
-                    <th className="p-3 text-left font-semibold w-14 tabular-nums">P</th>
-                    <th className="p-3 text-left font-semibold w-16 tabular-nums">final</th>
-                    <th className="p-3 text-left font-semibold w-16 tabular-nums">vec</th>
-                    <th className="p-3 text-left font-semibold w-16 tabular-nums">bm25</th>
-                    <th className="p-3 text-left font-semibold w-16 tabular-nums">rerank</th>
-                    <th className="p-3 text-left font-semibold w-28">chunk_id</th>
-                    <th className="p-3 text-right font-semibold w-20">actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {searchResults.map((hit, idx) => {
-                    const staggerDelayMs = Math.min(idx, 10) * 40
-                    const documentId = String(hit.document_id || '').trim()
-                    const chunkId = String(hit.chunk_id || '')
-                    const checked = !!chunkId && selectedEvidenceSet.has(chunkId)
-                    const role = String(hit.retrieval_role || 'main')
-                    const isExpanded = role.startsWith('hierarchy_')
-                    const familyHit =
-                      typeof hit.family_hit === 'boolean'
-                        ? hit.family_hit
-                        : Boolean(String(hit.family_collapse_key || hit.hierarchy_family_key || '').trim())
-                    const chunkRole = String(hit.chunk_role || '')
-                    const clause = String(hit.policy_clause_number || '')
-                    const pathStr = String(hit.policy_path_str || '')
-                    const docName = String(hit.document_name || '')
-                    return (
-                      <tr
-                        key={`${String(hit.document_id || '')}:${chunkId}:${role}:${clause}:${pathStr}`}
-                        className="border-b border-border/40 hover:bg-muted/20 animate-in fade-in-0 slide-in-from-bottom-1 duration-300 motion-reduce:animate-none"
-                        style={{ animationDelay: `${staggerDelayMs}ms` }}
-                      >
-                        <td className="p-3 align-top">
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 rounded border-border"
-                            aria-label={`Ground truth: #${idx + 1}`}
-                            disabled={!chunkId}
-                            checked={checked}
-                            onChange={() => toggleEvidenceSelection(chunkId)}
-                          />
-                        </td>
-                        <td className="p-3 align-top text-muted-foreground tabular-nums">{idx + 1}</td>
-                        <td className="p-3 align-top">
-                          <div className="flex flex-wrap items-center gap-1">
-                            <span className="font-mono bg-muted/60 border border-border/60 px-2 py-1 rounded-md">
-                              {role}
-                            </span>
-                            {isExpanded ? (
-                              <span className="font-mono bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20 px-2 py-1 rounded-md">
-                                expanded
-                              </span>
-                            ) : null}
-                            {familyHit ? (
-                              <span className="font-mono bg-warning/10 text-warning border border-warning/20 px-2 py-1 rounded-md">
-                                family_hit
-                              </span>
-                            ) : null}
-                          </div>
-                        </td>
-                        <td className="p-3 align-top">
-                          {chunkRole ? (
-                            <span className="font-mono bg-muted/60 border border-border/60 px-2 py-1 rounded-md">
-                              {chunkRole}
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </td>
-                        <td className="p-3 align-top">
-                          {clause ? (
-                            <span className="font-mono bg-primary/10 text-primary border border-primary/20 px-2 py-1 rounded-md">
-                              {clause}
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </td>
-                        <td className="p-3 align-top">
-                          {pathStr ? (
-                            <span className="text-foreground/90 line-clamp-2">{pathStr}</span>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </td>
-                        <td className="p-3 align-top">
-                          <div className="flex items-start gap-2">
-                            {hit.has_image && hit.img_url ? (
-                              (() => {
-                                const safeUrl = resolveSafeCitationImageUrl(hit.img_url)
-                                if (!safeUrl) return null
-                                return (
-                                  <AuthImageLink
-                                    src={safeUrl}
-                                    className="shrink-0 relative h-10 w-10 rounded-md overflow-hidden border border-border/60 bg-muted/20"
-                                    title="Open image"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <AuthImage
-                                      src={safeUrl}
-                                      alt="citation thumbnail"
-                                      fill
-                                      unoptimized
-                                      sizes="40px"
-                                      className="object-cover"
-                                    />
-                                  </AuthImageLink>
-                                )
-                              })()
-                            ) : null}
-                            <span className="inline-flex items-center gap-1 text-muted-foreground min-w-0">
-                              <FileIcon className="size-3" />
-                              <span className="truncate max-w-[180px]" title={docName}>
-                                {docName || 'Unknown'}
-                              </span>
-                            </span>
-                          </div>
-                        </td>
-                        <td className="p-3 align-top text-muted-foreground tabular-nums">
-                          {typeof hit.page_number === 'number' ? hit.page_number : '—'}
-                        </td>
-                        <td className="p-3 align-top font-mono tabular-nums text-primary">
-                          {typeof hit.relevance_score === 'number' ? hit.relevance_score.toFixed(2) : '—'}
-                        </td>
-                        <td className="p-3 align-top font-mono tabular-nums text-muted-foreground">
-                          {typeof hit.vector_score === 'number' ? hit.vector_score.toFixed(3) : '—'}
-                        </td>
-                        <td className="p-3 align-top font-mono tabular-nums text-muted-foreground">
-                          {typeof hit.bm25_score === 'number' ? hit.bm25_score.toFixed(3) : '—'}
-                        </td>
-                        <td className="p-3 align-top font-mono tabular-nums text-muted-foreground">
-                          {typeof hit.rerank_score === 'number' ? hit.rerank_score.toFixed(3) : '—'}
-                        </td>
-                        <td className="p-3 align-top">
-                          {chunkId ? (
-                            <span className="font-mono text-muted-foreground" title={chunkId}>
-                              {shortId(chunkId)}
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </td>
-                        <td className="p-3 align-top text-right">
-                          <div className="inline-flex items-center justify-end gap-1">
-                            <IconButton
-                              label="在文档查看器中打开"
-                              variant="ghost"
-                              className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-muted"
-                              onClick={() => handleOpenHitInDocumentViewer(hit)}
-                              onMouseEnter={() => handlePrefetchHitDocument(hit)}
-                              onFocus={() => handlePrefetchHitDocument(hit)}
-                              disabled={!documentId}
-                            >
-                              <ExternalLink className="size-4" />
-                            </IconButton>
-                            <IconButton
-                              label="复制 chunk_id"
-                              variant="ghost"
-                              className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-muted"
-                              onClick={() => detachPromise(copyToClipboard(chunkId, 'chunk_id'))}
-                              disabled={!chunkId}
-                            >
-                              <Copy className="size-4" />
-                            </IconButton>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className="h-8 px-2 rounded-lg"
-                              onClick={() => openDetails(hit)}
-                            >
-                              详情
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            <details className="px-2">
-              <summary className="cursor-pointer select-none text-xs font-semibold text-foreground inline-flex items-center gap-2">
-                <Zap className="size-4 text-primary" />
-                检索 Debug（RRF / trimming / per-query metrics）
-              </summary>
-              <div className="mt-3 rounded-xl border border-border/60 bg-background/60 p-4 space-y-3">
-                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <span className="font-mono bg-muted/60 border border-border/60 px-2 py-1 rounded-full">
-                    retrieval_mode={String(searchMetrics?.retrieval_mode ?? '—')}
-                  </span>
-                  <span className="font-mono bg-muted/60 border border-border/60 px-2 py-1 rounded-full tabular-nums">
-                    retrieval_query_count={String(searchMetrics?.retrieval_query_count ?? '—')}
-                  </span>
-                  <span className="font-mono bg-muted/60 border border-border/60 px-2 py-1 rounded-full tabular-nums">
-                    retrieval_elapsed_sec={String(searchMetrics?.retrieval_elapsed_sec ?? '—')}
-                  </span>
-                  {selectedTracePass ? (
-                    <span className="font-mono bg-muted/60 border border-border/60 px-2 py-1 rounded-full">
-                      selected_pass={String(selectedTracePass.pass ?? '—')}
-                    </span>
-                  ) : null}
+                  <Sparkles className={cn(composerPinned ? "size-6" : "size-8")} />
                 </div>
+                <div className={cn("min-w-0", composerPinned ? "pt-1 text-left" : "mt-4")}>
+                  <h3 className={cn("font-bold text-foreground text-balance", composerPinned ? "text-lg" : "text-xl")}>
+                    语义检索测试
+                  </h3>
+                  <p className="mt-2 text-pretty text-sm leading-6 text-muted-foreground">
+                    输入复杂问题或长 Prompt，验证 RAG 的召回质量、排序结果和调试指标。
+                  </p>
+                </div>
+              </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                  <div className="rounded-xl border border-border/60 bg-background/60 p-4">
-                    <div className="text-xs font-semibold text-foreground">预算与配额</div>
-                    <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                      <div className="rounded-lg border border-border/60 bg-background/60 p-2">
-                        <div className="text-[11px] text-muted-foreground">top_k</div>
-                        <div className="mt-1 font-mono tabular-nums text-foreground/90">
-                          {formatCount(selectedPassRetrieval?.top_k ?? mainRetrieverDebug?.requested_k)}
-                        </div>
-                      </div>
-                      <div className="rounded-lg border border-border/60 bg-background/60 p-2">
-                        <div className="text-[11px] text-muted-foreground">search_k</div>
-                        <div className="mt-1 font-mono tabular-nums text-foreground/90">
-                          {formatCount(mainRetrieverDebug?.search_k)}
-                        </div>
-                      </div>
-                      <div className="rounded-lg border border-border/60 bg-background/60 p-2">
-                        <div className="text-[11px] text-muted-foreground">fetch_k</div>
-                        <div className="mt-1 font-mono tabular-nums text-foreground/90">
-                          {formatCount(mainRetrieverDebug?.fetch_k)}
-                        </div>
-                      </div>
-                      <div className="rounded-lg border border-border/60 bg-background/60 p-2">
-                        <div className="text-[11px] text-muted-foreground">overfetch</div>
-                        <div className="mt-1 font-mono tabular-nums text-foreground/90">
-                          {mainRetrieverDebug ? (
-                            String(Boolean(mainRetrieverDebug.overfetch_enabled))
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </div>
-                      </div>
+              <div className="rounded-[24px] border border-border/60 bg-background/72 shadow-soft">
+                <div className="flex items-start gap-3 p-3">
+                  <div className="pt-3 text-muted-foreground">
+                    <Search className="size-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <textarea
+                      ref={searchInputRef}
+                      rows={1}
+                      value={searchQuery}
+                      aria-label="检索问题"
+                      onChange={(e) => {
+                        setSearchQuery(e.target.value)
+                        resizeSearchComposer(e.currentTarget)
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault()
+                          detachPromise(handleSearch())
+                        }
+                      }}
+                      placeholder="例如：请按第十二条说明例外条件，并指出适用范围与例外条款"
+                      className="min-h-[64px] max-h-56 w-full resize-none bg-transparent px-1 py-2 text-[15px] leading-6 text-foreground outline-none placeholder:text-muted-foreground/60"
+                    />
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                      <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/30 px-2 py-1">
+                        Enter 发送
+                      </span>
+                      <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/30 px-2 py-1">
+                        Shift + Enter 换行
+                      </span>
+                      <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/30 px-2 py-1">
+                        当前数据集：<span className="ml-1 font-mono text-foreground">{selectedDatasetId || '全部'}</span>
+                      </span>
                     </div>
+                  </div>
+                  <Button
+                    onClick={() => detachPromise(handleSearch())}
+                    disabled={isSearching || !searchQuery.trim()}
+                    className="mt-1 h-11 rounded-xl border border-primary/20 px-5 text-sm font-medium shadow-md"
+                  >
+                    {isSearching ? (
+                      <span className="inline-flex items-center gap-2">
+                        <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+                        检索中…
+                      </span>
+                    ) : (
+                      '开始检索'
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
 
-                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-muted-foreground">
-                      <div className="rounded-lg border border-border/60 bg-background/60 p-2">
-                        <div className="text-[11px]">fusion_strategy</div>
-                        <div className="mt-1 font-mono text-foreground/90">
-                          {String(selectedPassRetrieval?.channel_fusion_strategy ?? '—')}
-                        </div>
-                      </div>
-                      <div className="rounded-lg border border-border/60 bg-background/60 p-2">
-                        <div className="text-[11px]">query_variant_fusion</div>
-                        <div className="mt-1 font-mono text-foreground/90">
-                          {String(selectedPassQueryVariantFusion?.strategy ?? '—')}
-                        </div>
-                      </div>
+        <div className="mx-auto max-w-6xl px-4 pb-6 pt-5 md:px-6">
+          {isSearching && !hasResultList ? (
+            <div className="space-y-3">
+              {[0, 1, 2].map((item) => (
+                <div key={item} className="animate-pulse rounded-2xl border border-border/60 bg-background/60 p-4">
+                  <div className="h-4 w-32 rounded bg-muted/70" />
+                  <div className="mt-3 h-3 w-full rounded bg-muted/60" />
+                  <div className="mt-2 h-3 w-11/12 rounded bg-muted/50" />
+                  <div className="mt-4 grid grid-cols-4 gap-2">
+                    <div className="h-12 rounded-xl bg-muted/40" />
+                    <div className="h-12 rounded-xl bg-muted/40" />
+                    <div className="h-12 rounded-xl bg-muted/40" />
+                    <div className="h-12 rounded-xl bg-muted/40" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {searchError ? (
+            <div className="mb-6 max-w-3xl text-left">
+              <div className="rounded-2xl border border-destructive/25 bg-destructive/10 p-4 text-sm text-destructive">
+                {searchError}
+              </div>
+            </div>
+          ) : null}
+
+          {hasSearched && !isSearching && !searchError && !hasResultList ? (
+            <Panel padding="none" className="overflow-hidden rounded-[28px] border border-border/60 bg-background/75 shadow-soft">
+              <div className="grid gap-0 xl:grid-cols-[minmax(0,1.12fr)_18rem]">
+                <div className="space-y-5 p-5 sm:p-6">
+                  <div className="flex items-start gap-4">
+                    <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary shadow-soft">
+                      <Search className="size-5" />
                     </div>
-
-                    {(() => {
-                      const ch = isRecord(mainRetrieverDebug?.channels) ? mainRetrieverDebug?.channels : null
-                      const fusion = isRecord(ch?.fusion_budgeted_rrf) ? ch?.fusion_budgeted_rrf : null
-                      if (!fusion) return null
-                      const budgets = isRecord(fusion.budgets) ? fusion.budgets : null
-                      const picked = isRecord(fusion.picked_by_channel) ? fusion.picked_by_channel : null
-                      return (
-                        <div className="mt-3 rounded-lg border border-border/60 bg-background/60 p-3">
-                          <div className="text-xs font-semibold text-foreground">Budgeted RRF（按通道配额）</div>
-                          <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                            <div className="rounded-md border border-border/60 bg-background/60 p-2">
-                              <div className="text-[11px] text-muted-foreground">k_prefix</div>
-                              <div className="mt-1 font-mono tabular-nums text-foreground/90">{formatCount(fusion.k_prefix)}</div>
-                            </div>
-                            <div className="rounded-md border border-border/60 bg-background/60 p-2">
-                              <div className="text-[11px] text-muted-foreground">eligible_total</div>
-                              <div className="mt-1 font-mono tabular-nums text-foreground/90">{formatCount(fusion.eligible_total)}</div>
-                            </div>
-                            <div className="rounded-md border border-border/60 bg-background/60 p-2">
-                              <div className="text-[11px] text-muted-foreground">selected_prefix</div>
-                              <div className="mt-1 font-mono tabular-nums text-foreground/90">
-                                {formatCount(fusion.selected_prefix)}
-                              </div>
-                            </div>
-                            <div className="rounded-md border border-border/60 bg-background/60 p-2">
-                              <div className="text-[11px] text-muted-foreground">rrf_k</div>
-                              <div className="mt-1 font-mono tabular-nums text-foreground/90">{formatCount(fusion.rrf_k)}</div>
-                            </div>
-                          </div>
-                          <div className="mt-2 text-[11px] text-muted-foreground">
-                            quotas:{' '}
-                            {budgets ? (
-                              <span className="font-mono tabular-nums text-foreground/90">
-                                {Object.entries(budgets)
-                                  .slice(0, 8)
-                                  .map(([k, v]) => `${k}=${formatCount(v)}`)
-                                  .join('  ')}
-                              </span>
-                            ) : (
-                              <span className="text-muted-foreground">—</span>
-                            )}
-                          </div>
-                          <div className="mt-1 text-[11px] text-muted-foreground">
-                            picked:{' '}
-                            {picked ? (
-                              <span className="font-mono tabular-nums text-foreground/90">
-                                {Object.entries(picked)
-                                  .slice(0, 8)
-                                  .map(([k, v]) => `${k}=${formatCount(v)}`)
-                                  .join('  ')}
-                              </span>
-                            ) : (
-                              <span className="text-muted-foreground">—</span>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })()}
+                    <div className="min-w-0">
+                      <Badge variant="soft" className="border-border/70 bg-muted/45 text-[11px] font-medium text-muted-foreground">
+                        Top-K 排序为空
+                      </Badge>
+                      <div className="mt-3 text-base font-semibold text-foreground">没有召回到结果</div>
+                      <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+                        当前 query 没有命中可展示的 chunk，可以先从关键词表达和数据集范围开始排查。
+                      </p>
+                    </div>
                   </div>
 
-                  <div className="rounded-xl border border-border/60 bg-background/60 p-4">
-                    <div className="text-xs font-semibold text-foreground">裁剪原因（trimming / caps）</div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
+                      <div className="text-[11px] font-medium tracking-[0.16em] text-muted-foreground/80">检索 Query</div>
+                      <div className="mt-2 line-clamp-2 break-all text-sm font-medium leading-6 text-foreground">
+                        {noResultQuerySummary || '未填写'}
+                      </div>
+                    </div>
+                    <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
+                      <div className="text-[11px] font-medium tracking-[0.16em] text-muted-foreground/80">数据集范围</div>
+                      <div className="mt-2 line-clamp-2 break-all font-mono text-sm leading-6 text-foreground">
+                        {noResultDatasetSummary}
+                      </div>
+                    </div>
+                  </div>
 
-                    {(() => {
-                      const dbg = mainRetrieverDebug
-                      if (!dbg) {
-                        return <div className="mt-2 text-xs text-muted-foreground">无 retriever_debug（可能是旧版本后端或被裁剪）。</div>
-                      }
+                  <div className="space-y-2">
+                    <div className="text-xs font-medium text-muted-foreground">建议动作</div>
+                    <div className="flex flex-wrap gap-2">
+                      {noResultActionTips.map((label) => (
+                        <span
+                          key={label}
+                          className="inline-flex items-center rounded-full border border-border/60 bg-muted/35 px-3 py-1.5 text-xs font-medium text-foreground/85"
+                        >
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
 
-                      const div = isRecord(dbg.diversity) ? dbg.diversity : null
-                      const ch = isRecord(dbg.channels) ? dbg.channels : null
+                <div className="border-t border-border/60 bg-muted/20 p-5 xl:border-l xl:border-t-0">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-warning/20 bg-warning/10 px-3 py-1 text-[11px] font-medium text-warning">
+                    <Zap className="size-3.5" />
+                    排查方向
+                  </div>
+                  <div className="mt-4 space-y-3">
+                    {noResultDiagnosticTips.map((item) => (
+                      <div key={item.title} className="rounded-2xl border border-border/60 bg-background/72 p-3.5">
+                        <div className="text-sm font-medium text-foreground">{item.title}</div>
+                        <p className="mt-1.5 text-xs leading-5 text-muted-foreground">{item.description}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </Panel>
+          ) : null}
 
-                      const mergedPre = toInt(ch?.merged_pre_dedup)
-                      const mergedPost = toInt(ch?.merged_post_dedup)
-                      const dedupDropped =
-                        typeof mergedPre === 'number' && typeof mergedPost === 'number' ? Math.max(0, mergedPre - mergedPost) : null
+          {hasResultList ? (
+            <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 motion-reduce:animate-none motion-reduce:transition-none">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="space-y-2">
+                  <h4 className="text-sm font-semibold text-foreground">召回结果</h4>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    {searchQueryForRetrieval && searchQueryForRetrieval !== searchQuery.trim() ? (
+                      <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/40 px-2 py-1">
+                        实际检索 Query：<span className="ml-1 font-mono text-foreground">{searchQueryForRetrieval}</span>
+                      </span>
+                    ) : null}
+                    {searchHasEvidence !== null ? (
+                      <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/40 px-2 py-1 font-mono">
+                        has_evidence={String(searchHasEvidence)}
+                      </span>
+                    ) : null}
+                    {searchAbstainTriggered !== null ? (
+                      <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/40 px-2 py-1 font-mono">
+                        abstain_triggered={String(searchAbstainTriggered)}
+                      </span>
+                    ) : null}
+                    {searchAbstainReason ? (
+                      <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/40 px-2 py-1 font-mono">
+                        abstain_reason={searchAbstainReason}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
 
-                      const divChan = isRecord(ch?.diversity) ? ch?.diversity : null
-                      const divDropped = toInt(divChan?.dropped)
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-8 rounded-full border-border/60 bg-background/60 px-3 text-xs text-muted-foreground hover:bg-background"
+                    disabled={isCreatingRegressionCase || selectedEvidenceSet.size === 0 || !selectedDatasetId}
+                    onClick={() => detachPromise(handleCreateRegressionCaseFromSelection())}
+                    title={selectedDatasetId ? '用选中的证据创建回归用例' : '请先选择数据集'}
+                  >
+                    {isCreatingRegressionCase ? (
+                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+                    ) : (
+                      <TestTube2 className="mr-1.5 h-3.5 w-3.5" />
+                    )}
+                    创建回归用例
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-8 rounded-full border-border/60 bg-background/60 px-3 text-xs text-muted-foreground hover:bg-background"
+                    onClick={handleExportEvidencePack}
+                  >
+                    <FileStack className="mr-1.5 h-3.5 w-3.5" />
+                    导出 Evidence Pack
+                  </Button>
+                  {selectedEvidenceSet.size > 0 ? (
+                    <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/40 px-2 py-1 text-xs tabular-nums text-muted-foreground">
+                      已选 {selectedEvidenceSet.size}
+                    </span>
+                  ) : null}
+                  <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/40 px-2 py-1 text-xs tabular-nums text-muted-foreground">
+                    Top {searchResults.length}
+                  </span>
+                </div>
+              </div>
 
-                      const enrich = (() => {
-    if (isRecord(dbg.enrich_pass2)) {
-        return dbg.enrich_pass2;
-    }
-    else if (isRecord(dbg.enrich_pass1)) {
-            return dbg.enrich_pass1;
-        }
-        else {
-            return null;
-        }
-})()
-                      const trimKeys: Array<[string, string]> = [
-                        ['filtered_metadata_filter', 'metadata_filter'],
-                        ['filtered_acl', 'acl'],
-                        ['filtered_dataset', 'dataset'],
-                        ['filtered_pipeline_version', 'pipeline_version'],
-                        ['filtered_embedding_space', 'embedding_space'],
-                        ['filtered_not_ready', 'not_ready'],
-                        ['filtered_orphaned', 'orphaned_vectors'],
-                      ]
-                      const trims = trimKeys
-                        .map(([k, label]) => {
-                          const n = toInt(enrich?.[k])
-                          return { key: k, label, n: typeof n === 'number' ? n : 0 }
-                        })
-                        .filter((x) => x.n > 0)
-                        .sort((a, b) => b.n - a.n || a.label.localeCompare(b.label))
-
-                      const capsEnabled = Boolean(
-                        (toInt(div?.max_chunks_per_doc) ?? 0) > 0 || (toInt(div?.max_chunks_per_page) ?? 0) > 0 || (toInt(div?.min_distinct_docs) ?? 0) > 0
-                      )
+              <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_21rem]">
+                <div className="space-y-4">
+                  <div aria-label="检索结果排名列表" className="space-y-3">
+                    {searchResults.map((hit, idx) => {
+                      const staggerDelayMs = Math.min(idx, 10) * 40
+                      const documentId = String(hit.document_id || '').trim()
+                      const chunkId = String(hit.chunk_id || '')
+                      const checked = !!chunkId && selectedEvidenceSet.has(chunkId)
+                      const role = String(hit.retrieval_role || 'main')
+                      const isExpanded = role.startsWith('hierarchy_')
+                      const familyHit =
+                        typeof hit.family_hit === 'boolean'
+                          ? hit.family_hit
+                          : Boolean(String(hit.family_collapse_key || hit.hierarchy_family_key || '').trim())
+                      const chunkRole = String(hit.chunk_role || '')
+                      const clause = String(hit.policy_clause_number || '')
+                      const pathStr = String(hit.policy_path_str || '')
+                      const docName = String(hit.document_name || '')
+                      const matchedTerms = (hit.matched_terms || []).filter(Boolean).slice(0, 4).map(String)
+                      const isSelected = activeResult ? toHitKey(activeResult) === toHitKey(hit) : idx === 0
+                      const snippet = previewChunkContent(hit.chunk_content)
 
                       return (
-                        <div className="mt-3 space-y-3">
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                            <div className="rounded-lg border border-border/60 bg-background/60 p-2">
-                              <div className="text-[11px] text-muted-foreground">dedup_dropped</div>
-                              <div className="mt-1 font-mono tabular-nums text-foreground/90">
-                                {typeof dedupDropped === 'number' ? String(dedupDropped) : '—'}
+                        <article
+                          key={`${String(hit.document_id || '')}:${chunkId}:${role}:${clause}:${pathStr}`}
+                          role="listitem"
+                          tabIndex={0}
+                          className={cn(
+                            'group rounded-[22px] border p-4 text-left transition-colors transition-shadow duration-200 motion-reduce:transition-none animate-in fade-in-0 slide-in-from-bottom-1 duration-300 motion-reduce:animate-none',
+                            isSelected
+                              ? 'border-primary/35 bg-primary/5 shadow-soft'
+                              : 'border-border/60 bg-background/62 hover:border-border/80 hover:bg-background/78 hover:shadow-soft/70'
+                          )}
+                          style={{ animationDelay: `${staggerDelayMs}ms` }}
+                          onClick={() => setActiveHit(hit)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault()
+                              setActiveHit(hit)
+                            }
+                          }}
+                        >
+                          <div className="flex gap-4">
+                            <div className="flex w-12 shrink-0 flex-col items-center gap-2 pt-1">
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 rounded border-border"
+                                aria-label={`Ground truth: #${idx + 1}`}
+                                disabled={!chunkId}
+                                checked={checked}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={() => toggleEvidenceSelection(chunkId)}
+                              />
+                              <div
+                                className={cn(
+                                  'grid h-10 w-10 place-items-center rounded-2xl border text-sm font-semibold tabular-nums',
+                                  isSelected
+                                    ? 'border-primary/30 bg-primary/10 text-primary'
+                                    : 'border-border/60 bg-background/70 text-muted-foreground'
+                                )}
+                              >
+                                {idx + 1}
                               </div>
                             </div>
-                            <div className="rounded-lg border border-border/60 bg-background/60 p-2">
-                              <div className="text-[11px] text-muted-foreground">diversity_dropped</div>
-                              <div className="mt-1 font-mono tabular-nums text-foreground/90">
-                                {typeof divDropped === 'number' ? String(divDropped) : '—'}
-                              </div>
-                            </div>
-                            <div className="rounded-lg border border-border/60 bg-background/60 p-2">
-                              <div className="text-[11px] text-muted-foreground">enrich_input</div>
-                              <div className="mt-1 font-mono tabular-nums text-foreground/90">{formatCount(enrich?.input_results)}</div>
-                            </div>
-                            <div className="rounded-lg border border-border/60 bg-background/60 p-2">
-                              <div className="text-[11px] text-muted-foreground">enrich_output</div>
-                              <div className="mt-1 font-mono tabular-nums text-foreground/90">{formatCount(enrich?.output_results)}</div>
-                            </div>
-                          </div>
 
-                          <div className="rounded-lg border border-border/60 bg-background/60 p-3">
-                            <div className="text-xs font-semibold text-foreground">Diversity caps（doc/page）</div>
-                            <div className="mt-2 text-[11px] text-muted-foreground">
-                              {capsEnabled ? (
-                                <>
-                                  max_chunks_per_doc=<span className="font-mono tabular-nums text-foreground/90">{formatCount(div?.max_chunks_per_doc)}</span>{' '}
-                                  max_chunks_per_page=<span className="font-mono tabular-nums text-foreground/90">{formatCount(div?.max_chunks_per_page)}</span>{' '}
-                                  min_distinct_docs=<span className="font-mono tabular-nums text-foreground/90">{formatCount(div?.min_distinct_docs)}</span>
-                                </>
-                              ) : (
-                                <span className="text-muted-foreground">caps disabled</span>
-                              )}
-                            </div>
-                            {capsEnabled ? (
-                              <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                                <div className="rounded-md border border-border/60 bg-background/60 p-2">
-                                  <div className="text-[11px] text-muted-foreground">unique_docs</div>
-                                  <div className="mt-1 font-mono tabular-nums text-foreground/90">
-                                    {formatCount(div?.pre_unique_docs)}→{formatCount(div?.post_unique_docs)}
+                            <div className="min-w-0 flex-1 space-y-3">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="flex items-start gap-3">
+                                    {hit.has_image && hit.img_url ? (
+                                      (() => {
+                                        const safeUrl = resolveSafeCitationImageUrl(hit.img_url)
+                                        if (!safeUrl) return null
+                                        return (
+                                          <AuthImageLink
+                                            src={safeUrl}
+                                            className="relative hidden h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-border/60 bg-muted/20 sm:block"
+                                            title="Open image"
+                                            onClick={(e) => e.stopPropagation()}
+                                          >
+                                            <AuthImage
+                                              src={safeUrl}
+                                              alt="citation thumbnail"
+                                              fill
+                                              unoptimized
+                                              sizes="48px"
+                                              className="object-cover"
+                                            />
+                                          </AuthImageLink>
+                                        )
+                                      })()
+                                    ) : null}
+
+                                    <div className="min-w-0">
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <span className="inline-flex items-center gap-1 text-sm font-semibold text-foreground">
+                                          <FileIcon className="size-3.5 text-muted-foreground" />
+                                          <span className="truncate max-w-[34rem]" title={docName}>
+                                            {docName || 'Unknown'}
+                                          </span>
+                                        </span>
+                                        {typeof hit.page_number === 'number' ? (
+                                          <span className="rounded-full border border-border/60 bg-muted/30 px-2 py-0.5 text-[11px] tabular-nums text-muted-foreground">
+                                            P{hit.page_number}
+                                          </span>
+                                        ) : null}
+                                      </div>
+
+                                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+                                        <span className="rounded-full border border-border/60 bg-muted/40 px-2 py-1 font-mono text-muted-foreground">
+                                          {role}
+                                        </span>
+                                        {chunkRole ? (
+                                          <span className="rounded-full border border-border/60 bg-muted/40 px-2 py-1 font-mono text-muted-foreground">
+                                            {chunkRole}
+                                          </span>
+                                        ) : null}
+                                        {clause ? (
+                                          <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-1 font-mono text-primary">
+                                            {clause}
+                                          </span>
+                                        ) : null}
+                                        {isExpanded ? (
+                                          <span className="rounded-full border border-sky-500/20 bg-sky-500/10 px-2 py-1 font-mono text-sky-700 dark:text-sky-300">
+                                            expanded
+                                          </span>
+                                        ) : null}
+                                        {familyHit ? (
+                                          <span className="rounded-full bg-warning/10 text-warning border border-warning/20 px-2 py-1 font-mono">
+                                            family_hit
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                    </div>
                                   </div>
                                 </div>
-                                <div className="rounded-md border border-border/60 bg-background/60 p-2">
-                                  <div className="text-[11px] text-muted-foreground">unique_pages</div>
-                                  <div className="mt-1 font-mono tabular-nums text-foreground/90">
-                                    {formatCount(div?.pre_unique_pages)}→{formatCount(div?.post_unique_pages)}
+
+                                <div className="shrink-0 text-right">
+                                  <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">final</div>
+                                  <div className="mt-1 font-mono text-lg font-semibold tabular-nums text-primary">
+                                    {formatScore(hit.relevance_score, 2)}
                                   </div>
                                 </div>
-                                <div className="rounded-md border border-border/60 bg-background/60 p-2">
-                                  <div className="text-[11px] text-muted-foreground">moved_out</div>
-                                  <div className="mt-1 font-mono tabular-nums text-foreground/90">{formatCount(div?.moved_out)}</div>
-                                </div>
-                                <div className="rounded-md border border-border/60 bg-background/60 p-2">
-                                  <div className="text-[11px] text-muted-foreground">moved_in</div>
-                                  <div className="mt-1 font-mono tabular-nums text-foreground/90">{formatCount(div?.moved_in)}</div>
-                                </div>
                               </div>
-                            ) : null}
-                          </div>
 
-                          <div className="rounded-lg border border-border/60 bg-background/60 p-3">
-                            <div className="text-xs font-semibold text-foreground">Trimming reasons（DB enrich）</div>
-                            {trims.length ? (
-                              <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
-                                {trims.slice(0, 10).map((t) => (
-                                  <span
-                                    key={t.key}
-                                    className="font-mono tabular-nums bg-muted/60 border border-border/60 px-2 py-1 rounded-full text-foreground/90"
-                                  >
-                                    {t.label}=-{t.n}
+                              <p className="line-clamp-4 text-sm leading-6 text-foreground/90">{snippet}</p>
+
+                              <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                                {pathStr ? (
+                                  <span className="inline-flex max-w-full items-center rounded-full border border-border/60 bg-muted/35 px-2 py-1">
+                                    <span className="truncate" title={pathStr}>{pathStr}</span>
+                                  </span>
+                                ) : null}
+                                {chunkId ? (
+                                  <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/35 px-2 py-1 font-mono">
+                                    {shortId(chunkId)}
+                                  </span>
+                                ) : null}
+                                {matchedTerms.map((term) => (
+                                  <span key={term} className="inline-flex items-center rounded-full border border-border/60 bg-background/80 px-2 py-1">
+                                    {term}
                                   </span>
                                 ))}
                               </div>
-                            ) : (
-                              <div className="mt-2 text-xs text-muted-foreground">未观察到显著 trimming（或该版本未上报 enrich 计数）。</div>
-                            )}
+
+                              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                <div className="rounded-xl border border-border/60 bg-background/70 p-2.5">
+                                  <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">final</div>
+                                  <div className="mt-1 font-mono text-sm tabular-nums text-foreground">{formatScore(hit.relevance_score, 2)}</div>
+                                </div>
+                                <div className="rounded-xl border border-border/60 bg-background/70 p-2.5">
+                                  <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">vec</div>
+                                  <div className="mt-1 font-mono text-sm tabular-nums text-foreground">{formatScore(hit.vector_score)}</div>
+                                </div>
+                                <div className="rounded-xl border border-border/60 bg-background/70 p-2.5">
+                                  <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">bm25</div>
+                                  <div className="mt-1 font-mono text-sm tabular-nums text-foreground">{formatScore(hit.bm25_score)}</div>
+                                </div>
+                                <div className="rounded-xl border border-border/60 bg-background/70 p-2.5">
+                                  <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">rerank</div>
+                                  <div className="mt-1 font-mono text-sm tabular-nums text-foreground">{formatScore(hit.rerank_score)}</div>
+                                </div>
+                              </div>
+
+                              <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                                <div className="text-[11px] text-muted-foreground">
+                                  {isSelected ? '当前选中，右侧可查看摘要详情。' : '点击卡片可切换右侧详情。'}
+                                </div>
+
+                                <div className="inline-flex items-center gap-1">
+                                  <IconButton
+                                    label="在文档查看器中打开"
+                                    variant="ghost"
+                                    className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-muted"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleOpenHitInDocumentViewer(hit)
+                                    }}
+                                    onMouseEnter={() => handlePrefetchHitDocument(hit)}
+                                    onFocus={() => handlePrefetchHitDocument(hit)}
+                                    disabled={!documentId}
+                                  >
+                                    <ExternalLink className="size-4" />
+                                  </IconButton>
+                                  <IconButton
+                                    label="复制 chunk_id"
+                                    variant="ghost"
+                                    className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-muted"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      detachPromise(copyToClipboard(chunkId, 'chunk_id'))
+                                    }}
+                                    disabled={!chunkId}
+                                  >
+                                    <Copy className="size-4" />
+                                  </IconButton>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="h-8 rounded-lg px-3"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      openDetails(hit)
+                                    }}
+                                  >
+                                    详情
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
                           </div>
-                        </div>
+                        </article>
                       )
-                    })()}
+                    })}
                   </div>
+
+                  <details className="rounded-2xl border border-border/60 bg-background/60 p-4">
+                    <summary className="cursor-pointer select-none text-xs font-semibold text-foreground inline-flex items-center gap-2">
+                      <Zap className="size-4 text-primary" />
+                      检索 Debug（RRF / trimming / per-query metrics）
+                    </summary>
+                    <div className="mt-3 space-y-3">
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <span className="font-mono bg-muted/60 border border-border/60 px-2 py-1 rounded-full">
+                          retrieval_mode={String(searchMetrics?.retrieval_mode ?? '—')}
+                        </span>
+                        <span className="font-mono bg-muted/60 border border-border/60 px-2 py-1 rounded-full tabular-nums">
+                          retrieval_query_count={String(searchMetrics?.retrieval_query_count ?? '—')}
+                        </span>
+                        <span className="font-mono bg-muted/60 border border-border/60 px-2 py-1 rounded-full tabular-nums">
+                          retrieval_elapsed_sec={String(searchMetrics?.retrieval_elapsed_sec ?? '—')}
+                        </span>
+                        {selectedTracePass ? (
+                          <span className="font-mono bg-muted/60 border border-border/60 px-2 py-1 rounded-full">
+                            selected_pass={String(selectedTracePass.pass ?? '—')}
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        <div className="rounded-xl border border-border/60 bg-background/60 p-4">
+                          <div className="text-xs font-semibold text-foreground">预算与配额</div>
+                          <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                            <div className="rounded-lg border border-border/60 bg-background/60 p-2">
+                              <div className="text-[11px] text-muted-foreground">top_k</div>
+                              <div className="mt-1 font-mono tabular-nums text-foreground/90">
+                                {formatCount(selectedPassRetrieval?.top_k ?? mainRetrieverDebug?.requested_k)}
+                              </div>
+                            </div>
+                            <div className="rounded-lg border border-border/60 bg-background/60 p-2">
+                              <div className="text-[11px] text-muted-foreground">search_k</div>
+                              <div className="mt-1 font-mono tabular-nums text-foreground/90">
+                                {formatCount(mainRetrieverDebug?.search_k)}
+                              </div>
+                            </div>
+                            <div className="rounded-lg border border-border/60 bg-background/60 p-2">
+                              <div className="text-[11px] text-muted-foreground">fetch_k</div>
+                              <div className="mt-1 font-mono tabular-nums text-foreground/90">
+                                {formatCount(mainRetrieverDebug?.fetch_k)}
+                              </div>
+                            </div>
+                            <div className="rounded-lg border border-border/60 bg-background/60 p-2">
+                              <div className="text-[11px] text-muted-foreground">overfetch</div>
+                              <div className="mt-1 font-mono tabular-nums text-foreground/90">
+                                {mainRetrieverDebug ? String(Boolean(mainRetrieverDebug.overfetch_enabled)) : '—'}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-muted-foreground">
+                            <div className="rounded-lg border border-border/60 bg-background/60 p-2">
+                              <div className="text-[11px]">fusion_strategy</div>
+                              <div className="mt-1 font-mono text-foreground/90">
+                                {String(selectedPassRetrieval?.channel_fusion_strategy ?? '—')}
+                              </div>
+                            </div>
+                            <div className="rounded-lg border border-border/60 bg-background/60 p-2">
+                              <div className="text-[11px]">query_variant_fusion</div>
+                              <div className="mt-1 font-mono text-foreground/90">
+                                {String(selectedPassQueryVariantFusion?.strategy ?? '—')}
+                              </div>
+                            </div>
+                          </div>
+
+                          {(() => {
+                            const ch = isRecord(mainRetrieverDebug?.channels) ? mainRetrieverDebug?.channels : null
+                            const fusion = isRecord(ch?.fusion_budgeted_rrf) ? ch?.fusion_budgeted_rrf : null
+                            if (!fusion) return null
+                            const budgets = isRecord(fusion.budgets) ? fusion.budgets : null
+                            const picked = isRecord(fusion.picked_by_channel) ? fusion.picked_by_channel : null
+                            return (
+                              <div className="mt-3 rounded-lg border border-border/60 bg-background/60 p-3">
+                                <div className="text-xs font-semibold text-foreground">Budgeted RRF（按通道配额）</div>
+                                <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                                  <div className="rounded-md border border-border/60 bg-background/60 p-2">
+                                    <div className="text-[11px] text-muted-foreground">k_prefix</div>
+                                    <div className="mt-1 font-mono tabular-nums text-foreground/90">{formatCount(fusion.k_prefix)}</div>
+                                  </div>
+                                  <div className="rounded-md border border-border/60 bg-background/60 p-2">
+                                    <div className="text-[11px] text-muted-foreground">eligible_total</div>
+                                    <div className="mt-1 font-mono tabular-nums text-foreground/90">{formatCount(fusion.eligible_total)}</div>
+                                  </div>
+                                  <div className="rounded-md border border-border/60 bg-background/60 p-2">
+                                    <div className="text-[11px] text-muted-foreground">selected_prefix</div>
+                                    <div className="mt-1 font-mono tabular-nums text-foreground/90">{formatCount(fusion.selected_prefix)}</div>
+                                  </div>
+                                  <div className="rounded-md border border-border/60 bg-background/60 p-2">
+                                    <div className="text-[11px] text-muted-foreground">rrf_k</div>
+                                    <div className="mt-1 font-mono tabular-nums text-foreground/90">{formatCount(fusion.rrf_k)}</div>
+                                  </div>
+                                </div>
+                                <div className="mt-2 text-[11px] text-muted-foreground">
+                                  quotas:{' '}
+                                  {budgets ? (
+                                    <span className="font-mono tabular-nums text-foreground/90">
+                                      {Object.entries(budgets)
+                                        .slice(0, 8)
+                                        .map(([k, v]) => `${k}=${formatCount(v)}`)
+                                        .join('  ')}
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted-foreground">—</span>
+                                  )}
+                                </div>
+                                <div className="mt-1 text-[11px] text-muted-foreground">
+                                  picked:{' '}
+                                  {picked ? (
+                                    <span className="font-mono tabular-nums text-foreground/90">
+                                      {Object.entries(picked)
+                                        .slice(0, 8)
+                                        .map(([k, v]) => `${k}=${formatCount(v)}`)
+                                        .join('  ')}
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted-foreground">—</span>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          })()}
+                        </div>
+
+                        <div className="rounded-xl border border-border/60 bg-background/60 p-4">
+                          <div className="text-xs font-semibold text-foreground">裁剪原因（trimming / caps）</div>
+
+                          {(() => {
+                            const dbg = mainRetrieverDebug
+                            if (!dbg) {
+                              return <div className="mt-2 text-xs text-muted-foreground">无 retriever_debug（可能是旧版本后端或被裁剪）。</div>
+                            }
+
+                            const div = isRecord(dbg.diversity) ? dbg.diversity : null
+                            const ch = isRecord(dbg.channels) ? dbg.channels : null
+
+                            const mergedPre = toInt(ch?.merged_pre_dedup)
+                            const mergedPost = toInt(ch?.merged_post_dedup)
+                            const dedupDropped =
+                              typeof mergedPre === 'number' && typeof mergedPost === 'number' ? Math.max(0, mergedPre - mergedPost) : null
+
+                            const divChan = isRecord(ch?.diversity) ? ch?.diversity : null
+                            const divDropped = toInt(divChan?.dropped)
+
+                            const enrich = isRecord(dbg.enrich_pass2)
+                              ? dbg.enrich_pass2
+                              : isRecord(dbg.enrich_pass1)
+                                ? dbg.enrich_pass1
+                                : null
+
+                            const trimKeys: Array<[string, string]> = [
+                              ['filtered_metadata_filter', 'metadata_filter'],
+                              ['filtered_acl', 'acl'],
+                              ['filtered_dataset', 'dataset'],
+                              ['filtered_pipeline_version', 'pipeline_version'],
+                              ['filtered_embedding_space', 'embedding_space'],
+                              ['filtered_not_ready', 'not_ready'],
+                              ['filtered_orphaned', 'orphaned_vectors'],
+                            ]
+                            const trims = trimKeys
+                              .map(([k, label]) => {
+                                const n = toInt(enrich?.[k])
+                                return { key: k, label, n: typeof n === 'number' ? n : 0 }
+                              })
+                              .filter((x) => x.n > 0)
+                              .sort((a, b) => b.n - a.n || a.label.localeCompare(b.label))
+
+                            const capsEnabled = Boolean(
+                              (toInt(div?.max_chunks_per_doc) ?? 0) > 0 ||
+                                (toInt(div?.max_chunks_per_page) ?? 0) > 0 ||
+                                (toInt(div?.min_distinct_docs) ?? 0) > 0
+                            )
+
+                            return (
+                              <div className="mt-3 space-y-3">
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                                  <div className="rounded-lg border border-border/60 bg-background/60 p-2">
+                                    <div className="text-[11px] text-muted-foreground">dedup_dropped</div>
+                                    <div className="mt-1 font-mono tabular-nums text-foreground/90">
+                                      {typeof dedupDropped === 'number' ? String(dedupDropped) : '—'}
+                                    </div>
+                                  </div>
+                                  <div className="rounded-lg border border-border/60 bg-background/60 p-2">
+                                    <div className="text-[11px] text-muted-foreground">diversity_dropped</div>
+                                    <div className="mt-1 font-mono tabular-nums text-foreground/90">
+                                      {typeof divDropped === 'number' ? String(divDropped) : '—'}
+                                    </div>
+                                  </div>
+                                  <div className="rounded-lg border border-border/60 bg-background/60 p-2">
+                                    <div className="text-[11px] text-muted-foreground">enrich_input</div>
+                                    <div className="mt-1 font-mono tabular-nums text-foreground/90">{formatCount(enrich?.input_results)}</div>
+                                  </div>
+                                  <div className="rounded-lg border border-border/60 bg-background/60 p-2">
+                                    <div className="text-[11px] text-muted-foreground">enrich_output</div>
+                                    <div className="mt-1 font-mono tabular-nums text-foreground/90">{formatCount(enrich?.output_results)}</div>
+                                  </div>
+                                </div>
+
+                                <div className="rounded-lg border border-border/60 bg-background/60 p-3">
+                                  <div className="text-xs font-semibold text-foreground">Diversity caps（doc/page）</div>
+                                  <div className="mt-2 text-[11px] text-muted-foreground">
+                                    {capsEnabled ? (
+                                      <>
+                                        max_chunks_per_doc=<span className="font-mono tabular-nums text-foreground/90">{formatCount(div?.max_chunks_per_doc)}</span>{' '}
+                                        max_chunks_per_page=<span className="font-mono tabular-nums text-foreground/90">{formatCount(div?.max_chunks_per_page)}</span>{' '}
+                                        min_distinct_docs=<span className="font-mono tabular-nums text-foreground/90">{formatCount(div?.min_distinct_docs)}</span>
+                                      </>
+                                    ) : (
+                                      <span className="text-muted-foreground">caps disabled</span>
+                                    )}
+                                  </div>
+                                  {capsEnabled ? (
+                                    <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                                      <div className="rounded-md border border-border/60 bg-background/60 p-2">
+                                        <div className="text-[11px] text-muted-foreground">unique_docs</div>
+                                        <div className="mt-1 font-mono tabular-nums text-foreground/90">
+                                          {formatCount(div?.pre_unique_docs)}→{formatCount(div?.post_unique_docs)}
+                                        </div>
+                                      </div>
+                                      <div className="rounded-md border border-border/60 bg-background/60 p-2">
+                                        <div className="text-[11px] text-muted-foreground">unique_pages</div>
+                                        <div className="mt-1 font-mono tabular-nums text-foreground/90">
+                                          {formatCount(div?.pre_unique_pages)}→{formatCount(div?.post_unique_pages)}
+                                        </div>
+                                      </div>
+                                      <div className="rounded-md border border-border/60 bg-background/60 p-2">
+                                        <div className="text-[11px] text-muted-foreground">moved_out</div>
+                                        <div className="mt-1 font-mono tabular-nums text-foreground/90">{formatCount(div?.moved_out)}</div>
+                                      </div>
+                                      <div className="rounded-md border border-border/60 bg-background/60 p-2">
+                                        <div className="text-[11px] text-muted-foreground">moved_in</div>
+                                        <div className="mt-1 font-mono tabular-nums text-foreground/90">{formatCount(div?.moved_in)}</div>
+                                      </div>
+                                    </div>
+                                  ) : null}
+                                </div>
+
+                                <div className="rounded-lg border border-border/60 bg-background/60 p-3">
+                                  <div className="text-xs font-semibold text-foreground">Trimming reasons（DB enrich）</div>
+                                  {trims.length ? (
+                                    <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                                      {trims.slice(0, 10).map((t) => (
+                                        <span
+                                          key={t.key}
+                                          className="font-mono tabular-nums bg-muted/60 border border-border/60 px-2 py-1 rounded-full text-foreground/90"
+                                        >
+                                          {t.label}=-{t.n}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <div className="mt-2 text-xs text-muted-foreground">未观察到显著 trimming（或该版本未上报 enrich 计数）。</div>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          })()}
+                        </div>
+                      </div>
+
+                      {retrievalPerQuery.length ? (
+                        <div className="rounded-lg border border-border/60 overflow-auto">
+                          <table aria-label="按查询聚合的检索统计" className="min-w-[720px] w-full text-xs">
+                            <thead className="bg-muted/30 text-muted-foreground">
+                              <tr className="border-b border-border/60">
+                                <th className="p-2 text-left font-semibold w-24">kind</th>
+                                <th className="p-2 text-left font-semibold w-24 tabular-nums">elapsed</th>
+                                <th className="p-2 text-left font-semibold w-20">ok</th>
+                                <th className="p-2 text-left font-semibold w-28 tabular-nums">query_chars</th>
+                                <th className="p-2 text-left font-semibold">retriever_debug</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {retrievalPerQuery.map((item) => (
+                                <tr
+                                  key={`${String(item.kind || 'query')}:${String(item.query_chars ?? '')}:${String(item.elapsed_sec ?? '')}`}
+                                  className="border-b border-border/40 align-top"
+                                >
+                                  <td className="p-2 font-mono text-foreground/90">{String(item.kind || '—')}</td>
+                                  <td className="p-2 font-mono tabular-nums text-muted-foreground">
+                                    {typeof item.elapsed_sec === 'number' ? item.elapsed_sec.toFixed(3) : String(item.elapsed_sec ?? '—')}
+                                  </td>
+                                  <td className="p-2 font-mono text-muted-foreground">{String(Boolean(item.ok))}</td>
+                                  <td className="p-2 font-mono tabular-nums text-muted-foreground">{String(item.query_chars ?? '—')}</td>
+                                  <td className="p-2">
+                                    <pre className="whitespace-pre-wrap text-[11px] leading-relaxed text-muted-foreground font-mono">
+                                      {JSON.stringify(item.retriever_debug || null, null, 2)}
+                                    </pre>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <div className="text-xs text-muted-foreground">无 per-query debug 数据（可能是旧版本后端或被裁剪）。</div>
+                      )}
+                    </div>
+                  </details>
                 </div>
 
-                {retrievalPerQuery.length ? (
-                  <div className="rounded-lg border border-border/60 overflow-auto">
-                    <table aria-label="按查询聚合的检索统计" className="min-w-[720px] w-full text-xs">
-                      <thead className="bg-muted/30 text-muted-foreground">
-                        <tr className="border-b border-border/60">
-                          <th className="p-2 text-left font-semibold w-24">kind</th>
-                          <th className="p-2 text-left font-semibold w-24 tabular-nums">elapsed</th>
-                          <th className="p-2 text-left font-semibold w-20">ok</th>
-                          <th className="p-2 text-left font-semibold w-28 tabular-nums">query_chars</th>
-                          <th className="p-2 text-left font-semibold">retriever_debug</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {retrievalPerQuery.map((item) => (
-                          <tr key={`${String(item.kind || 'query')}:${String(item.query_chars ?? '')}:${String(item.elapsed_sec ?? '')}`} className="border-b border-border/40 align-top">
-                            <td className="p-2 font-mono text-foreground/90">{String(item.kind || '—')}</td>
-                            <td className="p-2 font-mono tabular-nums text-muted-foreground">
-                              {typeof item.elapsed_sec === 'number' ? item.elapsed_sec.toFixed(3) : String(item.elapsed_sec ?? '—')}
-                            </td>
-                            <td className="p-2 font-mono text-muted-foreground">{String(Boolean(item.ok))}</td>
-                            <td className="p-2 font-mono tabular-nums text-muted-foreground">{String(item.query_chars ?? '—')}</td>
-                            <td className="p-2">
-                              <pre className="whitespace-pre-wrap text-[11px] leading-relaxed text-muted-foreground font-mono">
-                                {JSON.stringify(item.retriever_debug || null, null, 2)}
-                              </pre>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                <aside className="hidden 2xl:block">
+                  <div className="sticky top-4 space-y-4 rounded-[22px] border border-border/60 bg-background/70 p-4 shadow-soft">
+                    <div className="border-b border-border/60 pb-3">
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                        Selected Hit
+                      </div>
+                      <div className="mt-2 text-base font-semibold text-foreground">
+                        {activeResult?.document_name || '未选择结果'}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        这里展示当前命中的摘要、分数和关键元数据；完整深度信息仍可通过“详情”打开。
+                      </div>
+                    </div>
+
+                    {activeResult ? (
+                      <>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="rounded-xl border border-border/60 bg-background/70 p-2.5">
+                            <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">final</div>
+                            <div className="mt-1 font-mono text-sm tabular-nums text-foreground">{formatScore(activeResult.relevance_score, 2)}</div>
+                          </div>
+                          <div className="rounded-xl border border-border/60 bg-background/70 p-2.5">
+                            <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">page</div>
+                            <div className="mt-1 font-mono text-sm tabular-nums text-foreground">
+                              {typeof activeResult.page_number === 'number' ? activeResult.page_number : '—'}
+                            </div>
+                          </div>
+                          <div className="rounded-xl border border-border/60 bg-background/70 p-2.5">
+                            <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">vec</div>
+                            <div className="mt-1 font-mono text-sm tabular-nums text-foreground">{formatScore(activeResult.vector_score)}</div>
+                          </div>
+                          <div className="rounded-xl border border-border/60 bg-background/70 p-2.5">
+                            <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">rerank</div>
+                            <div className="mt-1 font-mono text-sm tabular-nums text-foreground">{formatScore(activeResult.rerank_score)}</div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="text-xs font-semibold text-foreground">Snippet</div>
+                          <div className="rounded-xl border border-border/60 bg-background/70 p-3 text-sm leading-6 text-foreground/90">
+                            {previewChunkContent(activeResult.chunk_content, 560)}
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="text-xs font-semibold text-foreground">Metadata</div>
+                          <div className="rounded-xl border border-border/60 bg-background/70 p-3 text-xs text-muted-foreground space-y-2">
+                            <div>
+                              role: <span className="font-mono text-foreground">{String(activeResult.retrieval_role || 'main')}</span>
+                            </div>
+                            <div>
+                              chunk_id:{' '}
+                              <span className="font-mono text-foreground">
+                                {activeResult.chunk_id ? shortId(String(activeResult.chunk_id), { head: 12, tail: 6 }) : '—'}
+                              </span>
+                            </div>
+                            <div>
+                              path: <span className="text-foreground">{String(activeResult.policy_path_str || '—')}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {activeResultMatchedTerms.length ? (
+                          <div className="space-y-2">
+                            <div className="text-xs font-semibold text-foreground">Matched Terms</div>
+                            <div className="flex flex-wrap gap-2">
+                              {activeResultMatchedTerms.slice(0, 8).map((term) => (
+                                <span
+                                  key={term}
+                                  className="inline-flex items-center rounded-full border border-border/60 bg-background/80 px-2 py-1 text-[11px] text-muted-foreground"
+                                >
+                                  {term}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-8 rounded-full px-3 gap-2"
+                            onClick={() => handleOpenHitInDocumentViewer(activeResult)}
+                          >
+                            <ExternalLink className="size-4" />
+                            打开文档
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-8 rounded-full px-3 gap-2"
+                            onClick={() => openDetails(activeResult)}
+                          >
+                            <Copy className="size-4" />
+                            深入详情
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-border/60 bg-background/40 p-4 text-sm text-muted-foreground">
+                        选择一条召回结果后，这里会展示摘要详情。
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <div className="text-xs text-muted-foreground">无 per-query debug 数据（可能是旧版本后端或被裁剪）。</div>
-                )}
+                </aside>
               </div>
-            </details>
-          </div>
-        )}
-      </Panel>
+            </div>
+          ) : null}
+        </div>
+      </div>
 
       <Dialog open={detailOpen} onOpenChange={closeDetails}>
         <DialogContent

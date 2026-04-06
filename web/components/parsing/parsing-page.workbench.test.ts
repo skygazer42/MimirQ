@@ -32,11 +32,15 @@ describe('ParsingPage workbench scaffold', () => {
 
     expect(shellSrc).toContain('WorkbenchScaffold')
     expect(shellSrc).toContain('ParsingActiveFilePane')
-    expect(shellSrc).toContain('ParsingLibraryBrowser')
     expect(shellSrc).toContain('ParsingLibraryPreviewPane')
     expect(shellSrc).toContain('ParsingSidebarPane')
     expect(shellSrc).toContain('ParsingMobileQueueContent')
     expect(shellSrc).toContain('ParsingMobileInspectorContent')
+    expect(shellSrc).toContain('IngestionWorkflowStepper')
+    expect(shellSrc).toContain('ParsingWorkbenchMark')
+    expect(shellSrc).toContain('header={(')
+    expect(shellSrc).not.toContain('<PipelineRail />')
+    expect(shellSrc).toContain('sidebarFileItems')
   })
 
   it('auto-restores parsed PDF source files when selecting a library-only entry so the preview pane shows the document immediately', () => {
@@ -66,9 +70,10 @@ describe('ParsingPage workbench scaffold', () => {
     expect(hookSrc).toContain("globalThis.window.localStorage.getItem('mimirq_parsing_image_caption_enabled')")
   })
 
-  it('moves library browser rendering details into the extracted component', () => {
+  it('keeps the optional library browser extracted even though the desktop sidebar now uses a unified file tree', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'parsing-page.tsx'), 'utf8')
     const browserSrc = fs.readFileSync(path.resolve(__dirname, 'parsing-library-browser.tsx'), 'utf8')
+    const shellSrc = fs.readFileSync(path.resolve(__dirname, 'parsing-workbench-shell.tsx'), 'utf8')
 
     expect(src).not.toContain('const isLibraryEmpty =')
     expect(src).not.toContain('<FileQueueItem')
@@ -77,6 +82,7 @@ describe('ParsingPage workbench scaffold', () => {
     expect(browserSrc).toContain('const isLibraryEmpty =')
     expect(browserSrc).toContain('<FileQueueItem')
     expect(browserSrc).toContain('draggable')
+    expect(shellSrc).not.toContain('ParsingLibraryBrowser')
   })
 
   it('moves upload and library restore callbacks into the dedicated hook', () => {

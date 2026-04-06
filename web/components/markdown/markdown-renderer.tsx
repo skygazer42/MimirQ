@@ -55,6 +55,7 @@ type MarkdownRendererProps = Readonly<{
   className?: string
   enableTocAnchors?: boolean
   autoScrollToHash?: boolean
+  scrollContainerSelector?: string
 }>
 
 type MarkdownRenderBoundaryProps = Readonly<{
@@ -112,6 +113,7 @@ function MarkdownRendererContent({
   className,
   enableTocAnchors = true,
   autoScrollToHash = false,
+  scrollContainerSelector,
 }: MarkdownRendererProps) {
   const text = markdown || ''
 
@@ -135,7 +137,7 @@ function MarkdownRendererContent({
       const decoded = id ? decodeURIComponent(id) : ''
       if (!decoded) return
       globalThis.window.requestAnimationFrame(() => {
-        const ok = scrollToElementId(decoded, { behavior })
+        const ok = scrollToElementId(decoded, { behavior, scrollContainerSelector })
         if (ok) flashElementId(decoded, FLASH_CLASS)
       })
     }
@@ -145,7 +147,7 @@ function MarkdownRendererContent({
     scrollNow('auto')
     globalThis.window.addEventListener('hashchange', onHashChange)
     return () => globalThis.window.removeEventListener('hashchange', onHashChange)
-  }, [autoScrollToHash, text])
+  }, [autoScrollToHash, scrollContainerSelector, text])
 
   const headingComponent = (level: 1 | 2 | 3 | 4 | 5 | 6) => {
     const Tag = `h${level}` as keyof React.JSX.IntrinsicElements
@@ -170,7 +172,7 @@ function MarkdownRendererContent({
                 if (globalThis.window !== undefined) {
                   globalThis.window.history.replaceState(null, '', `#${encodeURIComponent(id)}`)
                 }
-                scrollToElementId(id)
+                scrollToElementId(id, { scrollContainerSelector })
                 flashElementId(id, FLASH_CLASS)
               }}
               className="ml-2 no-underline text-muted-foreground/60 hover:text-primary opacity-0 group-hover:opacity-100"
@@ -215,7 +217,7 @@ function MarkdownRendererContent({
                     if (globalThis.window !== undefined) {
                       globalThis.window.history.replaceState(null, '', `#${encodeURIComponent(decoded)}`)
                     }
-                    scrollToElementId(decoded)
+                    scrollToElementId(decoded, { scrollContainerSelector })
                     flashElementId(decoded, FLASH_CLASS)
                   }}
                   className="underline decoration-border/70 underline-offset-2 hover:decoration-border"

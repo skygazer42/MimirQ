@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Hash, Loader2, RefreshCw, Wand2 } from 'lucide-react'
+import { Hash, Loader2, RefreshCw, Search, Wand2 } from 'lucide-react'
 
 import { useRouter } from '@/i18n/navigation'
 import { PageScaffold } from '@/components/ui/page-scaffold'
@@ -75,7 +75,7 @@ export function GovernanceCommonLinesPage() {
       if (!datasetId && ds.length) setDatasetId(String(ds[0].id || ''))
       if (!profileRef && profs.length) setProfileRef(String(profs[0].id || profs[0].key || ''))
     } catch (err: any) {
-      toast.error(formatApiError(err, '加载数据集/Profiles 失败'))
+      toast.error(formatApiError(err, '加载数据集或治理配置失败'))
     } finally {
       setLoadingMeta(false)
     }
@@ -86,6 +86,15 @@ export function GovernanceCommonLinesPage() {
   }, [loadMeta])
 
   const candidates: GovernanceCommonLineCandidate[] = useMemo(() => resp?.candidates || [], [resp?.candidates])
+  const sortedCandidates = useMemo(
+    () =>
+      [...candidates].sort((a, b) => {
+        const docsDelta = Number(b.docs || 0) - Number(a.docs || 0)
+        if (docsDelta !== 0) return docsDelta
+        return Number(b.ratio || 0) - Number(a.ratio || 0)
+      }),
+    [candidates]
+  )
   const selectedCandidates = useMemo(
     () => candidates.filter((c) => selected[String(c.signature || '')]),
     [candidates, selected]
@@ -126,7 +135,7 @@ export function GovernanceCommonLinesPage() {
       setResp(out)
       toast.success(`已生成候选行：${(out.candidates || []).length}`)
     } catch (err: any) {
-      toast.error(formatApiError(err, '学习 common lines 失败'))
+      toast.error(formatApiError(err, '扫描样板行失败'))
     } finally {
       setLoading(false)
     }
@@ -135,7 +144,7 @@ export function GovernanceCommonLinesPage() {
   const applyToProfile = useCallback(async () => {
     const ref = profileRef.trim()
     if (!ref) {
-      toast.error('请选择一个自定义 Profile')
+      toast.error('请选择一个自定义治理配置')
       return
     }
     if (!selectedCandidates.length) {
@@ -147,7 +156,7 @@ export function GovernanceCommonLinesPage() {
     try {
       const prof = await pipelineApi.getGovernanceProfile(ref)
       if (prof.is_system) {
-        toast.error('内置 Profile 只读，请选择自定义 Profile')
+        toast.error('内置治理配置只读，请选择自定义治理配置')
         return
       }
 
@@ -176,10 +185,10 @@ export function GovernanceCommonLinesPage() {
           regex_rules: nextRules,
         },
       })
-      toast.success(`已写入 Profile：新增 ${added} 条规则`)
+      toast.success(`已写入治理配置：新增 ${added} 条规则`)
       router.push('/data-governance/profiles')
     } catch (err: any) {
-      toast.error(formatApiError(err, '写入 Profile 失败'))
+      toast.error(formatApiError(err, '写入治理配置失败'))
     } finally {
       setLoading(false)
     }
@@ -187,18 +196,20 @@ export function GovernanceCommonLinesPage() {
 
   return (
     <PageScaffold
-      title="Common Lines 学习"
-      badge="Governance"
+      title="样板行发现"
+      badge="规则生成"
       icon={Hash}
       iconColor="text-success"
-      description="跨文档发现候选样板行（页眉/页脚/导航/免责声明），并一键写入自定义治理 Profile（regex_rules）。"
-      size="7xl"
+      description="跨文档识别页眉、页脚、导航和免责声明等重复样板行，可一键写入自定义治理配置。"
+      size="full"
+      headerClassName="mx-auto max-w-[1320px]"
+      bodyContainerClassName="mx-auto max-w-[1320px]"
       actions={
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
             size="sm"
-            className="gap-2 rounded-xl"
+            className="h-8 gap-2 rounded-lg border-border/55 bg-background/78 text-[12px] shadow-none"
             onClick={() => detachPromise(loadMeta())}
             disabled={loadingMeta}
           >
@@ -207,7 +218,7 @@ export function GovernanceCommonLinesPage() {
           </Button>
           <Button
             size="sm"
-            className="gap-2 rounded-xl"
+            className="h-8 gap-2 rounded-lg text-[12px] shadow-none"
             onClick={() => detachPromise(runLearn())}
             disabled={loading}
           >
@@ -221,13 +232,13 @@ export function GovernanceCommonLinesPage() {
         </div>
       }
     >
-      <div className="space-y-4">
-        <Panel padding="lg" className="rounded-2xl">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
+      <div className="space-y-3">
+        <Panel padding="md" className="rounded-xl border-border/55 shadow-none hover:shadow-none">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="min-w-0 space-y-2">
               <Label>数据集</Label>
               <Select value={datasetId || ''} onValueChange={(v) => setDatasetId(v)}>
-                <SelectTrigger className="rounded-xl">
+                <SelectTrigger className="rounded-lg border-border/55 bg-background/82 text-[13px] shadow-none">
                   <SelectValue placeholder="选择数据集" />
                 </SelectTrigger>
                 <SelectContent>
@@ -244,16 +255,16 @@ export function GovernanceCommonLinesPage() {
                   )}
                 </SelectContent>
               </Select>
-              <div className="text-[11px] text-muted-foreground">
+              <div className="mt-1 text-[11px] leading-5 text-muted-foreground/72">
                 提示：该功能依赖入库时开启 <span className="font-mono">persist_parsed_content</span>。
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>写入目标 Profile（自定义）</Label>
+            <div className="min-w-0 space-y-2">
+              <Label>写入目标治理配置</Label>
               <Select value={profileRef || ''} onValueChange={(v) => setProfileRef(v)}>
-                <SelectTrigger className="rounded-xl">
-                  <SelectValue placeholder="选择自定义 Profile" />
+                <SelectTrigger className="rounded-lg border-border/55 bg-background/82 text-[13px] shadow-none">
+                  <SelectValue placeholder="选择自定义治理配置" />
                 </SelectTrigger>
                 <SelectContent>
                   {profiles.length ? (
@@ -264,143 +275,191 @@ export function GovernanceCommonLinesPage() {
                     ))
                   ) : (
                     <SelectItem value="__none__" disabled>
-                      暂无自定义 Profile（请先创建）
+                      暂无自定义治理配置（请先创建）
                     </SelectItem>
                   )}
                 </SelectContent>
               </Select>
-              <div className="text-[11px] text-muted-foreground">
-                写入后可在 <span className="font-mono">/data-governance/profiles</span> 中查看/编辑。
+              <div className="mt-1 text-[11px] leading-5 text-muted-foreground/72">
+                写入后可在 <span className="font-mono">/data-governance/profiles</span> 中继续查看和编辑。
               </div>
             </div>
-          </div>
 
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label>limit_docs</Label>
+            <div className="min-w-0 space-y-2">
+              <Label>扫描文档数</Label>
               <Input
                 value={String(limitDocs)}
                 onChange={(e) => setLimitDocs(Number(e.target.value || 0))}
-                className="rounded-xl"
+                className="rounded-lg border-border/55 bg-background/82 text-[13px] shadow-none"
               />
             </div>
-            <div className="space-y-2">
-              <Label>min_docs</Label>
+
+            <div className="min-w-0 space-y-2">
+              <Label>最少命中文档</Label>
               <Input
                 value={String(minDocs)}
                 onChange={(e) => setMinDocs(Number(e.target.value || 0))}
-                className="rounded-xl"
+                className="rounded-lg border-border/55 bg-background/82 text-[13px] shadow-none"
               />
             </div>
-            <div className="space-y-2">
-              <Label>min_ratio</Label>
+
+            <div className="min-w-0 space-y-2">
+              <Label>最小命中比例</Label>
               <Input
                 value={String(minRatio)}
                 onChange={(e) => setMinRatio(Number(e.target.value || 0))}
-                className="rounded-xl"
+                className="rounded-lg border-border/55 bg-background/82 text-[13px] shadow-none"
               />
             </div>
-            <div className="space-y-2">
-              <Label>max_line_length</Label>
+
+            <div className="min-w-0 space-y-2">
+              <Label>最大行长度</Label>
               <Input
                 value={String(maxLineLength)}
                 onChange={(e) => setMaxLineLength(Number(e.target.value || 0))}
-                className="rounded-xl"
+                className="rounded-lg border-border/55 bg-background/82 text-[13px] shadow-none"
               />
             </div>
-            <div className="space-y-2">
-              <Label>max_candidates</Label>
+
+            <div className="min-w-0 space-y-2">
+              <Label>最多候选数</Label>
               <Input
                 value={String(maxCandidates)}
                 onChange={(e) => setMaxCandidates(Number(e.target.value || 0))}
-                className="rounded-xl"
+                className="rounded-lg border-border/55 bg-background/82 text-[13px] shadow-none"
               />
             </div>
-            <div className="space-y-2">
-              <Label>use_original</Label>
-              <div className="flex items-center gap-2 rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
+
+            <div className="min-w-0 xl:pt-[1.65rem]">
+              <label className="flex items-start gap-2 text-[13px] leading-5 text-foreground/76">
                 <Checkbox checked={useOriginal} onCheckedChange={(v) => setUseOriginal(Boolean(v))} />
-                <div className="text-sm">优先使用原始解析结果（pre-governance）</div>
-              </div>
+                <span>优先基于治理前的原始解析结果进行识别</span>
+              </label>
             </div>
           </div>
         </Panel>
 
         {resp ? (
-          <Panel padding="lg" className="rounded-2xl">
-            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-              <div>
-                <div className="text-sm font-semibold text-foreground">候选结果</div>
-                <div className="text-[12px] text-muted-foreground mt-1">
-                  used_docs <span className="font-mono">{resp.used_documents}</span> / total_with_parsed_content{' '}
-                  <span className="font-mono">{resp.total_documents}</span>
+          <Panel padding="md" className="rounded-xl border-border/55 shadow-none hover:shadow-none">
+            <div className="flex flex-col gap-1.5 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
+                <div className="text-[13px] font-semibold text-foreground">候选结果</div>
+                <div className="text-[11px] text-muted-foreground/78">
+                  共 <span className="font-mono tabular-nums text-foreground/88">{sortedCandidates.length}</span> 条
+                  · 已选 <span className="font-mono tabular-nums text-foreground/88">{selectedCandidates.length}</span>{' '}
+                  / {sortedCandidates.length}
+                  · 已扫描 <span className="font-mono tabular-nums text-foreground/88">{resp.used_documents}</span> /{' '}
+                  <span className="font-mono tabular-nums text-foreground/88">{resp.total_documents}</span> 文档
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" className="rounded-xl" onClick={() => toggleAll(true)}>
+              <div className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-muted/[0.14] p-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 rounded-md px-2.5 text-[11px] text-muted-foreground shadow-none hover:bg-background/90 hover:text-foreground"
+                  onClick={() => toggleAll(true)}
+                >
                   全选
                 </Button>
-                <Button variant="outline" size="sm" className="rounded-xl" onClick={() => toggleAll(false)}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 rounded-md px-2.5 text-[11px] text-muted-foreground shadow-none hover:bg-background/90 hover:text-foreground"
+                  onClick={() => toggleAll(false)}
+                >
                   全不选
                 </Button>
                 <Button
                   size="sm"
-                  className="rounded-xl gap-2"
+                  className="h-7 gap-1.5 rounded-md px-2.5 text-[11px] shadow-none"
                   onClick={() => detachPromise(applyToProfile())}
                   disabled={loading}
                 >
                   {loading ? (
-                    <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+                    <Loader2 className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" />
                   ) : (
-                    <Hash className="w-4 h-4" />
+                    <Hash className="w-3.5 h-3.5" />
                   )}
-                  写入 Profile（{selectedCandidates.length}）
+                  写入治理配置（{selectedCandidates.length}）
                 </Button>
               </div>
             </div>
 
             {candidates.length ? (
-              <div className="mt-4 space-y-2">
-                {candidates.map((c) => {
-                  const sig = String(c.signature || '')
-                  const checked = Boolean(selected[sig])
-                  return (
-                    <div
-                      key={sig}
-                      className={cn(
-                        'rounded-2xl border border-border/60 bg-background/40 p-4 flex items-start gap-3',
-                        checked && 'border-primary/40 bg-primary/5'
-                      )}
-                    >
-                      <Checkbox
-                        checked={checked}
-                        onCheckedChange={(v) => setSelected((prev) => ({ ...prev, [sig]: Boolean(v) }))}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-xs font-mono text-muted-foreground">
-                            docs={c.docs} · ratio={Number(c.ratio || 0).toFixed(2)}
-                          </span>
+              <div className="mt-4 overflow-x-auto">
+                <div className="min-w-[640px] overflow-hidden rounded-lg border border-border/55 bg-background/55">
+                  <div className="grid grid-cols-[30px_minmax(0,1fr)_76px_76px] items-center gap-2 border-b border-border/50 bg-muted/[0.16] px-2.5 py-2 text-[11px] font-medium tracking-[0.01em] text-muted-foreground/76">
+                    <div>选择</div>
+                    <div>样板行预览</div>
+                    <div className="text-right">命中文档</div>
+                    <div className="text-right">命中比例</div>
+                  </div>
+                  <div className="divide-y divide-border/45">
+                    {sortedCandidates.map((c) => {
+                      const sig = String(c.signature || '')
+                      const checked = Boolean(selected[sig])
+                      return (
+                        <div
+                          key={sig}
+                          className={cn(
+                            'grid grid-cols-[30px_minmax(0,1fr)_76px_76px] items-start gap-2 px-2.5 py-2 transition-colors',
+                            checked ? 'bg-primary/[0.06]' : 'bg-transparent hover:bg-muted/[0.14]'
+                          )}
+                        >
+                          <div className="pt-0.5">
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={(v) => setSelected((prev) => ({ ...prev, [sig]: Boolean(v) }))}
+                            />
+                          </div>
+                          <div className="min-w-0">
+                            <div
+                              className="line-clamp-2 break-words text-[12.5px] leading-[1.35rem] text-foreground"
+                              title={c.sample || c.signature}
+                            >
+                              {c.sample || c.signature}
+                            </div>
+                            <div
+                              className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground/66"
+                              title={c.signature}
+                            >
+                              {c.signature}
+                            </div>
+                          </div>
+                          <div className="pt-0.5 text-right text-[10.5px] font-mono tabular-nums text-foreground/84">
+                            {c.docs}
+                          </div>
+                          <div className="pt-0.5 text-right text-[10.5px] font-mono tabular-nums text-foreground/84">
+                            {Number(c.ratio || 0).toFixed(2)}
+                          </div>
                         </div>
-                        <div className="mt-2 text-sm text-foreground break-words">{c.sample || c.signature}</div>
-                        <div className="mt-2 text-[11px] text-muted-foreground font-mono break-all">
-                          signature: {c.signature}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
+                      )
+                    })}
+                  </div>
+                </div>
               </div>
             ) : (
-              <div className="mt-4 text-sm text-muted-foreground">
-                未找到候选行。可尝试降低 min_ratio / min_docs 或提高 limit_docs。
+              <div className="mt-4 flex min-h-[300px] flex-col items-center justify-center text-center">
+                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-muted/28 text-muted-foreground">
+                  <Search className="h-7 w-7" />
+                </div>
+                <div className="text-sm font-medium text-foreground/80">没有发现候选样板行</div>
+                <div className="mt-2 max-w-lg text-[13px] leading-6 text-muted-foreground">
+                  可尝试降低最小命中比例、减少最少命中文档数，或增加扫描文档数。
+                </div>
               </div>
             )}
           </Panel>
         ) : (
-          <Panel padding="lg" className="rounded-2xl">
-            <div className="text-sm text-muted-foreground">
-              点击“扫描”开始生成候选行，然后勾选并写入治理 Profile。
+          <Panel padding="md" className="rounded-xl border-border/55 shadow-none hover:shadow-none">
+            <div className="flex min-h-[320px] flex-col items-center justify-center text-center">
+              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/28 text-muted-foreground">
+                <Search className="h-8 w-8" />
+              </div>
+              <div className="text-sm font-medium text-foreground/80">尚未生成候选结果</div>
+              <div className="mt-2 max-w-lg text-[13px] leading-6 text-muted-foreground">
+                点击右上角“扫描”开始生成候选行，再勾选需要写入治理配置的规则。
+              </div>
             </div>
           </Panel>
         )}

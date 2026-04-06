@@ -4,7 +4,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 describe('KnowledgeDocumentsPanel row actions', () => {
-  it('uses contextual chrome that still works for touch + keyboard', () => {
+  it('keeps secondary reveal behavior for low-priority row chrome, while making primary detail actions always visible', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'knowledge-documents-panel.tsx'), 'utf8')
 
     // Contextual chrome should only hide on fine-pointer/hover devices.
@@ -16,5 +16,9 @@ describe('KnowledgeDocumentsPanel row actions', () => {
 
     // Secondary row detail should follow the same reveal behavior.
     expect(src).toContain('[@media(hover:hover)_and_(pointer:fine)]:group-focus-within:opacity-100')
+
+    // Primary "details" action should stay visible in dense table mode.
+    expect(src).toContain('buildOpenInspectorHandler(doc)')
+    expect(src).toContain('className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-muted"')
   })
 })

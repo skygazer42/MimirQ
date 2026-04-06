@@ -289,7 +289,7 @@ export default function DatasetsPage() {
           <div className="border-b border-border/60 bg-background/70 px-4 py-4 backdrop-blur supports-[backdrop-filter]:bg-background/55 md:px-5">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
               <div className="space-y-1">
-                <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card px-3 py-1 text-[11px] font-semibold tracking-[0.14em] text-muted-foreground shadow-sm">
+                <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                   <FolderOpen className="size-3.5 text-primary" />
                   <span>数据集目录</span>
                 </div>
@@ -317,7 +317,7 @@ export default function DatasetsPage() {
                     className="h-10 rounded-full border-border/60 bg-card pl-9 shadow-sm"
                   />
                 </div>
-                <div className="inline-flex items-center gap-2 self-start rounded-full border border-border/60 bg-card px-3 py-2 text-xs text-muted-foreground shadow-sm">
+                <div className="inline-flex items-center gap-1.5 self-start text-xs text-muted-foreground">
                   <span className="font-medium text-foreground tabular-nums">{filteredItems.length}</span>
                   <span>条结果</span>
                 </div>
@@ -378,18 +378,18 @@ export default function DatasetsPage() {
                             key={ds.id}
                             type="button"
                             className={cn(
-                              'focus-ring group w-full rounded-[1.5rem] border p-4 text-left transition-all duration-200 motion-reduce:transition-none',
+                              'focus-ring group w-full rounded-[1.25rem] p-4 text-left transition-all duration-200 motion-reduce:transition-none',
                               isActive
-                                ? 'border-primary/20 bg-primary/[0.06] shadow-md'
-                                : 'border-border/60 bg-background/85 shadow-sm hover:border-primary/20 hover:bg-card hover:shadow-md'
+                                ? 'border border-primary/25 bg-primary/[0.04] shadow-md ring-1 ring-primary/10'
+                                : 'border border-transparent bg-card/60 hover:bg-card hover:shadow-sm'
                             )}
                             onClick={() => setSelectedDatasetId(ds.id)}
                           >
                             <div className="flex items-start gap-3">
                               <div
                                 className={cn(
-                                  'flex size-11 shrink-0 items-center justify-center rounded-2xl border shadow-sm',
-                                  isActive ? 'border-primary/20 bg-card text-primary' : 'border-border/60 bg-card text-muted-foreground/60'
+                                  'flex size-10 shrink-0 items-center justify-center rounded-xl',
+                                  isActive ? 'bg-primary/10 text-primary' : 'bg-muted/40 text-muted-foreground/50'
                                 )}
                               >
                                 <Layers className={cn('size-5', ds.pipeline ? 'text-primary' : 'text-muted-foreground/60')} />
@@ -420,19 +420,6 @@ export default function DatasetsPage() {
                                 </div>
                               </div>
                             </div>
-
-                            <div className="mt-4 flex items-center justify-between gap-3 border-t border-border/60 pt-3 text-xs">
-                              <div className="text-muted-foreground">
-                                {isActive ? '当前查看中' : '点击展开右侧检视器'}
-                              </div>
-                              <span className={cn(
-                                'inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-medium',
-                                isActive ? 'bg-primary/10 text-primary' : 'bg-muted/60 text-muted-foreground group-hover:text-foreground'
-                              )}>
-                                {isActive ? '已选中' : '查看详情'}
-                                <ChevronRight className="size-3.5" />
-                              </span>
-                            </div>
                           </button>
                         )
                       })}
@@ -445,9 +432,8 @@ export default function DatasetsPage() {
                         <>
                           <div className="rounded-[1.5rem] border border-border/60 bg-background/85 p-4 shadow-sm">
                             <div className="flex items-start justify-between gap-3">
-                              <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card px-3 py-1 text-[11px] font-semibold tracking-[0.14em] text-muted-foreground">
-                                <Layers className="size-3.5 text-primary" />
-                                <span>数据集检视器</span>
+                              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                                数据集检视器
                               </div>
                               <div className="flex items-center gap-1">
                                 <Button
@@ -472,7 +458,7 @@ export default function DatasetsPage() {
                             </div>
 
                             <div className="mt-3 flex items-start gap-3">
-                              <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl border border-primary/15 bg-card text-primary shadow-sm">
+                              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
                                 <Layers className="size-4" />
                               </div>
                               <div className="min-w-0">
@@ -482,13 +468,13 @@ export default function DatasetsPage() {
                                   </h3>
                                   <PermissionBadge permission={perm(selectedDataset)} />
                                 </div>
-                                <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                                <p className="mt-0.5 text-[13px] leading-5 text-muted-foreground/80">
                                   {selectedDataset.description || '暂无描述。这个数据集已经可以继续做预检、画像和入库策略配置。'}
                                 </p>
                               </div>
                             </div>
 
-                            <div className="mt-4 grid grid-cols-2 gap-2">
+                            <div className="mt-3.5 space-y-0.5 border-t border-border/40 pt-2.5">
                               <DatasetInspectorMetric icon={Database} label="数据集 ID" value={selectedDataset.id.slice(0, 8)} mono />
                               <DatasetInspectorMetric
                                 icon={FolderOpen}
@@ -523,12 +509,9 @@ export default function DatasetsPage() {
                             <div className="flex items-start justify-between gap-3">
                               <div>
                                 <div className="text-sm font-semibold text-foreground">操作台</div>
-                                <div className="mt-1 text-xs leading-5 text-muted-foreground">
-                                  常用动作保持一级可见，次级能力压缩成更紧凑的入口区。
+                                <div className="mt-0.5 text-xs leading-5 text-muted-foreground">
+                                  常用入口
                                 </div>
-                              </div>
-                              <div className="rounded-full border border-border/60 bg-card px-2.5 py-1 text-[11px] text-muted-foreground">
-                                Dense
                               </div>
                             </div>
 
@@ -586,9 +569,6 @@ export default function DatasetsPage() {
                                   description="浏览数据库映射"
                                   onClick={() => router.push(`/datasets/${selectedDataset.id}/db-catalog`)}
                                 />
-                              </div>
-                              <div className="mt-2 text-[11px] leading-4 text-muted-foreground">
-                                悬停可查看说明，点击直接进入。
                               </div>
                             </div>
                           </div>
@@ -658,8 +638,8 @@ function DatasetMetaPill({
   children: ReactNode
 }>) {
   return (
-    <div className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card px-2.5 py-1 text-[11px] text-muted-foreground shadow-sm">
-      <Icon className="size-3.5 text-primary" />
+    <div className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+      <Icon className="size-3 text-muted-foreground/50" />
       <span>{children}</span>
     </div>
   )
@@ -712,9 +692,9 @@ function DatasetShortcutButton({
       onClick={onClick}
     >
       <span className={cn(
-        'flex shrink-0 items-center justify-center rounded-2xl border shadow-sm',
-        compact ? 'h-9 w-9' : 'h-10 w-10',
-        emphasis ? 'border-primary/15 bg-card text-primary' : 'border-border/60 bg-background/85 text-muted-foreground'
+        'flex shrink-0 items-center justify-center rounded-xl',
+        compact ? 'h-8 w-8' : 'h-9 w-9',
+        emphasis ? 'bg-primary/10 text-primary' : 'bg-muted/40 text-muted-foreground'
       )}>
         <Icon className="size-4" />
       </span>
@@ -743,12 +723,12 @@ function DatasetInspectorMetric({
   valueClassName?: string
 }>) {
   return (
-    <div className="rounded-[1rem] border border-border/60 bg-card px-3 py-2.5 shadow-sm">
-      <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
-        <Icon className="size-3.5 text-primary" />
-        <span>{label}</span>
+    <div className="flex items-center gap-2 py-1.5">
+      <div className="flex min-w-0 items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+        <Icon className="size-3 text-muted-foreground/55" />
+        <span className="truncate">{label}</span>
       </div>
-      <div className={cn('mt-1 text-sm font-semibold text-foreground', mono && 'font-mono tabular-nums', valueClassName)}>
+      <div className={cn('ml-auto min-w-0 truncate text-right text-[13px] font-semibold leading-5 text-foreground', mono && 'font-mono tabular-nums tracking-tight', valueClassName)}>
         {value}
       </div>
     </div>
@@ -774,7 +754,7 @@ function DatasetMiniAction({
       title={title}
       aria-label={`${title}：${description}`}
     >
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-background/85 text-muted-foreground transition-colors group-hover:border-primary/20 group-hover:text-primary">
+      <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-muted/40 text-muted-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary">
         <Icon className="size-3.5" />
       </span>
       <span className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 w-[9.5rem] -translate-x-1/2 translate-y-1 rounded-[1rem] border border-border/70 bg-popover/95 px-3 py-2 text-left opacity-0 shadow-lg backdrop-blur transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100 motion-reduce:transition-none">

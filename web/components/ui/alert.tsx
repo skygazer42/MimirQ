@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils"
 import type { RadixRef } from "@/lib/radix-utils"
 
 const alertVariants = cva(
-  "relative w-full rounded-lg border border-l-4 p-4 [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground/80 [&>svg+div]:pl-7",
+  "relative w-full rounded-lg border border-l-4 p-4 [&>svg~*]:pl-7 [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground/80",
   {
     variants: {
       variant: {

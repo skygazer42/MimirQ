@@ -31,7 +31,7 @@ import { KnowledgeScopePanel } from '@/components/knowledge/knowledge-scope-pane
 import { KnowledgeInspector } from '@/components/knowledge/knowledge-inspector'
 import { KnowledgeWorkbenchActions } from '@/components/knowledge/knowledge-workbench-actions'
 import { KnowledgeRetrievalPanel } from '@/components/knowledge/knowledge-retrieval-panel'
-import { KnowledgeSettingsPanel } from '@/components/knowledge/knowledge-settings-panel'
+import { KnowledgeConnectorRunsPanel, KnowledgeSettingsPanel } from '@/components/knowledge/knowledge-settings-panel'
 import { useKnowledgeScrollContainer } from '@/components/knowledge/use-knowledge-scroll-container'
 import { parseKnowledgeQueryState, serializeKnowledgeQueryState } from '@/components/knowledge/use-knowledge-query-state'
 import { useConnectorRuns } from '@/hooks/use-connector-runs'
@@ -83,6 +83,7 @@ export default function KnowledgePage() {
   const [batchLifecycleWorking, setBatchLifecycleWorking] = useState(false)
   const [batchReingestWorking, setBatchReingestWorking] = useState(false)
   const [scopeOpen, setScopeOpen] = useState(false)
+  const [desktopScopeCollapsed, setDesktopScopeCollapsed] = useState(false)
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [expandedConnectorRunId, setExpandedConnectorRunId] = useState<string | null>(null)
   const DATASET_ALL = '__all__'
@@ -450,6 +451,16 @@ export default function KnowledgePage() {
     () => filteredDocuments.filter((d) => selectedSet.has(d.id)),
     [filteredDocuments, selectedSet]
   )
+  const documentsWorkbenchLayoutClassName = desktopScopeCollapsed
+    ? 'grid grid-cols-1'
+    : 'grid grid-cols-1 lg:grid-cols-[15.5rem_minmax(0,1fr)]'
+  const retrievalWorkbenchLayoutClassName = desktopScopeCollapsed
+    ? 'grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_19rem]'
+    : 'grid grid-cols-1 lg:grid-cols-[13.5rem_minmax(0,1fr)] xl:grid-cols-[13.5rem_minmax(0,1fr)_19rem]'
+  const settingsWorkbenchLayoutClassName = desktopScopeCollapsed
+    ? 'grid grid-cols-1'
+    : 'grid grid-cols-1 lg:grid-cols-[15.5rem_minmax(0,1fr)]'
+  const scopeMode = activeTab === 'documents' ? 'documents' : activeTab === 'retrieval' ? 'retrieval' : 'settings'
   const anySelectedDisabled = useMemo(() => selectedDocs.some((d) => Boolean(d.disabled_at)), [selectedDocs])
   const anySelectedEnabled = useMemo(() => selectedDocs.some((d) => !d.disabled_at), [selectedDocs])
   const anySelectedArchived = useMemo(() => selectedDocs.some((d) => Boolean(d.archived_at)), [selectedDocs])
@@ -548,8 +559,9 @@ export default function KnowledgePage() {
 
   useEffect(() => {
     if (activeTab !== 'settings') return
-    detachPromise(loadConnectorRuns({ datasetId: selectedDatasetId }))
-  }, [activeTab, loadConnectorRuns, selectedDatasetId])
+    if (!expandedConnectorRunId) return
+    setActiveTab('documents')
+  }, [activeTab, expandedConnectorRunId])
 
   const handleConnectorRunCreated = useCallback(
     (run: ConnectorRunOut) => {
@@ -558,12 +570,12 @@ export default function KnowledgePage() {
 
       const targetDatasetId = String(run?.dataset_id || '').trim()
       if (targetDatasetId && selectedDatasetId && targetDatasetId !== selectedDatasetId) {
-        // Ensure the run is visible in the settings panel by switching the scope explicitly.
+        // Ensure the run is visible in the documents workbench by switching the scope explicitly.
         setDatasetScope(targetDatasetId)
         setFolderPath(null)
       }
 
-      setActiveTab('settings')
+      setActiveTab('documents')
       setExpandedConnectorRunId(runId)
     },
     [selectedDatasetId, setActiveTab, setDatasetScope, setExpandedConnectorRunId, setFolderPath]
@@ -600,23 +612,11 @@ export default function KnowledgePage() {
           icon={Database}
           iconColor="text-primary"
           description={t('header.description')}
+          size="full"
           leftPanel={null}
           rightPanel={null}
 
-          actions={
-            <KnowledgeWorkbenchActions
-              datasets={datasets}
-              datasetsLoading={datasetsLoading}
-              selectedDatasetId={selectedDatasetId}
-              datasetDefaultValue={DATASET_DEFAULT}
-              handleFileUpload={handleFileUpload}
-              uploadDocumentFromUrl={uploadDocumentFromUrl}
-              loadDocuments={loadDocuments}
-              loadConnectorRuns={loadConnectorRuns}
-              onConnectorRunCreated={handleConnectorRunCreated}
-            />
-          }
-	          top={
+	          top={activeTab === 'documents' ? (
 	            <StatsGrid className={showExtraCard ? "lg:grid-cols-5" : "lg:grid-cols-4"}>
 	              <StatCard
 	                icon={FileStack}
@@ -656,7 +656,7 @@ export default function KnowledgePage() {
 	                />
 	              )}
 	            </StatsGrid>
-	          }
+	          ) : null}
 	          toolbar={
             <div className="flex items-center justify-between">
               <div className="flex gap-1 -mb-px">
@@ -682,7 +682,36 @@ export default function KnowledgePage() {
                 ))}
               </div>
 
-              <div className="flex items-center gap-2">
+	              <div className="flex items-center gap-2">
+                  <div className="hidden lg:block">
+                    <IconButton
+                      label={desktopScopeCollapsed ? t('actions.showScope') : t('actions.hideScope')}
+                      variant="ghost"
+                      className={cn(
+                        'h-9 w-9 text-muted-foreground hover:text-foreground',
+                        !desktopScopeCollapsed && 'bg-muted/35 text-foreground'
+                      )}
+                      onClick={() => setDesktopScopeCollapsed((prev) => !prev)}
+                    >
+                      <Filter className="w-4 h-4" />
+                    </IconButton>
+                  </div>
+
+	                {activeTab === 'documents' ? (
+	                  <KnowledgeWorkbenchActions
+                    datasets={datasets}
+                    datasetsLoading={datasetsLoading}
+                    selectedDatasetId={selectedDatasetId}
+                    datasetDefaultValue={DATASET_DEFAULT}
+                    handleFileUpload={handleFileUpload}
+                    uploadDocumentFromUrl={uploadDocumentFromUrl}
+                    loadDocuments={loadDocuments}
+                    loadConnectorRuns={loadConnectorRuns}
+                    onConnectorRunCreated={handleConnectorRunCreated}
+                    className="h-9 rounded-full px-4 shadow-sm"
+                  />
+                ) : null}
+
                 <div className="lg:hidden">
                   <WorkbenchPanelDialog
                     open={scopeOpen}
@@ -699,6 +728,7 @@ export default function KnowledgePage() {
                     }
                   >
                     <KnowledgeScopePanel
+                      mode={scopeMode}
                       datasets={datasets}
                       datasetsLoading={datasetsLoading}
                       datasetScope={datasetScope}
@@ -736,11 +766,11 @@ export default function KnowledgePage() {
                         </IconButton>
                       }
                     >
-                      <KnowledgeInspector selectedDocs={selectedDocs} className="flex-1">
-                        {activeTab === 'retrieval' ? (
-                          <RetrievePreviewPanel selectedDatasetId={selectedDatasetId} />
-                        ) : null}
-                      </KnowledgeInspector>
+                      {activeTab === 'retrieval' ? (
+                        <KnowledgeRetrievalPanel selectedDatasetId={selectedDatasetId} compact />
+                      ) : (
+                        <KnowledgeInspector selectedDocs={selectedDocs} className="flex-1" />
+                      )}
                     </WorkbenchPanelDialog>
                   </div>
                 ) : null}
@@ -814,7 +844,7 @@ export default function KnowledgePage() {
               </div>
             </div>
           }
-          bodyClassName="pt-6 scroll-smooth"
+          bodyClassName="pt-4 scroll-smooth"
         >
           <div
             ref={mainPaneSentinelRef}
@@ -832,9 +862,11 @@ export default function KnowledgePage() {
                   padding="none"
                   className="overflow-hidden rounded-[28px] border-border/70 bg-card/95 shadow-soft"
                 >
-                  <div className="grid grid-cols-1 lg:grid-cols-[18.5rem_minmax(0,1fr)] xl:grid-cols-[18.5rem_minmax(0,1fr)_20rem]">
-                    <aside className="hidden border-r border-border/60 bg-muted/[0.14] lg:block">
-                      <KnowledgeScopePanel
+	                  <div className={documentsWorkbenchLayoutClassName}>
+                        {!desktopScopeCollapsed ? (
+	                    <aside className="hidden border-r border-border/60 bg-muted/[0.14] lg:block">
+	                      <KnowledgeScopePanel
+                        mode="documents"
                         surface="embedded"
                         datasets={datasets}
                         datasetsLoading={datasetsLoading}
@@ -851,12 +883,13 @@ export default function KnowledgePage() {
                         completedDocsValue={completedDocsValue}
                         processingDocsValue={processingDocsValue}
                         failedDocsValue={failedDocsValue}
-                        quarantinedDocsValue={quarantinedDocsValue}
-                        setDatasetScope={handleDatasetScopeChange}
-                      />
-                    </aside>
+	                        quarantinedDocsValue={quarantinedDocsValue}
+	                        setDatasetScope={handleDatasetScopeChange}
+	                      />
+	                    </aside>
+                        ) : null}
 
-                    <div className="min-w-0">
+	                    <div className="min-w-0 space-y-4">
                       <KnowledgeDocumentsPanel
                         embedded
                         isLoading={isLoading}
@@ -909,11 +942,23 @@ export default function KnowledgePage() {
                         deleteDocument={deleteDocument}
                         handleFileUpload={handleFileUpload}
                       />
+
+                      <KnowledgeConnectorRunsPanel
+                        selectedDatasetId={selectedDatasetId}
+                        connectorRuns={connectorRuns}
+                        connectorRunsLoading={connectorRunsLoading}
+                        connectorRunsUpdatedAt={connectorRunsUpdatedAt}
+                        onLoadConnectorRuns={loadConnectorRuns}
+                        expandedConnectorRunId={expandedConnectorRunId}
+                        onToggleExpandedConnectorRun={(runId) =>
+                          setExpandedConnectorRunId((prev) => (prev === runId ? null : runId))
+                        }
+                        onCancelConnectorRun={cancelConnectorRun}
+                        onResumeConnectorRun={resumeConnectorRun}
+                        onRetryFailedConnectorRun={retryFailedConnectorRun}
+                      />
                     </div>
 
-                    <aside className="hidden border-l border-border/60 bg-muted/[0.1] xl:block">
-                      <KnowledgeInspector embedded selectedDocs={selectedDocs} />
-                    </aside>
                   </div>
                 </Panel>
               </motion.div>
@@ -922,9 +967,11 @@ export default function KnowledgePage() {
           {/* 检索测试 */}
           {activeTab === 'retrieval' && (
             <Panel padding="none" className="overflow-hidden rounded-[28px] border-border/70 bg-card/95 shadow-soft">
-              <div className="grid grid-cols-1 lg:grid-cols-[18.5rem_minmax(0,1fr)] xl:grid-cols-[18.5rem_minmax(0,1fr)_20rem]">
-                <aside className="hidden border-r border-border/60 bg-muted/[0.14] lg:block">
-                  <KnowledgeScopePanel
+	              <div className={retrievalWorkbenchLayoutClassName}>
+                    {!desktopScopeCollapsed ? (
+	                <aside className="hidden border-r border-border/60 bg-muted/[0.14] lg:block">
+	                  <KnowledgeScopePanel
+                    mode="retrieval"
                     surface="embedded"
                     datasets={datasets}
                     datasetsLoading={datasetsLoading}
@@ -941,19 +988,18 @@ export default function KnowledgePage() {
                     completedDocsValue={completedDocsValue}
                     processingDocsValue={processingDocsValue}
                     failedDocsValue={failedDocsValue}
-                    quarantinedDocsValue={quarantinedDocsValue}
-                    setDatasetScope={handleDatasetScopeChange}
-                  />
-                </aside>
+	                    quarantinedDocsValue={quarantinedDocsValue}
+	                    setDatasetScope={handleDatasetScopeChange}
+	                  />
+	                </aside>
+                    ) : null}
 
-                <div className="min-w-0 px-4 py-5 md:px-5">
-                  <KnowledgeRetrievalPanel selectedDatasetId={selectedDatasetId} />
+	                <div className="min-w-0 px-4 py-4 md:px-5">
+                  <RetrievePreviewPanel selectedDatasetId={selectedDatasetId} className="h-full border-0 bg-transparent p-0 shadow-none" />
                 </div>
 
-                <aside className="hidden border-l border-border/60 bg-muted/[0.1] xl:block">
-                  <KnowledgeInspector embedded selectedDocs={selectedDocs}>
-                    <RetrievePreviewPanel selectedDatasetId={selectedDatasetId} />
-                  </KnowledgeInspector>
+                <aside className="hidden border-l border-border/60 bg-muted/[0.08] xl:block">
+                  <KnowledgeRetrievalPanel selectedDatasetId={selectedDatasetId} compact />
                 </aside>
               </div>
             </Panel>
@@ -961,10 +1007,12 @@ export default function KnowledgePage() {
 
           {/* 设置 */}
           {activeTab === 'settings' && (
-            <Panel padding="none" className="overflow-hidden rounded-[28px] border-border/70 bg-card/95 shadow-soft">
-              <div className="grid grid-cols-1 lg:grid-cols-[18.5rem_minmax(0,1fr)]">
-                <aside className="hidden border-r border-border/60 bg-muted/[0.14] lg:block">
-                  <KnowledgeScopePanel
+	            <Panel padding="none" className="overflow-hidden rounded-[28px] border-border/70 bg-card/95 shadow-soft">
+	              <div className={settingsWorkbenchLayoutClassName}>
+                    {!desktopScopeCollapsed ? (
+	                <aside className="hidden border-r border-border/60 bg-muted/[0.14] lg:block">
+	                  <KnowledgeScopePanel
+                    mode="settings"
                     surface="embedded"
                     datasets={datasets}
                     datasetsLoading={datasetsLoading}
@@ -981,26 +1029,14 @@ export default function KnowledgePage() {
                     completedDocsValue={completedDocsValue}
                     processingDocsValue={processingDocsValue}
                     failedDocsValue={failedDocsValue}
-                    quarantinedDocsValue={quarantinedDocsValue}
-                    setDatasetScope={handleDatasetScopeChange}
-                  />
-                </aside>
+	                    quarantinedDocsValue={quarantinedDocsValue}
+	                    setDatasetScope={handleDatasetScopeChange}
+	                  />
+	                </aside>
+                    ) : null}
 
-                <div className="min-w-0 px-4 py-5 md:px-5">
-                  <KnowledgeSettingsPanel
-                    selectedDatasetId={selectedDatasetId}
-                    connectorRuns={connectorRuns}
-                    connectorRunsLoading={connectorRunsLoading}
-                    connectorRunsUpdatedAt={connectorRunsUpdatedAt}
-                    onLoadConnectorRuns={loadConnectorRuns}
-                    expandedConnectorRunId={expandedConnectorRunId}
-                    onToggleExpandedConnectorRun={(runId) =>
-                      setExpandedConnectorRunId((prev) => (prev === runId ? null : runId))
-                    }
-                    onCancelConnectorRun={cancelConnectorRun}
-                    onResumeConnectorRun={resumeConnectorRun}
-                    onRetryFailedConnectorRun={retryFailedConnectorRun}
-                  />
+	                <div className="min-w-0">
+	                  <KnowledgeSettingsPanel selectedDatasetId={selectedDatasetId} />
                 </div>
               </div>
             </Panel>

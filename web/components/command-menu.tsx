@@ -193,6 +193,7 @@ export function CommandMenu() {
   const currentViewPrompt = React.useMemo(() => buildCurrentViewPrompt(pathname || '/', t), [pathname, t])
   const isSlashMode = query.trim().startsWith("/")
   const slashNeedle = query.trim().slice(1).toLowerCase()
+  const shouldShowShortcutReference = query.trim().length === 0
   const hasResumeTarget = Boolean(lastOpenedTarget?.documentId)
 
   const resumeLastDocumentContext = React.useCallback(() => {
@@ -698,35 +699,39 @@ export function CommandMenu() {
 
         <CommandSeparator />
 
-        <CommandGroup heading={t('groups.viewerShortcuts')}>
-          {viewerShortcutDocs.map((shortcut) => (
-            <CommandItem key={shortcut.key} value={`viewer-shortcut ${shortcut.key} ${shortcut.label}`} disabled>
-              <FileText className="mr-2 size-4" />
-              <div className="flex min-w-0 flex-1 flex-col">
-                <span>{shortcut.label}</span>
-                <span className="truncate text-xs text-muted-foreground">{shortcut.description}</span>
-              </div>
-              <CommandShortcut>{shortcut.key}</CommandShortcut>
-            </CommandItem>
-          ))}
-        </CommandGroup>
+        {shouldShowShortcutReference ? (
+          <>
+            <CommandGroup heading={t('groups.viewerShortcuts')}>
+              {viewerShortcutDocs.map((shortcut) => (
+                <CommandItem key={shortcut.key} value={`viewer-shortcut ${shortcut.key} ${shortcut.label}`} disabled>
+                  <FileText className="mr-2 size-4" />
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <span>{shortcut.label}</span>
+                    <span className="truncate text-xs text-muted-foreground">{shortcut.description}</span>
+                  </div>
+                  <CommandShortcut>{shortcut.key}</CommandShortcut>
+                </CommandItem>
+              ))}
+            </CommandGroup>
 
-        <CommandSeparator />
+            <CommandSeparator />
 
-        <CommandGroup heading={t('groups.shortcutMap')}>
-          {shortcutGuideItems.map((item) => (
-            <CommandItem key={`${item.shortcut}:${item.label}`} disabled value={`${item.shortcut} ${item.label}`}>
-              <Keyboard className="mr-2 size-4" />
-              <div className="flex min-w-0 flex-1 flex-col">
-                <span>{item.label}</span>
-                <span className="truncate text-xs text-muted-foreground">{item.description}</span>
-              </div>
-              <CommandShortcut>{item.shortcut}</CommandShortcut>
-            </CommandItem>
-          ))}
-        </CommandGroup>
+            <CommandGroup heading={t('groups.shortcutMap')}>
+              {shortcutGuideItems.map((item) => (
+                <CommandItem key={`${item.shortcut}:${item.label}`} disabled value={`${item.shortcut} ${item.label}`}>
+                  <Keyboard className="mr-2 size-4" />
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <span>{item.label}</span>
+                    <span className="truncate text-xs text-muted-foreground">{item.description}</span>
+                  </div>
+                  <CommandShortcut>{item.shortcut}</CommandShortcut>
+                </CommandItem>
+              ))}
+            </CommandGroup>
 
-        <CommandSeparator />
+            <CommandSeparator />
+          </>
+        ) : null}
 
         <CommandGroup heading={t('groups.navigation')}>
           {navigationItems.map((item) => (

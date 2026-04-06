@@ -15,6 +15,7 @@ import { Panel } from '@/components/ui/panel'
 import { StatusBadge, type StatusBadgeStatus } from '@/components/ui/status-badge'
 import { DocumentTags } from '@/components/documents/document-tags'
 import { DocumentDetailDialog } from '@/components/document-detail-dialog'
+import { KnowledgeInspector } from '@/components/knowledge/knowledge-inspector'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   DropdownMenu,
@@ -31,6 +32,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Link } from '@/i18n/navigation'
 import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 import { formatApiError } from '@/lib/api-errors'
@@ -177,6 +179,7 @@ export function KnowledgeDocumentsPanel({
   handleFileUpload,
 }: Readonly<KnowledgeDocumentsPanelProps>) {
   const t = useTranslations('KnowledgeDocumentsPanel')
+  const [activeDrawerDoc, setActiveDrawerDoc] = useState<Document | null>(null)
   const [singleDeleteDoc, setSingleDeleteDoc] = useState<Document | null>(null)
   const [singleDeleteWorking, setSingleDeleteWorking] = useState(false)
   const [singleDeleteError, setSingleDeleteError] = useState<string | null>(null)
@@ -201,10 +204,8 @@ export function KnowledgeDocumentsPanel({
   const docsTablePaddingBottom = docsTableVirtualRows.length
     ? docsTableVirtualizer.getTotalSize() - docsTableVirtualRows[docsTableVirtualRows.length - 1].end
     : 0
-  const controlsClassName = embedded
-    ? 'border-b border-border/60 bg-background/65 px-4 py-4 backdrop-blur-sm md:px-5'
-    : 'mb-4'
-  const sectionInsetClassName = embedded ? 'px-4 py-5 md:px-5' : ''
+  const controlsClassName = embedded ? 'border-b border-border/60 bg-background/65 px-4 py-3 backdrop-blur-sm' : 'mb-4'
+  const sectionInsetClassName = embedded ? 'px-4 py-4' : ''
   const sortOptions = [
     { value: 'created_at:desc', label: t('sort.createdDesc') },
     { value: 'created_at:asc', label: t('sort.createdAsc') },
@@ -283,6 +284,16 @@ export function KnowledgeDocumentsPanel({
     [requestSingleDelete],
   )
 
+  const buildOpenInspectorHandler = useCallback(
+    (doc: Document) => () => setActiveDrawerDoc(doc),
+    [],
+  )
+
+  const handleDrawerOpenChange = useCallback((open: boolean) => {
+    if (open) return
+    setActiveDrawerDoc(null)
+  }, [])
+
   const renderGridDocCard = (doc: Document) => {
     const badge = getStatusBadge(doc.status, t)
     return (
@@ -350,6 +361,38 @@ export function KnowledgeDocumentsPanel({
         </AlertDialogContent>
       </AlertDialog>
 
+      <Dialog open={Boolean(activeDrawerDoc)} onOpenChange={handleDrawerOpenChange}>
+        <DialogContent className="left-auto right-0 top-0 h-dvh w-[min(480px,100vw)] max-w-[480px] translate-x-0 translate-y-0 rounded-none p-0 overflow-hidden">
+          <DialogHeader className="sr-only">
+            <DialogTitle>{activeDrawerDoc?.filename || t('actions.openInspector')}</DialogTitle>
+            <DialogDescription>{activeDrawerDoc?.id || ''}</DialogDescription>
+          </DialogHeader>
+
+          <div className="flex h-full min-h-0 flex-col bg-background">
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              <KnowledgeInspector embedded selectedDocs={activeDrawerDoc ? [activeDrawerDoc] : []} />
+            </div>
+            {activeDrawerDoc ? (
+              <div className="border-t border-border/60 px-4 py-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <DocumentDetailDialog
+                    document={activeDrawerDoc}
+                    trigger={
+                      <Button type="button" size="sm" variant="outline" className="rounded-full">
+                        {t('actions.previewContent')}
+                      </Button>
+                    }
+                  />
+                  <Button asChild size="sm" variant="outline" className="rounded-full">
+                    <Link href={`/knowledge/${activeDrawerDoc.id}/health`}>{t('actions.healthCard')}</Link>
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {(() => {
     if (isLoading && documents.length === 0) {
         return (<div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
@@ -401,16 +444,16 @@ export function KnowledgeDocumentsPanel({
                 else {
                     return (<>
           <div className={controlsClassName}>
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-              <div className="flex w-full flex-col gap-3 sm:flex-row lg:max-w-2xl">
-              <SearchInput value={docFilter} onValueChange={setDocFilter} placeholder={t('search.placeholder')} containerClassName="w-full" inputClassName="h-9 rounded-lg border-border/60 bg-background placeholder:text-muted-foreground/60 focus:border-primary/40"/>
+            <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center">
+              <div className="flex w-full flex-col gap-2.5 sm:flex-row lg:max-w-2xl">
+              <SearchInput value={docFilter} onValueChange={setDocFilter} placeholder={t('search.placeholder')} containerClassName="w-full" inputClassName="h-8 rounded-lg border-border/60 bg-background placeholder:text-muted-foreground/60 focus:border-primary/40"/>
 
                 <Select value={`${sortKey}:${sortDir}`} onValueChange={(value) => {
                   const [k, d] = String(value || '').split(':')
                   if (k === 'created_at' || k === 'filename' || k === 'file_size') setSortKey(k)
                   if (d === 'asc' || d === 'desc') setSortDir(d)
                 }}>
-                  <SelectTrigger className="h-9 w-full rounded-lg border-border/60 bg-background sm:w-[200px]" aria-label={t("sort.ariaLabel")}>
+                  <SelectTrigger className="h-8 w-full rounded-lg border-border/60 bg-background sm:w-[190px]" aria-label={t("sort.ariaLabel")}>
                     <SelectValue placeholder={t("sort.placeholder")} />
                   </SelectTrigger>
                   <SelectContent>
@@ -429,7 +472,7 @@ export function KnowledgeDocumentsPanel({
 
           {selectedDocIds.length > 0 ? (<div className={cn(
               'flex flex-col gap-3 border border-border/60 bg-muted/20 px-3 py-2 md:flex-row md:items-center md:justify-between',
-              embedded ? 'mx-4 my-4 rounded-2xl md:mx-5' : 'mb-4 rounded-lg'
+              embedded ? 'mx-4 my-3 rounded-xl' : 'mb-4 rounded-lg'
             )}>
               <div className="text-sm text-foreground">
                 {t('selection.selectedCount', { count: selectedDocIds.length })}
@@ -456,7 +499,7 @@ export function KnowledgeDocumentsPanel({
                 <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => detachPromise(runBatchLifecycle('unarchive'))} disabled={batchDeleting || batchLifecycleWorking || !anySelectedArchived}>
                   {t('actions.unarchive')}
                 </Button>
-                <Button type="button" variant="destructive" size="sm" className="rounded-xl" onClick={() => setBatchDeleteOpen(true)} disabled={batchDeleting || batchLifecycleWorking}>
+                <Button type="button" variant="outline" size="sm" className="rounded-xl border-destructive/25 bg-destructive/5 text-destructive hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive" onClick={() => setBatchDeleteOpen(true)} disabled={batchDeleting || batchLifecycleWorking}>
                   {t('actions.batchDelete')}
                 </Button>
               </div>
@@ -519,21 +562,32 @@ export function KnowledgeDocumentsPanel({
             </div>);
                                 }
                                 else {
-                                    return (<div className={cn(embedded ? 'overflow-hidden border-t border-border/60 bg-background/20' : 'rounded-xl overflow-hidden')}>
-	              <table aria-label={t('table.ariaLabel')} className="w-full text-sm text-left">
-	                <thead className="text-xs text-muted-foreground uppercase border-b border-border/60">
+                                    return (<div className={cn(embedded ? 'overflow-hidden border-t border-border/60 bg-background/15' : 'rounded-xl overflow-hidden')}>
+	              <table aria-label={t('table.ariaLabel')} className="w-full table-fixed text-sm text-left">
+                  <colgroup>
+                    <col className="w-10" />
+                    <col />
+                    {showDatasetColumn ? <col className="w-[11rem]" /> : null}
+                    <col className="w-[7.5rem]" />
+                    <col className="w-[7rem]" />
+                    <col className="w-[5rem]" />
+                    <col className="w-[7rem]" />
+                    <col className="w-[9rem]" />
+                    <col className="w-[5.5rem]" />
+                  </colgroup>
+	                <thead className="border-b border-border/60 text-[11px] uppercase text-muted-foreground">
 	                  <tr>
-	                    <th className="sticky top-0 z-10 bg-card px-3 py-3 font-medium w-10">
+	                    <th className="sticky top-0 z-10 bg-card/95 px-3 py-2.5 font-medium w-10">
 	                      <input type="checkbox" className="h-4 w-4 rounded border-border/60 text-primary focus-ring" checked={allVisibleSelected} onChange={toggleSelectAllVisible} aria-label={t('table.selectAllVisible')}/>
 	                    </th>
-	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">{t('table.columns.name')}</th>
-	                    {showDatasetColumn ? (<th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">{t("table.columns.dataset")}</th>) : null}
-	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">{t('table.columns.tags')}</th>
-	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">{t('table.columns.status')}</th>
-	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium text-right">{t('table.columns.chunks')}</th>
-	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium text-right">{t('table.columns.size')}</th>
-	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">{t('table.columns.uploadedAt')}</th>
-	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium text-right">{t('table.columns.actions')}</th>
+	                    <th className="sticky top-0 z-10 bg-card/95 px-3 py-2.5 font-medium">{t('table.columns.name')}</th>
+	                    {showDatasetColumn ? (<th className="sticky top-0 z-10 bg-card/95 px-3 py-2.5 font-medium">{t("table.columns.dataset")}</th>) : null}
+	                    <th className="sticky top-0 z-10 bg-card/95 px-3 py-2.5 font-medium">{t('table.columns.tags')}</th>
+	                    <th className="sticky top-0 z-10 bg-card/95 px-3 py-2.5 font-medium">{t('table.columns.status')}</th>
+	                    <th className="sticky top-0 z-10 bg-card/95 px-3 py-2.5 font-medium text-right tabular-nums">{t('table.columns.chunks')}</th>
+	                    <th className="sticky top-0 z-10 bg-card/95 px-3 py-2.5 font-medium text-right tabular-nums">{t('table.columns.size')}</th>
+	                    <th className="sticky top-0 z-10 bg-card/95 px-3 py-2.5 font-medium">{t('table.columns.uploadedAt')}</th>
+	                    <th className="sticky top-0 z-10 bg-card/95 px-3 py-2.5 font-medium text-right">{t('table.columns.actions')}</th>
 	                  </tr>
 	                </thead>
 	                <tbody className="divide-y divide-border/60">
@@ -554,19 +608,24 @@ export function KnowledgeDocumentsPanel({
 	                                            const parseScore = typeof parseScoreRaw === 'number' && Number.isFinite(parseScoreRaw) ? parseScoreRaw : null;
 	                                            const parseLow = parseScore !== null && parseScore < 0.35;
 	                                            return (<tr key={virtualRow.key} data-index={virtualRow.index} ref={docsTableVirtualizer.measureElement} className="group hover:bg-muted/20 transition-colors">
-		                        <td className="px-3 py-3 align-middle">
+		                        <td className="px-3 py-2.5 align-middle">
 		                          <input type="checkbox" className="h-4 w-4 rounded border-border/60 text-primary focus-ring" checked={selectedSet.has(doc.id)} onChange={buildToggleDocSelectionHandler(doc.id)} aria-label={t('table.selectDocument', { filename: doc.filename })}/>
 		                        </td>
-	                        <td className="px-4 py-3 font-medium text-foreground">
-	                          <div className="flex items-start gap-3">
+	                        <td className="px-3 py-2.5 font-medium text-foreground">
+	                          <div className="flex items-start gap-2.5">
                             <div className={cn('mt-0.5 p-1.5 rounded-md border', fileType.bg, fileType.border, fileType.color)}>
                               <TypeIcon className="w-4 h-4"/>
                             </div>
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">
-                                <span className="truncate max-w-[260px]" title={doc.filename}>
+                                <button
+                                  type="button"
+                                  className="max-w-full truncate text-left transition-colors hover:text-primary"
+                                  onClick={buildOpenInspectorHandler(doc)}
+                                  title={doc.filename}
+                                >
                                   {doc.filename}
-                                </span>
+                                </button>
 	                                <span className={cn('inline-flex items-center rounded-full border px-1.5 py-0 text-[10px] font-semibold uppercase ', fileType.bg, fileType.border, fileType.color)} title={fileType.label}>
 	                                  {fileType.label}
 	                                </span>
@@ -579,40 +638,46 @@ export function KnowledgeDocumentsPanel({
 	                                  </span>
 	                                ) : null}
 	                              </div>
-	                              {sourcePath ? (<button type="button" className={cn('mt-0.5 block max-w-[420px] truncate text-[11px] font-mono tabular-nums text-muted-foreground hover:text-foreground underline underline-offset-4 transition-opacity', contextualRevealClassName)} onClick={buildCopyHandler(sourcePath, t('toasts.copySourcePath'))} title={t('row.copySourcePathTitle')}>
+	                              {sourcePath ? (<button type="button" className={cn('mt-0.5 block max-w-[380px] truncate text-[11px] font-mono tabular-nums text-muted-foreground hover:text-foreground underline underline-offset-4 transition-opacity', contextualRevealClassName)} onClick={buildCopyHandler(sourcePath, t('toasts.copySourcePath'))} title={t('row.copySourcePathTitle')}>
 	                                  {sourcePath}
 	                                </button>) : null}
 	                            </div>
 	                          </div>
 	                        </td>
-	                        {showDatasetColumn ? (<td className="px-4 py-3 align-middle">
-	                            {doc.dataset_id ? (<span className="text-xs text-muted-foreground truncate block max-w-[180px]" title={doc.dataset_id}>
+	                        {showDatasetColumn ? (<td className="px-3 py-2.5 align-middle">
+	                            {doc.dataset_id ? (<span className="block truncate text-xs text-muted-foreground" title={doc.dataset_id}>
 	                                {datasetLabelById?.[doc.dataset_id] ?? doc.dataset_id}
 	                              </span>) : (<span className="text-xs text-muted-foreground">{t('table.emptyValue')}</span>)}
 	                          </td>) : null}
-	                        <td className="px-4 py-3 align-middle">
+	                        <td className="px-3 py-2.5 align-middle">
 	                          {userTags.length ? (<DocumentTags tags={userTags} max={3} dense/>) : (<span className="text-xs text-muted-foreground">{t('table.emptyValue')}</span>)}
 	                        </td>
-	                        <td className="px-4 py-3 align-middle">
+	                        <td className="px-3 py-2.5 align-middle">
 	                          <StatusBadge status={badge.status} label={badge.label} dense/>
 	                        </td>
-	                        <td className="px-4 py-3 align-middle text-right text-muted-foreground font-mono tabular-nums text-xs">
+	                        <td className="px-3 py-2.5 align-middle text-right text-xs font-mono tabular-nums text-muted-foreground">
 	                          {doc.chunk_count ?? '-'}
 	                        </td>
-	                        <td className="px-4 py-3 align-middle text-right text-muted-foreground font-mono tabular-nums text-xs">
+	                        <td className="px-3 py-2.5 align-middle text-right text-xs font-mono tabular-nums text-muted-foreground">
 	                          {formatFileSize(doc.file_size)}
 	                        </td>
-	                        <td className="px-4 py-3 align-middle text-muted-foreground font-mono tabular-nums text-xs">
+	                        <td className="px-3 py-2.5 align-middle text-xs font-mono tabular-nums text-muted-foreground">
 	                          {formatDate(doc.created_at)}
 	                        </td>
-	                        <td className="px-4 py-3 align-middle text-right flex items-center justify-end gap-1">
-	                          <DocumentDetailDialog document={doc} trigger={<IconButton label={t('actions.previewContent')} variant="ghost" className={cn('h-8 w-8 text-muted-foreground hover:text-primary hover:bg-muted transition-opacity', contextualRevealClassName)}>
-	                                <Eye className="h-4 w-4"/>
-	                              </IconButton>}/>
+	                        <td className="px-3 py-2.5 align-middle text-right">
+                            <div className="flex items-center justify-end gap-1">
+	                          <IconButton
+                              label={t('actions.openInspector')}
+                              variant="ghost"
+                              className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-muted"
+                              onClick={buildOpenInspectorHandler(doc)}
+                            >
+                              <Eye className="h-4 w-4"/>
+                            </IconButton>
 
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-	                              <IconButton label={t('actions.moreActions')} variant="ghost" className={cn('h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted transition-opacity', contextualRevealClassName)}>
+	                              <IconButton label={t('actions.moreActions')} variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted">
 	                                <MoreVertical className="h-4 w-4"/>
 	                              </IconButton>
 	                            </DropdownMenuTrigger>
@@ -639,6 +704,7 @@ export function KnowledgeDocumentsPanel({
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
+                            </div>
                         </td>
                       </tr>);
                                         })}
