@@ -1458,16 +1458,16 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
             <PipelineOptionsPanel compact />
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-2 rounded-xl border border-border/50 bg-gradient-to-b from-background/95 to-muted/20 p-1">
             <Button
               onClick={() => runPreview()}
               disabled={isLoading}
-              className="h-10 rounded-lg border border-primary/20 shadow-sm"
+              className="h-9 rounded-lg border border-sky-200/70 bg-sky-50/90 text-[10.5px] font-medium text-sky-800 shadow-none transition-colors hover:bg-sky-100/90 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-100"
             >
               {isLoading ? (
                 <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none mr-2" />
               ) : (
-                <Sparkles className="w-4 h-4 mr-2" />
+                <Sparkles className="w-4 h-4 mr-2 text-sky-700 dark:text-sky-200" />
               )}
               {isLoading ? t('sidebar.previewActions.loading') : t('sidebar.previewActions.run')}
             </Button>
@@ -1480,7 +1480,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 }
                 runPreview({ force: true })
               }}
-              className="h-10 rounded-lg"
+              className="h-9 rounded-lg border-border/60 bg-background/80 text-[10.5px] font-medium text-foreground/78 shadow-none transition-colors hover:bg-muted/55"
             >
               {(() => {
     if (isLoading) {
@@ -1506,9 +1506,9 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 <ChunkAutoTuneDialog />
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
-                  className="h-6 px-2 text-[10px] text-muted-foreground"
+                  className="h-6 rounded-md border-border/50 bg-background/75 px-2 text-[10px] font-medium text-muted-foreground shadow-none hover:bg-muted/45"
                   onClick={() => setShowAdvancedStats((v) => !v)}
                 >
                   {showAdvancedStats ? t('sidebar.analysis.collapse') : t('sidebar.analysis.expand')}
@@ -1517,47 +1517,47 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
             </div>
 
             <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-lg border border-border/60 bg-card p-2 shadow-sm">
-                <div className="text-[10px] font-medium text-muted-foreground/80">{t('sidebar.stats.totalChunks')}</div>
-                <div className="mt-0.5 text-lg font-semibold tabular-nums text-foreground/92">{previewData.total_chunks}</div>
+              <div className="rounded-xl border border-border/50 bg-gradient-to-b from-background to-muted/20 p-2.5 shadow-none">
+                <div className="text-[9.5px] font-medium tracking-[0.01em] text-muted-foreground/72">{t('sidebar.stats.totalChunks')}</div>
+                <div className="mt-1 text-[18px] font-medium leading-none tracking-[-0.02em] tabular-nums text-foreground/90">{previewData.total_chunks}</div>
               </div>
-              <div className="rounded-lg border border-border/60 bg-card p-2 shadow-sm">
-                <div className="text-[10px] font-medium text-muted-foreground/80">{averageStatLabel}</div>
-                <div className="mt-0.5 text-lg font-semibold tabular-nums text-foreground/92">
+              <div className="rounded-xl border border-border/50 bg-gradient-to-b from-background to-muted/20 p-2.5 shadow-none">
+                <div className="text-[9.5px] font-medium tracking-[0.01em] text-muted-foreground/72">{averageStatLabel}</div>
+                <div className="mt-1 text-[18px] font-medium leading-none tracking-[-0.02em] tabular-nums text-foreground/90">
                   {previewData?.stats?.avg ?? chunkStats?.avg ?? '-'}
                   {isTokenStrategy ? (
-                    <span className="ml-1 text-[10px] font-mono text-muted-foreground">{statsUnitLabel}</span>
+                    <span className="ml-1 text-[9px] font-mono text-muted-foreground/75">{statsUnitLabel}</span>
                   ) : null}
                 </div>
               </div>
-              <div className="rounded-lg border border-border/60 bg-card p-2 shadow-sm">
-                <div className="text-[10px] font-medium text-muted-foreground/80">{p95StatLabel}</div>
-                <div className="mt-0.5 text-lg font-semibold tabular-nums text-foreground/92">
+              <div className="rounded-xl border border-border/50 bg-gradient-to-b from-background to-muted/20 p-2.5 shadow-none">
+                <div className="text-[9.5px] font-medium tracking-[0.01em] text-muted-foreground/72">{p95StatLabel}</div>
+                <div className="mt-1 text-[18px] font-medium leading-none tracking-[-0.02em] tabular-nums text-foreground/90">
                   {chunkStats?.p95 ?? chunkStats?.p90 ?? previewData?.stats?.p90 ?? '-'}
                   {isTokenStrategy ? (
-                    <span className="ml-1 text-[10px] font-mono text-muted-foreground">{statsUnitLabel}</span>
+                    <span className="ml-1 text-[9px] font-mono text-muted-foreground/75">{statsUnitLabel}</span>
                   ) : null}
                 </div>
               </div>
-              <div className="rounded-lg border border-border/60 bg-card p-2 shadow-sm" title={t('sidebar.stats.coverage')}>
-                <div className="text-[10px] font-medium text-muted-foreground/80">{t('sidebar.stats.coverage')}</div>
-                <div className="mt-0.5 text-lg font-semibold tabular-nums text-foreground/92">
+              <div className="rounded-xl border border-border/50 bg-gradient-to-b from-background to-muted/20 p-2.5 shadow-none" title={t('sidebar.stats.coverage')}>
+                <div className="text-[9.5px] font-medium tracking-[0.01em] text-muted-foreground/72">{t('sidebar.stats.coverage')}</div>
+                <div className="mt-1 text-[18px] font-medium leading-none tracking-[-0.02em] tabular-nums text-foreground/90">
                   {coverageSignals?.coveragePct == null ? '-' : `${coverageSignals.coveragePct}%`}
                 </div>
               </div>
-              <div className="rounded-lg border border-border/60 bg-card p-2 shadow-sm" title={t('sidebar.stats.overlapWaste')}>
-                <div className="text-[10px] font-medium text-muted-foreground/80">{t('sidebar.stats.overlapWaste')}</div>
-                <div className="mt-0.5 text-lg font-semibold tabular-nums text-foreground/92">
+              <div className="rounded-xl border border-border/50 bg-gradient-to-b from-background to-muted/20 p-2.5 shadow-none" title={t('sidebar.stats.overlapWaste')}>
+                <div className="text-[9.5px] font-medium tracking-[0.01em] text-muted-foreground/72">{t('sidebar.stats.overlapWaste')}</div>
+                <div className="mt-1 text-[18px] font-medium leading-none tracking-[-0.02em] tabular-nums text-foreground/90">
                   {coverageSignals?.overlapWastePct == null ? '-' : `${coverageSignals.overlapWastePct}%`}
                 </div>
               </div>
-              <div className="rounded-lg border border-border/60 bg-card p-2 shadow-sm" title={t('sidebar.stats.gaps')}>
-                <div className="text-[10px] font-medium text-muted-foreground/80">{t('sidebar.stats.gaps')}</div>
-                <div className="mt-0.5 text-lg font-semibold tabular-nums text-foreground/92">
+              <div className="rounded-xl border border-border/50 bg-gradient-to-b from-background to-muted/20 p-2.5 shadow-none" title={t('sidebar.stats.gaps')}>
+                <div className="text-[9.5px] font-medium tracking-[0.01em] text-muted-foreground/72">{t('sidebar.stats.gaps')}</div>
+                <div className="mt-1 text-[18px] font-medium leading-none tracking-[-0.02em] tabular-nums text-foreground/90">
                   {coverageSignals?.gapCount == null ? '-' : String(coverageSignals.gapCount)}
                 </div>
                 {coverageSignals?.largestGap == null ? null : (
-                  <div className="mt-1 text-[9px] text-muted-foreground font-mono">
+                  <div className="mt-1 text-[8.5px] text-muted-foreground/72 font-mono">
                     {t('sidebar.stats.largestGap', { value: coverageSignals.largestGap })}
                   </div>
                 )}
