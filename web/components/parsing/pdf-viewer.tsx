@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { AlertCircle, Loader2, RotateCcw } from 'lucide-react'
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist'
 import { ParsingBlock } from '@/lib/parsing-positions'
+import type { ParsingEditFocusHint } from '@/lib/parsing-edit-focus'
 import { classifyParsingBlock } from '@/lib/parsing-layout'
 import { toPrimitiveString } from '@/lib/primitive-text'
 import { Button } from '@/components/ui/button'
@@ -33,7 +34,7 @@ interface PdfViewerProps {
   hoveredBlockIds?: string[] | null
   showAllBoxes?: boolean
   onHoverBlockId?: (blockId: string | null) => void
-  onClickBlockId?: (blockId: string) => void
+  onClickBlockId?: (blockId: string, hint?: ParsingEditFocusHint) => void
 }
 
 type IdleCallbackHandle = number
@@ -1101,9 +1102,9 @@ export function PdfViewer({
   )
 
   const handleClickBlock = useCallback(
-    (blockId: string) => {
+    (blockId: string, hint?: ParsingEditFocusHint) => {
       if (!onClickBlockId) return
-      onClickBlockId(blockId)
+      onClickBlockId(blockId, hint)
     },
     [onClickBlockId]
   )

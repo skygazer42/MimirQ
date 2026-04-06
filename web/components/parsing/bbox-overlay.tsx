@@ -6,6 +6,7 @@
 'use client'
 
 import { getParsingLayoutMeta, type ParsingLayoutKind } from '@/lib/parsing-layout'
+import type { ParsingEditFocusHint } from '@/lib/parsing-edit-focus'
 import { computePdfOverlayRect, detectPdfBboxCoordinateSpace } from '@/lib/pdf-bbox'
 import { cn } from '@/lib/utils'
 import type { ParsingPosition } from '@/lib/parsing-positions'
@@ -25,7 +26,7 @@ export function BboxOverlay(props: Readonly<{
   activeIds: Set<string>
   hoveredIds: Set<string>
   onHoverId?: (id: string | null) => void
-  onClickId?: (id: string) => void
+  onClickId?: (id: string, hint?: ParsingEditFocusHint) => void
 }>) {
   const { items, scale, pageBaseWidth, pageBaseHeight, showAll, activeIds, hoveredIds, onHoverId, onClickId } = props
   const coordinateSpace = detectPdfBboxCoordinateSpace({
@@ -66,7 +67,15 @@ export function BboxOverlay(props: Readonly<{
             style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }}
             onMouseEnter={() => onHoverId?.(item.id)}
             onMouseLeave={() => onHoverId?.(null)}
-            onClick={() => onClickId?.(item.id)}
+            onClick={(event) => {
+              const bounds = event.currentTarget.getBoundingClientRect()
+              const width = Math.max(bounds.width, 1)
+              const height = Math.max(bounds.height, 1)
+              onClickId?.(item.id, {
+                xRatio: Math.max(0, Math.min(1, (event.clientX - bounds.left) / width)),
+                yRatio: Math.max(0, Math.min(1, (event.clientY - bounds.top) / height)),
+              })
+            }}
           />
         )
       })}

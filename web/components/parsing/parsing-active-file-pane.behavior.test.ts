@@ -478,9 +478,7 @@ describe('ParsingActiveFilePane lazy compare interactions', () => {
       const textarea = view.container.querySelector('textarea')
       expect(textarea).not.toBeNull()
       expect((textarea as HTMLTextAreaElement).selectionStart).toBe(markdown.indexOf('Second paragraph.'))
-      expect((textarea as HTMLTextAreaElement).selectionEnd).toBe(
-        markdown.indexOf('Second paragraph.') + 'Second paragraph.'.length
-      )
+      expect((textarea as HTMLTextAreaElement).selectionEnd).toBe(markdown.indexOf('Second paragraph.'))
     })
 
     view.unmount()

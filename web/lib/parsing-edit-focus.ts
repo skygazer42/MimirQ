@@ -5,6 +5,11 @@ export interface ParsingEditSelection {
   end: number
 }
 
+export interface ParsingEditFocusHint {
+  xRatio: number
+  yRatio: number
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
@@ -36,10 +41,65 @@ function findTextRange(markdown: string, text: string, fromIndex: number): Parsi
   }
 }
 
+function clampRatio(value: number): number {
+  if (!Number.isFinite(value)) return 0
+  return Math.max(0, Math.min(1, value))
+}
+
+function buildCaretBoundaries(text: string): number[] {
+  const boundaries = new Set<number>([0, text.length])
+  for (let index = 1; index < text.length; index += 1) {
+    const prev = text[index - 1]
+    const current = text[index]
+    if (/\s/.test(prev)) {
+      boundaries.add(index)
+      continue
+    }
+    if (/[.,;:!?()[\]{}\-–—/\\]/.test(prev) || /[.,;:!?()[\]{}\-–—/\\]/.test(current)) {
+      boundaries.add(index)
+    }
+  }
+  return Array.from(boundaries).sort((left, right) => left - right)
+}
+
+function estimateCaretFromHint(text: string, hint?: ParsingEditFocusHint | null): number {
+  if (!text) return 0
+  if (!hint) return 0
+
+  const normalizedY = clampRatio(hint.yRatio)
+  const normalizedX = clampRatio(hint.xRatio)
+  const lines = text.split(/\r?\n/)
+
+  if (lines.length > 1) {
+    const targetLineIndex = Math.min(lines.length - 1, Math.floor(normalizedY * lines.length))
+    let offset = 0
+    for (let lineIndex = 0; lineIndex < targetLineIndex; lineIndex += 1) {
+      offset += lines[lineIndex].length + 1
+    }
+    const activeLine = lines[targetLineIndex] || ''
+    return Math.min(text.length, offset + Math.floor(activeLine.length * normalizedX))
+  }
+
+  const boundaries = buildCaretBoundaries(text)
+  const blendedRatio = clampRatio(normalizedY * 0.8 + normalizedX * 0.2)
+  const target = Math.round(text.length * blendedRatio)
+  let best = boundaries[0] ?? 0
+  let bestDistance = Math.abs(best - target)
+  for (const candidate of boundaries) {
+    const distance = Math.abs(candidate - target)
+    if (distance < bestDistance) {
+      best = candidate
+      bestDistance = distance
+    }
+  }
+  return best
+}
+
 export function findEditSelectionForActiveParsingEntry(
   markdown: string,
   entries: ParsingLayoutEntry[],
-  activeEntryId: string | null
+  activeEntryId: string | null,
+  hint?: ParsingEditFocusHint | null
 ): ParsingEditSelection | null {
   if (!markdown || !entries.length || !activeEntryId) return null
 
@@ -52,7 +112,13 @@ export function findEditSelectionForActiveParsingEntry(
     if (!range) continue
 
     if (entry.id === activeEntryId) {
+      const localCaret = estimateCaretFromHint(markdown.slice(range.start, range.end), hint)
       return range
+        ? {
+            start: range.start + localCaret,
+            end: range.start + localCaret,
+          }
+        : null
     }
 
     cursor = Math.max(cursor, range.end)

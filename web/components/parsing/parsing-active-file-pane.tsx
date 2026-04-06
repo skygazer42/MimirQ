@@ -37,7 +37,7 @@ import {
   getParsingLayoutMeta,
   type ParsingLayoutKind,
 } from '@/lib/parsing-layout'
-import { findEditSelectionForActiveParsingEntry } from '@/lib/parsing-edit-focus'
+import { findEditSelectionForActiveParsingEntry, type ParsingEditFocusHint } from '@/lib/parsing-edit-focus'
 import { cn } from '@/lib/utils'
 import { getParserLabel } from '@/lib/parser-options'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
@@ -189,6 +189,10 @@ export function ParsingActiveFilePane({
   onHoveredBlockIdChange,
 }: Readonly<ParsingActiveFilePaneProps>) {
   const [compareOpen, setCompareOpen] = useState(false)
+  const [activePdfEditHint, setActivePdfEditHint] = useState<{
+    blockId: string
+    hint: ParsingEditFocusHint
+  } | null>(null)
   const editorRef = useRef<HTMLTextAreaElement | null>(null)
   const didInitializeEditSelectionRef = useRef(false)
   const pdfViewerKey = `${activeFile.id}:${activeFile.activeRunId || activeRun?.id || 'default'}:${pdfPreviewResetToken}`
@@ -215,9 +219,25 @@ export function ParsingActiveFilePane({
     return next
   }, [layoutEntries])
   const activeEditSelection = useMemo(
-    () => findEditSelectionForActiveParsingEntry(editedContent || activeMarkdown, layoutEntries, activeBlockId),
-    [activeBlockId, activeMarkdown, editedContent, layoutEntries]
+    () =>
+      findEditSelectionForActiveParsingEntry(
+        editedContent || activeMarkdown,
+        layoutEntries,
+        activeBlockId,
+        activePdfEditHint?.blockId === activeBlockId ? activePdfEditHint.hint : null
+      ),
+    [activeBlockId, activeMarkdown, activePdfEditHint, editedContent, layoutEntries]
   )
+
+  const handleSelectPdfBlock = (blockId: string, hint?: ParsingEditFocusHint) => {
+    setActivePdfEditHint(hint ? { blockId, hint } : null)
+    onActiveBlockIdChange(blockId)
+  }
+
+  const handleSelectReviewBlock = (blockId: string) => {
+    setActivePdfEditHint(null)
+    onActiveBlockIdChange(blockId)
+  }
 
   useEffect(() => {
     if (!isEditing) {
@@ -231,10 +251,9 @@ export function ParsingActiveFilePane({
 
     didInitializeEditSelectionRef.current = true
     const start = activeEditSelection?.start ?? 0
-    const end = activeEditSelection?.end ?? start
     const rafId = globalThis.window.requestAnimationFrame(() => {
       textarea.focus()
-      textarea.setSelectionRange(start, end)
+      textarea.setSelectionRange(start, start)
     })
 
     return () => {
@@ -666,7 +685,7 @@ export function ParsingActiveFilePane({
                           activeBlockIds={activeBlockId ? [activeBlockId] : []}
                           hoveredBlockIds={hoveredBlockId ? [hoveredBlockId] : []}
                           onHoverBlockId={onHoveredBlockIdChange}
-                          onClickBlockId={onActiveBlockIdChange}
+                          onClickBlockId={handleSelectPdfBlock}
                         />
                       </div>
                     </div>
@@ -698,7 +717,7 @@ export function ParsingActiveFilePane({
                                 <button
                                   key={entry.id}
                                   type="button"
-                                  onClick={() => onActiveBlockIdChange(entry.id)}
+                                  onClick={() => handleSelectReviewBlock(entry.id)}
                                   onMouseEnter={() => onHoveredBlockIdChange(entry.id)}
                                   onMouseLeave={() => onHoveredBlockIdChange(null)}
                                   className={cn(
