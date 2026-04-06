@@ -9,9 +9,9 @@ describe('chunk preview top bar messages source', () => {
 
     expect(src).toContain("useTranslations('ChunkPreview')")
     expect(src).toContain("t('workbench.title')")
-    expect(src).toContain("t('topBar.parserLabel')")
     expect(src).toContain("t('topBar.strategyLabel')")
     expect(src).toContain("t('topBar.paramsLabel')")
+    expect(src).not.toContain("t('topBar.parserLabel')")
     expect(src).toContain("t('topBar.status.cacheHit')")
     expect(src).toContain("t('topBar.status.parseCache')")
     expect(src).toContain('topBar.status.quality')

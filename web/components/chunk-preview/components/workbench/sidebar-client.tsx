@@ -25,10 +25,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn, formatFileSize } from '@/lib/utils'
 import { useChunkPreview } from '@/components/chunk-preview/context'
 import { ChunkStrategyDropdown } from '@/components/business/chunk-strategy-dropdown'
-import { ParserDropdown } from '@/components/business/parser-dropdown'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { getChunkStrategyOption } from '@/lib/chunk-strategies'
-import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 import { computeChunkLengthStats } from '@/components/chunk-preview/utils/stats'
@@ -111,7 +109,6 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
     toggleAutoPreview,
     clearRunHistory,
   } = useChunkPreview()
-  const { capabilities, parserBackendAvailable } = usePipelineCapabilities()
   const pipelineCtx = usePipelineOptions()
   type PreviewSettingsPatch = Parameters<typeof updateSettings>[0]
   type PerfSettingsPatch = Parameters<typeof updatePerfSettings>[0]
@@ -151,7 +148,6 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
   )
 
   const currentFileId = fileList[currentFileIndex]?.id
-  const parserAvailable = parserBackendAvailable(parserBackend)
 
   const chunkStats = useMemo(() => {
     if (!previewData?.chunks) return null
@@ -901,7 +897,6 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     size="sm"
                     className="h-8 px-3 text-[11px]"
                     onClick={() => {
-                      setParserBackend(ingestionPreview.rule.parser_backend)
                       updateSettings({ strategy: ingestionPreview.rule.chunk_strategy })
                       toast.success(t('sidebar.ingestionPreview.result.applyRecommendationSuccess'))
                     }}
@@ -932,14 +927,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
 	            />
 	          </div>
           <div className="space-y-2">
-            <div className="text-xs font-medium text-muted-foreground">{t('sidebar.parser.title')}</div>
             <ChunkPresetPanel className="mb-3" />
-            <ParserDropdown value={parserBackend} onChange={setParserBackend} />
-            {parserAvailable === false && (
-              <div className="text-[10px] text-warning bg-warning/10 border border-warning/25 rounded-lg px-2 py-1">
-                {t('sidebar.parser.unavailable', { parser: capabilities?.default_parser_backend || 'auto' })}
-              </div>
-            )}
           </div>
 
           {/* 策略选择 */}

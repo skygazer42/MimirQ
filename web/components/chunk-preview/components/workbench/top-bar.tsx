@@ -55,7 +55,6 @@ import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { useRouter } from '@/i18n/navigation'
 import { API_V1_BASE_URL } from '@/lib/env'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
-import { getParserLabel } from '@/lib/parser-options'
 import { cn, detachPromise, formatFileSize } from '@/lib/utils'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -366,10 +365,6 @@ export function TopBar() {
 
           <div className="flex items-center gap-3 mt-1.5">
             <div className="flex items-center gap-2 text-[11px] text-muted-foreground bg-muted border border-border px-2 py-0.5 rounded-md">
-              <span className="text-muted-foreground">{t('topBar.parserLabel')}:</span>
-              <span className="font-medium text-primary" title={effectiveParserBackend}>
-                {getParserLabel(effectiveParserBackend)}
-              </span>
               {effectiveChunkStrategy === 'auto' && previewData?.auto_selected_strategy ? (
                 <span
                   className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 font-medium"
@@ -380,7 +375,6 @@ export function TopBar() {
                   → {getChunkStrategyLabel(previewData.auto_selected_strategy)}
                 </span>
               ) : null}
-              <span className="w-px h-2.5 bg-border mx-0.5" />
               <span className="text-muted-foreground">{t('topBar.strategyLabel')}:</span>
               <span className="font-medium text-primary" title={effectiveChunkStrategy}>
                 {getChunkStrategyLabel(effectiveChunkStrategy)}
