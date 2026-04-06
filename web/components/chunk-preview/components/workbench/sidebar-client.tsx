@@ -3,7 +3,7 @@
  */
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   Settings,
   Folder,
@@ -16,6 +16,7 @@ import {
   BarChart3,
   Loader2,
   Wand2,
+  type LucideIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
@@ -62,9 +63,98 @@ const DATASET_DEFAULT_VALUE = '__mimirq_dataset_default__'
 type SidebarVariant = 'panel' | 'dialog' | 'pane'
 type SidebarProps = Readonly<{ variant?: SidebarVariant }>
 type HistogramDatum = { label: string; min: number | null; max: number | null; count: number }
+type AccentTone = 'sky' | 'amber' | 'emerald' | 'violet' | 'cyan'
+
+const SIDEBAR_TONE_STYLES: Record<AccentTone, { chip: string; icon: string; note: string }> = {
+  sky: {
+    chip: 'border-sky-200/80 bg-sky-50/90 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-200',
+    icon: 'border-sky-200/80 bg-sky-50 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-200',
+    note: 'border-sky-200/70 bg-sky-50/70 text-sky-700/90 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-200/90',
+  },
+  amber: {
+    chip: 'border-amber-200/80 bg-amber-50/90 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/35 dark:text-amber-200',
+    icon: 'border-amber-200/80 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/35 dark:text-amber-200',
+    note: 'border-amber-200/70 bg-amber-50/70 text-amber-700/90 dark:border-amber-900/60 dark:bg-amber-950/25 dark:text-amber-200/90',
+  },
+  emerald: {
+    chip: 'border-emerald-200/80 bg-emerald-50/90 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/35 dark:text-emerald-200',
+    icon: 'border-emerald-200/80 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/35 dark:text-emerald-200',
+    note: 'border-emerald-200/70 bg-emerald-50/70 text-emerald-700/90 dark:border-emerald-900/60 dark:bg-emerald-950/25 dark:text-emerald-200/90',
+  },
+  violet: {
+    chip: 'border-violet-200/80 bg-violet-50/90 text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/35 dark:text-violet-200',
+    icon: 'border-violet-200/80 bg-violet-50 text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/35 dark:text-violet-200',
+    note: 'border-violet-200/70 bg-violet-50/70 text-violet-700/90 dark:border-violet-900/60 dark:bg-violet-950/25 dark:text-violet-200/90',
+  },
+  cyan: {
+    chip: 'border-cyan-200/80 bg-cyan-50/90 text-cyan-700 dark:border-cyan-900/60 dark:bg-cyan-950/35 dark:text-cyan-200',
+    icon: 'border-cyan-200/80 bg-cyan-50 text-cyan-700 dark:border-cyan-900/60 dark:bg-cyan-950/35 dark:text-cyan-200',
+    note: 'border-cyan-200/70 bg-cyan-50/70 text-cyan-700/90 dark:border-cyan-900/60 dark:bg-cyan-950/25 dark:text-cyan-200/90',
+  },
+}
 
 function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback
+}
+
+function SidebarChip({
+  tone = 'sky',
+  children,
+  className,
+}: Readonly<{ tone?: AccentTone; children: ReactNode; className?: string }>) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-semibold tracking-[0.04em]',
+        SIDEBAR_TONE_STYLES[tone].chip,
+        className
+      )}
+    >
+      {children}
+    </span>
+  )
+}
+
+function SidebarNote({
+  tone = 'sky',
+  children,
+  className,
+}: Readonly<{ tone?: AccentTone; children: ReactNode; className?: string }>) {
+  return (
+    <div
+      className={cn(
+        'rounded-lg border px-2.5 py-1.5 text-[10px] leading-4',
+        SIDEBAR_TONE_STYLES[tone].note,
+        className
+      )}
+    >
+      {children}
+    </div>
+  )
+}
+
+function SidebarSectionHeader({
+  icon: Icon,
+  label,
+  tone = 'sky',
+  aside,
+}: Readonly<{ icon: LucideIcon; label: string; tone?: AccentTone; aside?: string }>) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex min-w-0 items-center gap-1.5">
+        <span
+          className={cn(
+            'flex h-5 w-5 items-center justify-center rounded-md border',
+            SIDEBAR_TONE_STYLES[tone].icon
+          )}
+        >
+          <Icon className="h-3 w-3" />
+        </span>
+        <h2 className="truncate text-[11px] font-semibold text-foreground/88">{label}</h2>
+      </div>
+      {aside ? <SidebarChip tone={tone}>{aside}</SidebarChip> : null}
+    </div>
+  )
 }
 
 export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
@@ -147,6 +237,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
     (a, b) => (b.addedAt || 0) - (a.addedAt || 0)
   )
 
+  const activeFileItem = fileList[currentFileIndex] || null
   const currentFileId = fileList[currentFileIndex]?.id
 
   const chunkStats = useMemo(() => {
@@ -422,17 +513,19 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
   const content = (
     <div
       className={cn(
-        'p-6',
+        'p-4',
         variant === 'pane' ? 'min-h-0' : 'flex-1 overflow-y-auto overscroll-contain no-scrollbar'
       )}
     >
         {/* 文件列表 */}
-        <div className="mb-8 pb-8 border-b border-border/60">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Folder className="w-4 h-4 text-primary" />
-              <h2 className="text-sm font-semibold text-foreground">{t('sidebar.fileList.title', { count: fileList.length })}</h2>
-            </div>
+        <div className="mb-5 border-b border-border/60 pb-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <SidebarSectionHeader
+              icon={Folder}
+              label={t('sidebar.fileList.title', { count: fileList.length })}
+              tone="sky"
+              aside="文件"
+            />
             <div className="flex items-center gap-1">
               <Button
                 variant="ghost"
@@ -473,7 +566,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
             />
           </div>
 
-          <div className="space-y-2 max-h-[200px] overflow-y-auto overscroll-contain no-scrollbar pr-1 rounded-xl border border-border/60 bg-card p-2 shadow-sm">
+          <div className="max-h-[168px] space-y-1 overflow-y-auto overscroll-contain rounded-lg border border-border/60 bg-card/70 p-1 pr-1 no-scrollbar">
             {sortedFileList.map((f) => {
               const isActive = currentFileId === f.id
               const displayTime = f.addedAt
@@ -489,9 +582,9 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 <div
                   key={f.id}
                   className={cn(
-                    'group flex items-center gap-2 rounded-lg text-xs transition-colors border',
+                    'group flex items-center gap-1 rounded-md border text-[10.5px] transition-colors',
                     isActive
-                      ? 'bg-card border-primary/25 shadow-sm ring-1 ring-ring/15'
+                      ? 'border-primary/25 bg-card shadow-sm ring-1 ring-ring/15'
                       : 'bg-transparent border-transparent hover:bg-primary/10 hover:border-primary/20'
                   )}
                 >
@@ -501,28 +594,28 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                       if (fileIndex >= 0) setCurrentFileIndex(fileIndex)
                     }}
                     aria-label={t('sidebar.fileList.selectFile', { name: f.displayName })}
-                    className="flex flex-1 min-w-0 items-center justify-between gap-2 p-2 text-left rounded-lg cursor-pointer focus-ring"
+                    className="flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-2 rounded-md px-1.5 py-1.5 text-left focus-ring"
                   >
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <FileIcon
-                        className={cn('w-3.5 h-3.5 flex-shrink-0', isActive ? 'text-primary' : 'text-muted-foreground')}
+                        className={cn('h-3.5 w-3.5 flex-shrink-0', isActive ? 'text-primary' : 'text-muted-foreground')}
                       />
                       <span className={cn('truncate font-medium', isActive ? 'text-foreground' : 'text-muted-foreground')}>
                         {f.displayName}
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-1 flex-shrink-0">
+                    <div className="flex flex-shrink-0 items-center gap-1">
                       {displayTime && (
-                        <span className="text-[10px] text-muted-foreground mr-1">{displayTime}</span>
+                        <span className="mr-1 text-[9px] text-muted-foreground/85">{displayTime}</span>
                       )}
                       {f.originalFileType && (
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-border/60 bg-muted/60 text-muted-foreground">
+                        <span className="rounded border border-cyan-200/70 bg-cyan-50/85 px-1.5 py-0.5 font-mono text-[9px] text-cyan-700 dark:border-cyan-900/60 dark:bg-cyan-950/30 dark:text-cyan-200">
                           {String(f.originalFileType).toUpperCase()}
                         </span>
                       )}
                       {typeof f.originalFileSize === 'number' ? (
-                        <span className="text-[10px] text-muted-foreground font-mono">{formatFileSize(f.originalFileSize)}</span>
+                        <span className="font-mono text-[9px] text-muted-foreground/80">{formatFileSize(f.originalFileSize)}</span>
                       ) : null}
                       {processedStatus[f.id] === 'success' && <Check className="w-3.5 h-3.5 text-success" />}
                       {processedStatus[f.id] === 'error' && <AlertCircle className="w-3.5 h-3.5 text-destructive" />}
@@ -534,7 +627,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     onClick={() => {
                       if (fileIndex >= 0) removeFile(fileIndex)
                     }}
-                    className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-1.5 mr-1 hover:bg-destructive/10 hover:text-destructive rounded transition-opacity transition-colors duration-150 motion-reduce:transition-none cursor-pointer focus-ring"
+                    className="mr-1 cursor-pointer rounded p-1 opacity-0 transition-opacity transition-colors duration-150 motion-reduce:transition-none hover:bg-destructive/10 hover:text-destructive focus-ring focus-visible:opacity-100 group-hover:opacity-100"
                     aria-label={t('sidebar.fileList.removeFile', { name: f.displayName })}
                     title={t('sidebar.fileList.removeFile', { name: f.displayName })}
                   >
@@ -544,18 +637,38 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
               )
             })}
           </div>
+
+          {activeFileItem ? (
+            <SidebarNote tone="sky" className="mt-2 flex items-center gap-2 px-2 py-1.5">
+              <span className="text-[9px] font-semibold uppercase tracking-[0.06em] text-sky-700/80 dark:text-sky-200/80">
+                当前文件
+              </span>
+              <span className="min-w-0 flex-1 truncate text-[10px] font-medium text-sky-800/90 dark:text-sky-100/90">
+                {activeFileItem.displayName}
+              </span>
+              {activeFileItem.originalFileType ? (
+                <SidebarChip tone="cyan" className="font-mono">
+                  {String(activeFileItem.originalFileType).toUpperCase()}
+                </SidebarChip>
+              ) : null}
+              {typeof activeFileItem.originalFileSize === 'number' ? (
+                <span className="font-mono text-[9px] text-sky-700/75 dark:text-sky-200/75">
+                  {formatFileSize(activeFileItem.originalFileSize)}
+                </span>
+              ) : null}
+            </SidebarNote>
+          ) : null}
         </div>
 
-        <div className="flex items-center gap-2 mb-6">
-          <Settings className="w-4 h-4 text-primary" />
-          <h2 className="text-sm font-semibold text-foreground">{t('sidebar.settings.title')}</h2>
+        <div className="mb-3">
+          <SidebarSectionHeader icon={Settings} label={t('sidebar.settings.title')} tone="violet" aside="调参" />
         </div>
 
-        <div className="space-y-8">
-          <div className="flex items-center justify-between bg-card border border-border/60 rounded-xl px-3 py-2 shadow-sm">
+        <div className="space-y-4">
+          <div className="flex items-center justify-between rounded-lg border border-border/60 bg-card/75 px-2.5 py-1.5">
             <div>
-              <div className="text-xs font-medium text-foreground/80">{t('sidebar.autoPreview.title')}</div>
-              <div className="text-[10px] text-muted-foreground">{t('sidebar.autoPreview.description')}</div>
+              <div className="text-[11px] font-medium text-foreground/82">{t('sidebar.autoPreview.title')}</div>
+              <div className="text-[10px] text-muted-foreground/85">{t('sidebar.autoPreview.description')}</div>
             </div>
             <label className="inline-flex items-center gap-2 text-[10px] text-muted-foreground">
               <input
@@ -568,23 +681,28 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
             </label>
           </div>
 
-          <div className="flex items-center justify-between bg-card border border-border/60 rounded-xl px-3 py-2 shadow-sm">
+          <div className="flex items-center justify-between rounded-lg border border-border/60 bg-card/75 px-2.5 py-1.5">
             <div className="text-[10px] text-muted-foreground">{t('sidebar.shortcuts.label')}</div>
-            <div className="text-[10px] text-muted-foreground">
+            <div className="text-[10px] text-muted-foreground/90">
               {t('sidebar.shortcuts.hint')}
             </div>
           </div>
 
-          <div className="bg-card border border-border/60 rounded-xl px-3 py-3 shadow-sm space-y-3">
-            <div className="flex items-center gap-2">
-              <Wand2 className="w-4 h-4 text-primary" />
-              <div className="text-xs font-medium text-foreground/80">{t('sidebar.performance.title')}</div>
-              <div className="text-[10px] text-muted-foreground">{t('sidebar.performance.description')}</div>
+          <div className="space-y-2.5 rounded-lg border border-border/60 bg-card/80 px-2.5 py-2">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className={cn('flex h-6 w-6 items-center justify-center rounded-lg border', SIDEBAR_TONE_STYLES.amber.icon)}>
+                  <Wand2 className="h-3.5 w-3.5" />
+                </span>
+                <div className="text-[11px] font-semibold text-foreground/84">{t('sidebar.performance.title')}</div>
+              </div>
+              <SidebarChip tone="amber">仅预览</SidebarChip>
             </div>
+            <SidebarNote tone="amber">{t('sidebar.performance.description')}</SidebarNote>
 
             <div className="flex items-center justify-between gap-2">
               <div>
-                <div className="text-xs font-medium text-foreground/80">{t('sidebar.performance.includeOriginalText.title')}</div>
+                <div className="text-[11px] font-medium text-foreground/82">{t('sidebar.performance.includeOriginalText.title')}</div>
                 <div className="text-[10px] text-muted-foreground">{t('sidebar.performance.includeOriginalText.description')}</div>
               </div>
               <label className="inline-flex items-center gap-2 text-[10px] text-muted-foreground">
@@ -599,7 +717,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
             </div>
 
             <div className="flex items-center justify-between gap-2">
-              <div className="text-xs font-medium text-muted-foreground">{t('sidebar.performance.originalTextMaxChars')}</div>
+              <div className="text-[11px] font-medium text-muted-foreground">{t('sidebar.performance.originalTextMaxChars')}</div>
               <Input
                 type="number"
                 inputMode="numeric"
@@ -615,7 +733,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
             </div>
 
             <div className="flex items-center justify-between gap-2">
-              <div className="text-xs font-medium text-muted-foreground">{t('sidebar.performance.maxChunks')}</div>
+              <div className="text-[11px] font-medium text-muted-foreground">{t('sidebar.performance.maxChunks')}</div>
               <Input
                 type="number"
                 inputMode="numeric"
@@ -631,7 +749,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
 
             <div className="flex items-center justify-between gap-2">
               <div>
-                <div className="text-xs font-medium text-foreground/80">{t('sidebar.performance.parseCache.title')}</div>
+                <div className="text-[11px] font-medium text-foreground/82">{t('sidebar.performance.parseCache.title')}</div>
                 <div className="text-[10px] text-muted-foreground">{t('sidebar.performance.parseCache.description')}</div>
               </div>
               <label className="inline-flex items-center gap-2 text-[10px] text-muted-foreground">
@@ -645,9 +763,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
               </label>
             </div>
 
-            <div className="text-[10px] text-muted-foreground leading-relaxed">
-              {t('sidebar.performance.maxChunksGuidance')}
-            </div>
+            <SidebarNote tone="amber" className="py-1.5">{t('sidebar.performance.maxChunksGuidance')}</SidebarNote>
 
             {previewData?.chunks_truncated ? (
               <div className="text-[10px] text-warning bg-warning/10 border border-warning/25 rounded-lg px-2 py-1">
@@ -686,7 +802,10 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
           </div>
 
           <div className="space-y-2">
-            <div className="text-xs font-medium text-muted-foreground">{t('sidebar.dataset.title')}</div>
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-[11px] font-semibold text-foreground/82">{t('sidebar.dataset.title')}</div>
+              <SidebarChip tone="cyan">可选</SidebarChip>
+            </div>
             <Select
               value={datasetId || DATASET_DEFAULT_VALUE}
               onValueChange={(value) => {
@@ -695,7 +814,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 setDatasetId(value === DATASET_DEFAULT_VALUE ? '' : value)
               }}
             >
-              <SelectTrigger className="h-10 bg-background">
+              <SelectTrigger className="h-8 bg-background/90 text-[11px]">
                 <SelectValue placeholder={t('sidebar.dataset.selectPlaceholder')} />
               </SelectTrigger>
               <SelectContent>
@@ -712,9 +831,9 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
         return (<div className="text-[10px] text-muted-foreground">{t('sidebar.dataset.loading')}</div>);
     }
     else if (datasetsError) {
-            return (<div className="text-[10px] text-warning bg-warning/10 border border-warning/25 rounded-lg px-2 py-1">
+            return (<SidebarNote tone="amber" className="py-1.5">
                 {datasetsError}
-              </div>);
+              </SidebarNote>);
         }
         else {
             return null;
@@ -722,7 +841,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
 })()}
 
             {selectedDataset?.pipeline ? (
-              <div className="rounded-xl border border-border/60 bg-background p-3">
+              <div className="rounded-lg border border-border/60 bg-background p-2">
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-[10px] text-muted-foreground">{t('sidebar.dataset.pipelineSummary')}</div>
                   <Button
@@ -781,7 +900,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
               type="button"
               variant="outline"
               disabled={!datasetId || !currentFile || ingestionLoading}
-              className="w-full h-9 text-xs justify-start"
+              className="h-8 w-full justify-start text-[11px]"
               onClick={async () => {
                 if (!datasetId) {
                   toast.error(t('sidebar.ingestionPreview.selectDatasetFirst'))
@@ -815,13 +934,13 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
             </Button>
 
             {ingestionError ? (
-              <div className="text-[10px] text-warning bg-warning/10 border border-warning/25 rounded-lg px-2 py-1">
+              <SidebarNote tone="amber" className="py-1.5">
                 {ingestionError}
-              </div>
+              </SidebarNote>
             ) : null}
 
 	            {ingestionPreview ? (
-	              <div className="rounded-xl border border-border/60 bg-background p-3 space-y-2">
+	              <div className="space-y-2 rounded-lg border border-border/60 bg-background p-2">
 	                <div className="flex items-center justify-between gap-2">
 	                  <div className="text-[10px] text-muted-foreground">{t('sidebar.ingestionPreview.result.title')}</div>
 	                  <div className="flex items-center gap-1">
@@ -845,7 +964,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
 	                    </Button>
 	                  </div>
 	                </div>
-                <div className="text-xs text-foreground/90 font-medium">
+                <div className="text-[11px] font-medium text-foreground/90">
                   {ingestionPreview.rule.matched
                     ? t('sidebar.ingestionPreview.result.matchedRule', {
                       name: ingestionPreview.rule.rule_name
@@ -927,12 +1046,19 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
 	            />
 	          </div>
           <div className="space-y-2">
-            <ChunkPresetPanel className="mb-3" />
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-[11px] font-semibold text-foreground/82">切块预设</div>
+              <SidebarChip tone="violet">预设</SidebarChip>
+            </div>
+            <ChunkPresetPanel className="mb-1" />
           </div>
 
           {/* 策略选择 */}
           <div className="space-y-2">
-            <div className="text-xs font-medium text-muted-foreground">{t('sidebar.strategy.title')}</div>
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-[11px] font-semibold text-foreground/82">{t('sidebar.strategy.title')}</div>
+              <SidebarChip tone="emerald">核心</SidebarChip>
+            </div>
             <ChunkStrategyDropdown
               value={chunkStrategy}
               onChange={(value) => {
@@ -942,7 +1068,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 }
               }}
             />
-            <p className="text-[10px] text-muted-foreground leading-relaxed mt-1.5">{chunkStrategyOption.description}</p>
+            <SidebarNote tone="emerald" className="mt-1.5">{chunkStrategyOption.description}</SidebarNote>
             <div className="flex flex-wrap items-center gap-2 pt-1 text-[10px] text-muted-foreground">
               <span className="opacity-80">{t('sidebar.strategy.quickPresets')}</span>
               {[
@@ -991,8 +1117,11 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
           </div>
 
           {isSeparatorStrategy ? (
-            <div className="space-y-4 rounded-xl border border-border/60 bg-background p-3 shadow-sm">
-              <div className="text-[10px] text-muted-foreground uppercase  font-medium">{t('sidebar.separator.title')}</div>
+            <div className="space-y-3 rounded-lg border border-border/60 bg-background p-2 shadow-sm">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[11px] font-semibold text-foreground/82">{t('sidebar.separator.title')}</div>
+                <SidebarChip tone="cyan">分隔</SidebarChip>
+              </div>
 
               <div className="flex items-center justify-between gap-2">
                 <div className="text-[10px] text-muted-foreground">{t('sidebar.separator.syncToPipeline')}</div>
@@ -1034,12 +1163,12 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
               )}
 
               <div className="space-y-2">
-                <div className="text-xs font-medium text-muted-foreground">{t('sidebar.separator.presetLabel')}</div>
+                <div className="text-[11px] font-medium text-muted-foreground">{t('sidebar.separator.presetLabel')}</div>
                 <Select
                   value={separatorPreset}
                   onValueChange={(value) => updateSeparatorSettings({ separatorPreset: value })}
                 >
-                  <SelectTrigger className="h-9 bg-background">
+                  <SelectTrigger className="h-8 bg-background text-[11px]">
                     <SelectValue placeholder={t('sidebar.separator.presetPlaceholder')} />
                   </SelectTrigger>
                   <SelectContent>
@@ -1050,9 +1179,9 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     ))}
                   </SelectContent>
                 </Select>
-                <div className="text-[10px] text-muted-foreground">
+                <SidebarNote tone="cyan" className="py-1.5">
                   {separatorPresetOptions.find((o) => o.value === separatorPreset)?.hint || ''}
-                </div>
+                </SidebarNote>
                 {effectiveSeparator ? (
                   <div className="text-[10px] text-muted-foreground font-mono">
                     {t('sidebar.separator.effectiveSeparator', {
@@ -1065,7 +1194,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
 
               {separatorPreset === 'custom' ? (
                 <div className="space-y-2">
-                  <div className="text-xs font-medium text-muted-foreground">{t('sidebar.separator.customLabel')}</div>
+                  <div className="text-[11px] font-medium text-muted-foreground">{t('sidebar.separator.customLabel')}</div>
                   <Input
                     value={separatorCustom}
                     onChange={(e) => updateSeparatorSettings({ separatorCustom: e.target.value })}
@@ -1073,15 +1202,13 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     placeholder={t('sidebar.separator.customPlaceholder')}
                     aria-label={t('sidebar.separator.customAria')}
                   />
-                  <div className="text-[10px] text-muted-foreground">
-                    {t('sidebar.separator.customHelp')}
-                  </div>
+                  <SidebarNote tone="cyan" className="py-1.5">{t('sidebar.separator.customHelp')}</SidebarNote>
                 </div>
               ) : null}
 
-              <div className="flex items-center justify-between gap-2 bg-card border border-border/60 rounded-xl px-3 py-2">
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-card/75 px-2.5 py-1.5">
                 <div>
-                  <div className="text-xs font-medium text-foreground/80">{t('sidebar.separator.keepSeparator.title')}</div>
+                  <div className="text-[11px] font-medium text-foreground/82">{t('sidebar.separator.keepSeparator.title')}</div>
                   <div className="text-[10px] text-muted-foreground">{t('sidebar.separator.keepSeparator.description')}</div>
                 </div>
                 <label className="inline-flex items-center gap-2 text-[10px] text-muted-foreground">
@@ -1097,7 +1224,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="text-xs font-medium text-muted-foreground">{t('sidebar.separator.maxChunkLength')}</div>
+                  <div className="text-[11px] font-medium text-muted-foreground">{t('sidebar.separator.maxChunkLength')}</div>
                   <Input
                     type="number"
                     inputMode="numeric"
@@ -1114,16 +1241,17 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     aria-label={t('sidebar.separator.maxChunkLengthAria')}
                   />
                 </div>
-                <div className="text-[10px] text-muted-foreground leading-relaxed">
-                  {t('sidebar.separator.maxChunkLengthHelp')}
-                </div>
+                <SidebarNote tone="cyan" className="py-1.5">{t('sidebar.separator.maxChunkLengthHelp')}</SidebarNote>
               </div>
             </div>
           ) : null}
 
           {isParentChildStrategy ? (
-            <div className="space-y-4 rounded-xl border border-border/60 bg-background p-3 shadow-sm">
-              <div className="text-[10px] text-muted-foreground uppercase  font-medium">{t('sidebar.parentChild.title')}</div>
+            <div className="space-y-3 rounded-lg border border-border/60 bg-background p-2 shadow-sm">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[11px] font-semibold text-foreground/82">{t('sidebar.parentChild.title')}</div>
+                <SidebarChip tone="emerald">父子</SidebarChip>
+              </div>
 
               <div className="flex items-center justify-between gap-2">
                 <div className="text-[10px] text-muted-foreground">{t('sidebar.parentChild.syncToPipeline')}</div>
@@ -1161,7 +1289,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <div className="text-xs font-medium text-muted-foreground">{t('sidebar.parentChild.ratioLabel')}</div>
+                  <div className="text-[11px] font-medium text-muted-foreground">{t('sidebar.parentChild.ratioLabel')}</div>
                   <Input
                     type="number"
                     inputMode="decimal"
@@ -1177,11 +1305,11 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     className="h-9 text-[11px] font-mono bg-background"
                     aria-label={t('sidebar.parentChild.ratioAria')}
                   />
-                  <div className="text-[10px] text-muted-foreground">{t('sidebar.parentChild.ratioHelp')}</div>
+                  <SidebarNote tone="emerald" className="py-1.5">{t('sidebar.parentChild.ratioHelp')}</SidebarNote>
                 </div>
 
                 <div className="space-y-2">
-                  <div className="text-xs font-medium text-muted-foreground">{t('sidebar.parentChild.minChildSizeLabel')}</div>
+                  <div className="text-[11px] font-medium text-muted-foreground">{t('sidebar.parentChild.minChildSizeLabel')}</div>
                   <Input
                     type="number"
                     inputMode="numeric"
@@ -1197,33 +1325,31 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     className="h-9 text-[11px] font-mono bg-background"
                     aria-label={t('sidebar.parentChild.minChildSizeAria')}
                   />
-                  <div className="text-[10px] text-muted-foreground">{t('sidebar.parentChild.minChildSizeHelp')}</div>
+                  <SidebarNote tone="emerald" className="py-1.5">{t('sidebar.parentChild.minChildSizeHelp')}</SidebarNote>
                 </div>
               </div>
 
               {parentChildEffective ? (
-                <div className="text-[10px] text-muted-foreground font-mono">
+                <SidebarNote tone="emerald" className="font-mono">
                   {t('sidebar.parentChild.effectiveSummary', {
                     childSize: parentChildEffective.childSize,
                     childOverlap: parentChildEffective.childOverlap,
                     ratio: Math.round(parentChildEffective.ratio * 100),
                   })}
-                </div>
+                </SidebarNote>
               ) : null}
 
-              <div className="text-[10px] text-muted-foreground leading-relaxed">
-                {t('sidebar.parentChild.description')}
-              </div>
+              <SidebarNote tone="emerald">{t('sidebar.parentChild.description')}</SidebarNote>
             </div>
           ) : null}
 
           {/* Slider Controls */}
           {!hideChunkSizeControl && (
-            <div className="space-y-4">
+            <div className="space-y-3 rounded-lg border border-border/60 bg-card/70 p-2">
               <div className="flex items-center justify-between gap-2">
-                <label className="text-xs font-medium text-muted-foreground">{chunkSizeLabel}</label>
+                <label className="text-[11px] font-medium text-muted-foreground">{chunkSizeLabel}</label>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-mono font-medium text-primary bg-primary/10 px-2 py-0.5 rounded">{chunkSize}</span>
+                  <span className="rounded bg-primary/10 px-2 py-0.5 font-mono text-[10px] font-medium text-primary">{chunkSize}</span>
                   <Input
                     type="number"
                     inputMode="numeric"
@@ -1282,11 +1408,11 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
           )}
 
           {showOverlapControl && (
-            <div className="space-y-4">
+            <div className="space-y-3 rounded-lg border border-border/60 bg-card/70 p-2">
               <div className="flex items-center justify-between gap-2">
-                <label className="text-xs font-medium text-muted-foreground">{overlapLabel}</label>
+                <label className="text-[11px] font-medium text-muted-foreground">{overlapLabel}</label>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-mono font-medium text-primary bg-primary/10 px-2 py-0.5 rounded">{chunkOverlap}</span>
+                  <span className="rounded bg-primary/10 px-2 py-0.5 font-mono text-[10px] font-medium text-primary">{chunkOverlap}</span>
                   <Input
                     type="number"
                     inputMode="numeric"
@@ -1348,7 +1474,10 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
           )}
 
           <div className="space-y-2">
-            <div className="text-xs font-medium text-muted-foreground">{t('sidebar.ingestionPipeline')}</div>
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-[11px] font-semibold text-foreground/82">{t('sidebar.ingestionPipeline')}</div>
+              <SidebarChip tone="violet">入库</SidebarChip>
+            </div>
             <PipelineOptionsPanel compact />
           </div>
 
@@ -1356,7 +1485,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
             <Button
               onClick={() => runPreview()}
               disabled={isLoading}
-              className="h-11 rounded-xl shadow-sm border border-primary/20"
+              className="h-10 rounded-lg border border-primary/20 shadow-sm"
             >
               {isLoading ? (
                 <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none mr-2" />
@@ -1374,7 +1503,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 }
                 runPreview({ force: true })
               }}
-              className="h-11 rounded-xl"
+              className="h-10 rounded-lg"
             >
               {(() => {
     if (isLoading) {
@@ -1393,12 +1522,9 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
 
         {/* 统计指标 */}
         {previewData && (
-          <div className="mt-8 pt-8 border-t border-border/60">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <BarChart3 className="w-4 h-4 text-primary" />
-                <h2 className="text-sm font-semibold text-foreground">{t('sidebar.analysis.title')}</h2>
-              </div>
+          <div className="mt-5 border-t border-border/60 pt-5">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <SidebarSectionHeader icon={BarChart3} label={t('sidebar.analysis.title')} tone="sky" aside="结果" />
               <div className="flex items-center gap-2">
                 <ChunkAutoTuneDialog />
                 <Button
@@ -1413,44 +1539,44 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm">
-                <div className="text-[10px] text-muted-foreground uppercase  font-medium">{t('sidebar.stats.totalChunks')}</div>
-                <div className="text-xl font-bold text-foreground mt-1">{previewData.total_chunks}</div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-lg border border-border/60 bg-card p-2 shadow-sm">
+                <div className="text-[9px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{t('sidebar.stats.totalChunks')}</div>
+                <div className="mt-1 text-lg font-bold text-foreground">{previewData.total_chunks}</div>
               </div>
-              <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm">
-                <div className="text-[10px] text-muted-foreground uppercase  font-medium">{averageStatLabel}</div>
-                <div className="text-xl font-bold text-foreground mt-1">
+              <div className="rounded-lg border border-border/60 bg-card p-2 shadow-sm">
+                <div className="text-[9px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{averageStatLabel}</div>
+                <div className="mt-1 text-lg font-bold text-foreground">
                   {previewData?.stats?.avg ?? chunkStats?.avg ?? '-'}
                   {isTokenStrategy ? (
                     <span className="ml-1 text-xs font-mono text-muted-foreground">{statsUnitLabel}</span>
                   ) : null}
                 </div>
               </div>
-              <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm">
-                <div className="text-[10px] text-muted-foreground uppercase  font-medium">{p95StatLabel}</div>
-                <div className="text-xl font-bold text-foreground mt-1">
+              <div className="rounded-lg border border-border/60 bg-card p-2 shadow-sm">
+                <div className="text-[9px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{p95StatLabel}</div>
+                <div className="mt-1 text-lg font-bold text-foreground">
                   {chunkStats?.p95 ?? chunkStats?.p90 ?? previewData?.stats?.p90 ?? '-'}
                   {isTokenStrategy ? (
                     <span className="ml-1 text-xs font-mono text-muted-foreground">{statsUnitLabel}</span>
                   ) : null}
                 </div>
               </div>
-              <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm" title={t('sidebar.stats.coverage')}>
-                <div className="text-[10px] text-muted-foreground uppercase  font-medium">{t('sidebar.stats.coverage')}</div>
-                <div className="text-xl font-bold text-foreground mt-1">
+              <div className="rounded-lg border border-border/60 bg-card p-2 shadow-sm" title={t('sidebar.stats.coverage')}>
+                <div className="text-[9px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{t('sidebar.stats.coverage')}</div>
+                <div className="mt-1 text-lg font-bold text-foreground">
                   {coverageSignals?.coveragePct == null ? '-' : `${coverageSignals.coveragePct}%`}
                 </div>
               </div>
-              <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm" title={t('sidebar.stats.overlapWaste')}>
-                <div className="text-[10px] text-muted-foreground uppercase  font-medium">{t('sidebar.stats.overlapWaste')}</div>
-                <div className="text-xl font-bold text-foreground mt-1">
+              <div className="rounded-lg border border-border/60 bg-card p-2 shadow-sm" title={t('sidebar.stats.overlapWaste')}>
+                <div className="text-[9px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{t('sidebar.stats.overlapWaste')}</div>
+                <div className="mt-1 text-lg font-bold text-foreground">
                   {coverageSignals?.overlapWastePct == null ? '-' : `${coverageSignals.overlapWastePct}%`}
                 </div>
               </div>
-              <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm" title={t('sidebar.stats.gaps')}>
-                <div className="text-[10px] text-muted-foreground uppercase  font-medium">{t('sidebar.stats.gaps')}</div>
-                <div className="text-xl font-bold text-foreground mt-1">
+              <div className="rounded-lg border border-border/60 bg-card p-2 shadow-sm" title={t('sidebar.stats.gaps')}>
+                <div className="text-[9px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{t('sidebar.stats.gaps')}</div>
+                <div className="mt-1 text-lg font-bold text-foreground">
                   {coverageSignals?.gapCount == null ? '-' : String(coverageSignals.gapCount)}
                 </div>
                 {coverageSignals?.largestGap == null ? null : (
@@ -1647,12 +1773,9 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
         )}
 
         {runHistory.length > 0 && (
-          <div className="mt-8 pt-8 border-t border-border/60">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-primary" />
-                <h2 className="text-sm font-semibold text-foreground">{t('sidebar.history.title')}</h2>
-              </div>
+          <div className="mt-5 border-t border-border/60 pt-5">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <SidebarSectionHeader icon={Sparkles} label={t('sidebar.history.title')} tone="amber" aside="记录" />
               <Button
                 type="button"
                 variant="ghost"
@@ -1666,13 +1789,13 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 {t('sidebar.history.clear')}
               </Button>
             </div>
-            <div className="space-y-2 max-h-[180px] overflow-y-auto overscroll-contain no-scrollbar pr-1">
+            <div className="max-h-[180px] space-y-1.5 overflow-y-auto overscroll-contain pr-1 no-scrollbar">
               {runHistory.map((item) => (
                 <button
                   type="button"
                   key={item.id}
                   className={cn(
-                    "w-full text-left bg-card border border-border/60 rounded-xl px-3 py-2 text-[10px] text-muted-foreground shadow-sm",
+                    "w-full rounded-lg border border-border/60 bg-card px-2.5 py-2 text-left text-[10px] text-muted-foreground shadow-sm",
                     "hover:border-primary/25 hover:bg-primary/5 transition-colors focus-ring"
                   )}
                   onClick={() => {
@@ -1716,7 +1839,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
     <aside
       className={cn(
         'bg-card flex h-full min-h-0 overflow-hidden flex-col flex-shrink-0 z-10',
-        variant === 'dialog' ? 'w-full border-0' : 'w-80 border-r border-border/60'
+        variant === 'dialog' ? 'w-full border-0' : 'w-[19rem] border-r border-border/60'
       )}
     >
       {content}
