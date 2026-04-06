@@ -32,6 +32,14 @@ import { ParserDropdown } from '@/components/business/parser-dropdown'
 import { ParsingRightPanel } from '@/components/parsing/parsing-right-panel'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import {
+  classifyParsingBlock,
+  countParsingBlockChars,
+  countParsingBlockLines,
+  getParsingLayoutMeta,
+  getPrimaryParsingBlockPage,
+  type ParsingLayoutKind,
+} from '@/lib/parsing-layout'
 import { cn } from '@/lib/utils'
 import { getParserLabel } from '@/lib/parser-options'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
@@ -115,6 +123,8 @@ function buildQualityEvidenceSummary(qualityGate: unknown, pdfQuality: unknown):
   return pieces.join(' · ')
 }
 
+const layoutLegendKinds: ParsingLayoutKind[] = ['heading', 'paragraph', 'list', 'table', 'image', 'equation']
+
 type ParsingActiveFilePaneProps = {
   activeFile: ParsedFile
   activeRun: ParseRun | null
@@ -185,6 +195,21 @@ export function ParsingActiveFilePane({
   const qualityGrade = getQualityGateGrade(activeQualityGate)
   const qualityReasons = getQualityGateReasons(activeQualityGate)
   const qualityEvidenceSummary = buildQualityEvidenceSummary(activeQualityGate, activePdfQuality)
+  const layoutBlocks = activeBlocksWithPositions
+    .filter((block) => (block.text || '').trim().length > 0)
+    .map((block, idx) => {
+      const kind = classifyParsingBlock(block)
+      const layoutMeta = getParsingLayoutMeta(kind)
+      return {
+        block,
+        charCount: countParsingBlockChars(block.text),
+        index: idx,
+        isActive: block.id === activeBlockId,
+        layoutMeta,
+        lineCount: countParsingBlockLines(block.text),
+        pageIndex: getPrimaryParsingBlockPage(block),
+      }
+    })
   const parsedStatItems =
     activeFile.status === 'parsed' && activeFile.stats
       ? [
@@ -567,48 +592,112 @@ export function ParsingActiveFilePane({
               ) : (
                 <div className="flex h-full min-h-[520px] flex-col lg:flex-row">
                   {isPdf ? (
-                    <div className="flex-1 min-h-0 h-full w-full border-b border-border/70 bg-muted/70 dark:border-border/60 dark:bg-background/40 lg:w-1/2 lg:border-b-0 lg:border-r relative">
-                      <PdfViewer
-                        key={pdfViewerKey}
-                        file={activeFile.file}
-                        blocks={activeBlocksWithPositions}
-                        activeBlockIds={activeBlockId ? [activeBlockId] : []}
-                        hoveredBlockIds={hoveredBlockId ? [hoveredBlockId] : []}
-                      />
+                    <div className="relative flex h-full min-h-0 w-full flex-col border-b border-border/70 bg-muted/70 dark:border-border/60 dark:bg-background/40 lg:w-1/2 lg:border-b-0 lg:border-r">
+                      {layoutBlocks.length > 0 ? (
+                        <div className="border-b border-border/60 bg-background/88 px-4 py-2.5 dark:bg-background/72">
+                          <div className="flex flex-wrap items-start justify-between gap-2.5">
+                            <div className="min-w-0">
+                              <div className="text-[11px] font-semibold tracking-[0.06em] text-foreground/78">
+                                原始版面
+                              </div>
+                              <div className="mt-0.5 text-[11px] leading-5 text-muted-foreground/78">
+                                <span className="font-medium text-foreground/72">版面图例</span>
+                                <span className="mx-1.5 text-border">·</span>
+                                点击块卡可定位到左侧 PDF 原页
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {layoutLegendKinds.map((kind) => {
+                                const meta = getParsingLayoutMeta(kind)
+                                return (
+                                  <span
+                                    key={kind}
+                                    className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/85 px-2 py-1 text-[10px] font-medium text-muted-foreground"
+                                  >
+                                    <span className={cn('h-1.5 w-1.5 rounded-full', meta.dotClassName)} />
+                                    {meta.shortLabel}
+                                  </span>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+                      <div className="min-h-0 flex-1">
+                        <PdfViewer
+                          key={pdfViewerKey}
+                          file={activeFile.file}
+                          blocks={activeBlocksWithPositions}
+                          activeBlockIds={activeBlockId ? [activeBlockId] : []}
+                          hoveredBlockIds={hoveredBlockId ? [hoveredBlockId] : []}
+                        />
+                      </div>
                     </div>
                   ) : null}
                   <div className={isPdf ? 'w-full lg:w-1/2' : 'w-full'}>
-                    {rightPanelMode === 'blocks' && activeBlocksWithPositions.length > 0 ? (
-                      <ParsingRightPanel className="h-full no-scrollbar space-y-4 p-6">
-                        {activeBlocksWithPositions
-                          .filter((block) => (block.text || '').trim().length > 0)
-                          .map((block, idx) => {
-                            const pageIndex = block.positions?.[0]?.pages?.[0]
-                            const isActive = block.id === activeBlockId
-                            return (
-                              <button
-                                key={block.id}
-                                type="button"
-                                onClick={() => onActiveBlockIdChange(block.id)}
-                                onMouseEnter={() => onHoveredBlockIdChange(block.id)}
-                                onMouseLeave={() => onHoveredBlockIdChange(null)}
-                                className={cn(
-                                  'w-full rounded-xl border p-4 text-left shadow-sm transition dark:shadow-none',
-                                  isActive
-                                    ? 'border-sky-400 bg-sky-50 dark:border-sky-700/40 dark:bg-sky-950/30'
-                                    : 'border-border/50 bg-card hover:border-sky-300 dark:border-border/60 dark:bg-background/40 dark:hover:border-sky-700/40'
-                                )}
-                              >
-                                <div className="mb-2 text-xs text-muted-foreground dark:text-muted-foreground">
-                                  块 {idx + 1}
-                                  {Number.isFinite(pageIndex) ? ` · 页 ${Number(pageIndex) + 1}` : ''}
+                    {rightPanelMode === 'blocks' && layoutBlocks.length > 0 ? (
+                      <ParsingRightPanel className="h-full no-scrollbar space-y-3 p-4 lg:p-5">
+                        <div className="rounded-xl border border-border/60 bg-background/88 px-3.5 py-2.5 dark:bg-background/72">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="text-[11px] font-semibold tracking-[0.06em] text-foreground/78">
+                                版面审阅
+                              </div>
+                              <div className="mt-0.5 text-[11px] leading-5 text-muted-foreground/78">
+                                点击块卡可定位到左侧 PDF 原页
+                              </div>
+                            </div>
+                            <div className="font-mono text-[10px] text-muted-foreground">
+                              {layoutBlocks.length} blocks
+                            </div>
+                          </div>
+                        </div>
+                        {layoutBlocks.map(({ block, charCount, index, isActive, layoutMeta, lineCount, pageIndex }) => (
+                          <button
+                            key={block.id}
+                            type="button"
+                            onClick={() => onActiveBlockIdChange(block.id)}
+                            onMouseEnter={() => onHoveredBlockIdChange(block.id)}
+                            onMouseLeave={() => onHoveredBlockIdChange(null)}
+                            className={cn(
+                              'w-full rounded-xl border px-3.5 py-3 text-left transition dark:shadow-none',
+                              isActive
+                                ? 'border-primary/40 bg-primary/5 shadow-sm'
+                                : 'border-border/60 bg-card/95 hover:border-primary/25 hover:bg-accent/35'
+                            )}
+                          >
+                            <div className="flex items-start gap-3">
+                              <span className={cn('mt-1 h-2 w-2 flex-none rounded-full', layoutMeta.dotClassName)} />
+                              <div className="min-w-0 flex-1 space-y-2">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span
+                                    className={cn(
+                                      'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium',
+                                      layoutMeta.chipClassName
+                                    )}
+                                  >
+                                    {layoutMeta.label}
+                                  </span>
+                                  <span className="font-mono text-[10px] text-muted-foreground">块 {index + 1}</span>
+                                  {Number.isFinite(pageIndex) ? (
+                                    <span className="font-mono text-[10px] text-muted-foreground">
+                                      页 {Number(pageIndex) + 1}
+                                    </span>
+                                  ) : null}
+                                  <span className="font-mono text-[10px] text-muted-foreground">{charCount} 字</span>
+                                  {lineCount > 1 ? (
+                                    <span className="font-mono text-[10px] text-muted-foreground">{lineCount} 行</span>
+                                  ) : null}
                                 </div>
-                                <div className="prose prose-slate max-w-none prose-headings:text-foreground prose-p:text-foreground/80 prose-a:text-sky-700 prose-code:rounded prose-code:bg-sky-500/10 prose-code:px-1 prose-code:py-0.5 prose-code:text-sky-700 prose-pre:bg-slate-900 prose-table:border-collapse prose-td:border prose-td:border-sky-200 prose-td:p-2 prose-th:border prose-th:border-sky-200 prose-th:bg-sky-500/10 prose-th:p-2 dark:prose-invert dark:prose-headings:text-foreground dark:prose-p:text-muted-foreground dark:prose-a:text-sky-300 dark:prose-code:bg-muted dark:prose-code:text-sky-300 dark:prose-th:border-sky-500/30 dark:prose-th:bg-sky-500/20 dark:prose-td:border-sky-500/30">
-                                  <MarkdownRenderer markdown={block.text} />
+                                <div className="rounded-lg border border-border/50 bg-background/80 px-3 py-2.5 dark:bg-background/65">
+                                  <div className="prose prose-slate prose-sm max-w-none prose-headings:mb-2 prose-headings:text-foreground prose-p:my-2 prose-p:text-foreground/80 prose-a:text-sky-700 prose-code:rounded prose-code:bg-sky-500/10 prose-code:px-1 prose-code:py-0.5 prose-code:text-sky-700 prose-pre:bg-slate-900 prose-table:border-collapse prose-td:border prose-td:border-sky-200 prose-td:p-2 prose-th:border prose-th:border-sky-200 prose-th:bg-sky-500/10 prose-th:p-2 dark:prose-invert dark:prose-headings:text-foreground dark:prose-p:text-muted-foreground dark:prose-a:text-sky-300 dark:prose-code:bg-muted dark:prose-code:text-sky-300 dark:prose-th:border-sky-500/30 dark:prose-th:bg-sky-500/20 dark:prose-td:border-sky-500/30">
+                                    <MarkdownRenderer markdown={block.text} />
+                                  </div>
                                 </div>
-                              </button>
-                            )
-                          })}
+                              </div>
+                            </div>
+                          </button>
+                        ))}
                       </ParsingRightPanel>
                     ) : (
                       <ParsingRightPanel

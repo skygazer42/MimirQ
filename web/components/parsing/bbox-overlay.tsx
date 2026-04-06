@@ -5,10 +5,13 @@
  */
 'use client'
 
+import { getParsingLayoutMeta, type ParsingLayoutKind } from '@/lib/parsing-layout'
+import { cn } from '@/lib/utils'
 import type { ParsingPosition } from '@/lib/parsing-positions'
 
 export type BboxOverlayItem = {
   id: string
+  kind?: ParsingLayoutKind
   position: ParsingPosition
 }
 
@@ -37,15 +40,19 @@ export function BboxOverlay(props: Readonly<{
         const height = Math.abs(bottom - top) * scale
         const isActive = activeIds.has(item.id)
         const isHovered = hoveredIds.has(item.id)
-
-        const baseColor = isActive ? 'border-warning bg-warning/10' : 'border-primary/60'
-        const hoverColor = isHovered ? 'border-primary bg-primary/10' : ''
+        const layoutMeta = getParsingLayoutMeta(item.kind || 'paragraph')
 
         return (
           <button
             key={item.id}
             type="button"
-            className={`pointer-events-auto absolute rounded border ${baseColor} ${hoverColor}`}
+            title={layoutMeta.label}
+            className={cn(
+              'pointer-events-auto absolute rounded border transition-[box-shadow,transform,border-color,background-color] duration-150 ease-out',
+              layoutMeta.overlayClassName,
+              isHovered && 'z-10 ring-2 ring-primary/20',
+              isActive && 'z-20 ring-2 ring-primary/35 shadow-[0_0_0_1px_hsl(var(--background))]'
+            )}
             style={{ left: x, top: y, width, height }}
             onMouseEnter={() => onHoverId?.(item.id)}
             onMouseLeave={() => onHoverId?.(null)}

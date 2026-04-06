@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl'
 
 import { MarkdownToc } from '@/components/markdown/markdown-toc'
 import { Button } from '@/components/ui/button'
+import { classifyParsingBlock, getParsingLayoutMeta, getPrimaryParsingBlockPage } from '@/lib/parsing-layout'
 import { cn } from '@/lib/utils'
 import type { ParsingBlock } from '@/lib/parsing-positions'
 
@@ -96,7 +97,8 @@ export function ParsingMobileInspectorContent({
           <div className="rounded-2xl border border-border/60 bg-card p-2">
             <div className="max-h-[46vh] space-y-1 overflow-y-auto overscroll-contain no-scrollbar">
               {activeBlocksWithPositions.slice(0, 80).map((block, idx) => {
-                const pageIndex = block.positions?.[0]?.pages?.[0]
+                const layoutMeta = getParsingLayoutMeta(classifyParsingBlock(block))
+                const pageIndex = getPrimaryParsingBlockPage(block)
                 const isActive = block.id === activeBlockId
                 return (
                   <button
@@ -111,8 +113,23 @@ export function ParsingMobileInspectorContent({
                     )}
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <div className="truncate font-medium">
-                        {t('mobileInspector.blockLabel', { index: String(idx + 1) })}
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className={cn('h-1.5 w-1.5 rounded-full', layoutMeta.dotClassName)} />
+                          <div className="truncate font-medium">
+                            {t('mobileInspector.blockLabel', { index: String(idx + 1) })}
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span
+                            className={cn(
+                              'inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium',
+                              layoutMeta.chipClassName
+                            )}
+                          >
+                            {layoutMeta.shortLabel}
+                          </span>
+                        </div>
                       </div>
                       <div className="font-mono text-[11px] tabular-nums text-muted-foreground">
                         {Number.isFinite(pageIndex)

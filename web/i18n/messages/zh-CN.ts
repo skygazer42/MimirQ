@@ -917,6 +917,7 @@ const zhCNMessages = {
     originalPreview: {
       tocLoading: '正在生成目录…',
       title: '原文内容',
+      titlePdf: 'PDF 原页',
       charCount: '{count} chars',
       source: {
         server: 'server',
@@ -938,11 +939,13 @@ const zhCNMessages = {
         raw: '源码',
         rendered: '预览',
         editor: '编辑器',
+        pdf: 'PDF',
         editorTitle: 'Large-text viewer with stable highlight + overview markers',
         pdfAvailableTitle: 'PDF 框选高亮（解析器位置标签）',
         pdfUnavailableTitle: 'PDF 预览（需要解析器位置标签）',
       },
       hints: {
+        pdfMode: '点击右侧 chunk 后自动跳页，并用布局框高亮原始版面位置。',
         renderedMode: '提示：渲染模式下不支持高亮显示，请切换至源码/编辑器模式查看切片对应位置',
         editorMode: '提示：右侧滚动条有 chunk 标记；点击原文可自动选中最细粒度的 chunk（child 优先）。',
       },

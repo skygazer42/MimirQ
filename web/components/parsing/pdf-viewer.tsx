@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { AlertCircle, Loader2, RotateCcw } from 'lucide-react'
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist'
 import { ParsingBlock } from '@/lib/parsing-positions'
+import { classifyParsingBlock } from '@/lib/parsing-layout'
 import { toPrimitiveString } from '@/lib/primitive-text'
 import { Button } from '@/components/ui/button'
 import { BboxOverlay, type BboxOverlayItem } from '@/components/parsing/bbox-overlay'
@@ -1026,11 +1027,12 @@ export function PdfViewer({
 
     const map = new Map<number, Box[]>()
     for (const block of blocks) {
+      const kind = classifyParsingBlock(block)
       for (const position of block.positions || []) {
         const pages = position.pages?.length ? position.pages : [0]
         for (const pageIndex of pages) {
           const list = map.get(pageIndex) || []
-          list.push({ id: block.id, position })
+          list.push({ id: block.id, kind, position })
           map.set(pageIndex, list)
         }
       }
