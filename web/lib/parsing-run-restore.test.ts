@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import { restoreParsingRunFromMarkdown } from './parsing-run-restore'
+import {
+  restoreParsingRunFromMarkdown,
+  shouldRefreshParsingContentFromRemote,
+} from './parsing-run-restore'
 
 describe('restoreParsingRunFromMarkdown', () => {
   it('uses original markdown for overlay blocks while keeping explicit cleaned markdown', () => {
@@ -23,5 +26,23 @@ describe('restoreParsingRunFromMarkdown', () => {
 
     expect(restored?.cleanedMarkdown).toBe('Body')
     expect(restored?.blocks).toHaveLength(1)
+  })
+
+  it('requests remote refresh for parsed pdf content without position tags', () => {
+    expect(
+      shouldRefreshParsingContentFromRemote({
+        fileType: 'pdf',
+        originalMarkdownContent: '# clean only',
+      })
+    ).toBe(true)
+  })
+
+  it('skips remote refresh when pdf content already has position tags', () => {
+    expect(
+      shouldRefreshParsingContentFromRemote({
+        fileType: 'pdf',
+        originalMarkdownContent: 'Body@@1\t10\t20\t30\t40##',
+      })
+    ).toBe(false)
   })
 })

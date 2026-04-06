@@ -10,6 +10,7 @@ import { getDocContentFromCache, getDocSourceFromCache } from '@/lib/doc-content
 import { extractMarkdownHeadings } from '@/lib/markdown'
 import { getParserLabel } from '@/lib/parser-options'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
+import { shouldRefreshParsingContentFromRemote } from '@/lib/parsing-run-restore'
 import { ROOT_FOLDER_ID, useParsedFiles, type FolderNode, type ParsedFileData } from '@/store/use-parsed-files-store'
 import { type FileStatus } from '@/components/ui/file-queue-item'
 
@@ -96,17 +97,27 @@ function mapParsingDocumentToLibraryFile(
 
 async function hydrateLibraryContent(
   id: string,
-  status: FileStatus
+  status: FileStatus,
+  options?: { fileType?: string | null }
 ): Promise<ParsingLibraryContentHydration> {
+  let cachedFallback: ParsingLibraryContentHydration = null
   try {
     const cached = await getDocContentFromCache(id)
     const markdown = (cached?.markdownContent || '').trim()
     const original = (cached?.originalMarkdownContent || '').trim()
     if (markdown || original) {
-      return {
+      cachedFallback = {
         markdownContent: markdown || original,
         originalMarkdownContent: original || markdown,
         status: status || 'parsed',
+      }
+      if (
+        !shouldRefreshParsingContentFromRemote({
+          fileType: options?.fileType,
+          originalMarkdownContent: original || markdown,
+        })
+      ) {
+        return cachedFallback
       }
     }
   } catch {
@@ -130,7 +141,7 @@ async function hydrateLibraryContent(
     }
   } catch {
     // ignore backend content load failures for passive selection
-    return null
+    return cachedFallback
   }
 }
 
@@ -182,12 +193,25 @@ export function useParsingViewState({
 
   const activeLibraryContentQuery = useQuery({
     queryKey: ['parsing', 'library-content', activeLibraryFileId],
-    enabled: Boolean(activeLibraryFileId && activeLibraryFile && !(activeLibraryFile.markdownContent || '').trim()),
+    enabled: Boolean(
+      activeLibraryFileId &&
+        activeLibraryFile &&
+        (
+          !(activeLibraryFile.markdownContent || '').trim() ||
+          shouldRefreshParsingContentFromRemote({
+            fileType: activeLibraryFile.fileType,
+            originalMarkdownContent:
+              activeLibraryFile.originalMarkdownContent || activeLibraryFile.markdownContent,
+          })
+        )
+    ),
     retry: false,
     staleTime: 0,
     queryFn: async () => {
       if (!activeLibraryFileId || !activeLibraryFile) return null
-      return hydrateLibraryContent(activeLibraryFileId, activeLibraryFile.status || 'parsed')
+      return hydrateLibraryContent(activeLibraryFileId, activeLibraryFile.status || 'parsed', {
+        fileType: activeLibraryFile.fileType,
+      })
     },
   })
 
