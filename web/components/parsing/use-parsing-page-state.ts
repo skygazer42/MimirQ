@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
+import type { ParsingEditSession } from '@/lib/parsing-edit-focus'
 import { getParserLabel } from '@/lib/parser-options'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
 
@@ -41,6 +42,7 @@ export function useParsingPageState({ files, setFiles }: Readonly<UseParsingPage
   const [pdfPreviewResetToken, setPdfPreviewResetToken] = useState(0)
   const [isEditing, setIsEditing] = useState(false)
   const [editedContent, setEditedContent] = useState('')
+  const [editSession, setEditSession] = useState<ParsingEditSession | null>(null)
   const [rightPanelMode, setRightPanelMode] = useState<'blocks' | 'markdown'>('blocks')
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null)
   const [hoveredBlockId, setHoveredBlockId] = useState<string | null>(null)
@@ -129,6 +131,7 @@ export function useParsingPageState({ files, setFiles }: Readonly<UseParsingPage
     copied,
     didSyncLibraryFromServerRef,
     dragOverFolderId,
+    editSession,
     editedContent,
     fileIdSetRef,
     fileInputRef,
@@ -157,6 +160,7 @@ export function useParsingPageState({ files, setFiles }: Readonly<UseParsingPage
     setAutoParseFileId,
     setCopied,
     setDragOverFolderId,
+    setEditSession,
     setEditedContent,
     setHoveredBlockId,
     setImageCaptionEnabled,

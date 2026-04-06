@@ -8,7 +8,14 @@ import { toast } from 'sonner'
 import { useRouter } from '@/i18n/navigation'
 import { parsingApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import {
+  applyBlockEditToMarkdown,
+  buildParsingBlockEditTarget,
+  type ParsingEditSession,
+} from '@/lib/parsing-edit-focus'
+import { buildParsingLayoutEntries } from '@/lib/parsing-layout'
 import { getParserLabel } from '@/lib/parser-options'
+import type { ParsingBlock } from '@/lib/parsing-positions'
 import { type ParsedFileData } from '@/store/use-parsed-files-store'
 
 import type { ParsedFile, ParseRun } from './parsing-types'
@@ -55,14 +62,18 @@ function applyEditedMarkdown(
 }
 
 type UseParsingEditorActionsOptions = {
+  activeBlockId: string | null
+  activeBlocksWithPositions: ParsingBlock[]
   activeFile: ParsedFile | null
   activeMarkdown: string
   activeRun: ParseRun | null
   addParsedFile: (file: Omit<ParsedFileData, 'id' | 'parsedAt'>) => string
   countMarkdownHeadings: (markdown: string) => number
+  editSession: ParsingEditSession | null
   editedContent: string
   setActiveBlockId: Dispatch<SetStateAction<string | null>>
   setCopied: Dispatch<SetStateAction<boolean>>
+  setEditSession: Dispatch<SetStateAction<ParsingEditSession | null>>
   setEditedContent: Dispatch<SetStateAction<string>>
   setFiles: Dispatch<SetStateAction<ParsedFile[]>>
   setHoveredBlockId: Dispatch<SetStateAction<string | null>>
@@ -72,14 +83,18 @@ type UseParsingEditorActionsOptions = {
 }
 
 export function useParsingEditorActions({
+  activeBlockId,
+  activeBlocksWithPositions,
   activeFile,
   activeMarkdown,
   activeRun,
   addParsedFile,
   countMarkdownHeadings,
+  editSession,
   editedContent,
   setActiveBlockId,
   setCopied,
+  setEditSession,
   setEditedContent,
   setFiles,
   setHoveredBlockId,
@@ -110,22 +125,46 @@ export function useParsingEditorActions({
 
   const handleStartEdit = useCallback(() => {
     if (!activeMarkdown) return
-    setEditedContent(activeMarkdown)
+    const blockEditTarget = buildParsingBlockEditTarget(
+      activeMarkdown,
+      buildParsingLayoutEntries(activeBlocksWithPositions),
+      activeBlockId
+    )
+
+    if (blockEditTarget) {
+      setEditSession({
+        mode: 'block',
+        blockId: blockEditTarget.blockId,
+        range: blockEditTarget.range,
+        sourceMarkdown: activeMarkdown,
+      })
+      setEditedContent(blockEditTarget.content)
+    } else {
+      setEditSession({ mode: 'document' })
+      setEditedContent(activeMarkdown)
+    }
+
     setIsEditing(true)
-  }, [activeMarkdown, setEditedContent, setIsEditing])
+  }, [activeBlockId, activeBlocksWithPositions, activeMarkdown, setEditSession, setEditedContent, setIsEditing])
 
   const handleCancelEdit = useCallback(() => {
+    setEditSession(null)
     setIsEditing(false)
     setEditedContent('')
-  }, [setEditedContent, setIsEditing])
+  }, [setEditSession, setEditedContent, setIsEditing])
 
   const handleSaveEdit = useCallback(async () => {
     if (!activeFile) return
     const targetRunId = activeRun?.id ?? activeFile.activeRunId
+    const nextMarkdown =
+      editSession?.mode === 'block'
+        ? applyBlockEditToMarkdown(editSession.sourceMarkdown, editSession.range, editedContent)
+        : editedContent
 
-    setFiles((prev) => applyEditedMarkdown(prev, activeFile.id, targetRunId, editedContent, countMarkdownHeadings))
+    setFiles((prev) => applyEditedMarkdown(prev, activeFile.id, targetRunId, nextMarkdown, countMarkdownHeadings))
     setRightPanelMode('markdown')
     setActiveBlockId(null)
+    setEditSession(null)
     setHoveredBlockId(null)
     setIsEditing(false)
 
@@ -133,10 +172,10 @@ export function useParsingEditorActions({
     if (!libId) return
 
     try {
-      const saved = await parsingApi.updateContent(libId, { markdown_content: editedContent })
+      const saved = await parsingApi.updateContent(libId, { markdown_content: nextMarkdown })
       await updateParsedFile(libId, {
-        markdownContent: saved.markdown_content || editedContent,
-        originalMarkdownContent: saved.original_markdown_content || editedContent,
+        markdownContent: saved.markdown_content || nextMarkdown,
+        originalMarkdownContent: saved.original_markdown_content || nextMarkdown,
         status: 'parsed',
         error: undefined,
         parser: getParserLabel(saved.parser_backend || 'auto'),
@@ -149,8 +188,10 @@ export function useParsingEditorActions({
     activeFile,
     activeRun,
     countMarkdownHeadings,
+    editSession,
     editedContent,
     setActiveBlockId,
+    setEditSession,
     setFiles,
     setHoveredBlockId,
     setIsEditing,

@@ -10,6 +10,22 @@ export interface ParsingEditFocusHint {
   yRatio: number
 }
 
+export interface ParsingBlockEditTarget {
+  blockId: string
+  content: string
+  range: ParsingEditSelection
+  selection: ParsingEditSelection
+}
+
+export type ParsingEditSession =
+  | { mode: 'document' }
+  | {
+      mode: 'block'
+      blockId: string
+      range: ParsingEditSelection
+      sourceMarkdown: string
+    }
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
@@ -95,14 +111,10 @@ function estimateCaretFromHint(text: string, hint?: ParsingEditFocusHint | null)
   return best
 }
 
-export function findEditSelectionForActiveParsingEntry(
+function resolveParsingEntryRanges(
   markdown: string,
-  entries: ParsingLayoutEntry[],
-  activeEntryId: string | null,
-  hint?: ParsingEditFocusHint | null
-): ParsingEditSelection | null {
-  if (!markdown || !entries.length || !activeEntryId) return null
-
+  entries: ParsingLayoutEntry[]
+): Map<string, ParsingEditSelection | null> {
   let cursor = 0
   const resolvedRanges = new Map<string, ParsingEditSelection | null>()
 
@@ -111,18 +123,64 @@ export function findEditSelectionForActiveParsingEntry(
     resolvedRanges.set(entry.id, range)
     if (!range) continue
 
-    if (entry.id === activeEntryId) {
-      const localCaret = estimateCaretFromHint(markdown.slice(range.start, range.end), hint)
-      return range
-        ? {
-            start: range.start + localCaret,
-            end: range.start + localCaret,
-          }
-        : null
-    }
-
     cursor = Math.max(cursor, range.end)
   }
+
+  return resolvedRanges
+}
+
+export function buildParsingBlockEditTarget(
+  markdown: string,
+  entries: ParsingLayoutEntry[],
+  activeEntryId: string | null,
+  hint?: ParsingEditFocusHint | null
+): ParsingBlockEditTarget | null {
+  if (!markdown || !entries.length || !activeEntryId) return null
+
+  const range = resolveParsingEntryRanges(markdown, entries).get(activeEntryId)
+  if (!range) return null
+
+  const content = markdown.slice(range.start, range.end)
+  const localCaret = estimateCaretFromHint(content, hint)
+
+  return {
+    blockId: activeEntryId,
+    content,
+    range,
+    selection: {
+      start: localCaret,
+      end: localCaret,
+    },
+  }
+}
+
+export function applyBlockEditToMarkdown(
+  markdown: string,
+  range: ParsingEditSelection,
+  editedContent: string
+): string {
+  const safeStart = Math.max(0, Math.min(markdown.length, range.start))
+  const safeEnd = Math.max(safeStart, Math.min(markdown.length, range.end))
+  return markdown.slice(0, safeStart) + editedContent + markdown.slice(safeEnd)
+}
+
+export function findEditSelectionForActiveParsingEntry(
+  markdown: string,
+  entries: ParsingLayoutEntry[],
+  activeEntryId: string | null,
+  hint?: ParsingEditFocusHint | null
+): ParsingEditSelection | null {
+  if (!markdown || !entries.length || !activeEntryId) return null
+
+  const blockEditTarget = buildParsingBlockEditTarget(markdown, entries, activeEntryId, hint)
+  if (blockEditTarget) {
+    return {
+      start: blockEditTarget.range.start + blockEditTarget.selection.start,
+      end: blockEditTarget.range.start + blockEditTarget.selection.end,
+    }
+  }
+
+  const resolvedRanges = resolveParsingEntryRanges(markdown, entries)
 
   const activeIndex = entries.findIndex((entry) => entry.id === activeEntryId)
   if (activeIndex < 0) return null

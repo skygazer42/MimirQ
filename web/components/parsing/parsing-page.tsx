@@ -141,14 +141,18 @@ export default function ParsingPage() {
   })
 
   const editorActions = useParsingEditorActions({
+    activeBlockId: pageState.activeBlockId,
+    activeBlocksWithPositions: viewState.activeBlocksWithPositions,
     activeFile: viewState.activeFile,
     activeMarkdown: viewState.activeMarkdown,
     activeRun: viewState.activeRun,
     addParsedFile,
     countMarkdownHeadings,
+    editSession: pageState.editSession,
     editedContent: pageState.editedContent,
     setActiveBlockId: pageState.setActiveBlockId,
     setCopied: pageState.setCopied,
+    setEditSession: pageState.setEditSession,
     setEditedContent: pageState.setEditedContent,
     setFiles,
     setHoveredBlockId: pageState.setHoveredBlockId,
