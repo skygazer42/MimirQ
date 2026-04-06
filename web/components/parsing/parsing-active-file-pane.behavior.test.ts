@@ -367,7 +367,7 @@ describe('ParsingActiveFilePane lazy compare interactions', () => {
     expect(view.container.textContent).toContain('版面图例')
     expect(view.container.textContent).toContain('标题')
     expect(view.container.textContent).toContain('表格')
-    expect(view.container.textContent).toContain('点击块卡可定位到左侧 PDF 原页')
+    expect(view.container.textContent).toContain('点击右侧片段可定位到左侧 PDF 原页')
 
     const cards = Array.from(view.container.querySelectorAll('button')).filter((button) =>
       button.textContent?.includes('页')
@@ -382,6 +382,46 @@ describe('ParsingActiveFilePane lazy compare interactions', () => {
     await waitForAssertion(() => {
       expect(view.container.querySelector('[data-testid="pdf-viewer"]')).not.toBeNull()
     })
+
+    view.unmount()
+  })
+
+  it('breaks a multi-line positioned block into finer layout rows for pdf-side navigation', () => {
+    const onActiveBlockIdChange = vi.fn()
+
+    const view = renderComponent(
+      React.createElement(
+        ParsingActiveFilePane,
+        makePaneProps({
+          activeBlocksWithPositions: [
+            {
+              id: 'toc',
+              positions: [
+                { bottom: 0.12, left: 0.08, pages: [0], raw: '@@1', right: 0.84, top: 0.08 },
+                { bottom: 0.18, left: 0.08, pages: [0], raw: '@@2', right: 0.84, top: 0.14 },
+                { bottom: 0.24, left: 0.08, pages: [0], raw: '@@3', right: 0.84, top: 0.2 },
+              ],
+              text: '前言\n1 范围\n2 规范性引用文件',
+            },
+          ],
+          isPdf: true,
+          onActiveBlockIdChange,
+          rightPanelMode: 'blocks',
+        })
+      )
+    )
+
+    const layoutRows = Array.from(view.container.querySelectorAll('button')).filter((button) =>
+      button.textContent?.includes('页 1')
+    )
+
+    expect(layoutRows).toHaveLength(3)
+
+    act(() => {
+      layoutRows[1]?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    expect(onActiveBlockIdChange).toHaveBeenCalledWith('toc:1')
 
     view.unmount()
   })

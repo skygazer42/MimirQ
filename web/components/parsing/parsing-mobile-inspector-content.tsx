@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl'
 
 import { MarkdownToc } from '@/components/markdown/markdown-toc'
 import { Button } from '@/components/ui/button'
-import { classifyParsingBlock, getParsingLayoutMeta, getPrimaryParsingBlockPage } from '@/lib/parsing-layout'
+import { buildParsingLayoutEntries, getParsingLayoutMeta } from '@/lib/parsing-layout'
 import { cn } from '@/lib/utils'
 import type { ParsingBlock } from '@/lib/parsing-positions'
 
@@ -35,6 +35,7 @@ export function ParsingMobileInspectorContent({
   onDownloadMarkdown,
 }: Readonly<ParsingMobileInspectorContentProps>) {
   const t = useTranslations('ParsingWorkbench')
+  const layoutEntries = buildParsingLayoutEntries(activeBlocksWithPositions)
 
   return (
     <div className="flex-1 min-h-0 space-y-5 overflow-y-auto overscroll-contain no-scrollbar bg-muted/10 p-4">
@@ -91,20 +92,19 @@ export function ParsingMobileInspectorContent({
         </div>
       </div>
 
-      {rightPanelMode === 'blocks' && activeBlocksWithPositions.length > 0 ? (
+      {rightPanelMode === 'blocks' && layoutEntries.length > 0 ? (
         <div className="space-y-2">
           <div className="text-xs font-semibold text-muted-foreground">{t('mobileInspector.blocks')}</div>
           <div className="rounded-2xl border border-border/60 bg-card p-2">
             <div className="max-h-[46vh] space-y-1 overflow-y-auto overscroll-contain no-scrollbar">
-              {activeBlocksWithPositions.slice(0, 80).map((block, idx) => {
-                const layoutMeta = getParsingLayoutMeta(classifyParsingBlock(block))
-                const pageIndex = getPrimaryParsingBlockPage(block)
-                const isActive = block.id === activeBlockId
+              {layoutEntries.slice(0, 80).map((entry, idx) => {
+                const layoutMeta = getParsingLayoutMeta(entry.kind)
+                const isActive = entry.id === activeBlockId
                 return (
                   <button
-                    key={block.id}
+                    key={entry.id}
                     type="button"
-                    onClick={() => onSelectBlock(block.id)}
+                    onClick={() => onSelectBlock(entry.id)}
                     className={cn(
                       'w-full rounded-xl border px-3 py-2 text-left text-sm transition-colors',
                       isActive
@@ -132,8 +132,8 @@ export function ParsingMobileInspectorContent({
                         </div>
                       </div>
                       <div className="font-mono text-[11px] tabular-nums text-muted-foreground">
-                        {Number.isFinite(pageIndex)
-                          ? t('mobileInspector.pageLabel', { page: String(Number(pageIndex) + 1) })
+                        {Number.isFinite(entry.pageIndex)
+                          ? t('mobileInspector.pageLabel', { page: String(Number(entry.pageIndex) + 1) })
                           : ''}
                       </div>
                     </div>
