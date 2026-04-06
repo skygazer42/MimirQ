@@ -47,4 +47,18 @@ describe('parsing-edit-focus', () => {
       end: markdown.indexOf('1 范围') + '1 范围'.length,
     })
   })
+
+  it('falls back to the nearest matched neighbor when the selected layout block has no direct markdown text', () => {
+    const markdown = '前言\n\n1 范围\n\n2 规范性引用文件\n\n附录'
+    const entries = [
+      makeEntry({ id: 'toc:0', blockId: 'toc', text: '前言' }),
+      makeEntry({ id: 'image:0', blockId: 'image', text: '![Image](layout://image)', kind: 'image' }),
+      makeEntry({ id: 'toc:1', blockId: 'toc', text: '1 范围' }),
+    ]
+
+    expect(findEditSelectionForActiveParsingEntry(markdown, entries, 'image:0')).toEqual({
+      start: markdown.indexOf('前言') + '前言'.length,
+      end: markdown.indexOf('前言') + '前言'.length,
+    })
+  })
 })

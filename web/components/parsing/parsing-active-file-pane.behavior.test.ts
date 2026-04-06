@@ -119,7 +119,14 @@ vi.mock('@/components/parsing/pdf-viewer', async () => {
     PdfViewer({
       activeBlockIds,
       hoveredBlockIds,
-    }: Readonly<{ activeBlockIds?: string[] | null; hoveredBlockIds?: string[] | null }>) {
+      onClickBlockId,
+      onHoverBlockId,
+    }: Readonly<{
+      activeBlockIds?: string[] | null
+      hoveredBlockIds?: string[] | null
+      onClickBlockId?: (blockId: string) => void
+      onHoverBlockId?: (blockId: string | null) => void
+    }>) {
       return React.createElement(
         'div',
         {
@@ -127,7 +134,17 @@ vi.mock('@/components/parsing/pdf-viewer', async () => {
           'data-hovered-ids': (hoveredBlockIds || []).join(','),
           'data-testid': 'pdf-viewer',
         },
-        'pdf-viewer'
+        React.createElement(
+          'button',
+          {
+            'data-testid': 'pdf-viewer-select-block',
+            onClick: () => onClickBlockId?.('pdf-block-1'),
+            onMouseEnter: () => onHoverBlockId?.('pdf-block-1'),
+            onMouseLeave: () => onHoverBlockId?.(null),
+            type: 'button',
+          },
+          'select-block'
+        )
       )
     },
   }
@@ -465,6 +482,45 @@ describe('ParsingActiveFilePane lazy compare interactions', () => {
         markdown.indexOf('Second paragraph.') + 'Second paragraph.'.length
       )
     })
+
+    view.unmount()
+  })
+
+  it('forwards pdf overlay clicks into the active block selection state', async () => {
+    const onActiveBlockIdChange = vi.fn()
+    const onHoveredBlockIdChange = vi.fn()
+    const view = renderComponent(
+      React.createElement(
+        ParsingActiveFilePane,
+        makePaneProps({
+          activeBlocksWithPositions: [
+            {
+              id: 'pdf-block-1',
+              positions: [{ bottom: 0.22, left: 0.08, pages: [0], raw: '@@1', right: 0.84, top: 0.12 }],
+              text: 'Paragraph',
+            },
+          ],
+          isPdf: true,
+          onActiveBlockIdChange,
+          onHoveredBlockIdChange,
+          rightPanelMode: 'markdown',
+        })
+      )
+    )
+
+    await waitForAssertion(() => {
+      expect(view.container.querySelector('[data-testid="pdf-viewer-select-block"]')).not.toBeNull()
+    })
+
+    const viewerSelectButton = view.container.querySelector('[data-testid="pdf-viewer-select-block"]')
+
+    act(() => {
+      viewerSelectButton?.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }))
+      viewerSelectButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      viewerSelectButton?.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }))
+    })
+
+    expect(onActiveBlockIdChange).toHaveBeenCalledWith('pdf-block-1')
 
     view.unmount()
   })
