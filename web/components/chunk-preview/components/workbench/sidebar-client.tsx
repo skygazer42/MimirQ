@@ -1264,7 +1264,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2.5">
                 <div className="space-y-2">
                   <div className="text-[11px] font-medium text-muted-foreground">{t('sidebar.parentChild.ratioLabel')}</div>
                   <Input
@@ -1282,7 +1282,6 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     className="h-8 text-[11px] font-mono bg-background"
                     aria-label={t('sidebar.parentChild.ratioAria')}
                   />
-                  <SidebarNote tone="emerald" className="py-1">{t('sidebar.parentChild.ratioHelp')}</SidebarNote>
                 </div>
 
                 <div className="space-y-2">
@@ -1302,21 +1301,29 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     className="h-8 text-[11px] font-mono bg-background"
                     aria-label={t('sidebar.parentChild.minChildSizeAria')}
                   />
-                  <SidebarNote tone="emerald" className="py-1">{t('sidebar.parentChild.minChildSizeHelp')}</SidebarNote>
                 </div>
               </div>
 
-              {parentChildEffective ? (
-                <SidebarNote tone="emerald" className="font-mono text-[9px]">
-                  {t('sidebar.parentChild.effectiveSummary', {
-                    childSize: parentChildEffective.childSize,
-                    childOverlap: parentChildEffective.childOverlap,
-                    ratio: Math.round(parentChildEffective.ratio * 100),
-                  })}
-                </SidebarNote>
-              ) : null}
-
-              <SidebarNote tone="emerald">{t('sidebar.parentChild.description')}</SidebarNote>
+              <SidebarNote tone="emerald" className="space-y-1.5 py-1.5">
+                <div className="text-[9px] text-emerald-700/85 dark:text-emerald-200/90">
+                  {t('sidebar.parentChild.ratioHelp')}
+                </div>
+                <div className="text-[9px] text-emerald-700/80 dark:text-emerald-200/85">
+                  {t('sidebar.parentChild.minChildSizeHelp')}
+                </div>
+                {parentChildEffective ? (
+                  <div className="font-mono text-[9px] text-emerald-700/88 dark:text-emerald-100/90">
+                    {t('sidebar.parentChild.effectiveSummary', {
+                      childSize: parentChildEffective.childSize,
+                      childOverlap: parentChildEffective.childOverlap,
+                      ratio: Math.round(parentChildEffective.ratio * 100),
+                    })}
+                  </div>
+                ) : null}
+                <div className="text-[9.5px] text-emerald-700/82 dark:text-emerald-200/88">
+                  {t('sidebar.parentChild.description')}
+                </div>
+              </SidebarNote>
             </div>
           ) : null}
 
