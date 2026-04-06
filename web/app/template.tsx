@@ -1,14 +1,9 @@
 'use client'
 
-import dynamic from 'next/dynamic'
 import { usePathname } from 'next/navigation'
 
 import { PageTransition } from "@/components/page-transition"
-
-const PipelineProviders = dynamic(
-  () => import('@/components/providers/pipeline-providers').then((mod) => mod.PipelineProviders),
-  { ssr: false }
-)
+import { PipelineProviders } from '@/components/providers/pipeline-providers'
 
 const PIPELINE_ROUTE_PREFIXES = [
   '/datasets',

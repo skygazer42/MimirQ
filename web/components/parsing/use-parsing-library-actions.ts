@@ -9,7 +9,7 @@ import { formatApiError } from '@/lib/api-errors'
 import { deleteDocContentFromCache, deleteDocSourceFromCache, getDocContentFromCache, getDocSourceFromCache, saveDocSourceToCache } from '@/lib/doc-content-cache'
 import { getParserLabel } from '@/lib/parser-options'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
-import { restoreParsingRunFromMarkdown } from '@/lib/parsing-run-restore'
+import { restoreParsingRunFromMarkdown, shouldRefreshParsingContentFromRemote } from '@/lib/parsing-run-restore'
 import { generateRequestId } from '@/lib/request-id'
 import { detachPromise } from '@/lib/utils'
 import { extractZipFiles, isZipFile } from '@/lib/zip'
@@ -179,11 +179,38 @@ export function useParsingLibraryActions({
       } else if (libStatus === 'parsed') {
         try {
           const cached = await getDocContentFromCache(id)
-          const raw = (cached?.originalMarkdownContent || cached?.markdownContent || libEntry.markdownContent || '').trim()
+          let cleaned = (cached?.markdownContent || libEntry.markdownContent || '').trim()
+          let raw = (cached?.originalMarkdownContent || cached?.markdownContent || libEntry.markdownContent || '').trim()
+
+          if (
+            shouldRefreshParsingContentFromRemote({
+              fileType: libEntry.fileType || sourceFile.name.split('.').pop()?.toLowerCase() || '',
+              originalMarkdownContent: raw || cleaned,
+            })
+          ) {
+            try {
+              const remote = await parsingApi.getContent(id)
+              cleaned = (remote?.markdown_content || cleaned || raw).trim()
+              raw = (remote?.original_markdown_content || remote?.markdown_content || raw || cleaned).trim()
+              updateParsedFile(id, {
+                markdownContent: cleaned || raw,
+                originalMarkdownContent: raw || cleaned,
+                parser: getParserLabel(remote?.parser_backend || backend),
+                parserBackend: String(remote?.parser_backend || backend),
+                durationSec: Number.isFinite(Number(remote?.parse_duration_sec))
+                  ? Number(remote?.parse_duration_sec)
+                  : libEntry.durationSec,
+                status: 'parsed',
+              })
+            } catch {
+              // fall back to local cache if remote refresh fails
+            }
+          }
+
           if (raw) {
             const restored = restoreParsingRunFromMarkdown({
               rawMarkdown: raw,
-              cleanedMarkdown: (cached?.markdownContent || libEntry.markdownContent || '').trim(),
+              cleanedMarkdown: cleaned,
             })
             markdownContent = restored?.cleanedMarkdown || null
             blocks = restored?.blocks || []
