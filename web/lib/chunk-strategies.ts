@@ -521,10 +521,10 @@ export const CHUNK_STRATEGY_OPTIONS: ChunkStrategyOption[] = [
   },
   {
     value: 'parent_child',
-    label: 'Parent-Child 分层切分',
-    description: '先父块再子块，保留 parent_id 便于层级展示与召回。',
+    label: '父子切分',
+    description: '先生成父块，再切子块，保留 parent_id。',
     icon: 'hierarchical',
-    badge: '父子',
+    badge: '层级',
     group: 'langchain',
   },
   {

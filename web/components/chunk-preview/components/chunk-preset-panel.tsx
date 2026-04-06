@@ -252,22 +252,22 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
   }
 
   return (
-    <div className={cn('space-y-2 rounded-xl border border-border/60 bg-background p-3 shadow-sm', className)}>
+    <div className={cn('space-y-2 rounded-lg border border-border/60 bg-background/95 p-2.5 shadow-sm', className)}>
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Bookmark className="w-4 h-4 text-primary" />
-          <div className="text-xs font-semibold text-foreground">{t('chunkPresetPanel.title')}</div>
+        <div className="flex items-center gap-1.5">
+          <Bookmark className="h-3.5 w-3.5 text-primary/80" />
+          <div className="text-[10.5px] font-medium text-foreground/78">{t('chunkPresetPanel.title')}</div>
         </div>
         <Button
           type="button"
           size="sm"
           variant="ghost"
-          className="h-7 px-2 text-[11px]"
+          className="h-6 px-2 text-[10px] text-muted-foreground"
           onClick={() => detachPromise(refresh())}
           disabled={loading || saving}
           aria-label={t('chunkPresetPanel.refreshAria')}
         >
-          {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" /> : t('chunkPresetPanel.refresh')}
+          {loading ? <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" /> : t('chunkPresetPanel.refresh')}
         </Button>
       </div>
 
@@ -284,7 +284,7 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
             }
           }}
         >
-          <SelectTrigger className="h-9 bg-background">
+          <SelectTrigger className="h-8 bg-background text-[11px]">
             <SelectValue placeholder={t('chunkPresetPanel.select')} />
           </SelectTrigger>
           <SelectContent>
@@ -297,22 +297,22 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
           </SelectContent>
         </Select>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-1.5">
           <Button
             type="button"
             size="sm"
-            className="h-8 px-3 text-[11px]"
+            className="h-7 px-2.5 text-[10px]"
             onClick={() => detachPromise(onSave())}
             disabled={saving}
           >
-            {saving ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin motion-reduce:animate-none" /> : <Save className="w-3.5 h-3.5 mr-2" />}
+            {saving ? <Loader2 className="mr-1.5 h-3 w-3 animate-spin motion-reduce:animate-none" /> : <Save className="mr-1.5 h-3 w-3" />}
             {commonT('save')}
           </Button>
           <Button
             type="button"
             size="sm"
             variant="outline"
-            className="h-8 px-3 text-[11px]"
+            className="h-7 px-2.5 text-[10px]"
             onClick={() => {
               setSaveAsName(selectedPreset?.name ? `${selectedPreset.name} ${t('chunkPresetPanel.copySuffix')}` : '')
               setSaveAsDescription(selectedPreset?.description || '')
@@ -326,7 +326,7 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
             type="button"
             size="sm"
             variant="outline"
-            className="h-8 px-3 text-[11px]"
+            className="h-7 px-2.5 text-[10px]"
             disabled={saving}
             onClick={() => {
               const payload = buildPayload()
@@ -335,7 +335,7 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
               toast.success(t('chunkPresetPanel.exportedJson'))
             }}
           >
-            <Download className="w-3.5 h-3.5 mr-2" />
+            <Download className="mr-1.5 h-3 w-3" />
             {t('chunkPresetPanel.export')}
           </Button>
           <input
@@ -361,11 +361,11 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
             type="button"
             size="sm"
             variant="outline"
-            className="h-8 px-3 text-[11px]"
+            className="h-7 px-2.5 text-[10px]"
             disabled={saving}
             onClick={() => importRef.current?.click()}
           >
-            <Upload className="w-3.5 h-3.5 mr-2" />
+            <Upload className="mr-1.5 h-3 w-3" />
             {t('chunkPresetPanel.import')}
           </Button>
         </div>
