@@ -237,7 +237,6 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
     (a, b) => (b.addedAt || 0) - (a.addedAt || 0)
   )
 
-  const activeFileItem = fileList[currentFileIndex] || null
   const currentFileId = fileList[currentFileIndex]?.id
 
   const chunkStats = useMemo(() => {
@@ -637,27 +636,6 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
               )
             })}
           </div>
-
-          {activeFileItem ? (
-            <SidebarNote tone="sky" className="mt-2 flex items-center gap-2 px-2 py-1.5">
-              <span className="text-[9px] font-semibold uppercase tracking-[0.06em] text-sky-700/80 dark:text-sky-200/80">
-                当前文件
-              </span>
-              <span className="min-w-0 flex-1 truncate text-[10px] font-medium text-sky-800/90 dark:text-sky-100/90">
-                {activeFileItem.displayName}
-              </span>
-              {activeFileItem.originalFileType ? (
-                <SidebarChip tone="cyan" className="font-mono">
-                  {String(activeFileItem.originalFileType).toUpperCase()}
-                </SidebarChip>
-              ) : null}
-              {typeof activeFileItem.originalFileSize === 'number' ? (
-                <span className="font-mono text-[9px] text-sky-700/75 dark:text-sky-200/75">
-                  {formatFileSize(activeFileItem.originalFileSize)}
-                </span>
-              ) : null}
-            </SidebarNote>
-          ) : null}
         </div>
 
         <div className="mb-3">
