@@ -665,6 +665,8 @@ export function ParsingActiveFilePane({
                           blockIdToPageIndex={layoutEntryIdToPageIndex}
                           activeBlockIds={activeBlockId ? [activeBlockId] : []}
                           hoveredBlockIds={hoveredBlockId ? [hoveredBlockId] : []}
+                          onHoverBlockId={onHoveredBlockIdChange}
+                          onClickBlockId={onActiveBlockIdChange}
                         />
                       </div>
                     </div>

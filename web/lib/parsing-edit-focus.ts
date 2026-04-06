@@ -44,9 +44,11 @@ export function findEditSelectionForActiveParsingEntry(
   if (!markdown || !entries.length || !activeEntryId) return null
 
   let cursor = 0
+  const resolvedRanges = new Map<string, ParsingEditSelection | null>()
 
   for (const entry of entries) {
     const range = findTextRange(markdown, entry.text, cursor) ?? findTextRange(markdown, entry.text, 0)
+    resolvedRanges.set(entry.id, range)
     if (!range) continue
 
     if (entry.id === activeEntryId) {
@@ -54,6 +56,29 @@ export function findEditSelectionForActiveParsingEntry(
     }
 
     cursor = Math.max(cursor, range.end)
+  }
+
+  const activeIndex = entries.findIndex((entry) => entry.id === activeEntryId)
+  if (activeIndex < 0) return null
+
+  for (let index = activeIndex - 1; index >= 0; index -= 1) {
+    const fallback = resolvedRanges.get(entries[index].id)
+    if (fallback) {
+      return {
+        start: fallback.end,
+        end: fallback.end,
+      }
+    }
+  }
+
+  for (let index = activeIndex + 1; index < entries.length; index += 1) {
+    const fallback = resolvedRanges.get(entries[index].id)
+    if (fallback) {
+      return {
+        start: fallback.start,
+        end: fallback.start,
+      }
+    }
   }
 
   return null
