@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
 import type { ParsingLayoutEntry } from './parsing-layout'
-import { findEditSelectionForActiveParsingEntry } from './parsing-edit-focus'
+import {
+  applyBlockEditToMarkdown,
+  buildParsingBlockEditTarget,
+  findEditSelectionForActiveParsingEntry,
+} from './parsing-edit-focus'
 
 function makeEntry(overrides: Partial<ParsingLayoutEntry>): ParsingLayoutEntry {
   return {
@@ -73,5 +77,44 @@ describe('parsing-edit-focus', () => {
     expect(focus).not.toBeNull()
     expect((focus?.start || 0) > markdown.indexOf('epsilon')).toBe(true)
     expect(focus?.start).toBe(focus?.end)
+  })
+
+  it('extracts only the selected layout block content for block-scoped editing', () => {
+    const markdown = '# Summary\n\nFirst paragraph.\n\nSecond paragraph.\n\n## Details'
+    const entries = [
+      makeEntry({ id: 'block-0', text: '# Summary', kind: 'heading' }),
+      makeEntry({ id: 'block-1', text: 'First paragraph.' }),
+      makeEntry({ id: 'block-2', text: 'Second paragraph.' }),
+      makeEntry({ id: 'block-3', text: '## Details', kind: 'heading' }),
+    ]
+
+    expect(buildParsingBlockEditTarget(markdown, entries, 'block-2')).toEqual({
+      blockId: 'block-2',
+      content: 'Second paragraph.',
+      range: {
+        start: markdown.indexOf('Second paragraph.'),
+        end: markdown.indexOf('Second paragraph.') + 'Second paragraph.'.length,
+      },
+      selection: {
+        start: 0,
+        end: 0,
+      },
+    })
+  })
+
+  it('patches edited block content back into the full markdown document', () => {
+    const markdown = '# Summary\n\nFirst paragraph.\n\nSecond paragraph.\n\n## Details'
+    const entries = [
+      makeEntry({ id: 'block-0', text: '# Summary', kind: 'heading' }),
+      makeEntry({ id: 'block-1', text: 'First paragraph.' }),
+      makeEntry({ id: 'block-2', text: 'Second paragraph.' }),
+      makeEntry({ id: 'block-3', text: '## Details', kind: 'heading' }),
+    ]
+    const target = buildParsingBlockEditTarget(markdown, entries, 'block-2')
+
+    expect(target).not.toBeNull()
+    expect(applyBlockEditToMarkdown(markdown, target!.range, 'Updated paragraph.')).toBe(
+      '# Summary\n\nFirst paragraph.\n\nUpdated paragraph.\n\n## Details'
+    )
   })
 })
