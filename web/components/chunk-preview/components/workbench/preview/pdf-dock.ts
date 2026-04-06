@@ -11,6 +11,10 @@ export function getStoredOriginalPreviewMode(): OriginalPreviewMode | null {
   return raw as OriginalPreviewMode
 }
 
+export function getInitialOriginalPreviewMode(isPdf: boolean): OriginalPreviewMode {
+  return getStoredOriginalPreviewMode() ?? (isPdf ? 'pdf' : 'raw')
+}
+
 export function shouldRevealPdfPreviewOnChunkSelect({
   nextIndex,
   showOriginalPanel,

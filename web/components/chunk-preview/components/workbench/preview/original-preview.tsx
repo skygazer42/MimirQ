@@ -18,11 +18,10 @@ import type { ChunkPreviewItem } from '@/types'
 import { OriginalPreviewMonaco } from './original-preview-monaco'
 import { PdfPreview } from './pdf-preview'
 import { CoverageHeatmapMini } from './coverage-heatmap-mini'
-import { ORIGINAL_PREVIEW_MODE_STORAGE_KEY } from './pdf-dock'
+import { getInitialOriginalPreviewMode, ORIGINAL_PREVIEW_MODE_STORAGE_KEY } from './pdf-dock'
 
 const AUTO_LOAD_TEXT_MAX_BYTES = 800_000
 type PreviewMode = 'raw' | 'rendered' | 'editor' | 'pdf'
-const VALID_PREVIEW_MODES: ReadonlySet<PreviewMode> = new Set<PreviewMode>(['raw', 'rendered', 'editor', 'pdf'])
 
 type IdleCallbackHandle = number
 type IdleGlobal = typeof globalThis & {
@@ -111,15 +110,6 @@ export function OriginalPreview() {
   const [localError, setLocalError] = useState<string | null>(null)
   const highlightRef = useRef<HTMLElement | null>(null)
 
-  // Keep the preferred preview mode sticky across chunk inspections (especially useful for PDF docking).
-  useEffect(() => {
-    if (globalThis.window === undefined) return
-    const saved = (globalThis.window.localStorage.getItem(ORIGINAL_PREVIEW_MODE_STORAGE_KEY) || '').trim()
-    if (!saved) return
-    if (!VALID_PREVIEW_MODES.has(saved as PreviewMode)) return
-    setPreviewMode(saved as PreviewMode)
-  }, [])
-
   useEffect(() => {
     if (globalThis.window === undefined) return
     globalThis.window.localStorage.setItem(ORIGINAL_PREVIEW_MODE_STORAGE_KEY, previewMode)
@@ -144,6 +134,12 @@ export function OriginalPreview() {
     const name = String(currentFile?.name || '').toLowerCase()
     return name.endsWith('.pdf')
   }, [currentFile?.name, previewData?.file_type])
+
+  // Keep the preferred preview mode sticky across chunk inspections (especially useful for PDF docking).
+  useEffect(() => {
+    if (globalThis.window === undefined) return
+    setPreviewMode(getInitialOriginalPreviewMode(isPdf))
+  }, [isPdf])
 
   useEffect(() => {
     if (previewMode === 'pdf' && !isPdf) setPreviewMode('raw')
@@ -367,7 +363,12 @@ export function OriginalPreview() {
       <div className="h-10 border-b border-border/60 bg-card flex items-center justify-between px-4 shrink-0">
         <span className="text-sm font-semibold text-foreground flex items-center gap-2 whitespace-nowrap shrink-0">
           <FileText className="w-4 h-4 text-muted-foreground" />
-          {t('originalPreview.title')}
+          {previewMode === 'pdf' ? t('originalPreview.titlePdf') : t('originalPreview.title')}
+          {previewMode === 'pdf' ? (
+            <span className="hidden xl:inline text-[10px] font-normal text-muted-foreground/75">
+              {t('originalPreview.hints.pdfMode')}
+            </span>
+          ) : null}
         </span>
         <div className="flex items-center gap-2">
           {previewData && (
@@ -484,7 +485,7 @@ export function OriginalPreview() {
                     : t('originalPreview.tabs.pdfUnavailableTitle')
                 }
               >
-                PDF
+                {t('originalPreview.tabs.pdf')}
               </Button>
             ) : null}
           </div>
