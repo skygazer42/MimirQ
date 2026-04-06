@@ -96,32 +96,32 @@ export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<C
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors duration-150 motion-reduce:transition-none',
+          'w-full flex items-center gap-2.5 rounded-lg border px-2.5 py-2 transition-colors duration-150 motion-reduce:transition-none',
           'bg-card hover:bg-muted',
           isOpen
             ? 'border-sky-300/60 ring-2 ring-sky-500/10'
             : 'border-border hover:border-border'
         )}
       >
-        <div className={cn('p-1.5 rounded-lg', selectedColor.bg)}>
-          <SelectedIcon className={cn('size-4', selectedColor.text)} />
+        <div className={cn('rounded-md p-1.5', selectedColor.bg)}>
+          <SelectedIcon className={cn('size-3.5', selectedColor.text)} />
         </div>
         <div className="flex-1 text-left min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-foreground truncate">
+          <div className="flex items-center gap-1.5">
+            <span className="truncate text-[11px] font-medium text-foreground">
               {selectedOption.label}
             </span>
             {selectedOption.badge && (
-              <span className="text-[10px] font-medium px-1.5 py-0.5 bg-sky-100 text-sky-600 dark:bg-sky-500/20 dark:text-sky-300 rounded">
+              <span className="rounded px-1.5 py-0.5 text-[9px] font-medium bg-sky-100 text-sky-600 dark:bg-sky-500/20 dark:text-sky-300">
                 {selectedOption.badge}
               </span>
             )}
           </div>
-          <p className="text-xs text-muted-foreground truncate">{selectedOption.description}</p>
+          <p className="truncate text-[10px] text-muted-foreground">{selectedOption.description}</p>
         </div>
         <ChevronDown
           className={cn(
-            'w-4 h-4 text-muted-foreground transition-transform flex-shrink-0',
+            'h-4 w-4 flex-shrink-0 text-muted-foreground transition-transform',
             isOpen && 'rotate-180'
           )}
         />
@@ -129,7 +129,7 @@ export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<C
 
       {/* 下拉菜单 */}
       {isOpen && (
-        <div className="absolute z-50 w-full mt-2 bg-card border border-border rounded-xl shadow-lg overflow-hidden">
+        <div className="absolute z-50 mt-2 w-full overflow-hidden rounded-lg border border-border bg-card shadow-lg">
           <div className="px-3 py-2 border-b border-border bg-card">
             <input
               ref={searchRef}
@@ -137,7 +137,7 @@ export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<C
               onChange={(e) => setQuery(e.target.value)}
               placeholder="搜索切块方式..."
               className={cn(
-                'w-full rounded-lg border border-border px-2 py-1.5 text-sm',
+                'w-full rounded-md border border-border px-2 py-1.5 text-[11px]',
                 'focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-500/20'
               )}
             />
@@ -163,19 +163,19 @@ export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<C
                     setIsOpen(false)
                   }}
                   className={cn(
-                    'w-full flex items-center gap-3 px-3 py-2.5 transition-colors',
+                    'w-full flex items-center gap-2.5 px-3 py-2 transition-colors',
                     isSelected ? 'bg-sky-500/10 dark:bg-sky-500/20' : 'hover:bg-muted',
                     isDisabled && 'opacity-50 cursor-not-allowed hover:bg-transparent'
                   )}
                 >
-                  <div className={cn('p-1.5 rounded-lg', color.bg)}>
-                    <Icon className={cn('size-4', color.text)} />
+                  <div className={cn('rounded-md p-1.5', color.bg)}>
+                    <Icon className={cn('size-3.5', color.text)} />
                   </div>
                   <div className="flex-1 text-left min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       <span
                         className={cn(
-                          'text-sm font-medium truncate',
+                          'truncate text-[11px] font-medium',
                           isSelected ? 'text-sky-600 dark:text-sky-300' : 'text-foreground'
                         )}
                       >
@@ -184,7 +184,7 @@ export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<C
                       {option.badge && (
                         <span
                           className={cn(
-                            'text-[10px] font-medium px-1.5 py-0.5 rounded',
+                            'rounded px-1.5 py-0.5 text-[9px] font-medium',
                             (() => {
     if (isSelected) {
         return 'bg-sky-100 text-sky-600 dark:bg-sky-500/20 dark:text-sky-300';
@@ -202,7 +202,7 @@ export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<C
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground truncate">{option.description}</p>
+                    <p className="truncate text-[10px] text-muted-foreground">{option.description}</p>
                   </div>
                   {isSelected && (
                     <Check className="size-4 text-sky-600 dark:text-sky-300 flex-shrink-0" />

@@ -1171,7 +1171,12 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
               )}
 
               {group.title === '知识图谱' && !kgEnabled && (
-                <div className={cn("px-3 py-2 bg-muted border-t border-border flex items-center gap-2 text-muted-foreground italic", descClasses)}>
+                <div
+                  className={cn(
+                    "flex items-center gap-2 border-t border-border bg-muted px-3 py-2 text-muted-foreground italic",
+                    compact && "px-2.5 py-1.5 text-[9px]"
+                  )}
+                >
                   <Sparkles className="size-3" />
                   需先开启 KG 抽取才能配置索引
                 </div>

@@ -293,12 +293,12 @@ export function ChunkAutoTuneDialog() {
         type="button"
         size="sm"
         variant="outline"
-        className="h-7 px-2 text-[11px]"
+        className="h-6 px-2 text-[10px] text-muted-foreground"
         onClick={() => setOpen(true)}
         disabled={!previewData || isLoading}
         title={isAutoTuneAvailable ? t('autoTune.trigger.readyTitle') : t('autoTune.trigger.disabledTitle')}
       >
-        <Wand2 className="w-3.5 h-3.5 mr-1 text-primary" />
+        <Wand2 className="mr-1 h-3 w-3 text-primary" />
         {t('autoTune.trigger.label')}
       </Button>
 
