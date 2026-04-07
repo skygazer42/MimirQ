@@ -64,7 +64,7 @@ export function GraphPageBody({
   linkDetailPanelProps,
 }: GraphPageBodyProps) {
   return (
-    <div className="relative flex-1 w-full min-h-[500px]">
+    <div className="relative flex h-full min-h-0 w-full flex-1">
       <GraphCanvas {...canvasProps} />
 
       <GraphContextMenu {...contextMenuProps} />

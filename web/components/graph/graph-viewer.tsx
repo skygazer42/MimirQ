@@ -11,13 +11,13 @@ import { GraphMinimap } from './graph-minimap'
 import { Loader2 } from 'lucide-react'
 
 export const NODE_COLOR_PALETTE = [
-  '#ec4899', '#10b981', '#f59e0b', '#8b5cf6', '#3b82f6',
-  '#06b6d4', '#84cc16', '#f97316', '#ef4444', '#14b8a6',
-  '#22c55e', '#eab308', '#0ea5e9', '#a855f7', '#fb7185',
-  '#4ade80', '#2dd4bf', '#38bdf8', '#f472b6', '#c084fc',
-  '#facc15', '#a3e635', '#67e8f9', '#f43f5e',
+  '#ccfeff', '#8ed8ff', '#6fb7ff', '#79c7c5', '#8fd3a8',
+  '#b8df8a', '#f2d27b', '#f5b97a', '#c6c9ff', '#9bb5ff',
+  '#a6e7ff', '#7fd9f3', '#5cc7de', '#6ebfd1', '#82cfff',
+  '#b6e4ff', '#c7f1e0', '#def5c8', '#ffe6b6', '#e2dcff',
+  '#c2d8ff', '#9bd1ff', '#8adfd8', '#a7c4ff',
 ]
-export const EVENT_COLOR = '#6366f1'
+export const EVENT_COLOR = '#8ea2ff'
 
 export const EDGE_KIND_COLORS: Record<string, string> = {
   entity_relation: '#3b82f6', // blue
@@ -49,6 +49,84 @@ function confidenceToWidth(confidence: number | null, opts: { isLargeGraph: bool
   return base + c * span
 }
 
+type RgbColor = { r: number; g: number; b: number }
+
+function parseColorToRgb(color: string): RgbColor | null {
+  const value = String(color || '').trim()
+  if (!value) return null
+
+  const hex = value.replace('#', '')
+  if (/^[\da-fA-F]{3}$/.test(hex)) {
+    return {
+      r: parseInt(hex[0] + hex[0], 16),
+      g: parseInt(hex[1] + hex[1], 16),
+      b: parseInt(hex[2] + hex[2], 16),
+    }
+  }
+
+  if (/^[\da-fA-F]{6}$/.test(hex)) {
+    return {
+      r: parseInt(hex.slice(0, 2), 16),
+      g: parseInt(hex.slice(2, 4), 16),
+      b: parseInt(hex.slice(4, 6), 16),
+    }
+  }
+
+  const rgbMatch = value.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i)
+  if (!rgbMatch) return null
+
+  return {
+    r: Number(rgbMatch[1]),
+    g: Number(rgbMatch[2]),
+    b: Number(rgbMatch[3]),
+  }
+}
+
+export function withAlpha(color: string, alpha: number): string {
+  const rgb = parseColorToRgb(color)
+  if (!rgb) return color
+  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${clamp01(alpha)})`
+}
+
+export function mixHexColors(color: string, target: string, amount: number): string {
+  const from = parseColorToRgb(color)
+  const to = parseColorToRgb(target)
+  if (!from || !to) return color
+
+  const t = clamp01(amount)
+  const mix = (start: number, end: number) => Math.round(start + (end - start) * t)
+  return `rgb(${mix(from.r, to.r)}, ${mix(from.g, to.g)}, ${mix(from.b, to.b)})`
+}
+
+export function truncateGraphLabel(value: unknown, maxLength = 22): string {
+  const text = String(value ?? '').trim()
+  if (!text) return ''
+  if (text.length <= maxLength) return text
+  return `${text.slice(0, Math.max(1, maxLength - 1))}\u2026`
+}
+
+function traceRoundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number
+): void {
+  const r = Math.max(0, Math.min(radius, width / 2, height / 2))
+  ctx.beginPath()
+  ctx.moveTo(x + r, y)
+  ctx.lineTo(x + width - r, y)
+  ctx.quadraticCurveTo(x + width, y, x + width, y + r)
+  ctx.lineTo(x + width, y + height - r)
+  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height)
+  ctx.lineTo(x + r, y + height)
+  ctx.quadraticCurveTo(x, y + height, x, y + height - r)
+  ctx.lineTo(x, y + r)
+  ctx.quadraticCurveTo(x, y, x + r, y)
+  ctx.closePath()
+}
+
 function hashTypeToIndex(type: string): number {
   let hash = 0
   for (let i = 0; i < type.length; i++) {
@@ -68,6 +146,15 @@ export function buildTypeColorMap(nodes: readonly any[]): Map<string, string> {
     }
   }
   return map
+}
+
+function getPrimaryCanvas(root: ParentNode | null): HTMLCanvasElement | null {
+  if (!root) return null
+  const canvases = Array.from(root.querySelectorAll('canvas')) as HTMLCanvasElement[]
+  if (!canvases.length) return null
+  return canvases
+    .filter((canvas) => Number.isFinite(canvas.width) && Number.isFinite(canvas.height))
+    .sort((a, b) => b.width * b.height - a.width * a.height)[0] ?? null
 }
 
 // Dynamically import ForceGraph2D via wrapper to handle Ref correctly
@@ -176,6 +263,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
   const [mounted, setMounted] = useState(false)
   const [hoveredLinkId, setHoveredLinkId] = useState<string | null>(null)
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
+  const [isCanvasPanning, setIsCanvasPanning] = useState(false)
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
   const canvasColors = useMemo(() => {
@@ -270,6 +358,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
   const cooldownTicks = isLargeGraph ? 50 : 100
   const cooldownTime = isLargeGraph ? 4000 : 8000
   const graphRenderResetKey = `${sanitizedData.nodes.length}:${sanitizedData.links.length}:${layoutMode}`
+  const graphCursor = isCanvasPanning ? 'grabbing' : (hoveredNodeId || hoveredLinkId ? 'pointer' : 'grab')
 
   // Debug: Log dimensions
   useEffect(() => {
@@ -303,6 +392,44 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
       document.removeEventListener('visibilitychange', handleVisibility)
     }
   }, [])
+
+  useEffect(() => {
+    if (!mounted) return
+
+    const root = containerRef.current
+    if (!root) return
+
+    const resetPanning = () => setIsCanvasPanning(false)
+    const handleMouseDown = (event: MouseEvent) => {
+      if (!(event.target instanceof HTMLCanvasElement)) return
+      if (event.button === 1 || event.button === 2) {
+        setIsCanvasPanning(true)
+      }
+    }
+
+    root.addEventListener('mousedown', handleMouseDown)
+    globalThis.window.addEventListener('mouseup', resetPanning)
+    globalThis.window.addEventListener('blur', resetPanning)
+    globalThis.window.addEventListener('contextmenu', resetPanning)
+
+    return () => {
+      root.removeEventListener('mousedown', handleMouseDown)
+      globalThis.window.removeEventListener('mouseup', resetPanning)
+      globalThis.window.removeEventListener('blur', resetPanning)
+      globalThis.window.removeEventListener('contextmenu', resetPanning)
+    }
+  }, [mounted])
+
+  useEffect(() => {
+    const root = containerRef.current
+    const primaryCanvas = getPrimaryCanvas(root)
+    if (root) {
+      root.style.cursor = graphCursor
+    }
+    if (primaryCanvas) {
+      primaryCanvas.style.cursor = graphCursor
+    }
+  }, [graphCursor, height, mounted, showMinimap, width, sanitizedData.links.length, sanitizedData.nodes.length])
 
   // Expose methods to parent
   useImperativeHandle(ref, () => ({
@@ -454,7 +581,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
   }
 
   return (
-    <div ref={containerRef} className="w-full h-full relative bg-background">
+    <div ref={containerRef} className="relative h-full w-full bg-transparent">
       {(!mounted || width === 0 || height === 0) ? (
         <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
 	           {mounted ? (
@@ -475,6 +602,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
               height={height}
               graphData={sanitizedData}
               backgroundColor="rgba(0,0,0,0)"
+              showPointerCursor={false}
               nodeLabel="label"
               nodeColor={getNodeColor}
               nodeRelSize={nodeRelSize}
@@ -495,6 +623,8 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
                  const linkId = link.id || (link.index === undefined ? null : `link-${link.index}`)
                  const linkKind = getLinkKind(link)
                  const baseColor = EDGE_KIND_COLORS[linkKind] || canvasColors.nodeDim
+                 const baseLineColor = withAlpha(baseColor, isLargeGraph ? 0.22 : 0.32)
+                 const activeLineColor = withAlpha(baseColor, isLargeGraph ? 0.44 : 0.58)
                   if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) {
                      return '#f59e0b'
                   }
@@ -505,7 +635,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
                     const sourceId = typeof link.source === 'object' ? link.source.id : link.source
                     const targetId = typeof link.target === 'object' ? link.target.id : link.target
                     if (highlightedNodeIds.has(sourceId) && highlightedNodeIds.has(targetId)) {
-                      return canvasColors.linkMid
+                      return activeLineColor
                     }
                     return canvasColors.linkDim
                   }
@@ -513,18 +643,18 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
                     const sourceId = typeof link.source === 'object' ? link.source.id : link.source
                     const targetId = typeof link.target === 'object' ? link.target.id : link.target
                     if (sourceId === selectedNodeId || targetId === selectedNodeId) {
-                      return baseColor
+                      return activeLineColor
                     }
                     return canvasColors.linkDim
                   }
 
-                  return baseColor
+                  return baseLineColor
                }}
               linkWidth={(link: any) => {
                  const linkId = link.id || (link.index === undefined ? null : `link-${link.index}`)
                  const confidence = getLinkConfidence(link)
                  const baseWidth = confidenceToWidth(confidence, { isLargeGraph })
-                 if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) {
+                  if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) {
                      return 4 
                   }
                   if (hoveredLinkId && linkId && hoveredLinkId === linkId) {
@@ -537,7 +667,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
                     if (sourceId === selectedNodeId || targetId === selectedNodeId) return Math.max(2.5, baseWidth + 0.6)
                     return 0.5
                   }
-                  return Math.min(4, Math.max(0.5, baseWidth))
+                  return Math.min(3.2, Math.max(isLargeGraph ? 0.45 : 0.8, baseWidth * 0.82))
                }}
               linkDirectionalArrowLength={(link: any) => (link?.isSelfLoop ? 0 : arrowLength)}
               linkDirectionalArrowRelPos={1}
@@ -583,94 +713,141 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
                 const isHovered = hoveredNodeId === node.id && !isLargeGraph
 
                 const rawLabel = node.label || node.id
-                const label = rawLabel.length > 16 ? rawLabel.substring(0, 15) + '\u2026' : rawLabel
-                const fontSize = (isHighlighted || isSelected) ? 14 / globalScale : 12 / globalScale
+                const label = truncateGraphLabel(rawLabel, 24)
+                const fontSize = (isHighlighted || isSelected || isHovered) ? 11.5 / globalScale : 10.5 / globalScale
 
                 const color = getNodeColor(node)
                 const degree = nodeDegreeMap.get(String(node.id)) || 0
-                const baseRadius = isLargeGraph ? 4 : 5
-                const degreeBonus = isLargeGraph ? 0 : Math.min(degree * 0.4, 4)
-                let radius = baseRadius + degreeBonus
-                if (isHighlighted || isSelected) radius += 2
-                if (isHovered) radius += 1
+                const baseRadius = isLargeGraph ? 2.7 : 3.2
+                const degreeBonus = isLargeGraph ? Math.min(degree * 0.08, 0.7) : Math.min(degree * 0.18, 1.8)
+                let coreRadius = baseRadius + degreeBonus
+                if (isHighlighted || isSelected) coreRadius += 0.9
+                if (isHovered) coreRadius += 0.45
+                const shellRadius = coreRadius + (isLargeGraph ? 1.05 : 1.55)
 
                 const nx = node.x || 0
                 const ny = node.y || 0
+                const emphasis = isSelected || isHighlighted || isHovered
+                const labelDirection = nx >= 0 ? 1 : -1
 
-                ctx.globalAlpha = isDimmed ? 0.3 : 1
+                ctx.globalAlpha = isDimmed ? 0.36 : 1
 
                 if ((isHovered || isSelected) && !isLargeGraph) {
                   ctx.save()
-                  const glowRadius = radius + (isSelected ? 6 : 5)
-                  const glow = ctx.createRadialGradient(nx, ny, radius * 0.5, nx, ny, glowRadius)
-                  glow.addColorStop(0, color + '40')
-                  glow.addColorStop(1, color + '00')
+                  const glowRadius = shellRadius + (isSelected ? 7 : 5.5)
+                  const glow = ctx.createRadialGradient(nx, ny, coreRadius * 0.5, nx, ny, glowRadius)
+                  glow.addColorStop(0, withAlpha(color, isSelected ? 0.22 : 0.16))
+                  glow.addColorStop(1, withAlpha(color, 0))
                   ctx.beginPath()
                   ctx.arc(nx, ny, glowRadius, 0, 2 * Math.PI)
                   ctx.fillStyle = glow
                   ctx.globalAlpha = isSelected ? 0.7 : 0.5
                   ctx.fill()
                   ctx.restore()
-                  ctx.globalAlpha = isDimmed ? 0.3 : 1
+                  ctx.globalAlpha = isDimmed ? 0.36 : 1
                 }
-
-                const grad = ctx.createRadialGradient(
-                  nx - radius * 0.3, ny - radius * 0.3, radius * 0.1,
-                  nx, ny, radius
-                )
-                grad.addColorStop(0, isDark ? 'rgba(255,255,255,0.14)' : '#ffffff60')
-                grad.addColorStop(0.4, color)
-                grad.addColorStop(1, color + 'cc')
 
                 ctx.beginPath()
-                ctx.arc(nx, ny, radius, 0, 2 * Math.PI, false)
-                ctx.fillStyle = isLargeGraph ? color : grad
+                ctx.arc(nx, ny, shellRadius, 0, 2 * Math.PI, false)
+                ctx.fillStyle = withAlpha(
+                  mixHexColors(color, isDark ? '#0f172a' : '#fffef9', isDark ? 0.45 : 0.22),
+                  isSelected ? 0.22 : isHovered ? 0.16 : 0.1
+                )
                 ctx.fill()
 
-                if (isSelected) {
-                  ctx.strokeStyle = '#fff'
-                  ctx.lineWidth = 3 / globalScale
-                  ctx.stroke()
-                  ctx.beginPath()
-                  ctx.arc(nx, ny, radius + 2.5 / globalScale, 0, 2 * Math.PI, false)
-                  ctx.strokeStyle = '#E91E63'
-                  ctx.lineWidth = 2.5 / globalScale
-                  ctx.stroke()
-                } else if (isHighlighted) {
-                  ctx.strokeStyle = '#fff'
-                  ctx.lineWidth = 3 / globalScale
-                  ctx.stroke()
-                  ctx.beginPath()
-                  ctx.arc(nx, ny, radius + 2 / globalScale, 0, 2 * Math.PI, false)
-                  ctx.strokeStyle = isPathNode ? '#f59e0b' : color
-                  ctx.lineWidth = 2 / globalScale
-                  ctx.stroke()
-                } else if (isHovered) {
-                  ctx.strokeStyle = '#fff'
-                  ctx.lineWidth = 2.5 / globalScale
-                  ctx.stroke()
-                } else {
-                  ctx.strokeStyle = '#ffffff'
-                  ctx.lineWidth = 2 / globalScale
-                  ctx.stroke()
-                }
+                ctx.beginPath()
+                ctx.arc(nx, ny, shellRadius, 0, 2 * Math.PI, false)
+                ctx.strokeStyle = isPathNode
+                  ? '#f59e0b'
+                  : withAlpha(color, isSelected ? 0.88 : isHighlighted || isHovered ? 0.7 : isDark ? 0.42 : 0.32)
+                ctx.lineWidth = (isSelected ? 1.9 : isHighlighted || isHovered ? 1.45 : 1.1) / globalScale
+                ctx.stroke()
+
+                const coreGradient = ctx.createRadialGradient(
+                  nx - coreRadius * 0.45,
+                  ny - coreRadius * 0.55,
+                  Math.max(0.25, coreRadius * 0.15),
+                  nx,
+                  ny,
+                  coreRadius
+                )
+                coreGradient.addColorStop(0, mixHexColors(color, '#ffffff', isDark ? 0.1 : 0.42))
+                coreGradient.addColorStop(0.5, mixHexColors(color, '#ffffff', isDark ? 0.03 : 0.2))
+                coreGradient.addColorStop(1, mixHexColors(color, isDark ? '#020617' : '#dbeafe', isDark ? 0.18 : 0.08))
+
+                ctx.beginPath()
+                ctx.arc(nx, ny, coreRadius, 0, 2 * Math.PI, false)
+                ctx.fillStyle = coreGradient
+                ctx.fill()
+
+                ctx.beginPath()
+                ctx.arc(nx, ny, coreRadius, 0, 2 * Math.PI, false)
+                ctx.strokeStyle = withAlpha('#ffffff', isDark ? 0.16 : 0.72)
+                ctx.lineWidth = 0.9 / globalScale
+                ctx.stroke()
+
+                ctx.beginPath()
+                ctx.arc(
+                  nx - coreRadius * 0.34,
+                  ny - coreRadius * 0.4,
+                  Math.max(0.42 / globalScale, coreRadius * 0.2),
+                  0,
+                  2 * Math.PI,
+                  false
+                )
+                ctx.fillStyle = withAlpha('#ffffff', isDark ? 0.18 : 0.58)
+                ctx.fill()
 
                 const shouldShowLabel =
-                  isHighlighted || isSelected || isHovered
-                  || (!isLargeGraph && (globalScale > 1.5 || (!isDimmed && globalScale > 1.2)))
+                  emphasis
+                  || (!isLargeGraph && (
+                    globalScale > 1.7
+                    || (degree >= 4 && globalScale > 1.2)
+                    || (degree >= 7 && globalScale > 1.02)
+                  ))
 
                 if (shouldShowLabel) {
-                  const labelY = ny + radius + (isLargeGraph ? 3 : 5)
-                  ctx.font = `${(isHighlighted || isSelected || isHovered) ? '600 ' : ''}${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
-                  ctx.textAlign = 'center'
+                  const padX = 6 / globalScale
+                  const padY = 3 / globalScale
+                  const leaderGap = 5 / globalScale
+                  const cardRadius = 5 / globalScale
+                  const cardFill = emphasis
+                    ? withAlpha(mixHexColors(color, isDark ? '#0f172a' : '#fffef9', isDark ? 0.74 : 0.84), isDark ? 0.92 : 0.9)
+                    : (isDark ? 'rgba(2, 6, 23, 0.78)' : 'rgba(255, 254, 249, 0.86)')
+
+                  ctx.font = `${emphasis ? '600 ' : ''}${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
+                  ctx.textAlign = labelDirection === 1 ? 'left' : 'right'
                   ctx.textBaseline = 'middle'
 
-                  ctx.strokeStyle = canvasColors.labelStroke
-                  ctx.lineWidth = 4 / globalScale
-                  ctx.strokeText(label, nx, labelY)
+                  const labelWidth = ctx.measureText(label).width
+                  const cardWidth = labelWidth + padX * 2
+                  const cardHeight = fontSize + padY * 2
+                  const anchorX = nx + labelDirection * (shellRadius + leaderGap)
+                  const cardX = labelDirection === 1 ? anchorX : anchorX - cardWidth
+                  const cardY = ny - cardHeight / 2
+                  const leaderEndX = labelDirection === 1 ? cardX - 2 / globalScale : cardX + cardWidth + 2 / globalScale
+
+                  ctx.beginPath()
+                  ctx.moveTo(nx + labelDirection * (shellRadius - 0.3 / globalScale), ny)
+                  ctx.lineTo(leaderEndX, ny)
+                  ctx.strokeStyle = isPathNode
+                    ? '#f59e0b'
+                    : withAlpha(color, emphasis ? 0.56 : 0.28)
+                  ctx.lineWidth = 1 / globalScale
+                  ctx.stroke()
+
+                  traceRoundRect(ctx, cardX, cardY, cardWidth, cardHeight, cardRadius)
+                  ctx.fillStyle = cardFill
+                  ctx.fill()
+                  ctx.strokeStyle = isPathNode
+                    ? withAlpha('#f59e0b', 0.72)
+                    : withAlpha(color, emphasis ? 0.42 : 0.22)
+                  ctx.lineWidth = 1 / globalScale
+                  ctx.stroke()
 
                   ctx.fillStyle = isDimmed ? canvasColors.labelDim : canvasColors.labelFill
-                  ctx.fillText(label, nx, labelY)
+                  const textX = labelDirection === 1 ? cardX + padX : cardX + cardWidth - padX
+                  ctx.fillText(label, textX, ny)
                 }
 
                 ctx.globalAlpha = 1
