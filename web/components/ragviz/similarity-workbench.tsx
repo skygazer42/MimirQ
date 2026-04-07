@@ -21,12 +21,17 @@ import type {
 } from '@/components/ragviz/similarity-diagnostics'
 import {
   BarChart3,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
   Database,
   Download,
   Eye,
   Filter,
   Grid3X3,
   Lock,
+  Minus,
+  Plus,
   RefreshCw,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -36,6 +41,7 @@ type MainViewMode = 'heatmap' | 'diagnostics'
 type RightTopPanel = 'statistics' | null
 type RightBottomPanel = 'filters' | null
 type JsonRecord = Record<string, unknown>
+type SelectedHeatmapCell = { rowIndex: number; colIndex: number }
 
 type PlotlyTrace = {
   type: 'heatmap'
@@ -64,6 +70,22 @@ type PlotlyConfig = {
 type PlotlyLike = {
   react: (element: HTMLDivElement, data: PlotlyTrace[], layout: PlotlyLayout, config: PlotlyConfig) => void
   purge: (element: HTMLDivElement) => void
+}
+
+type PlotlyClickPoint = {
+  pointNumber?: number | number[]
+  pointIndex?: number | number[]
+  i?: number
+  j?: number
+}
+
+type PlotlyClickEvent = {
+  points?: PlotlyClickPoint[]
+}
+
+type PlotlyEventTarget = HTMLDivElement & {
+  on?: (eventName: 'plotly_click', handler: (event: PlotlyClickEvent) => void) => void
+  removeAllListeners?: (eventName?: string) => void
 }
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -128,10 +150,13 @@ export function RagvizSimilarityWorkbench() {
   const [tempTopK, setTempTopK] = useState<{ value: number; axis: 'x' | 'y' }>({ value: 0, axis: 'x' })
   const [mainView, setMainView] = useState<MainViewMode>('heatmap')
   const [diagnosticDecisions, setDiagnosticDecisions] = useState<Record<string, DiagnosticDecision>>({})
+  const [selectedCell, setSelectedCell] = useState<SelectedHeatmapCell | null>(null)
 
   const [leftTopPanel, setLeftTopPanel] = useState<LeftTopPanel>('dataSource')
   const [rightTopPanel, setRightTopPanel] = useState<RightTopPanel>('statistics')
   const [rightBottomPanel, setRightBottomPanel] = useState<RightBottomPanel>('filters')
+  const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(false)
+  const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(false)
 
   const [leftWidth, setLeftWidth] = useState<number>(320)
   const [rightWidth, setRightWidth] = useState<number>(320)
@@ -201,6 +226,7 @@ export function RagvizSimilarityWorkbench() {
     setExportIndex(0)
     setMainView('heatmap')
     setDiagnosticDecisions({})
+    setSelectedCell(null)
 
     const nextResults: SimilarityMatrixEntry[] = []
     let done = 0
@@ -344,6 +370,7 @@ export function RagvizSimilarityWorkbench() {
 
     setMainView('heatmap')
     setDiagnosticDecisions({})
+    setSelectedCell(null)
     setResults((prev) => {
       if (prev.length === 0) return imported
       return [...prev, ...imported]
@@ -380,6 +407,12 @@ export function RagvizSimilarityWorkbench() {
       setMainView('heatmap')
     }
   }, [isDifferenceMode, mainView])
+
+  useEffect(() => {
+    if (mainView !== 'heatmap') {
+      setSelectedCell(null)
+    }
+  }, [mainView])
 
   const displayMatrix = useMemo(() => {
     if (!primaryEntry) return null
@@ -453,6 +486,41 @@ export function RagvizSimilarityWorkbench() {
     return applyMask(displayMatrix, effectiveMask)
   }, [displayMatrix, effectiveMask])
 
+  const selectedCellDetails = useMemo(() => {
+    if (!selectedCell || !displayLabels || !displayMatrix) return null
+
+    const rawValue = displayMatrix[selectedCell.rowIndex]?.[selectedCell.colIndex]
+    if (typeof rawValue !== 'number' || !Number.isFinite(rawValue)) return null
+
+    const maskedValue = maskedMatrix?.[selectedCell.rowIndex]?.[selectedCell.colIndex]
+    const isVisible = effectiveMask
+      ? Boolean(effectiveMask[selectedCell.rowIndex]?.[selectedCell.colIndex])
+      : true
+
+    return {
+      ...selectedCell,
+      xLabel: displayLabels.xLabels[selectedCell.colIndex] || `X${selectedCell.colIndex + 1}`,
+      yLabel: displayLabels.yLabels[selectedCell.rowIndex] || `Y${selectedCell.rowIndex + 1}`,
+      rawValue,
+      maskedValue: typeof maskedValue === 'number' && Number.isFinite(maskedValue) ? maskedValue : null,
+      isVisible,
+    }
+  }, [displayLabels, displayMatrix, effectiveMask, maskedMatrix, selectedCell])
+
+  useEffect(() => {
+    if (!selectedCell || !displayMatrix || !displayLabels) return
+
+    const rowCount = displayMatrix.length
+    const colCount = rowCount > 0 ? (displayMatrix[0]?.length || 0) : 0
+    const outOfBounds = selectedCell.rowIndex >= rowCount || selectedCell.colIndex >= colCount
+    const labelsMissing =
+      selectedCell.rowIndex >= displayLabels.yLabels.length || selectedCell.colIndex >= displayLabels.xLabels.length
+
+    if (outOfBounds || labelsMissing) {
+      setSelectedCell(null)
+    }
+  }, [displayLabels, displayMatrix, selectedCell])
+
   const diagnostics = useMemo<SimilarityDiagnosticsResult | null>(() => {
     if (!primaryEntry || !displayLabels || isDifferenceMode) return null
     const matrixForDiagnostics = maskedMatrix ?? displayMatrix
@@ -512,6 +580,46 @@ export function RagvizSimilarityWorkbench() {
 
     return calculateDifferenceModeStatistics(groundTruthMask, currentMask)
   }, [displayMatrix, primaryEntry, subtractEntry, tempSimilarityRange, tempTopK])
+
+  const handleHeatmapCellSelect = useCallback((cell: SelectedHeatmapCell) => {
+    setSelectedCell((prev) =>
+      prev && prev.rowIndex === cell.rowIndex && prev.colIndex === cell.colIndex ? null : cell
+    )
+  }, [])
+
+  const handleStatisticsPanelToggle = useCallback(() => {
+    if (isRightSidebarCollapsed) {
+      setIsRightSidebarCollapsed(false)
+      setRightTopPanel('statistics')
+      return
+    }
+    setRightTopPanel((prev) => (prev === 'statistics' ? null : 'statistics'))
+  }, [isRightSidebarCollapsed])
+
+  const handleFilterPanelToggle = useCallback(() => {
+    if (isRightSidebarCollapsed) {
+      setIsRightSidebarCollapsed(false)
+      setRightBottomPanel('filters')
+      return
+    }
+    setRightBottomPanel((prev) => (prev === 'filters' ? null : 'filters'))
+  }, [isRightSidebarCollapsed])
+
+  const handleLeftTopPanelSelect = useCallback(
+    (panel: LeftTopPanel) => {
+      if (isLeftSidebarCollapsed) {
+        setIsLeftSidebarCollapsed(false)
+      }
+      setLeftTopPanel(panel)
+    },
+    [isLeftSidebarCollapsed]
+  )
+
+  const handleLeftChartControlsOpen = useCallback(() => {
+    if (isLeftSidebarCollapsed) {
+      setIsLeftSidebarCollapsed(false)
+    }
+  }, [isLeftSidebarCollapsed])
 
   const updateDisplayFields = (xField: string, yField: string) => {
     if (primaryIndex === null) return
@@ -692,12 +800,19 @@ export function RagvizSimilarityWorkbench() {
   // Persist UI layout.
   useEffect(() => {
     try {
-      const payload = { leftWidth, rightWidth, leftTopHeight, rightTopHeight }
+      const payload = {
+        leftWidth,
+        rightWidth,
+        leftTopHeight,
+        rightTopHeight,
+        isLeftSidebarCollapsed,
+        isRightSidebarCollapsed,
+      }
       localStorage.setItem('ragviz_similarity_layout_v1', JSON.stringify(payload))
     } catch {
       // ignore
     }
-  }, [leftWidth, rightWidth, leftTopHeight, rightTopHeight])
+  }, [isLeftSidebarCollapsed, isRightSidebarCollapsed, leftWidth, rightWidth, leftTopHeight, rightTopHeight])
 
   useEffect(() => {
     try {
@@ -708,6 +823,8 @@ export function RagvizSimilarityWorkbench() {
       if (typeof parsed.rightWidth === 'number') setRightWidth(parsed.rightWidth)
       if (typeof parsed.leftTopHeight === 'number') setLeftTopHeight(parsed.leftTopHeight)
       if (typeof parsed.rightTopHeight === 'number') setRightTopHeight(parsed.rightTopHeight)
+      if (typeof parsed.isLeftSidebarCollapsed === 'boolean') setIsLeftSidebarCollapsed(parsed.isLeftSidebarCollapsed)
+      if (typeof parsed.isRightSidebarCollapsed === 'boolean') setIsRightSidebarCollapsed(parsed.isRightSidebarCollapsed)
     } catch {
       // ignore
     }
@@ -779,34 +896,51 @@ export function RagvizSimilarityWorkbench() {
         <div className="w-12 border-r border-sidebar-border/70 bg-sidebar/90 backdrop-blur-xl flex flex-col items-center py-2">
           <div className="flex flex-col gap-1">
             <IconBtn
-              active={leftTopPanel === 'dataSource'}
+              active={!isLeftSidebarCollapsed && leftTopPanel === 'dataSource'}
               title="数据源配置"
-              onClick={() => setLeftTopPanel('dataSource')}
+              onClick={() => handleLeftTopPanelSelect('dataSource')}
               icon={<Database className="size-4" />}
             />
             <IconBtn
-              active={leftTopPanel === 'operations'}
+              active={!isLeftSidebarCollapsed && leftTopPanel === 'operations'}
               title="结果操作"
-              onClick={() => setLeftTopPanel('operations')}
+              onClick={() => handleLeftTopPanelSelect('operations')}
               icon={<Download className="size-4" />}
+            />
+            <IconBtn
+              active={false}
+              title={isLeftSidebarCollapsed ? '展开左侧栏' : '收起左侧栏'}
+              onClick={() => setIsLeftSidebarCollapsed((prev) => !prev)}
+              icon={isLeftSidebarCollapsed ? <ChevronRight className="size-4" /> : <ChevronLeft className="size-4" />}
             />
           </div>
           <div className="mt-auto pt-2">
-            <IconBtn active title="图表选择与控制" onClick={() => {}} icon={<Grid3X3 className="size-4" />} />
+            <IconBtn
+              active={!isLeftSidebarCollapsed}
+              title="图表选择与控制"
+              onClick={handleLeftChartControlsOpen}
+              icon={<Grid3X3 className="size-4" />}
+            />
           </div>
         </div>
 
         <div
           ref={leftSidebarRef}
-          className="relative h-full border-r border-sidebar-border/70 bg-sidebar/78 backdrop-blur-xl flex flex-col"
-          style={{ width: leftWidth }}
+          className={cn(
+            'relative h-full border-r border-sidebar-border/70 bg-sidebar/78 backdrop-blur-xl flex flex-col overflow-hidden transition-[width,opacity] duration-200 ease-out',
+            isLeftSidebarCollapsed ? 'opacity-0' : 'opacity-100'
+          )}
+          style={{ width: isLeftSidebarCollapsed ? 0 : leftWidth }}
+          aria-hidden={isLeftSidebarCollapsed}
         >
-          <button
-            type="button"
-            aria-label="Resize left sidebar"
-            className="absolute top-0 right-0 h-full w-1 cursor-col-resize hover:bg-primary/20"
-            onMouseDown={(e) => startResizeSidebar('left', e)}
-          />
+          {isLeftSidebarCollapsed ? null : (
+            <button
+              type="button"
+              aria-label="Resize left sidebar"
+              className="absolute top-0 right-0 h-full w-1 cursor-col-resize hover:bg-primary/20"
+              onMouseDown={(e) => startResizeSidebar('left', e)}
+            />
+          )}
 
           <div className="flex flex-col overflow-hidden">
             <div className="p-3 border-b border-sidebar-border/70" style={leftTopStyle}>
@@ -816,42 +950,68 @@ export function RagvizSimilarityWorkbench() {
 	                    <RefreshCw className={cn('size-4', collectionsLoading && 'animate-spin motion-reduce:animate-none')} />
 	                  </Button>
 	                }>
-                  <p className="text-xs text-muted-foreground">选择横/纵坐标 collections，计算相似度矩阵（Kumi 风格）。</p>
-                  {collectionsError ? (
-                    <p className="text-xs text-destructive mt-2">{collectionsError}</p>
-                  ) : null}
-
-                  <div className="mt-3 space-y-4">
-                    <CollectionSelectorBlock
-                      label="横坐标 Collection"
-                      selections={xSelections}
-                      onChange={setXSelections}
-                      options={availableCollectionOptions}
-                    />
-                    <div className="grid grid-cols-2 gap-3">
-                      <NumberField
-                        label="横坐标最大项目数"
-                        value={xMaxItems}
-                        onChange={setXMaxItems}
-                        min={10}
-                        max={500}
-                      />
-                      <NumberField
-                        label="纵坐标最大项目数"
-                        value={yMaxItems}
-                        onChange={setYMaxItems}
-                        min={10}
-                        max={500}
-                      />
+                  <div className="space-y-2.5">
+                    <div className="rounded-2xl border border-sidebar-border/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.96))] p-2.5 shadow-soft">
+                      <div className="flex items-start gap-2.5">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-primary/10 bg-primary/10 text-primary">
+                          <Grid3X3 className="size-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                            Matrix Setup
+                          </div>
+                          <p className="mt-0.5 text-[11px] leading-5 text-muted-foreground">
+                            选择横/纵坐标 collections，计算相似度矩阵。
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                    <CollectionSelectorBlock
-                      label="纵坐标 Collection"
-                      selections={ySelections}
-                      onChange={setYSelections}
-                      options={availableCollectionOptions}
-                    />
 
-                    <Button className="w-full" onClick={calculateSimilarity} disabled={isCalculating}>
+                    {collectionsError ? (
+                      <div className="rounded-2xl border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                        {collectionsError}
+                      </div>
+                    ) : null}
+
+                    <div className="space-y-2.5">
+                      <AxisConfigCard
+                        eyebrow="X Axis"
+                        title="横坐标 Collection"
+                        badge="横向对比"
+                        badgeClassName="border-cyan-200/70 bg-cyan-50 text-cyan-700 dark:border-cyan-900/40 dark:bg-cyan-950/30 dark:text-cyan-200"
+                      >
+                        <CollectionSelectorBlock
+                          label="横坐标 Collection"
+                          showLabel={false}
+                          selections={xSelections}
+                          onChange={setXSelections}
+                          options={availableCollectionOptions}
+                        />
+                        <NumberField label="最大项目数" value={xMaxItems} onChange={setXMaxItems} min={10} max={500} />
+                      </AxisConfigCard>
+
+                      <AxisConfigCard
+                        eyebrow="Y Axis"
+                        title="纵坐标 Collection"
+                        badge="纵向对比"
+                        badgeClassName="border-emerald-200/70 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-200"
+                      >
+                        <CollectionSelectorBlock
+                          label="纵坐标 Collection"
+                          showLabel={false}
+                          selections={ySelections}
+                          onChange={setYSelections}
+                          options={availableCollectionOptions}
+                        />
+                        <NumberField label="最大项目数" value={yMaxItems} onChange={setYMaxItems} min={10} max={500} />
+                      </AxisConfigCard>
+                    </div>
+
+                    <Button
+                      className="h-10 w-full rounded-2xl shadow-[0_12px_24px_rgba(37,99,235,0.18)]"
+                      onClick={calculateSimilarity}
+                      disabled={isCalculating}
+                    >
                       {isCalculating && calcProgress ? `计算中... (${calcProgress.done}/${calcProgress.total})` : '计算相似度'}
                     </Button>
                   </div>
@@ -927,7 +1087,12 @@ export function RagvizSimilarityWorkbench() {
             <div className="p-3 overflow-auto overscroll-contain no-scrollbar">
               <Panel title="图表选择与控制">
                 {results.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">请先在“数据源配置”里计算相似度矩阵。</p>
+                  <div className="rounded-2xl border border-dashed border-sidebar-border/60 bg-sidebar/45 px-4 py-5 text-center">
+                    <div className="text-sm font-medium text-foreground">等待矩阵结果</div>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      先在上方选择两个 collections，再生成热力图并在这里切换主图、筛选器和独占模式。
+                    </p>
+                  </div>
                 ) : (
                   <div className="space-y-2">
                     <p className="text-[11px] text-muted-foreground">
@@ -1024,12 +1189,12 @@ export function RagvizSimilarityWorkbench() {
             <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <div>
                 <div className="text-sm font-semibold">
-                  {mainView === 'diagnostics' ? '向量诊断' : 'Collection × Collection 相似度热力图'}
+                  {mainView === 'diagnostics' ? '向量诊断' : '跨集合相似度热力图'}
                 </div>
                 <p className="mt-1 text-[11px] text-muted-foreground">
                   {mainView === 'diagnostics'
                     ? '基于当前相似度矩阵重建局部向量邻域，帮助识别高分但支撑不足的干扰项。'
-                    : '使用当前主图矩阵和筛选器观察 collection × collection 的相似度分布。'}
+                    : '使用当前主图矩阵和筛选器观察不同集合之间的相似度分布。'}
                 </p>
               </div>
 
@@ -1106,6 +1271,7 @@ export function RagvizSimilarityWorkbench() {
                     yLabels={displayLabels.yLabels}
                     colorScheme={colorScheme}
                     isDifference={isDifferenceMode}
+                    onCellSelect={handleHeatmapCellSelect}
                   />
                 </div>
               )
@@ -1125,17 +1291,23 @@ export function RagvizSimilarityWorkbench() {
         <div className="w-12 border-l border-sidebar-border/70 bg-sidebar/90 backdrop-blur-xl flex flex-col items-center py-2">
           <div className="flex flex-col gap-1">
             <IconBtn
-              active={rightTopPanel === 'statistics'}
+              active={!isRightSidebarCollapsed && rightTopPanel === 'statistics'}
               title="统计信息"
-              onClick={() => setRightTopPanel((prev) => (prev === 'statistics' ? null : 'statistics'))}
+              onClick={handleStatisticsPanelToggle}
               icon={<BarChart3 className="size-4" />}
+            />
+            <IconBtn
+              active={false}
+              title={isRightSidebarCollapsed ? '展开右侧栏' : '收起右侧栏'}
+              onClick={() => setIsRightSidebarCollapsed((prev) => !prev)}
+              icon={isRightSidebarCollapsed ? <ChevronLeft className="size-4" /> : <ChevronRight className="size-4" />}
             />
           </div>
           <div className="mt-auto pt-2">
             <IconBtn
-              active={rightBottomPanel === 'filters'}
+              active={!isRightSidebarCollapsed && rightBottomPanel === 'filters'}
               title="筛选器控制"
-              onClick={() => setRightBottomPanel((prev) => (prev === 'filters' ? null : 'filters'))}
+              onClick={handleFilterPanelToggle}
               icon={<Filter className="size-4" />}
             />
           </div>
@@ -1143,15 +1315,21 @@ export function RagvizSimilarityWorkbench() {
 
         <div
           ref={rightSidebarRef}
-          className="relative h-full border-l border-sidebar-border/70 bg-sidebar/78 backdrop-blur-xl flex flex-col"
-          style={{ width: rightWidth }}
+          className={cn(
+            'relative h-full border-l border-sidebar-border/70 bg-sidebar/78 backdrop-blur-xl flex flex-col overflow-hidden transition-[width,opacity] duration-200 ease-out',
+            isRightSidebarCollapsed ? 'opacity-0' : 'opacity-100'
+          )}
+          style={{ width: isRightSidebarCollapsed ? 0 : rightWidth }}
+          aria-hidden={isRightSidebarCollapsed}
         >
-          <button
-            type="button"
-            aria-label="Resize right sidebar"
-            className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-primary/20"
-            onMouseDown={(e) => startResizeSidebar('right', e)}
-          />
+          {isRightSidebarCollapsed ? null : (
+            <button
+              type="button"
+              aria-label="Resize right sidebar"
+              className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-primary/20"
+              onMouseDown={(e) => startResizeSidebar('right', e)}
+            />
+          )}
 
           <div className="flex flex-col overflow-hidden">
             <div className="p-3 border-b border-sidebar-border/70" style={rightTopStyle}>
@@ -1182,6 +1360,76 @@ export function RagvizSimilarityWorkbench() {
                 return (<p className="text-xs text-muted-foreground">暂无统计数据</p>);
             }
 })()}
+
+                  {mainView === 'heatmap' ? (
+                    <div className="mt-4 border-t border-sidebar-border/60 pt-4">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                          选中单元
+                        </div>
+                        {selectedCellDetails ? (
+                          <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px]" onClick={() => setSelectedCell(null)}>
+                            清除
+                          </Button>
+                        ) : null}
+                      </div>
+
+                      {selectedCellDetails ? (
+                        <div className="space-y-2">
+                          <div className="rounded-xl border border-sidebar-border/70 bg-sidebar/55 p-3 shadow-soft">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 space-y-1">
+                                <div className="text-[11px] text-muted-foreground">横轴</div>
+                                <div className="truncate text-sm font-medium text-foreground">
+                                  {selectedCellDetails.xLabel}
+                                </div>
+                              </div>
+                              <div
+                                className={cn(
+                                  'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px]',
+                                  selectedCellDetails.isVisible
+                                    ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                                    : 'border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                                )}
+                              >
+                                {selectedCellDetails.isVisible ? '显示中' : '已过滤'}
+                              </div>
+                            </div>
+
+                            <div className="mt-3 min-w-0">
+                              <div className="text-[11px] text-muted-foreground">纵轴</div>
+                              <div className="truncate text-sm font-medium text-foreground">
+                                {selectedCellDetails.yLabel}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2">
+                            <StatsItem
+                              label={isDifferenceMode ? '差值' : '相似度'}
+                              value={formatHeatmapValue(selectedCellDetails.rawValue)}
+                              tone={selectedCellDetails.isVisible ? 'info' : 'muted'}
+                            />
+                            <StatsItem
+                              label="当前显示"
+                              value={
+                                selectedCellDetails.maskedValue === null
+                                  ? '隐藏'
+                                  : formatHeatmapValue(selectedCellDetails.maskedValue)
+                              }
+                              tone={selectedCellDetails.maskedValue === null ? 'warning' : 'success'}
+                            />
+                            <StatsItem label="行索引" value={selectedCellDetails.rowIndex + 1} tone="muted" />
+                            <StatsItem label="列索引" value={selectedCellDetails.colIndex + 1} tone="muted" />
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          点击热力图任意单元后，在这里查看坐标和值。
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
                 </Panel>
               ) : (
                 <div className="h-full" />
@@ -1568,13 +1816,49 @@ function formatPercent(value: number) {
 
 type SelectOption = { value: string; label: string; kind?: string; count?: number }
 
+function AxisConfigCard({
+  eyebrow,
+  title,
+  badge,
+  badgeClassName,
+  children,
+}: Readonly<{
+  eyebrow: string
+  title: string
+  badge: string
+  badgeClassName?: string
+  children: ReactNode
+}>) {
+  return (
+    <section className="rounded-2xl border border-sidebar-border/70 bg-sidebar/55 p-2.5 shadow-soft">
+      <div className="mb-2.5 flex items-start justify-between gap-2.5">
+        <div className="min-w-0">
+          <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{eyebrow}</div>
+          <div className="mt-0.5 text-sm font-semibold text-foreground">{title}</div>
+        </div>
+        <span
+          className={cn(
+            'inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[11px] font-medium',
+            badgeClassName
+          )}
+        >
+          {badge}
+        </span>
+      </div>
+      <div className="space-y-2.5">{children}</div>
+    </section>
+  )
+}
+
 function CollectionSelectorBlock({
   label,
+  showLabel = true,
   selections,
   onChange,
   options,
 }: Readonly<{
   label: string
+  showLabel?: boolean
   selections: string[]
   onChange: (next: string[]) => void
   options: SelectOption[]
@@ -1590,27 +1874,32 @@ function CollectionSelectorBlock({
   }, [selections])
 
   return (
-    <div className="space-y-2">
-      <div className="text-xs font-medium text-foreground/80">{label}</div>
-      <div className="space-y-2">
+    <div className="space-y-1.5">
+      {showLabel ? <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-foreground/72">{label}</div> : null}
+      <div className="space-y-1.5">
         {keyedSelections.map(({ value, key }, idx) => (
-          <div key={key} className="flex items-center gap-2">
-            <select
-              className="flex-1 h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
-              value={value}
-              onChange={(e) => {
-                const next = [...selections]
-                next[idx] = e.target.value
-                onChange(next)
-              }}
-            >
-              <option value="">请选择...</option>
-              {options.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+          <div key={key} className="flex items-center gap-1.5">
+            <div className="relative flex-1">
+              <select
+                className="h-9 w-full appearance-none rounded-[16px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(244,247,250,0.96))] px-3 pr-9 text-sm text-foreground shadow-[0_1px_0_rgba(255,255,255,0.85),0_6px_16px_rgba(15,23,42,0.06)] outline-none transition-[border-color,box-shadow,transform] hover:border-primary/25 focus:border-primary/35 focus:shadow-[0_1px_0_rgba(255,255,255,0.9),0_0_0_4px_rgba(59,130,246,0.10),0_10px_24px_rgba(15,23,42,0.08)]"
+                value={value}
+                onChange={(e) => {
+                  const next = [...selections]
+                  next[idx] = e.target.value
+                  onChange(next)
+                }}
+              >
+                <option value="">请选择...</option>
+                {options.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-muted-foreground/70">
+                <ChevronDown className="size-4" />
+              </span>
+            </div>
 
 	            {idx === 0 ? (
 	              <Button
@@ -1619,9 +1908,10 @@ function CollectionSelectorBlock({
 	                size="icon"
 	                title="添加"
 	                aria-label={`为${label}添加一个 Collection 选择器`}
+	                className="h-9 w-9 rounded-[14px] border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(244,247,250,0.94))] text-muted-foreground shadow-[0_1px_0_rgba(255,255,255,0.85),0_6px_16px_rgba(15,23,42,0.06)] hover:border-primary/25 hover:bg-background hover:text-primary"
 	                onClick={() => onChange([...selections, ''])}
 	              >
-	                +
+	                <Plus className="size-4" />
 	              </Button>
 	            ) : (
 	              <Button
@@ -1630,9 +1920,10 @@ function CollectionSelectorBlock({
 	                size="icon"
 	                title="删除"
 	                aria-label={`删除第 ${idx + 1} 个${label}选择器`}
+	                className="h-9 w-9 rounded-[14px] border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(244,247,250,0.94))] text-muted-foreground shadow-[0_1px_0_rgba(255,255,255,0.85),0_6px_16px_rgba(15,23,42,0.06)] hover:border-primary/25 hover:bg-background hover:text-primary"
 	                onClick={() => onChange(selections.filter((_, i) => i !== idx))}
 	              >
-	                -
+	                <Minus className="size-4" />
 	              </Button>
             )}
           </div>
@@ -1656,10 +1947,15 @@ function NumberField({
   max: number
 }>) {
   return (
-    <label className="space-y-2 block">
-      <div className="text-xs font-medium text-foreground/80">{label}</div>
+    <label className="space-y-1.5 block">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-foreground/72">{label}</div>
+        <div className="text-[10px] text-muted-foreground">
+          {min}-{max}
+        </div>
+      </div>
       <input
-        className="w-full h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+        className="h-9 w-full rounded-[16px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(244,247,250,0.96))] px-3 text-sm text-foreground shadow-[0_1px_0_rgba(255,255,255,0.85),0_6px_16px_rgba(15,23,42,0.06)] outline-none transition-[border-color,box-shadow] hover:border-primary/25 focus:border-primary/35 focus:shadow-[0_1px_0_rgba(255,255,255,0.9),0_0_0_4px_rgba(59,130,246,0.10),0_10px_24px_rgba(15,23,42,0.08)]"
         type="number"
         min={min}
         max={max}
@@ -1758,12 +2054,14 @@ function PlotlyHeatmap({
   yLabels,
   colorScheme,
   isDifference,
+  onCellSelect,
 }: Readonly<{
   matrix: Array<Array<number | null>>
   xLabels: string[]
   yLabels: string[]
   colorScheme: ColorSchemeKey
   isDifference: boolean
+  onCellSelect?: (cell: SelectedHeatmapCell) => void
 }>) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [plotly, setPlotly] = useState<PlotlyLike | null>(null)
@@ -1824,7 +2122,14 @@ function PlotlyHeatmap({
     }
 
     plotly.react(containerRef.current, [trace], layout, config)
-  }, [plotly, matrix, xLabels, yLabels, colorScheme, isDifference])
+
+    const plotTarget = containerRef.current as PlotlyEventTarget
+    plotTarget.removeAllListeners?.('plotly_click')
+    plotTarget.on?.('plotly_click', (event) => {
+      const cell = resolveHeatmapPoint(event)
+      if (cell) onCellSelect?.(cell)
+    })
+  }, [colorScheme, isDifference, matrix, onCellSelect, plotly, xLabels, yLabels])
 
   useEffect(() => {
     if (!plotly || !containerRef.current) return
@@ -2039,6 +2344,38 @@ function calculateDifferenceModeStatistics(groundTruthMask: boolean[][], current
   const contextPrecision = truePositive + falsePositive > 0 ? truePositive / (truePositive + falsePositive) : 0
 
   return { truePositive, trueNegative, falsePositive, falseNegative, contextRecall, contextPrecision }
+}
+
+function resolveHeatmapPoint(event: PlotlyClickEvent): SelectedHeatmapCell | null {
+  const point = event.points?.[0]
+  if (!point) return null
+
+  const pair = Array.isArray(point.pointNumber)
+    ? point.pointNumber
+    : Array.isArray(point.pointIndex)
+      ? point.pointIndex
+      : null
+
+  const rowIndex =
+    typeof point.i === 'number'
+      ? point.i
+      : Array.isArray(pair) && typeof pair[0] === 'number'
+        ? pair[0]
+        : null
+  const colIndex =
+    typeof point.j === 'number'
+      ? point.j
+      : Array.isArray(pair) && typeof pair[1] === 'number'
+        ? pair[1]
+        : null
+
+  if (rowIndex === null || colIndex === null) return null
+  return { rowIndex, colIndex }
+}
+
+function formatHeatmapValue(value: number | null) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '—'
+  return value.toFixed(4).replace(/\.?0+$/, '')
 }
 
 function StatsGrid({ children }: Readonly<{ children: ReactNode }>) {
