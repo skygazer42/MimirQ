@@ -69,7 +69,8 @@ export class GraphService {
       return GraphService.getMockGraph()
     }
 
-    // Try KG live graph first; fallback to mock data (so the page remains usable when KG is disabled).
+    // Try KG live graph first; when no KG data is available, return an empty graph so the
+    // UI can clearly communicate "no result in current scope" instead of showing demo data.
     try {
       const data = await kgApi.getGraph({
         document_ids: options.documentIds,
@@ -85,11 +86,11 @@ export class GraphService {
         return cloneGraphData({ nodes, links })
       }
     } catch {
-      // ignore and fallback
+      // ignore and return empty graph below
     }
 
     await delay(200) // keep a tiny delay for UI consistency
-    return GraphService.getMockGraph()
+    return { nodes: [], links: [] }
   }
 
   /**

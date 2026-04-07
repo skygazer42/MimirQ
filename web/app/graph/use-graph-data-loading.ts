@@ -150,7 +150,17 @@ export function useGraphDataLoading({
         setGraphData(data)
         setDataSource(source)
         setTraceReplay(null)
-        setFileName(source === 'mock' ? '示例数据' : scopeParams ? 'Knowledge Base (Scoped)' : 'Knowledge Base (Live)')
+        setFileName(
+          source === 'mock'
+            ? '示例数据'
+            : scope.datasetId
+              ? '知识库图谱'
+              : scope.pipelineHash
+                ? '批次图谱'
+                : scopeParams
+                  ? '范围图谱'
+                  : '知识图谱'
+        )
 
         if (source === 'live') {
           try {

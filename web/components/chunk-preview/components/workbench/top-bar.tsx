@@ -13,7 +13,6 @@ import {
   FileText,
   GitCompareArrows,
   HelpCircle,
-  Layers,
   Loader2,
   MoreVertical,
   RotateCcw,
@@ -83,6 +82,7 @@ function getErrorMessage(error: unknown, fallback: string): string {
 export function TopBar() {
   const router = useRouter()
   const t = useTranslations('ChunkPreview')
+  const workbenchTitle = t('workbench.title')
   const [helpOpen, setHelpOpen] = useState(false)
   const [compareOpen, setCompareOpen] = useState(false)
   const [testGenOpen, setTestGenOpen] = useState(false)
@@ -216,6 +216,11 @@ export function TopBar() {
     return value.replaceAll('\\', '\\\\').replaceAll("'", "\\\\'")
   }
 
+  const summaryChipClass =
+    'inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-background/75 px-2.5 py-1 text-[11px] leading-none text-muted-foreground'
+  const stateChipClass =
+    'inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] font-medium leading-none'
+
   const buildConfig = () => ({
     dataset_id: datasetId || undefined,
     chunk_size: chunkSize,
@@ -328,170 +333,164 @@ export function TopBar() {
   }
 
   return (
-    <div className="flex items-center justify-between gap-4 min-w-0">
-      <div className="flex items-center gap-4">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-primary/10 text-primary shadow-soft ring-1 ring-border/60">
-          <Layers className="w-5 h-5" />
+    <div
+      role="group"
+      aria-label={workbenchTitle}
+      className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between"
+    >
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <span
+            className="max-w-full truncate text-sm font-semibold text-foreground sm:max-w-[28rem] xl:max-w-[34rem]"
+            title={currentFileItem?.displayName || currentFile.name}
+          >
+            {currentFileItem?.displayName || currentFile.name}
+          </span>
+          <span className="inline-flex min-w-[2rem] items-center justify-center rounded-md bg-primary/12 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+            #{currentFileIndex + 1}
+          </span>
+          {currentFileItem?.originalFileType ? (
+            <span className="inline-flex items-center rounded-md border border-border/60 bg-muted/45 px-1.5 py-0.5 text-[10px] font-mono font-medium text-muted-foreground">
+              {String(currentFileItem.originalFileType).toUpperCase()}
+            </span>
+          ) : null}
+          <span className="text-[11px] font-medium text-muted-foreground/80">
+            {formatFileSize(currentFileItem?.originalFileSize ?? currentFile.size)}
+          </span>
         </div>
 
-        <div className="flex flex-col justify-center min-w-0">
-          <div className="flex items-center gap-3">
-            <h1 className="text-sm font-semibold text-foreground whitespace-nowrap">
-              {t('workbench.title')}
-            </h1>
-            <div className="h-3 w-px bg-muted-foreground/40" />
-            <div className="flex items-center gap-2 min-w-0">
-              <span
-                className="text-sm font-bold text-foreground truncate max-w-[300px]"
-                title={currentFileItem?.displayName || currentFile.name}
-              >
-                {currentFileItem?.displayName || currentFile.name}
-              </span>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] font-bold bg-primary/15 text-primary px-1.5 py-0.5 rounded-md min-w-[2rem] text-center">
-                  #{currentFileIndex + 1}
-                </span>
-                {currentFileItem?.originalFileType ? (
-                  <span className="text-[10px] font-mono font-medium text-muted-foreground border border-border px-1.5 py-0.5 rounded bg-muted">
-                    {String(currentFileItem.originalFileType).toUpperCase()}
-                  </span>
-                ) : null}
-                <span className="text-[10px] text-muted-foreground font-mono">
-                  {formatFileSize(currentFileItem?.originalFileSize ?? currentFile.size)}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 mt-1.5">
-            <div className="flex items-center gap-2 text-[11px] text-muted-foreground bg-muted border border-border px-2 py-0.5 rounded-md">
-              {effectiveChunkStrategy === 'auto' && previewData?.auto_selected_strategy ? (
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className={summaryChipClass}>
+            <span className="text-muted-foreground/70">{t('topBar.strategyLabel')}</span>
+            <span className="font-medium text-foreground/90" title={effectiveChunkStrategy}>
+              {getChunkStrategyLabel(effectiveChunkStrategy)}
+            </span>
+            {effectiveChunkStrategy === 'auto' && previewData?.auto_selected_strategy ? (
+              <>
+                <span className="h-3 w-px bg-border/80" />
                 <span
-                  className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 font-medium"
+                  className="inline-flex items-center rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary/90"
                   title={t('topBar.status.autoSelectedStrategyTitle', {
                     strategy: previewData.auto_selected_strategy,
                   })}
                 >
                   → {getChunkStrategyLabel(previewData.auto_selected_strategy)}
                 </span>
-              ) : null}
-              <span className="text-muted-foreground">{t('topBar.strategyLabel')}:</span>
-              <span className="font-medium text-primary" title={effectiveChunkStrategy}>
-                {getChunkStrategyLabel(effectiveChunkStrategy)}
-              </span>
-              <span className="w-px h-2.5 bg-border mx-0.5" />
-              <span className="text-muted-foreground">{t('topBar.paramsLabel')}:</span>
-              <span className="font-medium font-mono text-foreground/80">
-                {chunkSize}/{chunkOverlap}
-              </span>
-            </div>
-
-            {typeof lastPreviewDurationMs === 'number' || previewData ? (
-              <div className="flex items-center gap-2 text-[11px]">
-                {typeof lastPreviewDurationMs === 'number' ? (
-                  <span className="text-muted-foreground flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40" />
-                    <span title={serverTimingTitle}>{lastPreviewDurationMs}ms</span>
-                  </span>
-                ) : null}
-                {previewData ? (
-                  <span className="text-muted-foreground font-medium flex items-center gap-1">
-                    <span
-                      className={cn(
-                        'w-1.5 h-1.5 rounded-full',
-                        previewData.chunks_truncated ? 'bg-warning' : 'bg-success'
-                      )}
-                    />
-                    {(() => {
-                      const shown = Number(previewData.total_chunks || 0)
-                      const full = Number(previewData.total_chunks_full ?? shown)
-                      return t('topBar.status.chunks', {
-                        count: full && full !== shown ? `${shown}/${full}` : `${shown}`,
-                      })
-                    })()}
-                  </span>
-                ) : null}
-              </div>
+              </>
             ) : null}
+          </span>
 
-            {cacheHit ? (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-success/10 text-success border border-success/30 font-medium">
-                {t('topBar.status.cacheHit')}
-              </span>
-            ) : null}
+          <span className={summaryChipClass}>
+            <span className="text-muted-foreground/70">{t('topBar.paramsLabel')}</span>
+            <span className="font-mono font-medium text-foreground/85">
+              {chunkSize}/{chunkOverlap}
+            </span>
+          </span>
 
-            {previewData?.parse_cache_hit ? (
-              <span
-                className="text-[10px] px-1.5 py-0.5 rounded bg-info/10 text-info border border-info/30 font-medium"
-                title={t('topBar.status.parseCacheAgeTitle', {
-                  age: previewData.parse_cache_age_ms ?? '-',
-                })}
-              >
-                {t('topBar.status.parseCache')}
-              </span>
-            ) : null}
+          {typeof lastPreviewDurationMs === 'number' ? (
+            <span className={summaryChipClass} title={serverTimingTitle}>
+              <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
+              <span className="font-medium text-foreground/85">{lastPreviewDurationMs}ms</span>
+            </span>
+          ) : null}
 
-            {previewData?.quality_gate?.grade ? (
+          {previewData ? (
+            <span className={summaryChipClass}>
               <span
                 className={cn(
-                  'text-[10px] px-1.5 py-0.5 rounded border font-medium',
-                  previewData.quality_gate.grade === 'pass'
-                    ? 'bg-success/10 text-success border-success/30'
-                    : previewData.quality_gate.grade === 'fail'
-                      ? 'bg-destructive/10 text-destructive border-destructive/30'
-                      : 'bg-warning/10 text-warning border-warning/30'
+                  'h-1.5 w-1.5 rounded-full',
+                  previewData.chunks_truncated ? 'bg-warning' : 'bg-success'
                 )}
-                title={(previewData.quality_gate.reasons || []).join('\\n')}
-              >
-                {t('topBar.status.quality', {
-                  grade: String(previewData.quality_gate.grade).toUpperCase(),
-                })}
+              />
+              <span className="font-medium text-foreground/85">
+                {(() => {
+                  const shown = Number(previewData.total_chunks || 0)
+                  const full = Number(previewData.total_chunks_full ?? shown)
+                  return t('topBar.status.chunks', {
+                    count: full && full !== shown ? `${shown}/${full}` : `${shown}`,
+                  })
+                })()}
               </span>
-            ) : null}
+            </span>
+          ) : null}
 
-            {previewData?.warnings?.length ? (
-              <span
-                className="text-[10px] px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/30 font-medium"
-                title={(previewData.warnings || []).join('\\n')}
-              >
-                {t('topBar.status.warnings', {
-                  count: previewData.warnings.length,
-                })}
-              </span>
-            ) : null}
-          </div>
+          {cacheHit ? (
+            <span className={cn(stateChipClass, 'border-success/20 bg-success/10 text-success')}>
+              {t('topBar.status.cacheHit')}
+            </span>
+          ) : null}
+
+          {previewData?.parse_cache_hit ? (
+            <span
+              className={cn(stateChipClass, 'border-info/20 bg-info/10 text-info')}
+              title={t('topBar.status.parseCacheAgeTitle', {
+                age: previewData.parse_cache_age_ms ?? '-',
+              })}
+            >
+              {t('topBar.status.parseCache')}
+            </span>
+          ) : null}
+
+          {previewData?.quality_gate?.grade ? (
+            <span
+              className={cn(
+                stateChipClass,
+                previewData.quality_gate.grade === 'pass'
+                  ? 'border-success/20 bg-success/10 text-success'
+                  : previewData.quality_gate.grade === 'fail'
+                    ? 'border-destructive/20 bg-destructive/10 text-destructive'
+                    : 'border-warning/20 bg-warning/10 text-warning'
+              )}
+              title={(previewData.quality_gate.reasons || []).join('\\n')}
+            >
+              {t('topBar.status.quality', {
+                grade: String(previewData.quality_gate.grade).toUpperCase(),
+              })}
+            </span>
+          ) : null}
+
+          {previewData?.warnings?.length ? (
+            <span
+              className={cn(stateChipClass, 'border-warning/20 bg-warning/10 text-warning')}
+              title={(previewData.warnings || []).join('\\n')}
+            >
+              {t('topBar.status.warnings', {
+                count: previewData.warnings.length,
+              })}
+            </span>
+          ) : null}
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2.5 xl:justify-end">
         {submitSuccess ? (
-          <div className="flex items-center gap-1.5 text-success text-xs font-medium bg-success/10 px-3 py-1.5 rounded-full border border-success/30 animate-in fade-in slide-in-from-right-4 motion-reduce:animate-none">
+          <div className="flex items-center gap-1.5 rounded-lg border border-success/20 bg-success/10 px-2.5 py-1.5 text-xs font-medium text-success animate-in fade-in slide-in-from-right-4 motion-reduce:animate-none">
             <Check className="w-3.5 h-3.5" />
             {t('topBar.submitSuccess')}
           </div>
         ) : null}
 
         {isPreviewDirty && !submitSuccess && !error ? (
-          <div className="flex items-center gap-1.5 text-warning text-xs font-medium bg-warning/10 px-3 py-1.5 rounded-full border border-warning/30">
+          <div className="flex items-center gap-1.5 rounded-lg border border-warning/20 bg-warning/10 px-2.5 py-1.5 text-xs font-medium text-warning">
             <AlertCircle className="w-3.5 h-3.5" />
             {t('topBar.dirtyWarning')}
           </div>
         ) : null}
 
         {error ? (
-          <div className="flex items-center gap-1.5 text-destructive text-xs bg-destructive/10 px-3 py-1.5 rounded-full border border-destructive/30 max-w-[300px] truncate">
+          <div className="flex max-w-[300px] items-center gap-1.5 truncate rounded-lg border border-destructive/20 bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive">
             <AlertCircle className="w-3.5 h-3.5" />
             {error}
           </div>
         ) : null}
 
-        <div className="h-8 w-px bg-border mx-2" />
+        <div className="mx-1 h-7 w-px bg-border/70" />
 
         <Button
           variant="ghost"
           size="sm"
           onClick={reset}
-          className="text-muted-foreground hover:text-foreground h-9 px-3 text-xs font-medium hover:bg-muted"
+          className="h-8 rounded-lg px-2.5 text-[11px] font-medium text-muted-foreground hover:bg-muted/70 hover:text-foreground"
         >
           <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
           {t('topBar.actions.reset')}
@@ -502,7 +501,7 @@ export function TopBar() {
           variant="ghost"
           size="sm"
           onClick={toggleSettingsPanel}
-          className="lg:hidden text-muted-foreground hover:text-foreground h-9 px-3 text-xs font-medium hover:bg-muted"
+          className="h-8 rounded-lg px-2.5 text-[11px] font-medium text-muted-foreground hover:bg-muted/70 hover:text-foreground lg:hidden"
           aria-label={t('topBar.actions.openSettingsPanel')}
           title={t('topBar.actions.openSettingsPanel')}
         >
@@ -515,7 +514,7 @@ export function TopBar() {
           variant="ghost"
           size="sm"
           onClick={toggleOriginalPanel}
-          className="text-muted-foreground hover:text-foreground h-9 px-3 text-xs font-medium hover:bg-muted"
+          className="h-8 rounded-lg px-2.5 text-[11px] font-medium text-muted-foreground hover:bg-muted/70 hover:text-foreground"
           aria-label={
             showOriginalPanel
               ? t('topBar.actions.hideOriginalPanel')
@@ -538,7 +537,7 @@ export function TopBar() {
           variant="ghost"
           size="sm"
           onClick={() => setHelpOpen(true)}
-          className="text-muted-foreground hover:text-foreground h-9 px-3 text-xs font-medium hover:bg-muted"
+          className="h-8 rounded-lg px-2.5 text-[11px] font-medium text-muted-foreground hover:bg-muted/70 hover:text-foreground"
           aria-label={t('topBar.actions.helpTitle')}
           title={t('topBar.actions.helpTitle')}
         >
@@ -552,7 +551,7 @@ export function TopBar() {
               type="button"
               variant="ghost"
               size="sm"
-              className="text-muted-foreground hover:text-foreground/80 h-9 w-9 p-0 rounded-full hover:bg-muted"
+              className="h-8 w-8 rounded-lg p-0 text-muted-foreground hover:bg-muted/70 hover:text-foreground/80"
               aria-label={t('topBar.actions.moreActions')}
               title={t('topBar.actions.moreActions')}
             >

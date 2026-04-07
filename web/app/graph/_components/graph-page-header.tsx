@@ -5,6 +5,8 @@ import type { ChangeEventHandler, RefObject } from 'react'
 import { BarChart3, FileCode, FileText, Filter, Network, RefreshCw, Share2, Upload, Link as LinkIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import type { KGStatsResponse } from '@/types'
 
@@ -68,6 +70,7 @@ type GraphPageHeaderProps = Readonly<{
   onToggleConfidenceBucket: (bucket: GraphConfBucket) => void
   onResetGraphFilters: () => void
   onRefreshLiveData: () => void
+  onOpenGraphPicker: () => void
   onTriggerTraceUpload: () => void
   traceFileInputRef: RefObject<HTMLInputElement | null>
   onTraceFileUpload: ChangeEventHandler<HTMLInputElement>
@@ -126,6 +129,7 @@ export function GraphPageHeader({
   onToggleConfidenceBucket,
   onResetGraphFilters,
   onRefreshLiveData,
+  onOpenGraphPicker,
   onTriggerTraceUpload,
   traceFileInputRef,
   onTraceFileUpload,
@@ -136,9 +140,6 @@ export function GraphPageHeader({
   return (
     <header className="absolute top-0 left-0 right-0 z-20 flex h-16 items-center justify-between border-b border-border/50 bg-card px-6 pointer-events-none">
       <div className="flex items-center gap-3 pointer-events-auto">
-        <div className="rounded-lg border border-primary/20 bg-primary p-2 text-primary-foreground shadow-sm">
-          <Share2 className="w-5 h-5" />
-        </div>
         <div>
           <h1 className="text-3xl font-bold text-foreground">知识图谱</h1>
         </div>
@@ -185,42 +186,51 @@ export function GraphPageHeader({
 
         {dataSource === 'live' ? (
           <>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onToggleEntityLinks}
-              className={cn(
-                'text-muted-foreground hover:text-info hover:bg-info/10',
-                includeEntityLinks && 'bg-info/10 text-info'
-              )}
-              title="实体-实体共现连线"
-            >
-              <LinkIcon className="w-4 h-4 mr-2" />
-              {includeEntityLinks ? '实体连线: ON' : '实体连线: OFF'}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onToggleRelationLinks}
-              className={cn(
-                'text-muted-foreground hover:text-teal-600 dark:hover:text-teal-300 hover:bg-teal-500/10 dark:hover:bg-teal-500/20',
-                includeRelationLinks && 'bg-teal-500/10 dark:bg-teal-500/20 text-teal-600 dark:text-teal-300'
-              )}
-              title="实体-实体关系连线（来自 KG triples / kg_relations）"
-            >
-              <Network className="w-4 h-4 mr-2" />
-              {includeRelationLinks ? '关系连线: ON' : '关系连线: OFF'}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onCycleMinSharedEvents}
-              className="text-muted-foreground hover:text-info hover:bg-info/10"
-              title="最小共现事件数（点击循环）"
-            >
-              <Filter className="w-4 h-4 mr-2" />
-              Co≥{minSharedEvents}
-            </Button>
+            <div className="hidden items-center gap-2 xl:flex">
+              <div className="flex items-center gap-3 rounded-lg border border-border/60 bg-background/76 px-3 py-1.5 shadow-none">
+                <div className="flex items-center gap-2 text-xs font-medium text-foreground/88">
+                  <LinkIcon className={cn('h-3.5 w-3.5', includeEntityLinks ? 'text-info' : 'text-muted-foreground')} />
+                  <span>实体连线</span>
+                </div>
+                <Switch
+                  checked={includeEntityLinks}
+                  onCheckedChange={() => onToggleEntityLinks()}
+                  aria-label="切换实体连线"
+                  className="scale-[0.82] data-[state=checked]:bg-info"
+                />
+              </div>
+              <div className="flex items-center gap-3 rounded-lg border border-border/60 bg-background/76 px-3 py-1.5 shadow-none">
+                <div className="flex items-center gap-2 text-xs font-medium text-foreground/88">
+                  <Network className={cn('h-3.5 w-3.5', includeRelationLinks ? 'text-teal-600 dark:text-teal-300' : 'text-muted-foreground')} />
+                  <span>关系连线</span>
+                </div>
+                <Switch
+                  checked={includeRelationLinks}
+                  onCheckedChange={() => onToggleRelationLinks()}
+                  aria-label="切换关系连线"
+                  className="scale-[0.82] data-[state=checked]:bg-teal-500"
+                />
+              </div>
+            </div>
+            <TooltipProvider delayDuration={120}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={onCycleMinSharedEvents}
+                    className="text-muted-foreground hover:text-info hover:bg-info/10"
+                    title="共现阈值（点击循环）"
+                  >
+                    <Filter className="w-4 h-4 mr-2" />
+                    Co≥{minSharedEvents}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" align="center" className="max-w-[240px] text-[11px] leading-5">
+                  共现阈值。仅保留至少在 {minSharedEvents} 个事件中共同出现的关系连线；点击可在 1-4 之间切换。
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             <Button
               variant="ghost"
               size="sm"
@@ -264,6 +274,16 @@ export function GraphPageHeader({
         <div className="mx-1 hidden h-6 w-px bg-muted sm:block" />
 
         <Button
+          variant="outline"
+          size="sm"
+          onClick={onOpenGraphPicker}
+          className="gap-2 border-border/60 bg-background/70 text-foreground/85 shadow-none hover:bg-background/70 hover:text-foreground/85 active:bg-background/70"
+        >
+          <Share2 className="w-4 h-4" />
+          {dataSource === 'live' ? '切换图谱' : '选择图谱'}
+        </Button>
+
+        <Button
           variant="ghost"
           size="sm"
           onClick={onRefreshLiveData}
@@ -292,9 +312,9 @@ export function GraphPageHeader({
           onChange={onTraceFileUpload}
         />
 
-        <Button variant="info" size="sm" className="gap-2" onClick={onTriggerFileUpload}>
+        <Button variant="outline" size="sm" className="gap-2 border-border/60" onClick={onTriggerFileUpload}>
           <Upload className="w-4 h-4" />
-          导入
+          GraphML
         </Button>
         <input
           ref={fileInputRef}

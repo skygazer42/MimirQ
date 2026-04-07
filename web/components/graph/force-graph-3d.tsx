@@ -11,12 +11,31 @@ import {
 } from "react"
 import dynamic from "next/dynamic"
 import { useTheme } from "next-themes"
+import {
+  BufferGeometry,
+  Float32BufferAttribute,
+  Group,
+  Line,
+  LineBasicMaterial,
+  Mesh,
+  MeshBasicMaterial,
+  SphereGeometry,
+} from "three"
 import SpriteText from "three-spritetext"
-import { Loader2 } from "lucide-react"
 
 import { getCssHslColor } from "@/lib/css-vars"
 import { buildGraphLinkProvenanceTooltipHtml } from "@/lib/graph-provenance"
-import { buildTypeColorMap, EDGE_KIND_COLORS, EVENT_COLOR, NODE_COLOR_PALETTE, type LayoutMode } from "./graph-viewer"
+import { GraphLoadingIndicator } from "./graph-loading-indicator"
+import {
+  buildTypeColorMap,
+  EDGE_KIND_COLORS,
+  EVENT_COLOR,
+  mixHexColors,
+  NODE_COLOR_PALETTE,
+  truncateGraphLabel,
+  type LayoutMode,
+  withAlpha,
+} from "./graph-viewer"
 
 function hashCode(s: string): number {
   let h = 0
@@ -44,12 +63,31 @@ function confidenceToWidth(confidence: number | null): number {
   return 0.75 + c * 2.25
 }
 
+const GRAPH_3D_PAN_SPEED = 0.2
+const GRAPH_3D_NODE_REL_SIZE = 5.2
+const GRAPH_3D_LABEL_TEXT_HEIGHT = 2.6
+const GRAPH_3D_LABEL_Y_OFFSET = 5.8
+const GRAPH_3D_LABEL_X_OFFSET = 6.2
+
+function getPrimaryCanvas(root: ParentNode | null): HTMLCanvasElement | null {
+  if (!root) return null
+  const canvases = Array.from(root.querySelectorAll("canvas")) as HTMLCanvasElement[]
+  if (!canvases.length) return null
+  return canvases
+    .filter((canvas) => Number.isFinite(canvas.width) && Number.isFinite(canvas.height))
+    .sort((a, b) => b.width * b.height - a.width * a.height)[0] ?? null
+}
+
 // Dynamic import to avoid SSR issues with Three.js
 const ForceGraph3D = dynamic(() => import("react-force-graph-3d"), {
   ssr: false,
   loading: () => (
-    <div className="flex items-center justify-center h-full w-full bg-background">
-      <Loader2 className="h-8 w-8 text-primary animate-spin motion-reduce:animate-none" />
+    <div className="flex h-full w-full items-center justify-center bg-background/70 px-6">
+      <GraphLoadingIndicator
+        className="rounded-2xl border border-border/60 bg-background/88 px-6 py-5 shadow-soft"
+        message="正在加载 3D 引擎..."
+        srMessage="Loading 3D graph engine"
+      />
     </div>
   ),
 })
@@ -103,15 +141,28 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
   ) => {
     const { resolvedTheme } = useTheme()
     const isDark = resolvedTheme === "dark"
+    const containerRef = useRef<HTMLDivElement>(null)
     const fgRef = useRef<any>(null)
     const [mounted, setMounted] = useState(false)
     const [hoveredLinkId, setHoveredLinkId] = useState<string | null>(null)
+    const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
+    const [isCanvasPanning, setIsCanvasPanning] = useState(false)
 
     useEffect(() => {
       setMounted(true)
     }, [])
 
     const typeColorMap = useMemo(() => buildTypeColorMap(data.nodes), [data.nodes])
+    const nodeDegreeMap = useMemo(() => {
+      const map = new Map<string, number>()
+      for (const link of data.links || []) {
+        const src = typeof link.source === "object" ? link.source?.id : link.source
+        const tgt = typeof link.target === "object" ? link.target?.id : link.target
+        map.set(String(src), (map.get(String(src)) || 0) + 1)
+        map.set(String(tgt), (map.get(String(tgt)) || 0) + 1)
+      }
+      return map
+    }, [data.links])
 
     const neighborSet = useMemo(() => {
       if (!selectedNodeId) return null
@@ -128,8 +179,11 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
 
     const dimNodeColor = isDark ? "#334155" : "#cbd5e1"
     const dimLinkColor = isDark ? "rgba(148, 163, 184, 0.18)" : "#e2e8f0"
-    const midLinkColor = isDark ? "#64748b" : "#94a3b8"
     const hoverLinkColor = getCssHslColor("--primary", isDark ? "#38bdf8" : "#0284c7")
+    const labelBgColor = isDark ? "rgba(2, 6, 23, 0.84)" : "rgba(255, 254, 249, 0.92)"
+    const labelStrokeColor = isDark ? "rgba(15, 23, 42, 0.72)" : "rgba(255, 255, 255, 0.96)"
+    const graphCursor = isCanvasPanning ? "grabbing" : (hoveredNodeId || hoveredLinkId ? "pointer" : "grab")
+    const unitSphereGeometry = useMemo(() => new SphereGeometry(1, 18, 18), [])
 
     const dagMode = useMemo(() => {
       switch (layoutMode) {
@@ -146,6 +200,57 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
       // Smooth layout transitions: reheat simulation when changing dagMode.
       fgRef.current?.d3ReheatSimulation?.()
     }, [layoutMode])
+
+    useEffect(() => {
+      const controls = fgRef.current?.controls?.()
+      if (!controls) return
+
+      controls.panSpeed = GRAPH_3D_PAN_SPEED
+    }, [height, mounted, width])
+
+    useEffect(() => {
+      return () => {
+        unitSphereGeometry.dispose()
+      }
+    }, [unitSphereGeometry])
+
+    useEffect(() => {
+      if (!mounted) return
+
+      const root = containerRef.current
+      if (!root) return
+
+      const resetPanning = () => setIsCanvasPanning(false)
+      const handleMouseDown = (event: MouseEvent) => {
+        if (!(event.target instanceof HTMLCanvasElement)) return
+        if (event.button === 1 || event.button === 2) {
+          setIsCanvasPanning(true)
+        }
+      }
+
+      root.addEventListener("mousedown", handleMouseDown)
+      globalThis.window.addEventListener("mouseup", resetPanning)
+      globalThis.window.addEventListener("blur", resetPanning)
+      globalThis.window.addEventListener("contextmenu", resetPanning)
+
+      return () => {
+        root.removeEventListener("mousedown", handleMouseDown)
+        globalThis.window.removeEventListener("mouseup", resetPanning)
+        globalThis.window.removeEventListener("blur", resetPanning)
+        globalThis.window.removeEventListener("contextmenu", resetPanning)
+      }
+    }, [mounted])
+
+    useEffect(() => {
+      const root = containerRef.current
+      const primaryCanvas = getPrimaryCanvas(root)
+      if (root) {
+        root.style.cursor = graphCursor
+      }
+      if (primaryCanvas) {
+        primaryCanvas.style.cursor = graphCursor
+      }
+    }, [graphCursor, height, mounted, width, data.links.length, data.nodes.length])
 
     const getNodeColor = useCallback(
       (node: any) => {
@@ -274,60 +379,113 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
       [focusNode, onNodeClick]
     )
 
+    const getNodeDecorationState = useCallback(
+      (node: any) => {
+        const id = String(node?.id ?? "").trim()
+        const isHighlighted = highlightedNodeIds.size > 0 && highlightedNodeIds.has(id)
+        const isSelected = selectedNodeId != null && String(selectedNodeId) === id
+        const isNeighbor = neighborSet ? neighborSet.has(id) : false
+        const isDimmed =
+          (highlightedNodeIds.size > 0 && !isHighlighted) ||
+          (selectedNodeId != null && !isSelected && !isNeighbor)
+        const isHovered = hoveredNodeId === id
+        return {
+          id,
+          isDimmed,
+          isHighlighted,
+          isHovered,
+          isNeighbor,
+          isSelected,
+        }
+      },
+      [highlightedNodeIds, hoveredNodeId, neighborSet, selectedNodeId]
+    )
+
     if (!mounted) return null
 
-    const bgColor = getCssHslColor("--background", isDark ? "#020617" : "#ffffff")
+    const bgColor = "rgba(0,0,0,0)"
     const mutedFgColor = getCssHslColor("--muted-foreground", isDark ? "#94a3b8" : "#475569")
     const linkColorBase = isDark ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.18)"
 
     return (
-      <ForceGraph3D
-        ref={fgRef}
-        graphData={data}
-        width={width}
-        height={height}
-        backgroundColor={bgColor}
-        showNavInfo={false}
-        dagMode={dagMode}
+      <div ref={containerRef} className="h-full w-full">
+        <ForceGraph3D
+          ref={fgRef}
+          graphData={data}
+          width={width}
+          height={height}
+          backgroundColor={bgColor}
+          rendererConfig={{ alpha: true, antialias: true }}
+          showNavInfo={false}
+          showPointerCursor={false}
+          dagMode={dagMode}
 
         // Node styling
         nodeLabel="label"
-        nodeColor={(node: any) => getNodeColor(node)}
-        nodeRelSize={6}
-        nodeOpacity={0.92}
-        nodeResolution={16}
+        nodeColor={(node: any) => {
+          const color = getNodeColor(node)
+          return mixHexColors(color, isDark ? "#dbeafe" : "#fffef9", isDark ? 0.04 : 0.18)
+        }}
+        nodeRelSize={GRAPH_3D_NODE_REL_SIZE}
+        nodeOpacity={0.96}
+        nodeResolution={20}
 
         // Link styling
         linkColor={(link: any) => {
           const linkId = link?.id || (link?.index === undefined ? null : `link-${link.index}`)
           const kind = getLinkKind(link)
           const base = EDGE_KIND_COLORS[kind] || linkColorBase
+          const baseLineColor = withAlpha(base, isDark ? 0.3 : 0.24)
+          const activeLineColor = withAlpha(base, isDark ? 0.68 : 0.56)
           if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) return "#f59e0b"
           if (hoveredLinkId && linkId && hoveredLinkId === linkId) return hoverLinkColor
           if (highlightedNodeIds.size > 0) {
             const sourceId = typeof link.source === "object" ? link.source.id : link.source
             const targetId = typeof link.target === "object" ? link.target.id : link.target
-            if (highlightedNodeIds.has(String(sourceId)) && highlightedNodeIds.has(String(targetId))) return midLinkColor
+            if (highlightedNodeIds.has(String(sourceId)) && highlightedNodeIds.has(String(targetId))) return activeLineColor
             return dimLinkColor
           }
           if (selectedNodeId && neighborSet) {
             const sourceId = typeof link.source === "object" ? link.source.id : link.source
             const targetId = typeof link.target === "object" ? link.target.id : link.target
-            if (neighborSet.has(String(sourceId)) && neighborSet.has(String(targetId))) return base
+            if (neighborSet.has(String(sourceId)) && neighborSet.has(String(targetId))) return activeLineColor
             return dimLinkColor
           }
-          return base
+          return baseLineColor
         }}
         linkWidth={(link: any) => {
           const linkId = link?.id || (link?.index === undefined ? null : `link-${link.index}`)
           const base = confidenceToWidth(getLinkConfidence(link))
           if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) return 4
           if (hoveredLinkId && linkId && hoveredLinkId === linkId) return 3
-          return base
+          if (selectedNodeId && neighborSet) {
+            const sourceId = typeof link.source === "object" ? link.source.id : link.source
+            const targetId = typeof link.target === "object" ? link.target.id : link.target
+            if (neighborSet.has(String(sourceId)) && neighborSet.has(String(targetId))) {
+              return Math.max(1.8, base + 0.6)
+            }
+            return 0.45
+          }
+          return Math.min(3.2, Math.max(0.85, base * 0.88))
         }}
-        linkDirectionalParticles={2}
-        linkDirectionalParticleWidth={2}
-        linkDirectionalParticleSpeed={0.005}
+        linkDirectionalParticles={(link: any) => {
+          const linkId = link?.id || (link?.index === undefined ? null : `link-${link.index}`)
+          if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) return 3
+          if (hoveredLinkId && linkId && hoveredLinkId === linkId) return 2
+          if (selectedNodeId && neighborSet) {
+            const sourceId = typeof link.source === "object" ? link.source.id : link.source
+            const targetId = typeof link.target === "object" ? link.target.id : link.target
+            return neighborSet.has(String(sourceId)) && neighborSet.has(String(targetId)) ? 1 : 0
+          }
+          return 0
+        }}
+        linkDirectionalParticleWidth={(link: any) => {
+          const linkId = link?.id || (link?.index === undefined ? null : `link-${link.index}`)
+          if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) return 3.8
+          if (hoveredLinkId && linkId && hoveredLinkId === linkId) return 3.2
+          return 2.2
+        }}
+        linkDirectionalParticleSpeed={0.0036}
         linkLabel={(link: any) => buildGraphLinkProvenanceTooltipHtml(link)}
 
         // Interaction
@@ -337,6 +495,10 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
         onLinkRightClick={(link: any, event: MouseEvent) => onLinkRightClick?.(link, event)}
         onBackgroundClick={() => onBackgroundClick?.()}
         onBackgroundRightClick={(event: MouseEvent) => onBackgroundRightClick?.(event)}
+        onNodeHover={(node: any) => {
+          const nodeId = node?.id ? String(node.id) : null
+          setHoveredNodeId((prev) => (prev === nodeId ? prev : nodeId))
+        }}
         onLinkHover={(link: any) => {
           const linkId = link?.id || (link?.index === undefined ? null : `link-${link.index}`)
           setHoveredLinkId((prev) => (prev === linkId ? prev : linkId))
@@ -347,14 +509,94 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
 
         // Text sprites
         nodeThreeObject={(node: any) => {
-          const sprite = new SpriteText(String(node.label ?? node.id ?? ""))
-          sprite.color = mutedFgColor
-          sprite.textHeight = 4
-          sprite.position.y = 8
-          return sprite
+          const { id, isDimmed, isHighlighted, isHovered, isSelected } = getNodeDecorationState(node)
+          const emphasis = isSelected || isHighlighted || isHovered
+          const degree = nodeDegreeMap.get(id) || 0
+          const color = getNodeColor(node)
+          const shellScale = 3.2 + Math.min(degree * 0.08, 0.7) + (isSelected ? 0.55 : isHighlighted ? 0.3 : isHovered ? 0.2 : 0)
+          const labelDirection = Number(node?.x ?? 0) >= 0 ? 1 : -1
+          const showLabelChip = data.nodes.length <= 36 || emphasis
+
+          const group = new Group()
+
+          const shell = new Mesh(
+            unitSphereGeometry,
+            new MeshBasicMaterial({
+              color,
+              transparent: true,
+              opacity: isDimmed ? 0.05 : isSelected ? 0.18 : isHovered ? 0.13 : 0.09,
+              depthWrite: false,
+            })
+          )
+          shell.scale.setScalar(shellScale)
+          group.add(shell)
+
+          const wireframeShell = new Mesh(
+            unitSphereGeometry,
+            new MeshBasicMaterial({
+              color,
+              transparent: true,
+              opacity: isDimmed ? 0.08 : isSelected ? 0.3 : isHighlighted ? 0.22 : 0.14,
+              wireframe: true,
+              depthWrite: false,
+            })
+          )
+          wireframeShell.scale.setScalar(shellScale + 0.48)
+          group.add(wireframeShell)
+
+          if (showLabelChip) {
+            const label = new SpriteText(truncateGraphLabel(node.label ?? node.id, 24))
+            label.color = isDimmed ? mutedFgColor : (isDark ? "#e5eefc" : "#334155")
+            label.textHeight = emphasis ? GRAPH_3D_LABEL_TEXT_HEIGHT + 0.15 : GRAPH_3D_LABEL_TEXT_HEIGHT
+            label.fontFace = "-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+            label.fontWeight = emphasis ? "700" : "600"
+            label.backgroundColor = emphasis
+              ? withAlpha(mixHexColors(color, isDark ? "#0f172a" : "#fffef9", isDark ? 0.74 : 0.84), isDark ? 0.92 : 0.9)
+              : labelBgColor
+            label.borderColor = withAlpha(color, emphasis ? 0.72 : 0.38)
+            label.borderWidth = 0.85
+            label.borderRadius = 4
+            label.padding = [2.6, 1.15]
+            label.strokeWidth = isDark ? 0.82 : 0.58
+            label.strokeColor = labelStrokeColor
+            label.center.set(labelDirection === 1 ? 0 : 1, 0.5)
+            label.position.set(labelDirection * GRAPH_3D_LABEL_X_OFFSET, GRAPH_3D_LABEL_Y_OFFSET, 0)
+            label.material.depthWrite = false
+            label.material.depthTest = false
+            group.add(label)
+
+            const leaderGeometry = new BufferGeometry()
+            leaderGeometry.setAttribute(
+              "position",
+              new Float32BufferAttribute(
+                [
+                  0,
+                  shellScale * 0.62,
+                  0,
+                  labelDirection * (GRAPH_3D_LABEL_X_OFFSET - 0.9),
+                  GRAPH_3D_LABEL_Y_OFFSET - 0.55,
+                  0,
+                ],
+                3
+              )
+            )
+            const leader = new Line(
+              leaderGeometry,
+              new LineBasicMaterial({
+                color,
+                transparent: true,
+                opacity: isDimmed ? 0.14 : emphasis ? 0.48 : 0.26,
+                depthWrite: false,
+              })
+            )
+            group.add(leader)
+          }
+
+          return group
         }}
         nodeThreeObjectExtend={true}
-      />
+        />
+      </div>
     )
   }
 )

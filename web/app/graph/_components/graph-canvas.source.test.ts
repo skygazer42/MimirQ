@@ -47,10 +47,10 @@ describe('graph canvas accessibility source', () => {
   it('shows a branded loading shell instead of plain text', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'graph-canvas.tsx'), 'utf8')
 
-    expect(src).toContain('PageLoading')
+    expect(src).toContain('GraphLoadingIndicator')
     expect(src).toContain('正在构建 3D 图谱...')
     expect(src).toContain('<Skeleton className="h-3 w-full" />')
-    expect(src).not.toContain('Loading 3D graph...')
+    expect(src).not.toContain('Loading graph...')
   })
 
   it('reports graph clustering and palette work to frontend trace telemetry', () => {

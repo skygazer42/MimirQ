@@ -7,6 +7,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { FileText, Loader2, AlertCircle } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useChunkPreview } from '@/components/chunk-preview/context'
 import { getChunkRole } from '@/components/chunk-preview/utils/metadata'
 import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
@@ -372,9 +373,9 @@ export function OriginalPreview() {
         </span>
         <div className="flex items-center gap-2">
           {previewData && (
-            <div className="flex items-center gap-2 text-[10px] font-mono text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono text-muted-foreground">
               {activeChunkMeta ? (
-                <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+                <span className="inline-flex h-5 items-center rounded-md border border-primary/20 bg-primary/10 px-1.5 text-primary">
                   {activeChunkMeta.label}
                   {activeChunkMeta.page == null ? '' : ` P.${activeChunkMeta.page}`}
                   {' '}
@@ -386,7 +387,7 @@ export function OriginalPreview() {
                   ) : null}
                 </span>
               ) : null}
-              <span>
+              <span className="inline-flex h-5 items-center rounded-md border border-border/60 bg-muted/35 px-1.5 tabular-nums">
                 {t('originalPreview.charCount', {
                   count: (effectiveOriginalText?.length ?? previewData.total_characters).toLocaleString(),
                 })}
@@ -398,7 +399,7 @@ export function OriginalPreview() {
                 className="hidden lg:flex"
               />
               {originalTextSource ? (
-                <span className="px-1.5 py-0.5 rounded bg-muted border border-border/60">
+                <span className="inline-flex h-5 items-center rounded-md border border-border/60 bg-muted/35 px-1.5">
                   {originalTextSource === 'server'
                     ? t('originalPreview.source.server')
                     : t('originalPreview.source.local')}
@@ -407,21 +408,34 @@ export function OriginalPreview() {
               {previewData.original_text ? null : (() => {
                 const limit = previewData.original_text_max_chars ?? 100000
                 const truncated = Boolean(previewData.original_text_truncated)
+                const badgeTitle = truncated
+                  ? t('originalPreview.badges.originalTooLargeTitle', {
+                      limit: limit.toLocaleString(),
+                    })
+                  : t('originalPreview.badges.originalMissingTitle')
+                const badgeLabel = truncated
+                  ? t('originalPreview.badges.originalTooLarge')
+                  : t('originalPreview.badges.originalMissing')
+                const badgeDescription = badgeTitle === badgeLabel ? null : badgeTitle
                 return (
-                  <span
-                    className="px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/25"
-                    title={
-                      truncated
-                        ? t('originalPreview.badges.originalTooLargeTitle', {
-                            limit: limit.toLocaleString(),
-                          })
-                        : t('originalPreview.badges.originalMissingTitle')
-                    }
-                  >
-                    {truncated
-                      ? t('originalPreview.badges.originalTooLarge')
-                      : t('originalPreview.badges.originalMissing')}
-                  </span>
+                  <TooltipProvider delayDuration={120}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span
+                          className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-warning/25 bg-warning/10 text-warning"
+                          aria-label={badgeLabel}
+                        >
+                          <AlertCircle className="h-3 w-3" />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-[240px] text-[11px] leading-relaxed">
+                        <div className="font-medium">{badgeLabel}</div>
+                        {badgeDescription ? (
+                          <div className="mt-0.5 text-muted-foreground">{badgeDescription}</div>
+                        ) : null}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 )
               })()}
             </div>

@@ -1,5 +1,7 @@
 'use client'
 
+import { useState } from 'react'
+
 import { Share2 } from 'lucide-react'
 
 import { AppFrame } from '@/components/app-frame'
@@ -17,6 +19,7 @@ import type { UseGraphPageStateResult } from '../use-graph-page-state'
 import { GraphActionDialogs } from './graph-action-dialogs'
 import { GraphPageBody } from './graph-page-body'
 import { GraphPageHeader } from './graph-page-header'
+import { GraphScopePickerDialog } from './graph-scope-picker-dialog'
 
 type GraphPageShellProps = Readonly<{
   isDark: boolean
@@ -39,6 +42,8 @@ export function GraphPageShell({
   pageActions,
   interactionModes,
 }: GraphPageShellProps) {
+  const [graphScopePickerOpen, setGraphScopePickerOpen] = useState(false)
+
   return (
     <AppFrame>
       <PageScaffold
@@ -107,6 +112,7 @@ export function GraphPageShell({
           onRefreshLiveData={() => {
             detachPromise(dataLoading.loadInitialData('live'))
           }}
+          onOpenGraphPicker={() => setGraphScopePickerOpen(true)}
           onTriggerTraceUpload={dataLoading.triggerTraceUpload}
           traceFileInputRef={state.traceFileInputRef}
           onTraceFileUpload={dataLoading.handleTraceFileUpload}
@@ -132,6 +138,7 @@ export function GraphPageShell({
             showEdgeLabels: state.showEdgeLabels,
             layoutMode: state.layoutMode,
             isLoading: state.isLoading,
+            hasActiveScope: state.scope.hasScope,
             onNodeClick: interactionModes.handleNodeClick,
             onNodeRightClick: pageActions.handleNodeRightClick,
             onLinkClick: interactionModes.handleLinkClick,
@@ -141,6 +148,7 @@ export function GraphPageShell({
             onLoadMock: () => {
               detachPromise(dataLoading.loadInitialData('mock'))
             },
+            onOpenGraphPicker: () => setGraphScopePickerOpen(true),
             onTriggerFileUpload: dataLoading.triggerFileUpload,
           }}
           contextMenuProps={{
@@ -289,6 +297,15 @@ export function GraphPageShell({
           connectLabelDraft={state.connectLabelDraft}
           onConnectLabelDraftChange={state.setConnectLabelDraft}
           onConfirmConnectionLabel={interactionModes.confirmConnectionLabel}
+        />
+
+        <GraphScopePickerDialog
+          open={graphScopePickerOpen}
+          onOpenChange={setGraphScopePickerOpen}
+          currentDatasetId={state.scope.datasetId}
+          currentPipelineHash={state.scope.pipelineHash}
+          currentDocumentCount={state.scopedDocumentIds?.length ?? 0}
+          onTriggerFileUpload={dataLoading.triggerFileUpload}
         />
       </PageScaffold>
     </AppFrame>
