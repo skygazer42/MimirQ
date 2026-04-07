@@ -22,6 +22,31 @@ describe('similarity workbench source', () => {
     expect(src).toContain('标记待审')
   })
 
+  it('shows a compact selected-cell drilldown for clicked heatmap cells', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'similarity-workbench.tsx'), 'utf8')
+
+    expect(src).toContain('选中单元')
+    expect(src).toContain('点击热力图任意单元后，在这里查看坐标和值。')
+    expect(src).toContain('plotly_click')
+    expect(src).toContain('当前显示')
+  })
+
+  it('supports collapsing the right inspector down to the icon rail', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'similarity-workbench.tsx'), 'utf8')
+
+    expect(src).toContain('收起右侧栏')
+    expect(src).toContain('展开右侧栏')
+    expect(src).toContain('isRightSidebarCollapsed')
+  })
+
+  it('supports collapsing the left setup sidebar down to the icon rail', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'similarity-workbench.tsx'), 'utf8')
+
+    expect(src).toContain('收起左侧栏')
+    expect(src).toContain('展开左侧栏')
+    expect(src).toContain('isLeftSidebarCollapsed')
+  })
+
   it('keeps icon-only controls accessible with contextual aria-labels', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'similarity-workbench.tsx'), 'utf8')
 
