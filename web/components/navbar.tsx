@@ -133,8 +133,22 @@ function isActiveRoute(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`)
 }
 
-function sectionHasActiveRoute(pathname: string, items: MenuItem[]) {
-  return items.some((item) => isActiveRoute(pathname, item.href))
+function getMostSpecificActiveHref(pathname: string, items: MenuItem[]): string | null {
+  let activeHref: string | null = null
+
+  for (const item of items) {
+    if (!isActiveRoute(pathname, item.href)) continue
+    if (activeHref === null || item.href.length > activeHref.length) {
+      activeHref = item.href
+    }
+  }
+
+  return activeHref
+}
+
+function sectionHasActiveRoute(activeHref: string | null, items: MenuItem[]) {
+  if (!activeHref) return false
+  return items.some((item) => item.href === activeHref)
 }
 
 function trimmedPrimitiveString(value: unknown): string {
@@ -195,6 +209,7 @@ export function Navbar({
   const backendReady = useBackendReady()
   const commandMenuOpen = useCommandMenuState((state) => state.open)
   const setCommandMenuOpen = useCommandMenuState((state) => state.setOpen)
+  const activeHref = getMostSpecificActiveHref(pathname, menuItems)
   const readyDetails = backendReady.data ?? null
   const backendOk =
     (() => {
@@ -311,7 +326,7 @@ export function Navbar({
   }, [isSidebarOpen])
 
   useEffect(() => {
-    const activeSection = menuSections.find((section) => sectionHasActiveRoute(pathname, section.items))
+    const activeSection = menuSections.find((section) => sectionHasActiveRoute(activeHref, section.items))
     if (!activeSection) return
 
     setOpenSections((current) => {
@@ -321,7 +336,7 @@ export function Navbar({
         [activeSection.id]: true,
       }
     })
-  }, [pathname])
+  }, [activeHref])
 
   // Dev UX: warm up route chunks in the background so first-click navigation feels snappier.
   useEffect(() => {
@@ -501,7 +516,7 @@ export function Navbar({
           <div className="space-y-3">
             {menuSections.map((section, index) => {
               const isOpen = openSections[section.id] ?? false
-              const hasActiveItem = sectionHasActiveRoute(pathname, section.items)
+              const hasActiveItem = sectionHasActiveRoute(activeHref, section.items)
               const ToggleIcon = isOpen ? ChevronDown : ChevronRight
 
               return (
@@ -542,7 +557,7 @@ export function Navbar({
                       <div className="space-y-1 pb-1">
                         {section.items.map((item) => {
                           const Icon = item.icon
-                          const isActive = isActiveRoute(pathname, item.href)
+                          const isActive = activeHref === item.href
 
                           return (
                             <div key={item.href}>
