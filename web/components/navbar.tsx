@@ -125,6 +125,7 @@ const menuSections: MenuSection[] = [
 ]
 
 const DEFAULT_OPEN_SECTIONS = new Set<SectionId>(['core', 'knowledge'])
+const OPEN_SECTIONS_STORAGE_KEY = 'mimirq_navbar_open_sections_v1'
 
 const menuItems: MenuItem[] = menuSections.flatMap((s) => s.items)
 
@@ -185,6 +186,32 @@ function createInitialOpenSections(): Record<SectionId, boolean> {
   )
 }
 
+function sanitizeOpenSections(value: unknown): Record<SectionId, boolean> {
+  const fallback = createInitialOpenSections()
+  if (!value || typeof value !== 'object') return fallback
+
+  const candidate = value as Partial<Record<SectionId, unknown>>
+  return {
+    core: typeof candidate.core === 'boolean' ? candidate.core : fallback.core,
+    ingestion: typeof candidate.ingestion === 'boolean' ? candidate.ingestion : fallback.ingestion,
+    knowledge: typeof candidate.knowledge === 'boolean' ? candidate.knowledge : fallback.knowledge,
+    analysis: typeof candidate.analysis === 'boolean' ? candidate.analysis : fallback.analysis,
+    system: typeof candidate.system === 'boolean' ? candidate.system : fallback.system,
+  }
+}
+
+function loadOpenSections(): Record<SectionId, boolean> {
+  if (globalThis.window === undefined) return createInitialOpenSections()
+
+  try {
+    const raw = globalThis.window.localStorage.getItem(OPEN_SECTIONS_STORAGE_KEY)
+    if (!raw) return createInitialOpenSections()
+    return sanitizeOpenSections(JSON.parse(raw))
+  } catch {
+    return createInitialOpenSections()
+  }
+}
+
 export function Navbar({
   isSidebarOpen: externalIsOpen,
   setSidebarOpen: externalSetOpen,
@@ -198,7 +225,7 @@ export function Navbar({
   const prevIsSidebarOpenRef = useRef<boolean | null>(null)
   const restoreToggleFocusOnCloseRef = useRef(false)
   const [internalIsOpen, setInternalIsOpen] = useState(true)
-  const [openSections, setOpenSections] = useState<Record<SectionId, boolean>>(createInitialOpenSections)
+  const [openSections, setOpenSections] = useState<Record<SectionId, boolean>>(loadOpenSections)
   const isSidebarOpen = externalIsOpen ?? internalIsOpen
   const setSidebarOpen = externalSetOpen ?? setInternalIsOpen
   const pathname = usePathname()
@@ -337,6 +364,15 @@ export function Navbar({
       }
     })
   }, [activeHref])
+
+  useEffect(() => {
+    if (globalThis.window === undefined) return
+    try {
+      globalThis.window.localStorage.setItem(OPEN_SECTIONS_STORAGE_KEY, JSON.stringify(openSections))
+    } catch {
+      // ignore unavailable or quota-limited storage
+    }
+  }, [openSections])
 
   // Dev UX: warm up route chunks in the background so first-click navigation feels snappier.
   useEffect(() => {

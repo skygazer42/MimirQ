@@ -137,6 +137,7 @@ describe('Navbar behavior', () => {
     routerMocks.pathname = '/knowledge/similarity'
     commandMenuStore.open = false
     commandMenuStore.setOpen = vi.fn()
+    window.localStorage.clear()
     Object.defineProperty(window, 'matchMedia', {
       configurable: true,
       writable: true,
@@ -175,5 +176,39 @@ describe('Navbar behavior', () => {
     expect(ragVisualizationLink?.getAttribute('aria-current')).toBe('page')
 
     view.unmount()
+  })
+
+  it('preserves manually collapsed sections across remounts while opening the active section', () => {
+    routerMocks.pathname = '/'
+
+    const firstView = renderComponent(React.createElement(Navbar))
+    const coreToggle = firstView.container.querySelector('button[aria-controls="sidebar-section-core"]') as HTMLButtonElement
+    const knowledgeToggle = firstView.container.querySelector(
+      'button[aria-controls="sidebar-section-knowledge"]'
+    ) as HTMLButtonElement
+
+    act(() => {
+      coreToggle.click()
+      knowledgeToggle.click()
+    })
+
+    firstView.unmount()
+
+    routerMocks.pathname = '/graph'
+
+    const secondView = renderComponent(React.createElement(Navbar))
+    const coreSection = secondView.container.querySelector('#sidebar-section-core')
+    const knowledgeSection = secondView.container.querySelector('#sidebar-section-knowledge')
+    const analysisToggle = secondView.container.querySelector(
+      'button[aria-controls="sidebar-section-analysis"]'
+    ) as HTMLButtonElement
+    const analysisSection = secondView.container.querySelector('#sidebar-section-analysis')
+
+    expect(coreSection?.className).toContain('grid-rows-[0fr]')
+    expect(knowledgeSection?.className).toContain('grid-rows-[0fr]')
+    expect(analysisToggle.textContent).toContain('sections.current')
+    expect(analysisSection?.className).toContain('grid-rows-[1fr]')
+
+    secondView.unmount()
   })
 })
