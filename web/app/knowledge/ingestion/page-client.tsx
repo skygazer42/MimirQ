@@ -326,7 +326,7 @@ export default function IngestionMonitorPage() {
                       <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                         {stat.label}
                       </div>
-                      <div className={cn('text-3xl font-black leading-none tracking-tight', stat.color)}>{stat.value}</div>
+                      <div className={cn('text-3xl font-black leading-none ', stat.color)}>{stat.value}</div>
                     </div>
                     <div className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border', stat.iconSurface)}>
                       <stat.icon className={cn('h-5 w-5', stat.color, stat.spin && 'animate-spin motion-reduce:animate-none')} />

@@ -635,7 +635,7 @@ export function TestCaseManager({
                 <Button
                   size="sm"
                   variant="outline"
-                  className={cn('gap-2', dense && 'h-8 rounded-lg border-slate-200/80 bg-white/90 px-2.5 text-[11px]')}
+                  className={cn('gap-2', dense && 'h-8 rounded-lg border-slate-200/80 bg-card/90 px-2.5 text-[11px]')}
                   onClick={handleRunSelected}
                 >
                   运行选中 ({selectedCaseIds.size})
@@ -651,7 +651,7 @@ export function TestCaseManager({
                   <Button
                     size="sm"
                     variant="outline"
-                    className={cn('gap-2 text-destructive hover:text-destructive', dense && 'h-8 rounded-lg border-slate-200/80 bg-white/90 px-2.5 text-[11px]')}
+                    className={cn('gap-2 text-destructive hover:text-destructive', dense && 'h-8 rounded-lg border-slate-200/80 bg-card/90 px-2.5 text-[11px]')}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     删除
@@ -669,7 +669,7 @@ export function TestCaseManager({
             <Button
               size="sm"
               variant="outline"
-              className={cn('gap-2', dense && 'h-8 rounded-lg border-slate-200/80 bg-white/90 px-2.5 text-[11px]')}
+              className={cn('gap-2', dense && 'h-8 rounded-lg border-slate-200/80 bg-card/90 px-2.5 text-[11px]')}
               onClick={handleChooseEvidencePack}
               disabled={!datasetId}
               title={datasetId ? '导入 Evidence Pack JSON' : '请先选择数据集'}
@@ -696,7 +696,7 @@ export function TestCaseManager({
             placeholder="搜索问题..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className={cn(dense ? 'h-9 rounded-xl border-slate-200/80 bg-white/95 pl-8 text-[13px]' : 'pl-10')}
+            className={cn(dense ? 'h-9 rounded-xl border-slate-200/80 bg-card/95 pl-8 text-[13px]' : 'pl-10')}
           />
         </div>
 
@@ -707,7 +707,7 @@ export function TestCaseManager({
             className={cn(
               'gap-2',
               goldenOnly && 'bg-amber-500/15 text-amber-700 hover:bg-amber-500/20',
-              dense && 'h-8 rounded-lg border-slate-200/80 bg-white/90 px-2.5 text-[11px]'
+              dense && 'h-8 rounded-lg border-slate-200/80 bg-card/90 px-2.5 text-[11px]'
             )}
             onClick={() => {
               setGoldenOnly((v) => !v)
@@ -737,7 +737,7 @@ export function TestCaseManager({
                 value={newQuestion}
                 onChange={(e) => setNewQuestion(e.target.value)}
                 placeholder="输入测试问题..."
-                className={cn('resize-none', dense ? 'min-h-[64px] rounded-xl border-slate-200/80 bg-white/95 text-[13px]' : 'min-h-[72px]')}
+                className={cn('resize-none', dense ? 'min-h-[64px] rounded-xl border-slate-200/80 bg-card/95 text-[13px]' : 'min-h-[72px]')}
               />
             </div>
             <div>
@@ -748,7 +748,7 @@ export function TestCaseManager({
                 value={newExpectedAnswer}
                 onChange={(e) => setNewExpectedAnswer(e.target.value)}
                 placeholder="输入期望答案..."
-                className={cn('resize-none', dense ? 'min-h-[64px] rounded-xl border-slate-200/80 bg-white/95 text-[13px]' : 'min-h-[72px]')}
+                className={cn('resize-none', dense ? 'min-h-[64px] rounded-xl border-slate-200/80 bg-card/95 text-[13px]' : 'min-h-[72px]')}
               />
             </div>
             <div className="flex items-center gap-2">
@@ -770,7 +770,7 @@ export function TestCaseManager({
               <Button
                 size="sm"
                 variant="outline"
-                className={cn(dense && 'h-8 rounded-lg border-slate-200/80 bg-white/90 px-2.5 text-[11px]')}
+                className={cn(dense && 'h-8 rounded-lg border-slate-200/80 bg-card/90 px-2.5 text-[11px]')}
                 onClick={() => {
                   setIsCreating(false)
                   setNewQuestion('')

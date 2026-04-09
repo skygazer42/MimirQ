@@ -113,8 +113,8 @@ function EvaluationModePill({
       className={cn(
         'inline-flex min-h-[34px] items-center gap-2 rounded-md border px-2.5 text-[12px] font-medium transition-all duration-200',
         active
-          ? 'border-sky-300/70 bg-gradient-to-r from-sky-100 via-cyan-100 to-sky-100 text-sky-900 shadow-[0_1px_0_rgba(2,132,199,0.14)]'
-          : 'border-transparent bg-white text-muted-foreground hover:border-slate-300 hover:bg-slate-50 hover:text-foreground'
+          ? 'border-primary/25 bg-primary/[0.12] text-foreground shadow-[0_1px_0_rgba(2,132,199,0.14)]'
+          : 'border-transparent bg-card text-muted-foreground hover:border-slate-300 hover:bg-slate-50 hover:text-foreground'
       )}
     >
       <Icon className="h-3 w-3" aria-hidden="true" />
@@ -162,7 +162,7 @@ function EvaluationInlineStat({
   value: ReactNode
 }>) {
   return (
-    <div className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/80 bg-gradient-to-b from-white to-slate-50 px-2 py-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
+    <div className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/80 bg-card/90 px-2 py-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
       <span className="text-[9px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{label}</span>
       <span className="font-mono text-[11px] font-semibold tabular-nums text-foreground">{value}</span>
     </div>
@@ -396,10 +396,10 @@ function EvaluationsPageContent() {
         bodyContainerClassName="max-w-none"
       >
         <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_22%)] shadow-[0_1px_0_rgba(15,23,42,0.04)]">
-          <div className="flex flex-col gap-2.5 border-b border-slate-200/80 bg-gradient-to-r from-sky-50/65 via-white to-slate-50 px-4 py-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex flex-col gap-2.5 border-b border-slate-200/80 bg-muted/35 px-4 py-3 lg:flex-row lg:items-end lg:justify-between">
             <div className="min-w-0">
               <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">评测中心 · 统一工作台</div>
-              <div className="mt-1 flex items-center gap-2 text-sm font-semibold tracking-[-0.01em] text-foreground"><span className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-sky-200/70 bg-white/85 text-sky-700"><ActiveTabIcon className="h-3.5 w-3.5" aria-hidden="true" /></span>{activeTabMeta.title}</div>
+              <div className="mt-1 flex items-center gap-2 text-sm font-semibold tracking-[-0.01em] text-foreground"><span className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-sky-200/70 bg-card/85 text-sky-700"><ActiveTabIcon className="h-3.5 w-3.5" aria-hidden="true" /></span>{activeTabMeta.title}</div>
               <p className="mt-1 text-[12px] leading-4 text-muted-foreground">选择评测模式后，在同一工作区完成参数配置、运行触发与结果排查。</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -413,7 +413,7 @@ function EvaluationsPageContent() {
           </div>
 
           <div className="border-t border-slate-200/80 px-3 py-2.5">
-            <div className="inline-flex w-full flex-wrap items-center gap-1 rounded-lg border border-slate-200 bg-white/85 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
+            <div className="inline-flex w-full flex-wrap items-center gap-1 rounded-lg border border-slate-200 bg-card/85 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
               {TAB_META.map((tab) => (
                 <EvaluationModePill
                   key={tab.id}
@@ -442,14 +442,14 @@ function EvaluationsPageContent() {
                       aria-label="展开参数侧栏"
                     >
                       <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/70" aria-hidden="true" />
-                      <span className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-slate-200/80 bg-white/95 p-1 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                      <span className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-slate-200/80 bg-card/95 p-1 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                         <ChevronRight className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
                       </span>
                     </button>
                   </div>
                 ) : (
                   <>
-                    <div className="shrink-0 border-b border-slate-200/80 bg-gradient-to-r from-sky-100/70 via-cyan-50/55 to-white px-3 py-2.5">
+                    <div className="shrink-0 border-b border-slate-200/80 bg-primary/[0.12] px-3 py-2.5">
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <div className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-sky-700"><SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />参数设置</div>
@@ -475,7 +475,7 @@ function EvaluationsPageContent() {
                         description="从已有会话里选一条对话，评测会按用户-助手轮次重建上下文。"
                       >
                         <Select value={selectedConversationId} onValueChange={setSelectedConversationId}>
-                          <SelectTrigger className="h-9 rounded-lg border-slate-200/80 bg-white/95 text-xs">
+                          <SelectTrigger className="h-9 rounded-lg border-slate-200/80 bg-card/95 text-xs">
                             <SelectValue placeholder="选择对话" />
                           </SelectTrigger>
                           <SelectContent>
@@ -501,7 +501,7 @@ function EvaluationsPageContent() {
                           metricKeys={metricKeys}
                           onMetricKeysChange={setMetricKeys}
                           className="space-y-2"
-                          itemClassName="rounded-lg border border-slate-200/80 bg-white px-2.5 py-1.5"
+                          itemClassName="rounded-lg border border-slate-200/80 bg-card px-2.5 py-1.5"
                         />
                       </EvaluationConfigSection>
 
@@ -523,11 +523,11 @@ function EvaluationsPageContent() {
                               max={200}
                               value={maxTurns}
                               onChange={(e) => setMaxTurns(Number(e.target.value))}
-                              className="h-9 rounded-lg border-slate-200/80 bg-white/95 text-xs"
+                              className="h-9 rounded-lg border-slate-200/80 bg-card/95 text-xs"
                             />
                           </div>
 
-                          <label className="flex items-start gap-2.5 rounded-lg border border-slate-200/80 bg-white px-2.5 py-1.5">
+                          <label className="flex items-start gap-2.5 rounded-lg border border-slate-200/80 bg-card px-2.5 py-1.5">
                             <Checkbox checked={skipEmptyContexts} onCheckedChange={(value) => setSkipEmptyContexts(value === true)} />
                             <span className="space-y-0.5">
                               <span className="block text-[12px] font-medium text-foreground">跳过无引用轮次</span>
@@ -538,7 +538,7 @@ function EvaluationsPageContent() {
                       </EvaluationConfigSection>
                     </div>
 
-                    <div className="shrink-0 border-t border-slate-200/80 bg-white px-3 py-2.5">
+                    <div className="shrink-0 border-t border-slate-200/80 bg-card px-3 py-2.5">
                       <div className="flex flex-wrap items-center gap-2">
                         <EvaluationInlineStat label="指标" value={metricKeys.length} />
                         <EvaluationInlineStat label="轮次" value={maxTurns} />
@@ -560,7 +560,7 @@ function EvaluationsPageContent() {
 
                       <Button
                         variant="outline"
-                        className="mt-2 h-8 w-full rounded-lg border-slate-200/80 bg-white"
+                        className="mt-2 h-8 w-full rounded-lg border-slate-200/80 bg-card"
                         onClick={() => {
                           setIsLoading(true)
                           Promise.all([loadConversations(), loadRuns()]).finally(() => setIsLoading(false))
@@ -574,7 +574,7 @@ function EvaluationsPageContent() {
                 )}
               </aside>
 
-              <section className="flex min-h-0 flex-col border-b border-slate-200/80 bg-white xl:border-b-0 xl:border-r">
+              <section className="flex min-h-0 flex-col border-b border-slate-200/80 bg-card xl:border-b-0 xl:border-r">
                 {isTimelinePanelCollapsed ? (
                   <div className="group relative flex h-full items-center justify-center px-1 py-4">
                     <button
@@ -585,14 +585,14 @@ function EvaluationsPageContent() {
                       aria-label="展开运行记录"
                     >
                       <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/70" aria-hidden="true" />
-                      <span className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-slate-200/80 bg-white/95 p-1 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                      <span className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-slate-200/80 bg-card/95 p-1 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                         <ChevronRight className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
                       </span>
                     </button>
                   </div>
                 ) : (
                   <>
-                    <div className="shrink-0 border-b border-slate-200/80 bg-gradient-to-r from-sky-50/70 via-cyan-50/45 to-white px-2.5 py-2">
+                    <div className="shrink-0 border-b border-slate-200/80 bg-primary/[0.10] px-2.5 py-2">
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <div className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-sky-700"><Clock3 className="h-3.5 w-3.5" aria-hidden="true" />运行时间线</div>
@@ -655,31 +655,31 @@ function EvaluationsPageContent() {
                 )}
               </section>
 
-              <section className="flex min-h-0 flex-col bg-white">
+              <section className="flex min-h-0 flex-col bg-card">
                 <div className="shrink-0 border-b border-slate-200/80">
                   <div className="grid gap-px bg-border/70 sm:grid-cols-4">
-                    <div className="bg-gradient-to-b from-sky-50/80 to-white px-2.5 py-2">
+                    <div className="bg-primary/[0.08] px-2.5 py-2">
                       <div className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-sky-700"><MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />当前对话</div>
                       <div className="mt-1 truncate text-[13px] font-semibold text-foreground">
                         {selectedConversation?.title || (selectedConversationId ? '对话 ' + selectedConversationId.slice(0, 8) + '…' : '未选择')}
                       </div>
                     </div>
-                    <div className="bg-gradient-to-b from-slate-50/75 to-white px-2.5 py-2">
+                    <div className="bg-muted/35 px-2.5 py-2">
                       <div className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-slate-700"><ListChecks className="h-3.5 w-3.5" aria-hidden="true" />样本数</div>
                       <div className="mt-1 text-base font-semibold tabular-nums text-foreground">{formatCompactCount(summary.items)}</div>
                     </div>
-                    <div className="bg-gradient-to-b from-sky-50/75 to-white px-2.5 py-2">
+                    <div className="bg-primary/[0.08] px-2.5 py-2">
                       <div className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-sky-700"><BarChart3 className="h-3.5 w-3.5" aria-hidden="true" />令牌开销</div>
                       <div className="mt-1 text-base font-semibold tabular-nums text-foreground">{formatCompactCount(summary.total_tokens)}</div>
                     </div>
-                    <div className="bg-gradient-to-b from-slate-50/75 to-white px-2.5 py-2">
+                    <div className="bg-muted/35 px-2.5 py-2">
                       <div className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-slate-700"><Sparkles className="h-3.5 w-3.5" aria-hidden="true" />LLM 成本</div>
                       <div className="mt-1 text-base font-semibold tabular-nums text-foreground">{formatCurrency(summary.total_cost)}</div>
                     </div>
                   </div>
                 </div>
 
-                <div className="shrink-0 border-b border-slate-200/80 bg-gradient-to-r from-sky-50/45 via-white to-white px-3 py-2.5">
+                <div className="shrink-0 border-b border-slate-200/80 bg-muted/25 px-3 py-2.5">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.12em] text-sky-700"><Sparkles className="h-3.5 w-3.5" aria-hidden="true" />运行摘要</div>
@@ -717,7 +717,7 @@ function EvaluationsPageContent() {
                 </div>
 
                 <div className="min-h-0 flex-1">
-                  <div className="flex items-center justify-between border-b border-slate-200/80 bg-gradient-to-r from-slate-50 to-white px-3 py-2">
+                  <div className="flex items-center justify-between border-b border-slate-200/80 bg-muted/30 px-3 py-2">
                     <div className="flex items-center gap-2">
                       <ListChecks className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                       <div className="text-sm font-semibold text-foreground">逐轮明细</div>

@@ -395,7 +395,7 @@ export function KnowledgeSettingsPanel({ selectedDatasetId }: Readonly<Knowledge
         <div className="border-b border-border/55 bg-muted/[0.12] px-5 py-4 md:px-6">
           <div className="space-y-2.5">
             <div className="space-y-1">
-              <h3 className="text-[15px] font-semibold tracking-tight text-foreground">{t("header.title")}</h3>
+              <h3 className="text-[15px] font-semibold text-foreground">{t("header.title")}</h3>
               <p className="max-w-[42rem] text-[13px] leading-5 text-muted-foreground">{t('header.description')}</p>
             </div>
 
@@ -545,7 +545,7 @@ export function KnowledgeSettingsPanel({ selectedDatasetId }: Readonly<Knowledge
 
                           <div className="min-w-0 space-y-1.5">
                             <div className="flex flex-wrap items-center gap-2">
-                              <div className="text-[13px] font-semibold tracking-tight text-foreground">{model}</div>
+                              <div className="text-[13px] font-semibold text-foreground">{model}</div>
                               <span
                                 className={cn(
                                   'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ring-1',

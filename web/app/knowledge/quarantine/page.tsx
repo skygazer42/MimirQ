@@ -810,7 +810,7 @@ export default function QuarantineQueuePage() {
               ].map((item) => (
                 <div key={item.label} className={cn('rounded-xl border bg-card/90 px-4 py-3 shadow-soft', item.border)}>
                   <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{item.label}</div>
-                  <div className={cn('mt-2 text-[1.75rem] font-black leading-none tracking-tight', item.tone)}>{item.value}</div>
+                  <div className={cn('mt-2 text-[1.75rem] font-black leading-none ', item.tone)}>{item.value}</div>
                 </div>
               ))}
             </div>

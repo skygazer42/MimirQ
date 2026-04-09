@@ -173,7 +173,7 @@ export default function FeedbackTriagePage() {
                       {stat.label}
                     </div>
                   </div>
-                  <div className={cn('mt-3 text-[1.85rem] font-black leading-none tracking-tight', stat.color)}>
+                  <div className={cn('mt-3 text-[1.85rem] font-black leading-none ', stat.color)}>
                     {stat.value}
                   </div>
                 </div>

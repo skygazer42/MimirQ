@@ -327,8 +327,8 @@ export function GovernanceProfilesPage() {
                 className={cn(
                   "group relative overflow-hidden rounded-2xl shadow-none transition-[border-color,background-color] duration-200 hover:shadow-none",
                   p.is_system
-                    ? "border-[#aad9f2]/38 bg-[rgba(255,255,255,0.86)] hover:border-[#aad9f2]/72 hover:bg-[rgba(209,255,255,0.20)] before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-[#aad9f2]/55 before:to-transparent"
-                    : "border-[#aad9f2]/34 bg-[rgba(255,255,255,0.88)] hover:border-[#aad9f2]/66 hover:bg-[linear-gradient(180deg,rgba(226,255,212,0.22)_0%,rgba(209,255,255,0.14)_100%)] before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-[#e2ffd4] before:to-transparent"
+                    ? "border-[#aad9f2]/38 bg-[rgba(255,255,255,0.86)] hover:border-[#aad9f2]/72 hover:bg-[rgba(209,255,255,0.20)] before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-[linear-gradient(90deg,transparent,rgba(170,217,242,0.55),transparent)]"
+                    : "border-[#aad9f2]/34 bg-[rgba(255,255,255,0.88)] hover:border-[#aad9f2]/66 hover:bg-[linear-gradient(180deg,rgba(226,255,212,0.22)_0%,rgba(209,255,255,0.14)_100%)] before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-[linear-gradient(90deg,transparent,rgba(226,255,212,1),transparent)]"
                 )}
               >
                 <div

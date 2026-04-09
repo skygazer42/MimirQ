@@ -85,7 +85,7 @@ function getKindBadgeClasses(kind: string): string {
     case 'event':
       return 'border-[#efe0b8]/80 bg-[rgba(255,242,205,0.76)] text-amber-700'
     case 'entity':
-      return 'border-[#c8edf1]/80 bg-[rgba(204,254,255,0.74)] text-cyan-800'
+      return 'border-[#c8edf1]/80 bg-[rgba(204,254,255,0.74)] text-info'
     case 'trace':
     case 'step':
       return 'border-[#d9defd]/80 bg-[rgba(238,240,255,0.78)] text-indigo-700'
@@ -214,7 +214,7 @@ function GraphNodeKgDetail({
   return (
     <div className="space-y-2.5">
       <div className="rounded-lg border border-[#c8edf1]/75 bg-[rgba(204,254,255,0.46)] p-2.5">
-        <div className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-cyan-900/70">Recent Events</div>
+        <div className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-info/70">Recent Events</div>
         <div className="space-y-1.5">
           {entityDetail.events?.slice(0, 6)?.map((ev) => (
             <div key={ev.id} className="truncate text-[11px] text-foreground" title={ev.title}>
@@ -349,7 +349,7 @@ export function GraphNodeDetailPanel({
   const nodeKind = getGraphNodeKind(selectedNode)
   const nodeType = getGraphNodeType(selectedNode)
   const summaryBadges = [
-    { label: 'ID', value: selectedNode?.id == null ? '' : String(selectedNode.id), className: 'border-[#c8edf1]/80 bg-[rgba(204,254,255,0.74)] text-cyan-900' },
+    { label: 'ID', value: selectedNode?.id == null ? '' : String(selectedNode.id), className: 'border-[#c8edf1]/80 bg-[rgba(204,254,255,0.74)] text-info' },
     nodeKind ? { label: '类别', value: getKindLabel(nodeKind), className: getKindBadgeClasses(nodeKind) } : null,
     nodeType ? { label: '类型', value: nodeType, className: 'border-[#d9defd]/80 bg-[rgba(238,240,255,0.76)] text-indigo-700' } : null,
     selectedNode?.group != null ? { label: '组', value: String(selectedNode.group), className: 'border-[#d3efdf]/80 bg-[rgba(223,255,236,0.74)] text-emerald-700' } : null,
@@ -541,17 +541,17 @@ export function GraphNodeDetailPanel({
           <div
             aria-hidden="true"
             className={cn(
-              'pointer-events-none absolute inset-0 -z-10 rounded-[1.35rem] border border-white/55 bg-[linear-gradient(145deg,rgba(255,255,255,0.48),rgba(244,248,252,0.28)_55%,rgba(204,254,255,0.18))] shadow-[12px_17px_51px_rgba(15,23,42,0.16)] backdrop-blur-[10px] transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]'
+              'pointer-events-none absolute inset-0 -z-10 rounded-[1.35rem] border border-border/55 bg-[linear-gradient(145deg,rgba(255,255,255,0.48),rgba(244,248,252,0.28)_55%,rgba(204,254,255,0.18))] shadow-[12px_17px_51px_rgba(15,23,42,0.16)] backdrop-blur-[10px] transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]'
             )}
             style={backCardStyle}
           />
           <div
-            className="overflow-hidden rounded-2xl border border-white/70 bg-[linear-gradient(180deg,rgba(252,253,255,0.78)_0%,rgba(245,248,250,0.58)_100%)] shadow-[12px_17px_51px_rgba(15,23,42,0.18)] backdrop-blur-[16px] transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
+            className="overflow-hidden rounded-2xl border border-border/70 bg-[linear-gradient(180deg,rgba(252,253,255,0.78)_0%,rgba(245,248,250,0.58)_100%)] shadow-[12px_17px_51px_rgba(15,23,42,0.18)] backdrop-blur-[16px] transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
             style={frontCardStyle}
           >
           <div
             className={cn(
-              'border-b border-white/55 bg-[linear-gradient(180deg,rgba(255,255,255,0.52)_0%,rgba(255,255,255,0.26)_100%)] px-3.5 py-3 select-none',
+              'border-b border-border/55 bg-[linear-gradient(180deg,rgba(255,255,255,0.52)_0%,rgba(255,255,255,0.26)_100%)] px-3.5 py-3 select-none',
               isDragging ? 'cursor-grabbing' : 'cursor-grab'
             )}
             onPointerDown={handleDragStart}
@@ -586,7 +586,7 @@ export function GraphNodeDetailPanel({
                 type="button"
                 onClick={onClose}
                 aria-label="关闭详情面板"
-                className="rounded-xl border border-transparent bg-white/30 p-1 text-muted-foreground transition-all hover:border-black/5 hover:bg-white/55 hover:text-foreground"
+                className="rounded-xl border border-transparent bg-card/30 p-1 text-muted-foreground transition-all hover:border-black/5 hover:bg-card/55 hover:text-foreground"
                 onPointerDown={(event) => event.stopPropagation()}
               >
                 <X className="w-4 h-4" />
@@ -713,10 +713,10 @@ export function GraphNodeDetailPanel({
                       DETAIL_TONE_CLASSES[0]
                     )}
                   >
-                    <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.08em] text-cyan-900/70">
+                    <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.08em] text-info/70">
                       文档来源
                     </div>
-                    <div className="text-[11px] leading-4.5 text-cyan-900 underline underline-offset-4">
+                    <div className="text-[11px] leading-4.5 text-info underline underline-offset-4">
                       {String(selectedNode.source)}
                     </div>
                   </button>

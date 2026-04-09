@@ -728,7 +728,7 @@ function DatasetInspectorMetric({
         <Icon className="size-3 text-muted-foreground/55" />
         <span className="truncate">{label}</span>
       </div>
-      <div className={cn('ml-auto min-w-0 truncate text-right text-[13px] font-semibold leading-5 text-foreground', mono && 'font-mono tabular-nums tracking-tight', valueClassName)}>
+      <div className={cn('ml-auto min-w-0 truncate text-right text-[13px] font-semibold leading-5 text-foreground', mono && 'font-mono tabular-nums ', valueClassName)}>
         {value}
       </div>
     </div>

@@ -295,22 +295,22 @@ const inactiveStatusBadgeClass = 'rounded-md border-slate-200 bg-slate-50 text-s
       >
 
 <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_22%)] shadow-[0_1px_0_rgba(15,23,42,0.04)]">
-  <div className="flex flex-col gap-2.5 border-b border-slate-200/80 bg-gradient-to-r from-sky-50/65 via-white to-slate-50 px-4 py-3 lg:flex-row lg:items-end lg:justify-between">
+  <div className="flex flex-col gap-2.5 border-b border-slate-200/80 bg-muted/35 px-4 py-3 lg:flex-row lg:items-end lg:justify-between">
     <div className="min-w-0">
       <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">提示词中心 · 管理工作台</div>
       <div className="mt-1 text-[15px] font-semibold tracking-[-0.01em] text-foreground">提示词模板配置与批量运营</div>
       <p className="mt-1 text-[12px] leading-5 text-muted-foreground">统一管理模板、启停状态、分类与变量，面向生产 RAG 场景做高密度维护。</p>
     </div>
     <div className="flex flex-wrap items-center gap-2 text-[11px]">
-      <Badge variant="outline" className="rounded-md border-slate-200/80 bg-white text-[11px] text-slate-600"><ListChecks className="mr-1 size-3" />总模板 {templates.length}</Badge>
+      <Badge variant="outline" className="rounded-md border-slate-200/80 bg-card text-[11px] text-slate-600"><ListChecks className="mr-1 size-3" />总模板 {templates.length}</Badge>
       <Badge variant="outline" className={cn('text-[11px]', activeStatusBadgeClass)}><CircleCheckBig className="mr-1 size-3" />已启用 {activeCount}</Badge>
       <Badge variant="outline" className={cn('text-[11px]', inactiveStatusBadgeClass)}><CircleOff className="mr-1 size-3" />已停用 {inactiveCount}</Badge>
-      <Badge variant="outline" className="rounded-md border-slate-200/80 bg-white text-[11px] text-slate-600"><Filter className="mr-1 size-3" />筛选后 {filteredTemplates.length}</Badge>
+      <Badge variant="outline" className="rounded-md border-slate-200/80 bg-card text-[11px] text-slate-600"><Filter className="mr-1 size-3" />筛选后 {filteredTemplates.length}</Badge>
     </div>
   </div>
 
   <div className="space-y-4 p-4">
-    <section className="rounded-xl border border-slate-200/80 bg-white p-3">
+    <section className="rounded-xl border border-slate-200/80 bg-card p-3">
       <div className="grid gap-2 lg:grid-cols-[minmax(280px,1fr)_170px_170px_auto]">
         <SearchInput
           value={searchQuery}
@@ -320,7 +320,7 @@ const inactiveStatusBadgeClass = 'rounded-md border-slate-200 bg-slate-50 text-s
           inputClassName="h-9 text-[12px]"
         />
         <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="h-9 w-full rounded-lg border-slate-200/80 bg-white text-[12px]">
+          <SelectTrigger className="h-9 w-full rounded-lg border-slate-200/80 bg-card text-[12px]">
             <Filter className="mr-2 size-4" />
             <SelectValue placeholder="筛选分类" />
           </SelectTrigger>
@@ -334,7 +334,7 @@ const inactiveStatusBadgeClass = 'rounded-md border-slate-200 bg-slate-50 text-s
           </SelectContent>
         </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="h-9 w-full rounded-lg border-slate-200/80 bg-white text-[12px]">
+          <SelectTrigger className="h-9 w-full rounded-lg border-slate-200/80 bg-card text-[12px]">
             <SelectValue placeholder="筛选状态" />
           </SelectTrigger>
           <SelectContent>
@@ -343,14 +343,14 @@ const inactiveStatusBadgeClass = 'rounded-md border-slate-200 bg-slate-50 text-s
             <SelectItem value="inactive">已停用</SelectItem>
           </SelectContent>
         </Select>
-        <Button onClick={handleCreate} className="h-9 gap-1.5 rounded-lg bg-sky-600 px-3 text-xs font-semibold text-white hover:bg-sky-500">
+        <Button onClick={handleCreate} className="h-9 gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:bg-primary/90">
           <Plus className="size-4" />
           创建模板
         </Button>
       </div>
     </section>
 
-    <section className="rounded-xl border border-slate-200/80 bg-white p-3">
+    <section className="rounded-xl border border-slate-200/80 bg-card p-3">
       <div className="mb-3 flex flex-wrap items-center gap-2 border-b border-slate-200/70 pb-2 text-[11px] text-muted-foreground">
         <Badge variant="outline" className="rounded-md border-slate-200/80 bg-slate-50 text-[11px] text-slate-600">高级配置</Badge>
         <span>KG 抽取相关提示配置与本体约束</span>
@@ -371,7 +371,7 @@ const inactiveStatusBadgeClass = 'rounded-md border-slate-200 bg-slate-50 text-s
           <Button
             size="sm"
             variant="outline"
-            className="h-7 rounded-md border-sky-200 bg-white px-2.5 text-[11px] text-sky-700 hover:bg-sky-50"
+            className="h-7 rounded-md border-sky-200 bg-card px-2.5 text-[11px] text-sky-700 hover:bg-sky-50"
             onClick={() => handleBatchActivate(true)}
           >
             批量启用
@@ -379,7 +379,7 @@ const inactiveStatusBadgeClass = 'rounded-md border-slate-200 bg-slate-50 text-s
           <Button
             size="sm"
             variant="outline"
-            className="h-7 rounded-md border-slate-200 bg-white px-2.5 text-[11px] text-slate-700 hover:bg-slate-50"
+            className="h-7 rounded-md border-slate-200 bg-card px-2.5 text-[11px] text-slate-700 hover:bg-slate-50"
             onClick={() => handleBatchActivate(false)}
           >
             批量停用
@@ -421,7 +421,7 @@ const inactiveStatusBadgeClass = 'rounded-md border-slate-200 bg-slate-50 text-s
             description={templates.length === 0 ? '还没有创建任何提示词模板。' : '没有找到匹配的模板，请尝试调整筛选条件。'}
           >
             {templates.length === 0 ? (
-              <Button onClick={handleCreate} className="h-8 rounded-lg bg-sky-600 px-3 text-xs text-white hover:bg-sky-500">
+              <Button onClick={handleCreate} className="h-8 rounded-lg bg-primary px-3 text-xs text-primary-foreground hover:bg-primary/90">
                 <Plus className="mr-2 size-4" />
                 创建第一个模板
               </Button>
@@ -432,7 +432,7 @@ const inactiveStatusBadgeClass = 'rounded-md border-slate-200 bg-slate-50 text-s
 
       return (
         <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200/80 bg-white px-3 py-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200/80 bg-card px-3 py-2">
             <label className="inline-flex items-center gap-2 text-[12px] text-slate-700">
               <Checkbox
                 checked={selectedIds.size === filteredTemplates.length && filteredTemplates.length > 0}
@@ -462,7 +462,7 @@ const inactiveStatusBadgeClass = 'rounded-md border-slate-200 bg-slate-50 text-s
                   }
                 }}
                 className={cn(
-                  'relative cursor-pointer rounded-xl border border-slate-200/80 bg-white shadow-none transition-colors hover:border-sky-300/80 focus-ring',
+                  'relative cursor-pointer rounded-xl border border-slate-200/80 bg-card shadow-none transition-colors hover:border-sky-300/80 focus-ring',
                   selectedIds.has(template.id) && 'border-sky-300 bg-sky-50/40'
                 )}
               >
@@ -499,7 +499,7 @@ const inactiveStatusBadgeClass = 'rounded-md border-slate-200 bg-slate-50 text-s
                             {template.category}
                           </Badge>
                         ) : null}
-                        <Badge variant="outline" className="h-5 rounded-md border-slate-200/80 bg-white text-[11px] text-slate-500">
+                        <Badge variant="outline" className="h-5 rounded-md border-slate-200/80 bg-card text-[11px] text-slate-500">
                           使用 {template.usage_count}
                         </Badge>
                       </div>
@@ -532,7 +532,7 @@ const inactiveStatusBadgeClass = 'rounded-md border-slate-200 bg-slate-50 text-s
                       <div className="text-[11px] font-medium text-slate-500">标签</div>
                       <div className="flex flex-wrap gap-1">
                         {template.tags.map((tag) => (
-                          <Badge key={tag} variant="outline" className="h-5 rounded-md border-slate-200/80 bg-white px-1.5 text-[10px] text-slate-600">
+                          <Badge key={tag} variant="outline" className="h-5 rounded-md border-slate-200/80 bg-card px-1.5 text-[10px] text-slate-600">
                             {tag}
                           </Badge>
                         ))}
@@ -611,8 +611,8 @@ const inactiveStatusBadgeClass = 'rounded-md border-slate-200 bg-slate-50 text-s
                       className={cn(
                         'h-7 rounded-md px-2 text-[11px] font-medium',
                         template.is_active
-                          ? 'border-slate-200/80 bg-white text-slate-700 hover:bg-slate-50'
-                          : 'bg-sky-600 text-white hover:bg-sky-500'
+                          ? 'border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50'
+                          : 'bg-primary text-primary-foreground hover:bg-primary/90'
                       )}
                       onClick={(event) => {
                         stopTemplateCardClick(event)
@@ -635,7 +635,7 @@ const inactiveStatusBadgeClass = 'rounded-md border-slate-200 bg-slate-50 text-s
 
       {/* Preview Dialog */}
       <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
-        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto overscroll-contain rounded-2xl border border-slate-200/80 bg-white no-scrollbar">
+        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto overscroll-contain rounded-2xl border border-slate-200/80 bg-card no-scrollbar">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {previewTemplate?.name}
@@ -735,7 +735,7 @@ const inactiveStatusBadgeClass = 'rounded-md border-slate-200 bg-slate-50 text-s
 
       {/* Create/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto overscroll-contain rounded-2xl border border-slate-200/80 bg-white no-scrollbar">
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto overscroll-contain rounded-2xl border border-slate-200/80 bg-card no-scrollbar">
           <DialogHeader>
             <DialogTitle className="text-[15px] font-semibold">
               {editingTemplate ? '编辑模板' : '创建新模板'}

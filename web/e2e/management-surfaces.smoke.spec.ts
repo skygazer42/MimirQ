@@ -12,6 +12,34 @@ async function fulfillJson(route: Route, payload: unknown) {
 
 async function installManagementSurfaceMocks(page: Page) {
   const state: EnterpriseTelemetryMockState = { uploaded: false, parsingDocuments: [] }
+
+  await page.route('**/api/v1/**', async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    const pathname = url.pathname
+    const method = request.method()
+
+    if (method === 'GET') {
+      if (pathname.includes('/kg/ontology/predicates')) {
+        return fulfillJson(route, { predicates: [] })
+      }
+      if (pathname.includes('/settings/status')) {
+        return fulfillJson(route, {})
+      }
+      if (pathname.includes('/usage/tenant/quotas')) {
+        return fulfillJson(route, { datasets: [] })
+      }
+      return fulfillJson(route, { items: [], total: 0 })
+    }
+
+    if (method === 'DELETE') {
+      await route.fulfill({ status: 204, body: '' })
+      return
+    }
+
+    return fulfillJson(route, { success: true })
+  })
+
   await installDeterministicRandom(page)
   await installCommonApiMocks(page, state)
 
@@ -220,30 +248,30 @@ test.describe('management surfaces smoke', () => {
   test('loads reports page with mocked dataset data', async ({ page }) => {
     await page.goto('/reports')
     await expect(page.getByText('报告中心')).toBeVisible({ timeout: 60_000 })
-    await expect(page.getByText('Smoke Dataset')).toBeVisible()
+    await expect(page.getByRole('combobox', { name: '数据集' })).toContainText('Smoke Dataset')
   })
 
   test('loads evaluations page with conversation and run data', async ({ page }) => {
     await page.goto('/evaluations')
     await expect(page.getByText('评测中心')).toBeVisible({ timeout: 60_000 })
-    await expect(page.getByText('Smoke Conversation')).toBeVisible()
+    await expect(page.getByRole('combobox').first()).toContainText('Smoke Conversation')
   })
 
   test('loads usage page with token and quota summaries', async ({ page }) => {
     await page.goto('/usage')
-    await expect(page.getByText('用量/配额')).toBeVisible({ timeout: 60_000 })
-    await expect(page.getByText('Smoke Dataset')).toBeVisible()
+    await expect(page.getByRole('heading', { name: '用量/配额' })).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByRole('row', { name: /Smoke Dataset ds-smoke 128/ })).toBeVisible()
   })
 
   test('loads audit page with mocked audit events', async ({ page }) => {
     await page.goto('/audit')
-    await expect(page.getByText('审计日志')).toBeVisible({ timeout: 60_000 })
-    await expect(page.getByText('smoke.audit.view')).toBeVisible()
+    await expect(page.getByRole('heading', { name: '审计日志' })).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByRole('button', { name: /smoke\.audit\.view/ })).toBeVisible()
   })
 
   test('loads access-review page with mocked access graph metrics', async ({ page }) => {
     await page.goto('/access-review')
-    await expect(page.getByText('访问审查')).toBeVisible({ timeout: 60_000 })
-    await expect(page.getByText('4')).toBeVisible()
+    await expect(page.getByRole('heading', { name: '访问审查' })).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByText('组数量').first().locator('..')).toContainText('4')
   })
 })

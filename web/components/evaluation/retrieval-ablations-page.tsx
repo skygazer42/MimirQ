@@ -185,7 +185,7 @@ function AblationInlineStat({
                 value: 'text-emerald-900',
               }
             : {
-                surface: 'border-border/70 bg-white',
+                surface: 'border-border/70 bg-card',
                 label: 'text-muted-foreground',
                 value: 'text-foreground',
               }
@@ -227,7 +227,7 @@ function AblationSection({
             type="button"
             variant="ghost"
             size="icon"
-            className="h-6 w-6 shrink-0 rounded-md border border-border/70 bg-white/90 text-muted-foreground hover:bg-slate-100 hover:text-foreground"
+            className="h-6 w-6 shrink-0 rounded-md border border-border/70 bg-card/90 text-muted-foreground hover:bg-slate-100 hover:text-foreground"
             onClick={() => setCollapsed((prev) => !prev)}
             aria-label={collapsed ? `展开${title}` : `收起${title}`}
           >
@@ -591,12 +591,12 @@ export function RetrievalAblationsPage() {
   return (
     <AppFrame showBackground={false} className="bg-slate-50">
       <div className="flex h-full min-h-0 flex-col bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_26%)]">
-        <header className="shrink-0 border-b border-slate-200/80 bg-gradient-to-r from-slate-50/90 via-white to-slate-50/80">
+        <header className="shrink-0 border-b border-slate-200/80 bg-muted/30">
           <div className="px-6 py-4">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <div className="flex items-start gap-3">
-                  <div className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-xl border border-sky-200/80 bg-white text-sky-700 shadow-sm">
+                  <div className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-xl border border-sky-200/80 bg-card text-sky-700 shadow-sm">
                     <BarChart3 className="h-[18px] w-[18px] text-sky-600" />
                   </div>
                   <div className="min-w-0">
@@ -612,7 +612,7 @@ export function RetrievalAblationsPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="gap-2 rounded-xl border-sky-200/80 bg-white text-sky-700 hover:bg-sky-50"
+                  className="gap-2 rounded-xl border-sky-200/80 bg-card text-sky-700 hover:bg-sky-50"
                   disabled={datasetsLoading || runsLoading}
                   onClick={() => {
                     detachPromise(loadDatasets())
@@ -633,14 +633,14 @@ export function RetrievalAblationsPage() {
             leftSidebarCollapsed ? 'w-0 overflow-hidden opacity-0 border-r-0' : 'w-[304px] opacity-100',
             'min-h-0 flex flex-col'
           )}>
-            <div className="shrink-0 border-b border-sky-100/90 bg-gradient-to-r from-sky-50/90 to-white px-5 py-2.5">
+            <div className="shrink-0 border-b border-sky-100/90 bg-primary/[0.08] px-5 py-2.5">
               <div className="flex items-center justify-between gap-2">
                 <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">参数配置</div>
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-7 rounded-md border border-slate-200/80 bg-white px-2.5 text-[11px] text-muted-foreground hover:bg-slate-50 hover:text-foreground"
+                  className="h-7 rounded-md border border-slate-200/80 bg-card px-2.5 text-[11px] text-muted-foreground hover:bg-slate-50 hover:text-foreground"
                   onClick={() => setLeftSidebarCollapsed(true)}
                 >
                   收起侧栏
@@ -651,7 +651,7 @@ export function RetrievalAblationsPage() {
               <AblationSection
                 title="实验基线"
                 description="固定数据集与主指标，确认本轮 ablation 的起点。"
-                className="bg-white"
+                className="bg-card"
               >
                 <div className="space-y-3">
                   <div className="space-y-1.5">
@@ -659,7 +659,7 @@ export function RetrievalAblationsPage() {
                       当前数据集
                     </Label>
                     <Select value={datasetId} onValueChange={setDatasetId} disabled={datasetsLoading || !datasets.length}>
-                      <SelectTrigger id="ablation-dataset" className="h-10 rounded-lg border-border/70 bg-white">
+                      <SelectTrigger id="ablation-dataset" className="h-10 rounded-lg border-border/70 bg-card">
                         <SelectValue placeholder={datasetsLoading ? '加载中...' : '选择数据集'} />
                       </SelectTrigger>
                       <SelectContent>
@@ -683,7 +683,7 @@ export function RetrievalAblationsPage() {
               <AblationSection
                 title="评测模式"
                 description="决定这轮只看检索，还是同时带上 RAGAS 指标。"
-                className="bg-white"
+                className="bg-card"
               >
                 <div className="space-y-3">
                   <div className="flex items-start justify-between gap-3">
@@ -731,21 +731,21 @@ export function RetrievalAblationsPage() {
               <AblationSection
                 title="检索参数"
                 description="召回窗口、混合检索与权重参数。"
-                className="bg-white"
+                className="bg-card"
               >
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1.5">
                     <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">样本上限</Label>
-                    <Input type="number" value={maxCases} min={1} max={500} onChange={(e) => setMaxCases(Number(e.target.value || 0))} className="h-9 rounded-lg border-border/70 bg-white" />
+                    <Input type="number" value={maxCases} min={1} max={500} onChange={(e) => setMaxCases(Number(e.target.value || 0))} className="h-9 rounded-lg border-border/70 bg-card" />
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">召回 Top K</Label>
-                    <Input type="number" value={topK} min={1} max={50} onChange={(e) => setTopK(Number(e.target.value || 0))} className="h-9 rounded-lg border-border/70 bg-white" />
+                    <Input type="number" value={topK} min={1} max={50} onChange={(e) => setTopK(Number(e.target.value || 0))} className="h-9 rounded-lg border-border/70 bg-card" />
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">检索模式</Label>
                     <Select value={retrievalMode} onValueChange={setRetrievalMode}>
-                      <SelectTrigger className="h-9 rounded-lg border-border/70 bg-white">
+                      <SelectTrigger className="h-9 rounded-lg border-border/70 bg-card">
                         <SelectValue placeholder="选择模式" />
                       </SelectTrigger>
                       <SelectContent>
@@ -759,23 +759,23 @@ export function RetrievalAblationsPage() {
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">分数阈值</Label>
-                    <Input type="number" value={scoreThreshold} min={0} max={1} step={0.01} onChange={(e) => setScoreThreshold(Number(e.target.value || 0))} className="h-9 rounded-lg border-border/70 bg-white" />
+                    <Input type="number" value={scoreThreshold} min={0} max={1} step={0.01} onChange={(e) => setScoreThreshold(Number(e.target.value || 0))} className="h-9 rounded-lg border-border/70 bg-card" />
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">混合权重 Alpha</Label>
-                    <Input type="number" value={alpha} min={0} max={1} step={0.05} onChange={(e) => setAlpha(Number(e.target.value || 0))} className="h-9 rounded-lg border-border/70 bg-white" />
+                    <Input type="number" value={alpha} min={0} max={1} step={0.05} onChange={(e) => setAlpha(Number(e.target.value || 0))} className="h-9 rounded-lg border-border/70 bg-card" />
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">MMR Lambda</Label>
-                    <Input type="number" value={mmrLambda} min={0} max={1} step={0.05} onChange={(e) => setMmrLambda(Number(e.target.value || 0))} className="h-9 rounded-lg border-border/70 bg-white" />
+                    <Input type="number" value={mmrLambda} min={0} max={1} step={0.05} onChange={(e) => setMmrLambda(Number(e.target.value || 0))} className="h-9 rounded-lg border-border/70 bg-card" />
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">向量权重</Label>
-                    <Input type="number" value={vectorWeight} min={0} max={1} step={0.05} onChange={(e) => setVectorWeight(Number(e.target.value || 0))} className="h-9 rounded-lg border-border/70 bg-white" />
+                    <Input type="number" value={vectorWeight} min={0} max={1} step={0.05} onChange={(e) => setVectorWeight(Number(e.target.value || 0))} className="h-9 rounded-lg border-border/70 bg-card" />
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">关键词权重</Label>
-                    <Input type="number" value={keywordWeight} min={0} max={1} step={0.05} onChange={(e) => setKeywordWeight(Number(e.target.value || 0))} className="h-9 rounded-lg border-border/70 bg-white" />
+                    <Input type="number" value={keywordWeight} min={0} max={1} step={0.05} onChange={(e) => setKeywordWeight(Number(e.target.value || 0))} className="h-9 rounded-lg border-border/70 bg-card" />
                   </div>
                 </div>
               </AblationSection>
@@ -783,7 +783,7 @@ export function RetrievalAblationsPage() {
               <AblationSection
                 title="重排与过滤"
                 description="布尔开关与 reranker 参数。"
-                className="bg-white"
+                className="bg-card"
               >
                 <div className="space-y-3">
                   <label className="flex items-start gap-3 py-1.5">
@@ -815,11 +815,11 @@ export function RetrievalAblationsPage() {
                     <div className="mt-3 grid gap-3 sm:grid-cols-2">
                       <div className="space-y-1.5">
                         <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">服务提供方</Label>
-                        <Input value={rerankerProvider} onChange={(e) => setRerankerProvider(e.target.value)} className="h-9 rounded-lg border-border/70 bg-white" />
+                        <Input value={rerankerProvider} onChange={(e) => setRerankerProvider(e.target.value)} className="h-9 rounded-lg border-border/70 bg-card" />
                       </div>
                       <div className="space-y-1.5">
                         <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">重排 Top N</Label>
-                        <Input type="number" value={rerankerTopN} min={1} max={200} onChange={(e) => setRerankerTopN(Number(e.target.value || 0))} className="h-9 rounded-lg border-border/70 bg-white" />
+                        <Input type="number" value={rerankerTopN} min={1} max={200} onChange={(e) => setRerankerTopN(Number(e.target.value || 0))} className="h-9 rounded-lg border-border/70 bg-card" />
                       </div>
                     </div>
                   </div>
@@ -827,9 +827,9 @@ export function RetrievalAblationsPage() {
               </AblationSection>
             </div>
 
-            <div className="shrink-0 border-t border-sky-100/90 bg-gradient-to-r from-white to-sky-50/65 px-5 py-3.5 shadow-none">
+            <div className="shrink-0 border-t border-sky-100/90 bg-primary/[0.06] px-5 py-3.5 shadow-none">
               <div className="text-[11px] tracking-[0.08em] text-muted-foreground">运行入口</div>
-              <Button className="mt-2 h-10 w-full gap-2 rounded-lg bg-gradient-to-r from-sky-600 to-cyan-600 text-white shadow-[0_8px_24px_rgba(2,132,199,0.24)] hover:from-sky-500 hover:to-cyan-500" onClick={() => detachPromise(runAblation())}>
+              <Button className="mt-2 h-10 w-full gap-2 rounded-lg bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--info)))] text-primary-foreground shadow-[0_8px_24px_hsl(var(--primary)/0.24)] hover:opacity-90" onClick={() => detachPromise(runAblation())}>
                 <PlayCircle className="h-4 w-4" />
                 运行消融实验
               </Button>
@@ -840,7 +840,7 @@ export function RetrievalAblationsPage() {
             {leftSidebarCollapsed ? (
               <button
                 type="button"
-                className="focus-ring absolute left-0 top-3 z-20 -translate-x-1/2 rounded-full border border-border/70 bg-white p-1 text-muted-foreground shadow-sm transition-colors hover:bg-slate-50 hover:text-foreground"
+                className="focus-ring absolute left-0 top-3 z-20 -translate-x-1/2 rounded-full border border-border/70 bg-card p-1 text-muted-foreground shadow-sm transition-colors hover:bg-slate-50 hover:text-foreground"
                 onClick={() => setLeftSidebarCollapsed(false)}
                 aria-label="展开参数配置栏"
                 title="展开参数配置栏"
@@ -850,12 +850,12 @@ export function RetrievalAblationsPage() {
             ) : null}
             <section
               className={cn(
-                'shrink-0 border-r border-border/70 bg-white transition-[width,opacity] duration-200',
+                'shrink-0 border-r border-border/70 bg-card transition-[width,opacity] duration-200',
                 leaderboardCollapsed ? 'w-0 overflow-hidden opacity-0 border-r-0 pointer-events-none' : 'w-[340px] opacity-100 xl:w-[360px]'
               )}
             >
               <div className="flex h-full min-h-0 flex-col">
-                <div className="flex min-h-[56px] items-start justify-between gap-3 border-b border-border/70 bg-white px-5 py-2.5">
+                <div className="flex min-h-[56px] items-start justify-between gap-3 border-b border-border/70 bg-card px-5 py-2.5">
                   <div className="min-w-0">
                     <div className="text-[11px] font-medium tracking-[0.08em] text-foreground/80">Leaderboard</div>
                     <div className="truncate text-sm font-semibold text-foreground">实验排行榜</div>
@@ -878,13 +878,13 @@ export function RetrievalAblationsPage() {
                   </div>
                 </div>
 
-                <div className="border-b border-border/70 bg-white px-5 py-3">
+                <div className="border-b border-border/70 bg-card px-5 py-3">
                   <div className="space-y-2">
                     <div className="flex items-end gap-2">
                       <div className="min-w-0 flex-1 space-y-1">
                         <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">排行榜主指标</Label>
                         <Select value={leaderboardMetricKey} onValueChange={setLeaderboardMetricKey}>
-                          <SelectTrigger className="h-8 rounded-lg border-border/70 bg-white text-xs">
+                          <SelectTrigger className="h-8 rounded-lg border-border/70 bg-card text-xs">
                             <SelectValue placeholder="选择指标" />
                           </SelectTrigger>
                           <SelectContent>
@@ -899,7 +899,7 @@ export function RetrievalAblationsPage() {
 
                       <Button
                         variant="outline"
-                        className="h-8 gap-1.5 rounded-lg border-border/70 bg-white text-foreground hover:bg-slate-50 px-3 text-xs"
+                        className="h-8 gap-1.5 rounded-lg border-border/70 bg-card text-foreground hover:bg-slate-50 px-3 text-xs"
                         disabled={leaderboardLoading}
                         onClick={() => detachPromise(refreshLeaderboard())}
                       >
@@ -910,12 +910,12 @@ export function RetrievalAblationsPage() {
 
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[10px] tracking-[0.08em] text-muted-foreground">点击行写入</span>
-                      <div className="inline-flex rounded-lg border border-border/70 bg-white p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
+                      <div className="inline-flex rounded-lg border border-border/70 bg-card p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
                         <button
                           type="button"
                           className={cn(
                             'h-7 rounded-md px-2.5 text-[10px] font-medium',
-                            leaderboardAssignRole === 'base' ? 'bg-slate-900 text-white shadow-sm' : 'text-muted-foreground hover:bg-slate-100'
+                            leaderboardAssignRole === 'base' ? 'bg-foreground text-background shadow-sm' : 'text-muted-foreground hover:bg-slate-100'
                           )}
                           onClick={() => setLeaderboardAssignRole('base')}
                         >
@@ -925,7 +925,7 @@ export function RetrievalAblationsPage() {
                           type="button"
                           className={cn(
                             'h-7 rounded-md px-2.5 text-[10px] font-medium',
-                            leaderboardAssignRole === 'target' ? 'bg-sky-600 text-white shadow-sm' : 'text-muted-foreground hover:bg-slate-100'
+                            leaderboardAssignRole === 'target' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-slate-100'
                           )}
                           onClick={() => setLeaderboardAssignRole('target')}
                         >
@@ -949,7 +949,7 @@ export function RetrievalAblationsPage() {
                           key={runId}
                           type="button"
                           className={cn(
-                            'w-full border-b border-border/60 bg-white px-5 py-2.5 text-left transition-colors hover:bg-slate-50/70',
+                            'w-full border-b border-border/60 bg-card px-5 py-2.5 text-left transition-colors hover:bg-slate-50/70',
                             isBase || isTarget ? 'border-l-2 border-l-sky-500 bg-sky-50/75' : ''
                           )}
                           onClick={() => {
@@ -961,7 +961,7 @@ export function RetrievalAblationsPage() {
                             <div className="flex flex-wrap items-center gap-1.5">
                               <span className="font-mono text-[12px] text-foreground">{shortId(runId)}</span>
                               <StatusBadge status={badge.status} label={badge.label} dense />
-                              {isBase ? <span className="rounded-full bg-slate-900 px-1.5 py-0.5 text-[9px] font-medium text-white">BASE</span> : null}
+                              {isBase ? <span className="rounded-full bg-foreground px-1.5 py-0.5 text-[9px] font-medium text-background">BASE</span> : null}
                               {isTarget ? <span className="rounded-full bg-primary/12 px-1.5 py-0.5 text-[9px] font-medium text-primary">TARGET</span> : null}
                             </div>
                             <div className="mt-1.5 text-[13px] font-semibold tabular-nums text-foreground">
@@ -986,12 +986,12 @@ export function RetrievalAblationsPage() {
               </div>
             </section>
 
-            <section className="relative min-w-0 flex-1 bg-white">
+            <section className="relative min-w-0 flex-1 bg-card">
               {leaderboardCollapsed ? (
                 <button
                   type="button"
                   className={cn(
-                    'focus-ring absolute left-0 z-20 -translate-x-1/2 rounded-full border border-border/70 bg-white p-1 text-muted-foreground shadow-sm transition-colors hover:bg-slate-50 hover:text-foreground',
+                    'focus-ring absolute left-0 z-20 -translate-x-1/2 rounded-full border border-border/70 bg-card p-1 text-muted-foreground shadow-sm transition-colors hover:bg-slate-50 hover:text-foreground',
                     leftSidebarCollapsed ? 'top-12' : 'top-3'
                   )}
                   onClick={() => setLeaderboardCollapsed(false)}
@@ -1002,7 +1002,7 @@ export function RetrievalAblationsPage() {
                 </button>
               ) : null}
               <div className="flex h-full min-h-0 flex-col">
-                <div className="flex h-12 items-center justify-between gap-3 border-b border-border/70 bg-white px-5">
+                <div className="flex h-12 items-center justify-between gap-3 border-b border-border/70 bg-card px-5">
                   <div className="min-w-0">
                     <div className="text-[11px] tracking-[0.12em] text-muted-foreground">Diff Workspace</div>
                     <div className="truncate text-sm font-semibold text-foreground">基线 vs 候选</div>
@@ -1018,12 +1018,12 @@ export function RetrievalAblationsPage() {
                   </div>
                 </div>
 
-                <div className="border-b border-border/70 bg-white px-5 py-3">
+                <div className="border-b border-border/70 bg-card px-5 py-3">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">基线 Run</Label>
                       <Select value={selectedBaseRunId} onValueChange={setSelectedBaseRunId} disabled={runsLoading}>
-                        <SelectTrigger className="h-9 rounded-lg border-border/70 bg-white">
+                        <SelectTrigger className="h-9 rounded-lg border-border/70 bg-card">
                           <SelectValue placeholder={runsLoading ? '加载中...' : '选择 baseline'} />
                         </SelectTrigger>
                         <SelectContent>
@@ -1038,7 +1038,7 @@ export function RetrievalAblationsPage() {
                     <div className="space-y-1">
                       <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">候选 Run</Label>
                       <Select value={selectedTargetRunId} onValueChange={setSelectedTargetRunId} disabled={runsLoading}>
-                        <SelectTrigger className="h-9 rounded-lg border-border/70 bg-white">
+                        <SelectTrigger className="h-9 rounded-lg border-border/70 bg-card">
                           <SelectValue placeholder={runsLoading ? '加载中...' : '选择 candidate'} />
                         </SelectTrigger>
                         <SelectContent>
@@ -1059,13 +1059,13 @@ export function RetrievalAblationsPage() {
                       <AblationInlineStat label="Delta" value={diffDelta === null ? '-' : diffDelta.toFixed(4)} tone={diffDelta !== null && diffDelta > 0 ? 'emerald' : diffDelta !== null && diffDelta < 0 ? 'amber' : 'neutral'} />
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <Button className="h-9 gap-1.5 rounded-lg bg-sky-600 px-3 text-xs text-white shadow-[0_8px_20px_rgba(2,132,199,0.22)] hover:bg-sky-500" disabled={diffLoading} onClick={() => detachPromise(computeDiff())}>
+                      <Button className="h-9 gap-1.5 rounded-lg bg-primary px-3 text-xs text-primary-foreground shadow-[0_8px_20px_hsl(var(--primary)/0.22)] hover:bg-primary/90" disabled={diffLoading} onClick={() => detachPromise(computeDiff())}>
                         <GitCompare className="h-3.5 w-3.5" />
                         生成 Diff
                       </Button>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="outline" className="h-9 gap-1.5 rounded-lg border-border/70 bg-white text-foreground hover:bg-slate-50 px-2.5 text-xs">
+                          <Button variant="outline" className="h-9 gap-1.5 rounded-lg border-border/70 bg-card text-foreground hover:bg-slate-50 px-2.5 text-xs">
                             导出
                             <MoreHorizontal className="h-3.5 w-3.5" />
                           </Button>
@@ -1116,15 +1116,15 @@ export function RetrievalAblationsPage() {
                       <div className="px-5 py-3">
                         <div className="overflow-hidden border border-border/70">
                           <div className="grid border-b border-border/70 sm:grid-cols-3">
-                            <div className="bg-white px-3 py-2.5 sm:border-r sm:border-border/70">
+                            <div className="bg-card px-3 py-2.5 sm:border-r sm:border-border/70">
                               <div className="text-[10px] tracking-[0.08em] text-muted-foreground">Base Score</div>
                               <div className="mt-1 font-mono text-[13px] font-semibold text-foreground">{diffScoreFmt.base}</div>
                             </div>
-                            <div className="bg-white px-3 py-2.5 sm:border-r sm:border-border/70">
+                            <div className="bg-card px-3 py-2.5 sm:border-r sm:border-border/70">
                               <div className="text-[10px] tracking-[0.08em] text-muted-foreground">Target Score</div>
                               <div className="mt-1 font-mono text-[13px] font-semibold text-foreground">{diffScoreFmt.target}</div>
                             </div>
-                            <div className="bg-white px-3 py-2.5">
+                            <div className="bg-card px-3 py-2.5">
                               <div className="text-[10px] tracking-[0.08em] text-muted-foreground">Delta</div>
                               <div className={cn(
                                 'mt-1 font-mono text-[13px] font-semibold',
@@ -1135,7 +1135,7 @@ export function RetrievalAblationsPage() {
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-[minmax(120px,1fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)] border-b border-border/70 bg-white px-3 py-2 text-[10px] tracking-[0.08em] text-muted-foreground">
+                          <div className="grid grid-cols-[minmax(120px,1fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)] border-b border-border/70 bg-card px-3 py-2 text-[10px] tracking-[0.08em] text-muted-foreground">
                             <div>Metric</div>
                             <div className="text-right">Before</div>
                             <div className="text-right">After</div>
@@ -1171,7 +1171,7 @@ export function RetrievalAblationsPage() {
                       <div className="px-5 py-10 text-center text-[12px] text-muted-foreground">生成 diff 后可查看参数差异。</div>
                     ) : (
                       <div className="mx-5 my-3 overflow-hidden border border-border/70">
-                        <div className="grid grid-cols-[minmax(140px,180px)_minmax(0,1fr)_minmax(0,1fr)] border-b border-border/70 bg-white px-3 py-2 text-[10px] tracking-[0.08em] text-muted-foreground">
+                        <div className="grid grid-cols-[minmax(140px,180px)_minmax(0,1fr)_minmax(0,1fr)] border-b border-border/70 bg-card px-3 py-2 text-[10px] tracking-[0.08em] text-muted-foreground">
                           <div>参数</div>
                           <div>Base</div>
                           <div>Target</div>
@@ -1180,7 +1180,7 @@ export function RetrievalAblationsPage() {
                           paramDiffRows.map((row) => (
                             <div
                               key={row.key}
-                              className="grid grid-cols-[minmax(140px,180px)_minmax(0,1fr)_minmax(0,1fr)] border-b border-border/60 bg-white px-3 py-2 text-xs last:border-b-0"
+                              className="grid grid-cols-[minmax(140px,180px)_minmax(0,1fr)_minmax(0,1fr)] border-b border-border/60 bg-card px-3 py-2 text-xs last:border-b-0"
                             >
                               <div className={cn('truncate font-mono text-[11px]', row.changed ? 'font-semibold text-foreground' : 'text-foreground')}>{row.key}</div>
                               <div className="truncate font-mono text-[11px] text-muted-foreground">{row.before}</div>
