@@ -65,13 +65,13 @@ describe('similarity workbench source', () => {
     expect(src).not.toContain('aria-label="删除"')
   })
 
-  it('uses sidebar-tinted shells for the remaining expert workbench surfaces', () => {
+  it('uses token-based muted shells for the expert workbench surfaces', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'similarity-workbench.tsx'), 'utf8')
 
-    expect(src).toContain('w-12 border-r border-sidebar-border/70 bg-sidebar/90 backdrop-blur-xl')
-    expect(src).toContain('relative h-full border-r border-sidebar-border/70 bg-sidebar/78 backdrop-blur-xl flex flex-col')
-    expect(src).toContain('rounded-2xl border border-sidebar-border/70 bg-sidebar/60 p-3 shadow-soft')
-    expect(src).toContain('rounded-xl border border-sidebar-border/70 bg-sidebar/55 p-4 shadow-soft')
-    expect(src).toContain("rounded-xl border border-sidebar-border/70 bg-sidebar/55', compact ? 'p-3' : 'p-4'")
+    expect(src).toContain('w-12 border-r border-sidebar-border/70 bg-muted flex flex-col items-center py-2')
+    expect(src).toContain('relative h-full border-r border-sidebar-border/70 bg-muted flex flex-col')
+    expect(src).toContain('rounded-2xl border border-sidebar-border/70 bg-muted/50 p-3 shadow-soft')
+    expect(src).toContain('rounded-xl border border-sidebar-border/70 bg-muted/40 p-4 shadow-soft')
+    expect(src).toContain("rounded-xl border border-sidebar-border/70 bg-muted/40', compact ? 'p-3' : 'p-4'")
   })
 })

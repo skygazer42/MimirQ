@@ -1,7 +1,7 @@
 /**
- * Settings - Tenant Groups
+ * 设置 - 租户组
  *
- * List/create/delete groups for group-based ACL.
+ * 用于列表/创建/删除组（group），服务于基于组的访问控制（ACL）。
  */
 'use client'
 
@@ -10,17 +10,20 @@ import { Plus, RefreshCw, Trash2, Users, UsersRound } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { AppFrame } from '@/components/app-frame'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PageScaffold } from '@/components/ui/page-scaffold'
+import { Panel } from '@/components/ui/panel'
+import { SystemDataStrip } from '@/components/ui/system-data-strip'
 import { cn, detachPromise } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
 import { groupApi } from '@/lib/api'
 import { useRouter } from '@/i18n/navigation'
 import type { TenantGroupOut } from '@/types/backend'
 import { EmptyState } from '@/components/ui/empty-state'
+import { systemDenseControls, systemPageTokens, systemWorkbenchTokens } from '@/components/ui/system-page-tokens'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,6 +36,12 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+
+const DENSE_OUTLINE_BUTTON = systemDenseControls.outlineButton
+const DENSE_PRIMARY_BUTTON = systemDenseControls.primaryButton
+const DENSE_INPUT = systemDenseControls.input
+const DENSE_ICON_GHOST = 'h-7 w-7 rounded-md'
+const DENSE_PANEL = systemWorkbenchTokens.panel
 
 export default function SettingsGroupsPage() {
   const router = useRouter()
@@ -59,6 +68,23 @@ export default function SettingsGroupsPage() {
   }, [groups, query])
 
   const canCreate = useMemo(() => String(nameDraft || '').trim().length > 0, [nameDraft])
+  const stripItems = useMemo(
+    () => [
+      { label: '组总数', value: groups.length, mono: true },
+      { label: '筛选后', value: filtered.length, mono: true },
+      {
+        label: '创建状态',
+        value: creating ? '创建中' : createOpen ? '待创建' : '空闲',
+        tone: creating ? 'warning' : createOpen ? 'default' : 'success',
+      },
+      {
+        label: '列表状态',
+        value: loading ? '加载中' : groups.length ? '已就绪' : '无数据',
+        tone: loading ? 'warning' : groups.length ? 'success' : 'default',
+      },
+    ],
+    [groups.length, filtered.length, creating, createOpen, loading]
+  )
 
   async function refresh(): Promise<void> {
     setLoading(true)
@@ -66,7 +92,7 @@ export default function SettingsGroupsPage() {
       const res = await groupApi.listGroups({ limit: 500 })
       setGroups(Array.isArray(res.items) ? res.items : [])
     } catch (err) {
-      toast.error(formatApiError(err, '加载组失败（需要 owner/admin 权限）'))
+      toast.error(formatApiError(err, '加载组失败（需要管理员权限）'))
     } finally {
       setLoading(false)
     }
@@ -116,17 +142,19 @@ export default function SettingsGroupsPage() {
   return (
     <AppFrame>
       <PageScaffold
-        title="组（Groups）"
-        description="管理 tenant 内的组目录，用于数据集/文档 ACL 与企业身份同步（OIDC/SCIM）。"
+        title="组管理"
+        description="管理租户组目录，用于数据集/文档访问控制与企业身份同步（开放ID连接 OIDC / 跨域身份管理 SCIM）。"
         icon={Users}
         iconColor="text-indigo-600 dark:text-indigo-400"
-        size="6xl"
+        size="full"
+        density="system-dense"
+        top={<SystemDataStrip items={stripItems} minColumnWidth={150} />}
         actions={
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
-              className="gap-2 rounded-xl"
+              className={DENSE_OUTLINE_BUTTON}
               disabled={loading}
               onClick={() => detachPromise(refresh())}
             >
@@ -145,7 +173,7 @@ export default function SettingsGroupsPage() {
               }}
             >
               <DialogTrigger asChild>
-                <Button size="sm" className="gap-2 rounded-xl">
+                <Button size="sm" className={DENSE_PRIMARY_BUTTON}>
                   <Plus className="size-4" />
                   新建组
                 </Button>
@@ -154,7 +182,7 @@ export default function SettingsGroupsPage() {
                 <DialogHeader>
                   <DialogTitle>新建组</DialogTitle>
                   <DialogDescription className="text-sm">
-                    建议使用稳定的命名；如需与外部 IdP 对齐，可填写 external_id。
+                    建议使用稳定命名；如需与外部身份提供方（IdP）对齐，可填写外部组 ID（`external_id`）。
                   </DialogDescription>
                 </DialogHeader>
 
@@ -162,33 +190,35 @@ export default function SettingsGroupsPage() {
                   <div className="grid gap-2">
                     <Label htmlFor="group-name">名称</Label>
                     <Input
+                      className={DENSE_INPUT}
                       id="group-name"
                       value={nameDraft}
                       onChange={(e) => setNameDraft(e.target.value)}
-                      placeholder="例如：engineering / legal / finance"
+                      placeholder="例如：研发 / 法务 / 财务"
                       autoComplete="off"
                     />
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="group-external-id">external_id（可选）</Label>
+                    <Label htmlFor="group-external-id">外部组 ID（external_id，可选）</Label>
                     <Input
+                      className={DENSE_INPUT}
                       id="group-external-id"
                       value={externalIdDraft}
                       onChange={(e) => setExternalIdDraft(e.target.value)}
-                      placeholder="例如：Okta/AzureAD group id"
+                      placeholder="例如：Okta/AzureAD 组 ID"
                       autoComplete="off"
                     />
-                    <div className="text-xs text-muted-foreground">
-                      该字段用于 OIDC groups claim / SCIM 等外部同步场景；留空不影响 ACL 使用。
+                    <div className={systemPageTokens.subtle}>
+                      该字段用于开放ID连接组声明（OIDC groups claim）/ 跨域身份管理（SCIM）同步；留空不影响访问控制列表（ACL）使用。
                     </div>
                   </div>
                 </div>
 
                 <DialogFooter className="mt-4">
-                  <Button variant="ghost" onClick={() => setCreateOpen(false)} disabled={creating}>
+                  <Button variant="ghost" className="h-8 rounded-lg px-3 text-xs font-semibold" onClick={() => setCreateOpen(false)} disabled={creating}>
                     取消
                   </Button>
-                  <Button onClick={() => detachPromise(createGroup())} disabled={!canCreate || creating}>
+                  <Button className="h-8 rounded-lg px-3 text-xs font-semibold" onClick={() => detachPromise(createGroup())} disabled={!canCreate || creating}>
                     {creating ? '创建中…' : '创建'}
                   </Button>
                 </DialogFooter>
@@ -197,31 +227,36 @@ export default function SettingsGroupsPage() {
           </div>
         }
       >
-        <div className="grid grid-cols-1 gap-6">
-          <Card>
-            <CardHeader className="space-y-2">
-              <CardTitle className="flex items-center justify-between gap-3">
-                <span className="flex items-center gap-2">
+        <div className="grid grid-cols-1 gap-4">
+          <Panel padding="md" className={DENSE_PANEL}>
+              <div className="mb-3 space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <span className={cn('flex items-center gap-2 text-sm', systemPageTokens.heading)}>
                   <Users className="size-5" />
-                  Groups
+                  组列表
                 </span>
-                <span className="text-xs font-mono text-muted-foreground">{filtered.length} items</span>
-              </CardTitle>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label>搜索</Label>
-                  <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="按 name / external_id / id 过滤" />
+                <Badge variant="outline" className="font-mono text-[10px]">
+                  {filtered.length} 条
+                </Badge>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                <div className="w-full space-y-1 sm:max-w-sm">
+                  <Label className={systemPageTokens.microLabel}>搜索</Label>
+                  <Input className={DENSE_INPUT} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="按名称 / 外部组 ID（external_id）/ 组 ID 过滤" />
+                </div>
+                <div className={cn(systemPageTokens.subtle, 'hidden sm:block')}>
+                  名称 / 外部组 ID（external_id）/ 组 ID
                 </div>
               </div>
-            </CardHeader>
+            </div>
 
-            <CardContent>
-              <div className="rounded-2xl border border-border overflow-hidden">
-                <div className="grid grid-cols-12 text-xs font-semibold text-muted-foreground bg-muted/40 px-3 py-2">
-                  <div className="col-span-5">name</div>
-                  <div className="col-span-4">external_id</div>
-                  <div className="col-span-2">id</div>
-                  <div className="col-span-1 text-right">actions</div>
+            <div>
+              <div className="overflow-hidden rounded-lg border border-border/70">
+                <div className={cn('grid grid-cols-12 bg-muted/40 px-3 py-2', systemPageTokens.tableHead)}>
+                  <div className="col-span-5">名称</div>
+                  <div className="col-span-3">外部组 ID（external_id）</div>
+                  <div className="col-span-3">组 ID</div>
+                  <div className="col-span-1 text-right">操作</div>
                 </div>
 
                 {(filtered || []).length ? (
@@ -231,20 +266,20 @@ export default function SettingsGroupsPage() {
                     return (
                       <div
                         key={gid}
-                        className="grid grid-cols-12 px-3 py-2 text-sm border-t border-border items-center gap-2 hover:bg-muted/20 transition-colors"
+                        className="grid grid-cols-12 items-center gap-2 border-t border-border/70 px-3 py-1 text-[12px] transition-colors hover:bg-muted/20"
                       >
                         <button
                           type="button"
                           className="col-span-5 text-left min-w-0"
                           onClick={() => router.push(`/settings/groups/${encodeURIComponent(gid)}`)}
                         >
-                          <div className="font-semibold truncate">{g.name}</div>
+                          <div className="truncate font-semibold">{g.name}</div>
                         </button>
-                        <div className="col-span-4 min-w-0 text-muted-foreground truncate font-mono text-xs">
+                        <div className="col-span-3 min-w-0 truncate font-mono text-[11px] text-muted-foreground" title={g.external_id || '-'}>
                           {g.external_id || '-'}
                         </div>
-                        <div className="col-span-2 min-w-0 font-mono text-xs text-muted-foreground truncate">
-                          {gid.slice(0, 8)}
+                        <div className="col-span-3 min-w-0 truncate font-mono text-[11px] text-muted-foreground" title={gid}>
+                          {gid}
                         </div>
                         <div className="col-span-1 flex justify-end">
                           <AlertDialog>
@@ -252,7 +287,7 @@ export default function SettingsGroupsPage() {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-9 w-9"
+                                className={DENSE_ICON_GHOST}
                                 disabled={!gid || deleting}
                                 aria-label="删除组"
                               >
@@ -265,7 +300,7 @@ export default function SettingsGroupsPage() {
                                 <AlertDialogDescription>
                                   将删除组 <span className="font-mono">{g.name}</span>（{gid.slice(0, 8)}…）。此操作不可撤销。
                                   <div className="mt-2 text-xs text-muted-foreground">
-                                    注意：若该组被用于数据集/文档 allowlist，删除前请先移除引用。
+                                    注意：若该组被用于数据集/文档允许列表（allowlist），删除前请先移除引用。
                                   </div>
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
@@ -294,8 +329,8 @@ export default function SettingsGroupsPage() {
                   )
                 )}
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </Panel>
         </div>
       </PageScaffold>
     </AppFrame>

@@ -11,11 +11,18 @@ import { Panel } from '@/components/ui/panel'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { SystemDataStrip } from '@/components/ui/system-data-strip'
 import { auditApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import type { AuditLogItem, AuditLogListResponse } from '@/types'
 import { cn, detachPromise } from '@/lib/utils'
 import { EmptyState } from '@/components/ui/empty-state'
+import { systemDenseControls, systemPageTokens, systemWorkbenchTokens } from '@/components/ui/system-page-tokens'
+
+const DENSE_OUTLINE_BUTTON = systemDenseControls.outlineButton
+const DENSE_INPUT = systemDenseControls.input
+const DENSE_PANEL = systemWorkbenchTokens.panel
+const DENSE_INLINE_ACTION = systemDenseControls.inlineAction
 
 function fmtTs(ts: string) {
   try {
@@ -97,6 +104,24 @@ export default function AuditLogsPage() {
   const total = resp?.total || 0
   const page = Math.floor(skip / limit) + 1
   const totalPages = Math.max(1, Math.ceil(total / limit))
+  const activeFilterCount = useMemo(
+    () => Object.values(filters).filter((value) => String(value || '').trim().length > 0).length,
+    [filters]
+  )
+
+  const stripItems = useMemo(
+    () => [
+      { label: '总事件', value: total, mono: true },
+      { label: '当前页', value: `${page}/${totalPages}`, mono: true },
+      { label: '筛选条件', value: activeFilterCount, mono: true },
+      {
+        label: '列表状态',
+        value: loading ? '加载中' : items.length ? '已就绪' : '空结果',
+        tone: loading ? 'warning' : items.length ? 'success' : 'default',
+      },
+    ],
+    [total, page, totalPages, activeFilterCount, loading, items.length]
+  )
 
   return (
     <AppFrame>
@@ -106,13 +131,15 @@ export default function AuditLogsPage() {
           description={t('description')}
           icon={ShieldCheck}
           iconColor="text-success"
-          size="7xl"
+          size="full"
+          density="system-dense"
+          top={<SystemDataStrip items={stripItems} minColumnWidth={152} />}
           actions={
             <div className="flex items-center gap-2">
               <Button
                 size="sm"
                 variant="outline"
-                className="gap-2 rounded-xl"
+                className={DENSE_OUTLINE_BUTTON}
                 onClick={() => detachPromise(load())}
                 disabled={loading}
               >
@@ -122,7 +149,7 @@ export default function AuditLogsPage() {
               <Button
                 size="sm"
                 variant="outline"
-                className="gap-2 rounded-xl"
+                className={DENSE_OUTLINE_BUTTON}
                 onClick={() => {
                   setSkip(0)
                   setExpandedId(null)
@@ -143,15 +170,15 @@ export default function AuditLogsPage() {
             </div>
           }
         >
-          <Panel padding="lg" className="mt-4">
+          <Panel padding="md" className={cn('mt-3', DENSE_PANEL)}>
             <div className="flex flex-wrap items-center gap-2">
-            <div className="text-xs text-muted-foreground">{t('labels.quickPresets')}</div>
+            <div className={cn(systemPageTokens.tableHead, 'tracking-[0.08em]')}>{t('labels.quickPresets')}</div>
               {presets.map((p) => (
                 <Button
                   key={p.action}
                   size="sm"
                   variant="outline"
-                  className="h-8 rounded-xl"
+                  className="h-7 rounded-lg border-border/70 bg-background px-2.5 text-[11px] font-semibold"
                   onClick={() => {
                     setSkip(0)
                     setExpandedId(null)
@@ -171,49 +198,100 @@ export default function AuditLogsPage() {
               ))}
             </div>
 
-            <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="space-y-1">
-                <Label htmlFor="audit-action" className="text-xs text-muted-foreground">Action</Label>
-                <Input id="audit-action" placeholder="e.g. chat.ask" value={filters.action} onChange={(e) => setFilters((p) => ({ ...p, action: e.target.value }))} />
+            <div className="mt-3 space-y-2.5">
+              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="space-y-1">
+                  <Label htmlFor="audit-action" className={systemPageTokens.microLabel}>动作</Label>
+                  <Input id="audit-action" className={DENSE_INPUT} placeholder="例如：chat.ask / doc.upload（动作键）" value={filters.action} onChange={(e) => setFilters((p) => ({ ...p, action: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="audit-actor" className={systemPageTokens.microLabel}>操作者 ID（actor_id）</Label>
+                  <Input id="audit-actor" className={DENSE_INPUT} placeholder="输入 actor_id" value={filters.actor_id} onChange={(e) => setFilters((p) => ({ ...p, actor_id: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="audit-request" className={systemPageTokens.microLabel}>请求 ID（request_id）</Label>
+                  <Input id="audit-request" className={DENSE_INPUT} placeholder="输入 request_id" value={filters.request_id} onChange={(e) => setFilters((p) => ({ ...p, request_id: e.target.value }))} />
+                </div>
               </div>
-              <div className="space-y-1">
-                <Label htmlFor="audit-actor" className="text-xs text-muted-foreground">Actor ID</Label>
-                <Input id="audit-actor" placeholder="actor_id" value={filters.actor_id} onChange={(e) => setFilters((p) => ({ ...p, actor_id: e.target.value }))} />
+
+              <div className="hidden grid-cols-1 gap-2.5 xl:grid xl:grid-cols-4">
+                <div className="space-y-1">
+                  <Label htmlFor="audit-resource-type" className={systemPageTokens.microLabel}>资源类型（resource_type）</Label>
+                  <Input id="audit-resource-type" className={DENSE_INPUT} placeholder="输入 resource_type" value={filters.resource_type} onChange={(e) => setFilters((p) => ({ ...p, resource_type: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="audit-resource-id" className={systemPageTokens.microLabel}>资源 ID（resource_id）</Label>
+                  <Input id="audit-resource-id" className={DENSE_INPUT} placeholder="输入 resource_id" value={filters.resource_id} onChange={(e) => setFilters((p) => ({ ...p, resource_id: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="audit-since" className={systemPageTokens.microLabel}>开始时间</Label>
+                  <Input
+                    id="audit-since"
+                    className={DENSE_INPUT}
+                    type="datetime-local"
+                    value={filters.since}
+                    onChange={(e) => setFilters((p) => ({ ...p, since: e.target.value }))}
+                    title="开始时间"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="audit-until" className={systemPageTokens.microLabel}>结束时间</Label>
+                  <Input
+                    id="audit-until"
+                    className={DENSE_INPUT}
+                    type="datetime-local"
+                    value={filters.until}
+                    onChange={(e) => setFilters((p) => ({ ...p, until: e.target.value }))}
+                    title="结束时间"
+                  />
+                </div>
               </div>
-              <div className="space-y-1">
-                <Label htmlFor="audit-request" className="text-xs text-muted-foreground">Request ID</Label>
-                <Input id="audit-request" placeholder="request_id" value={filters.request_id} onChange={(e) => setFilters((p) => ({ ...p, request_id: e.target.value }))} />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="audit-resource-type" className="text-xs text-muted-foreground">Resource Type</Label>
-                <Input id="audit-resource-type" placeholder="resource_type" value={filters.resource_type} onChange={(e) => setFilters((p) => ({ ...p, resource_type: e.target.value }))} />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="audit-resource-id" className="text-xs text-muted-foreground">Resource ID</Label>
-                <Input id="audit-resource-id" placeholder="resource_id" value={filters.resource_id} onChange={(e) => setFilters((p) => ({ ...p, resource_id: e.target.value }))} />
-              </div>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="datetime-local"
-                  value={filters.since}
-                  onChange={(e) => setFilters((p) => ({ ...p, since: e.target.value }))}
-                  title="since"
-                />
-                <Input
-                  type="datetime-local"
-                  value={filters.until}
-                  onChange={(e) => setFilters((p) => ({ ...p, until: e.target.value }))}
-                  title="until"
-                />
-              </div>
+
+              <details className="rounded-lg border border-border/60 bg-muted/10 p-2.5 xl:hidden">
+                <summary className={cn(systemPageTokens.microLabel, 'list-none cursor-pointer select-none')}>
+                  更多筛选
+                </summary>
+                <div className="mt-2.5 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="audit-resource-type-mobile" className={systemPageTokens.microLabel}>资源类型（resource_type）</Label>
+                    <Input id="audit-resource-type-mobile" className={DENSE_INPUT} placeholder="输入 resource_type" value={filters.resource_type} onChange={(e) => setFilters((p) => ({ ...p, resource_type: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="audit-resource-id-mobile" className={systemPageTokens.microLabel}>资源 ID（resource_id）</Label>
+                    <Input id="audit-resource-id-mobile" className={DENSE_INPUT} placeholder="输入 resource_id" value={filters.resource_id} onChange={(e) => setFilters((p) => ({ ...p, resource_id: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="audit-since-mobile" className={systemPageTokens.microLabel}>开始时间</Label>
+                    <Input
+                      id="audit-since-mobile"
+                      className={DENSE_INPUT}
+                      type="datetime-local"
+                      value={filters.since}
+                      onChange={(e) => setFilters((p) => ({ ...p, since: e.target.value }))}
+                      title="开始时间"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="audit-until-mobile" className={systemPageTokens.microLabel}>结束时间</Label>
+                    <Input
+                      id="audit-until-mobile"
+                      className={DENSE_INPUT}
+                      type="datetime-local"
+                      value={filters.until}
+                      onChange={(e) => setFilters((p) => ({ ...p, until: e.target.value }))}
+                      title="结束时间"
+                    />
+                  </div>
+                </div>
+              </details>
             </div>
-            <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
+            <div className={cn('mt-3 flex flex-col gap-2 text-xs sm:flex-row sm:items-center sm:justify-between', systemPageTokens.body)}>
               <div>{t('pagination.status', { total, page, totalPages })}</div>
               <div className="flex items-center gap-2">
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-8 gap-2"
+                  className={DENSE_OUTLINE_BUTTON}
                   onClick={() => setSkip((v) => Math.max(0, v - limit))}
                   disabled={skip <= 0}
                 >
@@ -222,7 +300,7 @@ export default function AuditLogsPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-8 gap-2"
+                  className={DENSE_OUTLINE_BUTTON}
                   onClick={() => setSkip((v) => (v + limit < total ? v + limit : v))}
                   disabled={skip + limit >= total}
                 >
@@ -232,7 +310,7 @@ export default function AuditLogsPage() {
             </div>
           </Panel>
 
-          <Panel padding="lg" className="mt-4">
+          <Panel padding="md" className={cn('mt-3', DENSE_PANEL)}>
             {(() => {
     if (resp) {
         if (items.length === 0) {
@@ -247,28 +325,28 @@ export default function AuditLogsPage() {
                 {items.map((it) => {
                     const expanded = expandedId === it.id;
                     const resource = [it.resource_type, it.resource_id].filter(Boolean).join(': ');
-                    return (<div key={it.id} className={cn('rounded-xl border border-border/60 bg-background hover:bg-muted/10 transition-colors', expanded && 'border-primary/30')}>
-                      <div className="p-3 flex items-start justify-between gap-3">
+                    return (<div key={it.id} className={cn('rounded-lg border border-border/70 bg-background transition-colors hover:bg-muted/15', expanded && 'border-primary/40')}>
+                      <div className="flex items-start justify-between gap-2.5 px-3 py-1.5">
                         <button type="button" className="flex-1 text-left min-w-0" onClick={() => setExpandedId(expanded ? null : it.id)}>
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <div className={cn('flex items-center gap-2', systemPageTokens.monoMeta)}>
                             <span className="font-mono">{fmtTs(it.created_at)}</span>
-                            {it.actor_id ? <span className="font-mono">actor: {it.actor_id}</span> : null}
+                            {it.actor_id ? <span className="font-mono">操作者: {it.actor_id}</span> : null}
                           </div>
                           <div className="mt-1 flex flex-wrap items-center gap-2">
-                            <span className="text-sm font-semibold text-foreground">{it.action}</span>
-                            {resource ? (<span className="text-xs text-muted-foreground font-mono">{resource}</span>) : null}
-                            {it.request_id ? (<span className="text-xs text-muted-foreground font-mono">req: {shorten(it.request_id)}</span>) : null}
+                            <span className="text-[13px] font-semibold text-foreground">{it.action}</span>
+                            {resource ? (<span className={cn(systemPageTokens.monoMeta, 'text-[10px]')}>{resource}</span>) : null}
+                            {it.request_id ? (<span className={cn(systemPageTokens.monoMeta, 'text-[10px]')}>请求: {shorten(it.request_id)}</span>) : null}
                           </div>
                         </button>
-                        <div className="flex items-center gap-2">
-                          {it.request_id ? (<Button variant="outline" size="sm" className="h-8 gap-2" onClick={() => {
+                        <div className="flex items-center gap-1.5">
+                          {it.request_id ? (<Button variant="outline" size="sm" className={DENSE_INLINE_ACTION} onClick={() => {
                                 setSkip(0);
                                 setFilters((p) => ({ ...p, request_id: it.request_id || '' }));
                             }} title={t('actions.requestFilterTitle')}>
                               <Search className="w-4 h-4"/>
-                              req
+                              请求
                             </Button>) : null}
-                          <Button variant="outline" size="sm" className="h-8 gap-2" onClick={() => detachPromise(copyText(JSON.stringify(it.details || {}, null, 2), t('toasts.copySuccess'), t('toasts.copyFailure')))}>
+                          <Button variant="outline" size="sm" className={DENSE_INLINE_ACTION} onClick={() => detachPromise(copyText(JSON.stringify(it.details || {}, null, 2), t('toasts.copySuccess'), t('toasts.copyFailure')))}>
                             <Copy className="w-4 h-4"/>
                             JSON
                           </Button>
@@ -276,7 +354,7 @@ export default function AuditLogsPage() {
                       </div>
 
                       {expanded ? (<div className="px-3 pb-3">
-                          <pre className="text-xs whitespace-pre-wrap break-words rounded-lg border border-border/60 bg-muted/20 p-3 max-h-[320px] overflow-auto">
+                          <pre className="max-h-[280px] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border/60 bg-muted/20 p-3 text-[11px]">
                             {JSON.stringify(it.details || {}, null, 2)}
                           </pre>
                         </div>) : null}
@@ -286,7 +364,7 @@ export default function AuditLogsPage() {
         }
     }
     else {
-        return (<div className="text-sm text-muted-foreground">
+        return (<div className={systemPageTokens.body}>
                 {t('alerts.unableToLoad')}
               </div>);
     }

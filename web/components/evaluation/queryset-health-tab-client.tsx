@@ -11,7 +11,16 @@ import {
   Tooltip,
   CartesianGrid,
 } from 'recharts'
-import { RefreshCw, GitCompare, AlertTriangle, BarChart3 } from 'lucide-react'
+import {
+  RefreshCw,
+  GitCompare,
+  Target,
+  TrendingUp,
+  ChartLine,
+  Timer,
+  SearchX,
+  ShieldAlert,
+} from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Panel } from '@/components/ui/panel'
@@ -66,7 +75,7 @@ export function QuerysetHealthTab({ embedded = false }: Readonly<{ embedded?: bo
       setBaselineTs((p) => p || prev || latest)
     } catch (err) {
       setRuns(null)
-      toast.error(formatApiError(err, '加载 Queryset Health 历史失败（需要 owner/admin 权限）'))
+      toast.error(formatApiError(err, '加载检索集健康度历史失败（需要 owner/admin 权限）'))
     } finally {
       setLoadingRuns(false)
     }
@@ -86,7 +95,7 @@ export function QuerysetHealthTab({ embedded = false }: Readonly<{ embedded?: bo
       setDiff(res)
     } catch (err) {
       setDiff(null)
-      toast.error(formatApiError(err, '加载 Queryset Health Diff 失败'))
+      toast.error(formatApiError(err, '加载检索集健康度差异失败'))
     } finally {
       setLoadingDiff(false)
     }
@@ -139,12 +148,12 @@ export function QuerysetHealthTab({ embedded = false }: Readonly<{ embedded?: bo
   }, [diff?.diff])
 
   return (
-    <div className={cn('space-y-6', embedded ? '' : 'p-8')}>
+    <div className={cn('space-y-3.5', embedded ? '' : 'p-5')}>
       {!embedded ? (
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start justify-between gap-2.5">
           <div>
-            <h2 className="text-lg font-semibold text-foreground">Queryset Health</h2>
-            <p className="text-sm text-muted-foreground mt-1">检索基准集健康度：趋势 + diff + 退化标记</p>
+            <h2 className="text-lg font-semibold text-foreground">检索集健康度</h2>
+            <p className="text-sm text-muted-foreground mt-1">检索基准集健康度：趋势 + 差异 + 退化标记</p>
           </div>
           <Button variant="outline" size="sm" className="gap-2" onClick={() => loadRuns()} disabled={loadingRuns}>
             <RefreshCw className={cn('h-4 w-4', loadingRuns && 'animate-spin motion-reduce:animate-none')} />
@@ -154,8 +163,8 @@ export function QuerysetHealthTab({ embedded = false }: Readonly<{ embedded?: bo
       ) : (
         <div className="flex items-center justify-between gap-3">
           <div>
-            <div className="text-lg font-semibold text-foreground">Queryset Health</div>
-            <div className="text-sm text-muted-foreground mt-1">趋势 + diff + 退化标记</div>
+            <div className="text-lg font-semibold text-foreground">检索集健康度</div>
+            <div className="text-sm text-muted-foreground mt-1">趋势 + 差异 + 退化标记</div>
           </div>
           <Button variant="outline" size="sm" className="gap-2" onClick={() => loadRuns()} disabled={loadingRuns}>
             <RefreshCw className={cn('h-4 w-4', loadingRuns && 'animate-spin motion-reduce:animate-none')} />
@@ -164,27 +173,27 @@ export function QuerysetHealthTab({ embedded = false }: Readonly<{ embedded?: bo
         </div>
       )}
 
-      <Panel variant="glass" className="rounded-2xl">
+      <Panel variant="glass" padding="sm" className="rounded-2xl">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="text-sm font-semibold text-foreground">Latest Snapshot</div>
+            <div className="text-sm font-semibold text-foreground">最新快照</div>
             <div className="text-xs text-muted-foreground mt-1">
-              {latest?.generated_at ? `generated_at=${String(latest.generated_at)}` : '暂无历史记录'}
+              {latest?.generated_at ? `生成时间=${String(latest.generated_at)}` : '暂无历史记录'}
             </div>
           </div>
           <div className="text-xs text-muted-foreground">
-            path: <span className="font-mono">{runs?.path || '—'}</span>
+            文件路径: <span className="font-mono">{runs?.path || '—'}</span>
           </div>
         </div>
 
-        <div className="mt-4">
-          <StatsGrid className="xl:grid-cols-6">
-            <StatCard icon={BarChart3} label="Hit@K" value={fmtPercent(latestMetrics.hit_at_k, 1)} color="sky" />
-            <StatCard icon={BarChart3} label="MRR" value={fmtNum(latestMetrics.mrr, 3)} color="teal" />
-            <StatCard icon={BarChart3} label="NDCG@K" value={fmtNum(latestMetrics.ndcg_at_k, 3)} color="teal" />
-            <StatCard icon={BarChart3} label="P95 Latency" value={fmtMs(latestMetrics.p95_latency_ms)} color="amber" />
-            <StatCard icon={AlertTriangle} label="Miss Rate" value={fmtPercent(latestRisk.miss_rate, 1)} color="rose" />
-            <StatCard icon={AlertTriangle} label="Weak Hit Rate" value={fmtPercent(latestRisk.weak_hit_rate, 1)} color="rose" />
+        <div className="mt-3">
+          <StatsGrid dense className="xl:grid-cols-6">
+            <StatCard dense icon={Target} label="命中率 Hit@K" value={fmtPercent(latestMetrics.hit_at_k, 1)} color="sky" />
+            <StatCard dense icon={TrendingUp} label="MRR" value={fmtNum(latestMetrics.mrr, 3)} color="teal" />
+            <StatCard dense icon={ChartLine} label="NDCG@K" value={fmtNum(latestMetrics.ndcg_at_k, 3)} color="teal" />
+            <StatCard dense icon={Timer} label="P95 延迟" value={fmtMs(latestMetrics.p95_latency_ms)} color="amber" />
+            <StatCard dense icon={SearchX} label="漏检率" value={fmtPercent(latestRisk.miss_rate, 1)} color="rose" />
+            <StatCard dense icon={ShieldAlert} label="弱命中率" value={fmtPercent(latestRisk.weak_hit_rate, 1)} color="rose" />
           </StatsGrid>
 
           {latestFlags.length ? (
@@ -201,13 +210,13 @@ export function QuerysetHealthTab({ embedded = false }: Readonly<{ embedded?: bo
         </div>
       </Panel>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Panel variant="glass" className="rounded-2xl min-h-[340px]">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <Panel variant="glass" padding="sm" className="rounded-2xl min-h-[280px]">
           <div className="flex items-center justify-between mb-3">
-            <div className="text-sm font-semibold text-foreground">Quality Trend</div>
+            <div className="text-sm font-semibold text-foreground">质量趋势</div>
             <div className="text-xs text-muted-foreground">Hit@K / MRR / NDCG</div>
           </div>
-          <div className="h-[260px]">
+          <div className="h-[200px]">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
@@ -222,12 +231,12 @@ export function QuerysetHealthTab({ embedded = false }: Readonly<{ embedded?: bo
           </div>
         </Panel>
 
-        <Panel variant="glass" className="rounded-2xl min-h-[340px]">
+        <Panel variant="glass" padding="sm" className="rounded-2xl min-h-[280px]">
           <div className="flex items-center justify-between mb-3">
-            <div className="text-sm font-semibold text-foreground">Latency / Risk Trend</div>
-            <div className="text-xs text-muted-foreground">P95 / miss / weak-hit</div>
+            <div className="text-sm font-semibold text-foreground">延迟与风险趋势</div>
+            <div className="text-xs text-muted-foreground">P95 / 漏检 / 弱命中</div>
           </div>
-          <div className="h-[260px]">
+          <div className="h-[200px]">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
@@ -243,23 +252,23 @@ export function QuerysetHealthTab({ embedded = false }: Readonly<{ embedded?: bo
         </Panel>
       </div>
 
-      <Panel variant="glass" className="rounded-2xl">
+      <Panel variant="glass" padding="sm" className="rounded-2xl">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <GitCompare className="h-4 w-4 text-muted-foreground" />
-            <div className="text-sm font-semibold text-foreground">Diff</div>
+            <div className="text-sm font-semibold text-foreground">差异对比</div>
           </div>
           <div className="text-xs text-muted-foreground">
             {loadingDiff ? '计算中…' : diff?.diff ? '已加载' : '—'}
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="mt-2.5 grid grid-cols-1 lg:grid-cols-2 gap-2.5">
           <div className="space-y-2">
-            <div className="text-xs font-medium text-muted-foreground">Baseline</div>
+            <div className="text-xs font-medium text-muted-foreground">基线快照</div>
             <Select value={baselineTs} onValueChange={setBaselineTs} disabled={!runs?.items?.length}>
               <SelectTrigger className="rounded-xl">
-                <SelectValue placeholder="选择 baseline" />
+                <SelectValue placeholder="选择基线快照" />
               </SelectTrigger>
               <SelectContent>
                 {(runs?.items || []).map((it: any) => (
@@ -271,10 +280,10 @@ export function QuerysetHealthTab({ embedded = false }: Readonly<{ embedded?: bo
             </Select>
           </div>
           <div className="space-y-2">
-            <div className="text-xs font-medium text-muted-foreground">Current</div>
+            <div className="text-xs font-medium text-muted-foreground">当前快照</div>
             <Select value={currentTs} onValueChange={setCurrentTs} disabled={!runs?.items?.length}>
               <SelectTrigger className="rounded-xl">
-                <SelectValue placeholder="选择 current" />
+                <SelectValue placeholder="选择当前快照" />
               </SelectTrigger>
               <SelectContent>
                 {(runs?.items || []).map((it: any) => (
@@ -288,7 +297,7 @@ export function QuerysetHealthTab({ embedded = false }: Readonly<{ embedded?: bo
         </div>
 
         {diffMetricDeltas && Object.keys(diffMetricDeltas).length ? (
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+          <div className="mt-2.5 grid grid-cols-1 md:grid-cols-2 gap-1.5 text-xs">
             {[
               'hit_at_k_delta',
               'mrr_delta',
@@ -304,25 +313,25 @@ export function QuerysetHealthTab({ embedded = false }: Readonly<{ embedded?: bo
             ))}
           </div>
         ) : (
-          <div className="mt-4 text-xs text-muted-foreground">选择两个不同的 snapshot 以查看 diff。</div>
+          <div className="mt-3 text-xs text-muted-foreground">选择两个不同的快照以查看差异。</div>
         )}
       </Panel>
 
-      <Panel variant="glass" className="rounded-2xl">
-        <div className="text-sm font-semibold text-foreground">Recent Runs</div>
-        <div className="text-xs text-muted-foreground mt-1">展示最近 {runs?.items?.length ?? 0} 条（newest-first）</div>
+      <Panel variant="glass" padding="sm" className="rounded-2xl">
+        <div className="text-sm font-semibold text-foreground">最近运行</div>
+        <div className="text-xs text-muted-foreground mt-1">展示最近 {runs?.items?.length ?? 0} 条（按时间倒序）</div>
 
-        <div className="mt-4 overflow-auto">
-          <table aria-label="Queryset Health 指标差异" className="w-full text-sm">
+        <div className="mt-2.5 overflow-auto">
+          <table aria-label="检索集健康度指标列表" className="w-full text-sm">
             <thead>
               <tr className="border-b border-border/60 text-xs text-muted-foreground">
-                <th className="text-left py-2 pr-4">generated_at</th>
-                <th className="text-left py-2 pr-4">status</th>
-                <th className="text-right py-2 pr-4">hit@k</th>
-                <th className="text-right py-2 pr-4">mrr</th>
-                <th className="text-right py-2 pr-4">ndcg</th>
+                <th className="text-left py-2 pr-4">生成时间</th>
+                <th className="text-left py-2 pr-4">状态</th>
+                <th className="text-right py-2 pr-4">命中率</th>
+                <th className="text-right py-2 pr-4">MRR</th>
+                <th className="text-right py-2 pr-4">NDCG</th>
                 <th className="text-right py-2 pr-4">p95(ms)</th>
-                <th className="text-right py-2 pr-4">miss</th>
+                <th className="text-right py-2 pr-4">漏检率</th>
               </tr>
             </thead>
             <tbody>
@@ -331,17 +340,25 @@ export function QuerysetHealthTab({ embedded = false }: Readonly<{ embedded?: bo
                 const r = (it?.risk as any) || {}
                 const st = String(it?.status || 'unknown')
                 const isDegraded = st === 'degraded'
+                const stLabel =
+                  st === 'degraded'
+                    ? '退化'
+                    : st === 'healthy'
+                      ? '健康'
+                      : st === 'unknown'
+                        ? '未知'
+                        : st
                 return (
                   <tr key={String(it.generated_at)} className="border-b border-border/40">
-                    <td className="py-2 pr-4 font-mono text-xs text-muted-foreground">{String(it.generated_at || '')}</td>
-                    <td className={cn('py-2 pr-4 text-xs', isDegraded ? 'text-destructive' : 'text-success')}>
-                      {st}
+                    <td className="py-1.5 pr-4 font-mono text-xs text-muted-foreground">{String(it.generated_at || '')}</td>
+                    <td className={cn('py-1.5 pr-4 text-xs', isDegraded ? 'text-destructive' : 'text-success')}>
+                      {stLabel}
                     </td>
-                    <td className="py-2 pr-4 text-right tabular-nums">{fmtPercent(m.hit_at_k, 1)}</td>
-                    <td className="py-2 pr-4 text-right tabular-nums">{fmtNum(m.mrr, 3)}</td>
-                    <td className="py-2 pr-4 text-right tabular-nums">{fmtNum(m.ndcg_at_k, 3)}</td>
-                    <td className="py-2 pr-4 text-right tabular-nums">{fmtNum(m.p95_latency_ms, 1)}</td>
-                    <td className="py-2 pr-4 text-right tabular-nums">{fmtPercent(r.miss_rate, 1)}</td>
+                    <td className="py-1.5 pr-4 text-right tabular-nums">{fmtPercent(m.hit_at_k, 1)}</td>
+                    <td className="py-1.5 pr-4 text-right tabular-nums">{fmtNum(m.mrr, 3)}</td>
+                    <td className="py-1.5 pr-4 text-right tabular-nums">{fmtNum(m.ndcg_at_k, 3)}</td>
+                    <td className="py-1.5 pr-4 text-right tabular-nums">{fmtNum(m.p95_latency_ms, 1)}</td>
+                    <td className="py-1.5 pr-4 text-right tabular-nums">{fmtPercent(r.miss_rate, 1)}</td>
                   </tr>
                 )
               })}

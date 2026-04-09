@@ -11,6 +11,8 @@ const panelVariants = cva(
         default: "bg-card/95 transition-shadow duration-200 hover:shadow-md motion-reduce:transition-none",
         muted: "bg-muted/35",
         glass: "border-border/40 bg-card/50 backdrop-blur-xl",
+        seamless:
+          "rounded-none border-x-0 border-t-0 border-b border-border/70 bg-background shadow-none transition-none",
       },
       padding: {
         none: "p-0",

@@ -3,6 +3,12 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
+function expectKeys(src: string, keys: string[]) {
+  for (const key of keys) {
+    expect(src).toContain(`t('${key}')`)
+  }
+}
+
 describe('KG diagnostics quality report wiring', () => {
   it('wires the aggregate KG quality report controls and API client method', () => {
     const pageSrc = fs.readFileSync(path.resolve(__dirname, 'kg-diagnostics-page.tsx'), 'utf8')
@@ -10,8 +16,7 @@ describe('KG diagnostics quality report wiring', () => {
     const evaluationApiSrc = fs.readFileSync(path.resolve(__dirname, '../../lib/api/evaluation.ts'), 'utf8')
 
     expect(pageSrc).toContain("useTranslations('KGDiagnosticsPage')")
-    expect(pageSrc).toContain('t("qualityReport.title")')
-    expect(pageSrc).toContain('t("qualityReport.hint")')
+    expectKeys(pageSrc, ['qualityReport.title', 'qualityReport.hint'])
     expect(pageSrc).toContain('loadQualityReport')
     expect(pageSrc).toContain('evaluationApi.getKgQualityReport')
     expect(pageSrc).toContain('qualityPipelineHash')
@@ -23,78 +28,86 @@ describe('KG diagnostics quality report wiring', () => {
   it('moves KG diagnostics page scaffold actions and toast copy into next-intl lookups', () => {
     const pageSrc = fs.readFileSync(path.resolve(__dirname, 'kg-diagnostics-page.tsx'), 'utf8')
 
-    expect(pageSrc).toContain('t("page.title")')
-    expect(pageSrc).toContain('t("page.description")')
-    expect(pageSrc).toContain('t("page.actions.refreshRuns")')
-    expect(pageSrc).toContain('t("page.actions.run")')
-    expect(pageSrc).toContain('t("page.actions.exportRun")')
-    expect(pageSrc).toContain('t("toasts.datasetRequired")')
-    expect(pageSrc).toContain('t("toasts.runsLoadFailed")')
-    expect(pageSrc).toContain('t("toasts.runLoadFailed"')
-    expect(pageSrc).toContain('t("toasts.qualityReportLoaded")')
-    expect(pageSrc).toContain('t("toasts.qualityReportLoadFailed")')
-    expect(pageSrc).toContain('t("toasts.diagnosticsRan")')
-    expect(pageSrc).toContain('t("toasts.diagnosticsRunFailed")')
-    expect(pageSrc).toContain('t("toasts.runExported")')
+    expectKeys(pageSrc, [
+      'page.title',
+      'page.description',
+      'page.actions.refreshRuns',
+      'page.actions.run',
+      'page.actions.exportRun',
+      'toasts.datasetRequired',
+      'toasts.runsLoadFailed',
+      'toasts.qualityReportLoaded',
+      'toasts.qualityReportLoadFailed',
+      'toasts.diagnosticsRan',
+      'toasts.diagnosticsRunFailed',
+      'toasts.runExported',
+    ])
+    expect(pageSrc).toContain("t('toasts.runLoadFailed'")
   })
 
   it('moves KG diagnostics run config labels and placeholders into next-intl lookups', () => {
     const pageSrc = fs.readFileSync(path.resolve(__dirname, 'kg-diagnostics-page.tsx'), 'utf8')
 
-    expect(pageSrc).toContain('t("runConfig.title")')
-    expect(pageSrc).toContain('t("runConfig.datasetId")')
-    expect(pageSrc).toContain('t("runConfig.datasetPlaceholder")')
-    expect(pageSrc).toContain('t("runConfig.hardcaseMode")')
-    expect(pageSrc).toContain('t("runConfig.hardcaseModePlaceholder")')
-    expect(pageSrc).toContain('t("runConfig.maxCases")')
-    expect(pageSrc).toContain('t("runConfig.k")')
-    expect(pageSrc).toContain('t("runConfig.hardcasesPerFailedCase")')
-    expect(pageSrc).toContain('t("runConfig.maxFailedCasesForHardcase")')
-    expect(pageSrc).toContain('t("runConfig.llmTemperature")')
-    expect(pageSrc).toContain('t("runConfig.extractSkills")')
-    expect(pageSrc).toContain('t("runConfig.extractRelations")')
-    expect(pageSrc).toContain('t("runConfig.extractModePlaceholder")')
-    expect(pageSrc).toContain('t("runConfig.autoExtractKg")')
-    expect(pageSrc).toContain('t("runConfig.persistRun")')
+    expectKeys(pageSrc, [
+      'runConfig.title',
+      'runConfig.datasetId',
+      'runConfig.datasetPlaceholder',
+      'runConfig.hardcaseMode',
+      'runConfig.hardcaseModePlaceholder',
+      'runConfig.maxCases',
+      'runConfig.k',
+      'runConfig.hardcasesPerFailedCase',
+      'runConfig.maxFailedCasesForHardcase',
+      'runConfig.llmTemperature',
+      'runConfig.extractSkills',
+      'runConfig.extractRelations',
+      'runConfig.extractModePlaceholder',
+      'runConfig.autoExtractKg',
+      'runConfig.persistRun',
+    ])
   })
 
   it('moves KG diagnostics summary and quality report controls into next-intl lookups', () => {
     const pageSrc = fs.readFileSync(path.resolve(__dirname, 'kg-diagnostics-page.tsx'), 'utf8')
 
-    expect(pageSrc).toContain('t("summary.title")')
-    expect(pageSrc).toContain('t("summary.baselineHitRate")')
-    expect(pageSrc).toContain('t("summary.baselineMrr")')
-    expect(pageSrc).toContain('t("summary.baselineRecall")')
-    expect(pageSrc).toContain('t("summary.hardcasesGenerated")')
-    expect(pageSrc).toContain('t("summary.empty")')
-    expect(pageSrc).toContain('t("summary.runHint")')
-    expect(pageSrc).toContain('t("qualityReport.pull")')
-    expect(pageSrc).toContain('t("qualityReport.documentLimit")')
-    expect(pageSrc).toContain('t("qualityReport.pipelineHash")')
-    expect(pageSrc).toContain('t("qualityReport.pipelineHashPlaceholder")')
+    expectKeys(pageSrc, [
+      'summary.title',
+      'summary.baselineHitRate',
+      'summary.baselineMrr',
+      'summary.baselineRecall',
+      'summary.hardcasesGenerated',
+      'summary.empty',
+      'summary.runHint',
+      'qualityReport.pull',
+      'qualityReport.documentLimit',
+      'qualityReport.pipelineHash',
+      'qualityReport.pipelineHashPlaceholder',
+    ])
   })
 
   it('moves KG diagnostics runs and compare copy into next-intl lookups', () => {
     const pageSrc = fs.readFileSync(path.resolve(__dirname, 'kg-diagnostics-page.tsx'), 'utf8')
 
-    expect(pageSrc).toContain('t("runs.title")')
-    expect(pageSrc).toContain('t("runs.refresh")')
-    expect(pageSrc).toContain('t("runs.hint")')
-    expect(pageSrc).toContain('t("runs.runA")')
-    expect(pageSrc).toContain('t("runs.runAPlaceholder")')
-    expect(pageSrc).toContain('t("runs.loadA")')
-    expect(pageSrc).toContain('t("runs.runB")')
-    expect(pageSrc).toContain('t("runs.runBPlaceholder")')
-    expect(pageSrc).toContain('t("runs.loadB")')
-    expect(pageSrc).toContain('t("compare.title")')
-    expect(pageSrc).toContain('t("compare.export")')
-    expect(pageSrc).toContain('t("compare.exported")')
-    expect(pageSrc).toContain('t("compare.hitFlips")')
-    expect(pageSrc).toContain('t("compare.summaryKeys")')
-    expect(pageSrc).toContain('t("compare.empty")')
-    expect(pageSrc).toContain('t("compare.diffJson")')
-    expect(pageSrc).toContain('t("compare.diffHint")')
-    expect(pageSrc).toContain('t("compare.changedCases")')
-    expect(pageSrc).toContain('t("compare.noQuestion")')
+    expectKeys(pageSrc, [
+      'runs.title',
+      'runs.refresh',
+      'runs.hint',
+      'runs.runA',
+      'runs.runAPlaceholder',
+      'runs.loadA',
+      'runs.runB',
+      'runs.runBPlaceholder',
+      'runs.loadB',
+      'compare.title',
+      'compare.export',
+      'compare.exported',
+      'compare.hitFlips',
+      'compare.summaryKeys',
+      'compare.empty',
+      'compare.diffJson',
+      'compare.diffHint',
+      'compare.changedCases',
+      'compare.noQuestion',
+    ])
   })
 })

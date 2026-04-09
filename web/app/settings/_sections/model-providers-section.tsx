@@ -4,6 +4,8 @@ import { ModelProviderCard } from '@/components/model-provider-card'
 import type { ModelProvider, ProviderCategory } from '@/types/models'
 import type { LucideIcon } from 'lucide-react'
 import { Cpu, Layers, Lightbulb, Server } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { systemPageTokens, systemWorkbenchTokens } from '@/components/ui/system-page-tokens'
 
 const CATEGORY_INFO: Record<ProviderCategory, { title: string; description: string; icon: LucideIcon }> = {
   model: {
@@ -33,19 +35,19 @@ export function ModelProvidersSection({
   onConfigure,
 }: Readonly<ModelProvidersSectionProps>) {
   return (
-    <section>
-      <div className="mb-6 flex items-center justify-between">
-        <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground">
-          <Server className="h-5 w-5 text-primary" />
+    <section className="space-y-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="flex items-center gap-2 text-sm font-semibold tracking-[-0.01em] text-foreground">
+          <Server className="h-4 w-4 text-primary" />
           模型服务商
         </h2>
-        <div className="flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-          <Lightbulb className="h-3 w-3" />
-          <span>点击卡片配置 API Key</span>
+        <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[10px] font-semibold text-primary">
+          <Lightbulb className="h-3.5 w-3.5" />
+          <span>点击卡片配置 API 密钥（API Key）</span>
         </div>
       </div>
 
-      <div className="space-y-8">
+      <div className="space-y-4">
         {(['model', 'embedding', 'reranker'] as ProviderCategory[]).map((category) => {
           const info = CATEGORY_INFO[category]
           const InfoIcon = info.icon
@@ -53,19 +55,19 @@ export function ModelProvidersSection({
           return (
             <div
               key={category}
-              className="rounded-2xl border border-border bg-card p-6 shadow-sm transition-shadow duration-200 hover:shadow-md motion-reduce:transition-none"
+              className={cn(systemWorkbenchTokens.panel, 'p-3.5')}
             >
-              <div className="mb-6 flex items-start gap-4">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border bg-muted/50">
-                  <InfoIcon className="h-5 w-5 text-muted-foreground" />
+              <div className="mb-3 flex items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/50">
+                  <InfoIcon className="h-4 w-4 text-muted-foreground" />
                 </div>
                 <div>
-                  <h3 className="text-base font-medium text-foreground">{info.title}</h3>
-                  <p className="mt-0.5 text-sm text-muted-foreground">{info.description}</p>
+                  <h3 className="text-[13px] font-semibold text-foreground">{info.title}</h3>
+                  <p className={systemPageTokens.subtle}>{info.description}</p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
                 {groupedProviders[category].map((provider) => (
                   <ModelProviderCard
                     key={provider.id}

@@ -5,25 +5,33 @@ import { RefreshCw, ShieldCheck, Users } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { AppFrame } from '@/components/app-frame'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PageScaffold } from '@/components/ui/page-scaffold'
+import { Panel } from '@/components/ui/panel'
+import { SystemDataStrip } from '@/components/ui/system-data-strip'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, detachPromise } from '@/lib/utils'
 import { rbacApi, type TenantMember } from '@/lib/api'
 import { EmptyState } from '@/components/ui/empty-state'
+import { systemDenseControls, systemPageTokens, systemWorkbenchTokens } from '@/components/ui/system-page-tokens'
 
 const ROLE_OPTIONS = [
-    { key: 'owner', label: 'owner (admin)' },
-    { key: 'admin', label: 'admin' },
-    { key: 'auditor', label: 'auditor' },
-    { key: 'editor', label: 'editor' },
-    { key: 'dataset_operator', label: 'dataset_operator' },
-    { key: 'viewer', label: 'viewer' },
+  { key: 'owner', label: '拥有者（owner）' },
+  { key: 'admin', label: '管理员（admin）' },
+  { key: 'auditor', label: '审计员（auditor）' },
+  { key: 'editor', label: '编辑（editor）' },
+  { key: 'dataset_operator', label: '数据集运维（dataset_operator）' },
+  { key: 'viewer', label: '只读（viewer）' },
 ]
+const DENSE_OUTLINE_BUTTON = systemDenseControls.outlineButton
+const DENSE_PRIMARY_BUTTON = 'h-7 rounded-md px-2.5 text-[11px] font-semibold'
+const DENSE_INPUT = systemDenseControls.input
+const DENSE_SELECT_TRIGGER = 'h-7 rounded-md border-border/70 bg-background text-[11px]'
+const DENSE_PANEL = systemWorkbenchTokens.panel
 
 export default function SettingsRbacPage() {
   const [loading, setLoading] = useState(false)
@@ -41,6 +49,24 @@ export default function SettingsRbacPage() {
       return uid.includes(q) || role.includes(q)
     })
   }, [members, query])
+  const savingCount = useMemo(
+    () => Object.values(savingIds).filter(Boolean).length,
+    [savingIds]
+  )
+
+  const stripItems = useMemo(
+    () => [
+      { label: '总成员', value: members.length, mono: true },
+      { label: '筛选后', value: filtered.length, mono: true },
+      { label: '保存中', value: savingCount, mono: true },
+      {
+        label: '列表状态',
+        value: loading ? '加载中' : members.length ? '已就绪' : '无数据',
+        tone: loading ? 'warning' : members.length ? 'success' : 'default',
+      },
+    ],
+    [members.length, filtered.length, savingCount, loading]
+  )
 
   async function refresh(): Promise<void> {
     setLoading(true)
@@ -56,7 +82,7 @@ export default function SettingsRbacPage() {
       }
       setRoleDraft(nextDraft)
     } catch (err) {
-      toast.error(formatApiError(err, '加载成员失败（需要 owner/admin 权限）'))
+      toast.error(formatApiError(err, '加载成员失败（需要管理员权限）'))
     } finally {
       setLoading(false)
     }
@@ -70,7 +96,8 @@ export default function SettingsRbacPage() {
     try {
       const updated = await rbacApi.patchTenantMemberRole(uid, { role: desired })
       setMembers((prev) => (prev || []).map((m) => (String(m.user_id || '') === uid ? updated : m)))
-      toast.success(`已更新 ${uid} -> ${desired}`)
+      const roleLabel = ROLE_OPTIONS.find((option) => option.key === desired)?.label ?? `角色键（${desired}）`
+      toast.success(`已更新角色：${uid} -> ${roleLabel}`)
     } catch (err) {
       toast.error(formatApiError(err, '更新角色失败'))
     } finally {
@@ -85,40 +112,43 @@ export default function SettingsRbacPage() {
   return (
     <AppFrame>
       <PageScaffold
-        title="RBAC（成员权限）"
-        description="管理 tenant 成员角色（影响 datasets/connectors 的可写权限）"
+        title="成员权限（RBAC）"
+        description="基于角色访问控制（RBAC）管理租户成员角色（role），控制数据集与连接器的读写能力。"
         icon={ShieldCheck}
         iconColor="text-success"
-        size="6xl"
+        size="full"
+        density="system-dense"
+        top={<SystemDataStrip items={stripItems} minColumnWidth={148} />}
         actions={
-          <Button variant="outline" size="sm" className="gap-2 rounded-xl" disabled={loading} onClick={() => detachPromise(refresh())}>
+          <Button variant="outline" size="sm" className={DENSE_OUTLINE_BUTTON} disabled={loading} onClick={() => detachPromise(refresh())}>
             <RefreshCw className={cn('size-4', loading && 'animate-spin motion-reduce:animate-none')} />
             刷新
           </Button>
         }
       >
-        <div className="grid grid-cols-1 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+        <div className="grid grid-cols-1 gap-4">
+          <Panel padding="md" className={DENSE_PANEL}>
+            <div className={cn('mb-3 flex items-center gap-2 text-sm', systemPageTokens.heading)}>
                 <Users className="size-5" />
-                Tenant Members
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label>搜索</Label>
-                  <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="按 user_id / role 过滤" />
+                成员列表
+            </div>
+            <div className="space-y-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                <div className="w-full space-y-1 sm:max-w-sm">
+                  <Label className={systemPageTokens.microLabel}>搜索</Label>
+                  <Input className={DENSE_INPUT} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="按用户 ID（user_id）/ 角色键（role）过滤" />
                 </div>
+                <Badge variant="outline" className="w-fit font-mono text-[10px]">
+                  可见 {filtered.length} 人
+                </Badge>
               </div>
 
-              <div className="rounded-2xl border border-border overflow-hidden">
-                <div className="grid grid-cols-12 text-xs font-semibold text-muted-foreground bg-muted/40 px-3 py-2">
-                  <div className="col-span-5">user_id</div>
-                  <div className="col-span-3">role</div>
-                  <div className="col-span-2">current</div>
-                  <div className="col-span-2 text-right">actions</div>
+              <div className="overflow-hidden rounded-lg border border-border/70">
+                <div className={cn('grid grid-cols-12 bg-muted/40 px-3 py-2', systemPageTokens.tableHead)}>
+                  <div className="col-span-6">用户 ID（user_id）</div>
+                  <div className="col-span-3">角色（role）</div>
+                  <div className="col-span-1">当前</div>
+                  <div className="col-span-2 text-right">操作</div>
                 </div>
 
                 {(filtered || []).length ? (
@@ -128,8 +158,8 @@ export default function SettingsRbacPage() {
                     const draft = uid ? String(roleDraft[uid] || m.role || 'viewer') : String(m.role || 'viewer')
                     const saving = uid ? Boolean(savingIds[uid]) : false
                     return (
-                      <div key={key} className="grid grid-cols-12 px-3 py-2 text-sm border-t border-border items-center gap-2">
-                        <div className="col-span-5 font-mono text-xs truncate">{uid || '(no user_id)'}</div>
+                      <div key={key} className="grid grid-cols-12 items-center gap-2 border-t border-border/70 px-3 py-1 text-[12px] transition-colors hover:bg-muted/20">
+                        <div className="col-span-6 truncate font-mono text-[11px]" title={uid || '(无用户 ID / user_id)'}>{uid || '(无用户 ID / user_id)'}</div>
                         <div className="col-span-3">
                           <Select
                             value={draft}
@@ -139,8 +169,8 @@ export default function SettingsRbacPage() {
                             }}
                             disabled={!uid}
                           >
-                            <SelectTrigger className="h-9 rounded-xl">
-                              <SelectValue placeholder="role" />
+                            <SelectTrigger className={DENSE_SELECT_TRIGGER}>
+                              <SelectValue placeholder="选择角色（role）" />
                             </SelectTrigger>
                             <SelectContent>
                               {ROLE_OPTIONS.map((r) => (
@@ -151,17 +181,17 @@ export default function SettingsRbacPage() {
                             </SelectContent>
                           </Select>
                         </div>
-                        <div className="col-span-2">
+                        <div className="col-span-1">
                           {m.is_current ? (
-                            <span className="text-success font-semibold">yes</span>
+                            <Badge variant="soft" className="font-mono text-[10px]">当前</Badge>
                           ) : (
-                            <span className="text-muted-foreground">no</span>
+                            <Badge variant="outline" className="font-mono text-[10px] text-muted-foreground">-</Badge>
                           )}
                         </div>
                         <div className="col-span-2 flex justify-end">
                           <Button
                             size="sm"
-                            className="rounded-xl"
+                            className={DENSE_PRIMARY_BUTTON}
                             disabled={!uid || saving}
                             onClick={() => detachPromise(saveRole(uid))}
                           >
@@ -173,7 +203,7 @@ export default function SettingsRbacPage() {
                   })
                 ) : (
                   loading ? (
-                    <div className="px-3 py-8 text-sm text-muted-foreground">加载中...</div>
+                    <div className="px-3 py-8 text-sm text-muted-foreground">加载中…</div>
                   ) : (
                     <EmptyState
                       icon={Users}
@@ -184,11 +214,10 @@ export default function SettingsRbacPage() {
                   )
                 )}
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </Panel>
         </div>
       </PageScaffold>
     </AppFrame>
   )
 }
-

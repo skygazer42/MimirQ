@@ -10,7 +10,7 @@ const DiagnosticsPageClient = dynamic(() => import('./page-client'), {
     <PageLoading
       className="min-h-dvh bg-background"
       message="正在加载诊断中心..."
-      srMessage="Loading diagnostics overview"
+      srMessage="正在加载诊断概览"
     />
   ),
 })

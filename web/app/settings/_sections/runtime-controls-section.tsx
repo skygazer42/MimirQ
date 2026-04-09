@@ -39,10 +39,10 @@ export function RuntimeControlsSection({
             <div>
               <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
                 <Server className="h-4 w-4 text-muted-foreground" />
-                Chat 流式稳定性（SSE）
+                对话流式稳定性（SSE）
               </div>
               <div className="mt-1 text-xs text-muted-foreground">
-                Heartbeat 用于保活连接；断连自动取消可减少浪费（保存后通常可立即生效）
+                心跳用于保活连接；断连自动取消可减少资源浪费（保存后通常可立即生效）
               </div>
             </div>
             <button
@@ -53,6 +53,7 @@ export function RuntimeControlsSection({
                 })
               }
               className="shrink-0"
+              aria-label="切换断连自动取消（chat.stream_cancel_on_disconnect）"
             >
               {isCancelOnDisconnectEnabled ? (
                 <ToggleRight className="h-10 w-10 text-primary" />
@@ -64,7 +65,7 @@ export function RuntimeControlsSection({
 
           <div className="grid grid-cols-1 gap-4 pt-2 md:grid-cols-3">
             <div>
-              <div className="mb-1 text-xs text-muted-foreground">Heartbeat（秒）</div>
+              <div className="mb-1 text-xs text-muted-foreground">心跳间隔（heartbeat，秒）</div>
               <Input
                 type="number"
                 min={0}
@@ -90,7 +91,7 @@ export function RuntimeControlsSection({
                 性能与缓存
               </div>
               <div className="mt-1 text-xs text-muted-foreground">
-                去重/缓存属于“best-effort”，依赖 Redis 时会 fail-open（不可用时不影响主流程）
+                去重/缓存属于“尽力而为（best-effort）”，依赖 Redis 时会“失败放行（fail-open）”（不可用时不影响主流程）
               </div>
             </div>
           </div>
@@ -98,7 +99,7 @@ export function RuntimeControlsSection({
           <div className="grid grid-cols-1 gap-4 pt-2 md:grid-cols-2">
             <div className="flex items-start justify-between gap-4 rounded-xl border border-border bg-muted/30 p-4">
               <div>
-                <div className="text-sm font-semibold text-foreground">上传去重（Dataset 内）</div>
+                <div className="text-sm font-semibold text-foreground">上传去重（数据集内，upload_dedup）</div>
                 <div className="mt-1 text-xs text-muted-foreground">
                   同 file_sha256 + pipeline_hash 时直接复用已存在文档，减少重复入库/embedding
                 </div>
@@ -107,7 +108,7 @@ export function RuntimeControlsSection({
                 type="button"
                 onClick={() => updateCache({ upload_dedup_enabled: !isUploadDedupEnabled })}
                 className="shrink-0"
-                aria-label="Toggle upload dedup"
+                aria-label="切换上传去重（cache.upload_dedup_enabled）"
               >
                 {isUploadDedupEnabled ? (
                   <ToggleRight className="h-10 w-10 text-primary" />
@@ -119,9 +120,9 @@ export function RuntimeControlsSection({
 
             <div className="flex items-start justify-between gap-4 rounded-xl border border-border bg-muted/30 p-4">
               <div>
-                <div className="text-sm font-semibold text-foreground">Chat 响应缓存（Redis）</div>
+                <div className="text-sm font-semibold text-foreground">对话响应缓存（Redis）</div>
                 <div className="mt-1 text-xs text-muted-foreground">
-                  相同问题+相同文档范围+相同配置命中后直接返回，降低 LLM/检索成本
+                  相同问题+相同文档范围+相同配置命中后直接返回，降低大语言模型（LLM）/检索成本
                 </div>
               </div>
               <button
@@ -130,7 +131,7 @@ export function RuntimeControlsSection({
                   updateCache({ chat_response_cache_enabled: !isChatResponseCacheEnabled })
                 }
                 className="shrink-0"
-                aria-label="Toggle chat response cache"
+                aria-label="切换对话响应缓存（cache.chat_response_cache_enabled）"
               >
                 {isChatResponseCacheEnabled ? (
                   <ToggleRight className="h-10 w-10 text-primary" />
@@ -144,7 +145,7 @@ export function RuntimeControlsSection({
           {isChatResponseCacheEnabled ? (
             <div className="grid grid-cols-1 gap-4 pt-2 md:grid-cols-3">
               <div>
-                <div className="mb-1 text-xs text-muted-foreground">TTL（秒）</div>
+                <div className="mb-1 text-xs text-muted-foreground">过期时间（TTL，秒）</div>
                 <Input
                   type="number"
                   min={0}
@@ -158,7 +159,7 @@ export function RuntimeControlsSection({
                 />
               </div>
               <div>
-                <div className="mb-1 text-xs text-muted-foreground">最大 value bytes</div>
+                <div className="mb-1 text-xs text-muted-foreground">最大值字节数（max_value_bytes）</div>
                 <Input
                   type="number"
                   min={0}
@@ -197,13 +198,14 @@ export function RuntimeControlsSection({
                 PII 脱敏
               </div>
               <div className="mt-1 text-xs text-muted-foreground">
-                对模型输入/输出与工具调用做脱敏（流式输出会做 holdback 以减少漏出）
+                对模型输入/输出与工具调用做脱敏（流式输出会做延迟缓冲 holdback，以减少漏出）
               </div>
             </div>
             <button
               type="button"
               onClick={() => updateSafety({ pii_redaction_enabled: !isPiiRedactionEnabled })}
               className="shrink-0"
+              aria-label="切换 PII 脱敏（safety.pii_redaction_enabled）"
             >
               {isPiiRedactionEnabled ? (
                 <ToggleRight className="h-10 w-10 text-primary" />
@@ -223,7 +225,7 @@ export function RuntimeControlsSection({
                 />
               </div>
               <div>
-                <div className="mb-1 text-xs text-muted-foreground">流式 holdback 字符数</div>
+                <div className="mb-1 text-xs text-muted-foreground">流式延迟缓冲字符数（holdback）</div>
                 <Input
                   type="number"
                   min={0}
@@ -248,13 +250,14 @@ export function RuntimeControlsSection({
                 LangGraph 子图组合（Subgraph）
               </div>
               <div className="mt-1 text-xs text-muted-foreground">
-                将 retrieve/generate 作为子图节点组合（更模块化，便于后续扩展）
+                将检索/生成作为子图节点组合（更模块化，便于后续扩展）
               </div>
             </div>
             <button
               type="button"
               onClick={() => updateLangGraph({ use_subgraphs: !isSubgraphEnabled })}
               className="shrink-0"
+              aria-label="切换子图组合（langgraph.use_subgraphs）"
             >
               {isSubgraphEnabled ? (
                 <ToggleRight className="h-10 w-10 text-primary" />
