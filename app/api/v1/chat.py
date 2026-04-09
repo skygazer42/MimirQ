@@ -580,6 +580,10 @@ def _touch_conversation_after_turn(
 ) -> None:
     if conversation_id is None:
         return
+    # Lightweight endpoint tests may inject a minimal fake DB with only
+    # add/flush/commit; skip this best-effort touch update in that case.
+    if not hasattr(db, "query"):
+        return
     db.query(Conversation).filter(
         Conversation.id == conversation_id,
         Conversation.tenant_id == tenant_id,

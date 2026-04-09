@@ -44,7 +44,7 @@ export function RagasMetricSelector({
         <label
           key={metric.key}
           className={cn(
-            'flex items-start gap-2.5 rounded-lg border border-border/70 bg-white px-2.5 py-1.5',
+            'flex items-start gap-2.5 rounded-lg border border-border/70 bg-card px-2.5 py-1.5',
             disabled && 'opacity-60',
             itemClassName
           )}

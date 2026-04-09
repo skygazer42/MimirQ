@@ -82,7 +82,7 @@ function DiagnosticsInlineStat({
   tone?: 'muted' | 'neutral' | 'positive' | 'negative'
 }>) {
   return (
-    <div className="flex items-center gap-2 rounded-full border border-border/70 bg-white/90 px-2.5 py-1">
+    <div className="flex items-center gap-2 rounded-full border border-border/70 bg-card/90 px-2.5 py-1">
       <span className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">{label}</span>
       <span
         className={cn(
@@ -114,7 +114,7 @@ function DiagnosticsSection({
   className?: string
 }>) {
   return (
-    <section className={cn('space-y-2.5 rounded-lg border border-border/70 bg-white px-3.5 py-3', className)}>
+    <section className={cn('space-y-2.5 rounded-lg border border-border/70 bg-card px-3.5 py-3', className)}>
       <div className="space-y-1">
         <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">{label}</div>
         {description ? <p className="text-[11px] leading-5 text-muted-foreground">{description}</p> : null}
@@ -140,7 +140,7 @@ function DiagnosticsMetricTile({
   const accentClasses =
     accent === 'sky'
       ? {
-          surface: 'border-sky-200/80 bg-gradient-to-b from-sky-50/80 to-white',
+          surface: 'border-sky-200/80 bg-sky-50/80',
           label: 'text-sky-700',
           dot: 'bg-sky-400',
           value: 'text-sky-900',
@@ -148,7 +148,7 @@ function DiagnosticsMetricTile({
         }
       : accent === 'violet'
         ? {
-            surface: 'border-violet-200/80 bg-gradient-to-b from-violet-50/80 to-white',
+            surface: 'border-violet-200/80 bg-violet-50/80',
             label: 'text-violet-700',
             dot: 'bg-violet-400',
             value: 'text-violet-900',
@@ -156,7 +156,7 @@ function DiagnosticsMetricTile({
           }
         : accent === 'emerald'
           ? {
-              surface: 'border-emerald-200/80 bg-gradient-to-b from-emerald-50/75 to-white',
+              surface: 'border-emerald-200/80 bg-emerald-50/75',
               label: 'text-emerald-700',
               dot: 'bg-emerald-400',
               value: 'text-emerald-900',
@@ -164,7 +164,7 @@ function DiagnosticsMetricTile({
             }
           : accent === 'amber'
             ? {
-                surface: 'border-amber-200/80 bg-gradient-to-b from-amber-50/75 to-white',
+                surface: 'border-amber-200/80 bg-amber-50/75',
                 label: 'text-amber-700',
                 dot: 'bg-amber-400',
                 value: 'text-amber-900',
@@ -220,13 +220,13 @@ function DiagnosticsToggleCard({
     tone === 'sky'
       ? {
           surface: 'border-border/70 bg-background',
-          box: 'border-sky-200/80 bg-white text-sky-600',
+          box: 'border-sky-200/80 bg-card text-sky-600',
           badge: 'text-sky-700',
           dot: 'bg-sky-400',
         }
       : {
           surface: 'border-border/70 bg-background',
-          box: 'border-emerald-200/80 bg-white text-emerald-600',
+          box: 'border-emerald-200/80 bg-card text-emerald-600',
           badge: 'text-emerald-700',
           dot: 'bg-emerald-400',
         }
@@ -246,7 +246,7 @@ function DiagnosticsToggleCard({
               </div>
               <div className="mt-1 text-[13px] font-semibold leading-4 text-foreground">{title}</div>
             </div>
-            <span className="inline-flex shrink-0 items-center rounded-full border border-border/70 bg-white/90 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+            <span className="inline-flex shrink-0 items-center rounded-full border border-border/70 bg-card/90 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
               {stateLabel}
             </span>
           </div>
@@ -282,7 +282,7 @@ function DiagnosticsJsonPanel({
   rows?: number
 }>) {
   return (
-    <div className="rounded-lg border border-border/70 bg-white">
+    <div className="rounded-lg border border-border/70 bg-card">
       <div className="border-b border-border/70 px-4 py-3">
         <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">{label}</div>
       </div>
@@ -558,7 +558,7 @@ export function KGDiagnosticsPage() {
           <div className="flex min-h-[72px] items-center justify-between gap-4 px-4 py-3 md:px-6">
             <div className="min-w-0">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border/70 bg-white text-sky-600 shadow-sm">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border/70 bg-card text-sky-600 shadow-sm">
                   <Activity className="h-4 w-4" aria-hidden="true" />
                 </div>
                 <div className="min-w-0">
@@ -597,7 +597,7 @@ export function KGDiagnosticsPage() {
                         value={datasetId}
                         onChange={(e) => setDatasetId(e.target.value)}
                         placeholder={t('runConfig.datasetPlaceholder')}
-                        className="h-9 rounded-lg border-border/70 bg-white/95 font-mono text-xs shadow-none"
+                        className="h-9 rounded-lg border-border/70 bg-card/95 font-mono text-xs shadow-none"
                       />
                     </div>
                   </DiagnosticsSection>
@@ -616,7 +616,7 @@ export function KGDiagnosticsPage() {
                           onChange={(e) => setMaxCases(Number(e.target.value || 0))}
                           min={1}
                           max={200}
-                          className="h-9 rounded-lg border-border/70 bg-white/95 text-sm shadow-none"
+                          className="h-9 rounded-lg border-border/70 bg-card/95 text-sm shadow-none"
                         />
                       </div>
                       <div className="space-y-1">
@@ -627,13 +627,13 @@ export function KGDiagnosticsPage() {
                           onChange={(e) => setK(Number(e.target.value || 0))}
                           min={1}
                           max={50}
-                          className="h-9 rounded-lg border-border/70 bg-white/95 text-sm shadow-none"
+                          className="h-9 rounded-lg border-border/70 bg-card/95 text-sm shadow-none"
                         />
                       </div>
                       <div className="space-y-1 md:col-span-2">
                         <Label className="min-h-[18px] text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{t('runConfig.hardcaseMode')}</Label>
                         <Select value={hardcaseMode} onValueChange={(v) => setHardcaseMode(v as KGHardcaseMode)}>
-                          <SelectTrigger className="h-9 rounded-lg border-border/70 bg-white/95 text-sm shadow-none">
+                          <SelectTrigger className="h-9 rounded-lg border-border/70 bg-card/95 text-sm shadow-none">
                             <SelectValue placeholder={t('runConfig.hardcaseModePlaceholder')} />
                           </SelectTrigger>
                           <SelectContent>
@@ -653,7 +653,7 @@ export function KGDiagnosticsPage() {
                           onChange={(e) => setHardcasesPerFailed(Number(e.target.value || 0))}
                           min={0}
                           max={20}
-                          className="h-9 rounded-lg border-border/70 bg-white/95 text-sm shadow-none"
+                          className="h-9 rounded-lg border-border/70 bg-card/95 text-sm shadow-none"
                         />
                       </div>
                       <div className="space-y-1">
@@ -666,7 +666,7 @@ export function KGDiagnosticsPage() {
                           onChange={(e) => setMaxFailedForHardcase(Number(e.target.value || 0))}
                           min={0}
                           max={200}
-                          className="h-9 rounded-lg border-border/70 bg-white/95 text-sm shadow-none"
+                          className="h-9 rounded-lg border-border/70 bg-card/95 text-sm shadow-none"
                         />
                       </div>
                       <div className="space-y-1 md:col-span-2">
@@ -678,7 +678,7 @@ export function KGDiagnosticsPage() {
                           min={0}
                           max={2}
                           step={0.1}
-                          className="h-9 rounded-lg border-border/70 bg-white/95 text-sm shadow-none"
+                          className="h-9 rounded-lg border-border/70 bg-card/95 text-sm shadow-none"
                         />
                       </div>
                     </div>
@@ -696,7 +696,7 @@ export function KGDiagnosticsPage() {
                           value={extractSkills}
                           onValueChange={(value) => setExtractSkills(coerceOneOf(KG_EXTRACT_MODE_VALUES, value, 'auto'))}
                         >
-                          <SelectTrigger className="h-9 rounded-lg border-border/70 bg-white/95 text-sm shadow-none">
+                          <SelectTrigger className="h-9 rounded-lg border-border/70 bg-card/95 text-sm shadow-none">
                             <SelectValue placeholder={t('runConfig.extractModePlaceholder')} />
                           </SelectTrigger>
                           <SelectContent>
@@ -713,7 +713,7 @@ export function KGDiagnosticsPage() {
                           value={extractRelations}
                           onValueChange={(value) => setExtractRelations(coerceOneOf(KG_EXTRACT_MODE_VALUES, value, 'auto'))}
                         >
-                          <SelectTrigger className="h-9 rounded-lg border-border/70 bg-white/95 text-sm shadow-none">
+                          <SelectTrigger className="h-9 rounded-lg border-border/70 bg-card/95 text-sm shadow-none">
                             <SelectValue placeholder={t('runConfig.extractModePlaceholder')} />
                           </SelectTrigger>
                           <SelectContent>
@@ -767,7 +767,7 @@ export function KGDiagnosticsPage() {
                 <div className="mt-2 grid grid-cols-2 gap-2">
                   <Button
                     variant="outline"
-                    className="h-9 rounded-lg border-border/70 bg-white/95 text-xs"
+                    className="h-9 rounded-lg border-border/70 bg-card/95 text-xs"
                     onClick={refreshRuns}
                     disabled={runsLoading}
                   >
@@ -776,7 +776,7 @@ export function KGDiagnosticsPage() {
                   </Button>
                   <Button
                     variant="outline"
-                    className="h-9 rounded-lg border-border/70 bg-white/95 text-xs"
+                    className="h-9 rounded-lg border-border/70 bg-card/95 text-xs"
                     onClick={() => {
                       const base = sanitizeFilename(`kg_diagnostics_${datasetId.trim() || 'dataset'}`)
                       downloadJson(runResp ?? {}, `${base}.json`)
@@ -794,9 +794,9 @@ export function KGDiagnosticsPage() {
             </div>
           </aside>
 
-          <section className="min-w-0 flex-1 bg-white">
+          <section className="min-w-0 flex-1 bg-card">
             <Tabs value={activeView} onValueChange={(value) => setActiveView(value as DiagnosticsView)} className="flex h-full min-h-0 flex-col">
-              <div className="shrink-0 border-b border-border/70 bg-white">
+              <div className="shrink-0 border-b border-border/70 bg-card">
                 <div className="flex flex-col gap-3 px-4 py-3">
                   <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                     <div>
@@ -864,7 +864,7 @@ export function KGDiagnosticsPage() {
                     {summary ? (
                       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_420px]">
                         <div className="space-y-4">
-                          <div className="rounded-lg border border-border/70 bg-white">
+                          <div className="rounded-lg border border-border/70 bg-card">
                             <div className="border-b border-border/70 px-4 py-3">
                               <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">{t('workspace.runStateTitle')}</div>
                             </div>
@@ -889,7 +889,7 @@ export function KGDiagnosticsPage() {
                             </div>
                           </div>
 
-                          <div className="rounded-lg border border-border/70 bg-white">
+                          <div className="rounded-lg border border-border/70 bg-card">
                             <div className="border-b border-border/70 px-4 py-3">
                               <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">{t('workspace.failuresPanelTitle')}</div>
                             </div>
@@ -934,7 +934,7 @@ export function KGDiagnosticsPage() {
                           onChange={(e) => setQualityDocLimit(Number(e.target.value || 0))}
                           min={1}
                           max={2000}
-                          className="h-10 rounded-lg border-border/70 bg-white text-sm shadow-none"
+                          className="h-10 rounded-lg border-border/70 bg-card text-sm shadow-none"
                         />
                       </div>
                       <div className="space-y-1.5">
@@ -943,13 +943,13 @@ export function KGDiagnosticsPage() {
                           value={qualityPipelineHash}
                           onChange={(e) => setQualityPipelineHash(e.target.value)}
                           placeholder={t('qualityReport.pipelineHashPlaceholder')}
-                          className="h-10 rounded-lg border-border/70 bg-white font-mono text-xs shadow-none"
+                          className="h-10 rounded-lg border-border/70 bg-card font-mono text-xs shadow-none"
                         />
                       </div>
                       <div className="flex items-end">
                         <Button
                           variant="outline"
-                          className="h-10 rounded-lg border-border/70 bg-white text-xs"
+                          className="h-10 rounded-lg border-border/70 bg-card text-xs"
                           onClick={loadQualityReport}
                           disabled={qualityLoading}
                         >
@@ -965,7 +965,7 @@ export function KGDiagnosticsPage() {
                     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
                       <div className="space-y-4">
                         {qualityObject ? (
-                          <div className="rounded-lg border border-border/70 bg-white">
+                          <div className="rounded-lg border border-border/70 bg-card">
                             <div className="border-b border-border/70 px-4 py-3">
                               <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">{t('workspace.qualityHighlightsTitle')}</div>
                             </div>
@@ -1004,7 +1004,7 @@ export function KGDiagnosticsPage() {
                         <Label className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{t('runs.runA')}</Label>
                         <div className="flex gap-2">
                           <Select value={selectedRunA} onValueChange={(v) => setSelectedRunA(v)}>
-                            <SelectTrigger className="h-10 rounded-lg border-border/70 bg-white text-sm shadow-none">
+                            <SelectTrigger className="h-10 rounded-lg border-border/70 bg-card text-sm shadow-none">
                               <SelectValue placeholder={t('runs.runAPlaceholder')} />
                             </SelectTrigger>
                             <SelectContent>
@@ -1017,7 +1017,7 @@ export function KGDiagnosticsPage() {
                           </Select>
                           <Button
                             variant="outline"
-                            className="h-10 rounded-lg border-border/70 bg-white text-xs"
+                            className="h-10 rounded-lg border-border/70 bg-card text-xs"
                             onClick={() => loadRun('a', selectedRunA)}
                             disabled={!selectedRunA}
                           >
@@ -1030,7 +1030,7 @@ export function KGDiagnosticsPage() {
                         <Label className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{t('runs.runB')}</Label>
                         <div className="flex gap-2">
                           <Select value={selectedRunB} onValueChange={(v) => setSelectedRunB(v)}>
-                            <SelectTrigger className="h-10 rounded-lg border-border/70 bg-white text-sm shadow-none">
+                            <SelectTrigger className="h-10 rounded-lg border-border/70 bg-card text-sm shadow-none">
                               <SelectValue placeholder={t('runs.runBPlaceholder')} />
                             </SelectTrigger>
                             <SelectContent>
@@ -1043,7 +1043,7 @@ export function KGDiagnosticsPage() {
                           </Select>
                           <Button
                             variant="outline"
-                            className="h-10 rounded-lg border-border/70 bg-white text-xs"
+                            className="h-10 rounded-lg border-border/70 bg-card text-xs"
                             onClick={() => loadRun('b', selectedRunB)}
                             disabled={!selectedRunB}
                           >
@@ -1055,7 +1055,7 @@ export function KGDiagnosticsPage() {
                       <div className="flex items-end">
                         <Button
                           variant="outline"
-                          className="h-10 rounded-lg border-border/70 bg-white text-xs"
+                          className="h-10 rounded-lg border-border/70 bg-card text-xs"
                           onClick={refreshRuns}
                           disabled={runsLoading}
                         >
@@ -1067,7 +1067,7 @@ export function KGDiagnosticsPage() {
                       <div className="flex items-end">
                         <Button
                           variant="outline"
-                          className="h-10 rounded-lg border-border/70 bg-white text-xs"
+                          className="h-10 rounded-lg border-border/70 bg-card text-xs"
                           onClick={() => {
                             const a = String(detailA?.run?.id || '').slice(0, 8) || 'A'
                             const b = String(detailB?.run?.id || '').slice(0, 8) || 'B'
@@ -1096,7 +1096,7 @@ export function KGDiagnosticsPage() {
                             <DiagnosticsMetricTile label={t('compare.summaryKeys')} value={diffSummaryEntries.length} />
                           </div>
 
-                          <div className="rounded-lg border border-border/70 bg-white">
+                          <div className="rounded-lg border border-border/70 bg-card">
                             <div className="border-b border-border/70 px-4 py-3">
                               <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">{t('compare.changedCases')}</div>
                             </div>
@@ -1122,7 +1122,7 @@ export function KGDiagnosticsPage() {
                         </div>
 
                         <div className="space-y-4">
-                          <div className="rounded-lg border border-border/70 bg-white">
+                          <div className="rounded-lg border border-border/70 bg-card">
                             <div className="border-b border-border/70 px-4 py-3">
                               <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">{t('workspace.compareSummaryTitle')}</div>
                             </div>

@@ -28,10 +28,7 @@ describe('next-intl locale routing source', () => {
     expect(request).toContain('locale,')
     expect(request).toContain('messages: zhCNMessages')
 
-    expect(proxy).toContain("import createMiddleware from 'next-intl/middleware'")
-    expect(proxy).toContain("import { routing } from './i18n/routing'")
-    expect(proxy).toContain('const handleI18nRouting = createMiddleware(routing)')
-    expect(proxy).toContain('const response = handleI18nRouting(')
+    expect(proxy).toContain('const response = NextResponse.next({')
 
     expect(localeLayout).toContain("import { setRequestLocale } from 'next-intl/server'")
     expect(localeLayout).toContain("import { notFound } from 'next/navigation'")

@@ -40,7 +40,7 @@ function RegressionInlineStat({
         ? 'border-amber-200/80 bg-amber-50/90'
         : tone === 'info'
           ? 'border-sky-200/80 bg-sky-50/90'
-          : 'border-slate-200/80 bg-white/90'
+          : 'border-slate-200/80 bg-card/90'
 
   const valueClass =
     tone === 'success'
@@ -71,7 +71,7 @@ function EmbeddedSection({
   className?: string
 }>) {
   return (
-    <section className={cn('rounded-2xl border border-slate-200/80 bg-white px-2.5 py-2.5', className)}>
+    <section className={cn('rounded-2xl border border-slate-200/80 bg-card px-2.5 py-2.5', className)}>
       <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">{title}</div>
       {description ? <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{description}</p> : null}
       <div className="mt-3">{children}</div>
@@ -93,7 +93,7 @@ function EmbeddedToggleCard({
   disabled?: boolean
 }>) {
   return (
-    <div className={cn('rounded-xl border border-slate-200/80 bg-white/90 px-2.5 py-2', disabled && 'opacity-60')}>
+    <div className={cn('rounded-xl border border-slate-200/80 bg-card/90 px-2.5 py-2', disabled && 'opacity-60')}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-sm font-medium text-foreground">{title}</div>
@@ -410,7 +410,7 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
       >
         {embedded ? (
           isConfigPanelCollapsed ? (
-            <aside className="group relative flex min-h-0 items-center justify-center rounded-[28px] border border-slate-200/80 bg-white shadow-[0_16px_40px_rgba(15,23,42,0.04)]">
+            <aside className="group relative flex min-h-0 items-center justify-center rounded-[28px] border border-slate-200/80 bg-card shadow-[0_16px_40px_rgba(15,23,42,0.04)]">
               <button
                 type="button"
                 className="focus-ring relative h-full w-2.5 rounded-full transition-colors hover:bg-slate-200/70"
@@ -419,14 +419,14 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
                 aria-label="展开回归配置"
               >
                 <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/70" aria-hidden="true" />
-                <span className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-border/70 bg-white/95 p-1 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                <span className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-border/70 bg-card/95 p-1 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                   <ChevronRight className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
                 </span>
               </button>
             </aside>
           ) : (
-            <aside className="flex min-h-0 flex-col overflow-hidden rounded-[28px] border border-slate-200/80 bg-white shadow-[0_16px_40px_rgba(15,23,42,0.04)]">
-              <div className="shrink-0 border-b border-slate-200/80 bg-gradient-to-r from-sky-100/70 via-cyan-50/55 to-white px-3 py-2.5">
+            <aside className="flex min-h-0 flex-col overflow-hidden rounded-[28px] border border-slate-200/80 bg-card shadow-[0_16px_40px_rgba(15,23,42,0.04)]">
+              <div className="shrink-0 border-b border-slate-200/80 bg-primary/[0.12] px-3 py-2.5">
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">Regression Studio</div>
@@ -434,7 +434,7 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
                     <p className="mt-1 text-[11px] leading-4 text-muted-foreground">固定数据集后，配置评测模式与评分维度，再到测试用例库批量发起回归。</p>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <Button variant="outline" size="sm" className="h-7 gap-1.5 rounded-lg border-slate-200/80 bg-white/90 px-2 text-[11px]" onClick={() => setShowGenerationDialog(true)}>
+                    <Button variant="outline" size="sm" className="h-7 gap-1.5 rounded-lg border-slate-200/80 bg-card/90 px-2 text-[11px]" onClick={() => setShowGenerationDialog(true)}>
                       <Sparkles className="h-3.5 w-3.5" />
                       AI 生成问题
                     </Button>
@@ -464,7 +464,7 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
                   className="bg-[linear-gradient(180deg,rgba(245,251,255,0.96)_0%,rgba(255,255,255,0.94)_100%)]"
                 >
                   <Select value={selectedDatasetId} onValueChange={setSelectedDatasetId} disabled={isLoadingDatasets || !datasets.length}>
-                    <SelectTrigger className="h-9 rounded-xl border-slate-200/80 bg-white/95">
+                    <SelectTrigger className="h-9 rounded-xl border-slate-200/80 bg-card/95">
                       <SelectValue placeholder={isLoadingDatasets ? '加载中...' : '选择数据集'} />
                     </SelectTrigger>
                     <SelectContent>
@@ -528,7 +528,7 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
                     onMetricKeysChange={setMetricKeys}
                     disabled={retrievalOnly}
                     className="grid gap-2"
-                    itemClassName="gap-3 rounded-xl border border-slate-200/80 bg-white/90 px-2.5 py-1.5"
+                    itemClassName="gap-3 rounded-xl border border-slate-200/80 bg-card/90 px-2.5 py-1.5"
                     textWrapClassName="space-y-1"
                     labelClassName="text-sm"
                   />
@@ -539,7 +539,7 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
         ) : null}
 
         {/* 左侧：测试用例管理 */}
-        <div className={cn("flex flex-col bg-card rounded-2xl border border-border", embedded ? "min-w-0 rounded-[28px] border-slate-200/80 bg-white shadow-[0_16px_40px_rgba(15,23,42,0.04)]" : "w-1/3")}>
+        <div className={cn("flex flex-col bg-card rounded-2xl border border-border", embedded ? "min-w-0 rounded-[28px] border-slate-200/80 bg-card shadow-[0_16px_40px_rgba(15,23,42,0.04)]" : "w-1/3")}>
           <TestCaseManager
             datasetId={selectedDatasetId || null}
             dense={embedded}
@@ -553,7 +553,7 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
         {/* 右侧：运行结果 */}
         <div className={cn("flex-1 flex flex-col gap-2.5", embedded && "min-w-0")}>
           {/* 运行历史列表 */}
-          <div className={cn("bg-card border border-border rounded-2xl overflow-hidden", embedded && "rounded-[28px] border-slate-200/80 bg-white")}>
+          <div className={cn("bg-card border border-border rounded-2xl overflow-hidden", embedded && "rounded-[28px] border-slate-200/80 bg-card")}>
             <div className={cn("p-3 border-b border-border flex items-center justify-between", embedded && "border-slate-200/80 bg-[#fffef9]")}>
               <div>
                 <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">Run Timeline</div>
@@ -606,7 +606,7 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
 	          </div>
 
 	          {/* 运行详情 */}
-	          <div className={cn("flex-1 bg-card border border-border rounded-2xl p-2.5 overflow-y-auto overscroll-contain no-scrollbar", embedded && "rounded-[28px] border-slate-200/80 bg-white")}>
+	          <div className={cn("flex-1 bg-card border border-border rounded-2xl p-2.5 overflow-y-auto overscroll-contain no-scrollbar", embedded && "rounded-[28px] border-slate-200/80 bg-card")}>
 	            <div className="flex items-center justify-between mb-3">
 	              <div>
 	                <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">Run Detail</div>

@@ -432,32 +432,32 @@ export default function ReportsCenterPage() {
         bodyContainerClassName="max-w-none"
       >
         <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_22%)] shadow-[0_1px_0_rgba(15,23,42,0.04)]">
-          <div className="flex flex-col gap-2.5 border-b border-slate-200/80 bg-gradient-to-r from-sky-50/65 via-white to-slate-50 px-4 py-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex flex-col gap-2.5 border-b border-slate-200/80 bg-muted/35 px-4 py-3 lg:flex-row lg:items-end lg:justify-between">
             <div className="min-w-0">
               <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">报告中心 · 数据质检台</div>
               <div className="mt-1 text-[15px] font-semibold tracking-[-0.01em] text-foreground">数据集报告导出与审计预览</div>
               <p className="mt-1 text-[12px] leading-5 text-muted-foreground">按数据集与 pipeline_hash 聚合质量与合规指标，并导出 JSON / HTML / RAG 审计。</p>
             </div>
             <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-              <Badge variant="outline" className="rounded-md border-slate-200/80 bg-white text-[11px] text-slate-600"><Database className="mr-1 size-3" />数据集 {datasets.length}</Badge>
-              <Badge variant="outline" className="rounded-md border-slate-200/80 bg-white text-[11px] text-slate-600"><FileSearch className="mr-1 size-3" />文档 {totalDocs}</Badge>
-              <Badge variant="outline" className="rounded-md border-slate-200/80 bg-white text-[11px] text-slate-600"><Layers className="mr-1 size-3" />流水线 {pipelineVersions.length}</Badge>
-              <Badge variant="outline" className="rounded-md border-slate-200/80 bg-white text-[11px] text-slate-600"><RefreshCw className="mr-1 size-3" />运行 {connectorRuns.length}</Badge>
+              <Badge variant="outline" className="rounded-md border-slate-200/80 bg-card text-[11px] text-slate-600"><Database className="mr-1 size-3" />数据集 {datasets.length}</Badge>
+              <Badge variant="outline" className="rounded-md border-slate-200/80 bg-card text-[11px] text-slate-600"><FileSearch className="mr-1 size-3" />文档 {totalDocs}</Badge>
+              <Badge variant="outline" className="rounded-md border-slate-200/80 bg-card text-[11px] text-slate-600"><Layers className="mr-1 size-3" />流水线 {pipelineVersions.length}</Badge>
+              <Badge variant="outline" className="rounded-md border-slate-200/80 bg-card text-[11px] text-slate-600"><RefreshCw className="mr-1 size-3" />运行 {connectorRuns.length}</Badge>
             </div>
           </div>
           <div className="space-y-3 p-3">
-          <section className="space-y-3 rounded-xl border border-slate-200/80 bg-white p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
+          <section className="space-y-3 rounded-xl border border-slate-200/80 bg-card p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div className="space-y-1">
                 <div className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-800"><SlidersHorizontal className="size-4 text-sky-600" />参数配置</div>
                 <div className="text-xs text-muted-foreground">选择数据集与可选 pipeline_hash，点击“刷新预览”或直接导出。</div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <Button variant="outline" className="h-8 rounded-lg border-slate-200/80 bg-white text-slate-700 hover:bg-slate-50" onClick={() => detachPromise(loadDatasets())} disabled={isLoadingDatasets} aria-label="刷新数据集列表">
+                <Button variant="outline" className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50" onClick={() => detachPromise(loadDatasets())} disabled={isLoadingDatasets} aria-label="刷新数据集列表">
                   {isLoadingDatasets ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="size-4" />}
                   <span className="ml-2">刷新数据集</span>
                 </Button>
-                <Button className="h-8 rounded-lg bg-sky-600 text-white shadow-[0_6px_16px_rgba(2,132,199,0.2)] hover:bg-sky-500" onClick={() => detachPromise(loadReport())} disabled={!datasetId || isLoadingReport} aria-label="刷新报告预览">
+                <Button className="h-8 rounded-lg bg-primary text-primary-foreground shadow-[0_6px_16px_hsl(var(--primary)/0.18)] hover:bg-primary/90" onClick={() => detachPromise(loadReport())} disabled={!datasetId || isLoadingReport} aria-label="刷新报告预览">
                   {isLoadingReport ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="size-4" />}
                   <span className="ml-2">刷新预览</span>
                 </Button>
@@ -467,7 +467,7 @@ export default function ReportsCenterPage() {
               <div className="space-y-2">
                 <Label htmlFor="dataset-select">数据集</Label>
                 <Select value={datasetId} onValueChange={(v) => setDatasetId(v)}>
-                  <SelectTrigger id="dataset-select" className="h-8 w-full border-slate-200/80 bg-white text-[12px]">
+                  <SelectTrigger id="dataset-select" className="h-8 w-full border-slate-200/80 bg-card text-[12px]">
                     <SelectValue placeholder={isLoadingDatasets ? '加载中...' : '请选择数据集'} />
                   </SelectTrigger>
                   <SelectContent>
@@ -487,7 +487,7 @@ export default function ReportsCenterPage() {
                   value={pipelineHash}
                   onChange={(e) => setPipelineHash(e.target.value)}
                   placeholder="留空表示全部活动版本"
-                  className="h-8 border-slate-200/80 bg-white text-[12px]"
+                  className="h-8 border-slate-200/80 bg-card text-[12px]"
                 />
               </div>
 
@@ -497,7 +497,7 @@ export default function ReportsCenterPage() {
                   value={String(connectorRunsLimit)}
                   onValueChange={(v) => setConnectorRunsLimit(Number(v || 20))}
                 >
-                  <SelectTrigger id="connector-limit" className="h-8 w-full border-slate-200/80 bg-white text-[12px]">
+                  <SelectTrigger id="connector-limit" className="h-8 w-full border-slate-200/80 bg-card text-[12px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -521,7 +521,7 @@ export default function ReportsCenterPage() {
 
               <div className="flex items-center gap-2">
                 <Button
-                  className="h-8 rounded-lg bg-sky-600 text-white shadow-[0_6px_16px_rgba(2,132,199,0.2)] hover:bg-sky-500"
+                  className="h-8 rounded-lg bg-primary text-primary-foreground shadow-[0_6px_16px_hsl(var(--primary)/0.18)] hover:bg-primary/90"
                   onClick={() => detachPromise(handleExportJson())}
                   disabled={!datasetId || isExportingJson}
                   aria-label="导出 JSON 报告"
@@ -531,7 +531,7 @@ export default function ReportsCenterPage() {
                 </Button>
                 <Button
                   variant="outline"
-                  className="h-8 rounded-lg border-slate-200/80 bg-white text-slate-700 hover:bg-slate-50"
+                  className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50"
                   onClick={handleExportChartsJson}
                   disabled={!datasetId || !report}
                   aria-label="导出 Charts JSON"
@@ -541,7 +541,7 @@ export default function ReportsCenterPage() {
                 </Button>
                 <Button
                   variant="outline"
-                  className="h-8 rounded-lg border-slate-200/80 bg-white text-slate-700 hover:bg-slate-50"
+                  className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50"
                   onClick={() => detachPromise(handleExportRagAuditHtml())}
                   disabled={!datasetId || isExportingRagAuditHtml}
                   aria-label="导出 RAG Audit 报告"
@@ -555,7 +555,7 @@ export default function ReportsCenterPage() {
                 </Button>
                 <Button
                   variant="outline"
-                  className="h-8 rounded-lg border-slate-200/80 bg-white text-slate-700 hover:bg-slate-50"
+                  className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50"
                   onClick={() => detachPromise(handleExportHtml())}
                   disabled={!datasetId || isExportingHtml}
                   aria-label="导出 HTML 报告"
@@ -570,7 +570,7 @@ export default function ReportsCenterPage() {
           {(() => {
     if (datasetId) {
         if (report) {
-            return (<section className="space-y-3 rounded-xl border border-slate-200/80 bg-white p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
+            return (<section className="space-y-3 rounded-xl border border-slate-200/80 bg-card p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
               <div className="space-y-1">
                 <div className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-800"><Gauge className="size-4 text-sky-600" />预览</div>
                 <div className="text-xs text-muted-foreground">
@@ -586,7 +586,7 @@ export default function ReportsCenterPage() {
                 <StatCard icon={RefreshCw} label="连接器运行" value={String(connectorRuns.length)} color="blue"/>
               </StatsGrid>
 
-              {governance ? (<div className="rounded-xl border border-slate-200/80 bg-white p-3 space-y-3">
+              {governance ? (<div className="rounded-xl border border-slate-200/80 bg-card p-3 space-y-3">
                   <div className="flex items-start justify-between gap-3 flex-wrap">
                     <div className="space-y-1">
                       <div className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-800"><ShieldAlert className="size-4 text-sky-600" />治理指标</div>
@@ -608,7 +608,7 @@ export default function ReportsCenterPage() {
                   </StatsGrid>
 
                   <div className="grid gap-3 md:grid-cols-2">
-                    <div className="rounded-xl border border-slate-200/80 bg-white p-2.5">
+                    <div className="rounded-xl border border-slate-200/80 bg-card p-2.5">
                       <div className="text-[13px] font-semibold text-slate-800 mb-1.5">过滤原因分布（Top）</div>
                       {dropReasonsData.length === 0 ? (<div className="text-sm text-muted-foreground">暂无数据</div>) : (<div className="h-[236px]">
                           <ResponsiveContainer width="100%" height="100%">
@@ -622,7 +622,7 @@ export default function ReportsCenterPage() {
                         </div>)}
                     </div>
 
-                    <div className="rounded-xl border border-slate-200/80 bg-white p-2.5">
+                    <div className="rounded-xl border border-slate-200/80 bg-card p-2.5">
                       <div className="text-[13px] font-semibold text-slate-800 mb-1.5">规则包命中（Top）</div>
                       {rulePacksData.length === 0 ? (<div className="text-sm text-muted-foreground">暂无数据</div>) : (<div className="h-[236px]">
                           <ResponsiveContainer width="100%" height="100%">
@@ -639,11 +639,11 @@ export default function ReportsCenterPage() {
                         </div>)}
                     </div>
                   </div>
-                </div>) : (<div className="rounded-xl border border-slate-200/80 bg-white p-2.5">
+                </div>) : (<div className="rounded-xl border border-slate-200/80 bg-card p-2.5">
                   <div className="text-sm text-muted-foreground">暂无治理指标（后端未返回治理指标数据）</div>
                 </div>)}
 
-              {governanceAudit ? (<div className="rounded-xl border border-slate-200/80 bg-white p-3 space-y-3">
+              {governanceAudit ? (<div className="rounded-xl border border-slate-200/80 bg-card p-3 space-y-3">
                   <div className="flex items-start justify-between gap-3 flex-wrap">
                     <div className="space-y-1">
                       <div className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-800"><BarChart3 className="size-4 text-sky-600" />治理效果审计</div>
@@ -671,7 +671,7 @@ export default function ReportsCenterPage() {
                   </StatsGrid>
 
                   <div className="grid gap-3 md:grid-cols-2">
-                    <div className="rounded-xl border border-slate-200/80 bg-white p-2.5">
+                    <div className="rounded-xl border border-slate-200/80 bg-card p-2.5">
                       <div className="text-[13px] font-semibold text-slate-800 mb-1.5">字符缩减分布（%）</div>
                       {govAuditReductionHistData.length === 0 ? (<div className="text-sm text-muted-foreground">暂无数据</div>) : (<div className="h-[236px]">
                           <ResponsiveContainer width="100%" height="100%">
@@ -688,7 +688,7 @@ export default function ReportsCenterPage() {
                         </div>)}
                     </div>
 
-                    <div className="rounded-xl border border-slate-200/80 bg-white p-2.5">
+                    <div className="rounded-xl border border-slate-200/80 bg-card p-2.5">
                       <div className="text-[13px] font-semibold text-slate-800 mb-1.5">规则效果（Top）</div>
                       {govAuditEffectsData.length === 0 ? (<div className="text-sm text-muted-foreground">暂无数据</div>) : (<div className="h-[236px]">
                           <ResponsiveContainer width="100%" height="100%">
@@ -707,7 +707,7 @@ export default function ReportsCenterPage() {
                   </div>
 
                   <div className="grid gap-3 md:grid-cols-2">
-                    <div className="rounded-xl border border-slate-200/80 bg-white p-2.5">
+                    <div className="rounded-xl border border-slate-200/80 bg-card p-2.5">
                       <div className="text-[13px] font-semibold text-slate-800 mb-1.5">文本密度分布（%）</div>
                       {govAuditDensityHistData.length === 0 ? (<div className="text-sm text-muted-foreground">暂无数据</div>) : (<div className="h-[236px]">
                           <ResponsiveContainer width="100%" height="100%">
@@ -724,7 +724,7 @@ export default function ReportsCenterPage() {
                         </div>)}
                     </div>
 
-                    <div className="rounded-xl border border-slate-200/80 bg-white p-2.5">
+                    <div className="rounded-xl border border-slate-200/80 bg-card p-2.5">
                       <div className="text-[13px] font-semibold text-slate-800 mb-1.5">标题占比分布（%）</div>
                       {govAuditHeadingRatioHistData.length === 0 ? (<div className="text-sm text-muted-foreground">暂无数据</div>) : (<div className="h-[236px]">
                           <ResponsiveContainer width="100%" height="100%">
@@ -741,12 +741,12 @@ export default function ReportsCenterPage() {
                         </div>)}
                     </div>
                   </div>
-                </div>) : (<div className="rounded-xl border border-slate-200/80 bg-white p-2.5">
+                </div>) : (<div className="rounded-xl border border-slate-200/80 bg-card p-2.5">
                   <div className="text-sm text-muted-foreground">暂无治理效果（后端未返回治理审计数据）</div>
                 </div>)}
 
               <div className="grid gap-3 md:grid-cols-2">
-                <div className="rounded-xl border border-slate-200/80 bg-white p-2.5">
+                <div className="rounded-xl border border-slate-200/80 bg-card p-2.5">
 	                  <div className="flex items-start justify-between gap-3 flex-wrap">
 	                    <div>
 	                      <div className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-800"><FolderTree className="size-4 text-sky-600" />目录分布（Top）</div>
@@ -802,7 +802,7 @@ export default function ReportsCenterPage() {
                 })()}
                 </div>
 
-                <div className="rounded-xl border border-slate-200/80 bg-white p-2.5">
+                <div className="rounded-xl border border-slate-200/80 bg-card p-2.5">
                   <div className="mb-2 flex items-center gap-1.5 text-[13px] font-semibold text-slate-800"><Layers className="size-4 text-sky-600" />流水线版本分布（Top）</div>
                   {pipelineVersions.length === 0 ? (<div className="text-sm text-muted-foreground">暂无数据</div>) : (<div className="space-y-2">
                       {pipelineVersions.slice(0, 10).map((v) => (<div key={v.pipeline_hash} className="flex items-center justify-between gap-3 rounded-md px-2 py-1 hover:bg-sky-50/60">
@@ -814,7 +814,7 @@ export default function ReportsCenterPage() {
                     </div>)}
                 </div>
 
-                <div className="rounded-xl border border-slate-200/80 bg-white p-2.5">
+                <div className="rounded-xl border border-slate-200/80 bg-card p-2.5">
                   <div className="flex items-start justify-between gap-3 flex-wrap">
 	                    <div>
 	                      <div className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-800"><Tags className="size-4 text-sky-600" />分类分布（Top）</div>
@@ -862,7 +862,7 @@ export default function ReportsCenterPage() {
                 })()}
                 </div>
 
-                <div className="rounded-xl border border-slate-200/80 bg-white p-2.5">
+                <div className="rounded-xl border border-slate-200/80 bg-card p-2.5">
                   <div className="mb-2 flex items-center gap-1.5 text-[13px] font-semibold text-slate-800"><RefreshCw className="size-4 text-sky-600" />最近连接器运行</div>
                   {connectorRuns.length === 0 ? (<div className="text-sm text-muted-foreground">暂无数据</div>) : (<div className="space-y-2">
                       {connectorRuns.slice(0, 8).map((r) => (<div key={r.id} className="flex items-start justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-sky-50/60">

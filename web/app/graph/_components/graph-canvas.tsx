@@ -641,15 +641,15 @@ export function GraphCanvas({
           >
             <div
               ref={semanticPanelRef}
-              className={`pointer-events-auto overflow-hidden border border-white/60 bg-[rgba(250,252,255,0.72)] shadow-[12px_18px_46px_-28px_rgba(15,23,42,0.44)] backdrop-blur-xl supports-[backdrop-filter]:bg-[rgba(250,252,255,0.62)] ${
+              className={`pointer-events-auto overflow-hidden border border-border/60 bg-[rgba(250,252,255,0.72)] shadow-[12px_18px_46px_-28px_rgba(15,23,42,0.44)] backdrop-blur-xl supports-[backdrop-filter]:bg-[rgba(250,252,255,0.62)] ${
                 isSemanticListVisible ? 'w-[min(16.75rem,calc(100vw-2rem))] rounded-[1.35rem]' : 'rounded-[1.35rem]'
               }`}
             >
               <div
-                className={`flex items-center gap-2 px-3 py-2.5 ${isSemanticListVisible ? 'border-b border-white/55' : ''}`}
+                className={`flex items-center gap-2 px-3 py-2.5 ${isSemanticListVisible ? 'border-b border-border/55' : ''}`}
               >
                 <div
-                  className="flex h-8 w-8 shrink-0 cursor-grab items-center justify-center rounded-xl border border-white/60 bg-white/55 text-muted-foreground touch-none select-none active:cursor-grabbing"
+                  className="flex h-8 w-8 shrink-0 cursor-grab items-center justify-center rounded-xl border border-border/60 bg-card/55 text-muted-foreground touch-none select-none active:cursor-grabbing"
                   role="button"
                   aria-label="拖动语义图谱列表"
                   onPointerDown={handleSemanticPanelPointerDown}
@@ -667,7 +667,7 @@ export function GraphCanvas({
                 {isSemanticListVisible ? (
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <div className="flex h-7 w-7 items-center justify-center rounded-xl border border-white/70 bg-white/60 shadow-[0_10px_20px_-16px_rgba(15,23,42,0.45)]">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-xl border border-border/70 bg-card/60 shadow-[0_10px_20px_-16px_rgba(15,23,42,0.45)]">
                         <div className="grid grid-cols-2 gap-1">
                           {SEMANTIC_NODE_TONES.slice(0, 4).map((tone) => (
                             <span
@@ -739,7 +739,7 @@ export function GraphCanvas({
                         <h3 id={`${semanticPanelId}-nodes`} className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                           节点
                         </h3>
-                        <div className="inline-flex items-center gap-1 rounded-full border border-white/65 bg-white/55 px-2 py-0.5 text-[10px] text-muted-foreground">
+                        <div className="inline-flex items-center gap-1 rounded-full border border-border/65 bg-card/55 px-2 py-0.5 text-[10px] text-muted-foreground">
                           <Rows3 className="h-3 w-3" />
                           {semanticNodeCount}
                         </div>
@@ -756,7 +756,7 @@ export function GraphCanvas({
                                   <button
                                      ref={(element) => setSemanticNodeButtonRef(node.id, element)}
                                      type="button"
-                                     className="group/node relative flex h-7 w-7 items-center justify-center rounded-xl border border-white/65 bg-white/52 shadow-[0_10px_22px_-18px_rgba(15,23,42,0.45)] backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.04] hover:border-foreground/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+                                     className="group/node relative flex h-7 w-7 items-center justify-center rounded-xl border border-border/65 bg-card/52 shadow-[0_10px_22px_-18px_rgba(15,23,42,0.45)] backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.04] hover:border-foreground/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
                                      aria-label={`聚焦节点：${node.label}`}
                                      aria-pressed={selectedNodeId === node.id}
                                     onFocus={() => {
@@ -787,7 +787,7 @@ export function GraphCanvas({
                                 <TooltipContent
                                   side="left"
                                   align="center"
-                                  className="rounded-2xl border-white/55 bg-[rgba(250,252,255,0.9)] px-3 py-2 text-[11px] text-foreground shadow-[12px_18px_42px_-24px_rgba(15,23,42,0.38)] backdrop-blur-xl"
+                                  className="rounded-2xl border-border/55 bg-[rgba(250,252,255,0.9)] px-3 py-2 text-[11px] text-foreground shadow-[12px_18px_42px_-24px_rgba(15,23,42,0.38)] backdrop-blur-xl"
                                 >
                                   <div className="flex items-start gap-2">
                                     <span className="mt-1 h-2.5 w-2.5 rounded-full" style={{ backgroundColor: tone }} />
@@ -810,7 +810,7 @@ export function GraphCanvas({
                         <h3 id={`${semanticPanelId}-links`} className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                           关系
                         </h3>
-                        <div className="inline-flex items-center gap-1 rounded-full border border-white/65 bg-white/55 px-2 py-0.5 text-[10px] text-muted-foreground">
+                        <div className="inline-flex items-center gap-1 rounded-full border border-border/65 bg-card/55 px-2 py-0.5 text-[10px] text-muted-foreground">
                           {semanticLinkCount}
                         </div>
                       </div>
@@ -818,7 +818,7 @@ export function GraphCanvas({
                         {semanticRelationSummary.map((item) => (
                           <span
                             key={item.relation}
-                            className="inline-flex items-center gap-1 rounded-full border border-white/65 bg-white/58 px-2 py-1 text-[10px] text-slate-600 shadow-[0_8px_20px_-18px_rgba(15,23,42,0.35)]"
+                            className="inline-flex items-center gap-1 rounded-full border border-border/65 bg-card/58 px-2 py-1 text-[10px] text-slate-600 shadow-[0_8px_20px_-18px_rgba(15,23,42,0.35)]"
                           >
                             <span className="h-1.5 w-1.5 rounded-full bg-slate-400/80" />
                             {item.relation}
@@ -826,14 +826,14 @@ export function GraphCanvas({
                           </span>
                         ))}
                         {isSemanticListTruncated ? (
-                          <span className="inline-flex items-center rounded-full border border-dashed border-white/70 bg-white/42 px-2 py-1 text-[10px] text-muted-foreground">
+                          <span className="inline-flex items-center rounded-full border border-dashed border-border/70 bg-card/42 px-2 py-1 text-[10px] text-muted-foreground">
                             仅显示前 {SEMANTIC_LIST_ITEM_LIMIT} 项
                           </span>
                         ) : null}
                       </div>
                     </section>
                     {keyboardRovingIndex >= 0 && semanticNodes[keyboardRovingIndex] ? (
-                      <div className="rounded-2xl border border-white/60 bg-white/48 px-2.5 py-2 text-[11px] text-slate-600 shadow-[0_10px_26px_-22px_rgba(15,23,42,0.38)]">
+                      <div className="rounded-2xl border border-border/60 bg-card/48 px-2.5 py-2 text-[11px] text-slate-600 shadow-[0_10px_26px_-22px_rgba(15,23,42,0.38)]">
                         当前聚焦：<span className="font-semibold text-foreground">{semanticNodes[keyboardRovingIndex].label}</span>
                       </div>
                     ) : null}
@@ -889,7 +889,7 @@ export function GraphCanvas({
                   <circle cx="90" cy="22" r="2.7" fill="hsl(var(--primary))" />
                 </svg>
               </div>
-              <h2 className="mx-auto w-full max-w-[19rem] text-balance text-[1.42rem] font-semibold tracking-tight text-foreground md:text-[1.56rem]">
+              <h2 className="mx-auto w-full max-w-[19rem] text-balance text-[1.42rem] font-semibold  text-foreground md:text-[1.56rem]">
                 {hasActiveScope ? '当前范围暂无图谱' : '选择知识库图谱'}
               </h2>
               <div className="mx-auto mt-3 w-full max-w-[30rem] text-pretty text-sm leading-7 text-muted-foreground md:text-[15px]">

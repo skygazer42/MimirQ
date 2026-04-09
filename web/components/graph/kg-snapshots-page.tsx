@@ -266,7 +266,7 @@ function cellSurfaceClass(status: DiffCellStatus, side: 'left' | 'right') {
   if (status === 'removed') return 'bg-rose-50/90'
   if (status === 'added') return 'bg-emerald-50/90'
   if (status === 'empty') return side === 'left' ? 'bg-rose-50/35' : 'bg-emerald-50/35'
-  return 'bg-white'
+  return 'bg-card'
 }
 
 function tokenClassName(kind: JsonTokenKind) {
@@ -293,7 +293,7 @@ function SnapshotInlineStat({
   valueClassName?: string
 }>) {
   return (
-    <div className="flex items-center gap-2 rounded-full border border-border/70 bg-white/90 px-2.5 py-1">
+    <div className="flex items-center gap-2 rounded-full border border-border/70 bg-card/90 px-2.5 py-1">
       <span className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">{label}</span>
       <span
         title={valueTitle}
@@ -323,7 +323,7 @@ function WorkspaceSection({
   children: ReactNode
 }>) {
   return (
-    <section className="space-y-2.5 rounded-lg border border-border/70 bg-gradient-to-b from-background to-muted/20 p-3">
+    <section className="space-y-2.5 rounded-lg border border-border/70 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.20))] p-3">
       <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">{label}</div>
       {children}
     </section>
@@ -384,7 +384,7 @@ function SnapshotChartTooltip({ active, payload }: Readonly<SnapshotChartTooltip
   if (!active || !row) return null
   const sign = row.delta > 0 ? '+' : ''
   return (
-    <div className="rounded-lg border border-border/70 bg-white px-3 py-2 shadow-sm">
+    <div className="rounded-lg border border-border/70 bg-card px-3 py-2 shadow-sm">
       <div className="font-mono text-[11px] text-muted-foreground">{row.key}</div>
       <div className="mt-1 flex items-center gap-2 text-[11px]">
         <span className="font-mono text-muted-foreground">A {row.a}</span>
@@ -497,14 +497,14 @@ function JsonCodePane({
   const lines = useMemo(() => splitCodeLines(code), [code])
 
   return (
-      <div className="flex h-full min-h-0 flex-col bg-white">
-        <div className="flex shrink-0 items-center justify-between border-b border-border/70 bg-gradient-to-b from-background to-muted/15 px-4 py-2.5">
+      <div className="flex h-full min-h-0 flex-col bg-card">
+        <div className="flex shrink-0 items-center justify-between border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.15))] px-4 py-2.5">
         <div className="min-w-0">
-          <div className="inline-flex items-center rounded-md border border-border/70 bg-white px-2 py-0.5 text-[10px] font-semibold tracking-[0.08em] text-muted-foreground">{label}</div>
+          <div className="inline-flex items-center rounded-md border border-border/70 bg-card px-2 py-0.5 text-[10px] font-semibold tracking-[0.08em] text-muted-foreground">{label}</div>
           <div className="mt-1 truncate text-[13px] font-semibold text-foreground">{title}</div>
           {subtitle ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{subtitle}</div> : null}
         </div>
-        <div className="ml-4 flex shrink-0 items-center gap-1 rounded-md border border-border/70 bg-white p-0.5">
+        <div className="ml-4 flex shrink-0 items-center gap-1 rounded-md border border-border/70 bg-card p-0.5">
           <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" title="复制 JSON" onClick={onCopy}>
             <Copy className="h-4 w-4" aria-hidden="true" />
           </Button>
@@ -514,7 +514,7 @@ function JsonCodePane({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto bg-white">
+      <div className="min-h-0 flex-1 overflow-auto bg-card">
         <div className="min-w-max">
           {lines.map((line, index) => (
             <JsonLine key={`${title}:${index + 1}`} lineNumber={index + 1} text={line} status="single" />
@@ -549,7 +549,7 @@ function SnapshotDiffView({
   const rows = useMemo(() => buildSideBySideDiffRows(leftCode, rightCode), [leftCode, rightCode])
 
   return (
-      <div className="flex h-full min-h-0 flex-col bg-white">
+      <div className="flex h-full min-h-0 flex-col bg-card">
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border/70 bg-background px-4 py-2">
         <div className="min-w-0 flex-1">
           {typeDrift.length > 0 ? (
@@ -583,9 +583,9 @@ function SnapshotDiffView({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto bg-white">
+      <div className="min-h-0 flex-1 overflow-auto bg-card">
         <div className="min-w-[980px]">
-          <div className="sticky top-0 z-10 grid grid-cols-[52px_minmax(0,1fr)_52px_minmax(0,1fr)] border-b border-border/70 bg-gradient-to-b from-background to-muted/10 text-[12px] backdrop-blur">
+          <div className="sticky top-0 z-10 grid grid-cols-[52px_minmax(0,1fr)_52px_minmax(0,1fr)] border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.10))] text-[12px] backdrop-blur">
             <div className="border-r border-border/70 px-3 py-2 text-right font-mono text-muted-foreground">#</div>
             <div className="border-r border-border/70 px-3 py-2">
               <div className="text-[12px] font-semibold tracking-[-0.01em] text-foreground">{titleA}</div>
@@ -635,7 +635,7 @@ function SnapshotAuditPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="shrink-0 border-b border-border/70 bg-gradient-to-b from-background to-muted/20 px-4 py-3">
+      <div className="shrink-0 border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.20))] px-4 py-3">
         <SectionHeading
           eyebrow="Audit"
           title="效果面板"
@@ -858,8 +858,8 @@ export function KGSnapshotsPage() {
   const auditDriftRows = useMemo(() => {
     return [...deferredEntityTypesDelta].sort((a, b) => Math.abs(Number(b.delta ?? 0)) - Math.abs(Number(a.delta ?? 0)))
   }, [deferredEntityTypesDelta])
-  const formInputClassName = 'h-10 rounded-lg border-border/70 bg-white font-mono text-xs shadow-none'
-  const formTextareaClassName = 'min-h-[108px] resize-none rounded-lg border-border/70 bg-white font-mono text-xs shadow-none'
+  const formInputClassName = 'h-10 rounded-lg border-border/70 bg-card font-mono text-xs shadow-none'
+  const formTextareaClassName = 'min-h-[108px] resize-none rounded-lg border-border/70 bg-card font-mono text-xs shadow-none'
 
   return (
     <AppFrame showBackground={false}>
@@ -877,7 +877,7 @@ export function KGSnapshotsPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-9 gap-2 rounded-lg border-border/70 bg-white text-xs"
+                  className="h-9 gap-2 rounded-lg border-border/70 bg-card text-xs"
                   title={hashAValue && hashBValue ? '重新导出并刷新 A/B 对比结果' : '先填写 Hash A / Hash B'}
                   disabled={isRunning || !hashAValue || !hashBValue}
                   onClick={() => detachPromise(runCompare())}
@@ -909,7 +909,7 @@ export function KGSnapshotsPage() {
                 <Button
                   variant="outline"
                   size="icon"
-                  className="h-9 w-9 rounded-lg border-border/70 bg-white"
+                  className="h-9 w-9 rounded-lg border-border/70 bg-card"
                   onClick={() => setLeftSidebarCollapsed((prev) => !prev)}
                   aria-label={leftSidebarCollapsed ? '展开参数栏' : '折叠参数栏'}
                   title={leftSidebarCollapsed ? '展开参数栏' : '折叠参数栏'}
@@ -930,13 +930,13 @@ export function KGSnapshotsPage() {
             )}
           >
             <div className="flex h-full min-h-0 flex-col">
-              <div className="shrink-0 border-b border-border/70 bg-gradient-to-b from-background to-muted/20 px-4 py-3">
-                <div className="inline-flex rounded-lg border border-border/70 bg-white p-0.5">
+              <div className="shrink-0 border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.20))] px-4 py-3">
+                <div className="inline-flex rounded-lg border border-border/70 bg-card p-0.5">
                   <button
                     type="button"
                     className={cn(
                       'h-8 rounded-md px-3 text-xs font-medium transition-colors',
-                      workspaceTab === 'studio' ? 'bg-slate-900 text-white' : 'text-muted-foreground hover:bg-muted/30'
+                      workspaceTab === 'studio' ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-muted/30'
                     )}
                     onClick={() => {
                       startTransition(() => setWorkspaceTab('studio'))
@@ -1030,7 +1030,7 @@ export function KGSnapshotsPage() {
                 <div className="grid grid-cols-2 gap-2">
                   <Button
                     variant="outline"
-                    className="h-10 rounded-lg border-border/70 bg-white text-xs"
+                    className="h-10 rounded-lg border-border/70 bg-card text-xs"
                     onClick={() => detachPromise(runExport('a'))}
                     disabled={isRunning}
                   >
@@ -1038,7 +1038,7 @@ export function KGSnapshotsPage() {
                   </Button>
                   <Button
                     variant="outline"
-                    className="h-10 rounded-lg border-border/70 bg-white text-xs"
+                    className="h-10 rounded-lg border-border/70 bg-card text-xs"
                     onClick={() => detachPromise(runExport('b'))}
                     disabled={isRunning}
                   >
@@ -1047,7 +1047,7 @@ export function KGSnapshotsPage() {
                 </div>
 
                 <Button
-                  className="mt-2 h-11 w-full rounded-xl bg-gradient-to-r from-primary to-sky-500 text-sm text-primary-foreground shadow-sm"
+                  className="mt-2 h-11 w-full rounded-xl bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--info)))] text-sm text-primary-foreground shadow-sm"
                   onClick={() => detachPromise(runCompare())}
                   disabled={isRunning}
                 >
@@ -1062,7 +1062,7 @@ export function KGSnapshotsPage() {
             </div>
           </aside>
 
-          <section className="min-w-0 flex-1 bg-white">
+          <section className="min-w-0 flex-1 bg-card">
             {workspaceTab === 'studio' ? (
               <Tabs
                 value={activeView}
@@ -1071,7 +1071,7 @@ export function KGSnapshotsPage() {
                 }}
                 className="flex h-full min-h-0 flex-col"
               >
-                <div className="shrink-0 border-b border-border/70 bg-gradient-to-b from-background to-muted/15">
+                <div className="shrink-0 border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.15))]">
                   <div className="px-4 py-3">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div className="min-w-0">

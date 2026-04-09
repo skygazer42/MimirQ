@@ -87,9 +87,9 @@ const SIDEBAR_TONE_STYLES: Record<AccentTone, { chip: string; icon: string; note
     note: 'border-violet-200/70 bg-violet-50/70 text-violet-700/90 dark:border-violet-900/60 dark:bg-violet-950/25 dark:text-violet-200/90',
   },
   cyan: {
-    chip: 'border-cyan-200/80 bg-cyan-50/90 text-cyan-700 dark:border-cyan-900/60 dark:bg-cyan-950/35 dark:text-cyan-200',
-    icon: 'border-cyan-200/80 bg-cyan-50 text-cyan-700 dark:border-cyan-900/60 dark:bg-cyan-950/35 dark:text-cyan-200',
-    note: 'border-cyan-200/70 bg-cyan-50/70 text-cyan-700/90 dark:border-cyan-900/60 dark:bg-cyan-950/25 dark:text-cyan-200/90',
+    chip: 'border-info/30 bg-info/10 text-info dark:border-info/30 dark:bg-info/20 dark:text-info',
+    icon: 'border-info/30 bg-info/10 text-info dark:border-info/30 dark:bg-info/20 dark:text-info',
+    note: 'border-info/25 bg-info/10 text-info/90 dark:border-info/30 dark:bg-info/15 dark:dark:text-info/90',
   },
 }
 
@@ -610,7 +610,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                         <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[9px] text-muted-foreground/80">
                           {displayTime ? <span>{displayTime}</span> : null}
                           {f.originalFileType ? (
-                            <span className="rounded border border-cyan-200/70 bg-cyan-50/85 px-1.5 py-0.5 font-mono text-[9px] text-cyan-700 dark:border-cyan-900/60 dark:bg-cyan-950/30 dark:text-cyan-200">
+                            <span className="rounded border border-info/25 bg-info/10 px-1.5 py-0.5 font-mono text-[9px] text-info dark:border-info/30 dark:bg-info/18 dark:text-info">
                               {String(f.originalFileType).toUpperCase()}
                             </span>
                           ) : null}
@@ -1459,7 +1459,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
             <PipelineOptionsPanel compact />
           </div>
 
-          <div className="grid grid-cols-2 gap-2 rounded-xl border border-border/50 bg-gradient-to-b from-background/95 to-muted/20 p-1">
+          <div className="grid grid-cols-2 gap-2 rounded-xl border border-border/50 bg-[linear-gradient(180deg,hsl(var(--background)/0.95),hsl(var(--muted)/0.20))] p-1">
             <Button
               onClick={() => runPreview()}
               disabled={isLoading}
@@ -1531,11 +1531,11 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
             {analysisExpanded ? (
               <>
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="rounded-xl border border-border/50 bg-gradient-to-b from-background to-muted/20 p-2.5 shadow-none">
+                  <div className="rounded-xl border border-border/50 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.20))] p-2.5 shadow-none">
                     <div className="text-[9.5px] font-medium tracking-[0.01em] text-muted-foreground/72">{t('sidebar.stats.totalChunks')}</div>
                     <div className="mt-1 text-[18px] font-medium leading-none tracking-[-0.02em] tabular-nums text-foreground/90">{previewData.total_chunks}</div>
                   </div>
-                  <div className="rounded-xl border border-border/50 bg-gradient-to-b from-background to-muted/20 p-2.5 shadow-none">
+                  <div className="rounded-xl border border-border/50 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.20))] p-2.5 shadow-none">
                     <div className="text-[9.5px] font-medium tracking-[0.01em] text-muted-foreground/72">{averageStatLabel}</div>
                     <div className="mt-1 text-[18px] font-medium leading-none tracking-[-0.02em] tabular-nums text-foreground/90">
                       {previewData?.stats?.avg ?? chunkStats?.avg ?? '-'}
@@ -1544,7 +1544,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                       ) : null}
                     </div>
                   </div>
-                  <div className="rounded-xl border border-border/50 bg-gradient-to-b from-background to-muted/20 p-2.5 shadow-none">
+                  <div className="rounded-xl border border-border/50 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.20))] p-2.5 shadow-none">
                     <div className="text-[9.5px] font-medium tracking-[0.01em] text-muted-foreground/72">{p95StatLabel}</div>
                     <div className="mt-1 text-[18px] font-medium leading-none tracking-[-0.02em] tabular-nums text-foreground/90">
                       {chunkStats?.p95 ?? chunkStats?.p90 ?? previewData?.stats?.p90 ?? '-'}
@@ -1553,19 +1553,19 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                       ) : null}
                     </div>
                   </div>
-                  <div className="rounded-xl border border-border/50 bg-gradient-to-b from-background to-muted/20 p-2.5 shadow-none" title={t('sidebar.stats.coverage')}>
+                  <div className="rounded-xl border border-border/50 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.20))] p-2.5 shadow-none" title={t('sidebar.stats.coverage')}>
                     <div className="text-[9.5px] font-medium tracking-[0.01em] text-muted-foreground/72">{t('sidebar.stats.coverage')}</div>
                     <div className="mt-1 text-[18px] font-medium leading-none tracking-[-0.02em] tabular-nums text-foreground/90">
                       {coverageSignals?.coveragePct == null ? '-' : `${coverageSignals.coveragePct}%`}
                     </div>
                   </div>
-                  <div className="rounded-xl border border-border/50 bg-gradient-to-b from-background to-muted/20 p-2.5 shadow-none" title={t('sidebar.stats.overlapWaste')}>
+                  <div className="rounded-xl border border-border/50 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.20))] p-2.5 shadow-none" title={t('sidebar.stats.overlapWaste')}>
                     <div className="text-[9.5px] font-medium tracking-[0.01em] text-muted-foreground/72">{t('sidebar.stats.overlapWaste')}</div>
                     <div className="mt-1 text-[18px] font-medium leading-none tracking-[-0.02em] tabular-nums text-foreground/90">
                       {coverageSignals?.overlapWastePct == null ? '-' : `${coverageSignals.overlapWastePct}%`}
                     </div>
                   </div>
-                  <div className="rounded-xl border border-border/50 bg-gradient-to-b from-background to-muted/20 p-2.5 shadow-none" title={t('sidebar.stats.gaps')}>
+                  <div className="rounded-xl border border-border/50 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.20))] p-2.5 shadow-none" title={t('sidebar.stats.gaps')}>
                     <div className="text-[9.5px] font-medium tracking-[0.01em] text-muted-foreground/72">{t('sidebar.stats.gaps')}</div>
                     <div className="mt-1 text-[18px] font-medium leading-none tracking-[-0.02em] tabular-nums text-foreground/90">
                       {coverageSignals?.gapCount == null ? '-' : String(coverageSignals.gapCount)}

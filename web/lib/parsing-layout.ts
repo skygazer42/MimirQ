@@ -41,9 +41,9 @@ const PARSING_LAYOUT_META: Record<ParsingLayoutKind, ParsingLayoutMeta> = {
     label: '列表',
     shortLabel: '列表',
     chipClassName:
-      'border-cyan-200/80 bg-cyan-50 text-cyan-700 dark:border-cyan-900/60 dark:bg-cyan-950/35 dark:text-cyan-200',
-    dotClassName: 'bg-cyan-500 dark:bg-cyan-300',
-    overlayClassName: 'border-cyan-500/75 bg-cyan-500/10',
+      'border-info/30 bg-info/10 text-info dark:border-info/30 dark:bg-info/20 dark:text-info',
+    dotClassName: 'bg-info dark:bg-info/70',
+    overlayClassName: 'border-info/60 bg-info/10',
   },
   table: {
     label: '表格',

@@ -12,7 +12,8 @@ describe('parsing view state source', () => {
     expect(src).toContain("queryKey: ['parsing', 'library-documents']")
     expect(src).toContain('const activeLibraryContentQuery = useQuery(')
     expect(src).toContain("queryKey: ['parsing', 'library-content', activeLibraryFileId]")
-    expect(src).toContain('enabled: Boolean(activeLibraryFileId')
+    expect(src).toContain('enabled: Boolean(')
+    expect(src).toContain('activeLibraryFileId &&')
     expect(src).toContain('enabled: isLibraryLoaded')
   })
 
