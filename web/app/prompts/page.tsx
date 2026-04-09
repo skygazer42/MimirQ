@@ -36,15 +36,16 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { promptTemplateApi, PromptTemplate, PromptTemplateCreate } from '@/lib/api'
-import { Plus, Edit, Trash2, Copy, Check, X, Eye, Filter, Wand2, MessageSquare } from 'lucide-react'
+import { Plus, Edit, Trash2, Copy, Check, X, Eye, Filter, Wand2, MessageSquare, ListChecks, CircleCheckBig, CircleOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { KgExtractPromptSettings } from '@/components/kg-extract-prompt-settings'
 import { KgPredicateOntologySettings } from '@/components/kg-predicate-ontology-settings'
 import { AppFrame } from '@/components/app-frame'
-import { PageScaffold } from '@/components/ui/page-scaffold'
+import { AnalysisPageShell } from '@/components/ui/analysis-page-shell'
 import { cn, detachPromise } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
 import { EmptyState } from '@/components/ui/empty-state'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
 
 export default function PromptsPage() {
   const [templates, setTemplates] = useState<PromptTemplate[]>([])
@@ -126,9 +127,21 @@ export default function PromptsPage() {
 
       return true
     })
-  }, [templates, searchQuery, categoryFilter, statusFilter])
 
-  // Batch selection handlers
+}, [templates, searchQuery, categoryFilter, statusFilter])
+
+const activeCount = useMemo(() => templates.filter((template) => template.is_active).length, [templates])
+const filteredActiveCount = useMemo(
+  () => filteredTemplates.filter((template) => template.is_active).length,
+  [filteredTemplates]
+)
+const inactiveCount = templates.length - activeCount
+const filteredInactiveCount = filteredTemplates.length - filteredActiveCount
+
+const activeStatusBadgeClass = 'rounded-md border-sky-200 bg-sky-50 text-sky-700'
+const inactiveStatusBadgeClass = 'rounded-md border-slate-200 bg-slate-50 text-slate-600'
+
+// Batch selection handlers
   const handleSelectAll = () => {
     if (selectedIds.size === filteredTemplates.length) {
       setSelectedIds(new Set())
@@ -268,270 +281,373 @@ export default function PromptsPage() {
 
   return (
     <AppFrame>
-      <PageScaffold
+      <AnalysisPageShell
         title="提示词模板"
-        badge="PROMPTS"
+        badge="提示词"
         icon={Wand2}
-        iconColor="text-indigo-600 dark:text-indigo-400"
+        iconColor="text-primary"
         description="创建和管理您的 RAG 对话提示词模板"
-        actions={
-          <Button onClick={handleCreate} className="gap-2">
-            <Plus className="w-4 h-4" />
-            创建模板
-          </Button>
-        }
+        size="full"
+        showHeader={false}
+        bodyGutter="none"
+        bodyClassName="!pb-0"
+        bodyContainerClassName="max-w-none"
       >
-        <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <KgExtractPromptSettings templates={templates} />
-          <KgPredicateOntologySettings />
+
+<div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_22%)] shadow-[0_1px_0_rgba(15,23,42,0.04)]">
+  <div className="flex flex-col gap-2.5 border-b border-slate-200/80 bg-gradient-to-r from-sky-50/65 via-white to-slate-50 px-4 py-3 lg:flex-row lg:items-end lg:justify-between">
+    <div className="min-w-0">
+      <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">提示词中心 · 管理工作台</div>
+      <div className="mt-1 text-[15px] font-semibold tracking-[-0.01em] text-foreground">提示词模板配置与批量运营</div>
+      <p className="mt-1 text-[12px] leading-5 text-muted-foreground">统一管理模板、启停状态、分类与变量，面向生产 RAG 场景做高密度维护。</p>
+    </div>
+    <div className="flex flex-wrap items-center gap-2 text-[11px]">
+      <Badge variant="outline" className="rounded-md border-slate-200/80 bg-white text-[11px] text-slate-600"><ListChecks className="mr-1 size-3" />总模板 {templates.length}</Badge>
+      <Badge variant="outline" className={cn('text-[11px]', activeStatusBadgeClass)}><CircleCheckBig className="mr-1 size-3" />已启用 {activeCount}</Badge>
+      <Badge variant="outline" className={cn('text-[11px]', inactiveStatusBadgeClass)}><CircleOff className="mr-1 size-3" />已停用 {inactiveCount}</Badge>
+      <Badge variant="outline" className="rounded-md border-slate-200/80 bg-white text-[11px] text-slate-600"><Filter className="mr-1 size-3" />筛选后 {filteredTemplates.length}</Badge>
+    </div>
+  </div>
+
+  <div className="space-y-4 p-4">
+    <section className="rounded-xl border border-slate-200/80 bg-white p-3">
+      <div className="grid gap-2 lg:grid-cols-[minmax(280px,1fr)_170px_170px_auto]">
+        <SearchInput
+          value={searchQuery}
+          onValueChange={setSearchQuery}
+          placeholder="搜索模板名称、描述、内容或标签..."
+          containerClassName="w-full"
+          inputClassName="h-9 text-[12px]"
+        />
+        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+          <SelectTrigger className="h-9 w-full rounded-lg border-slate-200/80 bg-white text-[12px]">
+            <Filter className="mr-2 size-4" />
+            <SelectValue placeholder="筛选分类" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">所有分类</SelectItem>
+            {categories.map((cat) => (
+              <SelectItem key={cat} value={cat}>
+                {cat}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="h-9 w-full rounded-lg border-slate-200/80 bg-white text-[12px]">
+            <SelectValue placeholder="筛选状态" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">所有状态</SelectItem>
+            <SelectItem value="active">已启用</SelectItem>
+            <SelectItem value="inactive">已停用</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button onClick={handleCreate} className="h-9 gap-1.5 rounded-lg bg-sky-600 px-3 text-xs font-semibold text-white hover:bg-sky-500">
+          <Plus className="size-4" />
+          创建模板
+        </Button>
+      </div>
+    </section>
+
+    <section className="rounded-xl border border-slate-200/80 bg-white p-3">
+      <div className="mb-3 flex flex-wrap items-center gap-2 border-b border-slate-200/70 pb-2 text-[11px] text-muted-foreground">
+        <Badge variant="outline" className="rounded-md border-slate-200/80 bg-slate-50 text-[11px] text-slate-600">高级配置</Badge>
+        <span>KG 抽取相关提示配置与本体约束</span>
+      </div>
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        <KgExtractPromptSettings templates={templates} />
+        <KgPredicateOntologySettings />
+      </div>
+    </section>
+
+    {selectedIds.size > 0 && (
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-sky-200/80 bg-sky-50/70 px-3 py-2">
+        <div className="flex items-center gap-2">
+          <Checkbox checked={true} onCheckedChange={handleSelectAll} />
+          <span className="text-[12px] font-medium text-sky-800">已选择 {selectedIds.size} 个模板</span>
         </div>
-
-	          {/* Filters & Search */}
-	          <div className="mb-6 flex flex-col sm:flex-row gap-4">
-	            <SearchInput
-	              value={searchQuery}
-	              onValueChange={setSearchQuery}
-	              placeholder="搜索模板名称、描述、内容或标签..."
-	              containerClassName="flex-1"
-	            />
-	            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-	              <SelectTrigger className="w-[180px]">
-	                <Filter className="w-4 h-4 mr-2" />
-	                <SelectValue placeholder="筛选分类" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">所有分类</SelectItem>
-                {categories.map((cat) => (
-                  <SelectItem key={cat} value={cat}>
-                    {cat}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="筛选状态" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">所有状态</SelectItem>
-                <SelectItem value="active">已启用</SelectItem>
-                <SelectItem value="inactive">已停用</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-      {/* Batch Actions */}
-      {selectedIds.size > 0 && (
-        <div className="mb-4 p-4 bg-muted rounded-lg flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Checkbox checked={true} onCheckedChange={handleSelectAll} />
-            <span className="text-sm font-medium">已选择 {selectedIds.size} 个模板</span>
-          </div>
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => handleBatchActivate(true)}>
-              批量启用
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => handleBatchActivate(false)}>
-              批量停用
-            </Button>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button size="sm" variant="destructive">
-                  <Trash2 className="w-3 h-3 mr-1" />
-                  批量删除
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>批量删除模板？</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    你将删除 <span className="font-mono">{selectedIds.size}</span> 个提示词模板。此操作不可撤销。
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>取消</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleBatchDelete}>删除</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </div>
+        <div className="flex flex-wrap gap-1.5">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 rounded-md border-sky-200 bg-white px-2.5 text-[11px] text-sky-700 hover:bg-sky-50"
+            onClick={() => handleBatchActivate(true)}
+          >
+            批量启用
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 rounded-md border-slate-200 bg-white px-2.5 text-[11px] text-slate-700 hover:bg-slate-50"
+            onClick={() => handleBatchActivate(false)}
+          >
+            批量停用
+          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button size="sm" variant="destructive" className="h-7 rounded-md px-2.5 text-[11px]">
+                <Trash2 className="mr-1 size-3" />
+                批量删除
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>批量删除模板？</AlertDialogTitle>
+                <AlertDialogDescription>
+                  你将删除 <span className="font-mono">{selectedIds.size}</span> 个提示词模板。此操作不可撤销。
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>取消</AlertDialogCancel>
+                <AlertDialogAction onClick={handleBatchDelete}>删除</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
-      )}
+      </div>
+    )}
 
-      {(() => {
-    if (loading) {
-        return (<div className="text-center py-12">加载中...</div>);
-    }
-    else if (filteredTemplates.length === 0) {
-            return (<EmptyState
-              icon={MessageSquare}
-              title="暂无提示词模板"
-              description={templates.length === 0 ? "还没有创建任何提示词模板。" : "没有找到匹配的模板，请尝试调整筛选条件。"}
-            >
-              {templates.length === 0 ? (
-                <Button onClick={handleCreate}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  创建第一个模板
-                </Button>
-              ) : null}
-            </EmptyState>);
-        }
-        else {
-            return (<div className="space-y-4">
-          {/* Select All */}
-          <div className="flex items-center gap-2 px-2">
-            <Checkbox checked={selectedIds.size === filteredTemplates.length && filteredTemplates.length > 0} onCheckedChange={handleSelectAll}/>
-            <span className="text-sm text-muted-foreground">全选</span>
+    {(() => {
+      if (loading) {
+        return <PageSkeleton className="py-8" />
+      }
+
+      if (filteredTemplates.length === 0) {
+        return (
+          <EmptyState
+            icon={MessageSquare}
+            title="暂无提示词模板"
+            description={templates.length === 0 ? '还没有创建任何提示词模板。' : '没有找到匹配的模板，请尝试调整筛选条件。'}
+          >
+            {templates.length === 0 ? (
+              <Button onClick={handleCreate} className="h-8 rounded-lg bg-sky-600 px-3 text-xs text-white hover:bg-sky-500">
+                <Plus className="mr-2 size-4" />
+                创建第一个模板
+              </Button>
+            ) : null}
+          </EmptyState>
+        )
+      }
+
+      return (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200/80 bg-white px-3 py-2">
+            <label className="inline-flex items-center gap-2 text-[12px] text-slate-700">
+              <Checkbox
+                checked={selectedIds.size === filteredTemplates.length && filteredTemplates.length > 0}
+                onCheckedChange={handleSelectAll}
+              />
+              全选
+            </label>
+            <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+              <Badge variant="outline" className={cn('text-[11px]', activeStatusBadgeClass)}>已启用 {filteredActiveCount}</Badge>
+              <Badge variant="outline" className={cn('text-[11px]', inactiveStatusBadgeClass)}>已停用 {filteredInactiveCount}</Badge>
+            </div>
           </div>
 
-          {/* Template Grid */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {filteredTemplates.map((template) => (<Card key={template.id} role="button" tabIndex={0} aria-label={`预览模板：${template.name}`} onClick={() => handlePreview(template)} onKeyDown={(e) => {
-                        if (e.currentTarget !== e.target)
-                            return;
-                        if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            handlePreview(template);
-                        }
-                    }} className={cn("relative cursor-pointer transition-colors hover:border-primary focus-ring", selectedIds.has(template.id) && "border-primary bg-muted/50 dark:bg-muted/60")}>
-                <CardHeader>
-                  <div className="flex items-start gap-3">
-                    <Checkbox checked={selectedIds.has(template.id)} onCheckedChange={() => handleSelectOne(template.id)} onClick={(e) => e.stopPropagation()}/>
-                    <div className="flex-1">
-                      <CardTitle className="flex items-center gap-2 flex-wrap">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {filteredTemplates.map((template) => (
+              <Card
+                key={template.id}
+                role="button"
+                tabIndex={0}
+                aria-label={`预览模板：${template.name}`}
+                onClick={() => handlePreview(template)}
+                onKeyDown={(event) => {
+                  if (event.currentTarget !== event.target) return
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    handlePreview(template)
+                  }
+                }}
+                className={cn(
+                  'relative cursor-pointer rounded-xl border border-slate-200/80 bg-white shadow-none transition-colors hover:border-sky-300/80 focus-ring',
+                  selectedIds.has(template.id) && 'border-sky-300 bg-sky-50/40'
+                )}
+              >
+                <CardHeader className="p-3 pb-2">
+                  <div className="flex items-start gap-2.5">
+                    <Checkbox
+                      checked={selectedIds.has(template.id)}
+                      onCheckedChange={() => handleSelectOne(template.id)}
+                      onClick={(event) => event.stopPropagation()}
+                      className="mt-0.5"
+                    />
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <CardTitle className="flex flex-wrap items-center gap-1.5 text-[13px] font-semibold leading-5 text-slate-900">
                         <span className="truncate">{template.name}</span>
-                        {template.is_system && (<Badge variant="secondary">系统</Badge>)}
-                        {template.is_active ? (<Badge variant="success">
-                            <Check className="w-3 h-3 mr-1"/>
-                            启用
-                          </Badge>) : (<Badge variant="soft">
-                            <X className="w-3 h-3 mr-1"/>
-                            停用
-                          </Badge>)}
+                        {template.is_system ? <Badge variant="secondary" className="h-5 rounded-md text-[11px]">系统</Badge> : null}
+                        <Badge variant="outline" className={cn('h-5 text-[11px]', template.is_active ? activeStatusBadgeClass : inactiveStatusBadgeClass)}>
+                          {template.is_active ? (
+                            <>
+                              <Check className="mr-1 size-3" />
+                              启用
+                            </>
+                          ) : (
+                            <>
+                              <X className="mr-1 size-3" />
+                              停用
+                            </>
+                          )}
+                        </Badge>
                       </CardTitle>
-                      {template.category && (<Badge variant="outline" className="mt-2">
-                          {template.category}
-                        </Badge>)}
-                      <CardDescription className="mt-2 line-clamp-2">
+
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {template.category ? (
+                          <Badge variant="outline" className="h-5 rounded-md border-slate-200/80 bg-slate-50 text-[11px] text-slate-600">
+                            {template.category}
+                          </Badge>
+                        ) : null}
+                        <Badge variant="outline" className="h-5 rounded-md border-slate-200/80 bg-white text-[11px] text-slate-500">
+                          使用 {template.usage_count}
+                        </Badge>
+                      </div>
+
+                      <CardDescription className="line-clamp-2 text-[12px] leading-5 text-slate-500">
                         {template.description || '无描述'}
                       </CardDescription>
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    <div>
-                      <p className="text-sm font-medium mb-1">支持的变量:</p>
-                      <div className="flex flex-wrap gap-1">
-                        {template.variables.length > 0 ? (template.variables.map((v) => (<Badge key={v} variant="secondary" className="text-xs">
-                              {`{${v}}`}
-                            </Badge>))) : (<span className="text-sm text-muted-foreground">无</span>)}
-                      </div>
-                    </div>
 
-                    {template.tags.length > 0 && (<div>
-                        <p className="text-sm font-medium mb-1">标签:</p>
-                        <div className="flex flex-wrap gap-1">
-                          {template.tags.map((tag) => (<Badge key={tag} variant="outline" className="text-xs">
-                              {tag}
-                            </Badge>))}
-                        </div>
-                      </div>)}
-
-                    <div className="text-sm text-muted-foreground">
-                      使用次数: {template.usage_count}
-                    </div>
-
-                    <div className="flex flex-wrap gap-2 pt-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={(event) => {
-                          stopTemplateCardClick(event)
-                          handlePreview(template)
-                        }}
-                      >
-                        <Eye className="w-3 h-3 mr-1"/>
-                        预览
-                      </Button>
-                      {!template.is_system && (<>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(event) => {
-                              stopTemplateCardClick(event)
-                              handleEdit(template)
-                            }}
-                          >
-                            <Edit className="w-3 h-3 mr-1"/>
-                            编辑
-                          </Button>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button size="sm" variant="outline" onClick={stopTemplateCardClick}>
-                                <Trash2 className="w-3 h-3 mr-1"/>
-                                删除
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>删除模板？</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  你将删除提示词模板 <span className="font-mono">{template.name}</span>。此操作不可撤销。
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>取消</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => detachPromise(handleDelete(template))}>删除</AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </>)}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={(event) => {
-                          stopTemplateCardClick(event)
-                          handleDuplicate(template)
-                        }}
-                      >
-                        <Copy className="w-3 h-3 mr-1"/>
-                        复制
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={template.is_active ? 'outline' : 'default'}
-                        onClick={(event) => {
-                          stopTemplateCardClick(event)
-                          handleToggleActive(template)
-                        }}
-                      >
-                        {template.is_active ? '停用' : '启用'}
-                      </Button>
+                <CardContent className="space-y-2.5 p-3 pt-0">
+                  <div className="space-y-1">
+                    <div className="text-[11px] font-medium text-slate-500">变量</div>
+                    <div className="flex min-h-6 flex-wrap gap-1">
+                      {template.variables.length > 0 ? (
+                        template.variables.map((variable) => (
+                          <Badge key={variable} variant="secondary" className="h-5 rounded-md bg-slate-100 px-1.5 font-mono text-[10px] text-slate-700">
+                            {`{${variable}}`}
+                          </Badge>
+                        ))
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground">无</span>
+                      )}
                     </div>
                   </div>
+
+                  {template.tags.length > 0 ? (
+                    <div className="space-y-1">
+                      <div className="text-[11px] font-medium text-slate-500">标签</div>
+                      <div className="flex flex-wrap gap-1">
+                        {template.tags.map((tag) => (
+                          <Badge key={tag} variant="outline" className="h-5 rounded-md border-slate-200/80 bg-white px-1.5 text-[10px] text-slate-600">
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="flex flex-wrap gap-1.5 border-t border-slate-200/80 pt-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 rounded-md border-slate-200/80 px-2 text-[11px]"
+                      onClick={(event) => {
+                        stopTemplateCardClick(event)
+                        handlePreview(template)
+                      }}
+                    >
+                      <Eye className="mr-1 size-3" />
+                      预览
+                    </Button>
+
+                    {!template.is_system ? (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 rounded-md border-slate-200/80 px-2 text-[11px]"
+                          onClick={(event) => {
+                            stopTemplateCardClick(event)
+                            handleEdit(template)
+                          }}
+                        >
+                          <Edit className="mr-1 size-3" />
+                          编辑
+                        </Button>
+
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button size="sm" variant="outline" className="h-7 rounded-md border-slate-200/80 px-2 text-[11px]" onClick={stopTemplateCardClick}>
+                              <Trash2 className="mr-1 size-3" />
+                              删除
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>删除模板？</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                你将删除提示词模板 <span className="font-mono">{template.name}</span>。此操作不可撤销。
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>取消</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => detachPromise(handleDelete(template))}>删除</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </>
+                    ) : null}
+
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 rounded-md border-slate-200/80 px-2 text-[11px]"
+                      onClick={(event) => {
+                        stopTemplateCardClick(event)
+                        handleDuplicate(template)
+                      }}
+                    >
+                      <Copy className="mr-1 size-3" />
+                      复制
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant={template.is_active ? 'outline' : 'default'}
+                      className={cn(
+                        'h-7 rounded-md px-2 text-[11px] font-medium',
+                        template.is_active
+                          ? 'border-slate-200/80 bg-white text-slate-700 hover:bg-slate-50'
+                          : 'bg-sky-600 text-white hover:bg-sky-500'
+                      )}
+                      onClick={(event) => {
+                        stopTemplateCardClick(event)
+                        handleToggleActive(template)
+                      }}
+                    >
+                      {template.is_active ? '停用' : '启用'}
+                    </Button>
+                  </div>
                 </CardContent>
-              </Card>))}
+              </Card>
+            ))}
           </div>
-        </div>);
-        }
-})()}
+        </div>
+      )
+    })()}
+  </div>
+</div>
+
 
       {/* Preview Dialog */}
       <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto overscroll-contain no-scrollbar">
+        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto overscroll-contain rounded-2xl border border-slate-200/80 bg-white no-scrollbar">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {previewTemplate?.name}
               {previewTemplate?.is_system && <Badge variant="secondary">系统</Badge>}
               {previewTemplate?.is_active ? (
-                <Badge variant="success">
-                  <Check className="w-3 h-3 mr-1" />
+                <Badge variant="outline" className={cn('h-5 text-[11px]', activeStatusBadgeClass)}>
+                  <Check className="mr-1 size-3" />
                   启用
                 </Badge>
               ) : (
-                <Badge variant="soft">
-                  <X className="w-3 h-3 mr-1" />
+                <Badge variant="outline" className={cn('h-5 text-[11px]', inactiveStatusBadgeClass)}>
+                  <X className="mr-1 size-3" />
                   停用
                 </Badge>
               )}
@@ -619,9 +735,9 @@ export default function PromptsPage() {
 
       {/* Create/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto overscroll-contain no-scrollbar">
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto overscroll-contain rounded-2xl border border-slate-200/80 bg-white no-scrollbar">
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="text-[15px] font-semibold">
               {editingTemplate ? '编辑模板' : '创建新模板'}
             </DialogTitle>
             <DialogDescription>
@@ -657,6 +773,7 @@ export default function PromptsPage() {
                 value={formData.category}
                 onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                 placeholder="例如: legal, technical, casual"
+                className="h-9"
               />
             </div>
 
@@ -712,7 +829,7 @@ export default function PromptsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      </PageScaffold>
+      </AnalysisPageShell>
     </AppFrame>
   )
 }
