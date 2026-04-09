@@ -17,6 +17,7 @@ import {
   Zap,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { systemPageTokens, systemWorkbenchTokens } from '@/components/ui/system-page-tokens'
 
 type FeatureFlagDescriptor = {
   key: keyof FeatureFlags
@@ -34,7 +35,7 @@ const FEATURE_FLAGS_CONFIG: FeatureFlagDescriptor[] = [
     description: '启用知识图谱抽取，自动抽取文档中的实体和事件',
     icon: Sparkles,
     color: 'teal',
-    dependencies: ['Milvus', 'LLM'],
+    dependencies: ['向量数据库（Milvus）', '大语言模型（LLM）'],
   },
   {
     key: 'deepdoc_enabled',
@@ -58,7 +59,7 @@ const FEATURE_FLAGS_CONFIG: FeatureFlagDescriptor[] = [
     description: '启用 ETL4LLM 版面/表格/图片解析（需自建服务，自动选择时生效）',
     icon: LayoutGrid,
     color: 'green',
-    dependencies: ['ETL4LLM API URL'],
+    dependencies: ['ETL4LLM 服务地址（API URL）'],
   },
   {
     key: 'marker_enabled',
@@ -66,7 +67,7 @@ const FEATURE_FLAGS_CONFIG: FeatureFlagDescriptor[] = [
     description: '启用 Marker 启发式 PDF→Markdown 解析服务（可在解析器下拉中选择）',
     icon: LayoutGrid,
     color: 'green',
-    dependencies: ['Marker API URL'],
+    dependencies: ['Marker 服务地址（API URL）'],
   },
   {
     key: 'paddle_vl_enabled',
@@ -74,7 +75,7 @@ const FEATURE_FLAGS_CONFIG: FeatureFlagDescriptor[] = [
     description: '启用 PaddleOCR-VL 外部 OCR/版面解析服务（适合扫描件 PDF，可在解析器下拉中选择）',
     icon: ScanLine,
     color: 'orange',
-    dependencies: ['PaddleOCR-VL API URL'],
+    dependencies: ['PaddleOCR-VL 服务地址（API URL）'],
   },
   {
     key: 'markitdown_enabled',
@@ -94,11 +95,11 @@ const FEATURE_FLAGS_CONFIG: FeatureFlagDescriptor[] = [
   },
   {
     key: 'mineru_enabled',
-    name: 'MinerU API',
-    description: '使用 MinerU 在线 API 进行文档解析',
+    name: 'MinerU 在线接口（API）',
+    description: '使用 MinerU 在线接口（API）进行文档解析',
     icon: CloudCog,
     color: 'cyan',
-    dependencies: ['MinerU API Token'],
+    dependencies: ['MinerU API 令牌（API Token）'],
   },
   {
     key: 'magicpdf_enabled',
@@ -156,19 +157,19 @@ export function FeatureFlagsSection({
   toggleFeature,
 }: Readonly<FeatureFlagsSectionProps>) {
   return (
-    <section>
-      <div className="mb-6 flex items-center justify-between">
-        <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground">
-          <Zap className="h-5 w-5 text-warning" />
+    <section className="space-y-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="flex items-center gap-2 text-sm font-semibold tracking-[-0.01em] text-foreground">
+          <Zap className="h-4 w-4 text-warning" />
           功能开关
         </h2>
-        <div className="flex items-center gap-2 rounded-full border border-warning/20 bg-warning/10 px-3 py-1 text-xs font-medium text-warning">
-          <AlertCircle className="h-3 w-3" />
+        <div className="inline-flex items-center gap-1.5 rounded-full border border-warning/20 bg-warning/10 px-2.5 py-1 text-[10px] font-semibold text-warning">
+          <AlertCircle className="h-3.5 w-3.5" />
           <span>更改后需重启后端生效</span>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className={cn('grid grid-cols-1 gap-2 xl:grid-cols-2', systemWorkbenchTokens.divider)}>
         {FEATURE_FLAGS_CONFIG.map((feature) => {
           const Icon = feature.icon
           const colors = getColorClasses(feature.color)
@@ -180,41 +181,41 @@ export function FeatureFlagsSection({
               type="button"
               key={feature.key}
               className={cn(
-                'group relative w-full rounded-xl border-2 bg-card p-5 text-left transition-colors duration-200 focus-ring motion-reduce:transition-none',
-                isEnabled ? `${colors.border} ${colors.bg}` : 'border-border hover:border-border',
-                isEdited && 'ring-2 ring-blue-400 ring-offset-2'
+                'group relative w-full rounded-lg border px-3 py-2.5 text-left transition-colors duration-150 focus-ring motion-reduce:transition-none',
+                isEnabled ? `${colors.border} ${colors.bg}` : 'border-border/70 bg-background hover:bg-muted/15',
+                isEdited && 'ring-2 ring-blue-400/70 ring-offset-1'
               )}
               aria-pressed={isEnabled}
               onClick={() => toggleFeature(feature.key)}
             >
-              <div className="flex items-start justify-between">
-                <div className="flex items-start gap-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex min-w-0 items-start gap-2.5">
                   <div
                     className={cn(
-                      'rounded-lg p-2 transition-colors',
+                      'mt-0.5 rounded-md p-1.5 transition-colors',
                       isEnabled ? colors.iconBg : 'bg-muted'
                     )}
                   >
-                    <Icon className={cn('h-5 w-5', isEnabled ? colors.text : 'text-muted-foreground')} />
+                    <Icon className={cn('h-4 w-4', isEnabled ? colors.text : 'text-muted-foreground')} />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <h3
                       className={cn(
-                        'font-medium transition-colors',
+                        'text-[13px] font-semibold leading-5 transition-colors',
                         isEnabled ? 'text-foreground' : 'text-muted-foreground'
                       )}
                     >
                       {feature.name}
                     </h3>
-                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    <p className={cn(systemPageTokens.subtle, 'mt-0.5 leading-4')}>
                       {feature.description}
                     </p>
                     {feature.dependencies.length > 0 ? (
-                      <div className="mt-2 flex flex-wrap gap-1">
+                      <div className="mt-1.5 flex flex-wrap gap-1">
                         {feature.dependencies.map((dependency) => (
                           <span
                             key={dependency}
-                            className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                            className="rounded border border-border/70 bg-muted/30 px-1.5 py-0.5 text-[10px] leading-4 text-muted-foreground"
                           >
                             需要: {dependency}
                           </span>
@@ -223,11 +224,11 @@ export function FeatureFlagsSection({
                     ) : null}
                   </div>
                 </div>
-                <div className="flex-shrink-0">
+                <div className="flex-shrink-0 pt-0.5">
                   {isEnabled ? (
-                    <ToggleRight className={cn('h-8 w-8', colors.text)} />
+                    <ToggleRight className={cn('h-6 w-6', colors.text)} />
                   ) : (
-                    <ToggleLeft className="h-8 w-8 text-muted-foreground group-hover:text-muted-foreground" />
+                    <ToggleLeft className="h-6 w-6 text-muted-foreground group-hover:text-muted-foreground" />
                   )}
                 </div>
               </div>

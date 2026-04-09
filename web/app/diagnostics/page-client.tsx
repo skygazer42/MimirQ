@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ComponentProps } from 'react'
 import { Activity, Copy, FileJson, FileText, RefreshCcw, Timer, Hash, FileSearch, Gauge, Package, Stethoscope, BarChart3, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -29,11 +29,23 @@ import {
 } from '@/lib/doc-content-cache'
 import { observabilityApi, ragApi } from '@/lib/api'
 import { API_BASE_URL, API_LONG_TIMEOUT_MS, API_TIMEOUT_MS, API_V1_BASE_URL } from '@/lib/env'
-import { formatFileSize } from '@/lib/utils'
+import { cn, formatFileSize } from '@/lib/utils'
 import { EmptyState } from '@/components/ui/empty-state'
+import { systemPageTokens } from '@/components/ui/system-page-tokens'
+import { SystemDataStrip } from '@/components/ui/system-data-strip'
 import type { OnlineQualitySummaryResponse, PromptPreviewResponse } from '@/types'
 
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts'
+
+const DENSE_OUTLINE_BUTTON = 'h-8 gap-1.5 rounded-lg border-border/70 bg-background px-3 text-xs font-semibold'
+const DENSE_ICON_BUTTON = 'h-8 w-8 rounded-lg'
+const DENSE_CARD_CLASS = 'rounded-lg border-border/70 shadow-none transition-none hover:translate-y-0 hover:shadow-none'
+const DENSE_JSON_SUMMARY = cn(
+  'cursor-pointer select-none text-xs font-medium transition-colors hover:text-foreground',
+  systemPageTokens.subtle,
+)
+const DENSE_META_TEXT = cn('text-xs', systemPageTokens.subtle)
+const DENSE_SECTION_LABEL = cn('text-xs font-medium', systemPageTokens.subtle)
 
 function prettyJson(value: unknown): string {
   try {
@@ -169,6 +181,18 @@ function takePerfSnapshot(): PerfSnapshot | null {
   }
 }
 
+function DenseCard({ className, ...props }: Readonly<ComponentProps<typeof Card>>) {
+  return <Card className={cn(DENSE_CARD_CLASS, className)} {...props} />
+}
+
+function DenseCardHeader({ className, ...props }: Readonly<ComponentProps<typeof CardHeader>>) {
+  return <CardHeader className={cn('space-y-0 px-3 py-2.5', className)} {...props} />
+}
+
+function DenseCardContent({ className, ...props }: Readonly<ComponentProps<typeof CardContent>>) {
+  return <CardContent className={cn('px-3 pb-3 pt-0', className)} {...props} />
+}
+
 export default function DiagnosticsPage() {
   const health = useBackendHealth()
   const meta = useBackendMeta()
@@ -224,6 +248,40 @@ export default function DiagnosticsPage() {
     API_TIMEOUT_MS,
     API_LONG_TIMEOUT_MS,
   })
+
+  const stripItems = useMemo(
+    () => [
+      {
+        label: '后端健康',
+        value: health.isPending ? '检查中' : health.data?.payload?.ok ? 'OK' : '异常',
+        tone: health.isPending ? 'warning' : health.data?.payload?.ok ? 'success' : 'danger',
+      },
+      {
+        label: '依赖就绪',
+        value: ready.isPending ? '检查中' : ready.data?.ok ? '就绪' : ready.error ? '异常' : '未知',
+        tone: ready.isPending ? 'warning' : ready.data?.ok ? 'success' : ready.error ? 'danger' : 'default',
+      },
+      {
+        label: '在线评估',
+        value: onlineQuality?.enabled ? '已启用' : '未启用',
+        tone: onlineQuality?.enabled ? 'success' : 'default',
+      },
+      {
+        label: '缓存统计',
+        value: cacheLoading ? '刷新中' : '已就绪',
+        tone: cacheLoading ? 'warning' : 'success',
+      },
+    ],
+    [
+      health.isPending,
+      health.data?.payload?.ok,
+      ready.isPending,
+      ready.data?.ok,
+      ready.error,
+      onlineQuality?.enabled,
+      cacheLoading,
+    ]
+  )
 
   const loadStorageEstimate = useCallback(async () => {
     if (!storageCapable) {
@@ -303,7 +361,7 @@ export default function DiagnosticsPage() {
       setOnlineQuality(res)
     } catch (err) {
       setOnlineQuality(null)
-      toast.error(formatApiError(err, '加载 Online Quality 失败（需要 ENABLE_METRICS_LOG + ONLINE_EVAL_ENABLED）'))
+      toast.error(formatApiError(err, '加载在线质量失败（需要 ENABLE_METRICS_LOG + ONLINE_EVAL_ENABLED）'))
     } finally {
       setOnlineQualityLoading(false)
     }
@@ -396,7 +454,7 @@ export default function DiagnosticsPage() {
   async function runPromptPreviewProbe(): Promise<void> {
     const query = (probeQuery || '').trim()
     if (!query) {
-      toast.error('请输入 query')
+      toast.error('请输入问题')
       return
     }
 
@@ -418,7 +476,7 @@ export default function DiagnosticsPage() {
       setProbeLatencyMs(Math.max(0, Date.now() - start))
       setProbeResult(result)
     } catch (err) {
-      toast.error(formatApiError(err, 'RAG prompt-preview failed'))
+      toast.error(formatApiError(err, '检索增强生成提示词预览失败（RAG）'))
     } finally {
       setProbeRunning(false)
     }
@@ -446,7 +504,7 @@ export default function DiagnosticsPage() {
       setDriftLatencyMs(Math.max(0, Date.now() - start))
       setDriftSnapshot(result as any)
     } catch (err) {
-      toast.error(formatApiError(err, 'Embedding drift snapshot failed'))
+      toast.error(formatApiError(err, '向量漂移快照失败'))
     } finally {
       setDriftRunning(false)
     }
@@ -469,7 +527,7 @@ export default function DiagnosticsPage() {
       setPerfSuiteLatencyMs(Math.max(0, Date.now() - start))
       setPerfSuiteResult(result as any)
     } catch (err) {
-      toast.error(formatApiError(err, 'Perf suite run failed'))
+      toast.error(formatApiError(err, '性能套件运行失败'))
     } finally {
       setPerfSuiteRunning(false)
     }
@@ -496,20 +554,22 @@ export default function DiagnosticsPage() {
   return (
     <AppFrame>
     <PageScaffold
-      title="诊断"
-      description="前后端联调信息（后端健康 / 依赖就绪 / 后端元数据 / 前端 API 配置）"
+      title="诊断中心"
+      description="前后端联调信息与运行侧诊断（健康检查 / 依赖就绪 / 质量采样 / 漂移与性能探针）。"
       icon={Activity}
       iconColor="text-info"
-      size="5xl"
+      size="full"
+      density="system-dense"
+      top={<SystemDataStrip items={stripItems} minColumnWidth={150} />}
       actions={
         <div className="flex items-center gap-2">
-          <Button asChild variant="outline" size="sm" className="gap-2">
+          <Button asChild variant="outline" size="sm" className={DENSE_OUTLINE_BUTTON}>
             <a href={docsUrl} target="_blank" rel="noreferrer" aria-label="打开后端接口文档（/docs）">
               <FileText className="h-4 w-4" aria-hidden="true" />
               /docs
             </a>
           </Button>
-          <Button asChild variant="outline" size="sm" className="gap-2">
+          <Button asChild variant="outline" size="sm" className={DENSE_OUTLINE_BUTTON}>
             <a href={openapiUrl} target="_blank" rel="noreferrer" aria-label="打开后端 OpenAPI（/openapi.json）">
               <FileJson className="h-4 w-4" aria-hidden="true" />
               openapi.json
@@ -527,36 +587,36 @@ export default function DiagnosticsPage() {
         />
       ) : null}
       <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-sm">Frontend Env</CardTitle>
+        <DenseCard>
+          <DenseCardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-sm">前端环境变量</CardTitle>
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className={DENSE_ICON_BUTTON}
               onClick={async () => copyToClipboard(envJson)}
               title="复制 Frontend Env JSON"
               aria-label="复制 Frontend Env JSON"
             >
               <Copy className="h-4 w-4" />
             </Button>
-          </CardHeader>
-          <CardContent>
+          </DenseCardHeader>
+          <DenseCardContent>
             <details>
-              <summary className="text-xs font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors">展开 JSON</summary>
+              <summary className={DENSE_JSON_SUMMARY}>展开 JSON</summary>
               <pre className="mt-2 text-xs whitespace-pre-wrap break-words">{envJson}</pre>
             </details>
-          </CardContent>
-        </Card>
+          </DenseCardContent>
+        </DenseCard>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-sm">Backend Meta</CardTitle>
+        <DenseCard>
+          <DenseCardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-sm">后端元信息</CardTitle>
             <div className="flex items-center gap-1">
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8"
+                className={DENSE_ICON_BUTTON}
                 onClick={() => meta.refetch()}
                 title="刷新 Backend Meta"
                 aria-label="刷新 Backend Meta"
@@ -566,7 +626,7 @@ export default function DiagnosticsPage() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8"
+                className={DENSE_ICON_BUTTON}
                 onClick={async () => copyToClipboard(metaJson)}
                 title="复制 Backend Meta JSON"
                 aria-label="复制 Backend Meta JSON"
@@ -574,23 +634,23 @@ export default function DiagnosticsPage() {
                 <Copy className="h-4 w-4" />
               </Button>
             </div>
-          </CardHeader>
-          <CardContent>
+          </DenseCardHeader>
+          <DenseCardContent>
             <details>
-              <summary className="text-xs font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors">展开 JSON</summary>
+              <summary className={DENSE_JSON_SUMMARY}>展开 JSON</summary>
               <pre className="mt-2 text-xs whitespace-pre-wrap break-words">{metaJson}</pre>
             </details>
-          </CardContent>
-        </Card>
+          </DenseCardContent>
+        </DenseCard>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-sm">Backend Health</CardTitle>
+        <DenseCard>
+          <DenseCardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-sm">后端健康检查</CardTitle>
             <div className="flex items-center gap-1">
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8"
+                className={DENSE_ICON_BUTTON}
                 onClick={() => health.refetch()}
                 title="刷新 Backend Health"
                 aria-label="刷新 Backend Health"
@@ -600,7 +660,7 @@ export default function DiagnosticsPage() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8"
+                className={DENSE_ICON_BUTTON}
                 onClick={async () => copyToClipboard(healthJson)}
                 title="复制 Backend Health JSON"
                 aria-label="复制 Backend Health JSON"
@@ -608,8 +668,8 @@ export default function DiagnosticsPage() {
                 <Copy className="h-4 w-4" />
               </Button>
             </div>
-          </CardHeader>
-          <CardContent>
+          </DenseCardHeader>
+          <DenseCardContent>
             <div className="flex items-center justify-between gap-3 pb-2">
               <StatusBadge
                 status={(() => {
@@ -642,58 +702,58 @@ export default function DiagnosticsPage() {
                 dense
               />
               {typeof health.data?.latencyMs === 'number' ? (
-                <span className="text-xs text-muted-foreground tabular-nums">{health.data.latencyMs}ms</span>
+                <span className={cn(DENSE_META_TEXT, 'tabular-nums')}>{health.data.latencyMs}ms</span>
               ) : null}
             </div>
             <details>
-              <summary className="text-xs font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors">展开 JSON</summary>
+              <summary className={DENSE_JSON_SUMMARY}>展开 JSON</summary>
               <pre className="mt-2 text-xs whitespace-pre-wrap break-words">{healthJson}</pre>
             </details>
-          </CardContent>
-        </Card>
+          </DenseCardContent>
+        </DenseCard>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-sm">Deps Ready</CardTitle>
+        <DenseCard>
+          <DenseCardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-sm">依赖就绪状态</CardTitle>
             <div className="flex items-center gap-1">
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8"
+                className={DENSE_ICON_BUTTON}
                 onClick={() => ready.refetch()}
-                title="刷新 Deps Ready"
-                aria-label="刷新 Deps Ready"
+                title="刷新依赖就绪（Deps Ready）"
+                aria-label="刷新依赖就绪（Deps Ready）"
               >
                 <RefreshCcw className="h-4 w-4" />
               </Button>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8"
+                className={DENSE_ICON_BUTTON}
                 onClick={async () => copyToClipboard(readyJson)}
-                title="复制 Deps Ready JSON"
-                aria-label="复制 Deps Ready JSON"
+                title="复制依赖就绪 JSON（Deps Ready）"
+                aria-label="复制依赖就绪 JSON（Deps Ready）"
               >
                 <Copy className="h-4 w-4" />
               </Button>
             </div>
-          </CardHeader>
-          <CardContent>
+          </DenseCardHeader>
+          <DenseCardContent>
             <details>
-              <summary className="text-xs font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors">展开 JSON</summary>
+              <summary className={DENSE_JSON_SUMMARY}>展开 JSON</summary>
               <pre className="mt-2 text-xs whitespace-pre-wrap break-words">{readyJson}</pre>
             </details>
-          </CardContent>
-        </Card>
+          </DenseCardContent>
+        </DenseCard>
 
-        <Card className="md:col-span-2">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-sm">Online Quality (sampled)</CardTitle>
+        <DenseCard className="md:col-span-2">
+          <DenseCardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-sm">在线质量（采样）</CardTitle>
             <div className="flex items-center gap-1">
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8"
+                className={DENSE_ICON_BUTTON}
                 onClick={() => refreshOnlineQuality()}
                 disabled={onlineQualityLoading}
                 title="刷新 Online Quality 采样结果"
@@ -704,53 +764,53 @@ export default function DiagnosticsPage() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8"
+                className={DENSE_ICON_BUTTON}
                 onClick={async () => copyToClipboard(prettyJson(onlineQuality))}
                 disabled={!onlineQuality}
-                title="复制 Online Quality JSON"
-                aria-label="复制 Online Quality JSON"
+                title="复制在线质量 JSON（Online Quality）"
+                aria-label="复制在线质量 JSON（Online Quality）"
               >
                 <Copy className="h-4 w-4" />
               </Button>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
+          </DenseCardHeader>
+          <DenseCardContent className="space-y-4">
             {onlineQuality?.enabled ? (
               <>
                 <StatsGrid className="xl:grid-cols-4">
                   <StatCard
                     icon={Package}
-                    label="Samples"
+                    label="样本数"
                     value={String(onlineQuality.sample_count ?? 0)}
-                    subValue={`window=${onlineQuality.window_minutes}m · bucket=${onlineQuality.bucket_minutes}m`}
+                    subValue={`窗口=${onlineQuality.window_minutes} 分钟 · 桶=${onlineQuality.bucket_minutes} 分钟`}
                     color="blue"
                   />
                   <StatCard
                     icon={BarChart3}
-                    label="Faithfulness(det)"
+                    label="忠实度（det）"
                     value={fmtPercent(onlineQuality.faithfulness_det_avg, 1)}
-                    subValue="avg"
+                    subValue="平均"
                     color="teal"
                   />
                   <StatCard
                     icon={BarChart3}
-                    label="Chunk Utilization"
+                    label="分块利用率"
                     value={fmtPercent(onlineQuality.chunk_utilization_avg, 1)}
-                    subValue="avg"
+                    subValue="平均"
                     color="sky"
                   />
                   <StatCard
                     icon={AlertTriangle}
-                    label="Alerts"
+                    label="告警数"
                     value={String((onlineQuality.alerts || []).length)}
-                    subValue="latest bucket"
+                    subValue="最新桶"
                     color={(onlineQuality.alerts || []).length ? 'red' : 'green'}
                   />
                 </StatsGrid>
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="rounded-xl border border-border/60 p-3">
-                    <div className="text-xs font-medium text-muted-foreground mb-2">Faithfulness(det) trend</div>
+                    <div className={cn(DENSE_SECTION_LABEL, 'mb-2')}>忠实度（det）趋势</div>
                     <div className="h-[220px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={onlineQualityChartData}>
@@ -771,7 +831,7 @@ export default function DiagnosticsPage() {
                   </div>
 
                   <div className="rounded-xl border border-border/60 p-3">
-                    <div className="text-xs font-medium text-muted-foreground mb-2">Chunk utilization trend</div>
+                    <div className={cn(DENSE_SECTION_LABEL, 'mb-2')}>分块利用率趋势</div>
                     <div className="h-[220px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={onlineQualityChartData}>
@@ -794,13 +854,13 @@ export default function DiagnosticsPage() {
 
                 {(onlineQuality.alerts || []).length ? (
                   <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-3">
-                    <div className="text-xs font-medium text-destructive mb-2">Alerts</div>
-                    <div className="space-y-1 text-[11px] text-muted-foreground">
+                    <div className="text-xs font-medium text-destructive mb-2">告警列表</div>
+                    <div className={cn('space-y-1 text-[11px]', systemPageTokens.subtle)}>
                       {(onlineQuality.alerts || []).slice(0, 6).map((a: any, idx: number) => (
                         <div key={idx} className="flex items-center justify-between gap-3">
                           <span className="font-mono text-foreground/80">{String(a.metric || '')}</span>
                           <span className="tabular-nums">
-                            {String(a.value ?? '—')} &lt; {String(a.threshold ?? '—')} · samples={String(a.samples ?? '—')}
+                            {String(a.value ?? '—')} &lt; {String(a.threshold ?? '—')} · 样本={String(a.samples ?? '—')}
                           </span>
                         </div>
                       ))}
@@ -809,77 +869,77 @@ export default function DiagnosticsPage() {
                 ) : null}
               </>
             ) : (
-              <div className="text-xs text-muted-foreground">
-                未启用 Online Eval：需要 `ENABLE_METRICS_LOG=true` 且 `ONLINE_EVAL_ENABLED=true`（并产生 `event=online_eval` 记录）。
+              <div className={DENSE_META_TEXT}>
+                未启用在线评估：需要 `ENABLE_METRICS_LOG=true` 且 `ONLINE_EVAL_ENABLED=true`（并产生 `event=online_eval` 记录）。
               </div>
             )}
-          </CardContent>
-        </Card>
+          </DenseCardContent>
+        </DenseCard>
 
-        <Card className="md:col-span-2">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-sm">RAG Prompt Preview</CardTitle>
+        <DenseCard className="md:col-span-2">
+          <DenseCardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-sm">检索增强生成提示词预览（RAG）</CardTitle>
             <div className="flex items-center gap-1">
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8"
+                className={DENSE_ICON_BUTTON}
                 onClick={() => runPromptPreviewProbe()}
                 disabled={probeRunning}
-                title="运行 prompt-preview"
-                aria-label="运行 prompt-preview"
+                title="运行提示词预览探针"
+                aria-label="运行提示词预览探针"
               >
                 <Activity className="h-4 w-4" aria-hidden="true" />
               </Button>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8"
+                className={DENSE_ICON_BUTTON}
                 onClick={async () => copyToClipboard(probeMetricsJson)}
                 disabled={!probeMetrics}
-                title="复制 metrics"
-                aria-label="复制 metrics"
+                title="复制指标 JSON"
+                aria-label="复制指标 JSON"
               >
                 <Copy className="h-4 w-4" aria-hidden="true" />
               </Button>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
+          </DenseCardHeader>
+          <DenseCardContent className="space-y-4">
             <div className="grid gap-3 md:grid-cols-3">
               <div className="space-y-1.5">
-                <Label htmlFor="probe-dataset-id">dataset_id（可选）</Label>
+                <Label htmlFor="probe-dataset-id">数据集 ID（可选）</Label>
                 <Input
                   id="probe-dataset-id"
                   value={probeDatasetId}
                   onChange={(e) => setProbeDatasetId(e.target.value)}
-                  placeholder="e.g. 9b2f…"
+                  placeholder="例如：9b2f…"
                 />
               </div>
               <div className="space-y-1.5 md:col-span-2">
-                <Label htmlFor="probe-document-ids">document_ids（可选，逗号分隔）</Label>
+                <Label htmlFor="probe-document-ids">文档 ID（可选，逗号分隔）</Label>
                 <Input
                   id="probe-document-ids"
                   value={probeDocumentIdsRaw}
                   onChange={(e) => setProbeDocumentIdsRaw(e.target.value)}
-                  placeholder="e.g. 3f1a…, 8c02…"
+                  placeholder="例如：3f1a…, 8c02…"
                 />
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="probe-query">query</Label>
+              <Label htmlFor="probe-query">问题</Label>
               <Textarea
                 id="probe-query"
                 value={probeQuery}
                 onChange={(e) => setProbeQuery(e.target.value)}
-                placeholder="Ask a question that should retrieve evidence from the corpus"
+                placeholder="输入一个应当命中语料证据的问题"
               />
               <div className="flex items-center justify-between gap-3">
-                <p className="text-xs text-muted-foreground">
-                  这个探针调用后端 `POST /api/v1/rag/prompt-preview`（不触发 LLM），用于查看 latency + token breakdown。
+                <p className={DENSE_META_TEXT}>
+                  这个探针调用后端 `POST /api/v1/rag/prompt-preview`（不触发大语言模型 LLM），用于查看延迟与令牌构成。
                 </p>
                 <Button variant="outline" size="sm" onClick={() => runPromptPreviewProbe()} disabled={probeRunning}>
-                  {probeRunning ? '运行中…' : 'Run'}
+                  {probeRunning ? '运行中…' : '运行'}
                 </Button>
               </div>
             </div>
@@ -887,13 +947,13 @@ export default function DiagnosticsPage() {
             <StatsGrid className="xl:grid-cols-6">
               <StatCard
                 icon={Timer}
-                label="Latency (client)"
+                label="客户端耗时"
                 value={probeLatencyMs == null ? '-' : `${probeLatencyMs}ms`}
                 color="blue"
               />
               <StatCard
                 icon={Activity}
-                label="Retrieval"
+                label="检索耗时"
                 value={
                   typeof probeMetrics?.retrieval_elapsed_sec === 'number'
                     ? `${probeMetrics.retrieval_elapsed_sec.toFixed(3)}s`
@@ -903,7 +963,7 @@ export default function DiagnosticsPage() {
               />
               <StatCard
                 icon={FileSearch}
-                label="Context build"
+                label="上下文构建"
                 value={
                   typeof probeMetrics?.context_build_elapsed_sec === 'number'
                     ? `${probeMetrics.context_build_elapsed_sec.toFixed(3)}s`
@@ -913,7 +973,7 @@ export default function DiagnosticsPage() {
               />
               <StatCard
                 icon={Activity}
-                label="Prompt render"
+                label="提示词渲染"
                 value={
                   typeof probeMetrics?.prompt_render_elapsed_sec === 'number'
                     ? `${probeMetrics.prompt_render_elapsed_sec.toFixed(3)}s`
@@ -923,37 +983,37 @@ export default function DiagnosticsPage() {
               />
               <StatCard
                 icon={Hash}
-                label="Prompt tokens"
+                label="提示词令牌"
                 value={typeof probeMetrics?.prompt_tokens === 'number' ? probeMetrics.prompt_tokens : '-'}
                 color="cyan"
               />
               <StatCard
                 icon={Hash}
-                label="Context tokens"
+                label="上下文令牌"
                 value={typeof probeMetrics?.context_tokens === 'number' ? probeMetrics.context_tokens : '-'}
                 color="cyan"
               />
               <StatCard
                 icon={Hash}
-                label="History tokens"
+                label="历史令牌"
                 value={typeof probeMetrics?.history_tokens === 'number' ? probeMetrics.history_tokens : '-'}
                 color="cyan"
               />
               <StatCard
                 icon={Hash}
-                label="Prompt chars"
+                label="提示词字符数"
                 value={typeof probeMetrics?.prompt_chars === 'number' ? probeMetrics.prompt_chars : '-'}
                 color="gray"
               />
               <StatCard
                 icon={Hash}
-                label="Context chars"
+                label="上下文字符数"
                 value={typeof probeMetrics?.context_chars === 'number' ? probeMetrics.context_chars : '-'}
                 color="gray"
               />
               <StatCard
                 icon={Hash}
-                label="History chars"
+                label="历史字符数"
                 value={typeof probeMetrics?.history_chars === 'number' ? probeMetrics.history_chars : '-'}
                 color="gray"
               />
@@ -962,21 +1022,21 @@ export default function DiagnosticsPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-medium text-muted-foreground">Prompt Preview Metrics</p>
+                  <p className={DENSE_SECTION_LABEL}>提示词预览指标</p>
                   <Button
                     variant="ghost"
                     size="sm"
                     className="h-7 px-2"
                     onClick={async () => copyToClipboard(probeMetricsJson)}
                     disabled={!probeMetrics}
-                    aria-label="复制 Prompt Preview Metrics JSON"
+                    aria-label="复制提示词预览指标 JSON"
                   >
                     <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-                    <span className="sr-only">复制 Prompt Preview Metrics JSON</span>
+                    <span className="sr-only">复制提示词预览指标 JSON</span>
                   </Button>
                 </div>
                 <details>
-                  <summary className="text-xs font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors">展开 JSON</summary>
+                  <summary className={DENSE_JSON_SUMMARY}>展开 JSON</summary>
                   <pre className="mt-2 text-xs whitespace-pre-wrap break-words max-h-[280px] overflow-auto rounded-md border border-border/60 p-3">
                     {probeMetricsJson}
                   </pre>
@@ -984,77 +1044,77 @@ export default function DiagnosticsPage() {
               </div>
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-medium text-muted-foreground">Query For Retrieval</p>
+                  <p className={DENSE_SECTION_LABEL}>检索查询</p>
                   <Button
                     variant="ghost"
                     size="sm"
                     className="h-7 px-2"
                     onClick={async () => copyToClipboard(String(probeResult?.query_for_retrieval || ''))}
                     disabled={!probeResult?.query_for_retrieval}
-                    aria-label="复制 Query For Retrieval"
+                    aria-label="复制检索查询"
                   >
                     <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-                    <span className="sr-only">复制 Query For Retrieval</span>
+                    <span className="sr-only">复制检索查询</span>
                   </Button>
                 </div>
                 <pre className="text-xs whitespace-pre-wrap break-words max-h-[280px] overflow-auto rounded-md border border-border/60 p-3">
-                  {String(probeResult?.query_for_retrieval || '(not run)')}
+                  {String(probeResult?.query_for_retrieval || '(尚未运行)')}
                 </pre>
               </div>
 	            </div>
-	          </CardContent>
-	        </Card>
+	          </DenseCardContent>
+	        </DenseCard>
 
-	        <Card className="md:col-span-2">
-	          <CardHeader className="flex flex-row items-center justify-between space-y-0">
-	            <CardTitle className="text-sm">Embedding drift</CardTitle>
+	        <DenseCard className="md:col-span-2">
+	          <DenseCardHeader className="flex flex-row items-center justify-between space-y-0">
+	            <CardTitle className="text-sm">向量漂移（Embedding Drift）</CardTitle>
 	            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className={DENSE_ICON_BUTTON}
+                onClick={() => runEmbeddingDriftSnapshotProbe()}
+                disabled={driftRunning}
+                title="运行向量漂移快照（Embedding Drift Snapshot）"
+                aria-label="运行向量漂移快照（Embedding Drift Snapshot）"
+              >
+                <Activity className="h-4 w-4" aria-hidden="true" />
+              </Button>
 	              <Button
 	                variant="ghost"
 	                size="icon"
-	                className="h-8 w-8"
-	                onClick={() => runEmbeddingDriftSnapshotProbe()}
-	                disabled={driftRunning}
-	                title="运行 embedding drift snapshot"
-	                aria-label="运行 Embedding Drift Snapshot"
-	              >
-	                <Activity className="h-4 w-4" aria-hidden="true" />
-	              </Button>
-	              <Button
-	                variant="ghost"
-	                size="icon"
-	                className="h-8 w-8"
-	                onClick={async () => copyToClipboard(driftJson)}
-	                disabled={!driftSnapshot}
-	                title="复制 Embedding Drift Snapshot JSON"
-	                aria-label="复制 Embedding Drift Snapshot JSON"
-	              >
-	                <Copy className="h-4 w-4" aria-hidden="true" />
-	              </Button>
+                className={DENSE_ICON_BUTTON}
+                onClick={async () => copyToClipboard(driftJson)}
+                disabled={!driftSnapshot}
+                title="复制向量漂移快照 JSON（Embedding Drift Snapshot）"
+                aria-label="复制向量漂移快照 JSON（Embedding Drift Snapshot）"
+              >
+                <Copy className="h-4 w-4" aria-hidden="true" />
+              </Button>
 	            </div>
-	          </CardHeader>
-	          <CardContent className="space-y-4">
+	          </DenseCardHeader>
+	          <DenseCardContent className="space-y-4">
 	            <div className="grid gap-3 md:grid-cols-4">
 	              <div className="space-y-1.5 md:col-span-2">
-	                <Label htmlFor="drift-dataset-id">dataset_id（可选）</Label>
+	                <Label htmlFor="drift-dataset-id">数据集 ID（可选）</Label>
 	                <Input
 	                  id="drift-dataset-id"
 	                  value={driftDatasetId}
 	                  onChange={(e) => setDriftDatasetId(e.target.value)}
-	                  placeholder="e.g. 9b2f…"
+	                  placeholder="例如：9b2f…"
 	                />
 	              </div>
 	              <div className="space-y-1.5 md:col-span-2">
-	                <Label htmlFor="drift-document-id">document_id（可选）</Label>
+	                <Label htmlFor="drift-document-id">文档 ID（可选）</Label>
 	                <Input
 	                  id="drift-document-id"
 	                  value={driftDocumentId}
 	                  onChange={(e) => setDriftDocumentId(e.target.value)}
-	                  placeholder="e.g. 3f1a…"
+	                  placeholder="例如：3f1a…"
 	                />
 	              </div>
 	              <div className="space-y-1.5">
-	                <Label htmlFor="drift-sample-n">sample_n</Label>
+		                <Label htmlFor="drift-sample-n">采样数</Label>
 	                <Input
 	                  id="drift-sample-n"
 	                  value={String(driftSampleN)}
@@ -1063,7 +1123,7 @@ export default function DiagnosticsPage() {
 	                />
 	              </div>
 	              <div className="space-y-1.5">
-	                <Label htmlFor="drift-threshold">drift_threshold</Label>
+		                <Label htmlFor="drift-threshold">漂移阈值</Label>
 	                <Input
 	                  id="drift-threshold"
 	                  value={String(driftThreshold)}
@@ -1073,30 +1133,30 @@ export default function DiagnosticsPage() {
 	              </div>
 	            </div>
 
-	            <div className="flex items-center justify-between gap-3">
-	              <p className="text-xs text-muted-foreground">
-	                这个探针调用后端 `GET /api/v1/observability/embedding-drift/snapshot`（admin-only / PII-safe）。
-	              </p>
+		            <div className="flex items-center justify-between gap-3">
+		              <p className={DENSE_META_TEXT}>
+		                这个探针调用后端 `GET /api/v1/observability/embedding-drift/snapshot`（仅管理员 / 隐私安全）。
+		              </p>
 	              <Button
 	                variant="outline"
 	                size="sm"
 	                onClick={() => runEmbeddingDriftSnapshotProbe()}
 	                disabled={driftRunning}
 	              >
-	                {driftRunning ? '运行中…' : 'Run'}
+		                {driftRunning ? '运行中…' : '运行'}
 	              </Button>
 	            </div>
 
 	            <StatsGrid className="xl:grid-cols-6">
 	              <StatCard
 	                icon={Timer}
-	                label="Latency (client)"
+	                label="客户端耗时"
 	                value={driftLatencyMs == null ? '-' : `${driftLatencyMs}ms`}
 	                color="gray"
 	              />
 	              <StatCard
 	                icon={FileSearch}
-	                label="Sampled items"
+	                label="采样条数"
 	                value={
 	                  typeof (driftSnapshot as any)?.sampled_items === 'number'
 	                    ? (driftSnapshot as any).sampled_items
@@ -1106,7 +1166,7 @@ export default function DiagnosticsPage() {
 	              />
 	              <StatCard
 	                icon={Timer}
-	                label="Drift p95"
+	                label="漂移 p95"
 	                value={
 	                  typeof (driftSnapshot as any)?.drift?.p95 === 'number'
 	                    ? `${(driftSnapshot as any).drift.p95.toFixed(4)}`
@@ -1116,7 +1176,7 @@ export default function DiagnosticsPage() {
 	              />
 	              <StatCard
 	                icon={Timer}
-	                label="Drift p99"
+	                label="漂移 p99"
 	                value={
 	                  typeof (driftSnapshot as any)?.drift?.p99 === 'number'
 	                    ? `${(driftSnapshot as any).drift.p99.toFixed(4)}`
@@ -1126,7 +1186,7 @@ export default function DiagnosticsPage() {
 	              />
 	              <StatCard
 	                icon={Hash}
-	                label="Above threshold"
+	                label="超过阈值"
 	                value={
 	                  typeof (driftSnapshot as any)?.above_threshold?.ratio === 'number'
 	                    ? `${Math.round((driftSnapshot as any).above_threshold.ratio * 100)}%`
@@ -1136,7 +1196,7 @@ export default function DiagnosticsPage() {
 	              />
 	              <StatCard
 	                icon={Hash}
-	                label="Space hash"
+	                label="空间哈希"
 	                value={String((driftSnapshot as any)?.current_embedding_space_hash || '-')}
 	                color="gray"
 	              />
@@ -1144,61 +1204,61 @@ export default function DiagnosticsPage() {
 
 	            <div className="space-y-1.5">
 	              <div className="flex items-center justify-between gap-2">
-	                <p className="text-xs font-medium text-muted-foreground">Embedding drift snapshot (JSON)</p>
+		                <p className={DENSE_SECTION_LABEL}>向量漂移快照（JSON）</p>
 	                <Button
 	                  variant="ghost"
 	                  size="sm"
 	                  className="h-7 px-2"
 	                  onClick={async () => copyToClipboard(driftJson)}
 	                  disabled={!driftSnapshot}
-	                  aria-label="复制 Embedding Drift Snapshot JSON"
-	                >
-	                  <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-	                  <span className="sr-only">复制 Embedding Drift Snapshot JSON</span>
-	                </Button>
+                  aria-label="复制向量漂移快照 JSON（Embedding Drift Snapshot）"
+                >
+                  <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span className="sr-only">复制向量漂移快照 JSON（Embedding Drift Snapshot）</span>
+                </Button>
 	              </div>
 	              <details>
-	                <summary className="text-xs font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors">展开 JSON</summary>
+	                <summary className={DENSE_JSON_SUMMARY}>展开 JSON</summary>
 	                <pre className="mt-2 text-xs whitespace-pre-wrap break-words max-h-[280px] overflow-auto rounded-md border border-border/60 p-3">
 	                  {driftJson}
 	                </pre>
 	              </details>
 		            </div>
-		          </CardContent>
-		        </Card>
+		          </DenseCardContent>
+		        </DenseCard>
 
-		        <Card className="md:col-span-2">
-		          <CardHeader className="flex flex-row items-center justify-between space-y-0">
-		            <CardTitle className="text-sm">Perf Suite (API)</CardTitle>
+		        <DenseCard className="md:col-span-2">
+		          <DenseCardHeader className="flex flex-row items-center justify-between space-y-0">
+	            <CardTitle className="text-sm">性能套件接口探针（API）</CardTitle>
 		            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className={DENSE_ICON_BUTTON}
+                onClick={() => runPerfSuiteProbe()}
+                disabled={perfSuiteRunning}
+                title="运行性能套件回归探针（Perf Suite）"
+                aria-label="运行性能套件回归探针（Perf Suite）"
+              >
+                <Gauge className="h-4 w-4" aria-hidden="true" />
+              </Button>
 		              <Button
 		                variant="ghost"
 		                size="icon"
-		                className="h-8 w-8"
-		                onClick={() => runPerfSuiteProbe()}
-		                disabled={perfSuiteRunning}
-		                title="运行 perf suite"
-		                aria-label="运行 Perf Suite"
-		              >
-		                <Gauge className="h-4 w-4" aria-hidden="true" />
-		              </Button>
-		              <Button
-		                variant="ghost"
-		                size="icon"
-		                className="h-8 w-8"
-		                onClick={async () => copyToClipboard(perfSuiteJson)}
-		                disabled={!perfSuiteResult}
-		                title="复制 Perf Suite JSON"
-		                aria-label="复制 Perf Suite JSON"
-		              >
-		                <Copy className="h-4 w-4" aria-hidden="true" />
-		              </Button>
+                className={DENSE_ICON_BUTTON}
+                onClick={async () => copyToClipboard(perfSuiteJson)}
+                disabled={!perfSuiteResult}
+                title="复制性能套件回归 JSON（Perf Suite）"
+                aria-label="复制性能套件回归 JSON（Perf Suite）"
+              >
+                <Copy className="h-4 w-4" aria-hidden="true" />
+              </Button>
 		            </div>
-		          </CardHeader>
-		          <CardContent className="space-y-4">
+		          </DenseCardHeader>
+		          <DenseCardContent className="space-y-4">
 		            <div className="grid gap-3 md:grid-cols-4">
 		              <div className="space-y-1.5">
-		                <Label htmlFor="perf-suite-iters">iterations</Label>
+		                <Label htmlFor="perf-suite-iters">迭代次数</Label>
 		                <Input
 		                  id="perf-suite-iters"
 		                  value={String(perfSuiteIterations)}
@@ -1207,7 +1267,7 @@ export default function DiagnosticsPage() {
 		                />
 		              </div>
 		              <div className="space-y-1.5">
-		                <Label htmlFor="perf-suite-timeout">timeout_sec</Label>
+		                <Label htmlFor="perf-suite-timeout">超时（秒）</Label>
 		                <Input
 		                  id="perf-suite-timeout"
 		                  value={String(perfSuiteTimeoutSec)}
@@ -1218,27 +1278,27 @@ export default function DiagnosticsPage() {
 		            </div>
 
 		            <div className="flex items-center justify-between gap-3">
-		              <p className="text-xs text-muted-foreground">
-		                这个探针调用后端 `POST /api/v1/observability/perf-suite/run`（admin-only / PII-safe），对比 baseline 做 p95/p99 回归门禁。
-		              </p>
+			              <p className={DENSE_META_TEXT}>
+			                这个探针调用后端 `POST /api/v1/observability/perf-suite/run`（仅管理员 / 隐私安全），对比基线做 p95/p99 回归门禁。
+			              </p>
 		              <Button variant="outline" size="sm" onClick={() => runPerfSuiteProbe()} disabled={perfSuiteRunning}>
-		                {perfSuiteRunning ? '运行中…' : 'Run'}
+		                {perfSuiteRunning ? '运行中…' : '运行'}
 		              </Button>
 		            </div>
 
 		            <StatsGrid className="xl:grid-cols-6">
 		              <StatCard
 		                icon={Timer}
-		                label="Latency (client)"
+		                label="客户端耗时"
 		                value={perfSuiteLatencyMs == null ? '-' : `${perfSuiteLatencyMs}ms`}
 		                color="gray"
 		              />
 		              <StatCard
 		                icon={Activity}
-		                label="Strict gate"
+		                label="严格门禁"
 		                value={
 		                  typeof (perfSuiteResult as any)?.diff?.strict_gate?.passed === 'boolean'
-		                    ? ((perfSuiteResult as any).diff.strict_gate.passed ? 'PASSED' : 'FAILED')
+		                    ? ((perfSuiteResult as any).diff.strict_gate.passed ? '通过' : '未通过')
 		                    : '-'
 		                }
 		                color={
@@ -1249,7 +1309,7 @@ export default function DiagnosticsPage() {
 		              />
 		              <StatCard
 		                icon={Hash}
-		                label="Regressions"
+		                label="回归项"
 		                value={
 		                  perfSuiteResult?.diff?.strict_gate && typeof (perfSuiteResult as any).diff.strict_gate.regressions === 'number'
 		                    ? (perfSuiteResult as any).diff.strict_gate.regressions
@@ -1259,20 +1319,20 @@ export default function DiagnosticsPage() {
 		              />
 		              <StatCard
 		                icon={Timer}
-		                label="Baseline ts"
+		                label="基线时间"
 		                value={String((perfSuiteResult as any)?.baseline_ts || '-')}
 		                color="gray"
 		              />
 		              <StatCard
 		                icon={Timer}
-		                label="Run ts"
+		                label="运行时间"
 		                value={String((perfSuiteResult as any)?.current_report?.ts || '-')}
 		                color="gray"
 		              />
 		            </StatsGrid>
 
 		            <div className="space-y-2">
-		              <p className="text-xs font-medium text-muted-foreground">Cases (p95 / p99)</p>
+			              <p className={DENSE_SECTION_LABEL}>用例（p95 / p99）</p>
 		              {perfSuiteResult?.diff?.cases && typeof (perfSuiteResult as any).diff.cases === 'object' ? (
 		                <div className="space-y-1">
 		                  {Object.values((perfSuiteResult as any).diff.cases as Record<string, any>).map((row: any) => {
@@ -1283,7 +1343,7 @@ export default function DiagnosticsPage() {
 		                    return (
 		                      <div key={name} className="flex items-center justify-between gap-3 text-xs">
 		                        <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground" title={name}>
-		                          {name || '(case)'}
+		                          {name || '(用例)'}
 		                        </span>
 		                        <span className={`shrink-0 font-mono tabular-nums ${regressed ? 'text-destructive' : 'text-foreground/80'}`}>
 		                          p95 {p95?.baseline_ms ?? '-'}→{p95?.current_ms ?? '-'} · p99 {p99?.baseline_ms ?? '-'}→{p99?.current_ms ?? '-'}
@@ -1293,43 +1353,43 @@ export default function DiagnosticsPage() {
 		                  })}
 		                </div>
 		              ) : (
-		                <div className="text-xs text-muted-foreground">暂无 perf suite 结果（点击 Run 触发）。</div>
+			                <div className={DENSE_META_TEXT}>暂无性能套件结果（点击“运行”触发）。</div>
 		              )}
 		            </div>
 
 		            <div className="space-y-1.5">
 		              <div className="flex items-center justify-between gap-2">
-		                <p className="text-xs font-medium text-muted-foreground">Perf suite run + diff (JSON)</p>
+			                <p className={DENSE_SECTION_LABEL}>性能套件运行与差异（JSON）</p>
 		                <Button
 		                  variant="ghost"
 		                  size="sm"
 		                  className="h-7 px-2"
 		                  onClick={async () => copyToClipboard(perfSuiteJson)}
 		                  disabled={!perfSuiteResult}
-		                  aria-label="复制 Perf Suite JSON"
-		                >
-		                  <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-		                  <span className="sr-only">复制 Perf Suite JSON</span>
-		                </Button>
+	                  aria-label="复制性能套件回归 JSON（Perf Suite）"
+	                >
+	                  <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+	                  <span className="sr-only">复制性能套件回归 JSON（Perf Suite）</span>
+	                </Button>
 		              </div>
 		              <details>
-		                <summary className="text-xs font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors">展开 JSON</summary>
+		                <summary className={DENSE_JSON_SUMMARY}>展开 JSON</summary>
 		                <pre className="mt-2 text-xs whitespace-pre-wrap break-words max-h-[280px] overflow-auto rounded-md border border-border/60 p-3">
 		                  {perfSuiteJson}
 		                </pre>
 		              </details>
 		            </div>
-		          </CardContent>
-		        </Card>
+		          </DenseCardContent>
+		        </DenseCard>
 
-		        <Card>
-		          <CardHeader className="flex flex-row items-center justify-between space-y-0">
-		            <CardTitle className="text-sm">Perf Snapshot</CardTitle>
+		        <DenseCard>
+		          <DenseCardHeader className="flex flex-row items-center justify-between space-y-0">
+			            <CardTitle className="text-sm">性能快照</CardTitle>
 		            <div className="flex items-center gap-1">
 	              <Button
 	                variant="ghost"
 	                size="icon"
-	                className="h-8 w-8"
+	                className={DENSE_ICON_BUTTON}
 	                onClick={() => setPerfSnapshot(takePerfSnapshot())}
 	                title="重新采样"
 	                aria-label="重新采样 Perf Snapshot"
@@ -1339,7 +1399,7 @@ export default function DiagnosticsPage() {
 	              <Button
 	                variant="ghost"
 	                size="icon"
-	                className="h-8 w-8"
+	                className={DENSE_ICON_BUTTON}
 	                onClick={async () => copyToClipboard(perfJson)}
 	                title="复制 Perf Snapshot JSON"
 	                aria-label="复制 Perf Snapshot JSON"
@@ -1347,32 +1407,32 @@ export default function DiagnosticsPage() {
 	                <Copy className="h-4 w-4" />
 	              </Button>
 	            </div>
-	          </CardHeader>
-	          <CardContent className="space-y-3">
+	          </DenseCardHeader>
+	          <DenseCardContent className="space-y-3">
 	            <StatsGrid className="xl:grid-cols-4">
-	              <StatCard
-	                icon={Gauge}
-	                label="TTFB"
-	                value={
-	                  typeof perfSnapshot?.navigation?.ttfb_ms === 'number'
-	                    ? `${Math.round(perfSnapshot.navigation.ttfb_ms)}ms`
-	                    : '-'
-	                }
-	                color="gray"
-	              />
+              <StatCard
+                icon={Gauge}
+                label="首字节时延（TTFB）"
+                value={
+                  typeof perfSnapshot?.navigation?.ttfb_ms === 'number'
+                    ? `${Math.round(perfSnapshot.navigation.ttfb_ms)}ms`
+                    : '-'
+                }
+                color="gray"
+              />
+              <StatCard
+                icon={Timer}
+                label="DOM 完成时延（DCL）"
+                value={
+                  typeof perfSnapshot?.navigation?.dom_content_loaded_ms === 'number'
+                    ? `${Math.round(perfSnapshot.navigation.dom_content_loaded_ms)}ms`
+                    : '-'
+                }
+                color="gray"
+              />
 	              <StatCard
 	                icon={Timer}
-	                label="DCL"
-	                value={
-	                  typeof perfSnapshot?.navigation?.dom_content_loaded_ms === 'number'
-	                    ? `${Math.round(perfSnapshot.navigation.dom_content_loaded_ms)}ms`
-	                    : '-'
-	                }
-	                color="gray"
-	              />
-	              <StatCard
-	                icon={Timer}
-	                label="Load"
+	                label="页面加载"
 	                value={
 	                  typeof perfSnapshot?.navigation?.load_ms === 'number'
 	                    ? `${Math.round(perfSnapshot.navigation.load_ms)}ms`
@@ -1382,7 +1442,7 @@ export default function DiagnosticsPage() {
 	              />
 	              <StatCard
 	                icon={Package}
-	                label="Scripts xfer"
+	                label="脚本传输体积"
 	                value={
 	                  perfSnapshot?.scripts
 	                    ? formatFileSize(perfSnapshot.scripts.total_transfer_bytes || perfSnapshot.scripts.total_decoded_bytes || 0)
@@ -1393,38 +1453,38 @@ export default function DiagnosticsPage() {
 	            </StatsGrid>
 	
 	            <details>
-	              <summary className="text-xs font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors">展开 JSON</summary>
+	              <summary className={DENSE_JSON_SUMMARY}>展开 JSON</summary>
 	              <pre className="mt-2 text-xs whitespace-pre-wrap break-words max-h-[240px] overflow-auto rounded-md border border-border/60 p-3">
 	                {perfJson}
 	              </pre>
 	            </details>
-	          </CardContent>
-	        </Card>
+	          </DenseCardContent>
+	        </DenseCard>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-sm">Bundle Hints</CardTitle>
+        <DenseCard>
+          <DenseCardHeader className="flex flex-row items-center justify-between space-y-0">
+	            <CardTitle className="text-sm">构建包提示</CardTitle>
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className={DENSE_ICON_BUTTON}
               onClick={async () => copyToClipboard(prettyJson(perfSnapshot?.scripts ?? { error: 'not captured' }))}
-              title="复制 Bundle Hints JSON"
-              aria-label="复制 Bundle Hints JSON"
+              title="复制构建包提示 JSON（Bundle Hints）"
+              aria-label="复制构建包提示 JSON（Bundle Hints）"
             >
               <Copy className="h-4 w-4" />
             </Button>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <p className="text-xs text-muted-foreground">
+          </DenseCardHeader>
+          <DenseCardContent className="space-y-2">
+            <p className={DENSE_META_TEXT}>
               基于浏览器 `PerformanceResourceTiming` 的粗略统计（受缓存/跨域限制影响，可能显示为 0）。
             </p>
             {perfSnapshot?.scripts?.top?.length ? (
               <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Top scripts</span>
+                <div className={cn('flex items-center justify-between text-xs', systemPageTokens.subtle)}>
+                  <span>高占用脚本（Top）</span>
                   <span className="font-mono tabular-nums">
-                    {perfSnapshot.scripts.count} items ·{' '}
+                    {perfSnapshot.scripts.count} 条 ·{' '}
                     {formatFileSize(perfSnapshot.scripts.total_transfer_bytes || perfSnapshot.scripts.total_decoded_bytes || 0)}
                   </span>
                 </div>
@@ -1442,47 +1502,47 @@ export default function DiagnosticsPage() {
                 </div>
               </div>
             ) : (
-              <div className="text-xs text-muted-foreground">暂无 bundle 数据（可点 “Perf Snapshot” 重新采样）。</div>
+              <div className={DENSE_META_TEXT}>暂无构建包数据（可点“性能快照”重新采样）。</div>
             )}
-          </CardContent>
-        </Card>
+          </DenseCardContent>
+        </DenseCard>
 
-        <Card className="md:col-span-2">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-sm">Browser Storage & Cache</CardTitle>
+        <DenseCard className="md:col-span-2">
+          <DenseCardHeader className="flex flex-row items-center justify-between space-y-0">
+	            <CardTitle className="text-sm">浏览器存储与缓存</CardTitle>
             <div className="flex items-center gap-1">
               <StatusBadge
                 status={storageCapable ? 'completed' : 'failed'}
-                label={storageCapable ? 'Storage estimate available' : 'Storage estimate unavailable'}
+                label={storageCapable ? '存储估算可用' : '存储估算不可用'}
                 dense
               />
               <StatusBadge
                 status={cacheLoading ? 'processing' : 'completed'}
-                label={cacheLoading ? 'Gathering cache stats' : 'Cache stats ready'}
+                label={cacheLoading ? '缓存统计获取中' : '缓存统计已就绪'}
                 dense
               />
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8"
+                className={DENSE_ICON_BUTTON}
                 onClick={() => {
                   void refreshStorageAndCache()
                 }}
                 title="刷新"
-                aria-label="刷新 storage 和 cache 统计"
+                aria-label="刷新存储与缓存统计"
               >
                 <RefreshCcw className="h-4 w-4" />
               </Button>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
+          </DenseCardHeader>
+          <DenseCardContent className="space-y-4">
             {shouldShowPressureWarning ? (
               <div className="flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
                 <div className="space-y-1 text-xs">
-                  <p className="font-medium text-amber-700">Storage pressure is high.</p>
+                  <p className="font-medium text-amber-700">存储压力较高。</p>
                   <p className="text-amber-700/90">
-                    {pressure.reasons[0] || 'Storage is close to quota or cache footprint dominates usage.'}
+                    {pressure.reasons[0] || '存储接近配额，或缓存占用过高。'}
                   </p>
                 </div>
               </div>
@@ -1490,26 +1550,26 @@ export default function DiagnosticsPage() {
             <StatsGrid className="xl:grid-cols-4">
               <StatCard
                 icon={Activity}
-                label="Storage usage"
+                label="存储已用"
                 value={storageEstimate?.usage != null ? formatFileSize(storageEstimate.usage) : '—'}
                 subValue={storageUsageRatio != null ? fmtPercent(storageUsageRatio) : undefined}
                 color="gray"
               />
               <StatCard
                 icon={BarChart3}
-                label="Storage quota"
+                label="存储配额"
                 value={storageEstimate?.quota != null ? formatFileSize(storageEstimate.quota) : '—'}
                 color="gray"
               />
               <StatCard
                 icon={FileText}
-                label="Doc content entries"
+                label="内容缓存条目"
                 value={docContentEntries.toLocaleString()}
                 color="gray"
               />
               <StatCard
                 icon={FileJson}
-                label="Doc source entries"
+                label="来源缓存条目"
                 value={docSourceEntries.toLocaleString()}
                 color="gray"
               />
@@ -1517,32 +1577,34 @@ export default function DiagnosticsPage() {
 
             <div className="grid gap-3 sm:grid-cols-3">
               <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
-                <p className="text-xs text-muted-foreground">Pressure level</p>
-                <p className="font-mono text-sm text-foreground">{pressure.level.toUpperCase()}</p>
+                <p className={DENSE_META_TEXT}>压力等级</p>
+                <p className="font-mono text-sm text-foreground">
+                  {pressure.level === 'high' ? '高' : pressure.level === 'moderate' ? '中' : pressure.level === 'low' ? '低' : '未知'}
+                </p>
               </div>
               <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
-                <p className="text-xs text-muted-foreground">Cache share of storage usage</p>
+                <p className={DENSE_META_TEXT}>缓存占存储比例</p>
                 <p className="font-mono text-sm text-foreground">{pressure.cacheShareOfUsage != null ? fmtPercent(pressure.cacheShareOfUsage) : '—'}</p>
               </div>
               <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
-                <p className="text-xs text-muted-foreground">Combined cache footprint</p>
+                <p className={DENSE_META_TEXT}>缓存总占用</p>
                 <p className="font-mono text-sm text-foreground">{formatFileSize(pressure.totalCacheBytes)}</p>
               </div>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
-                <p className="text-xs text-muted-foreground">Doc content payload</p>
+                <p className={DENSE_META_TEXT}>内容缓存体积</p>
                 <p className="font-mono text-sm text-foreground">{formatFileSize(docContentSize)}</p>
-                <p className="text-xs text-muted-foreground">
-                  Last updated: {docContentUpdatedAt ? formatTs(docContentUpdatedAt) : '—'}
+                <p className={DENSE_META_TEXT}>
+                  最近更新: {docContentUpdatedAt ? formatTs(docContentUpdatedAt) : '—'}
                 </p>
               </div>
               <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
-                <p className="text-xs text-muted-foreground">Doc source payload</p>
+                <p className={DENSE_META_TEXT}>来源缓存体积</p>
                 <p className="font-mono text-sm text-foreground">{formatFileSize(docSourceSize)}</p>
-                <p className="text-xs text-muted-foreground">
-                  Last updated: {docSourceUpdatedAt ? formatTs(docSourceUpdatedAt) : '—'}
+                <p className={DENSE_META_TEXT}>
+                  最近更新: {docSourceUpdatedAt ? formatTs(docSourceUpdatedAt) : '—'}
                 </p>
               </div>
             </div>
@@ -1550,7 +1612,7 @@ export default function DiagnosticsPage() {
             <div className="flex flex-wrap items-center gap-2">
               {shouldShowCleanupCta ? (
                 <Button size="sm" onClick={handlePruneStaleCaches} disabled={cleanupLoading.stale || cacheLoading}>
-                  {cleanupLoading.stale ? 'Pruning stale caches...' : 'Prune stale caches (14d)'}
+                  {cleanupLoading.stale ? '清理过期缓存中...' : '清理过期缓存（14 天）'}
                 </Button>
               ) : null}
               <Button
@@ -1559,7 +1621,7 @@ export default function DiagnosticsPage() {
                 onClick={handleClearContentCache}
                 disabled={cleanupLoading.content || cleanupLoading.stale || cacheLoading}
               >
-                Clear doc content cache
+                清空内容缓存
               </Button>
               <Button
                 variant="outline"
@@ -1567,56 +1629,54 @@ export default function DiagnosticsPage() {
                 onClick={handleClearSourceCache}
                 disabled={cleanupLoading.source || cleanupLoading.stale || cacheLoading}
               >
-                Clear doc source cache
+                清空来源缓存
               </Button>
             </div>
-          </CardContent>
-        </Card>
+          </DenseCardContent>
+        </DenseCard>
 
-        <Card className="md:col-span-2">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-sm">Quick Tips</CardTitle>
+        <DenseCard className="md:col-span-2">
+          <DenseCardHeader className="flex flex-row items-center justify-between space-y-0">
+	            <CardTitle className="text-sm">快速建议</CardTitle>
 	            <Button
 	              variant="ghost"
 	              size="icon"
-	              className="h-8 w-8"
+	              className={DENSE_ICON_BUTTON}
 	              onClick={async () =>
 	                copyToClipboard(
 	                  [
-	                    'Diagnostics quick tips:',
-	                    '- If Backend Health/Deps Ready fail, verify API_BASE_URL and auth/tenant headers.',
-	                    '- If prompt/context tokens are high, reduce chunk size, enable context denoise/dedup, and tighten dataset scope.',
-	                    '- If UI feels sluggish, prefer list virtualization and avoid rendering huge markdown without need.',
-	                    '- For large bundles, keep heavy deps behind next/dynamic and check build output.',
+	                    '诊断快速建议：',
+	                    '- 若后端健康或依赖检查异常，优先检查 API_BASE_URL、鉴权与租户头。',
+	                    '- 若提示词或上下文令牌偏高，优先缩小数据集范围、降低分块大小，并启用去噪去重。',
+	                    '- 若页面卡顿，大列表优先虚拟化，避免不必要的大 Markdown 重渲染。',
+	                    '- 若构建包体积过大，将重依赖下沉到动态加载，并结合构建产物排查。',
 	                  ].join(String.raw`\n`)
 	                )
 	              }
-	              title="复制 Diagnostics Quick Tips"
+	              title="复制诊断快速建议"
 	              aria-label="复制 Diagnostics Quick Tips"
 	            >
 	              <Copy className="h-4 w-4" />
 	            </Button>
-	          </CardHeader>
-	          <CardContent>
-	            <ul className="list-disc pl-5 space-y-2 text-sm text-muted-foreground">
+	          </DenseCardHeader>
+	          <DenseCardContent>
+	            <ul className={cn('list-disc pl-5 space-y-2 text-[12px]', systemPageTokens.body)}>
 	              <li>
-	                <span className="text-foreground/90">后端连通性</span>：先看 <span className="font-mono">Backend Health</span> 与{' '}
-	                <span className="font-mono">Deps Ready</span>；异常时优先排查 <span className="font-mono">API_BASE_URL</span>、反向代理与鉴权。
+	                <span className="text-foreground/90">后端连通性</span>：先看 <span className="font-mono">后端健康检查</span> 与{' '}
+	                <span className="font-mono">依赖就绪状态</span>；异常时优先排查 <span className="font-mono">API_BASE_URL</span>、反向代理与鉴权。
 	              </li>
 	              <li>
-	                <span className="text-foreground/90">RAG 成本</span>：如果 <span className="font-mono">prompt_tokens</span> 或{' '}
-	                <span className="font-mono">context_tokens</span> 很高，优先缩小数据集范围、降低 chunk size、启用 context denoise/dedup。
+	                <span className="text-foreground/90">检索增强生成成本（RAG）</span>：如果提示词令牌或上下文令牌很高，优先缩小数据集范围、降低分块大小、启用上下文去噪去重。
 	              </li>
 	              <li>
-	                <span className="text-foreground/90">前端卡顿</span>：大列表优先虚拟化；大 Markdown 预览尽量避免频繁重渲染（可用 memo + deferred ToC）。
+	                <span className="text-foreground/90">前端卡顿</span>：大列表优先虚拟化；大 Markdown 预览尽量避免频繁重渲染（可用 `memo` 与延迟目录 `deferred ToC`）。
 	              </li>
 	              <li>
-	                <span className="text-foreground/90">Bundle 体积</span>：把 monaco/plotly/pdfjs 等重依赖放到 route-level 动态 import，
-	                并用 build 输出定位最大的 chunk。
+	                <span className="text-foreground/90">构建包体积</span>：把 monaco/plotly/pdfjs 等重依赖放到路由级动态加载，并用构建输出定位最大的分块。
 	              </li>
 	            </ul>
-	          </CardContent>
-	        </Card>
+	          </DenseCardContent>
+	        </DenseCard>
 	      </div>
 	    </PageScaffold>
     </AppFrame>

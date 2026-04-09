@@ -10,6 +10,7 @@ interface StatCardProps {
   subValue?: string
   color?: 'amber' | 'blue' | 'green' | 'teal' | 'orange' | 'red' | 'gray' | 'cyan' | 'sky' | 'rose' | 'indigo'
   className?: string
+  dense?: boolean
 }
 
 const colorStyles = {
@@ -47,23 +48,28 @@ export function StatCard({
   subValue,
   color = 'sky',
   className,
+  dense = false,
 }: Readonly<StatCardProps>) {
   return (
     <div
       className={cn(
-        'flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors duration-200 motion-reduce:transition-none hover:bg-opacity-15',
+        dense
+          ? 'flex items-center gap-2 rounded-lg border px-3 py-2 transition-colors duration-200 motion-reduce:transition-none hover:bg-opacity-15'
+          : 'flex items-center gap-3 rounded-xl border px-4 py-3 transition-colors duration-200 motion-reduce:transition-none hover:bg-opacity-15',
         colorStyles[color] || colorStyles.sky,
         className
       )}
     >
-      <div className={cn('p-2 rounded-xl flex-shrink-0', iconBgStyles[color] || iconBgStyles.sky)}>
-        <Icon className="size-4" />
+      <div className={cn(dense ? 'rounded-lg p-1.5' : 'rounded-xl p-2', 'flex-shrink-0', iconBgStyles[color] || iconBgStyles.sky)}>
+        <Icon className={dense ? 'size-3.5' : 'size-4'} />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-xs text-muted-foreground truncate font-medium">{label}</p>
-        <p className="text-xl font-bold leading-tight truncate tabular-nums">{value}</p>
+        <p className={cn(dense ? 'text-[10px] font-semibold uppercase tracking-[0.08em]' : 'text-xs font-medium', 'truncate text-muted-foreground')}>
+          {label}
+        </p>
+        <p className={cn(dense ? 'text-base font-semibold' : 'text-xl font-bold', 'truncate leading-tight tabular-nums')}>{value}</p>
         {subValue && (
-          <p className="text-xs text-muted-foreground/80 truncate">{subValue}</p>
+          <p className={cn(dense ? 'text-[10px]' : 'text-xs', 'truncate text-muted-foreground/80')}>{subValue}</p>
         )}
       </div>
     </div>
@@ -73,13 +79,16 @@ export function StatCard({
 interface StatsGridProps {
   children: React.ReactNode
   className?: string
+  dense?: boolean
 }
 
-export function StatsGrid({ children, className }: Readonly<StatsGridProps>) {
+export function StatsGrid({ children, className, dense = false }: Readonly<StatsGridProps>) {
   return (
     <div
       className={cn(
-        'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4',
+        dense
+          ? 'grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6'
+          : 'grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5',
         className
       )}
     >

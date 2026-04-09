@@ -225,7 +225,8 @@ export function Navbar({
   const prevIsSidebarOpenRef = useRef<boolean | null>(null)
   const restoreToggleFocusOnCloseRef = useRef(false)
   const [internalIsOpen, setInternalIsOpen] = useState(true)
-  const [openSections, setOpenSections] = useState<Record<SectionId, boolean>>(loadOpenSections)
+  const [openSections, setOpenSections] = useState<Record<SectionId, boolean>>(createInitialOpenSections)
+  const [hasHydratedOpenSections, setHasHydratedOpenSections] = useState(false)
   const isSidebarOpen = externalIsOpen ?? internalIsOpen
   const setSidebarOpen = externalSetOpen ?? setInternalIsOpen
   const pathname = usePathname()
@@ -353,6 +354,11 @@ export function Navbar({
   }, [isSidebarOpen])
 
   useEffect(() => {
+    setOpenSections(loadOpenSections())
+    setHasHydratedOpenSections(true)
+  }, [])
+
+  useEffect(() => {
     const activeSection = menuSections.find((section) => sectionHasActiveRoute(activeHref, section.items))
     if (!activeSection) return
 
@@ -366,13 +372,14 @@ export function Navbar({
   }, [activeHref])
 
   useEffect(() => {
+    if (!hasHydratedOpenSections) return
     if (globalThis.window === undefined) return
     try {
       globalThis.window.localStorage.setItem(OPEN_SECTIONS_STORAGE_KEY, JSON.stringify(openSections))
     } catch {
       // ignore unavailable or quota-limited storage
     }
-  }, [openSections])
+  }, [hasHydratedOpenSections, openSections])
 
   // Dev UX: warm up route chunks in the background so first-click navigation feels snappier.
   useEffect(() => {

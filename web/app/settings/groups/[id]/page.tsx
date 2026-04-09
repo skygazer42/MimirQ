@@ -138,15 +138,15 @@ export default function SettingsGroupDetailPage() {
     const name = String(nameDraft || '').trim()
     const externalId = String(externalIdDraft || '').trim()
     if (!name) {
-      toast.error('name is required')
+      toast.error('名称不能为空（name）')
       return
     }
     if (name.length > 255) {
-      toast.error('name 过长（max=255）')
+      toast.error('名称过长（name，max=255）')
       return
     }
     if (externalId.length > 255) {
-      toast.error('external_id 过长（max=255）')
+      toast.error('外部组 ID 过长（external_id，max=255）')
       return
     }
 
@@ -175,7 +175,7 @@ export default function SettingsGroupDetailPage() {
       return
     }
     if (!ids.length) {
-      toast.message('请输入至少 1 个 user_id')
+      toast.message('请输入至少 1 个成员 ID（user_id）')
       return
     }
 
@@ -263,34 +263,36 @@ export default function SettingsGroupDetailPage() {
                   value={nameDraft}
                   maxLength={255}
                   onChange={(e) => setNameDraft(e.target.value)}
-                  placeholder="例如：engineering / legal / finance"
+                  placeholder="例如：研发 / 法务 / 财务"
                   disabled={loadingGroup}
                 />
-                <div className="text-xs text-muted-foreground">必填，最长 255 字符；名称在 tenant 内唯一。</div>
+                <div className="text-xs text-muted-foreground">必填，最长 255 字符；名称在租户（tenant）内唯一。</div>
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="group-external-id">external_id（可选）</Label>
+                <Label htmlFor="group-external-id">外部组 ID（external_id，可选）</Label>
                 <Input
                   id="group-external-id"
                   value={externalIdDraft}
                   maxLength={255}
                   onChange={(e) => setExternalIdDraft(e.target.value)}
-                  placeholder="例如：Okta/AzureAD group id"
+                  placeholder="例如：Okta/AzureAD 组 ID"
                   disabled={loadingGroup}
                 />
-                <div className="text-xs text-muted-foreground">用于对齐外部 IdP/SCIM 的 group 标识；留空表示不绑定。</div>
+                <div className="text-xs text-muted-foreground">
+                  用于对齐外部身份提供方（IdP）/跨域身份管理（SCIM）的组标识（group）；留空表示不绑定。
+                </div>
               </div>
 
               <div className="rounded-2xl border border-border bg-muted/20 p-3 text-xs text-muted-foreground space-y-1">
                 <div>
-                  id：<span className="font-mono">{group?.id || '-'}</span>
+                  组 ID（id）：<span className="font-mono">{group?.id || '-'}</span>
                 </div>
                 <div>
-                  created_at：<span className="font-mono">{group?.created_at ? formatDate(group.created_at) : '-'}</span>
+                  创建时间（created_at）：<span className="font-mono">{group?.created_at ? formatDate(group.created_at) : '-'}</span>
                 </div>
                 <div>
-                  updated_at：<span className="font-mono">{group?.updated_at ? formatDate(group.updated_at) : '-'}</span>
+                  更新时间（updated_at）：<span className="font-mono">{group?.updated_at ? formatDate(group.updated_at) : '-'}</span>
                 </div>
               </div>
             </CardContent>
@@ -303,13 +305,17 @@ export default function SettingsGroupDetailPage() {
                   <Users className="size-5" />
                   成员
                 </span>
-                <span className="text-xs font-mono text-muted-foreground">{membersTotal} total</span>
+                <span className="text-xs font-mono text-muted-foreground">{membersTotal} 人</span>
               </CardTitle>
 
               <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3">
                 <div className="space-y-2">
                   <Label>搜索</Label>
-                  <Input value={memberQuery} onChange={(e) => setMemberQuery(e.target.value)} placeholder="按 user_id 过滤" />
+                  <Input
+                    value={memberQuery}
+                    onChange={(e) => setMemberQuery(e.target.value)}
+                    placeholder="按成员 ID（user_id）过滤"
+                  />
                 </div>
                 <div className="flex items-end">
                   <Dialog
@@ -329,7 +335,7 @@ export default function SettingsGroupDetailPage() {
                       <DialogHeader>
                         <DialogTitle>添加成员</DialogTitle>
                         <DialogDescription className="text-sm">
-                          输入 user_id（每行一个或逗号分隔）。后端会 fail-closed：仅允许添加当前 tenant 已存在的成员。
+                          输入成员 ID（user_id，每行一个或逗号分隔）。后端会失败关闭（fail-closed）：仅允许添加当前租户（tenant）已存在的成员。
                         </DialogDescription>
                       </DialogHeader>
 
@@ -342,7 +348,7 @@ export default function SettingsGroupDetailPage() {
                           placeholder="alice\nbob\ncharlie"
                           className="font-mono text-sm"
                         />
-                        <div className="text-xs text-muted-foreground">最多 200 个；单个 id 最长 255 字符；重复会自动去重。</div>
+                        <div className="text-xs text-muted-foreground">最多 200 个；单个成员 ID 最长 255 字符；重复会自动去重。</div>
                       </div>
 
                       <DialogFooter className="mt-4">
@@ -363,9 +369,9 @@ export default function SettingsGroupDetailPage() {
             <CardContent>
               <div className="rounded-2xl border border-border overflow-hidden">
                 <div className="grid grid-cols-12 text-xs font-semibold text-muted-foreground bg-muted/40 px-3 py-2">
-                  <div className="col-span-7">user_id</div>
-                  <div className="col-span-4">created_at</div>
-                  <div className="col-span-1 text-right">actions</div>
+                  <div className="col-span-7">成员 ID（user_id）</div>
+                  <div className="col-span-4">加入时间（created_at）</div>
+                  <div className="col-span-1 text-right">操作（actions）</div>
                 </div>
 
                 {filteredMembers.length ? (
@@ -422,7 +428,7 @@ export default function SettingsGroupDetailPage() {
               </div>
 
               <div className="mt-3 text-xs text-muted-foreground">
-                提示：成员是 tenant user_id；添加时会校验 tenant membership（不存在则报错）。
+                提示：成员使用租户成员 ID（tenant user_id）；添加时会校验租户成员关系（tenant membership，不存在则报错）。
               </div>
             </CardContent>
           </Card>

@@ -21,6 +21,8 @@ type PageScaffoldProps = {
   size?: ComponentProps<typeof PageContainer>["size"]
   showHeader?: boolean
   compact?: boolean
+  density?: "default" | "system-dense"
+  bodyGutter?: ComponentProps<typeof PageBody>["gutter"]
   headerClassName?: string
   topClassName?: string
   toolbarClassName?: string
@@ -42,6 +44,8 @@ export function PageScaffold({
   size = "6xl",
   showHeader = true,
   compact = true,
+  density = "default",
+  bodyGutter,
   headerClassName,
   topClassName,
   toolbarClassName,
@@ -49,15 +53,21 @@ export function PageScaffold({
   bodyClassName,
   bodyContainerClassName,
 }: Readonly<PageScaffoldProps>) {
+  const isSystemDense = density === "system-dense"
+
   return (
     <>
       {showHeader ? (
-        <div className={cn(
-          "flex-shrink-0 relative z-10",
-          compact
-            ? "px-5 md:px-8 pt-5 md:pt-6 pb-3 md:pb-4"
-            : "px-6 md:px-8 pt-6 md:pt-8 pb-5 md:pb-6"
-        )}>
+        <div
+          className={cn(
+            "flex-shrink-0 relative z-10",
+            isSystemDense
+              ? "px-3 md:px-4 lg:px-5 pt-4 md:pt-5 pb-2.5 md:pb-3"
+              : compact
+                ? "px-5 md:px-8 pt-5 md:pt-6 pb-3 md:pb-4"
+                : "px-6 md:px-8 pt-6 md:pt-8 pb-5 md:pb-6"
+          )}
+        >
           <PageContainer size={size}>
             <PageHeader
               title={title}
@@ -75,21 +85,33 @@ export function PageScaffold({
       ) : null}
 
       {top ? (
-        <div className={cn(
-          "flex-shrink-0 relative z-10",
-          compact ? "px-4 md:px-6 pb-3" : "px-6 md:px-8 pb-6",
-          topClassName
-        )}>
+        <div
+          className={cn(
+            "flex-shrink-0 relative z-10",
+            isSystemDense
+              ? "px-3 md:px-4 lg:px-5 pb-2.5"
+              : compact
+                ? "px-4 md:px-6 pb-3"
+                : "px-6 md:px-8 pb-6",
+            topClassName
+          )}
+        >
           <PageContainer size={size}>{top}</PageContainer>
         </div>
       ) : null}
 
       {toolbar ? (
         <PageHeaderBar className={cn("z-20", toolbarBarClassName)}>
-          <div className={cn(
-            compact ? "px-4 md:px-6 py-2 md:py-3" : "px-6 md:px-8 py-3 md:py-4",
-            toolbarClassName
-          )}>
+          <div
+            className={cn(
+              isSystemDense
+                ? "px-3 md:px-4 lg:px-5 py-2"
+                : compact
+                  ? "px-4 md:px-6 py-2 md:py-3"
+                  : "px-6 md:px-8 py-3 md:py-4",
+              toolbarClassName
+            )}
+          >
             <PageContainer size={size}>
               <PageToolbar>{toolbar}</PageToolbar>
             </PageContainer>
@@ -97,7 +119,11 @@ export function PageScaffold({
         </PageHeaderBar>
       ) : null}
 
-      <PageBody className={bodyClassName} compact={compact}>
+      <PageBody
+        className={bodyClassName}
+        compact={compact}
+        gutter={bodyGutter ?? (isSystemDense ? "dense" : "default")}
+      >
         <PageContainer size={size} className={bodyContainerClassName}>
           {children}
         </PageContainer>

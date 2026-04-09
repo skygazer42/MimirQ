@@ -3,7 +3,8 @@
 import { Input } from '@/components/ui/input'
 import type { Etl4LlmConfig, MagicPDFConfig, MarkerConfig, PaddleVLConfig } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { FileCode, LayoutGrid, ScanLine, Wand2 } from 'lucide-react'
+import { LayoutGrid, ScanLine, Wand2 } from 'lucide-react'
+import { systemPageTokens, systemWorkbenchTokens } from '@/components/ui/system-page-tokens'
 
 type ParserServicesSectionProps = {
   etl4llm: Etl4LlmConfig
@@ -15,6 +16,14 @@ type ParserServicesSectionProps = {
   updatePaddleVL: (patch: Partial<PaddleVLConfig>) => void
   updateMagicPDF: (patch: Partial<MagicPDFConfig>) => void
 }
+
+const SECTION_TITLE = 'mb-3 flex items-center gap-2 text-sm font-semibold tracking-[-0.01em] text-foreground'
+const CARD = cn('space-y-3 rounded-lg border p-3.5', systemWorkbenchTokens.panel)
+const GRID = 'grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3'
+const FIELD_LABEL = 'text-[11px] font-medium text-muted-foreground'
+const FIELD_HINT = systemPageTokens.subtle
+const DENSE_INPUT = 'h-8 rounded-md border-border/70 bg-background text-[12px]'
+const DENSE_SELECT = 'w-full rounded-md border border-border/70 bg-background px-2.5 py-1.5 text-[12px]'
 
 function TogglePill({
   enabled,
@@ -30,7 +39,7 @@ function TogglePill({
       type="button"
       onClick={onClick}
       className={cn(
-        'rounded-full border px-3 py-1.5 text-xs font-medium',
+        'h-7 rounded-full border px-2.5 text-[11px] font-semibold leading-none',
         enabled ? accentClassName : 'border-border bg-muted text-muted-foreground'
       )}
     >
@@ -52,40 +61,42 @@ export function ParserServicesSection({
   return (
     <>
       <section>
-        <h2 className="mb-6 flex items-center gap-2 text-lg font-semibold text-foreground">
-          <LayoutGrid className="h-5 w-5 text-success" />
+        <h2 className={SECTION_TITLE}>
+          <LayoutGrid className="h-4 w-4 text-success" />
           ETL4LLM 配置
         </h2>
 
-        <div className="space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm">
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className={CARD}>
+          <div className={GRID}>
             <div className="space-y-2 lg:col-span-2">
-              <div className="text-sm font-medium text-foreground/80">API URL</div>
+              <div className={FIELD_LABEL}>服务地址（API URL）</div>
               <Input
+                className={DENSE_INPUT}
                 value={etl4llm.api_url}
                 onChange={(event) => updateEtl4Llm({ api_url: event.target.value })}
                 placeholder="http://localhost:10001/v1/etl4llm/predict"
               />
-              <div className="text-xs text-muted-foreground">
+              <div className={FIELD_HINT}>
                 启用后会写入 `ETL4LLM_API_URL`，并用于解析器 `etl4llm`。
               </div>
             </div>
 
             <div className="space-y-2">
-              <div className="text-sm font-medium text-foreground/80">模式</div>
+              <div className={FIELD_LABEL}>解析模式（mode）</div>
               <select
                 value={etl4llm.mode}
                 onChange={(event) => updateEtl4Llm({ mode: event.target.value })}
-                className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm"
+                className={DENSE_SELECT}
               >
-                <option value="partition">partition（版面/结构）</option>
-                <option value="text">text（纯文本）</option>
+                <option value="partition">版面结构（partition）</option>
+                <option value="text">纯文本（text）</option>
               </select>
             </div>
 
             <div className="space-y-2">
-              <div className="text-sm font-medium text-foreground/80">超时（秒）</div>
+              <div className={FIELD_LABEL}>超时（秒）</div>
               <Input
+                className={DENSE_INPUT}
                 type="number"
                 min={10}
                 value={etl4llm.timeout_sec}
@@ -98,10 +109,10 @@ export function ParserServicesSection({
             </div>
           </div>
 
-          <div className="flex items-center justify-between border-t border-border pt-4">
+          <div className="flex items-center justify-between border-t border-border/70 pt-3">
             <div>
-              <div className="text-sm font-medium text-foreground/80">强制 OCR</div>
-              <div className="mt-0.5 text-xs text-muted-foreground">扫描件/图片型 PDF 建议开启</div>
+              <div className="text-[12px] font-medium text-foreground/80">强制 OCR</div>
+              <div className={FIELD_HINT}>扫描件/图片型 PDF 建议开启</div>
             </div>
             <TogglePill
               enabled={etl4llm.force_ocr}
@@ -110,10 +121,10 @@ export function ParserServicesSection({
             />
           </div>
 
-          <div className="flex items-center justify-between border-t border-border pt-4">
+          <div className="flex items-center justify-between border-t border-border/70 pt-3">
             <div>
-              <div className="text-sm font-medium text-foreground/80">提取图片</div>
-              <div className="mt-0.5 text-xs text-muted-foreground">输出图片引用用于预览/入库</div>
+              <div className="text-[12px] font-medium text-foreground/80">提取图片</div>
+              <div className={FIELD_HINT}>输出图片引用用于预览/入库</div>
             </div>
             <TogglePill
               enabled={etl4llm.extract_images}
@@ -122,10 +133,10 @@ export function ParserServicesSection({
             />
           </div>
 
-          <div className="flex items-center justify-between border-t border-border pt-4">
+          <div className="flex items-center justify-between border-t border-border/70 pt-3">
             <div>
-              <div className="text-sm font-medium text-foreground/80">公式识别</div>
-              <div className="mt-0.5 text-xs text-muted-foreground">尽量保留公式/LaTeX 输出</div>
+              <div className="text-[12px] font-medium text-foreground/80">公式识别</div>
+              <div className={FIELD_HINT}>尽量保留公式/LaTeX 输出</div>
             </div>
             <TogglePill
               enabled={etl4llm.enable_formula}
@@ -134,10 +145,10 @@ export function ParserServicesSection({
             />
           </div>
 
-          <div className="flex items-center justify-between border-t border-border pt-4">
+          <div className="flex items-center justify-between border-t border-border/70 pt-3">
             <div>
-              <div className="text-sm font-medium text-foreground/80">过滤页眉页脚</div>
-              <div className="mt-0.5 text-xs text-muted-foreground">减少检索噪音（若服务支持）</div>
+              <div className="text-[12px] font-medium text-foreground/80">过滤页眉页脚</div>
+              <div className={FIELD_HINT}>减少检索噪音（若服务支持）</div>
             </div>
             <TogglePill
               enabled={etl4llm.filter_page_header_footer}
@@ -153,28 +164,30 @@ export function ParserServicesSection({
       </section>
 
       <section>
-        <h2 className="mb-6 flex items-center gap-2 text-lg font-semibold text-foreground">
-          <LayoutGrid className="h-5 w-5 text-success" />
+        <h2 className={SECTION_TITLE}>
+          <LayoutGrid className="h-4 w-4 text-success" />
           Marker 配置
         </h2>
 
-        <div className="space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm">
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className={CARD}>
+          <div className={GRID}>
             <div className="space-y-2 lg:col-span-2">
-              <div className="text-sm font-medium text-foreground/80">API URL</div>
+              <div className={FIELD_LABEL}>服务地址（API URL）</div>
               <Input
+                className={DENSE_INPUT}
                 value={marker.api_url}
                 onChange={(event) => updateMarker({ api_url: event.target.value })}
                 placeholder="http://localhost:2080/convert"
               />
-              <div className="text-xs text-muted-foreground">
+              <div className={FIELD_HINT}>
                 启用后会写入 `MARKER_API_URL`，并用于解析器 `marker`。
               </div>
             </div>
 
             <div className="space-y-2">
-              <div className="text-sm font-medium text-foreground/80">超时（秒）</div>
+              <div className={FIELD_LABEL}>超时（秒）</div>
               <Input
+                className={DENSE_INPUT}
                 type="number"
                 min={30}
                 value={marker.timeout_sec}
@@ -184,35 +197,37 @@ export function ParserServicesSection({
                   })
                 }
               />
-              <div className="text-xs text-muted-foreground">大文件/复杂 PDF 建议调大</div>
+              <div className={FIELD_HINT}>大文件/复杂 PDF 建议调大</div>
             </div>
           </div>
         </div>
       </section>
 
       <section>
-        <h2 className="mb-6 flex items-center gap-2 text-lg font-semibold text-foreground">
-          <ScanLine className="h-5 w-5 text-orange-600 dark:text-orange-300" />
+        <h2 className={SECTION_TITLE}>
+          <ScanLine className="h-4 w-4 text-orange-600 dark:text-orange-300" />
           PaddleOCR-VL 配置
         </h2>
 
-        <div className="space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm">
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className={CARD}>
+          <div className={GRID}>
             <div className="space-y-2 lg:col-span-2">
-              <div className="text-sm font-medium text-foreground/80">API URL</div>
+              <div className={FIELD_LABEL}>服务地址（API URL）</div>
               <Input
+                className={DENSE_INPUT}
                 value={paddleVl.api_url}
                 onChange={(event) => updatePaddleVL({ api_url: event.target.value })}
                 placeholder="http://localhost:9030/convert"
               />
-              <div className="text-xs text-muted-foreground">
+              <div className={FIELD_HINT}>
                 启用后会写入 `PADDLE_VL_API_URL`，并用于解析器 `paddle_vl`（别名：paddle-vl / paddleocr-vl）。
               </div>
             </div>
 
             <div className="space-y-2">
-              <div className="text-sm font-medium text-foreground/80">超时（秒）</div>
+              <div className={FIELD_LABEL}>超时（秒）</div>
               <Input
+                className={DENSE_INPUT}
                 type="number"
                 min={30}
                 value={paddleVl.timeout_sec}
@@ -222,36 +237,37 @@ export function ParserServicesSection({
                   })
                 }
               />
-              <div className="text-xs text-muted-foreground">扫描件/OCR 场景建议调大</div>
+              <div className={FIELD_HINT}>扫描件/OCR 场景建议调大</div>
             </div>
           </div>
         </div>
       </section>
 
       <section>
-        <h2 className="mb-6 flex items-center gap-2 text-lg font-semibold text-foreground">
-          <Wand2 className="h-5 w-5 text-fuchsia-700 dark:text-fuchsia-300" />
+        <h2 className={SECTION_TITLE}>
+          <Wand2 className="h-4 w-4 text-fuchsia-700 dark:text-fuchsia-300" />
           MagicPDF 配置
         </h2>
 
-        <div className="space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm">
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className={CARD}>
+          <div className={GRID}>
             <div className="space-y-2">
-              <div className="text-sm font-medium text-foreground/80">解析方法</div>
+              <div className={FIELD_LABEL}>解析方法（method）</div>
               <select
                 value={magicPdf.method}
                 onChange={(event) => updateMagicPDF({ method: event.target.value })}
-                className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm"
+                className={DENSE_SELECT}
               >
-                <option value="auto">auto（自动）</option>
-                <option value="txt">txt（文本优先）</option>
-                <option value="ocr">ocr（OCR 优先）</option>
+                <option value="auto">自动（auto）</option>
+                <option value="txt">文本优先（txt）</option>
+                <option value="ocr">OCR 优先（ocr）</option>
               </select>
             </div>
 
             <div className="space-y-2">
-              <div className="text-sm font-medium text-foreground/80">语言（可选）</div>
+              <div className={FIELD_LABEL}>语言（lang，可选）</div>
               <Input
+                className={DENSE_INPUT}
                 value={magicPdf.lang}
                 onChange={(event) => updateMagicPDF({ lang: event.target.value })}
                 placeholder='例如 "ch"'
@@ -259,8 +275,9 @@ export function ParserServicesSection({
             </div>
 
             <div className="space-y-2">
-              <div className="text-sm font-medium text-foreground/80">超时（秒）</div>
+              <div className={FIELD_LABEL}>超时（秒）</div>
               <Input
+                className={DENSE_INPUT}
                 type="number"
                 min={30}
                 value={magicPdf.timeout_sec}
@@ -273,10 +290,10 @@ export function ParserServicesSection({
             </div>
           </div>
 
-          <div className="flex items-center justify-between border-t border-border pt-4">
+          <div className="flex items-center justify-between border-t border-border/70 pt-3">
             <div>
-              <div className="text-sm font-medium text-foreground/80">保留解析产物</div>
-              <div className="mt-0.5 text-xs text-muted-foreground">
+              <div className="text-[12px] font-medium text-foreground/80">保留解析产物</div>
+              <div className={FIELD_HINT}>
                 默认会在入库流程完成后清理 `.magicpdf/` 目录
               </div>
             </div>

@@ -50,7 +50,6 @@ package-lock.json
 *~
 
 # AI agent tooling (local-only; do not commit skill caches)
-.codex/
 .gemini/
 
 # OS
@@ -90,3 +89,12 @@ docker/.env.*
 # Retrieval index caches (generated artifacts; keep out of git)
 data/sparse_indexes/
 data/colbert_indexes/
+.omx/
+.codex/*
+!.codex/agents/
+!.codex/agents/**
+!.codex/skills/
+!.codex/skills/**
+.codex/skills/.system/**
+!.codex/prompts/
+!.codex/prompts/**

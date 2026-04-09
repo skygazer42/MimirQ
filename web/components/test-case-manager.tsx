@@ -40,6 +40,7 @@ interface TestCaseManagerProps {
   datasetId?: string | null
   onRunTests?: (caseIds: string[]) => void
   onCaseSelected?: (caseId: string | null) => void
+  dense?: boolean
 }
 
 type EvidencePackDraft = {
@@ -62,6 +63,7 @@ type TestCaseRowProps = {
   isSelected: boolean
   isChecked: boolean
   isGolden: boolean
+  dense?: boolean
   onSelectCase: (caseItem: RegressionCase) => void
   onToggleSelect: (caseId: string) => void
   onToggleGolden: (caseItem: RegressionCase) => Promise<void>
@@ -73,6 +75,7 @@ function TestCaseRow({
   isSelected,
   isChecked,
   isGolden,
+  dense = false,
   onSelectCase,
   onToggleSelect,
   onToggleGolden,
@@ -99,11 +102,12 @@ function TestCaseRow({
   return (
     <div
       className={cn(
-        'p-4 hover:bg-muted/50 transition-colors motion-reduce:transition-none',
-        isSelected && 'bg-primary/10'
+        'transition-colors motion-reduce:transition-none',
+        dense ? 'px-3 py-3 hover:bg-slate-50/80' : 'p-4 hover:bg-muted/50',
+        isSelected && (dense ? 'bg-sky-50/70' : 'bg-primary/10')
       )}
     >
-      <div className="flex items-start gap-3">
+      <div className={cn('flex items-start', dense ? 'gap-2.5' : 'gap-3')}>
         <button
           type="button"
           onClick={handleToggleSelect}
@@ -118,18 +122,25 @@ function TestCaseRow({
         </button>
 
         <button type="button" className="flex-1 min-w-0 text-left" onClick={handleSelect}>
-          <div className="text-sm font-medium text-foreground mb-1 line-clamp-2">{caseItem.question}</div>
+          <div className={cn('font-medium text-foreground line-clamp-2', dense ? 'mb-1 text-[13px] leading-5' : 'mb-1 text-sm')}>
+            {caseItem.question}
+          </div>
 
           {caseItem.expected_answer ? (
-            <div className="text-xs text-muted-foreground mb-2 line-clamp-2">期望: {caseItem.expected_answer}</div>
+            <div className={cn('text-muted-foreground line-clamp-2', dense ? 'mb-1.5 text-[11px]' : 'mb-2 text-xs')}>
+              期望: {caseItem.expected_answer}
+            </div>
           ) : null}
 
           {caseItem.tags && caseItem.tags.length > 0 ? (
-            <div className="flex items-center gap-1 flex-wrap mb-2">
+            <div className={cn('flex items-center gap-1 flex-wrap', dense ? 'mb-1.5' : 'mb-2')}>
               {caseItem.tags.map((tag) => (
                 <span
                   key={tag}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted text-[10px] text-muted-foreground border border-border/60"
+                  className={cn(
+                    'inline-flex items-center gap-1 rounded-full border text-muted-foreground',
+                    dense ? 'border-slate-200/80 bg-[#fffef9] px-1.5 py-0.5 text-[9px]' : 'border-border/60 bg-muted px-2 py-0.5 text-[10px]'
+                  )}
                 >
                   <Tag className="w-2.5 h-2.5" />
                   {tag}
@@ -193,6 +204,7 @@ export function TestCaseManager({
   datasetId,
   onRunTests,
   onCaseSelected,
+  dense = false,
 }: Readonly<TestCaseManagerProps>) {
   const GOLDEN_TAG = 'golden'
   const onCaseSelectedRef = useRef(onCaseSelected)
@@ -567,11 +579,14 @@ export function TestCaseManager({
   } else {
     caseListContent = (
       <>
-        <div className="px-4 py-2 border-b border-border flex items-center gap-2">
+        <div className={cn('border-b flex items-center gap-2', dense ? 'border-slate-200/80 px-3 py-2' : 'border-border px-4 py-2')}>
           <button
             type="button"
             onClick={toggleSelectAll}
-            className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none"
+            className={cn(
+              'flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none',
+              dense ? 'text-[11px]' : 'text-xs'
+            )}
           >
             {selectedCaseIds.size === filteredCases.length ? (
               <CheckSquare className="w-4 h-4" />
@@ -592,6 +607,7 @@ export function TestCaseManager({
                 isSelected={selectedCase?.id === caseItem.id}
                 isChecked={selectedCaseIds.has(caseItem.id)}
                 isGolden={isGolden}
+                dense={dense}
                 onSelectCase={handleSelectCase}
                 onToggleSelect={toggleSelect}
                 onToggleGolden={handleToggleGolden}
@@ -607,16 +623,19 @@ export function TestCaseManager({
   return (
     <div className="flex flex-col h-full">
       {/* 头部操作栏 */}
-      <div className="p-4 border-b border-border">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-foreground">测试用例库</h3>
-          <div className="flex items-center gap-2">
+      <div className={cn('border-b', dense ? 'border-slate-200/80 bg-[#fffef9] px-3 py-3' : 'border-border p-4')}>
+        <div className={cn('flex items-center justify-between', dense ? 'mb-2.5' : 'mb-3')}>
+          <div>
+            <h3 className={cn('font-semibold text-foreground', dense ? 'text-[13px]' : 'text-sm')}>测试用例库</h3>
+            {dense ? <div className="mt-0.5 text-[11px] text-muted-foreground">检索预览、沉淀样例并批量发起回归。</div> : null}
+          </div>
+          <div className={cn('flex items-center', dense ? 'gap-1.5' : 'gap-2')}>
             {selectedCaseIds.size > 0 && (
               <>
                 <Button
                   size="sm"
                   variant="outline"
-                  className="gap-2"
+                  className={cn('gap-2', dense && 'h-8 rounded-lg border-slate-200/80 bg-white/90 px-2.5 text-[11px]')}
                   onClick={handleRunSelected}
                 >
                   运行选中 ({selectedCaseIds.size})
@@ -632,7 +651,7 @@ export function TestCaseManager({
                   <Button
                     size="sm"
                     variant="outline"
-                    className="gap-2 text-destructive hover:text-destructive"
+                    className={cn('gap-2 text-destructive hover:text-destructive', dense && 'h-8 rounded-lg border-slate-200/80 bg-white/90 px-2.5 text-[11px]')}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     删除
@@ -650,7 +669,7 @@ export function TestCaseManager({
             <Button
               size="sm"
               variant="outline"
-              className="gap-2"
+              className={cn('gap-2', dense && 'h-8 rounded-lg border-slate-200/80 bg-white/90 px-2.5 text-[11px]')}
               onClick={handleChooseEvidencePack}
               disabled={!datasetId}
               title={datasetId ? '导入 Evidence Pack JSON' : '请先选择数据集'}
@@ -660,7 +679,7 @@ export function TestCaseManager({
             </Button>
             <Button
               size="sm"
-              className="gap-2"
+              className={cn('gap-2', dense && 'h-8 rounded-lg px-2.5 text-[11px]')}
               onClick={() => setIsCreating(!isCreating)}
             >
               <Plus className="w-3.5 h-3.5" />
@@ -671,21 +690,25 @@ export function TestCaseManager({
 
         {/* 搜索框 */}
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className={cn('absolute top-1/2 -translate-y-1/2 text-muted-foreground', dense ? 'left-2.5 h-3.5 w-3.5' : 'left-3 h-4 w-4')} />
           <Input
             type="text"
             placeholder="搜索问题..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
+            className={cn(dense ? 'h-9 rounded-xl border-slate-200/80 bg-white/95 pl-8 text-[13px]' : 'pl-10')}
           />
         </div>
 
-        <div className="mt-3 flex items-center justify-between gap-3">
+        <div className={cn('flex items-center justify-between gap-3', dense ? 'mt-2.5' : 'mt-3')}>
           <Button
             size="sm"
             variant={goldenOnly ? 'default' : 'outline'}
-            className={cn('gap-2', goldenOnly && 'bg-amber-500/15 text-amber-700 hover:bg-amber-500/20')}
+            className={cn(
+              'gap-2',
+              goldenOnly && 'bg-amber-500/15 text-amber-700 hover:bg-amber-500/20',
+              dense && 'h-8 rounded-lg border-slate-200/80 bg-white/90 px-2.5 text-[11px]'
+            )}
             onClick={() => {
               setGoldenOnly((v) => !v)
               setSelectedCaseIds(new Set())
@@ -696,7 +719,7 @@ export function TestCaseManager({
             <Star className="w-3.5 h-3.5" fill={goldenOnly ? 'currentColor' : 'none'} />
             Golden
           </Button>
-          <div className="text-[11px] text-muted-foreground">
+          <div className={cn('text-muted-foreground', dense ? 'text-[10px]' : 'text-[11px]')}>
             golden {goldenCount} / {cases.length}
           </div>
         </div>
@@ -704,33 +727,34 @@ export function TestCaseManager({
 
       {/* 创建表单 */}
       {isCreating && (
-        <div className="p-4 border-b border-border bg-muted/30">
-          <div className="space-y-3">
+        <div className={cn('border-b', dense ? 'border-slate-200/80 bg-slate-50/70 px-3 py-3' : 'border-border bg-muted/30 p-4')}>
+          <div className={cn(dense ? 'space-y-2.5' : 'space-y-3')}>
             <div>
-              <div className="block text-xs font-medium text-muted-foreground mb-1">
+              <div className={cn('block font-medium text-muted-foreground', dense ? 'mb-1 text-[11px]' : 'mb-1 text-xs')}>
                 问题 *
               </div>
               <Textarea
                 value={newQuestion}
                 onChange={(e) => setNewQuestion(e.target.value)}
                 placeholder="输入测试问题..."
-                className="min-h-[72px] resize-none"
+                className={cn('resize-none', dense ? 'min-h-[64px] rounded-xl border-slate-200/80 bg-white/95 text-[13px]' : 'min-h-[72px]')}
               />
             </div>
             <div>
-              <div className="block text-xs font-medium text-muted-foreground mb-1">
+              <div className={cn('block font-medium text-muted-foreground', dense ? 'mb-1 text-[11px]' : 'mb-1 text-xs')}>
                 期望答案（可选）
               </div>
               <Textarea
                 value={newExpectedAnswer}
                 onChange={(e) => setNewExpectedAnswer(e.target.value)}
                 placeholder="输入期望答案..."
-                className="min-h-[72px] resize-none"
+                className={cn('resize-none', dense ? 'min-h-[64px] rounded-xl border-slate-200/80 bg-white/95 text-[13px]' : 'min-h-[72px]')}
               />
             </div>
             <div className="flex items-center gap-2">
               <Button
                 size="sm"
+                className={cn(dense && 'h-8 rounded-lg px-2.5 text-[11px]')}
                 onClick={() => detachPromise(handleCreate())}
                 disabled={evidenceLoading || !datasetId || !newQuestion.trim()}
               >
@@ -746,6 +770,7 @@ export function TestCaseManager({
               <Button
                 size="sm"
                 variant="outline"
+                className={cn(dense && 'h-8 rounded-lg border-slate-200/80 bg-white/90 px-2.5 text-[11px]')}
                 onClick={() => {
                   setIsCreating(false)
                   setNewQuestion('')
@@ -755,7 +780,7 @@ export function TestCaseManager({
                 取消
               </Button>
             </div>
-            <div className="text-[11px] text-muted-foreground">
+            <div className={cn('text-muted-foreground', dense ? 'text-[10px] leading-5' : 'text-[11px]')}>
               提示：后端要求每个用例必须提供至少 1 条 <span className="font-mono">reference_sources</span>。
               点击“检索预览”或“导入 Evidence Pack”选择 Ground Truth 证据引用后再创建。
             </div>
@@ -883,8 +908,8 @@ export function TestCaseManager({
       </div>
 
       {/* 底部统计 */}
-      <div className="p-3 border-t border-border bg-muted/30">
-        <div className="text-xs text-muted-foreground text-center">
+      <div className={cn('border-t', dense ? 'border-slate-200/80 bg-[#fffef9] px-3 py-2.5' : 'border-border bg-muted/30 p-3')}>
+        <div className={cn('text-center text-muted-foreground', dense ? 'text-[11px]' : 'text-xs')}>
           共 {filteredCases.length} 个测试用例
           {selectedCaseIds.size > 0 && ` · 已选择 ${selectedCaseIds.size} 个`}
         </div>

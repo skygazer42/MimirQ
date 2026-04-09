@@ -91,6 +91,12 @@
     --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.03);
     --shadow-soft: 0 2px 10px rgba(0, 0, 0, 0.05);
     --shadow-strong: 0 10px 30px rgba(0, 0, 0, 0.08);
+
+    /* Surface hierarchy: 0=base, 1=card, 2=overlay, 3=popover */
+    --surface-0: var(--background);
+    --surface-1: var(--card);
+    --surface-2: 220 20% 98%;
+    --surface-3: var(--popover);
   }
 
   html.dark {
@@ -170,6 +176,12 @@
     --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.12);
     --shadow-soft: 0 2px 10px rgba(0, 0, 0, 0.3);
     --shadow-strong: 0 10px 30px rgba(0, 0, 0, 0.5);
+
+    /* Surface hierarchy (dark) */
+    --surface-0: var(--background);
+    --surface-1: var(--card);
+    --surface-2: 220 25% 17%;
+    --surface-3: var(--popover);
   }
 }
 
@@ -441,21 +453,8 @@ html.dark .custom-scrollbar::-webkit-scrollbar-thumb {
   @apply animate-blink;
 }
 
-/* Global hover acceleration (150ms baseline, 200ms for transforms) */
+/* Reduced-motion baseline */
 @layer base {
-  *,
-  *::before,
-  *::after {
-    transition-duration: 150ms;
-  }
-
-  *,
-  *::before,
-  *::after {
-    transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, filter, backdrop-filter;
-    transition-timing-function: cubic-bezier(0.25, 0.1, 0.25, 1);
-  }
-
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
@@ -465,6 +464,16 @@ html.dark .custom-scrollbar::-webkit-scrollbar-thumb {
       transition-duration: 0.01ms !important;
       scroll-behavior: auto !important;
     }
+  }
+}
+
+/* Interactive transition utility — apply to buttons, links, cards, interactive elements.
+   Replaces the previous * selector that animated all elements including layout. */
+@layer utilities {
+  .interactive-transition {
+    transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, filter, backdrop-filter;
+    transition-duration: 150ms;
+    transition-timing-function: cubic-bezier(0.25, 0.1, 0.25, 1);
   }
 }
 
@@ -509,15 +518,3 @@ html.dark .custom-scrollbar::-webkit-scrollbar-thumb {
   background: linear-gradient(100deg, transparent, hsl(var(--primary) / 0.04), transparent);
 }
 
-/* Dark mode noise texture for depth */
-html.dark body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  opacity: 0.015;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
-  background-repeat: repeat;
-  background-size: 256px 256px;
-}

@@ -893,7 +893,7 @@ export function RagvizSimilarityWorkbench() {
     <div className="h-full w-full flex overflow-hidden">
       {/* Left section */}
       <div className="flex h-full">
-        <div className="w-12 border-r border-sidebar-border/70 bg-sidebar/90 backdrop-blur-xl flex flex-col items-center py-2">
+        <div className="w-12 border-r border-sidebar-border/70 bg-muted flex flex-col items-center py-2">
           <div className="flex flex-col gap-1">
             <IconBtn
               active={!isLeftSidebarCollapsed && leftTopPanel === 'dataSource'}
@@ -927,7 +927,7 @@ export function RagvizSimilarityWorkbench() {
         <div
           ref={leftSidebarRef}
           className={cn(
-            'relative h-full border-r border-sidebar-border/70 bg-sidebar/78 backdrop-blur-xl flex flex-col overflow-hidden transition-[width,opacity] duration-200 ease-out',
+            'relative h-full border-r border-sidebar-border/70 bg-muted flex flex-col overflow-hidden transition-[width,opacity] duration-200 ease-out',
             isLeftSidebarCollapsed ? 'opacity-0' : 'opacity-100'
           )}
           style={{ width: isLeftSidebarCollapsed ? 0 : leftWidth }}
@@ -951,7 +951,7 @@ export function RagvizSimilarityWorkbench() {
 	                  </Button>
 	                }>
                   <div className="space-y-2.5">
-                    <div className="rounded-2xl border border-sidebar-border/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.96))] p-2.5 shadow-soft">
+                    <div className="rounded-2xl border border-sidebar-border/70 bg-card p-2.5 shadow-soft">
                       <div className="flex items-start gap-2.5">
                         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-primary/10 bg-primary/10 text-primary">
                           <Grid3X3 className="size-4" />
@@ -978,7 +978,7 @@ export function RagvizSimilarityWorkbench() {
                         eyebrow="X Axis"
                         title="横坐标 Collection"
                         badge="横向对比"
-                        badgeClassName="border-cyan-200/70 bg-cyan-50 text-cyan-700 dark:border-cyan-900/40 dark:bg-cyan-950/30 dark:text-cyan-200"
+                        badgeClassName="border-primary/20 bg-primary/10 text-primary"
                       >
                         <CollectionSelectorBlock
                           label="横坐标 Collection"
@@ -994,7 +994,7 @@ export function RagvizSimilarityWorkbench() {
                         eyebrow="Y Axis"
                         title="纵坐标 Collection"
                         badge="纵向对比"
-                        badgeClassName="border-emerald-200/70 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-200"
+                        badgeClassName="border-success/20 bg-success/10 text-success"
                       >
                         <CollectionSelectorBlock
                           label="纵坐标 Collection"
@@ -1008,7 +1008,7 @@ export function RagvizSimilarityWorkbench() {
                     </div>
 
                     <Button
-                      className="h-10 w-full rounded-2xl shadow-[0_12px_24px_rgba(37,99,235,0.18)]"
+                      className="h-10 w-full rounded-2xl shadow-soft"
                       onClick={calculateSimilarity}
                       disabled={isCalculating}
                     >
@@ -1087,7 +1087,7 @@ export function RagvizSimilarityWorkbench() {
             <div className="p-3 overflow-auto overscroll-contain no-scrollbar">
               <Panel title="图表选择与控制">
                 {results.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-sidebar-border/60 bg-sidebar/45 px-4 py-5 text-center">
+                  <div className="rounded-2xl border border-dashed border-sidebar-border/60 bg-muted/30 px-4 py-5 text-center">
                     <div className="text-sm font-medium text-foreground">等待矩阵结果</div>
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">
                       先在上方选择两个 collections，再生成热力图并在这里切换主图、筛选器和独占模式。
@@ -1185,7 +1185,7 @@ export function RagvizSimilarityWorkbench() {
       {/* Main content */}
       <div className="flex-1 h-full overflow-hidden bg-background">
         <div className="h-full w-full flex flex-col">
-          <div className="border-b border-sidebar-border/70 bg-sidebar/35 px-4 py-3">
+          <div className="border-b border-sidebar-border/70 bg-muted/20 px-4 py-3">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <div>
                 <div className="text-sm font-semibold">
@@ -1255,7 +1255,7 @@ export function RagvizSimilarityWorkbench() {
                   <SimilarityDiagnosticsView diagnostics={diagnostics} onDecisionChange={setDiagnosticDecision} />
                 ) : (
                   <div className="flex h-full items-center justify-center px-6">
-                    <div className="rounded-2xl border border-dashed border-sidebar-border/60 bg-sidebar/45 px-6 py-8 text-center">
+                    <div className="rounded-2xl border border-dashed border-sidebar-border/60 bg-muted/30 px-6 py-8 text-center">
                       <div className="text-sm font-semibold text-foreground">向量诊断暂不可用</div>
                       <p className="mt-2 text-sm text-muted-foreground">
                         当前处于差值模式，3D 投影预览和异常点标注只在单个主图矩阵上启用。
@@ -1277,7 +1277,7 @@ export function RagvizSimilarityWorkbench() {
               )
             ) : (
               <div className="flex h-full items-center justify-center px-6">
-                <div className="rounded-2xl border border-dashed border-sidebar-border/60 bg-sidebar/45 px-6 py-8 text-center text-sm text-muted-foreground">
+                <div className="rounded-2xl border border-dashed border-sidebar-border/60 bg-muted/30 px-6 py-8 text-center text-sm text-muted-foreground">
                   请先计算相似度矩阵并选择“应用数据”。
                 </div>
               </div>
@@ -1288,7 +1288,7 @@ export function RagvizSimilarityWorkbench() {
 
       {/* Right section */}
       <div className="flex h-full">
-        <div className="w-12 border-l border-sidebar-border/70 bg-sidebar/90 backdrop-blur-xl flex flex-col items-center py-2">
+        <div className="w-12 border-l border-sidebar-border/70 bg-muted flex flex-col items-center py-2">
           <div className="flex flex-col gap-1">
             <IconBtn
               active={!isRightSidebarCollapsed && rightTopPanel === 'statistics'}
@@ -1316,7 +1316,7 @@ export function RagvizSimilarityWorkbench() {
         <div
           ref={rightSidebarRef}
           className={cn(
-            'relative h-full border-l border-sidebar-border/70 bg-sidebar/78 backdrop-blur-xl flex flex-col overflow-hidden transition-[width,opacity] duration-200 ease-out',
+            'relative h-full border-l border-sidebar-border/70 bg-muted flex flex-col overflow-hidden transition-[width,opacity] duration-200 ease-out',
             isRightSidebarCollapsed ? 'opacity-0' : 'opacity-100'
           )}
           style={{ width: isRightSidebarCollapsed ? 0 : rightWidth }}
@@ -1376,7 +1376,7 @@ export function RagvizSimilarityWorkbench() {
 
                       {selectedCellDetails ? (
                         <div className="space-y-2">
-                          <div className="rounded-xl border border-sidebar-border/70 bg-sidebar/55 p-3 shadow-soft">
+                          <div className="rounded-xl border border-sidebar-border/70 bg-muted/40 p-3 shadow-soft">
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0 space-y-1">
                                 <div className="text-[11px] text-muted-foreground">横轴</div>
@@ -1681,7 +1681,7 @@ function SimilarityDiagnosticsView({
             />
           </div>
 
-          <section className="rounded-2xl border border-sidebar-border/70 bg-sidebar/60 p-3 shadow-soft">
+          <section className="rounded-2xl border border-sidebar-border/70 bg-muted/50 p-3 shadow-soft">
             <div className="flex flex-col gap-3 border-b border-sidebar-border/70 pb-3 md:flex-row md:items-start md:justify-between">
               <div>
                 <div className="text-sm font-semibold">3D 投影预览</div>
@@ -1711,7 +1711,7 @@ function SimilarityDiagnosticsView({
           </section>
         </div>
 
-        <section className="overflow-hidden rounded-2xl border border-sidebar-border/70 bg-sidebar/60 shadow-soft">
+        <section className="overflow-hidden rounded-2xl border border-sidebar-border/70 bg-muted/50 shadow-soft">
           <div className="border-b border-sidebar-border/70 p-4">
             <div className="text-sm font-semibold">异常点标注</div>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -1721,7 +1721,7 @@ function SimilarityDiagnosticsView({
 
           <div className="space-y-3 overflow-auto p-4">
             {diagnostics.outliers.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-sidebar-border/60 bg-sidebar/45 px-4 py-6 text-sm text-muted-foreground">
+              <div className="rounded-xl border border-dashed border-sidebar-border/60 bg-muted/30 px-4 py-6 text-sm text-muted-foreground">
                 当前筛选结果里没有需要人工干预的高分异常候选。
               </div>
             ) : (
@@ -1730,7 +1730,7 @@ function SimilarityDiagnosticsView({
                 const isMarked = candidate.decision === 'marked'
 
                 return (
-                  <article key={candidate.id} className="rounded-xl border border-sidebar-border/70 bg-sidebar/55 p-4 shadow-soft">
+                  <article key={candidate.id} className="rounded-xl border border-sidebar-border/70 bg-muted/40 p-4 shadow-soft">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="text-sm font-medium text-foreground">
@@ -1802,7 +1802,7 @@ function DiagnosticMetricCard({
   compact?: boolean
 }>) {
   return (
-    <div className={cn('rounded-xl border border-sidebar-border/70 bg-sidebar/55', compact ? 'p-3' : 'p-4')}>
+    <div className={cn('rounded-xl border border-sidebar-border/70 bg-muted/40', compact ? 'p-3' : 'p-4')}>
       <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{label}</div>
       <div className={cn('mt-1 font-semibold text-foreground', compact ? 'text-base' : 'text-2xl')}>{value}</div>
       {hint ? <p className="mt-1 text-[11px] text-muted-foreground">{hint}</p> : null}
@@ -1830,7 +1830,7 @@ function AxisConfigCard({
   children: ReactNode
 }>) {
   return (
-    <section className="rounded-2xl border border-sidebar-border/70 bg-sidebar/55 p-2.5 shadow-soft">
+    <section className="rounded-2xl border border-sidebar-border/70 bg-muted/40 p-2.5 shadow-soft">
       <div className="mb-2.5 flex items-start justify-between gap-2.5">
         <div className="min-w-0">
           <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{eyebrow}</div>

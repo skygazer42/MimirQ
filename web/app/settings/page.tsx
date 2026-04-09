@@ -9,6 +9,8 @@ import { AppFrame } from '@/components/app-frame'
 import { ModelConfigDialog } from '@/components/model-config-dialog'
 import { Button } from '@/components/ui/button'
 import { PageScaffold } from '@/components/ui/page-scaffold'
+import { StickyActionRail } from '@/components/ui/sticky-action-rail'
+import { SystemDataStrip } from '@/components/ui/system-data-strip'
 import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { FeatureFlagsSection } from './_sections/feature-flags-section'
@@ -31,6 +33,7 @@ import {
   XCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { systemDenseControls, systemPageTokens } from '@/components/ui/system-page-tokens'
 
 const SETTINGS_SECTIONS = [
   { id: 'sec-frontend', label: '前端偏好' },
@@ -45,6 +48,8 @@ const SETTINGS_SECTIONS = [
   { id: 'sec-observability', label: '可观测性' },
   { id: 'sec-runtime', label: '运行时控制' },
 ] as const
+const DENSE_OUTLINE_BUTTON = systemDenseControls.outlineButton
+const DENSE_PRIMARY_BUTTON = systemDenseControls.primaryButton
 
 function useSettingsScrollSpy(sectionIds: readonly string[]) {
   const [activeId, setActiveId] = useState(sectionIds[0])
@@ -91,57 +96,85 @@ export default function SettingsPage() {
   const state = useSettingsPageState()
   const { parserBackend, setParserBackend } = useParserBackendPreference()
   const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
+  const statusStripItems = [
+    { label: '配置分区', value: SETTINGS_SECTIONS.length, mono: true },
+    {
+      label: '草稿变更',
+      value: state.hasChanges ? '待保存' : '已同步',
+      tone: state.hasChanges ? 'warning' : 'success',
+    },
+    {
+      label: '保存状态',
+      value: state.saving
+        ? '保存中'
+        : state.saveMessage?.type === 'success'
+          ? '最近成功'
+          : state.saveMessage?.type === 'error'
+            ? '最近失败'
+            : '空闲',
+      tone:
+        state.saveMessage?.type === 'error'
+          ? 'danger'
+          : state.saving
+            ? 'warning'
+            : state.saveMessage?.type === 'success'
+              ? 'success'
+              : 'default',
+    },
+    { label: '最近更新键', value: state.lastUpdatedKeys.length, mono: true },
+  ] as const
 
   return (
     <AppFrame>
       <PageScaffold
         title="设置与配置"
-        badge="SETTINGS"
+        badge="系统配置"
         icon={Settings2}
         iconColor="text-muted-foreground"
-        description="管理功能开关、模型接入及系统参数"
+        description="统一管理功能开关、模型接入、检索增强生成参数（RAG）与运行时控制。"
+        size="full"
+        density="system-dense"
         top={
-          state.loadError || state.saveMessage ? (
-            <div className="space-y-3">
-              {state.loadError ? (
-                <Alert variant="destructive" className="shadow-soft/40">
+          <div className="space-y-2">
+            <SystemDataStrip items={statusStripItems} minColumnWidth={148} />
+            {state.loadError ? (
+              <Alert variant="destructive" className="rounded-lg border-border/70 shadow-none">
+                <XCircle className="size-4" />
+                <div>
+                  <AlertTitle>加载失败</AlertTitle>
+                  <AlertDescription className="text-foreground/80">
+                    {state.loadError}
+                  </AlertDescription>
+                </div>
+              </Alert>
+            ) : null}
+            {state.saveMessage ? (
+              <Alert
+                variant={state.saveMessage.type === 'success' ? 'success' : 'destructive'}
+                className="rounded-lg border-border/70 shadow-none"
+              >
+                {state.saveMessage.type === 'success' ? (
+                  <CheckCircle2 className="size-4" />
+                ) : (
                   <XCircle className="size-4" />
-                  <div>
-                    <AlertTitle>加载失败</AlertTitle>
-                    <AlertDescription className="text-foreground/80">
-                      {state.loadError}
-                    </AlertDescription>
-                  </div>
-                </Alert>
-              ) : null}
-              {state.saveMessage ? (
-                <Alert
-                  variant={state.saveMessage.type === 'success' ? 'success' : 'destructive'}
-                  className="shadow-soft/40"
-                >
-                  {state.saveMessage.type === 'success' ? (
-                    <CheckCircle2 className="size-4" />
-                  ) : (
-                    <XCircle className="size-4" />
-                  )}
-                  <div>
-                    <AlertTitle>
-                      {state.saveMessage.type === 'success' ? '保存成功' : '保存失败'}
-                    </AlertTitle>
-                    <AlertDescription className="text-foreground/80 space-y-2">
-                      <div>{state.saveMessage.text}</div>
-                      {state.saveMessage.type === 'success' && state.lastUpdatedKeys.length > 0 ? (
-                        <div className="text-xs text-muted-foreground">
-                          Updated: {state.lastUpdatedKeys.slice(0, 10).join(', ')}
-                          {state.lastUpdatedKeys.length > 10 ? ` (+${state.lastUpdatedKeys.length - 10})` : ''}
-                        </div>
-                      ) : null}
-                    </AlertDescription>
-                  </div>
-                </Alert>
-              ) : null}
-            </div>
-          ) : null
+                )}
+                <div>
+                  <AlertTitle>
+                    {state.saveMessage.type === 'success' ? '保存成功' : '保存失败'}
+                  </AlertTitle>
+                  <AlertDescription className="text-foreground/80 space-y-2">
+                    <div>{state.saveMessage.text}</div>
+                    {state.saveMessage.type === 'success' && state.lastUpdatedKeys.length > 0 ? (
+                      <div className={systemPageTokens.subtle}>
+                        已更新：{state.lastUpdatedKeys.slice(0, 10).join(', ')}
+                        {state.lastUpdatedKeys.length > 10 ? ` (+${state.lastUpdatedKeys.length - 10})` : ''}
+                      </div>
+                    ) : null}
+                  </AlertDescription>
+                </div>
+              </Alert>
+            ) : null}
+          </div>
         }
         actions={
           <>
@@ -149,7 +182,7 @@ export default function SettingsPage() {
               variant="outline"
               onClick={state.refreshAll}
               disabled={state.loading}
-              className="gap-2"
+              className={DENSE_OUTLINE_BUTTON}
             >
               <RefreshCw className={cn('size-4', state.loading && 'animate-spin motion-reduce:animate-none')} />
               刷新
@@ -157,7 +190,7 @@ export default function SettingsPage() {
             <Button
               onClick={state.saveSettings}
               disabled={!state.hasChanges || state.saving}
-              className="gap-2"
+              className={DENSE_PRIMARY_BUTTON}
             >
               <Save className={cn('size-4', state.saving && 'animate-pulse motion-reduce:animate-none')} />
               {state.saving ? '保存中...' : '保存配置'}
@@ -195,19 +228,20 @@ function SettingsContent({ state, parserBackend, setParserBackend, chunkStrategy
   }, [])
 
   return (
-    <div className="flex gap-8">
-      <nav className="hidden lg:block w-44 shrink-0 sticky top-4 self-start pt-1">
-        <ul className="space-y-0.5">
+    <div className="flex gap-4 lg:gap-5">
+      <nav className="sticky top-4 hidden w-52 shrink-0 self-start pt-2 lg:flex lg:justify-center">
+        <ul className="w-full max-w-[12.5rem] space-y-1.5">
           {SETTINGS_SECTIONS.map((sec) => (
             <li key={sec.id}>
               <button
                 type="button"
                 onClick={() => scrollTo(sec.id)}
                 className={cn(
-                  'relative w-full text-left text-xs px-3 py-2 rounded-lg transition-colors truncate',
+                  'relative w-full rounded-lg px-3.5 py-2.5 text-center transition-colors',
+                  'text-[14px] font-semibold leading-5',
                   activeId === sec.id
-                    ? 'bg-primary/10 text-primary font-semibold before:absolute before:left-0 before:top-1 before:bottom-1 before:w-[2px] before:rounded-full before:bg-primary'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
+                    ? 'bg-primary/10 text-primary before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-[2px] before:rounded-full before:bg-primary'
+                    : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground',
                 )}
               >
                 {sec.label}
@@ -217,8 +251,8 @@ function SettingsContent({ state, parserBackend, setParserBackend, chunkStrategy
         </ul>
       </nav>
 
-      <div className="flex-1 min-w-0 space-y-12">
-        <div id="sec-frontend">
+      <div className="min-w-0 flex-1 space-y-6">
+        <div id="sec-frontend" className="scroll-mt-24">
           <FrontendPreferencesSection
             parserBackend={parserBackend}
             setParserBackend={setParserBackend}
@@ -227,7 +261,7 @@ function SettingsContent({ state, parserBackend, setParserBackend, chunkStrategy
           />
         </div>
 
-        <div id="sec-flags">
+        <div id="sec-flags" className="scroll-mt-24">
           <FeatureFlagsSection
             editedFeatureFlags={state.editedFeatureFlags}
             getFeatureValue={state.getFeatureValue}
@@ -235,7 +269,7 @@ function SettingsContent({ state, parserBackend, setParserBackend, chunkStrategy
           />
         </div>
 
-        <div id="sec-parsers">
+        <div id="sec-parsers" className="scroll-mt-24">
           <ParserServicesSection
             etl4llm={state.etl4llmMerged}
             marker={state.markerMerged}
@@ -248,20 +282,20 @@ function SettingsContent({ state, parserBackend, setParserBackend, chunkStrategy
           />
         </div>
 
-        <div id="sec-status">
+        <div id="sec-status" className="scroll-mt-24">
           {state.status ? (
             <SystemStatusSection status={state.status} backendMeta={state.backendMeta} />
           ) : null}
         </div>
 
-        <div id="sec-models">
+        <div id="sec-models" className="scroll-mt-24">
           <ModelProvidersSection
             groupedProviders={state.groupedProviders}
             onConfigure={state.handleConfigure}
           />
         </div>
 
-        <div id="sec-ltr">
+        <div id="sec-ltr" className="scroll-mt-24">
           <LtrModelRegistrySection
             ltrError={state.ltrError}
             ltrMessage={state.ltrMessage}
@@ -283,18 +317,18 @@ function SettingsContent({ state, parserBackend, setParserBackend, chunkStrategy
           />
         </div>
 
-        <div id="sec-rag">
+        <div id="sec-rag" className="scroll-mt-24">
           <RagSection rag={state.ragMerged} updateRag={state.updateRag} />
         </div>
 
-        <div id="sec-url">
+        <div id="sec-url" className="scroll-mt-24">
           <UrlIngestSection
             urlIngest={state.urlIngestMerged}
             updateUrlIngest={state.updateUrlIngest}
           />
         </div>
 
-        <div id="sec-governance">
+        <div id="sec-governance" className="scroll-mt-24">
           <GovernanceSection
             isGovernanceEnabled={state.isGovernanceEnabled}
             isPiiAnonymizeEnabled={state.isPiiAnonymizeEnabled}
@@ -304,14 +338,14 @@ function SettingsContent({ state, parserBackend, setParserBackend, chunkStrategy
           />
         </div>
 
-        <div id="sec-observability">
+        <div id="sec-observability" className="scroll-mt-24">
           <ObservabilitySection
             observability={state.observabilityMerged}
             updateObservability={state.updateObservability}
           />
         </div>
 
-        <div id="sec-runtime">
+        <div id="sec-runtime" className="scroll-mt-24">
           <RuntimeControlsSection
             chat={state.chatMerged}
             updateChat={state.updateChat}
@@ -323,6 +357,35 @@ function SettingsContent({ state, parserBackend, setParserBackend, chunkStrategy
             updateLangGraph={state.updateLangGraph}
           />
         </div>
+
+        <StickyActionRail>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className={systemPageTokens.subtle}>
+              {state.hasChanges
+                ? '存在未保存改动：建议保存后再离开页面。'
+                : '当前草稿与后端配置一致。'}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={state.refreshAll}
+                disabled={state.loading}
+                className={DENSE_OUTLINE_BUTTON}
+              >
+                <RefreshCw className={cn('size-4', state.loading && 'animate-spin motion-reduce:animate-none')} />
+                刷新
+              </Button>
+              <Button
+                onClick={state.saveSettings}
+                disabled={!state.hasChanges || state.saving}
+                className={DENSE_PRIMARY_BUTTON}
+              >
+                <Save className={cn('size-4', state.saving && 'animate-pulse motion-reduce:animate-none')} />
+                {state.saving ? '保存中...' : '保存配置'}
+              </Button>
+            </div>
+          </div>
+        </StickyActionRail>
       </div>
     </div>
   )
