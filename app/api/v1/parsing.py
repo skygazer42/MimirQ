@@ -831,7 +831,7 @@ async def parse_workspace_document(
                         alt_cross_page_merge_stats = None
 
                 alt_backend = str(alt_parsed.get("resolved_backend") or cand_backend)
-                alt_original, alt_markdown = _extract_markdown(alt_parsed if isinstance(alt_parsed, dict) else {})
+                alt_original, alt_markdown = _extract_markdown_pair_from_documents(alt_artifact_docs)
                 alt_gate = _compute_parsing_quality_gate(
                     alt_markdown,
                     pdf_quality=pdf_quality,

@@ -227,15 +227,16 @@ export function useParsingLibraryActions({
               },
             ]
             activeRunId = runId
+            const restoredMarkdown = markdownContent || ""
             stats = {
-              charCount: markdownContent.length,
-              lineCount: markdownContent.split('\n').length,
-              headingCount: countMarkdownHeadings(markdownContent),
+              charCount: restoredMarkdown.length,
+              lineCount: restoredMarkdown.split('\n').length,
+              headingCount: countMarkdownHeadings(restoredMarkdown),
               tableCount:
-                (markdownContent.match(/\|.*\|/g) || []).length > 0
-                  ? (markdownContent.match(/^\|/gm) || []).length / 2
+                (restoredMarkdown.match(/\|.*\|/g) || []).length > 0
+                  ? (restoredMarkdown.match(/^\|/gm) || []).length / 2
                   : 0,
-              imageCount: (markdownContent.match(/!\[.*?\]\(.*?\)/g) || []).length,
+              imageCount: (restoredMarkdown.match(/!\[.*?\]\(.*?\)/g) || []).length,
               blockCount: blocks.length,
             }
           }

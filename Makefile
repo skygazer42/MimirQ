@@ -1,4 +1,4 @@
-.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend web test perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build diagnostics db-upgrade db-revision verify enterprise-checks parser-status check-retrieval-profile-compat check-queryset-health-policy compose-diagnostics helm-template helm-lint clean doctor
+.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend web test test-web test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build diagnostics db-upgrade db-revision verify enterprise-checks parser-status check-retrieval-profile-compat check-queryset-health-policy compose-diagnostics helm-template helm-lint clean doctor
 
 # Prefer project venv when available so local dev doesn't depend on global tooling.
 PY := python3
@@ -64,6 +64,9 @@ help:
 	@echo "  make backend   - run backend locally (uvicorn --reload)"
 	@echo "  make web       - run web locally (pnpm dev)"
 	@echo "  make test      - run backend tests (pytest)"
+	@echo "  make test-web  - run frontend unit/integration tests (vitest)"
+	@echo "  make test-management-smoke - run Playwright smoke against management surfaces"
+	@echo "  make test-matrix - generate full-stack test coverage matrix artifacts"
 	@echo "  make perf-smoke - run perf harness in LLM mock mode (writes runs/perf/perf-smoke.json)"
 	@echo "  make api-check - verify web routes exist in backend"
 	@echo "  make api-ping  - ping backend health endpoints (quick reachability check)"
@@ -206,6 +209,16 @@ web:
 test:
 	$(PY) -m pytest -q
 
+test-web:
+	cd web && pnpm run test
+
+test-management-smoke:
+	cd web && PLAYWRIGHT_USE_PROD_SERVER=1 pnpm exec playwright test e2e/management-surfaces.smoke.spec.ts
+
+test-matrix:
+	@mkdir -p artifacts
+	$(PY) scripts/generate_test_coverage_matrix.py --json-out artifacts/test-coverage-matrix.json --markdown-out artifacts/test-coverage-matrix.md
+
 perf-smoke:
 	$(PY) scripts/perf/run_perf_suite.py --llm-mock --out runs/perf/perf-smoke.json
 
@@ -323,7 +336,8 @@ verify:
 enterprise-checks:
 	@$(MAKE) verify
 	@$(MAKE) test
-	cd web && pnpm run test
+	@$(MAKE) test-web
+	@$(MAKE) test-matrix
 
 helm-template:
 	helm template mimirq deploy/helm/mimirq -n mimirq >/dev/null
