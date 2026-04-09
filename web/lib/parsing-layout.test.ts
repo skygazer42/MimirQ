@@ -4,18 +4,16 @@ import { buildParsingLayoutEntries, classifyParsingBlock, getParsingLayoutMeta }
 
 describe('parsing-layout', () => {
   it('classifies common parsing blocks into review-friendly layout kinds', () => {
-    expect(classifyParsingBlock({ id: 'heading', text: '# Executive Summary', positions: [] })).toBe('heading')
+    expect(classifyParsingBlock({ text: '# Executive Summary' })).toBe('heading')
     expect(
       classifyParsingBlock({
-        id: 'table',
         text: '| Name | Score |\n| --- | --- |\n| Alice | 98 |',
-        positions: [],
       })
     ).toBe('table')
-    expect(classifyParsingBlock({ id: 'image', text: '![Figure 1](figure.png)', positions: [] })).toBe('image')
-    expect(classifyParsingBlock({ id: 'list', text: '- one\n- two\n- three', positions: [] })).toBe('list')
-    expect(classifyParsingBlock({ id: 'equation', text: '$$E = mc^2$$', positions: [] })).toBe('equation')
-    expect(classifyParsingBlock({ id: 'paragraph', text: 'This is a normal paragraph.', positions: [] })).toBe(
+    expect(classifyParsingBlock({ text: '![Figure 1](figure.png)' })).toBe('image')
+    expect(classifyParsingBlock({ text: '- one\n- two\n- three' })).toBe('list')
+    expect(classifyParsingBlock({ text: '$$E = mc^2$$' })).toBe('equation')
+    expect(classifyParsingBlock({ text: 'This is a normal paragraph.' })).toBe(
       'paragraph'
     )
   })

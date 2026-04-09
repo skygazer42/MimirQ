@@ -147,7 +147,6 @@ def main() -> int:
     rows.append(("docling", "on" if getattr(settings, "DOCLING_ENABLED", False) else "off", "installed" if ok else msg))
 
     mineru_enabled = bool(getattr(settings, "MINERU_ENABLED", False))
-    mineru_local = bool((getattr(settings, "MINERU_LOCAL_SERVER_URL", "") or "").strip())
     mineru_token = (getattr(settings, "MINERU_API_TOKEN", "") or "").strip()
     mineru_exp = try_get_jwt_exp(mineru_token) if mineru_token else None
     mineru_token_expired = bool(mineru_exp is not None and int(mineru_exp) <= int(time.time()))

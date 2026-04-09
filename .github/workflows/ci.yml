@@ -12,7 +12,7 @@ concurrency:
 jobs:
   test-and-verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -53,8 +53,40 @@ jobs:
       - name: Backend tests
         run: make test
 
+      - name: Frontend tests
+        run: make test-web
+
+      - name: Generate full-stack test coverage matrix
+        run: make test-matrix
+
+      - name: Install Playwright browsers
+        working-directory: web
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Management surface smoke
+        run: make test-management-smoke
+
       - name: Repo verify
         run: make verify
+
+      - name: Upload test coverage matrix artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-coverage-matrix
+          path: |
+            artifacts/test-coverage-matrix.json
+            artifacts/test-coverage-matrix.md
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-management-smoke-report
+          path: |
+            web/playwright-report
+            web/test-results/playwright
+          if-no-files-found: ignore
 
   docker-build:
     runs-on: ubuntu-latest
