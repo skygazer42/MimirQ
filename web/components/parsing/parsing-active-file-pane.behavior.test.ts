@@ -7,6 +7,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ParsedFile, ParseRun } from './parsing-types'
 import { waitForAssertion } from '@/test/hook-harness'
 
+const parsingApiExtractMock = vi.hoisted(() => vi.fn())
+
+vi.mock('@/lib/api', () => ({
+  parsingApi: {
+    extract: parsingApiExtractMock,
+  },
+}))
+
 vi.mock('next/dynamic', async () => {
   const React = await import('react')
 
@@ -239,6 +247,7 @@ function makeParsedFile(runs: ParseRun[]): ParsedFile {
     name: 'report.md',
     parserBackend: 'marker',
     parserLabel: 'Marker',
+    libraryId: 'library-1',
     runs,
     size: 128,
     status: 'parsed',
@@ -252,6 +261,7 @@ function makePaneProps(overrides: Partial<React.ComponentProps<typeof ParsingAct
   return {
     activeBlockId: null,
     activeBlocksWithPositions: [],
+    activeElements: [],
     activeFile: file,
     activeMarkdown: run.cleanedMarkdown,
     activePdfQuality: null,
@@ -398,6 +408,195 @@ describe('ParsingActiveFilePane lazy compare interactions', () => {
     expect(onActiveBlockIdChange).toHaveBeenCalledWith('block-1')
     await waitForAssertion(() => {
       expect(view.container.querySelector('[data-testid="pdf-viewer"]')).not.toBeNull()
+    })
+
+    view.unmount()
+  })
+
+  it('renders normalized element summary chips for specialty parse elements', async () => {
+    const view = renderComponent(
+      React.createElement(
+        ParsingActiveFilePane,
+        makePaneProps({
+          activeElements: [
+            { id: 'seal-1', kind: 'seal', page: 2, text: '杭州测试科技有限公司', confidence: 0.97 },
+            { id: 'eq-1', kind: 'equation', page: 1, text: 'E = mc^2' },
+            { id: 'eq-2', kind: 'equation', page: 1, text: 'F = ma' },
+          ],
+        })
+      )
+    )
+
+    await waitForAssertion(() => {
+      expect(view.container.textContent).toContain('结构元素')
+      expect(view.container.textContent).toContain('印章')
+      expect(view.container.textContent).toContain('公式')
+      expect(view.container.textContent).toContain('2')
+      expect(view.container.textContent).toContain('主印章')
+      expect(view.container.textContent).toContain('杭州测试科技有限公司')
+      expect(view.container.textContent).toContain('公式样例')
+      expect(view.container.textContent).toContain('E = mc^2')
+    })
+
+    view.unmount()
+  })
+
+  it('runs extraction from the inline workbench panel and renders evidence details', async () => {
+    parsingApiExtractMock.mockResolvedValueOnce({
+      document_id: 'library-1',
+      mode: 'schema',
+      result: {
+        company_name: {
+          value: '杭州测试科技有限公司',
+          confidence: 0.97,
+          strategy: 'element_match',
+          evidence: [
+            {
+              element_id: 'seal-1',
+              kind: 'seal',
+              page: 2,
+              bbox: { x0: 10, y0: 20, x1: 60, y1: 70 },
+              text: '杭州测试科技有限公司',
+              score: 0.97,
+            },
+          ],
+        },
+      },
+    })
+
+    const view = renderComponent(
+      React.createElement(
+        ParsingActiveFilePane,
+        makePaneProps({
+          isPdf: true,
+          activeElements: [{ id: 'seal-1', kind: 'seal', page: 2, text: '杭州测试科技有限公司', confidence: 0.97 }],
+        })
+      )
+    )
+
+    const runButton = findButtonByText(view.container, '运行抽取')
+    expect(runButton).not.toBeNull()
+
+    act(() => {
+      runButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    await waitForAssertion(() => {
+      expect(parsingApiExtractMock).toHaveBeenCalledTimes(1)
+      expect(view.container.textContent).toContain('抽取结果')
+      expect(view.container.textContent).toContain('company_name')
+      expect(view.container.textContent).toContain('杭州测试科技有限公司')
+      expect(view.container.querySelector('[data-testid="extract-evidence-button"]')).not.toBeNull()
+    })
+
+    const evidenceButton = view.container.querySelector('[data-testid="extract-evidence-button"]')
+    expect(evidenceButton).not.toBeNull()
+
+    act(() => {
+      evidenceButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    await waitForAssertion(() => {
+      expect(view.container.textContent).toContain('证据定位')
+      expect(view.container.textContent).toContain('seal-1')
+      expect(view.container.textContent).toContain('10,20,60,70')
+      const pdfViewer = view.container.querySelector('[data-testid="pdf-viewer"]')
+      expect(pdfViewer?.getAttribute('data-active-ids')).toContain('extract-evidence:seal-1')
+    })
+
+    view.unmount()
+  })
+
+  it('filters and selects structured elements from the inline elements panel', async () => {
+    const view = renderComponent(
+      React.createElement(
+        ParsingActiveFilePane,
+        makePaneProps({
+          isPdf: true,
+          activeElements: [
+            { id: 'seal-1', kind: 'seal', page: 2, text: '杭州测试科技有限公司', confidence: 0.97, bbox: { x0: 10, y0: 20, x1: 60, y1: 70 } },
+            { id: 'eq-1', kind: 'equation', page: 1, text: 'E = mc^2', confidence: 0.88, bbox: { x0: 1, y0: 2, x1: 3, y1: 4 } },
+          ],
+        })
+      )
+    )
+
+    const sealFilter = findButtonByText(view.container, '印章')
+    expect(sealFilter).not.toBeNull()
+
+    act(() => {
+      sealFilter?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    await waitForAssertion(() => {
+      expect(view.container.textContent).toContain('结构元素列表')
+      expect(view.container.textContent).toContain('杭州测试科技有限公司')
+    })
+
+    const sealItem = findButtonByText(view.container, 'seal-1')
+    expect(sealItem).not.toBeNull()
+
+    act(() => {
+      sealItem?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    await waitForAssertion(() => {
+      expect(view.container.textContent).toContain('证据定位')
+      expect(view.container.textContent).toContain('seal-1')
+      const pdfViewer = view.container.querySelector('[data-testid="pdf-viewer"]')
+      expect(pdfViewer?.getAttribute('data-active-ids')).toContain('extract-evidence:seal-1')
+    })
+
+    view.unmount()
+  })
+
+  it('lets equation elements from parser-native payloads jump into evidence positioning', async () => {
+    const view = renderComponent(
+      React.createElement(
+        ParsingActiveFilePane,
+        makePaneProps({
+          isPdf: true,
+          activeElements: [
+            {
+              id: 'equation:2:0',
+              kind: 'equation',
+              page: 2,
+              text: 'E = mc^2@@2\t20\t80\t30\t90##',
+              confidence: 0.88,
+              bbox: { x0: 20, y0: 30, x1: 80, y1: 90 },
+              attributes: { source_content_type: 'equation' },
+            },
+          ],
+        })
+      )
+    )
+
+    const equationFilter = findButtonByText(view.container, '公式')
+    expect(equationFilter).not.toBeNull()
+
+    act(() => {
+      equationFilter?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    await waitForAssertion(() => {
+      expect(view.container.textContent).toContain('equation')
+      expect(view.container.textContent).toContain('equation:2:0')
+      expect(view.container.textContent).toContain('20,30,80,90')
+      expect(view.container.textContent).toContain('0.88')
+    })
+
+    const equationItem = findButtonByText(view.container, 'equation:2:0')
+    expect(equationItem).not.toBeNull()
+
+    act(() => {
+      equationItem?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    await waitForAssertion(() => {
+      expect(view.container.textContent).toContain('证据定位')
+      expect(view.container.textContent).toContain('equation:2:0')
+      const pdfViewer = view.container.querySelector('[data-testid="pdf-viewer"]')
+      expect(pdfViewer?.getAttribute('data-active-ids')).toContain('extract-evidence:equation:2:0')
     })
 
     view.unmount()

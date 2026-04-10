@@ -13,6 +13,9 @@ from typing import Any
 
 from langchain_core.documents import Document
 
+_POSITION_TAG_RE = re.compile(r"@@([0-9-]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)##")
+_SECTION_KINDS = {"text", "equation", "table", "image"}
+
 
 class BaseAdvancedParser(ABC):
     """
@@ -157,41 +160,90 @@ class BaseAdvancedParser(ABC):
         if not sections:
             return []
 
-        pos_tag_re = re.compile(r"@@[0-9-]+\t[0-9.\t]+##")
+        def _positions_from_tag(tag: str) -> list[tuple[int, float, float, float, float]]:
+            match = _POSITION_TAG_RE.search(tag or "")
+            if not match:
+                return []
+            page_tokens = [p for p in str(match.group(1) or "").split("-") if p.strip()]
+            left = float(match.group(2))
+            right = float(match.group(3))
+            top = float(match.group(4))
+            bottom = float(match.group(5))
+            out: list[tuple[int, float, float, float, float]] = []
+            for token in page_tokens:
+                try:
+                    out.append((max(0, int(token) - 1), left, right, top, bottom))
+                except Exception:
+                    continue
+            return out
 
-        def normalize_section(section: Any) -> str:
+        def _normalize_section(section: Any) -> tuple[str, str | None, str | None]:
             if isinstance(section, tuple):
                 head = section[0] if section else ""
                 text = str(head or "").strip()
                 if not text:
-                    return ""
+                    return "", None, None
 
                 # Preserve position tags from parsers like Docling/MinerU that return (text, tag)
                 # or (text, type, tag). The integrated integrated pipeline relies on `@@...##` tags.
                 tag = ""
+                section_kind = None
                 for item in reversed(section[1:]):
-                    if isinstance(item, str) and "@@" in item and "##" in item and pos_tag_re.search(item):
-                        tag = item.strip()
-                        break
+                    if not isinstance(item, str):
+                        continue
+                    candidate = item.strip()
+                    if "@@" in candidate and "##" in candidate and _POSITION_TAG_RE.search(candidate):
+                        tag = candidate
+                        continue
+                    normalized = candidate.lower()
+                    if normalized in _SECTION_KINDS:
+                        section_kind = normalized
                 if tag and tag not in text:
                     text = f"{text}{tag}"
-                return text
+                return text, tag or None, section_kind
 
-            return str(section or "").strip()
+            return str(section or "").strip(), None, None
 
+        documents: list[Document] = []
         text_parts: list[str] = []
         for section in sections:
-            text = normalize_section(section)
+            text, tag, section_kind = _normalize_section(section)
             if text:
+                if section_kind == "equation":
+                    meta = {
+                        **base_metadata,
+                        "content_type": "equation",
+                        "doc_type_kwd": "equation",
+                        "element_kind": "equation",
+                        "element_text": text,
+                    }
+                    positions = _positions_from_tag(tag or "")
+                    if positions:
+                        meta["positions"] = positions
+                        first = positions[0]
+                        meta["element_page"] = int(first[0]) + 1
+                        meta["element_bbox"] = {
+                            "x0": int(first[1]),
+                            "x1": int(first[2]),
+                            "y0": int(first[3]),
+                            "y1": int(first[4]),
+                        }
+                    documents.append(Document(page_content=text, metadata=meta))
+                    continue
                 text_parts.append(text)
 
         if not text_parts:
-            return []
+            return documents
 
-        return [Document(
-            page_content="\n\n".join(text_parts),
-            metadata={**base_metadata, "content_type": "text"}
-        )]
+        merged_text = "\n\n".join(text_parts)
+        documents.insert(
+            0,
+            Document(
+                page_content=merged_text,
+                metadata={**base_metadata, "content_type": "text", "element_kind": "paragraph", "element_text": merged_text},
+            ),
+        )
+        return documents
 
     def _convert_tables_to_documents(
         self,

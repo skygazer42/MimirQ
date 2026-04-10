@@ -4,6 +4,7 @@ import { deleteDocContentFromCache, deleteDocSourceFromCache, saveDocContentToCa
 import { collectFolderDescendantIds } from '@/lib/folder-tree-index'
 import { generateRequestId } from '@/lib/request-id'
 import { detachPromise } from '@/lib/utils'
+import type { ParsingElement } from '@/lib/api/parsing'
 
 
 export const ROOT_FOLDER_ID = 'root'
@@ -26,6 +27,7 @@ export interface ParsedFileData {
   parser: string
   parserBackend?: string
   durationSec?: number
+  elements?: ParsingElement[]
   folderId?: string
   /**
    * UI status for the document library.

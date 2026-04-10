@@ -14,6 +14,7 @@ import { shouldRefreshParsingContentFromRemote } from '@/lib/parsing-run-restore
 import { ROOT_FOLDER_ID, useParsedFiles, type FolderNode, type ParsedFileData } from '@/store/use-parsed-files-store'
 import { type FileStatus } from '@/components/ui/file-queue-item'
 
+import type { ParsingElement } from '@/lib/api/parsing'
 import type { ParsedFile } from './parsing-types'
 
 type MutableRef<T> = {
@@ -55,6 +56,7 @@ type ParsingLibraryContentHydration = {
   parser?: string
   parserBackend?: string
   durationSec?: number
+  elements?: ParsingElement[]
 } | null
 
 function mapParsingDocumentToLibraryFile(
@@ -89,6 +91,7 @@ function mapParsingDocumentToLibraryFile(
     parser: getParserLabel(backend),
     parserBackend: backend,
     durationSec,
+    elements: existing?.elements || [],
     folderId: existing?.folderId || ROOT_FOLDER_ID,
     status,
     error: status === 'error' ? String(doc.error_message || existing?.error || '解析失败') : undefined,
@@ -138,6 +141,7 @@ async function hydrateLibraryContent(
       parser: getParserLabel(remote?.parser_backend || 'auto'),
       parserBackend: String(remote?.parser_backend || 'auto'),
       durationSec,
+      elements: remote?.elements || [],
     }
   } catch {
     // ignore backend content load failures for passive selection
@@ -243,6 +247,7 @@ export function useParsingViewState({
     activeRun?.cleanedMarkdown || activeFile?.markdownContent || activeLibraryFile?.markdownContent || ''
   const activeQualityGate = activeRun?.qualityGate || activeFile?.qualityGate || null
   const activePdfQuality = activeRun?.pdfQuality || activeFile?.pdfQuality || null
+  const activeElements = activeRun?.elements || activeFile?.elements || []
   const activeBlocksWithPositions = useMemo(
     () => (activeRun?.blocks || []).filter((block) => (block.positions || []).length > 0),
     [activeRun?.blocks]
@@ -374,6 +379,7 @@ export function useParsingViewState({
     activeLibraryFile,
     activeLibraryFolderId: activeLibraryFile?.folderId || ROOT_FOLDER_ID,
     activeMarkdown,
+    activeElements,
     activePdfQuality,
     activeQualityGate,
     activeRun,

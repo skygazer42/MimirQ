@@ -79,3 +79,37 @@ def test_plan_parse_quality_reparse_respects_score_cutoff(tmp_path: Path) -> Non
     payload = mod.run(report_path=report, out=None, max_docs=10, max_score=0.25)
     candidates = payload.get("candidates") or []
     assert [c.get("document_id") for c in candidates] == ["doc-a"]
+
+
+def test_plan_parse_quality_reparse_preserves_specialty_reasons(tmp_path: Path) -> None:
+    mod = _load_script("scripts/plan_parse_quality_reparse.py")
+    report = tmp_path / "report.json"
+    report.write_text(
+        json.dumps(
+            {
+                "dataset_id": "d-3",
+                "parse_risk_summary": {
+                    "low_threshold": 0.35,
+                    "top_low_quality_documents": [
+                        {
+                            "document_id": "doc-seal",
+                            "score": 0.22,
+                            "reason": "seal_low_confidence",
+                            "specialty_signals": {
+                                "seal_confidence": 0.22,
+                                "seal_expected": True,
+                            },
+                        }
+                    ],
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    payload = mod.run(report_path=report, out=None, max_docs=10, max_score=None)
+    candidates = payload.get("candidates") or []
+    assert candidates[0]["document_id"] == "doc-seal"
+    assert candidates[0]["reason"] == "seal_low_confidence"
+    assert candidates[0]["specialty_signals"]["seal_confidence"] == 0.22

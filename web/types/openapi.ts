@@ -1312,6 +1312,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/parsing/documents/{document_id}/extract": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Extract Parsing Document */
+        post: operations["extract_parsing_document_api_v1_parsing_documents__document_id__extract_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/parsing/documents": {
         parameters: {
             query?: never;
@@ -6498,7 +6515,10 @@ export interface components {
         };
         /** Body_import_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_import_post */
         Body_import_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_import_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /**
              * Replace
@@ -6508,12 +6528,18 @@ export interface components {
         };
         /** Body_import_evidence_items_api_v1_evidence_suites__suite_id__items_import_post */
         Body_import_evidence_items_api_v1_evidence_suites__suite_id__items_import_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
         };
         /** Body_import_governance_profiles_api_v1_pipeline_governance_profiles_import_post */
         Body_import_governance_profiles_api_v1_pipeline_governance_profiles_import_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /**
              * Overwrite
@@ -6523,7 +6549,10 @@ export interface components {
         };
         /** Body_ingestion_preview_api_v1_pipeline_ingestion_preview_post */
         Body_ingestion_preview_api_v1_pipeline_ingestion_preview_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /**
              * Dataset Id
@@ -6542,14 +6571,20 @@ export interface components {
         };
         /** Body_parse_preview_api_v1_pipeline_parse_preview_post */
         Body_parse_preview_api_v1_pipeline_parse_preview_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /** Parser Backend */
             parser_backend?: string | null;
         };
         /** Body_preview_chunking_api_v1_documents_chunk_preview_post */
         Body_preview_chunking_api_v1_documents_chunk_preview_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /**
              * Parser Backend
@@ -6657,7 +6692,10 @@ export interface components {
         };
         /** Body_preview_document_api_v1_documents_preview_post */
         Body_preview_document_api_v1_documents_preview_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /**
              * Parser Backend
@@ -6698,18 +6736,23 @@ export interface components {
         Body_register_ltr_model_api_v1_ltr_models_register_post: {
             /**
              * Model File
+             * Format: binary
              * @description XGBoost model bytes (JSON)
              */
             model_file: string;
             /**
              * Manifest File
+             * Format: binary
              * @description LTR manifest JSON (validated)
              */
             manifest_file: string;
         };
         /** Body_upload_document_api_v1_documents_upload_post */
         Body_upload_document_api_v1_documents_upload_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /**
              * Parser Backend
@@ -6829,7 +6872,10 @@ export interface components {
         };
         /** Body_upload_parsing_document_api_v1_parsing_documents_post */
         Body_upload_parsing_document_api_v1_parsing_documents_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /**
              * Parser Backend
@@ -6839,7 +6885,10 @@ export interface components {
         };
         /** Body_upload_zip_with_images_api_v1_pipeline_upload_zip_with_images_post */
         Body_upload_zip_with_images_api_v1_pipeline_upload_zip_with_images_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /** Dataset Id */
             dataset_id: string;
@@ -11935,6 +11984,10 @@ export interface components {
             pdf_quality?: {
                 [key: string]: unknown;
             } | null;
+            /** Seal Summary */
+            seal_summary?: {
+                [key: string]: unknown;
+            } | null;
             /** Is Scanned */
             is_scanned?: boolean | null;
             /** Page Count */
@@ -16737,6 +16790,10 @@ export interface components {
                 [key: string]: unknown;
             } | null;
             quality_gate?: components["schemas"]["ParsingQualityGate"] | null;
+            /** Elements */
+            elements?: {
+                [key: string]: unknown;
+            }[] | null;
         };
         /** ParsingContentUpdateRequest */
         ParsingContentUpdateRequest: {
@@ -16747,6 +16804,89 @@ export interface components {
             markdown_content: string;
             /** Original Markdown Content */
             original_markdown_content?: string | null;
+        };
+        /** ParsingExtractEvidence */
+        ParsingExtractEvidence: {
+            /** Element Id */
+            element_id?: string | null;
+            /** Kind */
+            kind?: string | null;
+            /** Page */
+            page?: number | null;
+            /** Bbox */
+            bbox?: {
+                [key: string]: number;
+            } | null;
+            /** Text */
+            text?: string | null;
+            /** Score */
+            score?: number | null;
+        };
+        /** ParsingExtractFieldResult */
+        ParsingExtractFieldResult: {
+            /** Value */
+            value?: string | null;
+            /** Confidence */
+            confidence?: number | null;
+            /** Evidence */
+            evidence?: components["schemas"]["ParsingExtractEvidence"][];
+            /** Strategy */
+            strategy?: string | null;
+        };
+        /** ParsingExtractFieldSpec */
+        ParsingExtractFieldSpec: {
+            /**
+             * Type
+             * @default string
+             * @constant
+             */
+            type: "string";
+            /** Source Kind */
+            source_kind?: string | null;
+            /** Aliases */
+            aliases?: string[];
+        };
+        /** ParsingExtractRequest */
+        ParsingExtractRequest: {
+            /**
+             * Mode
+             * @default schema
+             * @enum {string}
+             */
+            mode: "schema" | "prompt";
+            /** Schema */
+            schema?: {
+                [key: string]: components["schemas"]["ParsingExtractFieldSpec"];
+            } | null;
+            /** Prompt */
+            prompt?: string | null;
+            /** Field Hints */
+            field_hints?: {
+                [key: string]: components["schemas"]["ParsingExtractFieldSpec"];
+            } | null;
+            /**
+             * Max Evidence
+             * @default 1
+             */
+            max_evidence: number;
+        };
+        /** ParsingExtractResponse */
+        ParsingExtractResponse: {
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /**
+             * Mode
+             * @default schema
+             * @enum {string}
+             */
+            mode: "schema" | "prompt";
+            /** Result */
+            result?: {
+                [key: string]: components["schemas"]["ParsingExtractFieldResult"];
+            };
         };
         /**
          * ParsingQualityGate
@@ -20102,12 +20242,6 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
-            /** Input */
-            input?: unknown;
-            /** Context */
-            ctx?: {
-                [key: string]: unknown;
-            };
         };
         /** VectorStatus */
         VectorStatus: {
@@ -24525,6 +24659,80 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BatchTaskStatus"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    extract_parsing_document_api_v1_parsing_documents__document_id__extract_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ParsingExtractRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ParsingExtractResponse"];
                 };
             };
             /** @description Bad Request */

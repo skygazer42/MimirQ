@@ -3,14 +3,20 @@
 # Prefer project venv when available so local dev doesn't depend on global tooling.
 PY := python3
 VENV_PY := .venv/bin/python
+VENV_READY := $(shell if [ -x "$(VENV_PY)" ]; then "$(VENV_PY)" -c "import importlib.util as u, sys; sys.exit(0 if u.find_spec('pytest') and u.find_spec('sqlalchemy') and u.find_spec('fastapi') else 1)" >/dev/null 2>&1; echo $$?; else echo 1; fi)
 ifeq ($(wildcard $(VENV_PY)),$(VENV_PY))
+ifeq ($(VENV_READY),0)
 PY := $(VENV_PY)
+endif
 endif
 ifeq ($(OS),Windows_NT)
 PY := python
 VENV_PY := .venv/Scripts/python.exe
+VENV_READY := $(shell if exist "$(VENV_PY)" ("$(VENV_PY)" -c "import importlib.util as u, sys; sys.exit(0 if u.find_spec('pytest') and u.find_spec('sqlalchemy') and u.find_spec('fastapi') else 1)" >NUL 2>&1 & echo %ERRORLEVEL%) else echo 1)
 ifeq ($(wildcard $(VENV_PY)),$(VENV_PY))
+ifeq ($(VENV_READY),0)
 PY := $(VENV_PY)
+endif
 endif
 endif
 

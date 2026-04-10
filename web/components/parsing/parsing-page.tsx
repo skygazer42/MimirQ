@@ -172,6 +172,7 @@ export default function ParsingPage() {
       activeLibraryFileId={pageState.activeLibraryFileId}
       activeLibrarySourceStatus={pageState.activeLibrarySourceStatus}
       activeMarkdown={viewState.activeMarkdown}
+      activeElements={viewState.activeElements}
       activePdfQuality={viewState.activePdfQuality}
       activeQualityGate={viewState.activeQualityGate}
       activeRun={viewState.activeRun}

@@ -29,6 +29,8 @@ import {
 import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
 import { MarkdownToc } from '@/components/markdown/markdown-toc'
 import { ParserDropdown } from '@/components/business/parser-dropdown'
+import { ParsingElementsPanel } from '@/components/parsing/parsing-elements-panel'
+import { ParsingExtractPanel } from '@/components/parsing/parsing-extract-panel'
 import { ParsingRightPanel } from '@/components/parsing/parsing-right-panel'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -41,7 +43,8 @@ import { findEditSelectionForActiveParsingEntry, type ParsingEditFocusHint } fro
 import { cn } from '@/lib/utils'
 import { getParserLabel } from '@/lib/parser-options'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
-import type { ParsingBlock } from '@/lib/parsing-positions'
+import type { ParsingElement, ParsingExtractEvidence } from '@/lib/api/parsing'
+import type { ParsingBlock, ParsingPosition } from '@/lib/parsing-positions'
 
 import type { ParsedFile, ParseRun } from './parsing-types'
 
@@ -121,12 +124,46 @@ function buildQualityEvidenceSummary(qualityGate: unknown, pdfQuality: unknown):
   return pieces.join(' · ')
 }
 
+function formatElementBbox(bbox: ParsingElement['bbox'] | ParsingExtractEvidence['bbox']): string {
+  if (!bbox) return ''
+  return `${bbox.x0},${bbox.y0},${bbox.x1},${bbox.y1}`
+}
+
+function toLayoutKind(kind: string | null | undefined): ParsingLayoutKind {
+  const normalized = String(kind || '').trim().toLowerCase()
+  if (normalized === 'seal') return 'seal'
+  if (normalized === 'equation') return 'equation'
+  if (normalized === 'table') return 'table'
+  if (normalized === 'image') return 'image'
+  if (normalized === 'heading') return 'heading'
+  if (normalized === 'list') return 'list'
+  return 'paragraph'
+}
+
+function buildExtractEvidencePosition(
+  evidence: ParsingExtractEvidence | null | undefined,
+  element: ParsingElement | null | undefined
+): ParsingPosition | null {
+  const page = element?.page ?? evidence?.page
+  const bbox = element?.bbox ?? evidence?.bbox
+  if (typeof page !== 'number' || !bbox) return null
+  return {
+    pages: [Math.max(0, page - 1)],
+    left: bbox.x0,
+    right: bbox.x1,
+    top: bbox.y0,
+    bottom: bbox.y1,
+    raw: `extract:${String(evidence?.element_id || element?.id || '')}`,
+  }
+}
+
 const layoutLegendKinds: ParsingLayoutKind[] = ['heading', 'paragraph', 'list', 'table', 'image', 'equation']
 
 type ParsingActiveFilePaneProps = {
   activeFile: ParsedFile
   activeRun: ParseRun | null
   activeMarkdown: string
+  activeElements?: ParsingElement[]
   activeQualityGate: unknown
   activePdfQuality: unknown
   activeBlocksWithPositions: ParsingBlock[]
@@ -160,6 +197,7 @@ export function ParsingActiveFilePane({
   activeFile,
   activeRun,
   activeMarkdown,
+  activeElements = [],
   activeQualityGate,
   activePdfQuality,
   activeBlocksWithPositions,
@@ -192,6 +230,10 @@ export function ParsingActiveFilePane({
   const [activePdfEditHint, setActivePdfEditHint] = useState<{
     blockId: string
     hint: ParsingEditFocusHint
+  } | null>(null)
+  const [selectedExtractEvidence, setSelectedExtractEvidence] = useState<{
+    fieldName: string
+    evidence: ParsingExtractEvidence
   } | null>(null)
   const editorRef = useRef<HTMLTextAreaElement | null>(null)
   const didInitializeEditSelectionRef = useRef(false)
@@ -228,6 +270,49 @@ export function ParsingActiveFilePane({
       ),
     [activeBlockId, activeMarkdown, activePdfEditHint, editedContent, layoutEntries]
   )
+  const selectedExtractElement = useMemo(() => {
+    const targetId = String(selectedExtractEvidence?.evidence.element_id || '').trim()
+    if (!targetId) return null
+    return (activeElements || []).find((element) => String(element.id || '').trim() === targetId) || null
+  }, [activeElements, selectedExtractEvidence])
+  const selectedExtractOverlayId = useMemo(() => {
+    if (!selectedExtractEvidence) return null
+    const targetId = String(selectedExtractEvidence.evidence.element_id || '').trim()
+    if (!targetId) return null
+    if (layoutEntries.some((entry) => entry.id === targetId)) return null
+    const position = buildExtractEvidencePosition(selectedExtractEvidence.evidence, selectedExtractElement)
+    if (!position) return null
+    return `extract-evidence:${targetId}`
+  }, [layoutEntries, selectedExtractElement, selectedExtractEvidence])
+  const pdfBoxesByPage = useMemo(() => {
+    if (!selectedExtractOverlayId || !selectedExtractEvidence) return layoutBoxesByPage
+    const position = buildExtractEvidencePosition(selectedExtractEvidence.evidence, selectedExtractElement)
+    if (!position) return layoutBoxesByPage
+    const pageIndex = position.pages[0] ?? 0
+    const next = new Map(layoutBoxesByPage)
+    const list = [...(next.get(pageIndex) || [])]
+    list.push({
+      id: selectedExtractOverlayId,
+      kind: toLayoutKind(selectedExtractElement?.kind || selectedExtractEvidence.evidence.kind),
+      position,
+    })
+    next.set(pageIndex, list)
+    return next
+  }, [layoutBoxesByPage, selectedExtractElement, selectedExtractEvidence, selectedExtractOverlayId])
+  const pdfBlockIdToPageIndex = useMemo(() => {
+    if (!selectedExtractOverlayId || !selectedExtractEvidence) return layoutEntryIdToPageIndex
+    const position = buildExtractEvidencePosition(selectedExtractEvidence.evidence, selectedExtractElement)
+    if (!position) return layoutEntryIdToPageIndex
+    const next = new Map(layoutEntryIdToPageIndex)
+    next.set(selectedExtractOverlayId, position.pages[0] ?? 0)
+    return next
+  }, [layoutEntryIdToPageIndex, selectedExtractElement, selectedExtractEvidence, selectedExtractOverlayId])
+  const pdfActiveBlockIds = useMemo(() => {
+    const ids: string[] = []
+    if (selectedExtractOverlayId) ids.push(selectedExtractOverlayId)
+    if (activeBlockId) ids.push(activeBlockId)
+    return ids
+  }, [activeBlockId, selectedExtractOverlayId])
 
   const handleSelectPdfBlock = (blockId: string, hint?: ParsingEditFocusHint) => {
     setActivePdfEditHint(hint ? { blockId, hint } : null)
@@ -237,6 +322,28 @@ export function ParsingActiveFilePane({
   const handleSelectReviewBlock = (blockId: string) => {
     setActivePdfEditHint(null)
     onActiveBlockIdChange(blockId)
+  }
+  const handleSelectExtractEvidence = (payload: { fieldName: string; evidence: ParsingExtractEvidence }) => {
+    setSelectedExtractEvidence(payload)
+    const targetId = String(payload.evidence.element_id || '').trim()
+    if (!targetId) return
+    if (layoutEntries.some((entry) => entry.id === targetId)) {
+      onActiveBlockIdChange(targetId)
+      onRightPanelModeChange('blocks')
+    }
+  }
+  const handleSelectElement = (element: ParsingElement) => {
+    handleSelectExtractEvidence({
+      fieldName: 'element',
+      evidence: {
+        element_id: String(element.id || '').trim() || null,
+        kind: element.kind,
+        page: element.page ?? null,
+        bbox: element.bbox ?? null,
+        text: element.text ?? null,
+        score: element.confidence ?? null,
+      },
+    })
   }
 
   useEffect(() => {
@@ -260,6 +367,9 @@ export function ParsingActiveFilePane({
       globalThis.window.cancelAnimationFrame(rafId)
     }
   }, [activeEditSelection, isEditing])
+  useEffect(() => {
+    setSelectedExtractEvidence(null)
+  }, [activeFile.id, activeRun?.id])
 
   const parsedStatItems =
     activeFile.status === 'parsed' && activeFile.stats
@@ -288,6 +398,66 @@ export function ParsingActiveFilePane({
           },
         ]
       : []
+  const activeElementSummaryItems = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const element of activeElements || []) {
+      const kind = String(element.kind || '').trim()
+      if (!kind) continue
+      counts.set(kind, (counts.get(kind) || 0) + 1)
+    }
+    const descriptors = [
+      { kind: 'seal', label: '印章' },
+      { kind: 'equation', label: '公式' },
+      { kind: 'table', label: '表格元素' },
+      { kind: 'image', label: '图片元素' },
+      { kind: 'heading', label: '标题元素' },
+    ]
+    return descriptors
+      .map((descriptor) => ({
+        ...descriptor,
+        count: counts.get(descriptor.kind) || 0,
+      }))
+      .filter((descriptor) => descriptor.count > 0)
+  }, [activeElements])
+  const activeElementHighlightItems = useMemo(() => {
+    const highlights: Array<{
+      key: string
+      label: string
+      value: string
+      meta?: string
+    }> = []
+
+    const primarySeal = (activeElements || [])
+      .filter((element) => element.kind === 'seal' && typeof element.text === 'string' && element.text.trim())
+      .sort((left, right) => Number(right.confidence || 0) - Number(left.confidence || 0))[0]
+    if (primarySeal) {
+      const sealMeta: string[] = []
+      if (typeof primarySeal.page === 'number') sealMeta.push(`页 ${primarySeal.page}`)
+      if (typeof primarySeal.confidence === 'number') sealMeta.push(primarySeal.confidence.toFixed(2))
+      highlights.push({
+        key: 'primary-seal',
+        label: '主印章',
+        value: String(primarySeal.text || '').trim(),
+        meta: sealMeta.join(' · ') || undefined,
+      })
+    }
+
+    const equations = (activeElements || []).filter(
+      (element) => element.kind === 'equation' && typeof element.text === 'string' && element.text.trim()
+    )
+    if (equations.length > 0) {
+      const leadEquation = String(equations[0]?.text || '').replace(/\s+/g, ' ').trim()
+      const extraCount = Math.max(0, equations.length - 1)
+      highlights.push({
+        key: 'equation-preview',
+        label: '公式样例',
+        value: leadEquation,
+        meta: extraCount > 0 ? `另 ${extraCount} 条` : undefined,
+      })
+    }
+
+    return highlights
+  }, [activeElements])
   const submitToGovernanceButton = isEditing ? null : (
     <Button
       onClick={onSubmitToGovernance}
@@ -313,19 +483,21 @@ export function ParsingActiveFilePane({
       />
 
       <>
-        {parsedStatItems.length > 0 ? (
+        {parsedStatItems.length > 0 || activeQualityGate || activeElementSummaryItems.length > 0 ? (
           <div className="border-b border-border/60 bg-background/80 px-5 py-2.5 dark:bg-background/50">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-              {parsedStatItems.map(({ icon: Icon, label, value }) => (
-                <div key={label} className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                  <Icon className="h-3.5 w-3.5 text-muted-foreground/80" />
-                  <span>{label}</span>
-                  <span className="font-mono text-[12px] font-semibold tabular-nums text-foreground">
-                    {value}
-                  </span>
-                </div>
-              ))}
-            </div>
+            {parsedStatItems.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                {parsedStatItems.map(({ icon: Icon, label, value }) => (
+                  <div key={label} className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <Icon className="h-3.5 w-3.5 text-muted-foreground/80" />
+                    <span>{label}</span>
+                    <span className="font-mono text-[12px] font-semibold tabular-nums text-foreground">
+                      {value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
             {activeQualityGate ? (
               <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border/50 pt-2">
                 <div className="flex items-center gap-2">
@@ -345,6 +517,71 @@ export function ParsingActiveFilePane({
                 {qualityEvidenceSummary ? (
                   <div className="font-mono text-[10px] text-muted-foreground/90">{qualityEvidenceSummary}</div>
                 ) : null}
+              </div>
+            ) : null}
+            {activeElementSummaryItems.length > 0 ? (
+              <div
+                className={cn(
+                  'flex flex-wrap items-center gap-1.5',
+                  activeQualityGate ? 'mt-2 border-t border-border/50 pt-2' : 'mt-2'
+                )}
+              >
+                <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/75">
+                  结构元素
+                </span>
+                {activeElementSummaryItems.map((item) => (
+                  <span
+                    key={item.kind}
+                    className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/88 px-2 py-0.5 text-[10px] text-muted-foreground"
+                  >
+                    <span>{item.label}</span>
+                    <span className="font-mono font-semibold text-foreground">{item.count}</span>
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            {activeElementHighlightItems.length > 0 ? (
+              <div
+                className={cn(
+                  'flex flex-wrap items-center gap-1.5',
+                  activeElementSummaryItems.length > 0 || activeQualityGate ? 'mt-2 border-t border-border/50 pt-2' : 'mt-2'
+                )}
+              >
+                {activeElementHighlightItems.map((item) => (
+                  <div
+                    key={item.key}
+                    className="inline-flex max-w-full items-center gap-2 rounded-lg border border-border/60 bg-background/90 px-2.5 py-1 text-[10px] text-muted-foreground"
+                  >
+                    <span className="font-semibold uppercase tracking-[0.1em] text-foreground/78">{item.label}</span>
+                    <span className="max-w-[280px] truncate font-medium text-foreground">{item.value}</span>
+                    {item.meta ? <span className="font-mono text-muted-foreground/85">{item.meta}</span> : null}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {selectedExtractEvidence ? (
+              <div className="mt-2 border-t border-border/50 pt-2">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/75">证据定位</div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-lg border border-border/60 bg-background/92 px-2.5 py-1.5 text-[10px] text-muted-foreground">
+                  <span className="font-semibold text-foreground/80">{selectedExtractEvidence.fieldName}</span>
+                  <span>{selectedExtractElement?.kind || selectedExtractEvidence.evidence.kind || 'unknown'}</span>
+                  {selectedExtractElement?.id || selectedExtractEvidence.evidence.element_id ? (
+                    <span>{selectedExtractElement?.id || selectedExtractEvidence.evidence.element_id}</span>
+                  ) : null}
+                  {typeof (selectedExtractElement?.page ?? selectedExtractEvidence.evidence.page) === 'number' ? (
+                    <span>页 {selectedExtractElement?.page ?? selectedExtractEvidence.evidence.page}</span>
+                  ) : null}
+                  {formatElementBbox(selectedExtractElement?.bbox || selectedExtractEvidence.evidence.bbox) ? (
+                    <span className="font-mono">
+                      {formatElementBbox(selectedExtractElement?.bbox || selectedExtractEvidence.evidence.bbox)}
+                    </span>
+                  ) : null}
+                  {selectedExtractElement?.text || selectedExtractEvidence.evidence.text ? (
+                    <span className="truncate font-medium text-foreground">
+                      {selectedExtractElement?.text || selectedExtractEvidence.evidence.text}
+                    </span>
+                  ) : null}
+                </div>
               </div>
             ) : null}
           </div>
@@ -528,8 +765,19 @@ export function ParsingActiveFilePane({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar">
-          {activeFile.status === 'pending' ? (
+         <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar">
+          {activeFile.status === 'parsed' ? (
+           <ParsingExtractPanel
+              documentId={activeFile.libraryId || null}
+              activeElements={activeElements}
+              onSelectEvidence={handleSelectExtractEvidence}
+            />
+          ) : null}
+          {activeFile.status === 'parsed' ? (
+            <ParsingElementsPanel elements={activeElements} onSelectElement={handleSelectElement} />
+          ) : null}
+
+           {activeFile.status === 'pending' ? (
             <div className="flex h-full items-center justify-center">
               <div className="text-center">
                 <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-xl bg-sky-100 dark:bg-sky-900/30">
@@ -680,9 +928,9 @@ export function ParsingActiveFilePane({
                           key={pdfViewerKey}
                           file={activeFile.file}
                           blocks={activeBlocksWithPositions}
-                          boxesByPage={layoutBoxesByPage}
-                          blockIdToPageIndex={layoutEntryIdToPageIndex}
-                          activeBlockIds={activeBlockId ? [activeBlockId] : []}
+                          boxesByPage={pdfBoxesByPage}
+                          blockIdToPageIndex={pdfBlockIdToPageIndex}
+                          activeBlockIds={pdfActiveBlockIds}
                           hoveredBlockIds={hoveredBlockId ? [hoveredBlockId] : []}
                           onHoverBlockId={onHoveredBlockIdChange}
                           onClickBlockId={handleSelectPdfBlock}

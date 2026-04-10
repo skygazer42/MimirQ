@@ -33,6 +33,50 @@ DOCLING_TABLE_MODE = getattr(settings, "DOCLING_TABLE_MODE", "markdown")
 DOCLING_EXTRACT_IMAGES = getattr(settings, "DOCLING_EXTRACT_IMAGES", False)
 
 
+def _apply_element_hints(meta: dict[str, Any], *, text: str) -> dict[str, Any]:
+    out = dict(meta)
+    content_type = str(out.get("content_type") or "").strip().lower()
+    doc_type = str(out.get("doc_type_kwd") or "").strip().lower()
+    if doc_type == "table" or content_type == "table":
+        out.setdefault("element_kind", "table")
+    elif doc_type == "image" or content_type == "image":
+        out.setdefault("element_kind", "image")
+    elif doc_type == "equation" or content_type == "equation":
+        out.setdefault("element_kind", "equation")
+    else:
+        out.setdefault("element_kind", "paragraph")
+    out.setdefault("element_text", str(text or ""))
+    attrs = out.get("element_attributes") if isinstance(out.get("element_attributes"), dict) else {}
+    attrs.setdefault("source_content_type", content_type or None)
+    attrs.setdefault("source_doc_type", doc_type or None)
+
+    raw_positions = out.get("positions")
+    if isinstance(raw_positions, list) and raw_positions:
+        attrs.setdefault("positions", list(raw_positions))
+        first = raw_positions[0]
+        if isinstance(first, (list, tuple)) and len(first) >= 5:
+            try:
+                page_index = int(first[0])
+                out.setdefault("element_page", page_index + 1)
+                out.setdefault(
+                    "element_bbox",
+                    {
+                        "x0": int(first[1]),
+                        "x1": int(first[2]),
+                        "y0": int(first[3]),
+                        "y1": int(first[4]),
+                    },
+                )
+            except Exception:
+                pass
+    if out.get("element_page") is None:
+        raw_page = out.get("page")
+        if isinstance(raw_page, (int, float)) and not isinstance(raw_page, bool):
+            out["element_page"] = int(raw_page)
+    out["element_attributes"] = attrs
+    return out
+
+
 class _TableParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
@@ -191,11 +235,18 @@ class DoclingParser(BaseAdvancedParser):
                 continue
 
             content_type = str(meta.get("content_type") or "").lower()
+            meta = _apply_element_hints(meta, text=doc.page_content or "")
             if content_type == "table":
                 content = doc.page_content or ""
                 converted = _convert_table_content(content, mode=self.table_mode)
                 if converted != content:
-                    processed.append(Document(page_content=converted, metadata=meta, id=getattr(doc, "id", None)))
+                    processed.append(
+                        Document(
+                            page_content=converted,
+                            metadata=_apply_element_hints(meta, text=converted),
+                            id=getattr(doc, "id", None),
+                        )
+                    )
                     continue
 
             processed.append(Document(page_content=doc.page_content or "", metadata=meta, id=getattr(doc, "id", None)))
@@ -229,6 +280,7 @@ class DoclingParser(BaseAdvancedParser):
                         "file_type": file_path.suffix.lstrip(".").lower(),
                         "parser": self._get_parser_name(),
                         "doc_type_kwd": "image",
+                        "element_kind": "image",
                         "content_type": "image",
                         "image_source": "page",
                     }
@@ -238,7 +290,9 @@ class DoclingParser(BaseAdvancedParser):
                         page_no = page_from + idx + 1
                         meta = dict(base_meta)
                         meta["page"] = page_no
+                        meta["element_page"] = page_no
                         meta["image"] = img
+                        meta["element_text"] = f"Page {page_no}"
                         page_docs.append(Document(page_content=f"Page {page_no}", metadata=meta))
 
                     if page_docs:

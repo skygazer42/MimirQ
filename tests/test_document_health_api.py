@@ -83,6 +83,16 @@ def test_document_health_card_endpoint_aggregates_parsing_chunking_kg_and_hits(m
                 "parser_backend_requested": "docling",
                 "parse_quality": {"score": 0.25},
                 "pdf_quality": {"is_scanned": True, "page_count": 3},
+                "seal_summary": {
+                    "detected": True,
+                    "count": 1,
+                    "candidate_count_total": 2,
+                    "primary_text": "杭州测试科技有限公司",
+                    "primary_score": 0.41,
+                    "primary_kind": "round_stamp",
+                    "primary_page": 2,
+                    "pages": [2],
+                },
                 "chunk_strategy": "semantic",
                 "chunk_strategy_requested": "semantic",
                 "pipeline_hash": "pipeline-v1",
@@ -179,6 +189,8 @@ def test_document_health_card_endpoint_aggregates_parsing_chunking_kg_and_hits(m
     assert body["filename"] == "demo.pdf"
     assert body["parsing"]["parser_backend"] == "docling"
     assert body["parsing"]["is_scanned"] is True
+    assert body["parsing"]["seal_summary"]["primary_text"] == "杭州测试科技有限公司"
+    assert body["parsing"]["seal_summary"]["primary_score"] == 0.41
     assert body["chunking"]["chunk_count"] == 2
     assert body["chunking"]["coverage"]["covered_chars"] == 100
     assert body["chunking"]["semantic_quality"]["sampled_chunks"] == 2

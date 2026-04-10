@@ -125,4 +125,6 @@ def test_parsing_workspace_returns_quality_gate_and_fallback(monkeypatch, tmp_pa
     assert body.get("quality_gate")
     assert body["quality_gate"]["grade"] in {"pass", "warn", "fail"}
     assert body["parser_backend"] == "basic"
-
+    assert isinstance(body.get("elements"), list)
+    assert body["elements"][0]["kind"] == "paragraph"
+    assert body["elements"][0]["page"] == 1

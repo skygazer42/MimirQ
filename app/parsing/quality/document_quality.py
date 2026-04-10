@@ -31,10 +31,24 @@ def _coerce_float(value: Any) -> float | None:
         return None
 
 
+def _coerce_bool(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return None
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "y", "on"}:
+        return True
+    if text in {"0", "false", "no", "n", "off"}:
+        return False
+    return None
+
+
 def score_document_parse_quality(
     *,
     pdf_quality: Mapping[str, Any] | None,
     parsed_text_quality: Mapping[str, Any] | None,
+    specialty_signals: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     Return a JSON-safe payload:
@@ -45,6 +59,11 @@ def score_document_parse_quality(
     reading_order_score = _coerce_float((pdf_quality or {}).get("reading_order_score"))
     density = _coerce_float((parsed_text_quality or {}).get("density"))
     replacement_ratio = _coerce_float((parsed_text_quality or {}).get("replacement_ratio"))
+    specialty = specialty_signals or {}
+    seal_confidence = _coerce_float(specialty.get("seal_confidence"))
+    seal_detected = _coerce_bool(specialty.get("seal_detected"))
+    seal_expected = _coerce_bool(specialty.get("seal_expected"))
+    seal_candidate_count = _coerce_float(specialty.get("seal_candidate_count"))
 
     if pdf_score is not None:
         if density is not None and reading_order_score is not None:
@@ -76,6 +95,10 @@ def score_document_parse_quality(
     if replacement_ratio is not None:
         # Replacement chars are a strong gibberish signal; cap penalty to keep score stable.
         pen = min(0.5, max(0.0, float(replacement_ratio) * 5.0))
+    specialty_penalty = 0.0
+    if seal_confidence is not None and (seal_expected is True or seal_detected is True):
+        specialty_penalty = min(0.3, max(0.0, (0.6 - float(seal_confidence)) * 0.6))
+        pen = min(0.75, pen + specialty_penalty)
 
     score = float(base) * (1.0 - float(pen))
     score = max(0.0, min(1.0, score))
@@ -88,6 +111,11 @@ def score_document_parse_quality(
             "reading_order_score": (round(reading_order_score, 3) if reading_order_score is not None else None),
             "text_density": (round(density, 3) if density is not None else None),
             "replacement_ratio": (round(replacement_ratio, 4) if replacement_ratio is not None else None),
+            "seal_confidence": (round(seal_confidence, 3) if seal_confidence is not None else None),
+            "seal_detected": seal_detected,
+            "seal_expected": seal_expected,
+            "seal_candidate_count": (int(seal_candidate_count) if seal_candidate_count is not None else None),
+            "specialty_penalty": round(specialty_penalty, 3),
             "penalty": round(pen, 3),
         },
     }

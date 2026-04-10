@@ -5138,6 +5138,7 @@ async def get_document_health_card(
 
     pdf_quality = meta.get("pdf_quality") if isinstance(meta.get("pdf_quality"), dict) else None
     parse_quality = meta.get("parse_quality") if isinstance(meta.get("parse_quality"), dict) else None
+    seal_summary = meta.get("seal_summary") if isinstance(meta.get("seal_summary"), dict) else None
     is_scanned = None
     page_count = None
     if isinstance(pdf_quality, dict):
@@ -5153,6 +5154,7 @@ async def get_document_health_card(
         parser_backend_requested=(str(meta.get("parser_backend_requested") or "").strip() or None),
         parse_quality=parse_quality,
         pdf_quality=pdf_quality,
+        seal_summary=seal_summary,
         is_scanned=is_scanned,
         page_count=page_count,
         processed_at=getattr(document, "processed_at", None),

@@ -53,3 +53,22 @@ def test_recommend_parser_strategy_handles_spreadsheet_and_fallback() -> None:
     )
     assert fallback.get("strategy") == "generic_balanced"
     assert "fallback_generic" in list(fallback.get("reason_codes") or [])
+
+
+def test_recommend_parser_strategy_prefers_pdf_ocr_layout_for_low_seal_confidence() -> None:
+    out = recommend_parser_strategy(
+        {
+            "mime_type": "application/pdf",
+            "file_extension": "pdf",
+            "page_count": 6,
+            "image_ratio": 0.12,
+            "ocr_ratio": 0.04,
+            "table_density": 0.01,
+            "seal_expected": True,
+            "seal_confidence": 0.18,
+            "seal_candidate_count": 2,
+        }
+    )
+    assert out.get("strategy") == "pdf_ocr_layout"
+    assert "low_seal_confidence" in list(out.get("reason_codes") or [])
+    assert bool((out.get("parser_options") or {}).get("seal_review")) is True

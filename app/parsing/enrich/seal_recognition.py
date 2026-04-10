@@ -37,6 +37,8 @@ class SealRecognitionResult:
     detection_score: float = 0.0
     engine: str = _DEFAULT_ENGINE
     region_count: int = 0
+    seal_kind: str = "unknown"
+    rank: float = 0.0
 
 
 def _softmax(logits: np.ndarray) -> np.ndarray:
@@ -154,6 +156,47 @@ def _expand_bbox(bbox: tuple[int, int, int, int], *, width: int, height: int, ma
     )
 
 
+def _infer_seal_kind(bbox: tuple[int, int, int, int] | None) -> str:
+    if bbox is None:
+        return "unknown"
+    x0, y0, x1, y1 = bbox
+    width = max(1, int(x1) - int(x0))
+    height = max(1, int(y1) - int(y0))
+    aspect = width / float(height)
+    if aspect >= 1.6 or aspect <= 0.6:
+        return "seam_stamp"
+    if 0.82 <= aspect <= 1.22:
+        return "round_stamp"
+    if 1.22 < aspect < 1.6:
+        return "oval_stamp"
+    return "unknown"
+
+
+def _bbox_to_payload(bbox: tuple[int, int, int, int] | None) -> dict[str, int] | None:
+    if bbox is None:
+        return None
+    x0, y0, x1, y1 = bbox
+    return {
+        "x0": int(x0),
+        "y0": int(y0),
+        "x1": int(x1),
+        "y1": int(y1),
+    }
+
+
+def _serialize_seal_candidate(result: SealRecognitionResult) -> dict[str, Any]:
+    return {
+        "text": result.text,
+        "score": float(result.score),
+        "detection_score": float(result.detection_score),
+        "engine": result.engine,
+        "region_count": int(result.region_count),
+        "seal_kind": result.seal_kind,
+        "rank": float(result.rank),
+        "bbox": _bbox_to_payload(result.bbox),
+    }
+
+
 def detect_seal_regions(image: PILImage.Image, *, max_regions: int | None = None) -> list[SealRegion]:
     rgb = np.asarray(image.convert("RGB"))
     if rgb.size == 0:
@@ -216,45 +259,83 @@ def detect_seal_regions(image: PILImage.Image, *, max_regions: int | None = None
     return regions[:limit]
 
 
+def _detect_and_recognize_seal_candidates(
+    image: PILImage.Image,
+    *,
+    model_dir: str | None = None,
+    threshold: float | None = None,
+) -> tuple[list[SealRecognitionResult], int]:
+    resolved_model_dir = _resolve_model_dir(model_dir)
+    if resolved_model_dir is None:
+        return [], 0
+
+    threshold_value = float(threshold if threshold is not None else getattr(settings, "SEAL_RECOGNITION_THRESHOLD", _DEFAULT_THRESHOLD) or _DEFAULT_THRESHOLD)
+    regions = detect_seal_regions(image)
+    region_count = len(regions)
+    if not regions:
+        return [], 0
+
+    recognizer = _get_recognizer(str(resolved_model_dir), threshold_value)
+    matches: list[SealRecognitionResult] = []
+    for region in regions:
+        text, score = recognizer.recognize(region.crop)
+        rank = float(score) * 0.7 + float(region.detection_score) * 0.3
+        if not text:
+            continue
+        matches.append(
+            SealRecognitionResult(
+                present=True,
+                text=text,
+                score=float(score),
+                bbox=region.bbox,
+                detection_score=float(region.detection_score),
+                engine=_DEFAULT_ENGINE,
+                region_count=region_count,
+                seal_kind=_infer_seal_kind(region.bbox),
+                rank=float(rank),
+            )
+        )
+
+    matches.sort(
+        key=lambda item: (
+            float(item.rank),
+            float(item.score),
+            float(item.detection_score),
+            float((item.bbox[2] - item.bbox[0]) * (item.bbox[3] - item.bbox[1])) if item.bbox is not None else 0.0,
+        ),
+        reverse=True,
+    )
+    return matches, region_count
+
+
+def detect_and_recognize_seal_candidates(
+    image: PILImage.Image,
+    *,
+    model_dir: str | None = None,
+    threshold: float | None = None,
+) -> list[SealRecognitionResult]:
+    matches, _region_count = _detect_and_recognize_seal_candidates(
+        image,
+        model_dir=model_dir,
+        threshold=threshold,
+    )
+    return matches
+
+
 def detect_and_recognize_seal(
     image: PILImage.Image,
     *,
     model_dir: str | None = None,
     threshold: float | None = None,
 ) -> SealRecognitionResult:
-    resolved_model_dir = _resolve_model_dir(model_dir)
-    if resolved_model_dir is None:
-        return SealRecognitionResult(present=False)
-
-    threshold_value = float(threshold if threshold is not None else getattr(settings, "SEAL_RECOGNITION_THRESHOLD", _DEFAULT_THRESHOLD) or _DEFAULT_THRESHOLD)
-    regions = detect_seal_regions(image)
-    if not regions:
-        return SealRecognitionResult(present=False)
-
-    recognizer = _get_recognizer(str(resolved_model_dir), threshold_value)
-    best: SealRecognitionResult | None = None
-    best_rank = -1.0
-    for region in regions:
-        text, score = recognizer.recognize(region.crop)
-        rank = float(score) * 0.7 + float(region.detection_score) * 0.3
-        if not text:
-            continue
-        result = SealRecognitionResult(
-            present=True,
-            text=text,
-            score=float(score),
-            bbox=region.bbox,
-            detection_score=float(region.detection_score),
-            engine=_DEFAULT_ENGINE,
-            region_count=len(regions),
-        )
-        if rank > best_rank:
-            best = result
-            best_rank = rank
-
-    if best is not None:
-        return best
-    return SealRecognitionResult(present=False, region_count=len(regions))
+    matches, region_count = _detect_and_recognize_seal_candidates(
+        image,
+        model_dir=model_dir,
+        threshold=threshold,
+    )
+    if matches:
+        return matches[0]
+    return SealRecognitionResult(present=False, region_count=region_count)
 
 
 def extract_seal_documents_from_pdf(
@@ -291,15 +372,20 @@ def extract_seal_documents_from_pdf(
             image = PILImage.frombytes(mode, [pix.width, pix.height], pix.samples)
             if mode == "RGBA":
                 image = image.convert("RGB")
-            result = detect_and_recognize_seal(image)
-            if not result.present or not result.text:
+            candidates = detect_and_recognize_seal_candidates(image)
+            if not candidates:
                 continue
+            result = candidates[0]
+            bbox_list = [bbox for bbox in (_bbox_to_payload(item.bbox) for item in candidates) if bbox is not None]
 
             metadata: dict[str, Any] = {
                 "source": source,
                 "file_type": "pdf",
                 "parser_backend": parser_backend,
                 "doc_type_kwd": "seal",
+                "element_kind": "seal",
+                "element_text": result.text,
+                "element_confidence": float(result.score),
                 "content_type": "seal",
                 "chunk_role": "seal",
                 "page": page_index + 1,
@@ -310,15 +396,18 @@ def extract_seal_documents_from_pdf(
                 "seal_detection_score": float(result.detection_score),
                 "seal_engine": result.engine,
                 "seal_region_count": int(result.region_count),
+                "seal_candidate_count": int(len(candidates)),
+                "seal_kind": result.seal_kind,
+                "seal_page_index": int(page_index),
+                "element_page": int(page_index + 1),
+                "seal_primary": _serialize_seal_candidate(result),
+                "seal_candidates": [_serialize_seal_candidate(item) for item in candidates],
+                "seal_bbox_list": bbox_list,
             }
-            if result.bbox is not None:
-                x0, y0, x1, y1 = result.bbox
-                metadata["seal_bbox"] = {
-                    "x0": int(x0),
-                    "y0": int(y0),
-                    "x1": int(x1),
-                    "y1": int(y1),
-                }
+            bbox_payload = _bbox_to_payload(result.bbox)
+            if bbox_payload is not None:
+                metadata["seal_bbox"] = bbox_payload
+                metadata["element_bbox"] = dict(bbox_payload)
             docs.append(Document(page_content=f"印章识别：{result.text}", metadata=metadata))
     finally:
         pdf.close()
@@ -330,6 +419,7 @@ __all__ = [
     "SealRecognitionResult",
     "SealRegion",
     "detect_and_recognize_seal",
+    "detect_and_recognize_seal_candidates",
     "detect_seal_regions",
     "extract_seal_documents_from_pdf",
 ]

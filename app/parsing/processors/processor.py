@@ -214,6 +214,99 @@ def _is_table_segment_metadata(meta: dict[str, Any] | None) -> bool:
     return content_type == "table" or doc_type == "table"
 
 
+def _coerce_float(value: Any) -> float | None:
+    try:
+        if value is None or isinstance(value, bool):
+            return None
+        number = float(value)
+        if number != number:
+            return None
+        return float(number)
+    except Exception:
+        return None
+
+
+def _coerce_int(value: Any) -> int | None:
+    try:
+        if value is None or isinstance(value, bool):
+            return None
+        return int(value)
+    except Exception:
+        return None
+
+
+def _is_seal_segment_metadata(meta: dict[str, Any] | None) -> bool:
+    if not isinstance(meta, dict):
+        return False
+    content_type = str(meta.get("content_type") or "").strip().lower()
+    doc_type = str(meta.get("doc_type_kwd") or "").strip().lower()
+    return content_type == "seal" or doc_type == "seal"
+
+
+def _build_seal_summary(documents: list[Document] | None) -> dict[str, Any] | None:
+    candidates: list[dict[str, Any]] = []
+    pages: set[int] = set()
+    for doc in documents or []:
+        meta = dict(doc.metadata or {})
+        if not _is_seal_segment_metadata(meta):
+            continue
+        primary = meta.get("seal_primary") if isinstance(meta.get("seal_primary"), dict) else {}
+        score = _coerce_float(primary.get("score"))
+        if score is None:
+            score = _coerce_float(meta.get("seal_score"))
+        page = _coerce_int(meta.get("page"))
+        if page is None:
+            page = _coerce_int(meta.get("page_number"))
+        if page is not None:
+            pages.add(int(page))
+        candidate_count = _coerce_int(meta.get("seal_candidate_count"))
+        if candidate_count is None:
+            raw_candidates = meta.get("seal_candidates")
+            candidate_count = len(raw_candidates) if isinstance(raw_candidates, list) else 1
+        candidates.append(
+            {
+                "text": str(primary.get("text") or meta.get("seal_text") or doc.page_content or "").strip(),
+                "score": float(score) if score is not None else None,
+                "kind": str(primary.get("seal_kind") or meta.get("seal_kind") or "unknown").strip() or "unknown",
+                "page": int(page) if page is not None else None,
+                "candidate_count": int(candidate_count),
+            }
+        )
+
+    if not candidates:
+        return None
+
+    candidates.sort(
+        key=lambda item: (
+            float(item.get("score") or 0.0),
+            int(item.get("candidate_count") or 0),
+        ),
+        reverse=True,
+    )
+    primary = candidates[0]
+    return {
+        "detected": True,
+        "count": int(len(candidates)),
+        "candidate_count_total": int(sum(int(item.get("candidate_count") or 0) for item in candidates)),
+        "primary_text": str(primary.get("text") or ""),
+        "primary_score": (float(primary["score"]) if primary.get("score") is not None else None),
+        "primary_kind": str(primary.get("kind") or "unknown"),
+        "primary_page": primary.get("page"),
+        "pages": sorted(int(page) for page in pages),
+    }
+
+
+def _seal_summary_to_specialty_signals(summary: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(summary, dict) or not summary:
+        return None
+    return {
+        "seal_detected": bool(summary.get("detected")),
+        "seal_expected": bool(summary.get("detected")),
+        "seal_confidence": _coerce_float(summary.get("primary_score")),
+        "seal_candidate_count": _coerce_int(summary.get("candidate_count_total")),
+    }
+
+
 def _uniform_sample_indices(indices: list[int], k: int) -> list[int]:
     if k <= 0:
         return []
@@ -808,12 +901,17 @@ class ParsingStage:
         try:
             joined = "\n\n".join([(d.page_content or "") for d in documents])
             quality = score_parsed_text_quality(joined).to_dict()
+            seal_summary = _build_seal_summary(documents)
+            specialty_signals = _seal_summary_to_specialty_signals(seal_summary)
             meta = dict(db_document.doc_metadata or {})
             meta["parsed_text_quality"] = quality
             meta["parse_quality"] = score_document_parse_quality(
                 pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
                 parsed_text_quality=quality,
+                specialty_signals=specialty_signals,
             )
+            if seal_summary is not None:
+                meta["seal_summary"] = seal_summary
             artifact_stats = compute_parsing_artifact_stats(
                 documents=documents,
                 original_markdown=joined,
@@ -2373,10 +2471,14 @@ class DocumentProcessorService:
                         attempted = bool(meta.get("parse_fallback"))
                         if attempted or final_chars < min_chars:
                             meta["parsed_text_quality"] = q_final.to_dict()
+                            specialty_signals = _seal_summary_to_specialty_signals(
+                                meta.get("seal_summary") if isinstance(meta.get("seal_summary"), dict) else None
+                            )
                             with contextlib.suppress(Exception):
                                 meta["parse_quality"] = score_document_parse_quality(
                                     pdf_quality=(meta.get("pdf_quality") if isinstance(meta.get("pdf_quality"), dict) else None),
                                     parsed_text_quality=(meta.get("parsed_text_quality") if isinstance(meta.get("parsed_text_quality"), dict) else None),
+                                    specialty_signals=specialty_signals,
                                 )
                             db_document.doc_metadata = meta
                             db.commit()

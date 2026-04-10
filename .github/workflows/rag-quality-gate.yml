@@ -35,7 +35,7 @@ jobs:
             "torchvision @ https://download-r2.pytorch.org/whl/cpu/torchvision-0.25.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl"
           python -m pip install --no-cache-dir --retries 10 --timeout 120 -r requirements.txt
 
-      - name: Generate bounded retrieval benchmark
+      - name: Generate bounded retrieval benchmark via scripts/run_sample_retrieval_benchmark.py using data/sample/retrieval_fixture_v1.json
         env:
           LLM_MOCK_ENABLED: "true"
         run: |
@@ -46,7 +46,7 @@ jobs:
             --retrieval-mode keyword \
             --top-k 5
 
-      - name: Build RAG quality gate artifacts
+      - name: Build RAG quality gate artifacts via scripts/build_rag_quality_gate_artifacts.py
         run: |
           python scripts/build_rag_quality_gate_artifacts.py \
             --benchmark artifacts/sample_retrieval_bench.json \
