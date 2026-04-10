@@ -5,7 +5,24 @@ from app.parsing.routing import choose_pdf_backend
 
 
 def _set_flags(monkeypatch: pytest.MonkeyPatch, **kwargs):
-    for k, v in kwargs.items():
+    defaults = {
+        "MARKITDOWN_ENABLED": False,
+        "MINERU_ENABLED": False,
+        "MINERU_API_TOKEN": "",
+        "MINERU_LOCAL_SERVER_URL": "",
+        "DEEPDOC_ENABLED": False,
+        "DOCLING_ENABLED": False,
+        "MAGIC_PDF_ENABLED": False,
+        "MAGIC_PDF_CLI": "magic-pdf",
+        "DEEPSEEK_OCR_ENABLED": False,
+        "SILICONFLOW_API_KEY": "",
+        "QIANFAN_OCR_ENABLED": False,
+        "QIANFAN_OCR_API_URL": "",
+        "ETL4LLM_ENABLED": False,
+        "ETL4LLM_API_URL": "",
+    }
+    defaults.update(kwargs)
+    for k, v in defaults.items():
         monkeypatch.setattr(settings, k, v)
 
 

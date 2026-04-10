@@ -100,6 +100,7 @@ class FallbackChatOpenAI(BaseChatModel):
     _invocation_meta_var: contextvars.ContextVar[dict[str, Any] | None] = PrivateAttr(
         default_factory=lambda: contextvars.ContextVar("fallback_chat_openai_meta", default=None)
     )
+    _last_invocation_meta: dict[str, Any] | None = PrivateAttr(default=None)
 
     @property
     def _llm_type(self) -> str:
@@ -115,7 +116,10 @@ class FallbackChatOpenAI(BaseChatModel):
         return self.model_name
 
     def get_last_invocation_meta(self) -> dict[str, Any]:
-        return dict(self._invocation_meta_var.get() or {})
+        meta = self._invocation_meta_var.get()
+        if meta is None:
+            meta = self._last_invocation_meta
+        return dict(meta or {})
 
     def _models(self) -> list[BaseChatModel]:
         return [self.primary, *list(self.fallbacks)]
@@ -185,16 +189,18 @@ class FallbackChatOpenAI(BaseChatModel):
         prompt_cache = _prompt_cache_meta(model)
         selected_model = _model_name_of(model)
         self._record_attempt(attempts, model=model, success=True, yielded_tokens=yielded_tokens)
-        self._invocation_meta_var.set(
-            self._final_meta(
-                attempts=attempts,
-                selected_model=selected_model,
-                prompt_cache=prompt_cache,
-            )
+        meta = self._final_meta(
+            attempts=attempts,
+            selected_model=selected_model,
+            prompt_cache=prompt_cache,
         )
+        self._invocation_meta_var.set(meta)
+        self._last_invocation_meta = meta
 
     def _set_failure_metadata(self, attempts: list[dict[str, Any]]) -> None:
-        self._invocation_meta_var.set(self._final_meta(attempts=attempts, selected_model=None))
+        meta = self._final_meta(attempts=attempts, selected_model=None)
+        self._invocation_meta_var.set(meta)
+        self._last_invocation_meta = meta
 
     def _generate(
         self,

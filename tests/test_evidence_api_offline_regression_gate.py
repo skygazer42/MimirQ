@@ -124,6 +124,12 @@ def test_evidence_api_offline_regression_gate_hit_at_20_and_recall(monkeypatch: 
 
     retriever = HybridRetriever(tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
     retriever.upsert_bm25_documents(chunks, tenant_id=tenant_id)
+    monkeypatch.setattr(
+        retriever,
+        "_enrich_results_with_db_metadata",
+        lambda results, **_kwargs: results,
+        raising=False,
+    )
     monkeypatch.setattr(orch_mod, "hybrid_retriever", retriever, raising=True)
 
     def _ref(chunk: Document) -> dict:

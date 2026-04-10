@@ -24,9 +24,15 @@ async def test_get_client_key_prefers_jwt_subject_over_x_user_id(monkeypatch):
     from jose import jwt
 
     import app.api.middleware.rate_limit as rl
+    import app.core.jwt_verify as jwt_verify
     from app.core.config import settings
 
     monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
+
+    async def _fake_decode_access_token(_token: str) -> dict[str, str]:
+        return {"sub": "jwt-user"}
+
+    monkeypatch.setattr(jwt_verify, "decode_access_token", _fake_decode_access_token, raising=True)
     token = jwt.encode({"sub": "jwt-user"}, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
     req = _make_request(

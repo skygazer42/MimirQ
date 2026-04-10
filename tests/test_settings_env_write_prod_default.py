@@ -11,6 +11,7 @@ def _set_prod_base_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SECRET_KEY", "x" * 32)
     monkeypatch.setenv("ALLOWED_HOSTS", "api.example.com")
     monkeypatch.setenv("CORS_ORIGINS", "https://app.example.com")
+    monkeypatch.setenv("MINIO_ENABLED", "false")
 
 
 def test_settings_env_write_disabled_by_default_in_production(monkeypatch: pytest.MonkeyPatch):

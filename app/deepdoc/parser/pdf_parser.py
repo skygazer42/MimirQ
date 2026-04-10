@@ -36,8 +36,18 @@ from PIL import Image
 from pypdf import PdfReader as pdf2_read
 
 from ..src.model import rag_tokenizer
-from ..vision import OCR, LayoutRecognizer, TableStructureRecognizer
-from ..vision.recognizer import Recognizer
+
+_VISION_IMPORT_ERROR: Exception | None = None
+
+try:
+    from ..vision import OCR, LayoutRecognizer, TableStructureRecognizer
+    from ..vision.recognizer import Recognizer
+except Exception as exc:  # pragma: no cover - exercised in dependency-light test envs
+    OCR = None
+    LayoutRecognizer = None
+    TableStructureRecognizer = None
+    Recognizer = None
+    _VISION_IMPORT_ERROR = exc
 
 LIGHTEN = int(os.getenv("LIGHTEN", "0"))  # Result is 0
 PARALLEL_DEVICES = 0  # cuda torch
@@ -153,6 +163,28 @@ def picture_vision_llm_chunk(binary, vision_model, prompt=None, callback=None):
     return ""
 
 
+def _ensure_vision_runtime():
+    global OCR, LayoutRecognizer, TableStructureRecognizer, Recognizer, _VISION_IMPORT_ERROR
+
+    if all(dep is not None for dep in (OCR, LayoutRecognizer, TableStructureRecognizer, Recognizer)):
+        return OCR, LayoutRecognizer, TableStructureRecognizer, Recognizer
+
+    try:
+        from ..vision import OCR as _OCR, LayoutRecognizer as _LayoutRecognizer, TableStructureRecognizer as _TableStructureRecognizer
+        from ..vision.recognizer import Recognizer as _Recognizer
+    except Exception:
+        if _VISION_IMPORT_ERROR is not None:
+            raise _VISION_IMPORT_ERROR
+        raise
+
+    OCR = _OCR
+    LayoutRecognizer = _LayoutRecognizer
+    TableStructureRecognizer = _TableStructureRecognizer
+    Recognizer = _Recognizer
+    _VISION_IMPORT_ERROR = None
+    return OCR, LayoutRecognizer, TableStructureRecognizer, Recognizer
+
+
 class IntegratedPipelinePdfParser:
     def __init__(self, **kwargs):
         """
@@ -167,14 +199,16 @@ class IntegratedPipelinePdfParser:
          Split PDF by pages, extract text boxes, tables, images and other structures.
         """
 
-        self.ocr = OCR()
+        ocr_cls, layout_cls, table_cls, _ = _ensure_vision_runtime()
+
+        self.ocr = ocr_cls()
         self.parallel_limiter = None  # Initialize concurrency limiter
 
         if hasattr(self, "model_speciess"):
-            self.layouter = LayoutRecognizer("layout." + self.model_speciess)  # Initialize layout recognizer with specified model
+            self.layouter = layout_cls("layout." + self.model_speciess)  # Initialize layout recognizer with specified model
         else:
-            self.layouter = LayoutRecognizer("layout")  # Initialize layout recognizer with default model
-        self.tbl_det = TableStructureRecognizer()  # Initialize table structure recognizer
+            self.layouter = layout_cls("layout")  # Initialize layout recognizer with default model
+        self.tbl_det = table_cls()  # Initialize table structure recognizer
 
         self.updown_cnt_mdl = xgb.Booster()  # Initialize xgboost model for paragraph concatenation prediction
         if not LIGHTEN:
