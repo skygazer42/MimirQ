@@ -200,6 +200,7 @@ class FormulaOcrAudit:
     elapsed_ms: int
     backend: str
     error: str | None = None
+    formula_elements: list[dict[str, Any]] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -210,6 +211,7 @@ class FormulaOcrAudit:
             "elapsed_ms": int(self.elapsed_ms),
             "backend": str(self.backend or ""),
             "error": (str(self.error)[:200] if self.error else None),
+            "formula_elements": list(self.formula_elements or []),
         }
 
 
@@ -273,6 +275,7 @@ def add_formula_latex_blocks(
     formulas_added = 0
     images_attempted = 0
     images_succeeded = 0
+    formula_elements: list[dict[str, Any]] = []
 
     lines = raw.splitlines()
     for i, line in enumerate(lines):
@@ -336,6 +339,19 @@ def add_formula_latex_blocks(
             images_succeeded += 1
             formulas_added += 1
             out_lines.append(f"$$ {latex} $$")
+            formula_elements.append(
+                {
+                    "kind": "equation",
+                    "text": latex,
+                    "attributes": {
+                        "source_content_type": "formula_ocr",
+                        "source_doc_type": "formula_ocr",
+                        "formula_image_alt": str(alt or ""),
+                        "formula_image_src": str(src or ""),
+                        "formula_backend_status": str(status or ""),
+                    },
+                }
+            )
 
     elapsed_ms = int(round((time.perf_counter() - t0) * 1000))
     return (
@@ -349,9 +365,9 @@ def add_formula_latex_blocks(
             elapsed_ms=int(elapsed_ms),
             backend="formula_http",
             error=None,
+            formula_elements=formula_elements,
         ),
     )
 
 
 __all__ = ["FormulaOcrAudit", "add_formula_latex_blocks"]
-

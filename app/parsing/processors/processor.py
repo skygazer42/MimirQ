@@ -1018,12 +1018,14 @@ class InlineAssetStage:
 
         for doc in documents:
             content = doc.page_content or ""
+            original_meta = dict(doc.metadata or {})
             origin_for_doc = origin_path
-            base_dir = (doc.metadata or {}).get("asset_base_dir")
+            base_dir = original_meta.get("asset_base_dir")
             if isinstance(base_dir, str) and base_dir.strip():
                 origin_for_doc = Path(base_dir.strip())
 
             next_content = content
+            next_meta = dict(original_meta)
             # Opt3: Formula OCR / LaTeX conversion (best-effort) before asset rewriting
             # so we can still read local image files.
             if formula_enabled and next_content:
@@ -1040,6 +1042,22 @@ class InlineAssetStage:
                     formulas_added_total += int(added or 0)
                     formula_backend = "formula_http"
                     formula_audit = audit.to_dict()
+                    raw_formula_elements = getattr(audit, "formula_elements", None)
+                    if isinstance(raw_formula_elements, list) and raw_formula_elements:
+                        derived = [item for item in (next_meta.get("derived_elements") or []) if isinstance(item, dict)]
+                        page_hint = next_meta.get("element_page") or next_meta.get("page")
+                        for raw_element in raw_formula_elements:
+                            if not isinstance(raw_element, dict):
+                                continue
+                            item = dict(raw_element)
+                            if item.get("page") is None and page_hint is not None:
+                                item["page"] = page_hint
+                            if not str(item.get("id") or "").strip():
+                                page_part = item.get("page") if item.get("page") is not None else "na"
+                                item["id"] = f"formula_ocr:{page_part}:{len(derived)}"
+                            derived.append(item)
+                        if derived:
+                            next_meta["derived_elements"] = derived
                 except Exception:
                     # Never fail ingest due to optional enrichment.
                     pass
@@ -1091,7 +1109,15 @@ class InlineAssetStage:
                 processed_docs.append(
                     Document(
                         page_content=new_content,
-                        metadata=dict(doc.metadata or {}),
+                        metadata=next_meta,
+                        id=doc.id,
+                    )
+                )
+            elif next_meta != original_meta:
+                processed_docs.append(
+                    Document(
+                        page_content=content,
+                        metadata=next_meta,
                         id=doc.id,
                     )
                 )
