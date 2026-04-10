@@ -1,19 +1,6 @@
 name: Deploy API docs to GitHub Pages
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "app/**"
-      - "scripts/export_openapi.py"
-      - "scripts/openapi_paths_sanity.py"
-      - "scripts/docs/**"
-      - "docs/api/site/index.html"
-      - "docs-site/**"
-      - "docs/API.md"
-      - "docs/api/reference/**"
-      - "Makefile"
-      - ".github/workflows/api-docs.yml"
   workflow_dispatch:
 
 permissions:
