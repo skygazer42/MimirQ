@@ -22,4 +22,18 @@ describe('parsing-element-diff', () => {
     expect(diff.addedSealTexts).toContain('财务专用章')
     expect(diff.removedSealTexts).toContain('杭州测试科技有限公司')
   })
+
+  it('treats cross-page span changes as a structural diff', () => {
+    const diff = diffParsingElements(
+      [
+        { id: 'table-a', kind: 'table', page: 1, pages: [1], text: '| A | B |' },
+      ],
+      [
+        { id: 'table-a', kind: 'table', page: 1, pages: [1, 2], text: '| A | B |' },
+      ]
+    )
+
+    expect(diff.addedByKind.table).toBe(1)
+    expect(diff.removedByKind.table).toBe(1)
+  })
 })
