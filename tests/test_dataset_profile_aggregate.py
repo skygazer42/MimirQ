@@ -179,6 +179,44 @@ def test_dataset_profile_aggregate_parse_low_quality_bucket():
     assert finding_map["parse_low_quality"] == 1
 
 
+def test_dataset_profile_aggregate_seal_low_confidence_bucket():
+    dsid = uuid.uuid4()
+    rows = [
+        _row(
+            filename="a.pdf",
+            file_type="pdf",
+            file_size=1200,
+            status="completed",
+            total_characters=0,
+            metadata={
+                "seal_summary": {
+                    "detected": True,
+                    "primary_score": 0.22,
+                    "primary_text": "杭州测试科技有限公司",
+                }
+            },
+        ),
+        _row(
+            filename="b.pdf",
+            file_type="pdf",
+            file_size=800,
+            status="completed",
+            total_characters=0,
+            metadata={
+                "seal_summary": {
+                    "detected": True,
+                    "primary_score": 0.91,
+                    "primary_text": "财务专用章",
+                }
+            },
+        ),
+    ]
+
+    summary = aggregate_profile_from_rows(dataset_id=dsid, rows=rows)
+    finding_map = {f.key: f.count for f in summary.findings}
+    assert finding_map["seal_low_confidence"] == 1
+
+
 def test_dataset_profile_aggregate_chunk_count_and_avg_chunk_distributions():
     dsid = uuid.uuid4()
     rows = [

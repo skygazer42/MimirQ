@@ -4,6 +4,79 @@ import { z } from 'zod'
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'
 import { apiClient, openapiRequest } from '@/lib/api/core'
 
+export interface ParsingElement {
+  id: string
+  kind: 'heading' | 'paragraph' | 'list' | 'table' | 'image' | 'equation' | 'seal' | 'unknown'
+  page?: number | null
+  text?: string | null
+  confidence?: number | null
+  bbox?: {
+    x0: number
+    y0: number
+    x1: number
+    y1: number
+  } | null
+  attributes?: Record<string, unknown> | null
+}
+
+export interface ParsingExtractFieldSpec {
+  type?: 'string'
+  source_kind?: string | null
+  aliases?: string[]
+}
+
+export interface ParsingExtractRequest {
+  mode?: 'schema' | 'prompt'
+  schema?: Record<string, ParsingExtractFieldSpec> | null
+  prompt?: string | null
+  field_hints?: Record<string, ParsingExtractFieldSpec> | null
+  max_evidence?: number
+}
+
+export interface ParsingExtractEvidence {
+  element_id?: string | null
+  kind?: string | null
+  page?: number | null
+  bbox?: {
+    x0: number
+    y0: number
+    x1: number
+    y1: number
+  } | null
+  text?: string | null
+  score?: number | null
+}
+
+export interface ParsingExtractFieldResult {
+  value?: string | null
+  confidence?: number | null
+  evidence: ParsingExtractEvidence[]
+  strategy?: string | null
+}
+
+export interface ParsingExtractResponse {
+  document_id: string
+  mode: 'schema' | 'prompt'
+  result: Record<string, ParsingExtractFieldResult>
+}
+
+function normalizeExtractFieldSpecMap(
+  value: Record<string, ParsingExtractFieldSpec> | null | undefined
+): Record<string, { type: 'string'; source_kind?: string | null; aliases?: string[] }> | undefined {
+  if (!value) return undefined
+  const entries = Object.entries(value)
+  if (entries.length === 0) return undefined
+  const out: Record<string, { type: 'string'; source_kind?: string | null; aliases?: string[] }> = {}
+  for (const [key, spec] of entries) {
+    out[key] = {
+      type: 'string',
+      source_kind: spec?.source_kind ?? undefined,
+      aliases: spec?.aliases ?? undefined,
+    }
+  }
+  return out
+}
+
 export interface ParsingContentResponse {
   document_id: string
   parser_backend: string
@@ -29,6 +102,7 @@ export interface ParsingContentResponse {
     reasons: string[]
     evidence?: Record<string, any>
   } | null
+  elements?: ParsingElement[] | null
 }
 
 export interface ParsingContentUpdateRequest {
@@ -66,6 +140,70 @@ const parsingQualityGateSchema = z
   .nullable()
   .optional()
 
+const parsingElementSchema = z
+  .object({
+    id: z.string(),
+    kind: z.enum(['heading', 'paragraph', 'list', 'table', 'image', 'equation', 'seal', 'unknown']),
+    page: z.number().int().nullable().optional(),
+    text: z.string().nullable().optional(),
+    confidence: z.number().nullable().optional(),
+    bbox: z
+      .object({
+        x0: z.number().int(),
+        y0: z.number().int(),
+        x1: z.number().int(),
+        y1: z.number().int(),
+      })
+      .nullable()
+      .optional(),
+    attributes: z.record(z.string(), z.unknown()).nullable().optional(),
+  })
+  .passthrough()
+
+const parsingExtractFieldSpecSchema = z
+  .object({
+    type: z.enum(['string']).optional(),
+    source_kind: z.string().nullable().optional(),
+    aliases: z.array(z.string()).optional(),
+  })
+  .passthrough()
+
+const parsingExtractEvidenceSchema = z
+  .object({
+    element_id: z.string().nullable().optional(),
+    kind: z.string().nullable().optional(),
+    page: z.number().int().nullable().optional(),
+    bbox: z
+      .object({
+        x0: z.number().int(),
+        y0: z.number().int(),
+        x1: z.number().int(),
+        y1: z.number().int(),
+      })
+      .nullable()
+      .optional(),
+    text: z.string().nullable().optional(),
+    score: z.number().nullable().optional(),
+  })
+  .passthrough()
+
+const parsingExtractFieldResultSchema = z
+  .object({
+    value: z.string().nullable().optional(),
+    confidence: z.number().nullable().optional(),
+    evidence: z.array(parsingExtractEvidenceSchema),
+    strategy: z.string().nullable().optional(),
+  })
+  .passthrough()
+
+const parsingExtractResponseSchema = z
+  .object({
+    document_id: z.string(),
+    mode: z.enum(['schema', 'prompt']),
+    result: z.record(z.string(), parsingExtractFieldResultSchema),
+  })
+  .passthrough()
+
 const parsingContentResponseSchema = z
   .object({
     document_id: z.string(),
@@ -76,6 +214,7 @@ const parsingContentResponseSchema = z
     parse_duration_sec: z.number().nullable().optional(),
     pdf_quality: parsingPdfQualitySchema,
     quality_gate: parsingQualityGateSchema,
+    elements: z.array(parsingElementSchema).nullable().optional(),
   })
   .passthrough()
 
@@ -135,6 +274,26 @@ export const parsingApi = {
       responseSchemaName: 'ParsingContentResponse',
     })
     return data as ParsingContentResponse
+  },
+
+  async extract(documentId: string, payload: ParsingExtractRequest): Promise<ParsingExtractResponse> {
+    const requestBody = {
+      mode: payload.mode ?? 'schema',
+      schema: normalizeExtractFieldSpecMap(payload.schema),
+      prompt: payload.prompt ?? undefined,
+      field_hints: normalizeExtractFieldSpecMap(payload.field_hints),
+      max_evidence: payload.max_evidence ?? 1,
+    }
+    const data = await openapiRequest({
+      path: '/api/v1/parsing/documents/{document_id}/extract',
+      method: 'post',
+      pathParams: { document_id: documentId },
+      body: requestBody,
+      responseSchema: parsingExtractResponseSchema as any,
+      responseSchemaName: 'ParsingExtractResponse',
+      timeoutMs: API_LONG_TIMEOUT_MS,
+    })
+    return data as ParsingExtractResponse
   },
 
   async delete(documentId: string): Promise<void> {

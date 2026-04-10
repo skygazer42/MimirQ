@@ -28,7 +28,7 @@ from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
@@ -53,8 +53,10 @@ from app.parsing.quality.reading_order import score_reading_order
 from app.parsing.quality.text_quality import score_parsed_text_quality
 from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
 from app.parsing.utils.cli import resolve_cli_command
+from app.parsing.utils.document_elements import normalize_document_elements
 from app.rag.core.logging import get_logger
 from app.services.dataset_service import DatasetService
+from app.services.parsing_extract_service import extract_parsing_fields
 from app.storage.object.minio import is_minio_uri, minio_service, parse_minio_uri
 
 logger = get_logger("api.parsing")
@@ -87,11 +89,50 @@ class ParsingContentResponse(BaseModel):
     parse_duration_sec: float | None = Field(default=None)
     pdf_quality: dict[str, Any] | None = Field(default=None)
     quality_gate: ParsingQualityGate | None = Field(default=None)
+    elements: list[dict[str, Any]] | None = Field(default=None)
 
 
 class ParsingContentUpdateRequest(BaseModel):
     markdown_content: str = Field(default="")
     original_markdown_content: str | None = None
+
+
+class ParsingExtractFieldSpec(BaseModel):
+    type: Literal["string"] = "string"
+    source_kind: str | None = None
+    aliases: list[str] = Field(default_factory=list)
+
+
+class ParsingExtractRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    mode: Literal["schema", "prompt"] = "schema"
+    schema: dict[str, ParsingExtractFieldSpec] | None = None
+    prompt: str | None = None
+    field_hints: dict[str, ParsingExtractFieldSpec] | None = None
+    max_evidence: int = Field(default=1, ge=1, le=5)
+
+
+class ParsingExtractEvidence(BaseModel):
+    element_id: str | None = None
+    kind: str | None = None
+    page: int | None = None
+    bbox: dict[str, int] | None = None
+    text: str | None = None
+    score: float | None = None
+
+
+class ParsingExtractFieldResult(BaseModel):
+    value: str | None = None
+    confidence: float | None = None
+    evidence: list[ParsingExtractEvidence] = Field(default_factory=list)
+    strategy: str | None = None
+
+
+class ParsingExtractResponse(BaseModel):
+    document_id: UUID
+    mode: Literal["schema", "prompt"] = "schema"
+    result: dict[str, ParsingExtractFieldResult] = Field(default_factory=dict)
 
 
 class ParsingQualityGate(BaseModel):
@@ -237,6 +278,42 @@ def _compute_parsing_quality_gate(
         uniq.append(key)
 
     return ParsingQualityGate(grade=str(grade), reasons=uniq, evidence=evidence)
+
+
+@router.post("/documents/{document_id}/extract", response_model=ParsingExtractResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+async def extract_parsing_document(
+    document_id: uuid.UUID,
+    payload: ParsingExtractRequest,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    doc = _get_workspace_document(db, tenant_id=tenant_id, account_id=account_id, document_id=document_id)
+    meta = dict(doc.doc_metadata or {})
+    row = (
+        db.query(DocumentParsedContent)
+        .filter(DocumentParsedContent.document_id == doc.id, DocumentParsedContent.tenant_id == tenant_id)
+        .first()
+    )
+    markdown = ""
+    if row is not None:
+        markdown = str(getattr(row, "markdown_content", "") or getattr(row, "original_markdown_content", "") or "")
+    elements = meta.get("elements") if isinstance(meta.get("elements"), list) else []
+    result = extract_parsing_fields(
+        markdown=markdown,
+        elements=list(elements or []),
+        mode=payload.mode,
+        schema=({k: v.model_dump(exclude_none=True) for k, v in (payload.schema or {}).items()} if payload.schema else None),
+        prompt=payload.prompt,
+        field_hints=({k: v.model_dump(exclude_none=True) for k, v in (payload.field_hints or {}).items()} if payload.field_hints else None),
+        max_evidence=int(payload.max_evidence or 1),
+    )
+    return ParsingExtractResponse(
+        document_id=document_id,
+        mode=payload.mode,
+        result={key: ParsingExtractFieldResult(**value) for key, value in result.items()},
+    )
 
 
 def _coerce_float(value: Any) -> float | None:
@@ -687,6 +764,7 @@ async def parse_workspace_document(
 
         pdf_quality = parsed.get("pdf_quality") if isinstance(parsed.get("pdf_quality"), dict) else None
         artifact_docs = parsed.get("documents") if isinstance(parsed, dict) else None
+        elements = normalize_document_elements(artifact_docs)
 
         # Opt2: cross-page merge (workspace preview, best-effort; off by default).
         cross_page_merge_stats: dict[str, int] | None = None
@@ -1064,6 +1142,7 @@ async def parse_workspace_document(
             next_meta["reading_order"] = ro
         if gate is not None:
             next_meta["quality_gate"] = gate.model_dump()
+        next_meta["elements"] = list(elements or [])
         next_meta["parsed_at"] = datetime.now(UTC).isoformat()
         next_meta["parse_duration_sec"] = round(float(duration_sec), 3)
         if fallback_attempts:
@@ -1087,6 +1166,7 @@ async def parse_workspace_document(
             parse_duration_sec=round(float(duration_sec), 3),
             pdf_quality=(dict(pdf_quality) if isinstance(pdf_quality, dict) else None),
             quality_gate=gate,
+            elements=list(elements or []),
         )
     except SubprocessCancelled:
         # Client disconnected; stop work early.
@@ -1213,6 +1293,7 @@ async def get_parsing_content(
     )
     pdf_quality = meta.get("pdf_quality") if isinstance(meta, dict) else None
     quality_gate = meta.get("quality_gate") if isinstance(meta, dict) else None
+    elements = meta.get("elements") if isinstance(meta, dict) else None
     return ParsingContentResponse(
         document_id=doc.id,
         parser_backend=str(parser_backend or "auto"),
@@ -1222,6 +1303,7 @@ async def get_parsing_content(
         parse_duration_sec=duration_sec,
         pdf_quality=(dict(pdf_quality) if isinstance(pdf_quality, dict) else None),
         quality_gate=(ParsingQualityGate(**quality_gate) if isinstance(quality_gate, dict) else None),
+        elements=(list(elements) if isinstance(elements, list) else None),
     )
 
 
@@ -1293,6 +1375,7 @@ async def update_parsing_content(
                 duration_sec = float(raw_duration)
         except Exception:
             duration_sec = None
+    elements = next_meta.get("elements") if isinstance(next_meta, dict) else None
 
     return ParsingContentResponse(
         document_id=doc.id,
@@ -1300,6 +1383,7 @@ async def update_parsing_content(
         markdown_content=markdown,
         original_markdown_content=original,
         parse_duration_sec=duration_sec,
+        elements=(list(elements) if isinstance(elements, list) else None),
     )
 
 

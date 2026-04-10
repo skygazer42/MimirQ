@@ -13,7 +13,9 @@ import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { diffParsingElements } from '@/lib/parsing-element-diff'
 import { cn } from '@/lib/utils'
+import type { ParsingElement } from '@/lib/api/parsing'
 
 export type ParseCompareRun = {
   id: string
@@ -22,6 +24,7 @@ export type ParseCompareRun = {
   rawMarkdown: string
   cleanedMarkdown?: string
   createdAt?: number
+  elements?: ParsingElement[]
 }
 
 type Props = {
@@ -85,6 +88,23 @@ export function ParseCompareDialog({ open, onOpenChange, runs, defaultBaseRunId,
     const patch = createTwoFilesPatch(a, b, baseText || '', compareText || '', '', '', { context: 3 })
     return patch.trim() ? patch : '(no diff)'
   }, [baseRun, baseText, compareRun, compareText, tooLarge])
+  const elementDiffSummary = useMemo(() => {
+    if (!baseRun || !compareRun) return null
+    return diffParsingElements(baseRun.elements || [], compareRun.elements || [])
+  }, [baseRun, compareRun])
+  const structureSummaryItems = useMemo(() => {
+    const summary = elementDiffSummary
+    if (!summary) return []
+    const pairs = [
+      { label: '新增 seal', value: summary.addedByKind.seal || 0 },
+      { label: '移除 seal', value: summary.removedByKind.seal || 0 },
+      { label: '新增 image', value: summary.addedByKind.image || 0 },
+      { label: '移除 image', value: summary.removedByKind.image || 0 },
+      { label: '新增 equation', value: summary.addedByKind.equation || 0 },
+      { label: '移除 equation', value: summary.removedByKind.equation || 0 },
+    ]
+    return pairs.filter((item) => item.value > 0)
+  }, [elementDiffSummary])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -197,6 +217,43 @@ export function ParseCompareDialog({ open, onOpenChange, runs, defaultBaseRunId,
               </Button>
             </div>
           </div>
+
+          {elementDiffSummary ? (
+            <div className="rounded-xl border border-border bg-muted/15 p-3">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                结构差异
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <div className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground">
+                  <span>Base</span>
+                  <span className="font-mono font-semibold text-foreground">{elementDiffSummary.totalBase}</span>
+                </div>
+                <div className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground">
+                  <span>Compare</span>
+                  <span className="font-mono font-semibold text-foreground">{elementDiffSummary.totalCompare}</span>
+                </div>
+                {structureSummaryItems.map((item) => (
+                  <div
+                    key={item.label}
+                    className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background px-2 py-1 text-[11px] text-muted-foreground"
+                  >
+                    <span>{item.label}</span>
+                    <span className="font-mono font-semibold text-foreground">{item.value}</span>
+                  </div>
+                ))}
+              </div>
+              {elementDiffSummary.addedSealTexts.length > 0 ? (
+                <div className="mt-2 text-xs text-muted-foreground">
+                  新增：{elementDiffSummary.addedSealTexts.join(' · ')}
+                </div>
+              ) : null}
+              {elementDiffSummary.removedSealTexts.length > 0 ? (
+                <div className="mt-1 text-xs text-muted-foreground">
+                  移除：{elementDiffSummary.removedSealTexts.join(' · ')}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           {tooLarge ? (
             <div className="rounded-xl border border-border bg-muted/20 p-4 text-sm text-muted-foreground">

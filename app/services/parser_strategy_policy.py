@@ -97,6 +97,10 @@ def recommend_parser_strategy(profile: Mapping[str, Any] | None) -> dict[str, An
     image_ratio = _clamp01(_safe_float(payload.get("image_ratio"), 0.0))
     ocr_ratio = _clamp01(_safe_float(payload.get("ocr_ratio"), 0.0))
     has_tables = _to_bool(payload.get("has_tables")) or table_density >= 0.15
+    seal_expected = _to_bool(payload.get("seal_expected"))
+    seal_confidence = _clamp01(_safe_float(payload.get("seal_confidence"), 0.0))
+    seal_candidate_count = max(0, _safe_int(payload.get("seal_candidate_count"), 0))
+    seal_low_confidence = bool(seal_expected and seal_confidence > 0.0 and seal_confidence < 0.6)
 
     reason_codes: list[str] = []
     strategy: str
@@ -105,7 +109,18 @@ def recommend_parser_strategy(profile: Mapping[str, Any] | None) -> dict[str, An
 
     if _is_pdf(mime, ext):
         reason_codes.append("pdf_document")
-        if ocr_ratio >= 0.35 or image_ratio >= 0.5:
+        if seal_low_confidence:
+            strategy = "pdf_ocr_layout"
+            reason_codes.append("low_seal_confidence")
+            confidence = 0.91
+            parser_options = {
+                "ocr_enabled": True,
+                "layout_mode": "full",
+                "table_detection": True,
+                "seal_review": True,
+                "seal_candidate_count": int(seal_candidate_count),
+            }
+        elif ocr_ratio >= 0.35 or image_ratio >= 0.5:
             strategy = "pdf_ocr_layout"
             reason_codes.append("image_or_ocr_heavy_pdf")
             confidence = 0.9
@@ -168,6 +183,9 @@ def recommend_parser_strategy(profile: Mapping[str, Any] | None) -> dict[str, An
             "image_ratio": round(float(image_ratio), 4),
             "ocr_ratio": round(float(ocr_ratio), 4),
             "has_tables": bool(has_tables),
+            "seal_expected": bool(seal_expected),
+            "seal_confidence": round(float(seal_confidence), 4) if seal_expected else None,
+            "seal_candidate_count": int(seal_candidate_count),
         },
         "parser_options": parser_options,
     }

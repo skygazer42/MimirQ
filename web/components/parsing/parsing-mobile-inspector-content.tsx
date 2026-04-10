@@ -4,33 +4,43 @@ import { Code, Copy, Download, Eye, FileStack, FileText } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { MarkdownToc } from '@/components/markdown/markdown-toc'
+import { ParsingExtractPanel } from '@/components/parsing/parsing-extract-panel'
 import { Button } from '@/components/ui/button'
 import { buildParsingLayoutEntries, getParsingLayoutMeta } from '@/lib/parsing-layout'
+import type { ParsingElement, ParsingExtractEvidence } from '@/lib/api/parsing'
 import { cn } from '@/lib/utils'
 import type { ParsingBlock } from '@/lib/parsing-positions'
 
 type ParsingMobileInspectorContentProps = {
+  documentId?: string | null
   activeMarkdown: string
   rightPanelMode: 'blocks' | 'markdown'
   previewMode: 'raw' | 'rendered'
   activeBlocksWithPositions: ParsingBlock[]
   activeBlockId: string | null
+  activeElements: ParsingElement[]
   onRightPanelModeChange: (mode: 'blocks' | 'markdown') => void
   onPreviewModeChange: (mode: 'raw' | 'rendered') => void
   onSelectBlock: (blockId: string) => void
+  onSelectElement: (elementId: string) => void
+  onSelectEvidence: (payload: { fieldName: string; evidence: ParsingExtractEvidence }) => void
   onCopyMarkdown: () => void
   onDownloadMarkdown: () => void
 }
 
 export function ParsingMobileInspectorContent({
+  documentId,
   activeMarkdown,
   rightPanelMode,
   previewMode,
   activeBlocksWithPositions,
   activeBlockId,
+  activeElements,
   onRightPanelModeChange,
   onPreviewModeChange,
   onSelectBlock,
+  onSelectElement,
+  onSelectEvidence,
   onCopyMarkdown,
   onDownloadMarkdown,
 }: Readonly<ParsingMobileInspectorContentProps>) {
@@ -145,6 +155,43 @@ export function ParsingMobileInspectorContent({
         </div>
       ) : rightPanelMode === 'markdown' ? (
         <div className="space-y-2">
+          {documentId ? (
+            <ParsingExtractPanel
+              documentId={documentId}
+              activeElements={activeElements}
+              onSelectEvidence={onSelectEvidence}
+              className="rounded-2xl border border-border/60 bg-card p-0"
+            />
+          ) : null}
+          {activeElements.length > 0 ? (
+            <div className="space-y-2">
+              <div className="text-xs font-semibold text-muted-foreground">{t('mobileInspector.elements')}</div>
+              <div className="rounded-2xl border border-border/60 bg-card p-2">
+                <div className="max-h-[32vh] space-y-1 overflow-y-auto overscroll-contain no-scrollbar">
+                  {activeElements.slice(0, 40).map((element) => (
+                    <button
+                      key={String(element.id)}
+                      type="button"
+                      onClick={() => onSelectElement(String(element.id))}
+                      className="w-full rounded-xl border border-border/50 px-3 py-2 text-left text-sm transition-colors hover:bg-muted/40"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate font-medium text-foreground/85">{String(element.kind || 'paragraph')}</div>
+                          {element.text ? <div className="truncate text-xs text-muted-foreground">{String(element.text)}</div> : null}
+                        </div>
+                        {typeof element.page === 'number' ? (
+                          <div className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                            {t('mobileInspector.pageLabel', { page: String(element.page) })}
+                          </div>
+                        ) : null}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
           <div className="text-xs font-semibold text-muted-foreground">{t('mobileInspector.toc')}</div>
           <div className="rounded-2xl border border-border/60 bg-card p-3">
             <MarkdownToc markdown={activeMarkdown} />

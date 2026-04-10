@@ -409,6 +409,8 @@ class PaddleVLParser:
             "source": str(file_path.name),
             "file_type": "pdf",
             "parser_backend": "paddle_vl",
+            "element_kind": "paragraph",
+            "element_text": markdown_text,
             "artifact_dir": str(artifact_root),
         }
         if asset_base_dir:

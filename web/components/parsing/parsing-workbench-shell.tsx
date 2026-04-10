@@ -16,6 +16,7 @@ import { ParsingSidebarPane } from '@/components/parsing/parsing-sidebar-pane'
 import { Button } from '@/components/ui/button'
 import { IngestionWorkflowStepper } from '@/components/ui/ingestion-workflow-stepper'
 import { WorkbenchPanelDialog, WorkbenchScaffold } from '@/components/workbench'
+import type { ParsingElement } from '@/lib/api/parsing'
 import { getParserLabel } from '@/lib/parser-options'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
 import { UPLOAD_ACCEPT, UPLOAD_ACCEPT_WITH_ZIP } from '@/lib/upload-extensions'
@@ -49,6 +50,7 @@ type ParsingWorkbenchShellProps = {
   activeLibraryFileId: string | null
   activeLibrarySourceStatus: ParsingLibrarySourceStatus
   activeMarkdown: string
+  activeElements: ParsingElement[]
   activePdfQuality: unknown
   activeQualityGate: unknown
   activeRun: ParseRun | null
@@ -129,6 +131,7 @@ export function ParsingWorkbenchShell({
   activeLibraryFileId,
   activeLibrarySourceStatus,
   activeMarkdown,
+  activeElements,
   activePdfQuality,
   activeQualityGate,
   activeRun,
@@ -407,6 +410,7 @@ export function ParsingWorkbenchShell({
                       activeFile={activeFile}
                       activeRun={activeRun}
                       activeMarkdown={activeMarkdown}
+                      activeElements={activeElements}
                       activeQualityGate={activeQualityGate}
                       activePdfQuality={activePdfQuality}
                       activeBlocksWithPositions={activeBlocksWithPositions}
@@ -491,15 +495,30 @@ export function ParsingWorkbenchShell({
       <WorkbenchPanelDialog open={inspectorOpen} onOpenChange={setInspectorOpen} title={t('tools')}>
         {activeFile && activeMarkdown ? (
           <ParsingMobileInspectorContent
+            documentId={activeFile.libraryId || null}
             activeMarkdown={activeMarkdown}
             rightPanelMode={rightPanelMode}
             previewMode={previewMode}
             activeBlocksWithPositions={activeBlocksWithPositions}
             activeBlockId={activeBlockId}
+            activeElements={activeElements}
             onRightPanelModeChange={setRightPanelMode}
             onPreviewModeChange={setPreviewMode}
             onSelectBlock={(blockId) => {
               setActiveBlockId(blockId)
+              setInspectorOpen(false)
+            }}
+            onSelectElement={(elementId) => {
+              setActiveBlockId(elementId)
+              setRightPanelMode('blocks')
+              setInspectorOpen(false)
+            }}
+            onSelectEvidence={({ evidence }) => {
+              const elementId = String(evidence.element_id || '').trim()
+              if (elementId) {
+                setActiveBlockId(elementId)
+              }
+              setRightPanelMode('blocks')
               setInspectorOpen(false)
             }}
             onCopyMarkdown={() => detachPromise(copyMarkdown())}

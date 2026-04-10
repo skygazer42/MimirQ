@@ -62,6 +62,7 @@ def run(
     cap = max(1, int(max_docs or 100))
 
     rows: list[tuple[str, float]] = []
+    specialty_meta: dict[str, dict[str, Any]] = {}
     seen: set[str] = set()
     for item in candidates_raw:
         if not isinstance(item, dict):
@@ -74,6 +75,10 @@ def run(
             continue
         seen.add(doc_id)
         rows.append((doc_id, score))
+        specialty_meta[doc_id] = {
+            "reason": str(item.get("reason") or "").strip() or "parse_quality_below_threshold",
+            "specialty_signals": dict(item.get("specialty_signals") or {}) if isinstance(item.get("specialty_signals"), dict) else {},
+        }
 
     rows.sort(key=lambda x: (x[1], x[0]))
     rows = rows[:cap]
@@ -95,7 +100,8 @@ def run(
             {
                 "document_id": doc_id,
                 "score": round(float(score), 3),
-                "reason": "parse_quality_below_threshold",
+                "reason": str((specialty_meta.get(doc_id) or {}).get("reason") or "parse_quality_below_threshold"),
+                "specialty_signals": dict((specialty_meta.get(doc_id) or {}).get("specialty_signals") or {}),
             }
             for doc_id, score in rows
         ],

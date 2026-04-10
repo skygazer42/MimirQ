@@ -23,4 +23,10 @@ describe('parsing view state source', () => {
     expect(src).toContain('parsingApi.listDocuments({ skip: 0, limit: 200 })')
     expect(src).not.toContain('parsingApi.listDocuments({ skip: 0, limit: 500 })')
   })
+
+  it('hydrates normalized parsing elements from remote content responses', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'use-parsing-view-state.ts'), 'utf8')
+
+    expect(src).toContain('elements: remote?.elements || []')
+  })
 })

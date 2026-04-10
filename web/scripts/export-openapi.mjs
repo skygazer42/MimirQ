@@ -27,7 +27,15 @@ function findPythonExe() {
 
   for (const exe of candidates) {
     const res = spawnSync(exe, ["--version"], { stdio: "ignore" });
-    if (res.status === 0) {
+    if (res.status !== 0) {
+      continue;
+    }
+    const fastApiCheck = spawnSync(
+      exe,
+      ["-c", "import importlib.util as u; import sys; sys.exit(0 if u.find_spec('fastapi') else 1)"],
+      { stdio: "ignore" }
+    );
+    if (fastApiCheck.status === 0) {
       return exe;
     }
   }

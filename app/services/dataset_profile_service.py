@@ -66,6 +66,7 @@ from app.services.dataset_service import DatasetService
 _PROFILE_CACHE_TTL_SEC = 3.0
 _profile_cache: dict[tuple, tuple[float, DatasetProfileSummary]] = {}
 _PARSE_QUALITY_LOW_THRESHOLD = 0.35
+_SEAL_CONFIDENCE_LOW_THRESHOLD = 0.6
 
 
 FINDING_KEY_REASONS: dict[str, dict[str, Any]] = {
@@ -98,6 +99,11 @@ FINDING_KEY_REASONS: dict[str, dict[str, Any]] = {
         "label": "解析质量偏低",
         "severity": "warning",
         "description": "解析质量评分较低（综合 pdf_quality / parsed_text_quality）。建议人工复核或调整解析后端/OCR 路由。",
+    },
+    "seal_low_confidence": {
+        "label": "印章识别置信度偏低",
+        "severity": "warning",
+        "description": "检测到签章类文档但主印章置信度较低，建议人工复核或切换更强 OCR / layout parser。",
     },
     "pii": {
         "label": "PII 命中",
@@ -603,6 +609,12 @@ def aggregate_profile_from_rows(
             parse_quality_bins[idx] += 1
             if score < float(_PARSE_QUALITY_LOW_THRESHOLD):
                 finding_counts["parse_low_quality"] += 1
+
+        seal_summary = meta_dict.get("seal_summary")
+        if isinstance(seal_summary, dict):
+            seal_score = safe_float(seal_summary.get("primary_score"), default=1.0)
+            if safe_bool(seal_summary.get("detected"), default=False) and seal_score < float(_SEAL_CONFIDENCE_LOW_THRESHOLD):
+                finding_counts["seal_low_confidence"] += 1
 
         # Image-heavy flag.
         if _is_image_heavy(meta_dict, image_threshold=int(image_threshold)):
@@ -1260,6 +1272,12 @@ def apply_finding_filter(
     if key == "parse_low_quality":
         return query.filter(
             func.coalesce(DBDocument.doc_metadata["parse_quality"]["score"].as_float(), 1.0) < float(_PARSE_QUALITY_LOW_THRESHOLD),
+        )
+
+    if key == "seal_low_confidence":
+        return query.filter(
+            func.coalesce(DBDocument.doc_metadata["seal_summary"]["detected"].as_boolean(), False) == True,  # noqa: E712
+            func.coalesce(DBDocument.doc_metadata["seal_summary"]["primary_score"].as_float(), 1.0) < float(_SEAL_CONFIDENCE_LOW_THRESHOLD),
         )
 
     if key == "pii":

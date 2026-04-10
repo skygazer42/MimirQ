@@ -1,6 +1,6 @@
 import type { ParsingBlock, ParsingPosition } from './parsing-positions'
 
-export type ParsingLayoutKind = 'heading' | 'paragraph' | 'list' | 'table' | 'image' | 'equation'
+export type ParsingLayoutKind = 'heading' | 'paragraph' | 'list' | 'table' | 'image' | 'equation' | 'seal'
 
 export type ParsingLayoutMeta = {
   label: string
@@ -68,6 +68,14 @@ const PARSING_LAYOUT_META: Record<ParsingLayoutKind, ParsingLayoutMeta> = {
       'border-violet-200/80 bg-violet-50 text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/35 dark:text-violet-200',
     dotClassName: 'bg-violet-500 dark:bg-violet-300',
     overlayClassName: 'border-violet-500/75 bg-violet-500/10',
+  },
+  seal: {
+    label: '印章',
+    shortLabel: '印章',
+    chipClassName:
+      'border-rose-200/80 bg-rose-50 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/35 dark:text-rose-200',
+    dotClassName: 'bg-rose-500 dark:bg-rose-300',
+    overlayClassName: 'border-rose-500/75 bg-rose-500/10',
   },
 }
 

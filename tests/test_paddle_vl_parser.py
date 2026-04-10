@@ -41,6 +41,8 @@ def test_paddle_vl_parser_zip_minio_disabled_strips_image_refs(monkeypatch, tmp_
 
     docs = parser.parse(pdf_path, dataset_id="ds1", document_id="doc1")
     assert len(docs) == 1
+    assert docs[0].metadata["element_kind"] == "paragraph"
+    assert docs[0].metadata["element_text"] == docs[0].page_content
 
     asset_base_dir = str(docs[0].metadata.get("asset_base_dir") or "")
     assert asset_base_dir
@@ -75,6 +77,8 @@ def test_paddle_vl_parser_zip_doc_parser_fixture_normalizes_and_strips_refs(monk
 
     docs = parser.parse(pdf_path, dataset_id="ds1", document_id="doc1")
     assert len(docs) == 1
+    assert docs[0].metadata["element_kind"] == "paragraph"
+    assert docs[0].metadata["element_text"] == docs[0].page_content
 
     asset_base_dir = str(docs[0].metadata.get("asset_base_dir") or "")
     assert asset_base_dir
@@ -120,6 +124,8 @@ def test_paddle_vl_parser_zip_minio_enabled_uses_zip_processor(monkeypatch, tmp_
 
     docs = parser.parse(pdf_path, dataset_id="ds1", document_id="doc1", tenant_id="t1")
     assert len(docs) == 1
+    assert docs[0].metadata["element_kind"] == "paragraph"
+    assert docs[0].metadata["element_text"] == docs[0].page_content
     assert docs[0].page_content == "hello ![](https://minio.local/images/p1.png)"
 
     assert called.get("dataset_id") == "ds1"

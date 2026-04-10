@@ -60,6 +60,46 @@ describe('API runtime contracts', () => {
     }
   })
 
+  it('passes a runtime response schema for parsing extraction boundaries', async () => {
+    openapiRequestMock.mockResolvedValueOnce({ document_id: SAMPLE_UUID, mode: 'schema', result: {} })
+
+    await parsingApi.extract(SAMPLE_UUID, {
+      mode: 'schema',
+      schema: {
+        company_name: {
+          type: 'string',
+          source_kind: 'seal',
+        },
+      },
+    })
+
+    const requestArgs = openapiRequestMock.mock.calls.at(-1)?.[0]
+    expect(requestArgs?.responseSchemaName).toBe('ParsingExtractResponse')
+    expect(
+      requestArgs?.responseSchema.safeParse({
+        document_id: SAMPLE_UUID,
+        mode: 'schema',
+        result: {
+          company_name: {
+            value: '杭州测试科技有限公司',
+            confidence: 0.97,
+            strategy: 'element_match',
+            evidence: [
+              {
+                element_id: 'seal:2:0',
+                kind: 'seal',
+                page: 2,
+                bbox: { x0: 10, y0: 20, x1: 60, y1: 70 },
+                text: '杭州测试科技有限公司',
+                score: 0.97,
+              },
+            ],
+          },
+        },
+      }).success
+    ).toBe(true)
+  })
+
   it('passes a runtime response schema for persisted document parsed content', async () => {
     openapiRequestMock.mockResolvedValueOnce({ document_id: SAMPLE_UUID })
 

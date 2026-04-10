@@ -18,6 +18,7 @@ class DocumentHealthParsing(BaseModel):
     parser_backend_requested: str | None = None
     parse_quality: dict[str, Any] | None = None
     pdf_quality: dict[str, Any] | None = None
+    seal_summary: dict[str, Any] | None = None
 
     is_scanned: bool | None = None
     page_count: int | None = None
@@ -91,4 +92,3 @@ class DocumentHealthCard(BaseModel):
     chunking: DocumentHealthChunking
     kg: dict[str, Any] | None = None
     retrieval_hits: DocumentHealthRetrievalHits | None = None
-

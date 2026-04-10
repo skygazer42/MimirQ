@@ -162,6 +162,7 @@ export function useParsingLibraryActions({
       let activeRunId: string | undefined
       let stats: ParsedFile['stats'] | undefined
       let blocks: ParseRun['blocks'] = []
+      let restoredElements = libEntry.elements || []
 
       if (autoParse) {
         status = 'pending'
@@ -192,6 +193,7 @@ export function useParsingLibraryActions({
               const remote = await parsingApi.getContent(id)
               cleaned = (remote?.markdown_content || cleaned || raw).trim()
               raw = (remote?.original_markdown_content || remote?.markdown_content || raw || cleaned).trim()
+              restoredElements = remote?.elements || libEntry.elements || []
               updateParsedFile(id, {
                 markdownContent: cleaned || raw,
                 originalMarkdownContent: raw || cleaned,
@@ -200,6 +202,7 @@ export function useParsingLibraryActions({
                 durationSec: Number.isFinite(Number(remote?.parse_duration_sec))
                   ? Number(remote?.parse_duration_sec)
                   : libEntry.durationSec,
+                elements: remote?.elements || libEntry.elements || [],
                 status: 'parsed',
               })
             } catch {
@@ -223,6 +226,7 @@ export function useParsingLibraryActions({
                 rawMarkdown: raw,
                 cleanedMarkdown: markdownContent || '',
                 blocks,
+                elements: restoredElements,
                 createdAt: Date.now(),
               },
             ]
@@ -272,6 +276,7 @@ export function useParsingLibraryActions({
         runs,
         activeRunId,
         stats,
+        elements: restoredElements,
       }
 
       setFiles((prev) => [...prev.filter((file) => file.libraryId !== id), queueItem])

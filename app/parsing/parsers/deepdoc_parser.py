@@ -200,7 +200,10 @@ class DeepDocParser:
 
         merged_text = "\n\n".join(text_parts).strip()
         if merged_text:
-            docs.append(Document(page_content=merged_text, metadata=dict(base_meta)))
+            text_meta = dict(base_meta)
+            text_meta["element_kind"] = "paragraph"
+            text_meta["element_text"] = merged_text
+            docs.append(Document(page_content=merged_text, metadata=text_meta))
 
         # 2) Emit image docs for tables/figures so DocumentProcessor can upload.
         if isinstance(media, list):
@@ -227,6 +230,8 @@ class DeepDocParser:
 
                 meta = dict(base_meta)
                 meta["doc_type_kwd"] = "image"
+                meta["element_kind"] = "image"
+                meta["element_text"] = content
                 meta["image"] = image_obj
                 docs.append(Document(page_content=content, metadata=meta))
 

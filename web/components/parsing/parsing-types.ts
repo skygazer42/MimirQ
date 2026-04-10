@@ -1,6 +1,7 @@
 'use client'
 
 import type { ParseCompareRun } from '@/components/parsing/parse-compare-dialog'
+import type { ParsingElement } from '@/lib/api/parsing'
 import type { FileQueueItemData } from '@/components/ui/file-queue-item'
 import type { ParsingBlock } from '@/lib/parsing-positions'
 
@@ -11,6 +12,7 @@ export interface ParseRun extends ParseCompareRun {
   cleanedMarkdown: string
   createdAt: number
   blocks: ParsingBlock[]
+  elements?: ParsingElement[]
   pdfQuality?: unknown
   qualityGate?: unknown
 }
@@ -50,6 +52,7 @@ export interface ParsedFile extends FileQueueItemData {
     imageCount?: number
     blockCount?: number
   }
+  elements?: ParsingElement[]
   pdfQuality?: unknown
   qualityGate?: unknown
   parseDiagnostics?: ParseFailureDiagnostics

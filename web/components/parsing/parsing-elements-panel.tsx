@@ -1,0 +1,112 @@
+'use client'
+
+import { useMemo, useState } from 'react'
+
+import type { ParsingElement } from '@/lib/api/parsing'
+import { cn } from '@/lib/utils'
+
+type ParsingElementsPanelProps = {
+  elements: ParsingElement[]
+  onSelectElement?: (element: ParsingElement) => void
+  className?: string
+}
+
+function kindLabel(kind: string): string {
+  if (kind === 'seal') return '印章'
+  if (kind === 'equation') return '公式'
+  if (kind === 'table') return '表格'
+  if (kind === 'image') return '图片'
+  if (kind === 'heading') return '标题'
+  if (kind === 'list') return '列表'
+  return '正文'
+}
+
+function formatBbox(value: ParsingElement['bbox']): string {
+  if (!value) return ''
+  return `${value.x0},${value.y0},${value.x1},${value.y1}`
+}
+
+export function ParsingElementsPanel({
+  elements,
+  onSelectElement,
+  className,
+}: Readonly<ParsingElementsPanelProps>) {
+  const [filterKind, setFilterKind] = useState<string>('all')
+  const filterKinds = useMemo(() => {
+    const kinds = new Set<string>(['all'])
+    for (const element of elements || []) {
+      const kind = String(element.kind || '').trim()
+      if (kind) kinds.add(kind)
+    }
+    return Array.from(kinds)
+  }, [elements])
+  const visibleElements = useMemo(() => {
+    if (filterKind === 'all') return elements
+    return (elements || []).filter((element) => element.kind === filterKind)
+  }, [elements, filterKind])
+
+  if (!elements.length) return null
+
+  return (
+    <div className={cn('border-b border-border/60 bg-background/70 px-5 py-3', className)}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            结构元素列表
+          </div>
+          <div className="mt-1 text-[12px] leading-5 text-muted-foreground/80">
+            直接筛选并审阅印章、公式、表格、图片等结构元素。
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {filterKinds.map((kind) => (
+            <button
+              key={kind}
+              type="button"
+              onClick={() => setFilterKind(kind)}
+              className={cn(
+                'rounded-full border px-2.5 py-1 text-[11px] transition-colors',
+                filterKind === kind
+                  ? 'border-primary/40 bg-primary/10 text-foreground'
+                  : 'border-border/60 bg-background/90 text-muted-foreground hover:text-foreground/80'
+              )}
+            >
+              {kind === 'all' ? '全部' : kindLabel(kind)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 md:grid-cols-2">
+        {visibleElements.map((element) => (
+          <button
+            key={String(element.id)}
+            type="button"
+            onClick={() => onSelectElement?.(element)}
+            className="rounded-xl border border-border/60 bg-background/92 px-3 py-2 text-left transition-colors hover:border-primary/35 hover:bg-primary/5"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-semibold text-foreground">{kindLabel(String(element.kind || 'paragraph'))}</span>
+              {typeof element.page === 'number' ? (
+                <span className="font-mono text-[10px] text-muted-foreground">页 {element.page}</span>
+              ) : null}
+              <span className="font-mono text-[10px] text-muted-foreground">{element.id}</span>
+              {typeof (element.attributes as Record<string, unknown> | null)?.source_content_type === 'string' ? (
+                <span className="rounded-full border border-border/60 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                  {(element.attributes as Record<string, unknown>).source_content_type as string}
+                </span>
+              ) : null}
+              {typeof element.confidence === 'number' ? (
+                <span className="font-mono text-[10px] text-muted-foreground">{element.confidence.toFixed(2)}</span>
+              ) : null}
+            </div>
+            {element.text ? <div className="mt-1 truncate text-sm text-foreground/85">{element.text}</div> : null}
+            {element.bbox ? (
+              <div className="mt-1 font-mono text-[10px] text-muted-foreground">bbox {formatBbox(element.bbox)}</div>
+            ) : null}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
