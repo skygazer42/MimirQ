@@ -403,11 +403,17 @@ def extract_seal_documents_from_pdf(
                 "seal_primary": _serialize_seal_candidate(result),
                 "seal_candidates": [_serialize_seal_candidate(item) for item in candidates],
                 "seal_bbox_list": bbox_list,
+                "element_attributes": {
+                    "source_content_type": "seal",
+                    "source_doc_type": "seal",
+                },
             }
             bbox_payload = _bbox_to_payload(result.bbox)
             if bbox_payload is not None:
                 metadata["seal_bbox"] = bbox_payload
                 metadata["element_bbox"] = dict(bbox_payload)
+                metadata["element_attributes"]["bbox"] = dict(bbox_payload)
+            metadata["element_attributes"]["page"] = int(page_index + 1)
             docs.append(Document(page_content=f"印章识别：{result.text}", metadata=metadata))
     finally:
         pdf.close()

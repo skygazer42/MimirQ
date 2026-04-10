@@ -64,12 +64,16 @@ def test_docling_parser_marks_table_and_image_element_kinds(monkeypatch, tmp_pat
     assert docs[0].metadata["element_attributes"]["source_content_type"] == "table"
     assert docs[0].metadata["element_attributes"]["source_doc_type"] == "table"
     assert docs[0].metadata["element_attributes"]["positions"] == [(0, 10, 50, 20, 60)]
+    assert docs[0].metadata["element_attributes"]["page"] == 1
+    assert docs[0].metadata["element_attributes"]["bbox"] == {"x0": 10, "x1": 50, "y0": 20, "y1": 60}
     assert docs[1].metadata["element_kind"] == "image"
     assert docs[1].metadata["element_text"] == "Figure 1"
     assert docs[1].metadata["element_page"] == 2
     assert docs[1].metadata["element_bbox"] == {"x0": 30, "x1": 80, "y0": 40, "y1": 90}
     assert docs[1].metadata["element_attributes"]["source_content_type"] == "image"
     assert docs[1].metadata["element_attributes"]["positions"] == [(1, 30, 80, 40, 90)]
+    assert docs[1].metadata["element_attributes"]["page"] == 2
+    assert docs[1].metadata["element_attributes"]["bbox"] == {"x0": 30, "x1": 80, "y0": 40, "y1": 90}
     assert docs[2].metadata["element_kind"] == "paragraph"
     assert docs[2].metadata["element_text"] == "Paragraph"
     assert docs[2].metadata["element_attributes"]["source_content_type"] == "text"
@@ -103,6 +107,12 @@ def test_docling_parser_emits_equation_docs_with_native_element_payload(monkeypa
 
     assert paragraph_doc.metadata["element_kind"] == "paragraph"
     assert equation_doc.metadata["element_kind"] == "equation"
-    assert equation_doc.metadata["element_text"] == "E = mc^2@@2\t20\t80\t30\t90##"
+    assert equation_doc.metadata["element_text"] == "E = mc^2"
     assert equation_doc.metadata["element_page"] == 2
     assert equation_doc.metadata["element_bbox"] == {"x0": 20, "x1": 80, "y0": 30, "y1": 90}
+    assert equation_doc.metadata["element_attributes"]["source_content_type"] == "equation"
+    assert equation_doc.metadata["element_attributes"]["source_doc_type"] == "equation"
+    assert equation_doc.metadata["element_attributes"]["positions"] == [(1, 20.0, 80.0, 30.0, 90.0)]
+    assert equation_doc.metadata["element_attributes"]["page"] == 2
+    assert equation_doc.metadata["element_attributes"]["bbox"] == {"x0": 20, "x1": 80, "y0": 30, "y1": 90}
+    assert equation_doc.page_content == "E = mc^2@@2\t20\t80\t30\t90##"
