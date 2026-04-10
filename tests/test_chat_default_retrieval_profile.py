@@ -6,11 +6,29 @@ def test_chat_rag_config_applies_default_profile_when_omitted(monkeypatch) -> No
     from app.core.config import settings
 
     monkeypatch.setattr(settings, "CHAT_DEFAULT_RETRIEVAL_PROFILE", "hybrid_ce", raising=False)
+    monkeypatch.setattr(settings, "ENABLE_RERANKER", False, raising=False)
+    monkeypatch.setattr(settings, "RERANKER_PROVIDER", "llm", raising=False)
+
+    cfg = ChatRAGConfig()
+    assert cfg.retrieval_profile == "hybrid_ce"
+    assert cfg.retrieval_mode == "hybrid"
+    assert cfg.enable_reranker is False
+    assert cfg.reranker_provider == "none"
+
+
+def test_chat_rag_config_default_hybrid_ce_keeps_cross_encoder_when_reranker_enabled(monkeypatch) -> None:  # noqa: ANN001
+    from app.api.schemas.chat import ChatRAGConfig
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "CHAT_DEFAULT_RETRIEVAL_PROFILE", "hybrid_ce", raising=False)
+    monkeypatch.setattr(settings, "ENABLE_RERANKER", True, raising=False)
+    monkeypatch.setattr(settings, "RERANKER_PROVIDER", "llm", raising=False)
 
     cfg = ChatRAGConfig()
     assert cfg.retrieval_profile == "hybrid_ce"
     assert cfg.retrieval_mode == "hybrid"
     assert cfg.enable_reranker is True
+    assert cfg.reranker_provider == "cross_encoder"
 
 
 def test_chat_rag_config_keeps_explicit_knobs_without_forced_default_profile(monkeypatch) -> None:  # noqa: ANN001

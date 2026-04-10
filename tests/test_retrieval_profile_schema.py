@@ -28,7 +28,7 @@ def test_chat_rag_config_coverage80_overrides_top_k_and_threshold() -> None:
     assert cfg.score_threshold == pytest.approx(0.0)
 
 
-def test_chat_rag_config_hybrid_ce_enables_cross_encoder_baseline() -> None:
+def test_chat_rag_config_hybrid_ce_degrades_to_hybrid_without_reranker() -> None:
     from app.api.schemas.chat import ChatRAGConfig
 
     cfg = ChatRAGConfig(
@@ -46,10 +46,29 @@ def test_chat_rag_config_hybrid_ce_enables_cross_encoder_baseline() -> None:
     assert cfg.retrieval_mode == "hybrid"
     assert cfg.top_k >= 20
     assert cfg.score_threshold == pytest.approx(0.0)
+    assert cfg.enable_reranker is False
+    assert cfg.reranker_provider == "none"
+    assert cfg.enable_weight_rerank is False
+
+
+def test_chat_rag_config_hybrid_ce_keeps_cross_encoder_when_enabled() -> None:
+    from app.api.schemas.chat import ChatRAGConfig
+
+    cfg = ChatRAGConfig(
+        retrieval_profile="hybrid_ce",
+        top_k=5,
+        score_threshold=0.7,
+        retrieval_mode="keyword",
+        enable_reranker=True,
+        reranker_provider="llm",
+        reranker_top_n=3,
+        enable_weight_rerank=True,
+    )
+
+    assert cfg.retrieval_profile == "hybrid_ce"
     assert cfg.enable_reranker is True
     assert cfg.reranker_provider == "cross_encoder"
     assert cfg.reranker_top_n >= 20
-    assert cfg.enable_weight_rerank is False
 
 
 def test_grounded_strict_profile_contract_enforces_strict_evidence_defaults() -> None:
@@ -138,7 +157,7 @@ def test_hierarchy_recall20_expand_profile_enables_default_context_expansion() -
     assert is_recall_first_profile("hierarchy_recall20_expand") is True
 
 
-def test_hierarchy_hybrid_ce_profile_extends_cross_encoder_baseline_with_hierarchy_overlay() -> None:
+def test_hierarchy_hybrid_ce_profile_keeps_hierarchy_overlay_without_reranker() -> None:
     from app.rag.core.retrieval_profiles import apply_retrieval_profile_overrides
 
     applied = apply_retrieval_profile_overrides(
@@ -158,14 +177,35 @@ def test_hierarchy_hybrid_ce_profile_extends_cross_encoder_baseline_with_hierarc
     assert applied["retrieval_mode"] == "hybrid"
     assert applied["top_k"] >= 20
     assert applied["score_threshold"] == pytest.approx(0.0)
-    assert applied["enable_reranker"] is True
-    assert applied["reranker_provider"] == "cross_encoder"
-    assert applied["reranker_top_n"] >= 20
+    assert applied["enable_reranker"] is False
+    assert applied["reranker_provider"] == "none"
     assert applied["enable_weight_rerank"] is False
     assert applied["enable_hierarchy_recall"] is True
     assert applied["hierarchy_family_collapse"] is True
     assert applied["hierarchy_family_aggregation"] == "combined"
     assert applied["hierarchy_tree_dedup"] is True
+
+
+def test_hierarchy_hybrid_ce_profile_keeps_cross_encoder_when_enabled() -> None:
+    from app.rag.core.retrieval_profiles import apply_retrieval_profile_overrides
+
+    applied = apply_retrieval_profile_overrides(
+        profile="hierarchy_hybrid_ce",
+        top_k=5,
+        score_threshold=0.7,
+        retrieval_mode="keyword",
+        enable_reranker=True,
+        reranker_provider="llm",
+        reranker_top_n=3,
+        enable_weight_rerank=True,
+        retrieval_contract_mode="",
+        visible_evidence_only=False,
+    )
+
+    assert applied["retrieval_profile"] == "hierarchy_hybrid_ce"
+    assert applied["enable_reranker"] is True
+    assert applied["reranker_provider"] == "cross_encoder"
+    assert applied["reranker_top_n"] >= 20
 
 
 def test_hierarchy_grounded_strict_profile_combines_strict_grounding_with_hierarchy_overlay() -> None:
