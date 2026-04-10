@@ -39,6 +39,19 @@ function formatCrossPageMergePages(attributes: ParsingElement['attributes']): st
   return `跨页 ${pages.join(',')}`
 }
 
+function formatPageSpan(element: ParsingElement): string {
+  const pages = Array.isArray(element.pages)
+    ? element.pages.filter((value) => Number.isInteger(value) && value > 0)
+    : []
+  if (pages.length >= 2) {
+    if (pages.length === 2 && pages[1] === pages[0] + 1) {
+      return `跨页 ${pages[0]}-${pages[1]}`
+    }
+    return `跨页 ${pages.join(',')}`
+  }
+  return formatCrossPageMergePages(element.attributes)
+}
+
 export function ParsingElementsPanel({
   elements,
   onSelectElement,
@@ -93,7 +106,7 @@ export function ParsingElementsPanel({
       <div className="mt-3 grid gap-2 md:grid-cols-2">
         {visibleElements.map((element) => {
           const attributes = (element.attributes as Record<string, unknown> | null) ?? null
-          const crossPageLabel = formatCrossPageMergePages(attributes)
+          const crossPageLabel = formatPageSpan(element)
 
           return (
             <button

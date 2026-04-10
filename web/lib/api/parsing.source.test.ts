@@ -8,8 +8,10 @@ describe('parsing api source', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'parsing.ts'), 'utf8')
 
     expect(src).toContain('export interface ParsingElement')
+    expect(src).toContain('pages?: number[] | null')
     expect(src).toContain('elements?: ParsingElement[] | null')
     expect(src).toContain('const parsingElementSchema = z')
+    expect(src).toContain('pages: z.array(z.number().int()).nullable().optional()')
     expect(src).toContain('elements: z.array(parsingElementSchema).nullable().optional()')
   })
 

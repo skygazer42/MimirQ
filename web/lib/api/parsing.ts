@@ -8,6 +8,7 @@ export interface ParsingElement {
   id: string
   kind: 'heading' | 'paragraph' | 'list' | 'table' | 'image' | 'equation' | 'seal' | 'unknown'
   page?: number | null
+  pages?: number[] | null
   text?: string | null
   confidence?: number | null
   bbox?: {
@@ -145,6 +146,7 @@ const parsingElementSchema = z
     id: z.string(),
     kind: z.enum(['heading', 'paragraph', 'list', 'table', 'image', 'equation', 'seal', 'unknown']),
     page: z.number().int().nullable().optional(),
+    pages: z.array(z.number().int()).nullable().optional(),
     text: z.string().nullable().optional(),
     confidence: z.number().nullable().optional(),
     bbox: z

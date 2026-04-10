@@ -124,6 +124,21 @@ def _extract_page(meta: Mapping[str, Any]) -> int | None:
     return None
 
 
+def _extract_pages(meta: Mapping[str, Any]) -> list[int] | None:
+    raw = meta.get("cross_page_merge_pages")
+    if not isinstance(raw, list):
+        return None
+    pages: list[int] = []
+    for item in raw:
+        value = _coerce_int(item)
+        if value is None or int(value) <= 0:
+            continue
+        page = int(value)
+        if page not in pages:
+            pages.append(page)
+    return pages or None
+
+
 def _classify_kind(meta: Mapping[str, Any], text: str) -> str:
     preferred = str(meta.get("element_kind") or "").strip().lower()
     if preferred in _KNOWN_KINDS:
@@ -239,6 +254,7 @@ def _normalize_derived_elements(
             page = _extract_page(raw)
         if page is None:
             page = parent_page
+        pages = _extract_pages(raw)
         bbox = _coerce_bbox(raw.get("bbox"))
         if bbox is None:
             bbox = _extract_bbox(raw)
@@ -258,6 +274,7 @@ def _normalize_derived_elements(
                 "id": item_id,
                 "kind": kind,
                 "page": page,
+                "pages": pages,
                 "text": text or None,
                 "bbox": bbox,
                 "confidence": confidence,
@@ -274,6 +291,7 @@ def normalize_document_elements(items: Iterable[Document | Mapping[str, Any]] | 
         text = _clean_element_text(meta.get("element_text")) or _get_text(item)
         kind = _classify_kind(meta, text)
         page = _extract_page(meta)
+        pages = _extract_pages(meta)
         bbox = _extract_bbox(meta)
         confidence = None
         for key in ("element_confidence", "seal_score", "confidence", "score"):
@@ -291,6 +309,7 @@ def normalize_document_elements(items: Iterable[Document | Mapping[str, Any]] | 
                 "id": item_id,
                 "kind": kind,
                 "page": page,
+                "pages": pages,
                 "text": text or None,
                 "bbox": bbox,
                 "confidence": confidence,
