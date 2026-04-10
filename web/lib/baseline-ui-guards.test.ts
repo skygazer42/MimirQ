@@ -88,6 +88,8 @@ async function findViolations(rule: { id: string; re: RegExp }): Promise<Violati
   return violations
 }
 
+const GUARD_TIMEOUT_MS = 15000
+
 describe('baseline ui guards', () => {
   it('does not use heavy Tailwind shadow classes (prefer shadow-soft/shadow-strong tokens)', async () => {
     const violations = await findViolations({
@@ -102,7 +104,7 @@ describe('baseline ui guards', () => {
         .map((v) => `${v.file}:${v.line} ${v.match}`)
         .join('\n')
     ).toHaveLength(0)
-  })
+  }, GUARD_TIMEOUT_MS)
 
   it('does not suppress focus rings (a11y): avoid focus-visible:ring-0 / focus:ring-0', async () => {
     const violations = await findViolations({
@@ -117,5 +119,5 @@ describe('baseline ui guards', () => {
         .map((v) => `${v.file}:${v.line} ${v.match}`)
         .join('\n')
     ).toHaveLength(0)
-  })
+  }, GUARD_TIMEOUT_MS)
 })

@@ -46,7 +46,10 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+          python -m pip install --no-cache-dir --retries 5 --timeout 120 \
+            "torch @ https://download-r2.pytorch.org/whl/cpu/torch-2.10.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
+            "torchvision @ https://download-r2.pytorch.org/whl/cpu/torchvision-0.25.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl"
+          python -m pip install --no-cache-dir -r requirements.txt
 
       - name: Setup Node.js (handbook build)
         uses: actions/setup-node@v4
