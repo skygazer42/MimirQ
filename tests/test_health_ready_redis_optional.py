@@ -32,6 +32,7 @@ def test_ready_does_not_fail_when_redis_only_for_cache(monkeypatch):
 
     monkeypatch.setattr(health_mod, "SessionLocal", lambda: _DummyDB())
     monkeypatch.setattr(health_mod.settings, "VECTOR_BACKEND", "milvus", raising=False)
+    monkeypatch.setattr(health_mod.settings, "MINIO_ENABLED", False, raising=False)
     monkeypatch.setattr(health_mod.settings, "TASK_QUEUE_ENABLED", False, raising=False)
     monkeypatch.setattr(health_mod.settings, "EMBEDDING_CACHE_ENABLED", True, raising=False)
     monkeypatch.setattr(health_mod.settings, "REDIS_URL", "redis://localhost:6379/0", raising=False)
@@ -53,6 +54,7 @@ def test_ready_fails_when_task_queue_requires_redis(monkeypatch):
 
     monkeypatch.setattr(health_mod, "SessionLocal", lambda: _DummyDB())
     monkeypatch.setattr(health_mod.settings, "VECTOR_BACKEND", "milvus", raising=False)
+    monkeypatch.setattr(health_mod.settings, "MINIO_ENABLED", False, raising=False)
     monkeypatch.setattr(health_mod.settings, "TASK_QUEUE_ENABLED", True, raising=False)
     monkeypatch.setattr(health_mod.settings, "EMBEDDING_CACHE_ENABLED", False, raising=False)
     monkeypatch.setattr(health_mod.settings, "REDIS_URL", "redis://localhost:6379/0", raising=False)

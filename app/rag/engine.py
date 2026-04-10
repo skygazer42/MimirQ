@@ -3336,6 +3336,11 @@ Requirements:
                     llm_invocation_meta = dict(get_last_invocation_meta() or {})
                 except Exception:
                     llm_invocation_meta = {}
+            llm_model_used = (
+                str(llm_invocation_meta.get("selected_model") or "").strip()
+                or getattr(llm, "model_name", None)
+                or getattr(llm, "model", None)
+            )
 
             if claim_check_applied:
                 evidence_text = context_for_model
@@ -3651,7 +3656,7 @@ Requirements:
             cost_attribution = {
                 "schema": "mimirq.cost_attribution.v1",
                 "llm": {
-                    "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
+                    "model_used": llm_model_used,
                     "prompt_tokens": int(prompt_tokens_est),
                     "completion_tokens": int(answer_tokens),
                     "total_tokens": int(prompt_tokens_est + answer_tokens),
@@ -3745,7 +3750,7 @@ Requirements:
                     "total_tokens": answer_tokens,
                     "total_chars": answer_chars,
                     "citations_count": len(citations),
-                    "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
+                    "model_used": llm_model_used,
                     "route": model_route,
                     "retrieval_mode": mode_used,
                     "vector_backend": settings.VECTOR_BACKEND,

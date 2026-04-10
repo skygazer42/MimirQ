@@ -10,6 +10,7 @@ def _set_prod_base_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AUTH_MODE", "jwt")
     monkeypatch.setenv("SECRET_KEY", "x" * 32)
     monkeypatch.setenv("ALLOWED_HOSTS", "api.example.com")
+    monkeypatch.setenv("MINIO_ENABLED", "false")
 
 
 def test_prod_cors_rejects_empty_origins(monkeypatch: pytest.MonkeyPatch):
