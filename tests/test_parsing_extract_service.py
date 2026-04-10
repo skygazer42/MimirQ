@@ -66,3 +66,42 @@ def test_extract_parsing_fields_supports_prompt_mode_with_field_hints():
 
     assert result["main_formula"]["value"] == "E = mc^2"
     assert result["main_formula"]["evidence"][0]["kind"] == "equation"
+
+
+def test_extract_parsing_fields_uses_markdown_alias_value_fallback_before_generic_excerpt():
+    from app.services.parsing_extract_service import extract_parsing_fields  # noqa: WPS433
+
+    result = extract_parsing_fields(
+        markdown="甲方：杭州测试科技有限公司\n合同编号：HT-2026-001\n正文略。",
+        elements=[],
+        mode="schema",
+        schema={
+            "company_name": {
+                "type": "string",
+                "aliases": ["甲方", "公司名称"],
+            }
+        },
+    )
+
+    assert result["company_name"]["value"] == "杭州测试科技有限公司"
+    assert result["company_name"]["strategy"] == "markdown_alias_match"
+
+
+def test_extract_parsing_fields_uses_sentence_fallback_for_prompt_terms():
+    from app.services.parsing_extract_service import extract_parsing_fields  # noqa: WPS433
+
+    result = extract_parsing_fields(
+        markdown="本合同主要公式如下：E = mc^2。其余略。",
+        elements=[],
+        mode="prompt",
+        prompt="提取主要公式",
+        field_hints={
+            "main_formula": {
+                "type": "string",
+                "aliases": ["公式", "主要公式"],
+            }
+        },
+    )
+
+    assert "E = mc^2" in str(result["main_formula"]["value"] or "")
+    assert result["main_formula"]["strategy"] == "markdown_sentence_match"

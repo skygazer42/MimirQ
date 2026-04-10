@@ -100,6 +100,33 @@ def _build_evidence(element: Mapping[str, Any], *, score: float, value: str) -> 
     }
 
 
+def _match_markdown_alias_value(markdown: str, *, aliases: list[str]) -> str | None:
+    lines = [line.strip() for line in str(markdown or "").splitlines() if line.strip()]
+    for line in lines:
+        for alias in aliases:
+            if not alias:
+                continue
+            for sep in (":", "："):
+                prefix = f"{alias}{sep}"
+                if line.lower().startswith(prefix.lower()):
+                    value = line[len(prefix) :].strip()
+                    if value:
+                        return value
+    return None
+
+
+def _match_markdown_sentence(markdown: str, *, aliases: list[str]) -> str | None:
+    text = str(markdown or "").strip()
+    if not text:
+        return None
+    sentences = [seg.strip() for seg in re.split(r"[。！？!?]\s*|\n+", text) if seg.strip()]
+    for sentence in sentences:
+        sentence_norm = sentence.lower()
+        if any(alias in sentence_norm for alias in aliases if alias):
+            return sentence
+    return None
+
+
 def _extract_field(
     *,
     field_name: str,
@@ -133,6 +160,24 @@ def _extract_field(
             "confidence": round(float(_coerce_float(best_element.get("confidence")) or best_score), 3),
             "evidence": evidence,
             "strategy": "element_match",
+        }
+
+    alias_value = _match_markdown_alias_value(markdown, aliases=aliases)
+    if alias_value:
+        return {
+            "value": alias_value,
+            "confidence": 0.25,
+            "evidence": [],
+            "strategy": "markdown_alias_match",
+        }
+
+    sentence_value = _match_markdown_sentence(markdown, aliases=aliases)
+    if sentence_value:
+        return {
+            "value": sentence_value,
+            "confidence": 0.18,
+            "evidence": [],
+            "strategy": "markdown_sentence_match",
         }
 
     fallback = _normalize_text(markdown).split(" ")

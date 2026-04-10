@@ -72,6 +72,8 @@ class DatasetChunkQualityMetricsOut(BaseModel):
 class DatasetParseRiskDocumentOut(BaseModel):
     document_id: str
     score: float = 0.0
+    reason: str = "parse_quality_below_threshold"
+    specialty_signals: dict[str, Any] = Field(default_factory=dict)
 
 
 class DatasetParseRiskSummaryOut(BaseModel):
