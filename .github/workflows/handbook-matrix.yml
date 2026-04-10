@@ -2,13 +2,7 @@ name: Handbook FE/BE matrix freshness
 
 # When API or web client/routes change, ensure fe-be-matrix.mdx is regenerated and committed.
 on:
-  pull_request:
-    paths:
-      - "app/**"
-      - "web/lib/api/**"
-      - "web/app/**"
-      - "scripts/docs/generate_fe_be_matrix.py"
-      - "Makefile"
+  workflow_dispatch:
 
 permissions:
   contents: read

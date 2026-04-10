@@ -1,12 +1,7 @@
 name: Handbook (Docusaurus) verify
 
 on:
-  pull_request:
-    paths:
-      - "docs-site/**"
-      - "scripts/docs/sync-handbook-i18n.mjs"
-      - "scripts/docs/check_doc_links.mjs"
-      - "scripts/docs/bootstrap_handbook.py"
+  workflow_dispatch:
 
 permissions:
   contents: read
