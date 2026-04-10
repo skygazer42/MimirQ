@@ -9621,6 +9621,15 @@ export interface components {
              * @default 0
              */
             score: number;
+            /**
+             * Reason
+             * @default parse_quality_below_threshold
+             */
+            reason: string;
+            /** Specialty Signals */
+            specialty_signals?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * DatasetParseRiskSummaryOut
@@ -16791,9 +16800,7 @@ export interface components {
             } | null;
             quality_gate?: components["schemas"]["ParsingQualityGate"] | null;
             /** Elements */
-            elements?: {
-                [key: string]: unknown;
-            }[] | null;
+            elements?: components["schemas"]["ParsingElementOut"][] | null;
         };
         /** ParsingContentUpdateRequest */
         ParsingContentUpdateRequest: {
@@ -16804,6 +16811,40 @@ export interface components {
             markdown_content: string;
             /** Original Markdown Content */
             original_markdown_content?: string | null;
+        };
+        /** ParsingElementBBox */
+        ParsingElementBBox: {
+            /** X0 */
+            x0: number;
+            /** Y0 */
+            y0: number;
+            /** X1 */
+            x1: number;
+            /** Y1 */
+            y1: number;
+        };
+        /** ParsingElementOut */
+        ParsingElementOut: {
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "heading" | "paragraph" | "list" | "table" | "image" | "equation" | "seal" | "unknown";
+            /** Page */
+            page?: number | null;
+            /** Pages */
+            pages?: number[] | null;
+            /** Text */
+            text?: string | null;
+            /** Confidence */
+            confidence?: number | null;
+            bbox?: components["schemas"]["ParsingElementBBox"] | null;
+            /** Attributes */
+            attributes?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** ParsingExtractEvidence */
         ParsingExtractEvidence: {
