@@ -26,7 +26,7 @@ pyodbc==5.3.0
 
 # LangChain Ecosystem (latest major versions)
 langchain==1.2.13
-langchain-core==1.2.20
+langchain-core==1.2.28
 langchain-community==0.4.1
 langchain-chroma==1.1.0
 langchain-openai==1.1.11
@@ -56,7 +56,7 @@ markitdown==0.1.5
 # NOTE: Keep numpy on the tested 2.4.x line used by the current parsing/ML stack.
 numpy==2.4.3
 pdfplumber==0.11.9
-pypdf==6.9.1
+pypdf==6.9.2
 # NOTE: docling 2.80.0 resolves with pandas 3.0.x; keep on this tested line.
 pandas==3.0.1
 openpyxl==3.1.5
@@ -79,7 +79,7 @@ shapely==2.1.2
 tqdm==4.67.3
 beartype==0.22.9
 hanziconv==0.3.2
-nltk==3.9.3
+nltk==3.9.4
 docling==2.81.0
 docling-ibm-models==3.12.0
 accelerate==1.13.0
@@ -108,7 +108,7 @@ email-validator==2.3.0
 backports.tarfile==1.2.0
 strenum==0.4.15
 python-dotenv==1.2.2
-requests==2.32.5
+requests==2.33.0
 aiofiles==25.1.0
 prometheus-client==0.24.1
 sentry-sdk==2.55.0

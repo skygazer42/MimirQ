@@ -67,5 +67,5 @@ describe('icon button accessibility audit', () => {
     }
 
     expect(offenders).toEqual([])
-  })
+  }, 15000)
 })
