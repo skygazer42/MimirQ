@@ -4,12 +4,17 @@ import argparse
 import difflib
 import json
 import re
+import sys
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,6 +22,7 @@ class BenchmarkCase:
     case_id: str
     path: Path
     golden_markdown_path: Path | None = None
+    golden_specialty_elements: dict[str, int] | None = None
 
 
 _HEADING_RE = re.compile(r"(?m)^#{1,6}\s+\S+")
@@ -26,6 +32,7 @@ _TABLE_SEP_RE = re.compile(r"(?m)^\s*\|?(?:\s*:?-+:?\s*\|)+\s*:?-+:?\s*\|?\s*$")
 _MD_IMAGE_RE = re.compile(r"!\[[^\]]*\]\([^)]+\)")
 _HTML_IMG_RE = re.compile(r"(?i)<img\\b[^>]*>")
 _STRICT_PROFILE_SCHEMA_V1 = "mimirq.parser_benchmark_strict_profile.v1"
+_SPECIALTY_KINDS = ("seal", "equation", "table", "image")
 
 
 def _iter_files(root: Path, *, exts: Iterable[str]) -> list[Path]:
@@ -45,11 +52,54 @@ def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+def _coerce_specialty_elements(value: Any) -> dict[str, int] | None:
+    if not isinstance(value, dict):
+        return None
+    out: dict[str, int] = {}
+    for kind in _SPECIALTY_KINDS:
+        raw = value.get(kind)
+        if raw is None:
+            continue
+        try:
+            out[kind] = max(0, int(raw))
+        except Exception:
+            continue
+    return out or None
+
+
+def _load_specialty_elements(input_dir: Path, row: dict[str, Any]) -> dict[str, int] | None:
+    inline = _coerce_specialty_elements(row.get("specialty_elements"))
+    if inline:
+        return inline
+    rel = str(row.get("specialty_elements_path") or "").strip()
+    if not rel:
+        return None
+    path = (input_dir / rel).resolve()
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(_read_text(path))
+    except Exception:
+        return None
+    return _coerce_specialty_elements(payload)
+
+
 def _join_documents_to_markdown(documents: Iterable[Any]) -> str:
     parts: list[str] = []
     for d in documents or []:
         parts.append(str(getattr(d, "page_content", "") or ""))
     return "\n\n".join(parts).strip()
+
+
+def _count_specialty_elements(documents: Iterable[Any]) -> dict[str, int]:
+    from app.parsing.utils.document_elements import normalize_document_elements
+
+    counts = {kind: 0 for kind in _SPECIALTY_KINDS}
+    for item in normalize_document_elements(documents):
+        kind = str((item or {}).get("kind") or "").strip().lower()
+        if kind in counts:
+            counts[kind] += 1
+    return counts
 
 
 def _markdown_to_plain_text(markdown: str) -> str:
@@ -110,7 +160,14 @@ def _load_cases(input_dir: Path, *, manifest_path: Path | None, max_files: int) 
             src = (input_dir / rel).resolve()
             golden_rel = str(row.get("golden_markdown") or row.get("golden_markdown_path") or "").strip()
             golden = (input_dir / golden_rel).resolve() if golden_rel else None
-            cases.append(BenchmarkCase(case_id=cid, path=src, golden_markdown_path=golden))
+            cases.append(
+                BenchmarkCase(
+                    case_id=cid,
+                    path=src,
+                    golden_markdown_path=golden,
+                    golden_specialty_elements=_load_specialty_elements(input_dir, row),
+                )
+            )
         return cases[: max(0, int(max_files or 0))]
 
     from app.core.config import settings
@@ -390,7 +447,7 @@ def main() -> int:
     from app.parsing.quality.scorer import score_pdf_quality
     from app.parsing.quality.text_quality import score_parsed_text_quality
 
-    started_at = datetime.now(UTC)
+    started_at = datetime.now(timezone.utc)
     report: dict[str, Any] = {
         "schema": "mimirq.parser_benchmark.v1",
         "generated_at": started_at.isoformat(),
@@ -412,6 +469,7 @@ def main() -> int:
             "similarity": [],
             "coverage_ratio": [],
             "image_ref_recall": [],
+            "specialty_recall": {kind: [] for kind in _SPECIALTY_KINDS},
         }
         for b in backends
     }
@@ -431,13 +489,21 @@ def main() -> int:
         golden_struct = _structure_metrics(golden_md) if golden_md else None
         golden_plain_chars = int(golden_struct.get("plain_chars") or 0) if isinstance(golden_struct, dict) else 0
         golden_image_refs = int(golden_struct.get("image_refs") or 0) if isinstance(golden_struct, dict) else 0
+        golden_specialty = dict(case.golden_specialty_elements or {}) if isinstance(case.golden_specialty_elements, dict) else None
 
         case_row: dict[str, Any] = {
             "id": case.case_id,
             "path": str(case.path),
             "file_type": file_ext.lstrip("."),
             "golden_markdown_path": str(case.golden_markdown_path) if case.golden_markdown_path else None,
-            "golden": ({"structure": golden_struct} if golden_struct else None),
+            "golden": (
+                {
+                    "structure": golden_struct,
+                    "specialty_elements": golden_specialty,
+                }
+                if golden_struct or golden_specialty
+                else None
+            ),
             "attempts": [],
         }
 
@@ -455,6 +521,7 @@ def main() -> int:
                 tq = score_parsed_text_quality(md).to_dict()
                 pq = score_document_parse_quality(pdf_quality=pdf_quality, parsed_text_quality=tq)
                 struct = _structure_metrics(md)
+                specialty_counts = _count_specialty_elements(docs)
 
                 attempt.update(
                     {
@@ -464,6 +531,7 @@ def main() -> int:
                         "text_quality": tq,
                         "parse_quality": pq,
                         "structure": struct,
+                        "specialty_elements": specialty_counts,
                     }
                 )
                 if golden_md:
@@ -478,6 +546,17 @@ def main() -> int:
                         img_recall = float(struct.get("image_refs") or 0) / float(golden_image_refs)
                         attempt["golden_image_ref_recall"] = round(float(img_recall), 4)
                         by_backend[backend]["image_ref_recall"].append(float(img_recall))
+                if golden_specialty:
+                    specialty_recall: dict[str, float] = {}
+                    for kind in _SPECIALTY_KINDS:
+                        golden_count = int(golden_specialty.get(kind) or 0)
+                        if golden_count <= 0:
+                            continue
+                        recall = min(float(specialty_counts.get(kind) or 0) / float(golden_count), 1.0)
+                        specialty_recall[kind] = round(float(recall), 4)
+                        by_backend[backend]["specialty_recall"][kind].append(float(recall))
+                    if specialty_recall:
+                        attempt["specialty_recall"] = specialty_recall
 
                 by_backend[backend]["ok"] += 1
                 by_backend[backend]["parse_score"].append(float(pq.get("score") or 0.0))
@@ -505,6 +584,7 @@ def main() -> int:
         sims = [float(x) for x in stats.get("similarity") or []]
         covs = [float(x) for x in stats.get("coverage_ratio") or []]
         img_recalls = [float(x) for x in stats.get("image_ref_recall") or []]
+        specialty_recalls = stats.get("specialty_recall") if isinstance(stats.get("specialty_recall"), dict) else {}
 
         def _pct(vals: list[int], p: float) -> int | None:
             if not vals:
@@ -524,6 +604,10 @@ def main() -> int:
             "golden_coverage_ratio_mean": (round(sum(covs) / len(covs), 4) if covs else None),
             "golden_image_ref_recall_mean": (round(sum(img_recalls) / len(img_recalls), 4) if img_recalls else None),
         }
+        for kind in _SPECIALTY_KINDS:
+            values = specialty_recalls.get(kind) if isinstance(specialty_recalls, dict) else None
+            values = [float(x) for x in values] if isinstance(values, list) else []
+            summary[backend][f"mean_{kind}_recall"] = (round(sum(values) / len(values), 4) if values else None)
 
     report["summary"] = summary
 
@@ -560,6 +644,10 @@ def main() -> int:
                     ("parse_score_mean", _metric(before, after, "parse_score_mean")),
                     ("golden_similarity_mean", _metric(before, after, "golden_similarity_mean")),
                     ("golden_coverage_ratio_mean", _metric(before, after, "golden_coverage_ratio_mean")),
+                    ("mean_seal_recall", _metric(before, after, "mean_seal_recall")),
+                    ("mean_equation_recall", _metric(before, after, "mean_equation_recall")),
+                    ("mean_table_recall", _metric(before, after, "mean_table_recall")),
+                    ("mean_image_recall", _metric(before, after, "mean_image_recall")),
                 )
                 if v is not None
             }

@@ -37,9 +37,26 @@ Example:
     {
       "id": "invoice_pdf_001",
       "path": "inputs/invoice.pdf",
-      "golden_markdown": "golden/invoice.md"
+      "golden_markdown": "golden/invoice.md",
+      "specialty_elements": {
+        "seal": 1,
+        "equation": 2
+      }
     }
   ]
+}
+```
+
+`specialty_elements` is optional and lets the benchmark track TextIn-style specialty coverage for `seal`, `equation`, `table`, and `image`.
+
+If you prefer to keep annotations in a separate file, use `specialty_elements_path` instead:
+
+```json
+{
+  "id": "invoice_pdf_001",
+  "path": "inputs/invoice.pdf",
+  "golden_markdown": "golden/invoice.md",
+  "specialty_elements_path": "golden/invoice.specialty.json"
 }
 ```
 
@@ -56,8 +73,11 @@ The report (`mimirq.parser_benchmark.v1`) includes:
   - `elapsed_ms`
   - `text_quality` / `parse_quality`
   - basic structure counters (headings/lists/tables)
+  - `specialty_elements` counts derived from normalized parse elements
+  - optional `specialty_recall` when golden specialty annotations are provided
   - optional `golden_similarity` + `golden_coverage_ratio` when a golden markdown file is provided
 - An aggregate `summary` keyed by backend (ok rate, latency percentiles, mean parse score, mean similarity)
+- Specialty recall means in `summary`, for example `mean_seal_recall` / `mean_equation_recall`, when golden specialty annotations exist
 
 ## Baseline Diff (Optional)
 
