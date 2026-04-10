@@ -440,7 +440,7 @@ def _aggregate_parse_risk_summary(
     high = 0
     medium = 0
     healthy = 0
-    docs_low: list[tuple[str, float]] = []
+    docs_low: list[tuple[str, float, str, dict[str, Any]]] = []
     medium_upper = min(1.0, max(float(low_threshold), float(low_threshold) + 0.2))
 
     for meta in metadatas:
@@ -466,7 +466,21 @@ def _aggregate_parse_risk_summary(
             high += 1
             doc_id = str(meta.get("document_id") or "").strip()
             if doc_id:
-                docs_low.append((doc_id, score))
+                reason = "parse_quality_below_threshold"
+                specialty_signals: dict[str, Any] = {}
+                seal_summary = meta.get("seal_summary") if isinstance(meta.get("seal_summary"), dict) else None
+                if isinstance(seal_summary, dict):
+                    try:
+                        seal_score = float(seal_summary.get("primary_score"))
+                    except Exception:
+                        seal_score = None
+                    if bool(seal_summary.get("detected")) and seal_score is not None and seal_score < 0.6:
+                        reason = "seal_low_confidence"
+                        specialty_signals = {
+                            "seal_confidence": round(float(seal_score), 3),
+                            "seal_expected": True,
+                        }
+                docs_low.append((doc_id, score, reason, specialty_signals))
         elif score < float(medium_upper):
             medium += 1
         else:
@@ -485,8 +499,13 @@ def _aggregate_parse_risk_summary(
 
     docs_low.sort(key=lambda x: (x[1], x[0]))
     top_low = [
-        DatasetParseRiskDocumentOut(document_id=doc_id, score=round(float(score), 3))
-        for doc_id, score in docs_low[:20]
+        DatasetParseRiskDocumentOut(
+            document_id=doc_id,
+            score=round(float(score), 3),
+            reason=str(reason or "parse_quality_below_threshold"),
+            specialty_signals=dict(specialty_signals or {}),
+        )
+        for doc_id, score, reason, specialty_signals in docs_low[:20]
     ]
     return DatasetParseRiskSummaryOut(
         total_documents=int(total_documents or 0),
