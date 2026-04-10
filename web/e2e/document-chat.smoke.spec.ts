@@ -15,25 +15,41 @@ function escapeRegExp(value: string) {
 test('document upload flows into intelligent chat smoke path', async ({ page }) => {
   const state: EnterpriseTelemetryMockState = { uploaded: false, parsingDocuments: [] }
   await installCommonApiMocks(page, state)
+  await page.route('**/api/v1/datasets**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: [
+          {
+            id: 'dataset-e2e',
+            name: 'E2E Dataset',
+            description: 'Smoke dataset for document chat',
+          },
+        ],
+        total: 1,
+      }),
+    })
+  })
   const filenamePattern = escapeRegExp(UPLOADED_DOCUMENT_FILENAME)
-  const pendingQueueRow = page.getByRole('button', { name: new RegExp(`${filenamePattern}.*等待解析`) })
-  const completedQueueRow = page.getByRole('button', { name: new RegExp(`${filenamePattern}.*已完成`) })
+  const queueFileRow = page.getByRole('button', { name: new RegExp(filenamePattern) })
 
   await page.goto('/parsing')
-  await expect(page.getByRole('heading', { name: '文档解析工作台' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('heading', { name: '文档解析' })).toBeVisible({ timeout: 60_000 })
 
   await page
     .locator('input[type="file"][multiple]:not([webkitdirectory])')
     .setInputFiles(path.resolve(__dirname, 'fixtures/enterprise-telemetry-sample.md'))
 
   await expect(page.getByText('已加入队列：1 个文件')).toBeVisible()
-  await expect(pendingQueueRow).toBeVisible()
+  await expect(queueFileRow).toBeVisible()
+  await expect(page.getByText('1 等待')).toBeVisible()
   await expect(page.getByText('准备就绪')).toBeVisible()
 
   await page.getByRole('button', { name: '开始解析' }).click()
 
-  await expect(page.getByText('字符数')).toBeVisible({ timeout: 60_000 })
-  await expect(completedQueueRow).toBeVisible()
+  await expect(page.getByText('1 完成')).toBeVisible({ timeout: 60_000 })
+  await expect(queueFileRow).toBeVisible()
   await expect(page.getByText(PARSED_MARKDOWN.split('\n')[2])).toBeVisible()
 
   await page.goto('/')

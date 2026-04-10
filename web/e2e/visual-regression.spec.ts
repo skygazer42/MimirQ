@@ -17,10 +17,13 @@ test.describe('enterprise telemetry visual regression', () => {
     await expect(page.getByRole('heading', { name: '知识图谱' })).toBeVisible({ timeout: 60_000 })
     await page.getByRole('button', { name: '加载示例数据' }).click()
 
-    const semanticList = page.getByLabel('知识图谱语义化结构列表')
-    await expect(semanticList).toBeVisible({ timeout: 60_000 })
-    await expect(semanticList).toContainText('Artificial Intelligence')
-    await expect(semanticList).toHaveScreenshot('graph-3d-semantic-list.png', {
+    const semanticPanel = page.getByRole('complementary').filter({
+      has: page.getByRole('heading', { name: '语义索引' }),
+    })
+    await expect(semanticPanel).toBeVisible({ timeout: 60_000 })
+    await expect(semanticPanel).toContainText('当前数据：6 个节点，5 条连线')
+    await expect(semanticPanel.getByRole('button', { name: /聚焦节点：/ })).toHaveCount(6)
+    await expect(semanticPanel).toHaveScreenshot('graph-3d-semantic-list.png', {
       animations: 'disabled',
     })
   })
@@ -31,13 +34,13 @@ test.describe('enterprise telemetry visual regression', () => {
     await installRagvizApiMocks(page)
 
     await page.goto('/knowledge/similarity')
-    await expect(page.getByText('Collection × Collection 相似度热力图')).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByText('数据源配置')).toBeVisible({ timeout: 60_000 })
 
     const selectors = page.locator('select')
     await selectors.nth(0).selectOption('alpha')
     await selectors.nth(1).selectOption('beta')
     await page.getByRole('button', { name: '计算相似度' }).click()
-
+    await expect(page.getByText('跨集合相似度热力图')).toBeVisible()
     await expect(page.getByText('当前显示对比数')).toBeVisible()
     await expect(page.getByText('4 / 4')).toBeVisible()
     await expect(page.locator('#main-content')).toHaveScreenshot('ragviz-heatmap.png', {
