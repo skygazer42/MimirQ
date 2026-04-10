@@ -17,13 +17,21 @@ function normalizeText(value: string | null | undefined): string {
   return String(value || '').replace(/\s+/g, ' ').trim()
 }
 
-function elementSignature(element: Pick<ParsingElement, 'kind' | 'page' | 'text' | 'bbox'>): string {
+function normalizePages(pages: number[] | null | undefined): string {
+  if (!Array.isArray(pages) || pages.length === 0) return 'na'
+  return pages
+    .filter((value) => Number.isInteger(value) && value > 0)
+    .join(',')
+}
+
+function elementSignature(element: Pick<ParsingElement, 'kind' | 'page' | 'pages' | 'text' | 'bbox'>): string {
   const bbox = element.bbox
     ? `${element.bbox.x0}:${element.bbox.y0}:${element.bbox.x1}:${element.bbox.y1}`
     : 'na'
   return [
     String(element.kind || 'unknown'),
     typeof element.page === 'number' ? String(element.page) : 'na',
+    normalizePages(element.pages),
     normalizeText(element.text),
     bbox,
   ].join('|')
@@ -34,8 +42,8 @@ function incrementCount(map: ElementCountMap, kind: ElementKind) {
 }
 
 export function diffParsingElements(
-  base: Array<Pick<ParsingElement, 'id' | 'kind' | 'page' | 'text' | 'bbox'>> | null | undefined,
-  compare: Array<Pick<ParsingElement, 'id' | 'kind' | 'page' | 'text' | 'bbox'>> | null | undefined
+  base: Array<Pick<ParsingElement, 'id' | 'kind' | 'page' | 'pages' | 'text' | 'bbox'>> | null | undefined,
+  compare: Array<Pick<ParsingElement, 'id' | 'kind' | 'page' | 'pages' | 'text' | 'bbox'>> | null | undefined
 ): ParsingElementDiffSummary {
   const baseItems = base || []
   const compareItems = compare || []
@@ -75,4 +83,3 @@ export function diffParsingElements(
     removedSealTexts,
   }
 }
-
