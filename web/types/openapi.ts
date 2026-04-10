@@ -5636,6 +5636,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/observability/frontend-vitals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Report Frontend Web Vital */
+        post: operations["report_frontend_web_vital_api_v1_observability_frontend_vitals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/observability/frontend-traces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Report Frontend Trace */
+        post: operations["report_frontend_trace_api_v1_observability_frontend_traces_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/observability/rag-metrics/summary": {
         parameters: {
             query?: never;
@@ -6464,10 +6498,7 @@ export interface components {
         };
         /** Body_import_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_import_post */
         Body_import_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_import_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Replace
@@ -6477,18 +6508,12 @@ export interface components {
         };
         /** Body_import_evidence_items_api_v1_evidence_suites__suite_id__items_import_post */
         Body_import_evidence_items_api_v1_evidence_suites__suite_id__items_import_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
         };
         /** Body_import_governance_profiles_api_v1_pipeline_governance_profiles_import_post */
         Body_import_governance_profiles_api_v1_pipeline_governance_profiles_import_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Overwrite
@@ -6498,10 +6523,7 @@ export interface components {
         };
         /** Body_ingestion_preview_api_v1_pipeline_ingestion_preview_post */
         Body_ingestion_preview_api_v1_pipeline_ingestion_preview_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Dataset Id
@@ -6520,20 +6542,14 @@ export interface components {
         };
         /** Body_parse_preview_api_v1_pipeline_parse_preview_post */
         Body_parse_preview_api_v1_pipeline_parse_preview_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /** Parser Backend */
             parser_backend?: string | null;
         };
         /** Body_preview_chunking_api_v1_documents_chunk_preview_post */
         Body_preview_chunking_api_v1_documents_chunk_preview_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Parser Backend
@@ -6641,10 +6657,7 @@ export interface components {
         };
         /** Body_preview_document_api_v1_documents_preview_post */
         Body_preview_document_api_v1_documents_preview_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Parser Backend
@@ -6685,23 +6698,18 @@ export interface components {
         Body_register_ltr_model_api_v1_ltr_models_register_post: {
             /**
              * Model File
-             * Format: binary
              * @description XGBoost model bytes (JSON)
              */
             model_file: string;
             /**
              * Manifest File
-             * Format: binary
              * @description LTR manifest JSON (validated)
              */
             manifest_file: string;
         };
         /** Body_upload_document_api_v1_documents_upload_post */
         Body_upload_document_api_v1_documents_upload_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Parser Backend
@@ -6821,10 +6829,7 @@ export interface components {
         };
         /** Body_upload_parsing_document_api_v1_parsing_documents_post */
         Body_upload_parsing_document_api_v1_parsing_documents_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Parser Backend
@@ -6834,10 +6839,7 @@ export interface components {
         };
         /** Body_upload_zip_with_images_api_v1_pipeline_upload_zip_with_images_post */
         Body_upload_zip_with_images_api_v1_pipeline_upload_zip_with_images_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /** Dataset Id */
             dataset_id: string;
@@ -13967,6 +13969,45 @@ export interface components {
             /** Mask */
             mask?: string | null;
         };
+        /** FrontendTraceReportRequest */
+        FrontendTraceReportRequest: {
+            /** Event */
+            event: string;
+            /** Duration Ms */
+            duration_ms: number;
+            /** Component */
+            component?: string | null;
+            /** Page */
+            page?: string | null;
+            /** Input Node Count */
+            input_node_count?: number | null;
+            /** Input Link Count */
+            input_link_count?: number | null;
+            /** Output Node Count */
+            output_node_count?: number | null;
+            /** Output Link Count */
+            output_link_count?: number | null;
+            /** Active Filter Count */
+            active_filter_count?: number | null;
+        };
+        /** FrontendWebVitalReportRequest */
+        FrontendWebVitalReportRequest: {
+            /**
+             * Name
+             * @enum {string}
+             */
+            name: "LCP" | "CLS" | "FID" | "INP";
+            /** Value */
+            value: number;
+            /** Rating */
+            rating?: string | null;
+            /** Id */
+            id?: string | null;
+            /** Navigation Type */
+            navigation_type?: string | null;
+            /** Page */
+            page?: string | null;
+        };
         /**
          * GeneratedQuestion
          * @description Generated question.
@@ -20061,6 +20102,12 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: {
+                [key: string]: unknown;
+            };
         };
         /** VectorStatus */
         VectorStatus: {
@@ -43338,6 +43385,150 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_frontend_web_vital_api_v1_observability_frontend_vitals_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FrontendWebVitalReportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_frontend_trace_api_v1_observability_frontend_traces_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FrontendTraceReportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };

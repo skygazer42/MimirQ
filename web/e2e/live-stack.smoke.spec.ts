@@ -231,7 +231,7 @@ test.describe('live stack smoke', () => {
 
     await test.step('upload and parse a real document', async () => {
       await page.goto('/parsing', { waitUntil: 'networkidle' })
-      await page.getByRole('heading', { name: '文档解析工作台' }).waitFor({ timeout: 120_000 })
+      await page.getByRole('heading', { name: '文档解析' }).waitFor({ timeout: 120_000 })
 
       const fileInput = page.locator('input[type="file"][multiple]:not([webkitdirectory])')
       await fileInput.setInputFiles(filePath)
