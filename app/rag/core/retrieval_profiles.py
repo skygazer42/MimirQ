@@ -110,20 +110,26 @@ def apply_retrieval_profile_overrides(
         out["retrieval_mode"] = "hybrid"
         out["top_k"] = max(int(out["top_k"] or 0), 20)
         out["score_threshold"] = 0.0
+        out["enable_weight_rerank"] = False
+        if out.get("enable_reranker") is False:
+            out["reranker_provider"] = "none"
+            return out
         out["enable_reranker"] = True
         out["reranker_provider"] = "cross_encoder"
         out["reranker_top_n"] = max(int(out["reranker_top_n"] or 0), int(out["top_k"] or 0), 20)
-        out["enable_weight_rerank"] = False
         return out
 
     if normalized == HIERARCHY_PRODUCTION_RETRIEVAL_PROFILE:
         out["retrieval_mode"] = "hybrid"
         out["top_k"] = max(int(out["top_k"] or 0), 20)
         out["score_threshold"] = 0.0
+        out["enable_weight_rerank"] = False
+        if out.get("enable_reranker") is False:
+            out["reranker_provider"] = "none"
+            return _apply_hierarchy_overlay_defaults(out)
         out["enable_reranker"] = True
         out["reranker_provider"] = "cross_encoder"
         out["reranker_top_n"] = max(int(out["reranker_top_n"] or 0), int(out["top_k"] or 0), 20)
-        out["enable_weight_rerank"] = False
         return _apply_hierarchy_overlay_defaults(out)
 
     if normalized == STRICT_GROUNDED_RETRIEVAL_PROFILE:

@@ -11677,5 +11677,7 @@ async def get_batch_task_status(
             error=status.get("error")
         )
 
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get task status: {str(e)}") from e

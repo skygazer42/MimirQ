@@ -82,6 +82,14 @@ class HTTPClientPool:
         if rid and "X-Request-ID" not in request.headers:
             request.headers["X-Request-ID"] = rid
 
+    async def _ainject_internal_context_headers(self, request: httpx.Request) -> None:
+        """Async-compatible wrapper for internal request hooks."""
+        self._inject_internal_context_headers(request)
+
+    async def _ainject_external_context_headers(self, request: httpx.Request) -> None:
+        """Async-compatible wrapper for external request hooks."""
+        self._inject_external_context_headers(request)
+
     # Backwards-compatible name (internal behavior).
     def _inject_request_context_headers(self, request: httpx.Request) -> None:
         self._inject_internal_context_headers(request)
@@ -129,7 +137,7 @@ class HTTPClientPool:
                 follow_redirects=True,
                 http2=http2,
                 trust_env=trust_env,
-                event_hooks={"request": [self._inject_internal_context_headers]},
+                event_hooks={"request": [self._ainject_internal_context_headers]},
             )
             logger.info(
                 "HTTP async client pool initialized max_connections=%s http2=%s trust_env=%s",
@@ -161,7 +169,7 @@ class HTTPClientPool:
                 follow_redirects=True,
                 http2=http2,
                 trust_env=trust_env,
-                event_hooks={"request": [self._inject_external_context_headers]},
+                event_hooks={"request": [self._ainject_external_context_headers]},
             )
             logger.info(
                 "HTTP external async client initialized max_connections=%s http2=%s trust_env=%s",

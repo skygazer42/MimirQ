@@ -112,6 +112,14 @@ class MinerUService:
                 f"MINERU_API_TOKEN expired at {format_unix_ts_utc(int(self._token_exp))}. Please refresh token."
             )
 
+    @staticmethod
+    def _raise_batch_results_error(message: Any) -> None:
+        detail = str(message or "Unknown error").strip() or "Unknown error"
+        normalized = detail.lower()
+        if "task not found" in normalized or "not found or expire" in normalized or "not found or expired" in normalized:
+            raise LookupError(detail)
+        raise RuntimeError(f"Get batch results failed: {detail}")
+
     def _get_headers(self) -> dict[str, str]:
         """Get request headers."""
         self._ensure_online_enabled()
@@ -335,7 +343,7 @@ class MinerUService:
         if result.get("code") == 0:
             data = result.get("data") or {}
             return self._normalize_batch_status(data)
-        raise RuntimeError(f"Get batch results failed: {result.get('msg', 'Unknown error')}")
+        self._raise_batch_results_error(result.get("msg", "Unknown error"))
 
     def get_task_status(self, batch_id: str) -> dict[str, Any]:
         """
@@ -370,7 +378,7 @@ class MinerUService:
         if result.get("code") == 0:
             data = result.get("data") or {}
             return self._normalize_batch_status(data)
-        raise RuntimeError(f"Get batch results failed: {result.get('msg', 'Unknown error')}")
+        self._raise_batch_results_error(result.get("msg", "Unknown error"))
 
     @staticmethod
     def _normalize_batch_status(batch_data: dict[str, Any]) -> dict[str, Any]:
@@ -469,7 +477,7 @@ class MinerUService:
         result = await self._arequest_json("GET", url, headers=self._get_headers())
         if result.get("code") == 0:
             return result.get("data") or {}
-        raise RuntimeError(f"Get batch results failed: {result.get('msg', 'Unknown error')}")
+        self._raise_batch_results_error(result.get("msg", "Unknown error"))
 
     def get_batch_results(self, batch_id: str) -> dict[str, Any]:
         """Fetch raw MinerU batch results (sync)."""
@@ -493,7 +501,7 @@ class MinerUService:
 
         if result.get("code") == 0:
             return result.get("data") or {}
-        raise RuntimeError(f"Get batch results failed: {result.get('msg', 'Unknown error')}")
+        self._raise_batch_results_error(result.get("msg", "Unknown error"))
 
     async def await_for_completion(
         self,
