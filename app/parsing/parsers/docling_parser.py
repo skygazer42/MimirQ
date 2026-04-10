@@ -67,12 +67,25 @@ def _apply_element_hints(meta: dict[str, Any], *, text: str) -> dict[str, Any]:
                         "y1": int(first[4]),
                     },
                 )
+                attrs.setdefault("page", int(page_index + 1))
+                attrs.setdefault(
+                    "bbox",
+                    {
+                        "x0": int(first[1]),
+                        "x1": int(first[2]),
+                        "y0": int(first[3]),
+                        "y1": int(first[4]),
+                    },
+                )
             except Exception:
                 pass
     if out.get("element_page") is None:
         raw_page = out.get("page")
         if isinstance(raw_page, (int, float)) and not isinstance(raw_page, bool):
             out["element_page"] = int(raw_page)
+            attrs.setdefault("page", int(out["element_page"]))
+    if isinstance(out.get("element_bbox"), dict):
+        attrs.setdefault("bbox", dict(out["element_bbox"]))
     out["element_attributes"] = attrs
     return out
 

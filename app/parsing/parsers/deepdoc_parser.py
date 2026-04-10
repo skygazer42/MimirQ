@@ -203,6 +203,10 @@ class DeepDocParser:
             text_meta = dict(base_meta)
             text_meta["element_kind"] = "paragraph"
             text_meta["element_text"] = merged_text
+            text_meta["element_attributes"] = {
+                "source_content_type": "text",
+                "source_doc_type": "text",
+            }
             docs.append(Document(page_content=merged_text, metadata=text_meta))
 
         # 2) Emit image docs for tables/figures so DocumentProcessor can upload.
@@ -232,6 +236,10 @@ class DeepDocParser:
                 meta["doc_type_kwd"] = "image"
                 meta["element_kind"] = "image"
                 meta["element_text"] = content
+                meta["element_attributes"] = {
+                    "source_content_type": "image",
+                    "source_doc_type": "image",
+                }
                 meta["image"] = image_obj
                 docs.append(Document(page_content=content, metadata=meta))
 

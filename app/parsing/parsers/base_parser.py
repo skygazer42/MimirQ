@@ -210,12 +210,13 @@ class BaseAdvancedParser(ABC):
             text, tag, section_kind = _normalize_section(section)
             if text:
                 if section_kind == "equation":
+                    clean_text = _POSITION_TAG_RE.sub("", text).strip()
                     meta = {
                         **base_metadata,
                         "content_type": "equation",
                         "doc_type_kwd": "equation",
                         "element_kind": "equation",
-                        "element_text": text,
+                        "element_text": clean_text or text,
                     }
                     positions = _positions_from_tag(tag or "")
                     if positions:

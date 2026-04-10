@@ -44,6 +44,10 @@ def test_deepdoc_parser_appends_seal_documents_when_enabled(monkeypatch, tmp_pat
                         {"text": "杭州测试科技有限公司", "score": 0.97, "seal_kind": "round_stamp"},
                         {"text": "财务专用章", "score": 0.89, "seal_kind": "oval_stamp"},
                     ],
+                    "element_attributes": {
+                        "source_content_type": "seal",
+                        "source_doc_type": "seal",
+                    },
                     "parser_backend": "deepdoc",
                     "page": 1,
                 },
@@ -58,10 +62,13 @@ def test_deepdoc_parser_appends_seal_documents_when_enabled(monkeypatch, tmp_pat
     assert docs[0].page_content == "合同正文"
     assert docs[0].metadata["element_kind"] == "paragraph"
     assert docs[0].metadata["element_text"] == "合同正文"
+    assert docs[0].metadata["element_attributes"]["source_content_type"] == "text"
     assert docs[1].metadata["doc_type_kwd"] == "seal"
     assert docs[1].metadata["element_kind"] == "seal"
     assert docs[1].metadata["element_text"] == "杭州测试科技有限公司"
     assert docs[1].metadata["element_confidence"] == 0.97
+    assert docs[1].metadata["element_attributes"]["source_content_type"] == "seal"
+    assert docs[1].metadata["element_attributes"]["source_doc_type"] == "seal"
     assert docs[1].metadata["seal_present"] is True
     assert docs[1].metadata["seal_text"] == "杭州测试科技有限公司"
     assert docs[1].metadata["seal_kind"] == "round_stamp"

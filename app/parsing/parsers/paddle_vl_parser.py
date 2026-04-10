@@ -411,6 +411,10 @@ class PaddleVLParser:
             "parser_backend": "paddle_vl",
             "element_kind": "paragraph",
             "element_text": markdown_text,
+            "element_attributes": {
+                "source_content_type": "text",
+                "source_doc_type": "paragraph",
+            },
             "artifact_dir": str(artifact_root),
         }
         if asset_base_dir:
