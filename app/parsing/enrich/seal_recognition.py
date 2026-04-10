@@ -18,6 +18,7 @@ from app.core.config import settings
 _DEFAULT_ENGINE = "trocr_seal_onnx"
 _DEFAULT_THRESHOLD = 0.88
 _DEFAULT_MAX_LEN = 50
+_DEFAULT_MODEL_DIR = Path(__file__).resolve().parents[2] / "deepdoc" / "resources" / "models" / "seal" / "trocr_seal_384"
 
 
 @dataclass(frozen=True)
@@ -120,15 +121,23 @@ def _get_recognizer(model_dir: str, threshold: float) -> OnnxSealRecognizer:
     return OnnxSealRecognizer(Path(model_dir), threshold=threshold)
 
 
-def _resolve_model_dir(model_dir: str | None = None) -> Path | None:
-    raw = str(model_dir or getattr(settings, "SEAL_RECOGNITION_MODEL_DIR", "") or "").strip()
-    if not raw:
-        return None
-    path = Path(raw)
+def _has_required_model_files(path: Path) -> bool:
     required = [path / "encoder_model.onnx", path / "decoder_model.onnx", path / "vocab.json"]
-    if not all(p.exists() for p in required):
-        return None
-    return path
+    return all(p.exists() for p in required)
+
+
+def _resolve_model_dir(model_dir: str | None = None) -> Path | None:
+    explicit = str(model_dir or "").strip()
+    if explicit:
+        path = Path(explicit)
+        return path if _has_required_model_files(path) else None
+
+    configured = str(getattr(settings, "SEAL_RECOGNITION_MODEL_DIR", "") or "").strip()
+    if configured:
+        path = Path(configured)
+        return path if _has_required_model_files(path) else None
+
+    return _DEFAULT_MODEL_DIR if _has_required_model_files(_DEFAULT_MODEL_DIR) else None
 
 
 def _expand_bbox(bbox: tuple[int, int, int, int], *, width: int, height: int, margin_ratio: float = 0.12) -> tuple[int, int, int, int]:

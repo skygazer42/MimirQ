@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from PIL import Image, ImageDraw
 
-from app.parsing.enrich.seal_recognition import detect_seal_regions
+from app.core.config import settings
+from app.parsing.enrich.seal_recognition import _DEFAULT_MODEL_DIR, _resolve_model_dir, detect_seal_regions
 
 
 def test_detect_seal_regions_finds_red_stamp_candidate() -> None:
@@ -18,3 +19,15 @@ def test_detect_seal_regions_finds_red_stamp_candidate() -> None:
     assert first.bbox[2] > first.bbox[0]
     assert first.bbox[3] > first.bbox[1]
     assert first.detection_score > 0
+
+
+def test_resolve_model_dir_falls_back_to_bundled_deepdoc_model(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "SEAL_RECOGNITION_MODEL_DIR", "", raising=False)
+
+    resolved = _resolve_model_dir()
+
+    assert resolved == _DEFAULT_MODEL_DIR
+    assert resolved is not None
+    assert (resolved / "encoder_model.onnx").exists()
+    assert (resolved / "decoder_model.onnx").exists()
+    assert (resolved / "vocab.json").exists()
