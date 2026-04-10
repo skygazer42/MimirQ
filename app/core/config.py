@@ -453,6 +453,13 @@ class Settings(BaseSettings):
     DESKEW_PADDLE_URL: str = ""
     DESKEW_TIMEOUT_SEC: int = 60
     ORIENTATION_ENABLED: bool = False
+    # Optional handwriting/noise cleanup before parsing.
+    HANDWRITING_CLEANUP_ENABLED: bool = False
+    # auto | local | http | skip
+    HANDWRITING_CLEANUP_BACKEND: str = "auto"
+    HANDWRITING_CLEANUP_MODEL_PATH: str = ""
+    HANDWRITING_CLEANUP_API_URL: str = ""
+    HANDWRITING_CLEANUP_TIMEOUT_SEC: int = 60
     # Watermark removal can be destructive; keep it off by default.
     WATERMARK_REMOVAL_ENABLED: bool = False
     # Optional: external watermark-removal backend (image or pdf -> processed bytes).

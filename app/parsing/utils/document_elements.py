@@ -13,6 +13,7 @@ _SKIP_ATTRIBUTE_KEYS = {
     "images",
     "bbox",
     "bboxes",
+    "derived_elements",
     "element_bbox",
     "element_kind",
     "element_text",
@@ -185,6 +186,87 @@ def _extract_attributes(meta: Mapping[str, Any]) -> dict[str, Any] | None:
     return attrs or None
 
 
+def _extract_derived_attributes(meta: Mapping[str, Any]) -> dict[str, Any] | None:
+    attrs: dict[str, Any] = {}
+    preferred_attrs = meta.get("attributes")
+    if isinstance(preferred_attrs, Mapping):
+        safe_preferred = _json_safe(dict(preferred_attrs))
+        if isinstance(safe_preferred, dict):
+            attrs.update(safe_preferred)
+    for key, value in meta.items():
+        if key in {
+            "id",
+            "kind",
+            "text",
+            "page",
+            "bbox",
+            "confidence",
+            "attributes",
+            "element_id",
+            "element_kind",
+            "element_text",
+            "element_page",
+            "element_bbox",
+            "element_confidence",
+        }:
+            continue
+        safe_value = _json_safe(value)
+        if safe_value is not None:
+            attrs[str(key)] = safe_value
+    return attrs or None
+
+
+def _normalize_derived_elements(
+    meta: Mapping[str, Any],
+    *,
+    parent_id: str,
+    parent_page: int | None,
+) -> list[dict[str, Any]]:
+    raw_elements = meta.get("derived_elements")
+    if not isinstance(raw_elements, list):
+        return []
+
+    out: list[dict[str, Any]] = []
+    for index, raw in enumerate(raw_elements):
+        if not isinstance(raw, Mapping):
+            continue
+        text = _clean_element_text(raw.get("text") or raw.get("element_text"))
+        kind = str(raw.get("kind") or raw.get("element_kind") or "").strip().lower()
+        if kind not in _KNOWN_KINDS:
+            kind = _classify_kind(raw, text)
+        page = _coerce_int(raw.get("page"))
+        if page is None:
+            page = _extract_page(raw)
+        if page is None:
+            page = parent_page
+        bbox = _coerce_bbox(raw.get("bbox"))
+        if bbox is None:
+            bbox = _extract_bbox(raw)
+
+        confidence = None
+        for key in ("confidence", "element_confidence", "score", "seal_score"):
+            confidence = _coerce_float(raw.get(key))
+            if confidence is not None:
+                break
+
+        item_id = str(raw.get("id") or raw.get("element_id") or "").strip()
+        if not item_id:
+            item_id = f"{parent_id}:derived:{index}"
+
+        out.append(
+            {
+                "id": item_id,
+                "kind": kind,
+                "page": page,
+                "text": text or None,
+                "bbox": bbox,
+                "confidence": confidence,
+                "attributes": _extract_derived_attributes(raw),
+            }
+        )
+    return out
+
+
 def normalize_document_elements(items: Iterable[Document | Mapping[str, Any]] | None) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for index, item in enumerate(items or []):
@@ -215,6 +297,7 @@ def normalize_document_elements(items: Iterable[Document | Mapping[str, Any]] | 
                 "attributes": _extract_attributes(meta),
             }
         )
+        out.extend(_normalize_derived_elements(meta, parent_id=item_id, parent_page=page))
     return out
 
 

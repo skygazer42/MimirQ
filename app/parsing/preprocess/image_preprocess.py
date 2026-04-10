@@ -22,6 +22,7 @@ from typing import Any
 
 from app.core.config import settings
 from app.parsing.preprocess.deskew import deskew_via_http
+from app.parsing.preprocess.handwriting_cleanup import cleanup_handwriting_document
 from app.parsing.preprocess.orientation import fix_exif_orientation, normalize_pdf_rotation
 from app.parsing.preprocess.watermark import remove_watermark_via_http, strip_pdf_watermark_annotations
 from app.rag.core.logging import get_logger
@@ -36,6 +37,67 @@ def _sanitize_run_id(value: str) -> str:
     text = (value or "").strip()
     text = re.sub(r"[^a-zA-Z0-9._-]+", "_", text)[:120] or "preprocess"
     return text
+
+
+def _handwriting_warning(note: str) -> str | None:
+    normalized = str(note or "").strip().lower()
+    if normalized == "missing_model_path":
+        return "handwriting_cleanup_model_missing"
+    if normalized.startswith("model_unavailable:"):
+        return "handwriting_cleanup_model_unavailable"
+    if normalized == "missing_api_url":
+        return "handwriting_cleanup_api_url_missing"
+    if normalized.startswith("http_") or normalized.startswith("http_failed:") or normalized.startswith("write_failed:"):
+        return "handwriting_cleanup_backend_failed"
+    return None
+
+
+def _run_handwriting_cleanup_stage(
+    *,
+    current: Path,
+    artifact_root: Path,
+    output_stem: str,
+    warnings: list[str],
+) -> tuple[Path, bool, ImagePreprocessStepLog, dict[str, Any] | None]:
+    t0 = time.perf_counter()
+    if not bool(getattr(settings, "HANDWRITING_CLEANUP_ENABLED", False)):
+        return (
+            current,
+            False,
+            ImagePreprocessStepLog(
+                id="handwriting_cleanup",
+                applied=False,
+                changed=False,
+                note="disabled",
+                elapsed_ms=int(round((time.perf_counter() - t0) * 1000)),
+            ),
+            None,
+        )
+
+    output_path = artifact_root / f"{output_stem}.handwriting{current.suffix.lower()}"
+    changed, note, info = cleanup_handwriting_document(
+        input_path=current,
+        output_path=output_path,
+        backend=str(getattr(settings, "HANDWRITING_CLEANUP_BACKEND", "auto") or "auto"),
+        model_path=str(getattr(settings, "HANDWRITING_CLEANUP_MODEL_PATH", "") or ""),
+        api_url=str(getattr(settings, "HANDWRITING_CLEANUP_API_URL", "") or ""),
+        timeout_sec=float(getattr(settings, "HANDWRITING_CLEANUP_TIMEOUT_SEC", 60) or 60),
+    )
+    warning = _handwriting_warning(note)
+    if warning:
+        warnings.append(warning)
+    return (
+        output_path if changed else current,
+        bool(changed),
+        ImagePreprocessStepLog(
+            id="handwriting_cleanup",
+            applied=True,
+            changed=bool(changed),
+            note=note,
+            elapsed_ms=int(round((time.perf_counter() - t0) * 1000)),
+        ),
+        info,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -228,6 +290,18 @@ def preprocess_image_document(
                 )
             )
 
+        current, changed, step, info = _run_handwriting_cleanup_stage(
+            current=current,
+            artifact_root=artifact_root,
+            output_stem=input_path.stem,
+            warnings=warnings,
+        )
+        if isinstance(info, dict):
+            meta["handwriting_cleanup"] = info
+        if changed:
+            changed_any = True
+        steps.append(step)
+
         # Step: watermark removal (annotation strip + optional external backend).
         if bool(getattr(settings, "WATERMARK_REMOVAL_ENABLED", False)):
             t2 = time.perf_counter()
@@ -399,6 +473,18 @@ def preprocess_image_document(
                 elapsed_ms=int(round((time.perf_counter() - t1) * 1000)),
             )
         )
+
+    current, changed, step, info = _run_handwriting_cleanup_stage(
+        current=current,
+        artifact_root=artifact_root,
+        output_stem=input_path.stem,
+        warnings=warnings,
+    )
+    if isinstance(info, dict):
+        meta["handwriting_cleanup"] = info
+    if changed:
+        changed_any = True
+    steps.append(step)
 
     # Step: watermark removal (optional external backend).
     t2 = time.perf_counter()
