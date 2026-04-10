@@ -16851,13 +16851,10 @@ export interface components {
             /** Element Id */
             element_id?: string | null;
             /** Kind */
-            kind?: string | null;
+            kind?: ("heading" | "paragraph" | "list" | "table" | "image" | "equation" | "seal" | "unknown") | null;
             /** Page */
             page?: number | null;
-            /** Bbox */
-            bbox?: {
-                [key: string]: number;
-            } | null;
+            bbox?: components["schemas"]["ParsingElementBBox"] | null;
             /** Text */
             text?: string | null;
             /** Score */
