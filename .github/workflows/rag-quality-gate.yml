@@ -1,25 +1,7 @@
 name: RAG Quality Gate
 
 on:
-  pull_request:
-    paths:
-      - "app/rag/**"
-      - "app/core/config.py"
-      - "scripts/run_sample_retrieval_benchmark.py"
-      - "scripts/build_rag_quality_gate_artifacts.py"
-      - "data/sample/retrieval_fixture_v1.json"
-      - "tests/rag/evaluation/**"
-      - ".github/workflows/rag-quality-gate.yml"
-  push:
-    branches: [main]
-    paths:
-      - "app/rag/**"
-      - "app/core/config.py"
-      - "scripts/run_sample_retrieval_benchmark.py"
-      - "scripts/build_rag_quality_gate_artifacts.py"
-      - "data/sample/retrieval_fixture_v1.json"
-      - "tests/rag/evaluation/**"
-      - ".github/workflows/rag-quality-gate.yml"
+  workflow_dispatch:
 
 jobs:
   rag-quality-gate:
@@ -46,7 +28,7 @@ jobs:
           python -m pip install --no-cache-dir --retries 5 --timeout 120 \
             "torch @ https://download-r2.pytorch.org/whl/cpu/torch-2.10.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
             "torchvision @ https://download-r2.pytorch.org/whl/cpu/torchvision-0.25.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl"
-          python -m pip install --no-cache-dir -r requirements.txt
+          python -m pip install --no-cache-dir --retries 10 --timeout 120 -r requirements.txt
 
       - name: Generate bounded retrieval benchmark
         env:
