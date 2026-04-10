@@ -1475,6 +1475,16 @@ class Settings(BaseSettings):
     DEFAULT_PARSER_BACKEND: str = "auto"
     DEFAULT_CHUNK_STRATEGY: str = "langchain_recursive"
     DEEPDOC_ENABLED: bool = False
+    # DeepDoc PDF seal/stamp recognition enrichment (best-effort, recognition-only ONNX).
+    # Disabled by default; when enabled, DeepDoc PDF parsing may emit extra "seal" documents.
+    SEAL_RECOGNITION_ENABLED: bool = False
+    SEAL_RECOGNITION_MODEL_DIR: str = ""
+    SEAL_RECOGNITION_THRESHOLD: float = 0.88
+    SEAL_RECOGNITION_PDF_DPI: int = 144
+    # 0 = scan all pages.
+    SEAL_RECOGNITION_MAX_PAGES: int = 0
+    # Max candidate seal regions recognized per rendered page.
+    SEAL_RECOGNITION_MAX_REGIONS_PER_PAGE: int = 3
     # Vision LLM (optional): used by integrated chunkers/parsers for vision parsing/enrichment.
     # Disabled by default to keep out-of-the-box behavior (fallback to plaintext).
     VISION_LLM_ENABLED: bool = Field(

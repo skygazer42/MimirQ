@@ -1,10 +1,12 @@
 import re
+import warnings
 from pathlib import Path
 from threading import Lock
 from typing import Any
 
 from langchain_core.documents import Document
 
+from app.core.config import settings
 from app.deepdoc.parser import PdfParser as DeepDocPdfParser
 
 _HEADING_LEVEL_RE = re.compile(r"(\d+)")
@@ -227,6 +229,25 @@ class DeepDocParser:
                 meta["doc_type_kwd"] = "image"
                 meta["image"] = image_obj
                 docs.append(Document(page_content=content, metadata=meta))
+
+        # 3) Best-effort seal enrichment for PDF documents.
+        if bool(getattr(settings, "SEAL_RECOGNITION_ENABLED", False)):
+            try:
+                from app.parsing.enrich import seal_recognition
+
+                docs.extend(
+                    seal_recognition.extract_seal_documents_from_pdf(
+                        file_path=file_path,
+                        source=file_path.name,
+                        parser_backend="deepdoc",
+                    )
+                )
+            except Exception as exc:  # pragma: no cover - defensive: never fail the main parse path
+                warnings.warn(
+                    f"DeepDoc seal recognition skipped for {file_path.name}: {exc}",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
 
         # Ensure at least one doc is returned so downstream does not crash.
         if not docs:
