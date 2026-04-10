@@ -36,7 +36,7 @@ export interface ParsingExtractRequest {
 
 export interface ParsingExtractEvidence {
   element_id?: string | null
-  kind?: string | null
+  kind?: ParsingElement['kind'] | null
   page?: number | null
   bbox?: {
     x0: number
@@ -141,10 +141,12 @@ const parsingQualityGateSchema = z
   .nullable()
   .optional()
 
+const parsingElementKindSchema = z.enum(['heading', 'paragraph', 'list', 'table', 'image', 'equation', 'seal', 'unknown'])
+
 const parsingElementSchema = z
   .object({
     id: z.string(),
-    kind: z.enum(['heading', 'paragraph', 'list', 'table', 'image', 'equation', 'seal', 'unknown']),
+    kind: parsingElementKindSchema,
     page: z.number().int().nullable().optional(),
     pages: z.array(z.number().int()).nullable().optional(),
     text: z.string().nullable().optional(),
@@ -173,7 +175,7 @@ const parsingExtractFieldSpecSchema = z
 const parsingExtractEvidenceSchema = z
   .object({
     element_id: z.string().nullable().optional(),
-    kind: z.string().nullable().optional(),
+    kind: parsingElementKindSchema.nullable().optional(),
     page: z.number().int().nullable().optional(),
     bbox: z
       .object({
