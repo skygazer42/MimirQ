@@ -54,6 +54,15 @@ describe('API runtime contracts', () => {
           original_markdown_content: '# Parsed',
           stats: { page_count: 1 },
           quality_gate: { grade: 'warn', reasons: ['ocr review'] },
+          elements: [
+            {
+              id: 'table:1:0',
+              kind: 'table',
+              page: 1,
+              pages: [1, 2],
+              text: '| A | B |',
+            },
+          ],
         }).success
       ).toBe(true)
       expect(requestArgs?.responseSchema.safeParse({ document_id: 42 }).success).toBe(false)

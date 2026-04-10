@@ -80,6 +80,24 @@ _DETAIL_SOURCE_FILE_NOT_FOUND = "Source file not found"
 POSITION_TAG_RE = re.compile(r"@@([0-9-]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)##")
 
 
+class ParsingElementBBox(BaseModel):
+    x0: int
+    y0: int
+    x1: int
+    y1: int
+
+
+class ParsingElementOut(BaseModel):
+    id: str
+    kind: Literal["heading", "paragraph", "list", "table", "image", "equation", "seal", "unknown"]
+    page: int | None = None
+    pages: list[int] | None = None
+    text: str | None = None
+    confidence: float | None = None
+    bbox: ParsingElementBBox | None = None
+    attributes: dict[str, Any] | None = None
+
+
 class ParsingContentResponse(BaseModel):
     document_id: UUID
     parser_backend: str = Field(default="auto")
@@ -89,7 +107,7 @@ class ParsingContentResponse(BaseModel):
     parse_duration_sec: float | None = Field(default=None)
     pdf_quality: dict[str, Any] | None = Field(default=None)
     quality_gate: ParsingQualityGate | None = Field(default=None)
-    elements: list[dict[str, Any]] | None = Field(default=None)
+    elements: list[ParsingElementOut] | None = Field(default=None)
 
 
 class ParsingContentUpdateRequest(BaseModel):
