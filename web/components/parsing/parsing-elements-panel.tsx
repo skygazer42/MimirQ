@@ -26,6 +26,19 @@ function formatBbox(value: ParsingElement['bbox']): string {
   return `${value.x0},${value.y0},${value.x1},${value.y1}`
 }
 
+function formatCrossPageMergePages(attributes: ParsingElement['attributes']): string {
+  const raw = (attributes as Record<string, unknown> | null)?.cross_page_merge_pages
+  if (!Array.isArray(raw)) return ''
+  const pages = raw
+    .map((value) => (typeof value === 'number' ? value : Number(value)))
+    .filter((value) => Number.isInteger(value) && value > 0)
+  if (pages.length < 2) return ''
+  if (pages.length === 2 && pages[1] === pages[0] + 1) {
+    return `跨页 ${pages[0]}-${pages[1]}`
+  }
+  return `跨页 ${pages.join(',')}`
+}
+
 export function ParsingElementsPanel({
   elements,
   onSelectElement,
@@ -78,34 +91,44 @@ export function ParsingElementsPanel({
       </div>
 
       <div className="mt-3 grid gap-2 md:grid-cols-2">
-        {visibleElements.map((element) => (
-          <button
-            key={String(element.id)}
-            type="button"
-            onClick={() => onSelectElement?.(element)}
-            className="rounded-xl border border-border/60 bg-background/92 px-3 py-2 text-left transition-colors hover:border-primary/35 hover:bg-primary/5"
-          >
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[11px] font-semibold text-foreground">{kindLabel(String(element.kind || 'paragraph'))}</span>
-              {typeof element.page === 'number' ? (
-                <span className="font-mono text-[10px] text-muted-foreground">页 {element.page}</span>
+        {visibleElements.map((element) => {
+          const attributes = (element.attributes as Record<string, unknown> | null) ?? null
+          const crossPageLabel = formatCrossPageMergePages(attributes)
+
+          return (
+            <button
+              key={String(element.id)}
+              type="button"
+              onClick={() => onSelectElement?.(element)}
+              className="rounded-xl border border-border/60 bg-background/92 px-3 py-2 text-left transition-colors hover:border-primary/35 hover:bg-primary/5"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] font-semibold text-foreground">{kindLabel(String(element.kind || 'paragraph'))}</span>
+                {typeof element.page === 'number' ? (
+                  <span className="font-mono text-[10px] text-muted-foreground">页 {element.page}</span>
+                ) : null}
+                <span className="font-mono text-[10px] text-muted-foreground">{element.id}</span>
+                {typeof attributes?.source_content_type === 'string' ? (
+                  <span className="rounded-full border border-border/60 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                    {attributes.source_content_type as string}
+                  </span>
+                ) : null}
+                {typeof element.confidence === 'number' ? (
+                  <span className="font-mono text-[10px] text-muted-foreground">{element.confidence.toFixed(2)}</span>
+                ) : null}
+                {crossPageLabel ? (
+                  <span className="rounded-full border border-border/60 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                    {crossPageLabel}
+                  </span>
+                ) : null}
+              </div>
+              {element.text ? <div className="mt-1 truncate text-sm text-foreground/85">{element.text}</div> : null}
+              {element.bbox ? (
+                <div className="mt-1 font-mono text-[10px] text-muted-foreground">bbox {formatBbox(element.bbox)}</div>
               ) : null}
-              <span className="font-mono text-[10px] text-muted-foreground">{element.id}</span>
-              {typeof (element.attributes as Record<string, unknown> | null)?.source_content_type === 'string' ? (
-                <span className="rounded-full border border-border/60 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                  {(element.attributes as Record<string, unknown>).source_content_type as string}
-                </span>
-              ) : null}
-              {typeof element.confidence === 'number' ? (
-                <span className="font-mono text-[10px] text-muted-foreground">{element.confidence.toFixed(2)}</span>
-              ) : null}
-            </div>
-            {element.text ? <div className="mt-1 truncate text-sm text-foreground/85">{element.text}</div> : null}
-            {element.bbox ? (
-              <div className="mt-1 font-mono text-[10px] text-muted-foreground">bbox {formatBbox(element.bbox)}</div>
-            ) : null}
-          </button>
-        ))}
+            </button>
+          )
+        })}
       </div>
     </div>
   )

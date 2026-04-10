@@ -13,6 +13,8 @@ describe('parsing elements panel source', () => {
     expect(src).toContain('source_content_type')
     expect(src).toContain('bbox')
     expect(src).toContain('confidence')
+    expect(src).toContain('cross_page_merge_pages')
+    expect(src).toContain('跨页')
     expect(src).toContain('结构元素列表')
     expect(src).toContain('全部')
   })
