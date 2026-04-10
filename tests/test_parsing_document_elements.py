@@ -90,3 +90,26 @@ def test_normalize_document_elements_strips_position_tags_from_parser_native_tex
 
     assert out[0]["kind"] == "equation"
     assert out[0]["text"] == "E = mc^2"
+
+
+def test_normalize_document_elements_exposes_cross_page_pages_as_typed_field():
+    from app.parsing.utils.document_elements import normalize_document_elements  # noqa: WPS433
+
+    docs = [
+        Document(
+            page_content="| A | B |\n| --- | --- |\n| 1 | 2 |",
+            metadata={
+                "element_kind": "table",
+                "page": 1,
+                "cross_page_merged": True,
+                "cross_page_merge_pages": [1, 2],
+                "cross_page_merge_count": 2,
+            },
+        )
+    ]
+
+    out = normalize_document_elements(docs)
+
+    assert out[0]["kind"] == "table"
+    assert out[0]["page"] == 1
+    assert out[0]["pages"] == [1, 2]
