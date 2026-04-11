@@ -9,6 +9,7 @@ export interface ParsingElement {
   kind: 'heading' | 'paragraph' | 'list' | 'table' | 'image' | 'equation' | 'seal' | 'unknown'
   page?: number | null
   pages?: number[] | null
+  visual_kind?: string | null
   text?: string | null
   confidence?: number | null
   bbox?: {
@@ -153,6 +154,7 @@ const parsingElementSchema = z
     kind: parsingElementKindSchema,
     page: z.number().int().nullable().optional(),
     pages: z.array(z.number().int()).nullable().optional(),
+    visual_kind: z.string().nullable().optional(),
     text: z.string().nullable().optional(),
     confidence: z.number().nullable().optional(),
     bbox: z

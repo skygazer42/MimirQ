@@ -287,6 +287,12 @@ def _normalize_derived_elements(
         bbox = _coerce_bbox(raw.get("bbox"))
         if bbox is None:
             bbox = _extract_bbox(raw)
+        attributes = _extract_derived_attributes(raw)
+        visual_kind = _normalize_kind(raw.get("visual_kind")) or _infer_visual_kind(kind=kind, text=text, attributes=attributes)
+        if visual_kind:
+            attrs = dict(attributes or {})
+            attrs["visual_kind"] = visual_kind
+            attributes = attrs
 
         confidence = None
         for key in ("confidence", "element_confidence", "score", "seal_score"):
@@ -304,10 +310,11 @@ def _normalize_derived_elements(
                 "kind": kind,
                 "page": page,
                 "pages": pages,
+                "visual_kind": visual_kind or None,
                 "text": text or None,
                 "bbox": bbox,
                 "confidence": confidence,
-                "attributes": _extract_derived_attributes(raw),
+                "attributes": attributes,
             }
         )
     return out
@@ -345,6 +352,7 @@ def normalize_document_elements(items: Iterable[Document | Mapping[str, Any]] | 
                 "kind": kind,
                 "page": page,
                 "pages": pages,
+                "visual_kind": visual_kind or None,
                 "text": text or None,
                 "bbox": bbox,
                 "confidence": confidence,

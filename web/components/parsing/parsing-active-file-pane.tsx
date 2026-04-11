@@ -394,6 +394,7 @@ export function ParsingActiveFilePane({
         kind: element.kind,
         page: element.page ?? null,
         pages: element.pages ?? null,
+        visual_kind: element.visual_kind ?? null,
         bbox: element.bbox ?? null,
         text: element.text ?? null,
         score: element.confidence ?? null,

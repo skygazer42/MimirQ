@@ -22,7 +22,7 @@ function suggestDefaults(elements: ParsingElement[]) {
   const imageVisualKinds = new Set(
     elements
       .filter((item) => item.kind === 'image')
-      .map((item) => String((item.attributes as Record<string, unknown> | null)?.visual_kind || '').trim())
+      .map((item) => String(item.visual_kind || (item.attributes as Record<string, unknown> | null)?.visual_kind || '').trim())
       .filter(Boolean)
   )
   const hasSeal = elements.some((item) => item.kind === 'seal')
@@ -156,7 +156,7 @@ export function ParsingExtractPanel({
   const availableVisualKinds = useMemo(() => {
     const values = new Set<string>([''])
     for (const element of activeElements || []) {
-      const visualKind = String((element.attributes as Record<string, unknown> | null)?.visual_kind || '').trim()
+      const visualKind = String(element.visual_kind || (element.attributes as Record<string, unknown> | null)?.visual_kind || '').trim()
       if (visualKind) values.add(visualKind)
     }
     return Array.from(values)

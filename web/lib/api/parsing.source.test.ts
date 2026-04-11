@@ -9,9 +9,11 @@ describe('parsing api source', () => {
 
     expect(src).toContain('export interface ParsingElement')
     expect(src).toContain('pages?: number[] | null')
+    expect(src).toContain('visual_kind?: string | null')
     expect(src).toContain('elements?: ParsingElement[] | null')
     expect(src).toContain('const parsingElementSchema = z')
     expect(src).toContain('pages: z.array(z.number().int()).nullable().optional()')
+    expect(src).toContain('visual_kind: z.string().nullable().optional()')
     expect(src).toContain('elements: z.array(parsingElementSchema).nullable().optional()')
   })
 

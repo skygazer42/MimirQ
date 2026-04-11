@@ -133,4 +133,4 @@ def test_normalize_document_elements_infers_visual_kind_for_image_elements():
     out = normalize_document_elements(docs)
 
     assert out[0]["kind"] == "image"
-    assert out[0]["attributes"]["visual_kind"] == "chart"
+    assert out[0]["visual_kind"] == "chart"
