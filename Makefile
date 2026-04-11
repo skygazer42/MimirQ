@@ -324,6 +324,10 @@ diagnostics:
 	@$(MAKE) compose-diagnostics
 	@$(MAKE) doctor
 
+.PHONY: parsing-proof-sample
+parsing-proof-sample:
+	$(PY) scripts/run_sample_parsing_retrieval_proof.py
+
 db-upgrade:
 	$(PY) scripts/alembic_cli.py -c alembic.ini upgrade head
 
