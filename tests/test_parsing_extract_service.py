@@ -176,3 +176,4 @@ def test_extract_parsing_fields_supports_source_visual_kind_for_image_elements()
     field = result["chart_summary"]
     assert field["value"] == "Revenue growth chart"
     assert field["evidence"][0]["element_id"] == "image:1:1"
+    assert field["evidence"][0]["visual_kind"] == "chart"

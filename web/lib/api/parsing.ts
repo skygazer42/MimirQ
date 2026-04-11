@@ -40,6 +40,7 @@ export interface ParsingExtractEvidence {
   kind?: ParsingElement['kind'] | null
   page?: number | null
   pages?: number[] | null
+  visual_kind?: string | null
   bbox?: {
     x0: number
     y0: number
@@ -182,6 +183,7 @@ const parsingExtractEvidenceSchema = z
     kind: parsingElementKindSchema.nullable().optional(),
     page: z.number().int().nullable().optional(),
     pages: z.array(z.number().int()).nullable().optional(),
+    visual_kind: z.string().nullable().optional(),
     bbox: z
       .object({
         x0: z.number().int(),

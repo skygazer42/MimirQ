@@ -620,6 +620,7 @@ export function ParsingActiveFilePane({
                 <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-lg border border-border/60 bg-background/92 px-2.5 py-1.5 text-[10px] text-muted-foreground">
                   <span className="font-semibold text-foreground/80">{selectedExtractEvidence.fieldName}</span>
                   <span>{selectedExtractElement?.kind || selectedExtractEvidence.evidence.kind || 'unknown'}</span>
+                  {selectedExtractEvidence.evidence.visual_kind ? <span>{selectedExtractEvidence.evidence.visual_kind}</span> : null}
                   {selectedExtractElement?.id || selectedExtractEvidence.evidence.element_id ? (
                     <span>{selectedExtractElement?.id || selectedExtractEvidence.evidence.element_id}</span>
                   ) : null}

@@ -137,6 +137,7 @@ class ParsingExtractEvidence(BaseModel):
     kind: Literal["heading", "paragraph", "list", "table", "image", "equation", "seal", "unknown"] | None = None
     page: int | None = None
     pages: list[int] | None = None
+    visual_kind: str | None = None
     bbox: ParsingElementBBox | None = None
     text: str | None = None
     score: float | None = None
