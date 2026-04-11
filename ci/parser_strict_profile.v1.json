@@ -5,6 +5,7 @@
     "parse_score_mean": 1.0,
     "golden_similarity_mean": 1.0,
     "golden_coverage_ratio_mean": 1.0,
+    "golden_image_ref_recall_mean": 1.0,
     "mean_seal_recall": 1.0,
     "mean_equation_recall": 1.0,
     "mean_table_recall": 1.0,

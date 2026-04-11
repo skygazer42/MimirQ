@@ -77,6 +77,8 @@ python3 scripts/parser_benchmark.py \
   --out /tmp/parser_benchmark_fixture_smoke.json
 ```
 
+The root image cases now include tiny deterministic PNG assets generated in-repo so image subtype coverage can be exercised without external downloads or extra dependencies.
+
 You can also run the same fixture against the checked-in baseline in strict mode:
 
 ```bash
@@ -104,11 +106,12 @@ The report (`mimirq.parser_benchmark.v1`) includes:
   - `specialty_elements` counts derived from normalized parse elements
   - optional `specialty_image_visual_kinds` and `specialty_image_visual_kind_recall` when golden image subtype annotations are provided
   - optional `specialty_recall` when golden specialty annotations are provided
-  - optional `golden_similarity` + `golden_coverage_ratio` when a golden markdown file is provided
+  - optional `golden_similarity` + `golden_coverage_ratio` + `golden_image_ref_recall` when a golden markdown file is provided
 - An aggregate `summary` keyed by backend (ok rate, latency percentiles, mean parse score, mean similarity)
 - Specialty recall means in `summary`, for example `mean_seal_recall` / `mean_equation_recall`, when golden specialty annotations exist
 - Optional nested `mean_image_visual_kind_recall` in `summary` when golden image subtype annotations exist
 - Stable image subtype metrics such as `mean_chart_image_recall` can also appear in `summary` when that subtype is annotated in the golden set
+- When golden markdown includes explicit image refs, `golden_image_ref_recall_mean` becomes a stable smoke metric as well
 
 ## Baseline Diff (Optional)
 
@@ -145,6 +148,7 @@ Strict mode compares current `summary.<backend>` against baseline and fails when
 - `--strict-max-parse-score-drop`
 - `--strict-max-golden-similarity-drop`
 - `--strict-max-golden-coverage-drop`
+- `--strict-max-golden-image-ref-recall-drop`
 - `--strict-max-seal-recall-drop`
 - `--strict-max-equation-recall-drop`
 - `--strict-max-table-recall-drop`
@@ -160,7 +164,7 @@ You can pin CI thresholds via strict profile JSON:
 - schema: `mimirq.parser_benchmark_strict_profile.v1`
 - fields:
   - `thresholds`: per-metric max drop
-  - Specialty recall metrics use the summary keys `mean_seal_recall`, `mean_equation_recall`, `mean_table_recall`, `mean_image_recall`, and any promoted stable subtype metrics such as `mean_chart_image_recall`, `mean_qr_image_recall`, `mean_barcode_image_recall`, or `mean_diagram_image_recall`
+  - Specialty/structure metrics use summary keys such as `golden_image_ref_recall_mean`, `mean_seal_recall`, `mean_equation_recall`, `mean_table_recall`, `mean_image_recall`, and promoted subtype metrics such as `mean_chart_image_recall`, `mean_qr_image_recall`, `mean_barcode_image_recall`, or `mean_diagram_image_recall`
   - `severity_bands`: ratios used to classify drift severity
 
 CI usually pairs this with a diff artifact (`artifacts/parser_benchmark.diff.json`) so reviewers can inspect what changed even when gate passes.

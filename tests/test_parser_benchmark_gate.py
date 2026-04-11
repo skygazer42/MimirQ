@@ -88,6 +88,7 @@ def test_resolve_strict_thresholds_prefers_profile_values() -> None:
         strict_max_parse_score_drop=0.03,
         strict_max_golden_similarity_drop=0.03,
         strict_max_golden_coverage_drop=0.05,
+        strict_max_golden_image_ref_recall_drop=0.04,
         strict_max_seal_recall_drop=0.06,
         strict_max_equation_recall_drop=0.07,
         strict_max_table_recall_drop=0.08,
@@ -106,6 +107,7 @@ def test_resolve_strict_thresholds_prefers_profile_values() -> None:
                 "parse_score_mean": 0.8,
                 "golden_similarity_mean": 0.7,
                 "golden_coverage_ratio_mean": 0.6,
+                "golden_image_ref_recall_mean": 0.55,
                 "mean_seal_recall": 0.5,
                 "mean_equation_recall": 0.4,
                 "mean_chart_image_recall": 0.3,
@@ -119,6 +121,7 @@ def test_resolve_strict_thresholds_prefers_profile_values() -> None:
     assert thresholds["parse_score_mean"] == pytest.approx(0.8)
     assert thresholds["golden_similarity_mean"] == pytest.approx(0.7)
     assert thresholds["golden_coverage_ratio_mean"] == pytest.approx(0.6)
+    assert thresholds["golden_image_ref_recall_mean"] == pytest.approx(0.55)
     assert thresholds["mean_seal_recall"] == pytest.approx(0.5)
     assert thresholds["mean_equation_recall"] == pytest.approx(0.4)
     assert thresholds["mean_table_recall"] == pytest.approx(0.08)
@@ -167,6 +170,42 @@ def test_build_fixture_hash_tracks_binary_fixture_bytes(tmp_path: Path) -> None:
 
     assert isinstance(first, str) and len(first) == 24
     assert isinstance(second, str) and len(second) == 24
+    assert first != second
+
+
+def test_build_fixture_hash_tracks_markdown_referenced_assets(tmp_path: Path) -> None:
+    mod = _load_module()
+    case_root = tmp_path / "chart_case"
+    (case_root / "input").mkdir(parents=True, exist_ok=True)
+    (case_root / "golden").mkdir(parents=True, exist_ok=True)
+    (case_root / "input" / "sample.md").write_text("![chart](chart.png)\n", encoding="utf-8")
+    (case_root / "golden" / "sample.md").write_text("![chart](chart.png)\n", encoding="utf-8")
+    (case_root / "input" / "chart.png").write_bytes(b"\x89PNG\r\n\x1a\nchart-a")
+    (case_root / "golden" / "chart.png").write_bytes(b"\x89PNG\r\n\x1a\nchart-a")
+
+    first = mod._build_fixture_hash(  # type: ignore[attr-defined]
+        cases=[
+            mod.BenchmarkCase(  # type: ignore[attr-defined]
+                case_id="chart-case",
+                path=case_root / "input" / "sample.md",
+                golden_markdown_path=case_root / "golden" / "sample.md",
+            )
+        ],
+        manifest_path=None,
+    )
+
+    (case_root / "input" / "chart.png").write_bytes(b"\x89PNG\r\n\x1a\nchart-b")
+    second = mod._build_fixture_hash(  # type: ignore[attr-defined]
+        cases=[
+            mod.BenchmarkCase(  # type: ignore[attr-defined]
+                case_id="chart-case",
+                path=case_root / "input" / "sample.md",
+                golden_markdown_path=case_root / "golden" / "sample.md",
+            )
+        ],
+        manifest_path=None,
+    )
+
     assert first != second
 
 

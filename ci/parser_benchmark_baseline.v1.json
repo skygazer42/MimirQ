@@ -1,15 +1,16 @@
 {
   "schema": "mimirq.parser_benchmark.v1",
-  "fixture_hash": "d753d913eb80fea80f128ff1",
-  "profile_hash": "6301a4a70d86bd792a1c40c3",
+  "fixture_hash": "ce03affa68ea5c53bc484f18",
+  "profile_hash": "f7e4d6d88ac4a555482645f5",
   "summary": {
     "basic": {
       "attempts": 6,
       "ok": 6,
       "ok_rate": 1.0,
-      "parse_score_mean": 0.8795,
+      "parse_score_mean": 0.7555,
       "golden_similarity_mean": 1.0,
       "golden_coverage_ratio_mean": 1.0,
+      "golden_image_ref_recall_mean": 1.0,
       "mean_seal_recall": 0.0,
       "mean_equation_recall": 0.0,
       "mean_table_recall": 0.0,

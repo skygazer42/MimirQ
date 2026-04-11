@@ -171,6 +171,18 @@ def _build_fixture_hash(*, cases: list[BenchmarkCase], manifest_path: Path | Non
         )
 
     for case in cases:
+        case_root = case.path.parent.parent if case.path.parent.name in {"input", "golden"} else case.path.parent
+        case_files: list[dict[str, Any]] = []
+        if case_root.exists():
+            for item in sorted(case_root.rglob("*")):
+                if not item.is_file():
+                    continue
+                case_files.append(
+                    {
+                        "path": str(item.relative_to(case_root)),
+                        "hash": _stable_hash_file(item),
+                    }
+                )
         row: dict[str, Any] = {
             "id": str(case.case_id),
             "path": str(case.path),
@@ -183,6 +195,8 @@ def _build_fixture_hash(*, cases: list[BenchmarkCase], manifest_path: Path | Non
             ),
             "golden_specialty_elements": dict(case.golden_specialty_elements or {}) if isinstance(case.golden_specialty_elements, dict) else None,
             "golden_image_visual_kinds": dict(case.golden_image_visual_kinds or {}) if isinstance(case.golden_image_visual_kinds, dict) else None,
+            "case_root": str(case_root),
+            "case_files": case_files,
         }
         payload.append(row)
     return _stable_hash_obj(payload)
@@ -398,6 +412,7 @@ def resolve_strict_thresholds(
         "parse_score_mean": _pick("parse_score_mean", float(args.strict_max_parse_score_drop)),
         "golden_similarity_mean": _pick("golden_similarity_mean", float(args.strict_max_golden_similarity_drop)),
         "golden_coverage_ratio_mean": _pick("golden_coverage_ratio_mean", float(args.strict_max_golden_coverage_drop)),
+        "golden_image_ref_recall_mean": _pick("golden_image_ref_recall_mean", float(args.strict_max_golden_image_ref_recall_drop)),
         "mean_seal_recall": _pick("mean_seal_recall", float(args.strict_max_seal_recall_drop)),
         "mean_equation_recall": _pick("mean_equation_recall", float(args.strict_max_equation_recall_drop)),
         "mean_table_recall": _pick("mean_table_recall", float(args.strict_max_table_recall_drop)),
@@ -531,6 +546,12 @@ def main() -> int:
         type=float,
         default=0.05,
         help="Allowed maximum drop for summary.<backend>.golden_coverage_ratio_mean under --strict.",
+    )
+    ap.add_argument(
+        "--strict-max-golden-image-ref-recall-drop",
+        type=float,
+        default=0.05,
+        help="Allowed maximum drop for summary.<backend>.golden_image_ref_recall_mean under --strict.",
     )
     ap.add_argument(
         "--strict-max-seal-recall-drop",
@@ -862,6 +883,7 @@ def main() -> int:
                     ("parse_score_mean", _metric(before, after, "parse_score_mean")),
                     ("golden_similarity_mean", _metric(before, after, "golden_similarity_mean")),
                     ("golden_coverage_ratio_mean", _metric(before, after, "golden_coverage_ratio_mean")),
+                    ("golden_image_ref_recall_mean", _metric(before, after, "golden_image_ref_recall_mean")),
                     ("mean_seal_recall", _metric(before, after, "mean_seal_recall")),
                     ("mean_equation_recall", _metric(before, after, "mean_equation_recall")),
                     ("mean_table_recall", _metric(before, after, "mean_table_recall")),
