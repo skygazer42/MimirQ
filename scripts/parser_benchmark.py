@@ -24,6 +24,7 @@ class BenchmarkCase:
     path: Path
     golden_markdown_path: Path | None = None
     golden_specialty_elements: dict[str, int] | None = None
+    golden_image_visual_kinds: dict[str, int] | None = None
 
 
 _HEADING_RE = re.compile(r"(?m)^#{1,6}\s+\S+")
@@ -84,10 +85,25 @@ def _coerce_specialty_elements(value: Any) -> dict[str, int] | None:
     return out or None
 
 
-def _load_specialty_elements(input_dir: Path, row: dict[str, Any]) -> dict[str, int] | None:
-    inline = _coerce_specialty_elements(row.get("specialty_elements"))
-    if inline:
-        return inline
+def _coerce_count_map(value: Any) -> dict[str, int] | None:
+    if not isinstance(value, dict):
+        return None
+    out: dict[str, int] = {}
+    for raw_key, raw_value in value.items():
+        key = str(raw_key or "").strip().lower()
+        if not key:
+            continue
+        try:
+            out[key] = max(0, int(raw_value))
+        except Exception:
+            continue
+    return out or None
+
+
+def _load_specialty_payload(input_dir: Path, row: dict[str, Any]) -> dict[str, Any] | None:
+    inline = row.get("specialty_elements")
+    if isinstance(inline, dict):
+        return dict(inline)
     rel = str(row.get("specialty_elements_path") or "").strip()
     if not rel:
         return None
@@ -98,7 +114,17 @@ def _load_specialty_elements(input_dir: Path, row: dict[str, Any]) -> dict[str, 
         payload = json.loads(_read_text(path))
     except Exception:
         return None
+    return dict(payload) if isinstance(payload, dict) else None
+
+
+def _load_specialty_elements(input_dir: Path, row: dict[str, Any]) -> dict[str, int] | None:
+    payload = _load_specialty_payload(input_dir, row)
     return _coerce_specialty_elements(payload)
+
+
+def _load_image_visual_kinds(input_dir: Path, row: dict[str, Any]) -> dict[str, int] | None:
+    payload = _load_specialty_payload(input_dir, row)
+    return _coerce_count_map((payload or {}).get("image_visual_kinds"))
 
 
 def _join_documents_to_markdown(documents: Iterable[Any]) -> str:
@@ -116,6 +142,20 @@ def _count_specialty_elements(documents: Iterable[Any]) -> dict[str, int]:
         kind = str((item or {}).get("kind") or "").strip().lower()
         if kind in counts:
             counts[kind] += 1
+    return counts
+
+
+def _count_image_visual_kinds(documents: Iterable[Any]) -> dict[str, int]:
+    from app.parsing.utils.document_elements import normalize_document_elements
+
+    counts: dict[str, int] = {}
+    for item in normalize_document_elements(documents):
+        if str((item or {}).get("kind") or "").strip().lower() != "image":
+            continue
+        visual_kind = str((item or {}).get("visual_kind") or "").strip().lower()
+        if not visual_kind:
+            continue
+        counts[visual_kind] = int(counts.get(visual_kind, 0) or 0) + 1
     return counts
 
 
@@ -141,6 +181,7 @@ def _build_fixture_hash(*, cases: list[BenchmarkCase], manifest_path: Path | Non
                 else None
             ),
             "golden_specialty_elements": dict(case.golden_specialty_elements or {}) if isinstance(case.golden_specialty_elements, dict) else None,
+            "golden_image_visual_kinds": dict(case.golden_image_visual_kinds or {}) if isinstance(case.golden_image_visual_kinds, dict) else None,
         }
         payload.append(row)
     return _stable_hash_obj(payload)
@@ -226,6 +267,7 @@ def _load_cases(input_dir: Path, *, manifest_path: Path | None, max_files: int) 
                     path=src,
                     golden_markdown_path=golden,
                     golden_specialty_elements=_load_specialty_elements(input_dir, row),
+                    golden_image_visual_kinds=_load_image_visual_kinds(input_dir, row),
                 )
             )
         return cases[: max(0, int(max_files or 0))]
@@ -581,6 +623,7 @@ def main() -> int:
             "coverage_ratio": [],
             "image_ref_recall": [],
             "specialty_recall": {kind: [] for kind in _SPECIALTY_KINDS},
+            "specialty_image_visual_kind_recall": {},
         }
         for b in backends
     }
@@ -601,6 +644,9 @@ def main() -> int:
         golden_plain_chars = int(golden_struct.get("plain_chars") or 0) if isinstance(golden_struct, dict) else 0
         golden_image_refs = int(golden_struct.get("image_refs") or 0) if isinstance(golden_struct, dict) else 0
         golden_specialty = dict(case.golden_specialty_elements or {}) if isinstance(case.golden_specialty_elements, dict) else None
+        golden_image_visual_kinds = (
+            dict(case.golden_image_visual_kinds or {}) if isinstance(case.golden_image_visual_kinds, dict) else None
+        )
 
         case_row: dict[str, Any] = {
             "id": case.case_id,
@@ -611,8 +657,9 @@ def main() -> int:
                 {
                     "structure": golden_struct,
                     "specialty_elements": golden_specialty,
+                    "image_visual_kinds": golden_image_visual_kinds,
                 }
-                if golden_struct or golden_specialty
+                if golden_struct or golden_specialty or golden_image_visual_kinds
                 else None
             ),
             "attempts": [],
@@ -633,6 +680,7 @@ def main() -> int:
                 pq = score_document_parse_quality(pdf_quality=pdf_quality, parsed_text_quality=tq)
                 struct = _structure_metrics(md)
                 specialty_counts = _count_specialty_elements(docs)
+                image_visual_kind_counts = _count_image_visual_kinds(docs)
 
                 attempt.update(
                     {
@@ -643,6 +691,7 @@ def main() -> int:
                         "parse_quality": pq,
                         "structure": struct,
                         "specialty_elements": specialty_counts,
+                        "specialty_image_visual_kinds": image_visual_kind_counts,
                     }
                 )
                 if golden_md:
@@ -668,6 +717,21 @@ def main() -> int:
                         by_backend[backend]["specialty_recall"][kind].append(float(recall))
                     if specialty_recall:
                         attempt["specialty_recall"] = specialty_recall
+                if golden_image_visual_kinds:
+                    subtype_recall: dict[str, float] = {}
+                    subtype_stats = by_backend[backend]["specialty_image_visual_kind_recall"]
+                    if not isinstance(subtype_stats, dict):
+                        subtype_stats = {}
+                        by_backend[backend]["specialty_image_visual_kind_recall"] = subtype_stats
+                    for visual_kind, golden_count in golden_image_visual_kinds.items():
+                        count = int(golden_count or 0)
+                        if count <= 0:
+                            continue
+                        recall = min(float(image_visual_kind_counts.get(visual_kind) or 0) / float(count), 1.0)
+                        subtype_recall[visual_kind] = round(float(recall), 4)
+                        subtype_stats.setdefault(visual_kind, []).append(float(recall))
+                    if subtype_recall:
+                        attempt["specialty_image_visual_kind_recall"] = subtype_recall
 
                 by_backend[backend]["ok"] += 1
                 by_backend[backend]["parse_score"].append(float(pq.get("score") or 0.0))
@@ -696,6 +760,9 @@ def main() -> int:
         covs = [float(x) for x in stats.get("coverage_ratio") or []]
         img_recalls = [float(x) for x in stats.get("image_ref_recall") or []]
         specialty_recalls = stats.get("specialty_recall") if isinstance(stats.get("specialty_recall"), dict) else {}
+        image_visual_kind_recalls = (
+            stats.get("specialty_image_visual_kind_recall") if isinstance(stats.get("specialty_image_visual_kind_recall"), dict) else {}
+        )
 
         def _pct(vals: list[int], p: float) -> int | None:
             if not vals:
@@ -719,6 +786,14 @@ def main() -> int:
             values = specialty_recalls.get(kind) if isinstance(specialty_recalls, dict) else None
             values = [float(x) for x in values] if isinstance(values, list) else []
             summary[backend][f"mean_{kind}_recall"] = (round(sum(values) / len(values), 4) if values else None)
+        subtype_summary: dict[str, float] = {}
+        for visual_kind, values in (image_visual_kind_recalls or {}).items():
+            numeric = [float(x) for x in values] if isinstance(values, list) else []
+            if not numeric:
+                continue
+            subtype_summary[str(visual_kind)] = round(sum(numeric) / len(numeric), 4)
+        if subtype_summary:
+            summary[backend]["mean_image_visual_kind_recall"] = subtype_summary
 
     report["summary"] = summary
 
