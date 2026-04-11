@@ -68,28 +68,28 @@ def _install_fake_parser_benchmark_modules(monkeypatch) -> None:  # noqa: ANN001
             elif "qr_sheet" in path_str:
                 docs = [
                     Document(
-                        page_content="Customer service QR code",
+                        page_content="Customer service QR code\n\n![qrcode](qr.png)",
                         metadata={"doc_type_kwd": "image", "page": 1, "visual_kind": "qr"},
                     ),
                 ]
             elif "diagram_page" in path_str:
                 docs = [
                     Document(
-                        page_content="System architecture diagram",
+                        page_content="System architecture diagram\n\n![diagram](diagram.png)",
                         metadata={"doc_type_kwd": "image", "page": 1, "visual_kind": "diagram"},
                     ),
                 ]
             elif "barcode_label" in path_str:
                 docs = [
                     Document(
-                        page_content="Inventory barcode label",
+                        page_content="Inventory barcode label\n\n![barcode](barcode.png)",
                         metadata={"doc_type_kwd": "image", "page": 1, "visual_kind": "barcode"},
                     ),
                 ]
             else:
                 docs = [
                     Document(
-                        page_content="| A | B |\n| --- | --- |\n| 1 | 2 |",
+                        page_content="![chart](chart.png)\n\n| A | B |\n| --- | --- |\n| 1 | 2 |",
                         metadata={"doc_type_kwd": "table", "page": 1},
                     ),
                     Document(
@@ -183,6 +183,7 @@ def test_parser_benchmark_reports_specialty_element_counts(monkeypatch, tmp_path
     assert payload["summary"]["deepdoc"]["mean_equation_recall"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_table_recall"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_image_recall"] == 1.0
+    assert payload["summary"]["deepdoc"]["golden_image_ref_recall_mean"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_chart_image_recall"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_qr_image_recall"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_barcode_image_recall"] == 1.0
