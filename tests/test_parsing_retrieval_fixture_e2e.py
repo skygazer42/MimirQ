@@ -152,3 +152,75 @@ def test_real_pdf_parser_output_can_round_trip_through_helper_and_benchmark(tmp_
     assert report["summary"]["hit_at_k"] == 1.0
     assert report["summary"]["mrr"] == 1.0
     assert report["cases"][0]["ranked_chunk_ids"][0].startswith("chunk-")
+
+
+def test_preview_segments_payload_can_round_trip_through_helper_and_benchmark(tmp_path: Path) -> None:
+    build_mod = _load_script("scripts/build_parsing_retrieval_fixture.py")
+    bench_mod = _load_script("scripts/run_sample_retrieval_benchmark.py")
+
+    docs_path = tmp_path / "preview.json"
+    queries_path = tmp_path / "queries.json"
+    fixture_path = tmp_path / "fixture.json"
+    report_path = tmp_path / "report.json"
+
+    docs_path.write_text(
+        json.dumps(
+            {
+                "parser_backend": "basic",
+                "segments": [
+                    {
+                        "id": "seg-answer",
+                        "text": "East region revenue accelerated in Q3.",
+                        "page": 1,
+                    },
+                    {
+                        "id": "seg-noise",
+                        "text": "North region revenue increased steadily.",
+                        "page": 1,
+                    },
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    queries_path.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "q-layout",
+                    "question": "Which region accelerated in Q3?",
+                    "expected_chunk_ids": ["seg-answer"],
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    rc = build_mod.main(  # type: ignore[attr-defined]
+        [
+            "--documents-json",
+            str(docs_path),
+            "--queries-json",
+            str(queries_path),
+            "--out",
+            str(fixture_path),
+            "--top-k",
+            "1",
+            "--retrieval-mode",
+            "keyword",
+        ]
+    )
+    assert rc == 0
+
+    report = bench_mod.run_benchmark(  # type: ignore[attr-defined]
+        fixture_path=fixture_path,
+        output_path=report_path,
+        top_k=1,
+        retrieval_mode="keyword",
+    )
+
+    assert report["summary"]["hit_at_k"] == 1.0
+    assert report["summary"]["mrr"] == 1.0
+    assert report["cases"][0]["ranked_chunk_ids"] == ["seg-answer"]
