@@ -512,6 +512,25 @@ export function ParsingActiveFilePane({
       })
     }
 
+    const imageSubtypeCounts = new Map<string, number>()
+    for (const element of activeElements || []) {
+      if (element.kind !== 'image') continue
+      const visualKind = String(element.visual_kind || '').trim()
+      if (!visualKind) continue
+      imageSubtypeCounts.set(visualKind, (imageSubtypeCounts.get(visualKind) || 0) + 1)
+    }
+    if (imageSubtypeCounts.size > 0) {
+      const rankedSubtypes = Array.from(imageSubtypeCounts.entries()).sort((left, right) => right[1] - left[1])
+      const [leadKind, leadCount] = rankedSubtypes[0]
+      const remainingKinds = rankedSubtypes.slice(1).map(([kind, count]) => `${kind}×${count}`)
+      highlights.push({
+        key: 'image-visual-kinds',
+        label: '图片子类',
+        value: `${leadKind}×${leadCount}`,
+        meta: remainingKinds.length > 0 ? remainingKinds.join(' · ') : undefined,
+      })
+    }
+
     return highlights
   }, [activeElements])
   const submitToGovernanceButton = isEditing ? null : (

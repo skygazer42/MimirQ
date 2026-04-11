@@ -193,7 +193,14 @@ export function ParsingMobileInspectorContent({
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="truncate font-medium text-foreground/85">{String(element.kind || 'paragraph')}</div>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <div className="truncate font-medium text-foreground/85">{String(element.kind || 'paragraph')}</div>
+                            {element.visual_kind ? (
+                              <span className="inline-flex items-center rounded-full border border-border/60 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                                {element.visual_kind}
+                              </span>
+                            ) : null}
+                          </div>
                           {element.text ? <div className="truncate text-xs text-muted-foreground">{String(element.text)}</div> : null}
                         </div>
                         {formatElementPages(element) ? (
