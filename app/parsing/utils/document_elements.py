@@ -239,6 +239,15 @@ def _infer_visual_kind(*, kind: str, text: str, attributes: Mapping[str, Any] | 
     return None
 
 
+def _prefer_image_code_text(*, kind: str, visual_kind: str | None, text: str, attributes: Mapping[str, Any] | None) -> str:
+    if kind != "image":
+        return text
+    if str(visual_kind or "").strip().lower() not in {"qr", "barcode"}:
+        return text
+    code_text = _clean_element_text((attributes or {}).get("image_code_text"))
+    return code_text or text
+
+
 def _extract_derived_attributes(meta: Mapping[str, Any]) -> dict[str, Any] | None:
     attrs: dict[str, Any] = {}
     preferred_attrs = meta.get("attributes")
@@ -302,6 +311,7 @@ def _normalize_derived_elements(
             attrs = dict(attributes or {})
             attrs["visual_kind"] = visual_kind
             attributes = attrs
+        text = _prefer_image_code_text(kind=kind, visual_kind=visual_kind, text=text, attributes=attributes)
 
         confidence = None
         for key in ("confidence", "element_confidence", "score", "seal_score"):
@@ -344,6 +354,7 @@ def normalize_document_elements(items: Iterable[Document | Mapping[str, Any]] | 
             attrs = dict(attributes or {})
             attrs["visual_kind"] = visual_kind
             attributes = attrs
+        text = _prefer_image_code_text(kind=kind, visual_kind=visual_kind, text=text, attributes=attributes)
         confidence = None
         for key in ("element_confidence", "seal_score", "confidence", "score"):
             confidence = _coerce_float(meta.get(key))

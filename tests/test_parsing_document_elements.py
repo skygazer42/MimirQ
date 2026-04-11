@@ -174,3 +174,33 @@ def test_normalize_document_elements_infers_visual_kind_from_image_url() -> None
 
     assert out[0]["kind"] == "image"
     assert out[0]["visual_kind"] == "barcode"
+
+
+def test_normalize_document_elements_prefers_image_code_text_for_qr_and_barcode_images() -> None:
+    from app.parsing.utils.document_elements import normalize_document_elements  # noqa: WPS433
+
+    docs = [
+        Document(
+            page_content="Image",
+            metadata={
+                "doc_type_kwd": "image",
+                "page": 1,
+                "visual_kind": "qr",
+                "image_code_text": "HELLO-QR",
+            },
+        ),
+        Document(
+            page_content="Image",
+            metadata={
+                "doc_type_kwd": "image",
+                "page": 2,
+                "visual_kind": "barcode",
+                "image_code_text": "5901234123457",
+            },
+        ),
+    ]
+
+    out = normalize_document_elements(docs)
+
+    assert out[0]["text"] == "HELLO-QR"
+    assert out[1]["text"] == "5901234123457"
