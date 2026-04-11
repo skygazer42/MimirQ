@@ -441,6 +441,28 @@ describe('ParsingActiveFilePane lazy compare interactions', () => {
     view.unmount()
   })
 
+  it('renders image subtype summary chips when visual kinds are present', async () => {
+    const view = renderComponent(
+      React.createElement(
+        ParsingActiveFilePane,
+        makePaneProps({
+          activeElements: [
+            { id: 'img-1', kind: 'image', page: 1, text: 'Revenue growth chart', visual_kind: 'chart' },
+            { id: 'img-2', kind: 'image', page: 2, text: '扫码二维码', visual_kind: 'qr' },
+          ],
+        })
+      )
+    )
+
+    await waitForAssertion(() => {
+      expect(view.container.textContent).toContain('图片子类')
+      expect(view.container.textContent).toContain('chart×1')
+      expect(view.container.textContent).toContain('qr×1')
+    })
+
+    view.unmount()
+  })
+
   it('runs extraction from the inline workbench panel and renders evidence details', async () => {
     parsingApiExtractMock.mockResolvedValueOnce({
       document_id: 'library-1',
