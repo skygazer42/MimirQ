@@ -477,6 +477,7 @@ describe('ParsingActiveFilePane lazy compare interactions', () => {
               element_id: 'seal-1',
               kind: 'seal',
               page: 2,
+              pages: [2, 3],
               visual_kind: 'stamp',
               bbox: { x0: 10, y0: 20, x1: 60, y1: 70 },
               text: '杭州测试科技有限公司',
@@ -492,7 +493,7 @@ describe('ParsingActiveFilePane lazy compare interactions', () => {
         ParsingActiveFilePane,
         makePaneProps({
           isPdf: true,
-          activeElements: [{ id: 'seal-1', kind: 'seal', page: 2, text: '杭州测试科技有限公司', confidence: 0.97 }],
+          activeElements: [{ id: 'seal-1', kind: 'seal', page: 2, pages: [2, 3], text: '杭州测试科技有限公司', confidence: 0.97 }],
         })
       )
     )
@@ -523,6 +524,7 @@ describe('ParsingActiveFilePane lazy compare interactions', () => {
       expect(view.container.textContent).toContain('证据定位')
       expect(view.container.textContent).toContain('seal-1')
       expect(view.container.textContent).toContain('stamp')
+      expect(view.container.textContent).toContain('跨页 2-3')
       expect(view.container.textContent).toContain('10,20,60,70')
       const pdfViewer = view.container.querySelector('[data-testid="pdf-viewer"]')
       expect(pdfViewer?.getAttribute('data-active-ids')).toContain('extract-evidence:seal-1')
