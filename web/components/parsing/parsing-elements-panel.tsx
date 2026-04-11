@@ -74,6 +74,7 @@ export function ParsingElementsPanel({
   className,
 }: Readonly<ParsingElementsPanelProps>) {
   const [filterKind, setFilterKind] = useState<string>('all')
+  const [filterVisualKind, setFilterVisualKind] = useState<string>('all')
   const filterKinds = useMemo(() => {
     const kinds = new Set<string>(['all'])
     for (const element of elements || []) {
@@ -82,10 +83,22 @@ export function ParsingElementsPanel({
     }
     return Array.from(kinds)
   }, [elements])
+  const filterVisualKinds = useMemo(() => {
+    const visualKinds = new Set<string>(['all'])
+    for (const element of elements || []) {
+      const visualKind = String(element.visual_kind || (element.attributes as Record<string, unknown> | null)?.visual_kind || '').trim()
+      if (visualKind) visualKinds.add(visualKind)
+    }
+    return Array.from(visualKinds)
+  }, [elements])
   const visibleElements = useMemo(() => {
-    if (filterKind === 'all') return elements
-    return (elements || []).filter((element) => element.kind === filterKind)
-  }, [elements, filterKind])
+    return (elements || []).filter((element) => {
+      if (filterKind !== 'all' && element.kind !== filterKind) return false
+      if (filterVisualKind === 'all') return true
+      const visualKind = String(element.visual_kind || (element.attributes as Record<string, unknown> | null)?.visual_kind || '').trim()
+      return visualKind === filterVisualKind
+    })
+  }, [elements, filterKind, filterVisualKind])
 
   if (!elements.length) return null
 
@@ -105,7 +118,10 @@ export function ParsingElementsPanel({
             <button
               key={kind}
               type="button"
-              onClick={() => setFilterKind(kind)}
+              onClick={() => {
+                setFilterKind(kind)
+                if (kind !== 'image') setFilterVisualKind('all')
+              }}
               className={cn(
                 'rounded-full border px-2.5 py-1 text-[11px] transition-colors',
                 filterKind === kind
@@ -118,6 +134,26 @@ export function ParsingElementsPanel({
           ))}
         </div>
       </div>
+
+      {(filterKind === 'all' || filterKind === 'image') && filterVisualKinds.length > 1 ? (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {filterVisualKinds.map((visualKind) => (
+            <button
+              key={visualKind}
+              type="button"
+              onClick={() => setFilterVisualKind(visualKind)}
+              className={cn(
+                'rounded-full border px-2.5 py-1 text-[11px] transition-colors',
+                filterVisualKind === visualKind
+                  ? 'border-primary/40 bg-primary/10 text-foreground'
+                  : 'border-border/60 bg-background/90 text-muted-foreground hover:text-foreground/80'
+              )}
+            >
+              {visualKind === 'all' ? '全部图片子类' : visualKind}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       <div className="mt-3 grid gap-2 md:grid-cols-2">
         {visibleElements.map((element) => {

@@ -8,6 +8,8 @@ describe('parsing elements panel source', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'parsing-elements-panel.tsx'), 'utf8')
 
     expect(src).toContain("const [filterKind, setFilterKind] = useState<string>('all')")
+    expect(src).toContain("const [filterVisualKind, setFilterVisualKind] = useState<string>('all')")
+    expect(src).toContain('const filterVisualKinds = useMemo(')
     expect(src).toContain('const visibleElements = useMemo(')
     expect(src).toContain('onSelectElement')
     expect(src).toContain('source_content_type')
