@@ -72,8 +72,8 @@ def _install_fake_parser_benchmark_modules(monkeypatch) -> None:  # noqa: ANN001
                         metadata={"doc_type_kwd": "table", "page": 1},
                     ),
                     Document(
-                        page_content="Figure 1",
-                        metadata={"doc_type_kwd": "image", "page": 1},
+                        page_content="Revenue growth chart",
+                        metadata={"doc_type_kwd": "image", "page": 1, "visual_kind": "chart"},
                     ),
                 ]
             return (
@@ -139,14 +139,18 @@ def test_parser_benchmark_reports_specialty_element_counts(monkeypatch, tmp_path
     assert by_case["formula_pdf_case"]["golden"]["specialty_elements"]["equation"] == 1
     assert by_case["table_scan_case"]["golden"]["specialty_elements"]["table"] == 1
     assert by_case["table_scan_case"]["golden"]["specialty_elements"]["image"] == 1
+    assert by_case["table_scan_case"]["golden"]["image_visual_kinds"]["chart"] == 1
     assert by_case["seal_invoice_case"]["attempts"][0]["specialty_recall"]["seal"] == 1.0
     assert by_case["formula_pdf_case"]["attempts"][0]["specialty_recall"]["equation"] == 1.0
     assert by_case["table_scan_case"]["attempts"][0]["specialty_recall"]["table"] == 1.0
     assert by_case["table_scan_case"]["attempts"][0]["specialty_recall"]["image"] == 1.0
+    assert by_case["table_scan_case"]["attempts"][0]["specialty_image_visual_kinds"]["chart"] == 1
+    assert by_case["table_scan_case"]["attempts"][0]["specialty_image_visual_kind_recall"]["chart"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_seal_recall"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_equation_recall"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_table_recall"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_image_recall"] == 1.0
+    assert payload["summary"]["deepdoc"]["mean_image_visual_kind_recall"]["chart"] == 1.0
 
 
 def test_parser_benchmark_strict_fails_when_baseline_hashes_mismatch(monkeypatch, tmp_path: Path) -> None:
