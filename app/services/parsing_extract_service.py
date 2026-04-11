@@ -65,10 +65,16 @@ def _match_element(
     *,
     element: Mapping[str, Any],
     source_kind: str | None,
+    source_visual_kind: str | None,
     aliases: list[str],
 ) -> tuple[float, str]:
     kind = _normalize_kind(element.get("kind"))
     if source_kind and kind != source_kind:
+        return 0.0, ""
+
+    attrs = element.get("attributes") if isinstance(element.get("attributes"), Mapping) else {}
+    visual_kind = _normalize_kind(attrs.get("visual_kind")) if isinstance(attrs, Mapping) else ""
+    if source_visual_kind and visual_kind != source_visual_kind:
         return 0.0, ""
 
     value = _preferred_element_text(element)
@@ -79,6 +85,8 @@ def _match_element(
     score = min(max(confidence, 0.0), 1.0) * 0.45
     if source_kind and kind == source_kind:
         score += 0.4
+    if source_visual_kind and visual_kind == source_visual_kind:
+        score += 0.1
 
     value_norm = value.lower()
     if aliases:
@@ -140,13 +148,19 @@ def _extract_field(
     max_evidence: int = 1,
 ) -> dict[str, Any]:
     source_kind = _normalize_kind((spec or {}).get("source_kind")) or None
+    source_visual_kind = _normalize_kind((spec or {}).get("source_visual_kind")) or None
     aliases = _field_aliases(field_name, spec, prompt)
 
     ranked: list[tuple[float, dict[str, Any], str]] = []
     for raw in elements or []:
         if not isinstance(raw, Mapping):
             continue
-        score, value = _match_element(element=raw, source_kind=source_kind, aliases=aliases)
+        score, value = _match_element(
+            element=raw,
+            source_kind=source_kind,
+            source_visual_kind=source_visual_kind,
+            aliases=aliases,
+        )
         if score <= 0.0 or not value:
             continue
         ranked.append((score, dict(raw), value))

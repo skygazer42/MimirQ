@@ -118,6 +118,7 @@ class ParsingContentUpdateRequest(BaseModel):
 class ParsingExtractFieldSpec(BaseModel):
     type: Literal["string"] = "string"
     source_kind: str | None = None
+    source_visual_kind: str | None = None
     aliases: list[str] = Field(default_factory=list)
 
 

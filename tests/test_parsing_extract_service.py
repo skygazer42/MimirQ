@@ -136,3 +136,43 @@ def test_extract_parsing_fields_uses_sentence_fallback_for_prompt_terms():
 
     assert "E = mc^2" in str(result["main_formula"]["value"] or "")
     assert result["main_formula"]["strategy"] == "markdown_sentence_match"
+
+
+def test_extract_parsing_fields_supports_source_visual_kind_for_image_elements():
+    from app.services.parsing_extract_service import extract_parsing_fields  # noqa: WPS433
+
+    result = extract_parsing_fields(
+        markdown="图表说明见图片。",
+        elements=[
+            {
+                "id": "image:1:0",
+                "kind": "image",
+                "page": 1,
+                "text": "Company logo",
+                "confidence": 0.85,
+                "bbox": {"x0": 1, "y0": 2, "x1": 3, "y1": 4},
+                "attributes": {"visual_kind": "logo"},
+            },
+            {
+                "id": "image:1:1",
+                "kind": "image",
+                "page": 1,
+                "text": "Revenue growth chart",
+                "confidence": 0.91,
+                "bbox": {"x0": 5, "y0": 6, "x1": 7, "y1": 8},
+                "attributes": {"visual_kind": "chart"},
+            },
+        ],
+        mode="schema",
+        schema={
+            "chart_summary": {
+                "type": "string",
+                "source_kind": "image",
+                "source_visual_kind": "chart",
+            }
+        },
+    )
+
+    field = result["chart_summary"]
+    assert field["value"] == "Revenue growth chart"
+    assert field["evidence"][0]["element_id"] == "image:1:1"

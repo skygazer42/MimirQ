@@ -16883,6 +16883,8 @@ export interface components {
             type: "string";
             /** Source Kind */
             source_kind?: string | null;
+            /** Source Visual Kind */
+            source_visual_kind?: string | null;
             /** Aliases */
             aliases?: string[];
         };
