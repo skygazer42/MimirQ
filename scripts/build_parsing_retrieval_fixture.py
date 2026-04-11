@@ -13,14 +13,26 @@ def _normalize_documents(documents: list[dict[str, Any]] | None) -> list[dict[st
     for index, raw in enumerate(documents or []):
         row = raw if isinstance(raw, dict) else {}
         meta = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
-        chunk_id = str(row.get("chunk_id") or meta.get("chunk_id") or f"chunk-{index + 1}").strip()
+        fixture_meta = dict(meta)
+        for key in ("page", "pages", "bbox", "visual_kind", "kind", "element_kind", "element_id"):
+            if key in fixture_meta:
+                continue
+            value = row.get(key)
+            if value is not None:
+                fixture_meta[key] = value
+        chunk_id = str(
+            row.get("chunk_id")
+            or meta.get("chunk_id")
+            or row.get("element_id")
+            or row.get("id")
+            or f"chunk-{index + 1}"
+        ).strip()
         document_id = str(
             row.get("document_id") or meta.get("document_id") or meta.get("source") or f"doc-{index + 1}"
         ).strip()
-        text = str(row.get("text") or row.get("page_content") or "").strip()
+        text = str(row.get("text") or row.get("element_text") or row.get("page_content") or "").strip()
         if not chunk_id or not document_id or not text:
             continue
-        fixture_meta = dict(meta)
         fixture_meta.setdefault("source", str(meta.get("source") or f"{document_id}.md"))
         out.append(
             {
