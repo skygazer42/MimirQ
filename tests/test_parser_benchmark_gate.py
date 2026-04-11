@@ -137,6 +137,27 @@ def test_evaluate_baseline_compatibility_detects_fixture_and_profile_mismatch() 
     assert any("profile_hash" in item for item in mismatches)
 
 
+def test_build_fixture_hash_tracks_binary_fixture_bytes(tmp_path: Path) -> None:
+    mod = _load_module()
+    sample = tmp_path / "sample.png"
+    sample.write_bytes(b"\x89PNG\r\n\x1a\nbinary-a")
+
+    first = mod._build_fixture_hash(  # type: ignore[attr-defined]
+        cases=[mod.BenchmarkCase(case_id="img", path=sample)],  # type: ignore[attr-defined]
+        manifest_path=None,
+    )
+
+    sample.write_bytes(b"\x89PNG\r\n\x1a\nbinary-b")
+    second = mod._build_fixture_hash(  # type: ignore[attr-defined]
+        cases=[mod.BenchmarkCase(case_id="img", path=sample)],  # type: ignore[attr-defined]
+        manifest_path=None,
+    )
+
+    assert isinstance(first, str) and len(first) == 24
+    assert isinstance(second, str) and len(second) == 24
+    assert first != second
+
+
 def test_build_regression_severity_summary_emits_levels() -> None:
     mod = _load_module()
     out = mod.build_regression_severity_summary(  # type: ignore[attr-defined]
