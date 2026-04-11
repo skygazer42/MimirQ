@@ -70,10 +70,10 @@ The repo includes a tiny static specialty fixture you can use as a smoke run:
 
 ```bash
 python3 scripts/parser_benchmark.py \
-  --input-dir tests/fixtures/parsing_golden/specialty_smoke \
-  --manifest tests/fixtures/parsing_golden/specialty_smoke/manifest.json \
+  --input-dir tests/fixtures/parsing_golden \
+  --manifest tests/fixtures/parsing_golden/manifest.json \
   --backends basic \
-  --max-files 1 \
+  --max-files 3 \
   --out /tmp/parser_benchmark_fixture_smoke.json
 ```
 
