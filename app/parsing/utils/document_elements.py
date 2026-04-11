@@ -201,6 +201,35 @@ def _extract_attributes(meta: Mapping[str, Any]) -> dict[str, Any] | None:
     return attrs or None
 
 
+def _infer_visual_kind(*, kind: str, text: str, attributes: Mapping[str, Any] | None) -> str | None:
+    if kind != "image":
+        return None
+    existing = str((attributes or {}).get("visual_kind") or "").strip().lower()
+    if existing:
+        return existing
+    hint = " ".join(
+        str(part or "").strip().lower()
+        for part in (
+            text,
+            (attributes or {}).get("source_content_type"),
+            (attributes or {}).get("image_caption"),
+            (attributes or {}).get("caption"),
+        )
+        if str(part or "").strip()
+    )
+    if not hint:
+        return None
+    if any(token in hint for token in ("qrcode", "qr code", " qr ", "二维码")):
+        return "qr"
+    if "barcode" in hint or "bar code" in hint or "条码" in hint:
+        return "barcode"
+    if any(token in hint for token in ("flowchart", "diagram", "架构图", "流程图", "示意图")):
+        return "diagram"
+    if any(token in hint for token in ("chart", "graph", "plot", "图表", "曲线图", "柱状图")):
+        return "chart"
+    return None
+
+
 def _extract_derived_attributes(meta: Mapping[str, Any]) -> dict[str, Any] | None:
     attrs: dict[str, Any] = {}
     preferred_attrs = meta.get("attributes")
@@ -293,6 +322,12 @@ def normalize_document_elements(items: Iterable[Document | Mapping[str, Any]] | 
         page = _extract_page(meta)
         pages = _extract_pages(meta)
         bbox = _extract_bbox(meta)
+        attributes = _extract_attributes(meta)
+        visual_kind = _infer_visual_kind(kind=kind, text=text, attributes=attributes)
+        if visual_kind:
+            attrs = dict(attributes or {})
+            attrs["visual_kind"] = visual_kind
+            attributes = attrs
         confidence = None
         for key in ("element_confidence", "seal_score", "confidence", "score"):
             confidence = _coerce_float(meta.get(key))
@@ -313,7 +348,7 @@ def normalize_document_elements(items: Iterable[Document | Mapping[str, Any]] | 
                 "text": text or None,
                 "bbox": bbox,
                 "confidence": confidence,
-                "attributes": _extract_attributes(meta),
+                "attributes": attributes,
             }
         )
         out.extend(_normalize_derived_elements(meta, parent_id=item_id, parent_page=page))
