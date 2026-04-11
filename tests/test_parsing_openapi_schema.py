@@ -40,10 +40,14 @@ def test_parsing_openapi_schema_reuses_typed_bbox_for_extract_evidence() -> None
     pages = evidence_props.get("pages") or {}
     pages_any_of = pages.get("anyOf") if isinstance(pages, dict) else None
     pages_array = next((item for item in (pages_any_of or []) if isinstance(item, dict) and item.get("type") == "array"), {})
+    visual_kind = evidence_props.get("visual_kind") or {}
+    visual_kind_any_of = visual_kind.get("anyOf") if isinstance(visual_kind, dict) else None
+    visual_kind_string = next((item for item in (visual_kind_any_of or []) if isinstance(item, dict) and item.get("type") == "string"), {})
 
     assert bbox_ref.get("$ref") == "#/components/schemas/ParsingElementBBox"
     assert pages_array.get("type") == "array"
     assert (pages_array.get("items") or {}).get("type") == "integer"
+    assert visual_kind_string.get("type") == "string"
 
 
 def test_parsing_openapi_schema_exposes_source_visual_kind_on_extract_field_spec() -> None:

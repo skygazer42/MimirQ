@@ -45,6 +45,7 @@ def test_parsing_extract_endpoint_returns_json_with_evidence(monkeypatch):  # no
                         "attributes": {
                             "seal_text": "杭州测试科技有限公司",
                             "seal_primary": {"text": "杭州测试科技有限公司"},
+                            "visual_kind": "stamp",
                         },
                     }
                 ],
@@ -101,3 +102,4 @@ def test_parsing_extract_endpoint_returns_json_with_evidence(monkeypatch):  # no
     assert body["result"]["company_name"]["value"] == "杭州测试科技有限公司"
     assert body["result"]["company_name"]["evidence"][0]["page"] == 2
     assert body["result"]["company_name"]["evidence"][0]["pages"] == [2]
+    assert body["result"]["company_name"]["evidence"][0]["visual_kind"] == "stamp"

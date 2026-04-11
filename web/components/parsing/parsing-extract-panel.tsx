@@ -382,6 +382,7 @@ export function ParsingExtractPanel({
                           <div className="flex flex-wrap items-center gap-2">
                             {formatEvidencePages(evidence) ? <span>{formatEvidencePages(evidence)}</span> : null}
                             {evidence.kind ? <span>{evidence.kind}</span> : null}
+                            {evidence.visual_kind ? <span>{evidence.visual_kind}</span> : null}
                             {evidence.element_id ? <span>{evidence.element_id}</span> : null}
                           </div>
                           {evidence.bbox ? (

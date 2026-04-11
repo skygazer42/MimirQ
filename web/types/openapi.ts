@@ -16856,6 +16856,8 @@ export interface components {
             page?: number | null;
             /** Pages */
             pages?: number[] | null;
+            /** Visual Kind */
+            visual_kind?: string | null;
             bbox?: components["schemas"]["ParsingElementBBox"] | null;
             /** Text */
             text?: string | null;

@@ -100,11 +100,14 @@ def _build_evidence(element: Mapping[str, Any], *, score: float, value: str) -> 
     bbox = element.get("bbox") if isinstance(element.get("bbox"), Mapping) else None
     raw_pages = element.get("pages") if isinstance(element.get("pages"), list) else None
     pages = [int(item) for item in raw_pages if isinstance(item, int)] if raw_pages else None
+    attrs = element.get("attributes") if isinstance(element.get("attributes"), Mapping) else {}
+    visual_kind = _normalize_kind(attrs.get("visual_kind")) if isinstance(attrs, Mapping) else ""
     return {
         "element_id": str(element.get("id") or "").strip() or None,
         "kind": _normalize_kind(element.get("kind")) or None,
         "page": int(element.get("page")) if isinstance(element.get("page"), int) else None,
         "pages": pages,
+        "visual_kind": visual_kind or None,
         "bbox": dict(bbox) if isinstance(bbox, Mapping) else None,
         "text": value or None,
         "score": round(float(score), 3),
