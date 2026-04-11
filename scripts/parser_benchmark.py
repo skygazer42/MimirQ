@@ -403,6 +403,8 @@ def resolve_strict_thresholds(
         "mean_table_recall": _pick("mean_table_recall", float(args.strict_max_table_recall_drop)),
         "mean_image_recall": _pick("mean_image_recall", float(args.strict_max_image_recall_drop)),
         "mean_chart_image_recall": _pick("mean_chart_image_recall", float(args.strict_max_chart_image_recall_drop)),
+        "mean_qr_image_recall": _pick("mean_qr_image_recall", float(args.strict_max_qr_image_recall_drop)),
+        "mean_diagram_image_recall": _pick("mean_diagram_image_recall", float(args.strict_max_diagram_image_recall_drop)),
     }
 
 
@@ -558,6 +560,18 @@ def main() -> int:
         type=float,
         default=0.10,
         help="Allowed maximum drop for summary.<backend>.mean_chart_image_recall under --strict.",
+    )
+    ap.add_argument(
+        "--strict-max-qr-image-recall-drop",
+        type=float,
+        default=0.10,
+        help="Allowed maximum drop for summary.<backend>.mean_qr_image_recall under --strict.",
+    )
+    ap.add_argument(
+        "--strict-max-diagram-image-recall-drop",
+        type=float,
+        default=0.10,
+        help="Allowed maximum drop for summary.<backend>.mean_diagram_image_recall under --strict.",
     )
     ap.add_argument(
         "--strict-profile",
@@ -846,6 +860,8 @@ def main() -> int:
                     ("mean_table_recall", _metric(before, after, "mean_table_recall")),
                     ("mean_image_recall", _metric(before, after, "mean_image_recall")),
                     ("mean_chart_image_recall", _metric(before, after, "mean_chart_image_recall")),
+                    ("mean_qr_image_recall", _metric(before, after, "mean_qr_image_recall")),
+                    ("mean_diagram_image_recall", _metric(before, after, "mean_diagram_image_recall")),
                 )
                 if v is not None
             }
