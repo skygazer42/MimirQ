@@ -77,6 +77,20 @@ python3 scripts/parser_benchmark.py \
   --out /tmp/parser_benchmark_fixture_smoke.json
 ```
 
+You can also run the same fixture against the checked-in baseline in strict mode:
+
+```bash
+python3 scripts/parser_benchmark.py \
+  --input-dir tests/fixtures/parsing_golden \
+  --manifest tests/fixtures/parsing_golden/manifest.json \
+  --backends basic \
+  --max-files 3 \
+  --out /tmp/parser_benchmark_strict_smoke.json \
+  --baseline ci/parser_benchmark_baseline.v1.json \
+  --strict-profile ci/parser_strict_profile.v1.json \
+  --strict
+```
+
 ## Output
 
 The report (`mimirq.parser_benchmark.v1`) includes:
