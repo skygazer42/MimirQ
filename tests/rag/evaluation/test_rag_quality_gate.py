@@ -167,8 +167,14 @@ def test_rag_quality_gate_workflow_exists() -> None:
     assert text.count("scripts/run_sample_retrieval_benchmark.py") >= 2
     assert "scripts/build_rag_quality_gate_artifacts.py" in text
     assert text.count("scripts/build_rag_quality_gate_artifacts.py") >= 2
+    assert "scripts/run_sample_parsing_retrieval_proof.py" in text
+    assert "scripts/build_parsing_retrieval_proof_artifacts.py" in text
+    assert "scripts/parsing_retrieval_proof_gate.py" in text
     assert "data/sample/retrieval_fixture_v1.json" in text
     assert text.count("data/sample/retrieval_fixture_v1.json") >= 2
     assert "artifacts/answer_quality.summary.json" in text
     assert "artifacts/rag_quality_gate.report.json" in text
+    assert "artifacts/parsing_proof_broader_sample/summary.json" in text
+    assert "artifacts/parsing_proof_broader_sample/report.json" in text
+    assert "artifacts/parsing_proof_broader_sample/gate.json" in text
     assert "actions/upload-artifact@v4" in text
