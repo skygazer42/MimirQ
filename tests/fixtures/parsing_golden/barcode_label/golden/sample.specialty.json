@@ -2,5 +2,8 @@
   "image": 1,
   "image_visual_kinds": {
     "barcode": 1
+  },
+  "image_code_values": {
+    "barcode": ["5901234123457"]
   }
 }

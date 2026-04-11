@@ -97,6 +97,8 @@ def test_resolve_strict_thresholds_prefers_profile_values() -> None:
         strict_max_qr_image_recall_drop=0.12,
         strict_max_barcode_image_recall_drop=0.125,
         strict_max_diagram_image_recall_drop=0.13,
+        strict_max_qr_code_value_recall_drop=0.14,
+        strict_max_barcode_code_value_recall_drop=0.15,
     )
     thresholds = mod.resolve_strict_thresholds(  # type: ignore[attr-defined]
         args=args,
@@ -114,6 +116,8 @@ def test_resolve_strict_thresholds_prefers_profile_values() -> None:
                 "mean_qr_image_recall": 0.2,
                 "mean_barcode_image_recall": 0.15,
                 "mean_diagram_image_recall": 0.1,
+                "mean_qr_code_value_recall": 0.09,
+                "mean_barcode_code_value_recall": 0.08,
             },
         },
     )
@@ -130,6 +134,8 @@ def test_resolve_strict_thresholds_prefers_profile_values() -> None:
     assert thresholds["mean_qr_image_recall"] == pytest.approx(0.2)
     assert thresholds["mean_barcode_image_recall"] == pytest.approx(0.15)
     assert thresholds["mean_diagram_image_recall"] == pytest.approx(0.1)
+    assert thresholds["mean_qr_code_value_recall"] == pytest.approx(0.09)
+    assert thresholds["mean_barcode_code_value_recall"] == pytest.approx(0.08)
 
 
 def test_load_strict_profile_requires_known_schema(tmp_path: Path) -> None:

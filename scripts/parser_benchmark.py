@@ -25,6 +25,7 @@ class BenchmarkCase:
     golden_markdown_path: Path | None = None
     golden_specialty_elements: dict[str, int] | None = None
     golden_image_visual_kinds: dict[str, int] | None = None
+    golden_image_code_values: dict[str, list[str]] | None = None
 
 
 _HEADING_RE = re.compile(r"(?m)^#{1,6}\s+\S+")
@@ -131,6 +132,22 @@ def _load_image_visual_kinds(input_dir: Path, row: dict[str, Any]) -> dict[str, 
     return _coerce_count_map((payload or {}).get("image_visual_kinds"))
 
 
+def _load_image_code_values(input_dir: Path, row: dict[str, Any]) -> dict[str, list[str]] | None:
+    payload = _load_specialty_payload(input_dir, row)
+    raw = (payload or {}).get("image_code_values")
+    if not isinstance(raw, dict):
+        return None
+    out: dict[str, list[str]] = {}
+    for raw_key, raw_values in raw.items():
+        key = str(raw_key or "").strip().lower()
+        if not key or not isinstance(raw_values, list):
+            continue
+        values = [str(item).strip() for item in raw_values if str(item).strip()]
+        if values:
+            out[key] = values
+    return out or None
+
+
 def _join_documents_to_markdown(documents: Iterable[Any]) -> str:
     parts: list[str] = []
     for d in documents or []:
@@ -161,6 +178,23 @@ def _count_image_visual_kinds(documents: Iterable[Any]) -> dict[str, int]:
             continue
         counts[visual_kind] = int(counts.get(visual_kind, 0) or 0) + 1
     return counts
+
+
+def _collect_image_code_values(documents: Iterable[Any]) -> dict[str, list[str]]:
+    from app.parsing.utils.document_elements import normalize_document_elements
+
+    values_by_kind: dict[str, list[str]] = {}
+    for item in normalize_document_elements(documents):
+        if str((item or {}).get("kind") or "").strip().lower() != "image":
+            continue
+        visual_kind = str((item or {}).get("visual_kind") or "").strip().lower()
+        text = str((item or {}).get("text") or "").strip()
+        if visual_kind not in {"qr", "barcode"} or not text:
+            continue
+        bucket = values_by_kind.setdefault(visual_kind, [])
+        if text not in bucket:
+            bucket.append(text)
+    return values_by_kind
 
 
 def _build_fixture_hash(*, cases: list[BenchmarkCase], manifest_path: Path | None) -> str:
@@ -198,6 +232,7 @@ def _build_fixture_hash(*, cases: list[BenchmarkCase], manifest_path: Path | Non
             ),
             "golden_specialty_elements": dict(case.golden_specialty_elements or {}) if isinstance(case.golden_specialty_elements, dict) else None,
             "golden_image_visual_kinds": dict(case.golden_image_visual_kinds or {}) if isinstance(case.golden_image_visual_kinds, dict) else None,
+            "golden_image_code_values": dict(case.golden_image_code_values or {}) if isinstance(case.golden_image_code_values, dict) else None,
             "case_root": str(case_root),
             "case_files": case_files,
         }
@@ -307,6 +342,7 @@ def _load_cases(input_dir: Path, *, manifest_path: Path | None, max_files: int) 
                     golden_markdown_path=golden,
                     golden_specialty_elements=_load_specialty_elements(input_dir, row),
                     golden_image_visual_kinds=_load_image_visual_kinds(input_dir, row),
+                    golden_image_code_values=_load_image_code_values(input_dir, row),
                 )
             )
         return cases[: max(0, int(max_files or 0))]
@@ -445,6 +481,8 @@ def resolve_strict_thresholds(
         "mean_qr_image_recall": _pick("mean_qr_image_recall", float(args.strict_max_qr_image_recall_drop)),
         "mean_barcode_image_recall": _pick("mean_barcode_image_recall", float(args.strict_max_barcode_image_recall_drop)),
         "mean_diagram_image_recall": _pick("mean_diagram_image_recall", float(args.strict_max_diagram_image_recall_drop)),
+        "mean_qr_code_value_recall": _pick("mean_qr_code_value_recall", float(args.strict_max_qr_code_value_recall_drop)),
+        "mean_barcode_code_value_recall": _pick("mean_barcode_code_value_recall", float(args.strict_max_barcode_code_value_recall_drop)),
     }
 
 
@@ -626,6 +664,18 @@ def main() -> int:
         help="Allowed maximum drop for summary.<backend>.mean_diagram_image_recall under --strict.",
     )
     ap.add_argument(
+        "--strict-max-qr-code-value-recall-drop",
+        type=float,
+        default=0.10,
+        help="Allowed maximum drop for summary.<backend>.mean_qr_code_value_recall under --strict.",
+    )
+    ap.add_argument(
+        "--strict-max-barcode-code-value-recall-drop",
+        type=float,
+        default=0.10,
+        help="Allowed maximum drop for summary.<backend>.mean_barcode_code_value_recall under --strict.",
+    )
+    ap.add_argument(
         "--strict-profile",
         default="",
         help=(
@@ -699,6 +749,7 @@ def main() -> int:
             "image_ref_recall": [],
             "specialty_recall": {kind: [] for kind in _SPECIALTY_KINDS},
             "specialty_image_visual_kind_recall": {},
+            "specialty_image_code_value_recall": {},
         }
         for b in backends
     }
@@ -722,6 +773,9 @@ def main() -> int:
         golden_image_visual_kinds = (
             dict(case.golden_image_visual_kinds or {}) if isinstance(case.golden_image_visual_kinds, dict) else None
         )
+        golden_image_code_values = (
+            dict(case.golden_image_code_values or {}) if isinstance(case.golden_image_code_values, dict) else None
+        )
         missing_input_assets = _find_missing_local_markdown_assets(case.path)
         missing_local_assets = _find_missing_local_markdown_assets(case.golden_markdown_path)
 
@@ -736,9 +790,10 @@ def main() -> int:
                     "structure": golden_struct,
                     "specialty_elements": golden_specialty,
                     "image_visual_kinds": golden_image_visual_kinds,
+                    "image_code_values": golden_image_code_values,
                     "missing_local_assets": missing_local_assets or None,
                 }
-                if golden_struct or golden_specialty or golden_image_visual_kinds
+                if golden_struct or golden_specialty or golden_image_visual_kinds or golden_image_code_values
                 else None
             ),
             "attempts": [],
@@ -778,6 +833,7 @@ def main() -> int:
                 struct = _structure_metrics(md)
                 specialty_counts = _count_specialty_elements(docs)
                 image_visual_kind_counts = _count_image_visual_kinds(docs)
+                image_code_values = _collect_image_code_values(docs)
 
                 attempt.update(
                     {
@@ -789,6 +845,7 @@ def main() -> int:
                         "structure": struct,
                         "specialty_elements": specialty_counts,
                         "specialty_image_visual_kinds": image_visual_kind_counts,
+                        "specialty_image_code_values": image_code_values,
                     }
                 )
                 if golden_md:
@@ -829,6 +886,23 @@ def main() -> int:
                         subtype_stats.setdefault(visual_kind, []).append(float(recall))
                     if subtype_recall:
                         attempt["specialty_image_visual_kind_recall"] = subtype_recall
+                if golden_image_code_values:
+                    code_recall: dict[str, float] = {}
+                    code_stats = by_backend[backend]["specialty_image_code_value_recall"]
+                    if not isinstance(code_stats, dict):
+                        code_stats = {}
+                        by_backend[backend]["specialty_image_code_value_recall"] = code_stats
+                    for visual_kind, expected_values in golden_image_code_values.items():
+                        expected = [str(item).strip() for item in expected_values if str(item).strip()]
+                        if not expected:
+                            continue
+                        actual = set(image_code_values.get(visual_kind) or [])
+                        matched = sum(1 for item in expected if item in actual)
+                        recall = float(matched) / float(len(expected))
+                        code_recall[visual_kind] = round(recall, 4)
+                        code_stats.setdefault(visual_kind, []).append(float(recall))
+                    if code_recall:
+                        attempt["specialty_image_code_value_recall"] = code_recall
 
                 by_backend[backend]["ok"] += 1
                 by_backend[backend]["parse_score"].append(float(pq.get("score") or 0.0))
@@ -859,6 +933,9 @@ def main() -> int:
         specialty_recalls = stats.get("specialty_recall") if isinstance(stats.get("specialty_recall"), dict) else {}
         image_visual_kind_recalls = (
             stats.get("specialty_image_visual_kind_recall") if isinstance(stats.get("specialty_image_visual_kind_recall"), dict) else {}
+        )
+        image_code_value_recalls = (
+            stats.get("specialty_image_code_value_recall") if isinstance(stats.get("specialty_image_code_value_recall"), dict) else {}
         )
 
         def _pct(vals: list[int], p: float) -> int | None:
@@ -894,6 +971,10 @@ def main() -> int:
         for visual_kind in _IMAGE_VISUAL_KINDS:
             value = subtype_summary.get(visual_kind) if isinstance(subtype_summary, dict) else None
             summary[backend][f"mean_{visual_kind}_image_recall"] = value if value is not None else None
+        for visual_kind in ("qr", "barcode"):
+            values = image_code_value_recalls.get(visual_kind) if isinstance(image_code_value_recalls, dict) else None
+            numeric = [float(x) for x in values] if isinstance(values, list) else []
+            summary[backend][f"mean_{visual_kind}_code_value_recall"] = (round(sum(numeric) / len(numeric), 4) if numeric else None)
 
     report["summary"] = summary
 
@@ -939,6 +1020,8 @@ def main() -> int:
                     ("mean_qr_image_recall", _metric(before, after, "mean_qr_image_recall")),
                     ("mean_barcode_image_recall", _metric(before, after, "mean_barcode_image_recall")),
                     ("mean_diagram_image_recall", _metric(before, after, "mean_diagram_image_recall")),
+                    ("mean_qr_code_value_recall", _metric(before, after, "mean_qr_code_value_recall")),
+                    ("mean_barcode_code_value_recall", _metric(before, after, "mean_barcode_code_value_recall")),
                 )
                 if v is not None
             }
