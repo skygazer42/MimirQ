@@ -24,21 +24,25 @@ def test_build_fixture_helper_round_trips_into_sample_retrieval_benchmark(tmp_pa
     build_mod = _load_script("scripts/build_parsing_retrieval_fixture.py")
     bench_mod = _load_script("scripts/run_sample_retrieval_benchmark.py")
 
-    chunks_path = tmp_path / "chunks.json"
+    docs_path = tmp_path / "documents.json"
     queries_path = tmp_path / "queries.json"
     fixture_path = tmp_path / "fixture.json"
     report_path = tmp_path / "report.json"
 
-    chunks_path.write_text(
+    docs_path.write_text(
         json.dumps(
             [
                 {
+                    "chunk_id": "table-answer",
+                    "document_id": "doc-table",
                     "page_content": "APAC Q2 revenue amount 138",
-                    "metadata": {"chunk_id": "table-answer", "document_id": "doc-table", "source": "parsed-strong.md"},
+                    "metadata": {"source": "parsed-strong.md"},
                 },
                 {
+                    "chunk_id": "noise-1",
+                    "document_id": "doc-noise",
                     "page_content": "APAC value 126",
-                    "metadata": {"chunk_id": "noise-1", "document_id": "doc-noise", "source": "noise.md"},
+                    "metadata": {"source": "noise.md"},
                 },
             ],
             ensure_ascii=False,
@@ -51,7 +55,7 @@ def test_build_fixture_helper_round_trips_into_sample_retrieval_benchmark(tmp_pa
                 {
                     "id": "q-table",
                     "question": "For APAC, what is the Q2 revenue amount?",
-                    "expected_chunk_ids": ["table-answer"],
+                    "expected_chunk_indexes": [0],
                 }
             ],
             ensure_ascii=False,
@@ -61,8 +65,8 @@ def test_build_fixture_helper_round_trips_into_sample_retrieval_benchmark(tmp_pa
 
     rc = build_mod.main(  # type: ignore[attr-defined]
         [
-            "--chunks-json",
-            str(chunks_path),
+            "--documents-json",
+            str(docs_path),
             "--queries-json",
             str(queries_path),
             "--out",
