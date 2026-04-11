@@ -1,4 +1,17 @@
 {
   "schema": "mimirq.parser_benchmark.v1",
-  "summary": {}
+  "summary": {
+    "basic": {
+      "attempts": 3,
+      "ok": 3,
+      "ok_rate": 1.0,
+      "parse_score_mean": 0.856,
+      "golden_similarity_mean": 1.0,
+      "golden_coverage_ratio_mean": 1.0,
+      "mean_seal_recall": 0.0,
+      "mean_equation_recall": 0.0,
+      "mean_table_recall": 0.0,
+      "mean_image_recall": 0.0
+    }
+  }
 }
