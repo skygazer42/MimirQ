@@ -36,4 +36,16 @@ describe('parsing-element-diff', () => {
     expect(diff.addedByKind.table).toBe(1)
     expect(diff.removedByKind.table).toBe(1)
   })
+
+  it('treats visual_kind changes as a structural diff for image elements', () => {
+    const diff = diffParsingElements(
+      [{ id: 'img-a', kind: 'image', page: 1, text: 'Revenue growth', visual_kind: 'diagram' }],
+      [{ id: 'img-a', kind: 'image', page: 1, text: 'Revenue growth', visual_kind: 'chart' }]
+    )
+
+    expect(diff.addedByKind.image).toBe(1)
+    expect(diff.removedByKind.image).toBe(1)
+    expect(diff.addedImageVisualKinds).toContain('chart')
+    expect(diff.removedImageVisualKinds).toContain('diagram')
+  })
 })

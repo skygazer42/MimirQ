@@ -252,6 +252,16 @@ export function ParseCompareDialog({ open, onOpenChange, runs, defaultBaseRunId,
                   移除：{elementDiffSummary.removedSealTexts.join(' · ')}
                 </div>
               ) : null}
+              {elementDiffSummary.addedImageVisualKinds.length > 0 ? (
+                <div className="mt-1 text-xs text-muted-foreground">
+                  图像子类新增：{elementDiffSummary.addedImageVisualKinds.join(' · ')}
+                </div>
+              ) : null}
+              {elementDiffSummary.removedImageVisualKinds.length > 0 ? (
+                <div className="mt-1 text-xs text-muted-foreground">
+                  图像子类移除：{elementDiffSummary.removedImageVisualKinds.join(' · ')}
+                </div>
+              ) : null}
             </div>
           ) : null}
 
