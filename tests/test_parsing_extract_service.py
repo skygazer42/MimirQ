@@ -68,6 +68,37 @@ def test_extract_parsing_fields_supports_prompt_mode_with_field_hints():
     assert result["main_formula"]["evidence"][0]["kind"] == "equation"
 
 
+def test_extract_parsing_fields_carries_cross_page_span_into_evidence():
+    from app.services.parsing_extract_service import extract_parsing_fields  # noqa: WPS433
+
+    result = extract_parsing_fields(
+        markdown="下表跨页延续。",
+        elements=[
+            {
+                "id": "table:1:0",
+                "kind": "table",
+                "page": 1,
+                "pages": [1, 2],
+                "text": "| A | B |",
+                "confidence": 0.91,
+                "bbox": {"x0": 10, "y0": 20, "x1": 60, "y1": 70},
+                "attributes": {},
+            }
+        ],
+        mode="schema",
+        schema={
+            "main_table": {
+                "type": "string",
+                "source_kind": "table",
+            }
+        },
+    )
+
+    evidence = result["main_table"]["evidence"][0]
+    assert evidence["page"] == 1
+    assert evidence["pages"] == [1, 2]
+
+
 def test_extract_parsing_fields_uses_markdown_alias_value_fallback_before_generic_excerpt():
     from app.services.parsing_extract_service import extract_parsing_fields  # noqa: WPS433
 

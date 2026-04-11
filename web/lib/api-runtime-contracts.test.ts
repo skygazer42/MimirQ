@@ -98,6 +98,7 @@ describe('API runtime contracts', () => {
                 element_id: 'seal:2:0',
                 kind: 'seal',
                 page: 2,
+                pages: [2],
                 bbox: { x0: 10, y0: 20, x1: 60, y1: 70 },
                 text: '杭州测试科技有限公司',
                 score: 0.97,

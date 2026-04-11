@@ -37,5 +37,10 @@ def test_parsing_openapi_schema_reuses_typed_bbox_for_extract_evidence() -> None
     bbox = evidence_props.get("bbox") or {}
     bbox_any_of = bbox.get("anyOf") if isinstance(bbox, dict) else None
     bbox_ref = next((item for item in (bbox_any_of or []) if isinstance(item, dict) and item.get("$ref")), {})
+    pages = evidence_props.get("pages") or {}
+    pages_any_of = pages.get("anyOf") if isinstance(pages, dict) else None
+    pages_array = next((item for item in (pages_any_of or []) if isinstance(item, dict) and item.get("type") == "array"), {})
 
     assert bbox_ref.get("$ref") == "#/components/schemas/ParsingElementBBox"
+    assert pages_array.get("type") == "array"
+    assert (pages_array.get("items") or {}).get("type") == "integer"

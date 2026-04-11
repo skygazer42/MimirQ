@@ -38,6 +38,7 @@ def test_parsing_extract_endpoint_returns_json_with_evidence(monkeypatch):  # no
                         "id": "seal:2:0",
                         "kind": "seal",
                         "page": 2,
+                        "pages": [2],
                         "text": "印章识别：杭州测试科技有限公司",
                         "confidence": 0.97,
                         "bbox": {"x0": 10, "y0": 20, "x1": 60, "y1": 70},
@@ -99,3 +100,4 @@ def test_parsing_extract_endpoint_returns_json_with_evidence(monkeypatch):  # no
     assert body["mode"] == "schema"
     assert body["result"]["company_name"]["value"] == "杭州测试科技有限公司"
     assert body["result"]["company_name"]["evidence"][0]["page"] == 2
+    assert body["result"]["company_name"]["evidence"][0]["pages"] == [2]

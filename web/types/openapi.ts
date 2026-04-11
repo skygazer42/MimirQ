@@ -16854,6 +16854,8 @@ export interface components {
             kind?: ("heading" | "paragraph" | "list" | "table" | "image" | "equation" | "seal" | "unknown") | null;
             /** Page */
             page?: number | null;
+            /** Pages */
+            pages?: number[] | null;
             bbox?: components["schemas"]["ParsingElementBBox"] | null;
             /** Text */
             text?: string | null;

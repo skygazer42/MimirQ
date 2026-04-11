@@ -135,6 +135,7 @@ class ParsingExtractEvidence(BaseModel):
     element_id: str | None = None
     kind: Literal["heading", "paragraph", "list", "table", "image", "equation", "seal", "unknown"] | None = None
     page: int | None = None
+    pages: list[int] | None = None
     bbox: ParsingElementBBox | None = None
     text: str | None = None
     score: float | None = None
