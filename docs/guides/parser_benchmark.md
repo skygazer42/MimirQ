@@ -66,6 +66,17 @@ Run with:
 python scripts/parser_benchmark.py --input-dir /path/to/golden_set --manifest manifest.json
 ```
 
+The repo includes a tiny static specialty fixture you can use as a smoke run:
+
+```bash
+python3 scripts/parser_benchmark.py \
+  --input-dir tests/fixtures/parsing_golden/specialty_smoke \
+  --manifest tests/fixtures/parsing_golden/specialty_smoke/manifest.json \
+  --backends basic \
+  --max-files 1 \
+  --out /tmp/parser_benchmark_fixture_smoke.json
+```
+
 ## Output
 
 The report (`mimirq.parser_benchmark.v1`) includes:

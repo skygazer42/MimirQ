@@ -1,0 +1,10 @@
+{
+  "cases": [
+    {
+      "id": "seal-formula-case",
+      "path": "input/sample.md",
+      "golden_markdown": "golden/sample.md",
+      "specialty_elements_path": "golden/sample.specialty.json"
+    }
+  ]
+}
