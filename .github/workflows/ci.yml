@@ -181,6 +181,14 @@ jobs:
             --enable-colbert-retrieval \
             --colbert-retrieval-provider deterministic
 
+      - name: Run sample broader parsing proof sweep
+        env:
+          LLM_MOCK_ENABLED: "true"
+        run: |
+          mkdir -p artifacts/parsing_proof_broader_sample
+          python scripts/run_sample_parsing_retrieval_proof.py \
+            --out-dir artifacts/parsing_proof_broader_sample
+
       - name: Build query-set health snapshot from bounded benchmark
         run: |
           python scripts/run_queryset_health_diagnostics.py \
