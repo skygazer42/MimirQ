@@ -79,6 +79,13 @@ def _install_fake_parser_benchmark_modules(monkeypatch) -> None:  # noqa: ANN001
                         metadata={"doc_type_kwd": "image", "page": 1, "visual_kind": "diagram"},
                     ),
                 ]
+            elif "barcode_label" in path_str:
+                docs = [
+                    Document(
+                        page_content="Inventory barcode label",
+                        metadata={"doc_type_kwd": "image", "page": 1, "visual_kind": "barcode"},
+                    ),
+                ]
             else:
                 docs = [
                     Document(
@@ -147,7 +154,7 @@ def test_parser_benchmark_reports_specialty_element_counts(monkeypatch, tmp_path
     payload = json.loads(out_path.read_text(encoding="utf-8"))
     assert isinstance(payload.get("fixture_hash"), str) and len(payload["fixture_hash"]) == 24
     assert isinstance(payload.get("profile_hash"), str) and len(payload["profile_hash"]) == 24
-    assert len(payload["cases"]) == 5
+    assert len(payload["cases"]) == 6
     by_case = {row["id"]: row for row in payload["cases"]}
     assert by_case["seal_invoice_case"]["golden"]["specialty_elements"]["seal"] == 1
     assert by_case["formula_pdf_case"]["golden"]["specialty_elements"]["equation"] == 1
@@ -156,6 +163,7 @@ def test_parser_benchmark_reports_specialty_element_counts(monkeypatch, tmp_path
     assert by_case["table_scan_case"]["golden"]["image_visual_kinds"]["chart"] == 1
     assert by_case["qr_sheet_case"]["golden"]["image_visual_kinds"]["qr"] == 1
     assert by_case["diagram_page_case"]["golden"]["image_visual_kinds"]["diagram"] == 1
+    assert by_case["barcode_label_case"]["golden"]["image_visual_kinds"]["barcode"] == 1
     assert by_case["seal_invoice_case"]["attempts"][0]["specialty_recall"]["seal"] == 1.0
     assert by_case["formula_pdf_case"]["attempts"][0]["specialty_recall"]["equation"] == 1.0
     assert by_case["table_scan_case"]["attempts"][0]["specialty_recall"]["table"] == 1.0
@@ -168,15 +176,20 @@ def test_parser_benchmark_reports_specialty_element_counts(monkeypatch, tmp_path
     assert by_case["diagram_page_case"]["attempts"][0]["specialty_recall"]["image"] == 1.0
     assert by_case["diagram_page_case"]["attempts"][0]["specialty_image_visual_kinds"]["diagram"] == 1
     assert by_case["diagram_page_case"]["attempts"][0]["specialty_image_visual_kind_recall"]["diagram"] == 1.0
+    assert by_case["barcode_label_case"]["attempts"][0]["specialty_recall"]["image"] == 1.0
+    assert by_case["barcode_label_case"]["attempts"][0]["specialty_image_visual_kinds"]["barcode"] == 1
+    assert by_case["barcode_label_case"]["attempts"][0]["specialty_image_visual_kind_recall"]["barcode"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_seal_recall"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_equation_recall"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_table_recall"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_image_recall"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_chart_image_recall"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_qr_image_recall"] == 1.0
+    assert payload["summary"]["deepdoc"]["mean_barcode_image_recall"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_diagram_image_recall"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_image_visual_kind_recall"]["chart"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_image_visual_kind_recall"]["qr"] == 1.0
+    assert payload["summary"]["deepdoc"]["mean_image_visual_kind_recall"]["barcode"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_image_visual_kind_recall"]["diagram"] == 1.0
 
 
@@ -254,7 +267,7 @@ def test_parser_benchmark_strict_passes_with_repo_fixture_baseline(monkeypatch, 
             "--backends",
             "basic",
             "--max-files",
-            "5",
+            "6",
             "--strict",
             "--baseline",
             str(_repo_root() / "ci" / "parser_benchmark_baseline.v1.json"),
@@ -294,7 +307,7 @@ def test_repo_parser_benchmark_baseline_matches_fake_fixture_smoke(monkeypatch, 
             "--backends",
             "basic",
             "--max-files",
-            "5",
+            "6",
             "--strict-profile",
             str(_repo_root() / "ci" / "parser_strict_profile.v1.json"),
             "--out",

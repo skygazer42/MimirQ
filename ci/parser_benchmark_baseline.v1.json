@@ -1,13 +1,13 @@
 {
   "schema": "mimirq.parser_benchmark.v1",
-  "fixture_hash": "9c0442bf00aabb07bc19727b",
-  "profile_hash": "4c7fd1855ecce92c520411e2",
+  "fixture_hash": "d753d913eb80fea80f128ff1",
+  "profile_hash": "6301a4a70d86bd792a1c40c3",
   "summary": {
     "basic": {
-      "attempts": 5,
-      "ok": 5,
+      "attempts": 6,
+      "ok": 6,
       "ok_rate": 1.0,
-      "parse_score_mean": 0.8736,
+      "parse_score_mean": 0.8795,
       "golden_similarity_mean": 1.0,
       "golden_coverage_ratio_mean": 1.0,
       "mean_seal_recall": 0.0,
@@ -16,6 +16,7 @@
       "mean_image_recall": 0.0,
       "mean_chart_image_recall": 0.0,
       "mean_qr_image_recall": 0.0,
+      "mean_barcode_image_recall": 0.0,
       "mean_diagram_image_recall": 0.0
     }
   }
