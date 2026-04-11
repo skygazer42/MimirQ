@@ -218,6 +218,11 @@ def _infer_visual_kind(*, kind: str, text: str, attributes: Mapping[str, Any] | 
             (attributes or {}).get("source_content_type"),
             (attributes or {}).get("image_caption"),
             (attributes or {}).get("caption"),
+            (attributes or {}).get("image_path"),
+            (attributes or {}).get("image_url"),
+            (attributes or {}).get("img_url"),
+            (attributes or {}).get("src"),
+            (attributes or {}).get("alt"),
         )
         if str(part or "").strip()
     )
