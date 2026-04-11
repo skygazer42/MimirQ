@@ -82,6 +82,8 @@ The Makefile is the source of truth for common workflows; these scripts are the 
 - `run_parsing_retrieval_proof_batch.py`: run multiple file-driven parsing proofs from a batch spec JSON and emit per-case fixtures/reports plus an aggregate batch report
   - Outputs: `<out-dir>/<case>.fixture.json`, `<out-dir>/<case>.report.json`, and `<out-dir>/batch.report.json`
   - Example: `python scripts/run_parsing_retrieval_proof_batch.py --spec-json runs/parsing_proof_batch.spec.json --out-dir runs/parsing_proof_batch`
+- `build_parsing_retrieval_proof_batch_spec.py`: derive a batch proof spec from a parser manifest plus a case-id -> queries mapping JSON
+  - Example: `python scripts/build_parsing_retrieval_proof_batch_spec.py --manifest-json tests/fixtures/parsing_golden_broader/manifest.json --case-queries-json runs/parsing_proof_case_queries.json --out runs/parsing_proof_batch.spec.json`
 - `run_queryset_health_diagnostics.py`: build query-set health snapshot from benchmark report and maintain bounded trend history
   - Output snapshot schema: `mimirq.queryset_health_snapshot.v1`
   - Adds risk summary (`miss_rate`, `weak_hit_rate`, `hard_cases`) and trend deltas for nightly drift checks
