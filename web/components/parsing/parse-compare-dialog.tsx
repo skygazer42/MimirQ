@@ -100,6 +100,8 @@ export function ParseCompareDialog({ open, onOpenChange, runs, defaultBaseRunId,
       { label: '移除 seal', value: summary.removedByKind.seal || 0 },
       { label: '新增 image', value: summary.addedByKind.image || 0 },
       { label: '移除 image', value: summary.removedByKind.image || 0 },
+      { label: '新增图像子类', value: summary.addedImageVisualKinds.length || 0 },
+      { label: '移除图像子类', value: summary.removedImageVisualKinds.length || 0 },
       { label: '新增 equation', value: summary.addedByKind.equation || 0 },
       { label: '移除 equation', value: summary.removedByKind.equation || 0 },
     ]
