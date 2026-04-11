@@ -134,3 +134,43 @@ def test_normalize_document_elements_infers_visual_kind_for_image_elements():
 
     assert out[0]["kind"] == "image"
     assert out[0]["visual_kind"] == "chart"
+
+
+def test_normalize_document_elements_infers_visual_kind_from_image_path() -> None:
+    from app.parsing.utils.document_elements import normalize_document_elements  # noqa: WPS433
+
+    docs = [
+        Document(
+            page_content="image placeholder",
+            metadata={
+                "doc_type_kwd": "image",
+                "page": 1,
+                "image_path": "/tmp/assets/customer_qrcode.png",
+            },
+        )
+    ]
+
+    out = normalize_document_elements(docs)
+
+    assert out[0]["kind"] == "image"
+    assert out[0]["visual_kind"] == "qr"
+
+
+def test_normalize_document_elements_infers_visual_kind_from_image_url() -> None:
+    from app.parsing.utils.document_elements import normalize_document_elements  # noqa: WPS433
+
+    docs = [
+        Document(
+            page_content="image placeholder",
+            metadata={
+                "doc_type_kwd": "image",
+                "page": 1,
+                "image_url": "https://cdn.example.com/inventory-barcode-label.png",
+            },
+        )
+    ]
+
+    out = normalize_document_elements(docs)
+
+    assert out[0]["kind"] == "image"
+    assert out[0]["visual_kind"] == "barcode"
