@@ -23,6 +23,7 @@ export interface ParsingElement {
 export interface ParsingExtractFieldSpec {
   type?: 'string'
   source_kind?: string | null
+  source_visual_kind?: string | null
   aliases?: string[]
 }
 
@@ -68,11 +69,12 @@ function normalizeExtractFieldSpecMap(
   if (!value) return undefined
   const entries = Object.entries(value)
   if (entries.length === 0) return undefined
-  const out: Record<string, { type: 'string'; source_kind?: string | null; aliases?: string[] }> = {}
+  const out: Record<string, { type: 'string'; source_kind?: string | null; source_visual_kind?: string | null; aliases?: string[] }> = {}
   for (const [key, spec] of entries) {
     out[key] = {
       type: 'string',
       source_kind: spec?.source_kind ?? undefined,
+      source_visual_kind: spec?.source_visual_kind ?? undefined,
       aliases: spec?.aliases ?? undefined,
     }
   }
@@ -169,6 +171,7 @@ const parsingExtractFieldSpecSchema = z
   .object({
     type: z.enum(['string']).optional(),
     source_kind: z.string().nullable().optional(),
+    source_visual_kind: z.string().nullable().optional(),
     aliases: z.array(z.string()).optional(),
   })
   .passthrough()
