@@ -151,11 +151,69 @@ def ocr_image(image: PILImage.Image, *, _max_chars: int = 2000) -> str:
     return text0
 
 
+def decode_image_codes(image: PILImage.Image) -> dict[str, Any]:
+    """
+    Best-effort decode of QR/barcode content from an image.
+
+    Returns a compact payload:
+    - visual_kind: qr | barcode
+    - text: first decoded value
+    - values: all decoded values (deduplicated)
+    """
+    values: list[str] = []
+    visual_kind = ""
+    try:
+        from pyzbar.pyzbar import decode  # type: ignore[import-untyped]
+
+        items = decode(image)
+        for item in items or []:
+            raw_type = str(getattr(item, "type", "") or "").strip().upper()
+            raw_data = getattr(item, "data", b"")
+            try:
+                text = raw_data.decode("utf-8", "ignore").strip()
+            except Exception:
+                text = ""
+            if text and text not in values:
+                values.append(text)
+            if raw_type == "QRCODE":
+                visual_kind = "qr"
+            elif raw_type and not visual_kind:
+                visual_kind = "barcode"
+    except Exception:
+        pass
+
+    if not values:
+        try:
+            import cv2
+            import numpy as np
+
+            detector = cv2.QRCodeDetector()
+            arr = np.array(image.convert("RGB"))
+            for candidate in (arr, cv2.resize(arr, None, fx=6, fy=6, interpolation=cv2.INTER_NEAREST)):
+                text, _points, _straight = detector.detectAndDecode(candidate)
+                text = str(text or "").strip()
+                if text:
+                    values.append(text)
+                    visual_kind = "qr"
+                    break
+        except Exception:
+            pass
+
+    if not values:
+        return {}
+    return {
+        "visual_kind": visual_kind or "barcode",
+        "text": values[0],
+        "values": values,
+    }
+
+
 def append_image_understanding_text(
     text: str,
     *,
     caption: str = "",
     ocr_text: str = "",
+    code_text: str = "",
 ) -> str:
     """
     Append caption/OCR text into chunk content so it becomes retrievable.
@@ -173,11 +231,16 @@ def append_image_understanding_text(
     if ocr0 and "image ocr:" not in base.lower():
         blocks.append(f"Image OCR:\n{ocr0}")
 
+    code0 = (code_text or "").strip()
+    if code0 and "image code:" not in base.lower():
+        blocks.append(f"Image code:\n{code0}")
+
     return "\n\n".join(blocks).strip() + ("\n" if (text or "").endswith("\n") else "")
 
 
 __all__ = [
     "append_image_understanding_text",
+    "decode_image_codes",
     "derive_image_caption",
     "load_image_for_ocr",
     "ocr_image",
