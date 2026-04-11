@@ -179,6 +179,106 @@ def test_generated_fixture_can_run_in_sample_retrieval_benchmark(tmp_path: Path)
     assert report["summary"]["mrr"] == 1.0
 
 
+def test_helper_generated_strong_and_weak_table_fixtures_separate_retrieval_outcomes(tmp_path: Path) -> None:
+    build_mod = _load_script()
+
+    bench_path = _repo_root() / "scripts" / "run_sample_retrieval_benchmark.py"
+    spec = importlib.util.spec_from_file_location("run_sample_retrieval_benchmark", str(bench_path))
+    assert spec and spec.loader
+    bench_mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = bench_mod
+    spec.loader.exec_module(bench_mod)  # type: ignore[union-attr]
+
+    strong_docs_path = tmp_path / "strong-docs.json"
+    weak_docs_path = tmp_path / "weak-docs.json"
+    queries_path = tmp_path / "queries.json"
+    strong_fixture_path = tmp_path / "strong-fixture.json"
+    weak_fixture_path = tmp_path / "weak-fixture.json"
+
+    strong_docs_path.write_text(
+        json.dumps(
+            [
+                {
+                    "page_content": "APAC Q2 revenue amount 138",
+                    "metadata": {"chunk_id": "table-answer", "document_id": "doc-table", "source": "strong.md"},
+                },
+                {
+                    "page_content": "APAC value 126",
+                    "metadata": {"chunk_id": "noise-1", "document_id": "doc-noise", "source": "noise.md"},
+                },
+                {
+                    "page_content": "Q2 revenue 132 North",
+                    "metadata": {"chunk_id": "noise-2", "document_id": "doc-noise", "source": "noise.md"},
+                },
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    weak_docs_path.write_text(
+        json.dumps(
+            [
+                {
+                    "page_content": "APAC revenue",
+                    "metadata": {"chunk_id": "table-answer", "document_id": "doc-table", "source": "weak.md"},
+                },
+                {
+                    "page_content": "APAC Q2 revenue amount 138",
+                    "metadata": {"chunk_id": "table-split", "document_id": "doc-table", "source": "weak.md"},
+                },
+                {
+                    "page_content": "APAC value 126",
+                    "metadata": {"chunk_id": "noise-1", "document_id": "doc-noise", "source": "noise.md"},
+                },
+                {
+                    "page_content": "Q2 revenue 132 North",
+                    "metadata": {"chunk_id": "noise-2", "document_id": "doc-noise", "source": "noise.md"},
+                },
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    queries_path.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "q-table",
+                    "question": "For APAC, what is the Q2 revenue amount?",
+                    "expected_chunk_ids": ["table-answer"],
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    rc = build_mod.main(  # type: ignore[attr-defined]
+        ["--documents-json", str(strong_docs_path), "--queries-json", str(queries_path), "--out", str(strong_fixture_path)]
+    )
+    assert rc == 0
+    rc = build_mod.main(  # type: ignore[attr-defined]
+        ["--documents-json", str(weak_docs_path), "--queries-json", str(queries_path), "--out", str(weak_fixture_path)]
+    )
+    assert rc == 0
+
+    strong_report = bench_mod.run_benchmark(  # type: ignore[attr-defined]
+        fixture_path=strong_fixture_path,
+        output_path=tmp_path / "strong-report.json",
+        top_k=1,
+        retrieval_mode="keyword",
+    )
+    weak_report = bench_mod.run_benchmark(  # type: ignore[attr-defined]
+        fixture_path=weak_fixture_path,
+        output_path=tmp_path / "weak-report.json",
+        top_k=1,
+        retrieval_mode="keyword",
+    )
+
+    assert strong_report["summary"]["hit_at_k"] == 1.0
+    assert weak_report["summary"]["hit_at_k"] == 0.0
+
+
 def test_build_fixture_accepts_flat_parser_element_shapes() -> None:
     mod = _load_script()
 
