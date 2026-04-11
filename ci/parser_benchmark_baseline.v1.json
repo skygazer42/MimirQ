@@ -14,13 +14,13 @@
       "mean_seal_recall": 0.0,
       "mean_equation_recall": 0.0,
       "mean_table_recall": 0.0,
-      "mean_image_recall": 0.0,
+      "mean_image_recall": 0.5,
       "mean_chart_image_recall": 0.0,
-      "mean_qr_image_recall": 0.0,
-      "mean_barcode_image_recall": 0.0,
+      "mean_qr_image_recall": 1.0,
+      "mean_barcode_image_recall": 1.0,
       "mean_diagram_image_recall": 0.0,
-      "mean_qr_code_value_recall": 0.0,
-      "mean_barcode_code_value_recall": 0.0
+      "mean_qr_code_value_recall": 1.0,
+      "mean_barcode_code_value_recall": 1.0
     }
   }
 }
