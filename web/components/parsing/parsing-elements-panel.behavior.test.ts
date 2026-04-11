@@ -86,4 +86,22 @@ describe('parsing elements panel behavior', () => {
     expect(view.container.textContent).not.toContain('扫码二维码')
     expect(view.container.textContent).not.toContain('杭州测试科技有限公司')
   })
+
+  it('hides the image subtype filter when no image subtype exists', () => {
+    const view = renderComponent(
+      React.createElement(ParsingElementsPanel, {
+        elements: [
+          {
+            id: 'seal:1:0',
+            kind: 'seal',
+            page: 1,
+            text: '杭州测试科技有限公司',
+          },
+        ],
+      })
+    )
+    rendered.push(view)
+
+    expect(view.container.textContent).not.toContain('全部图片子类')
+  })
 })
