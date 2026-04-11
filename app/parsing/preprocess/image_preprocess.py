@@ -49,6 +49,8 @@ def _handwriting_warning(note: str) -> str | None:
         return "handwriting_cleanup_api_url_missing"
     if normalized.startswith("http_") or normalized.startswith("http_failed:") or normalized.startswith("write_failed:"):
         return "handwriting_cleanup_backend_failed"
+    if normalized.startswith("heuristic_failed:"):
+        return "handwriting_cleanup_backend_failed"
     return None
 
 

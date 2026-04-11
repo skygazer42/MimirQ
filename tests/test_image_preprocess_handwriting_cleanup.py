@@ -64,3 +64,27 @@ def test_image_preprocess_applies_handwriting_cleanup_via_http_backend(tmp_path:
         step.id == "handwriting_cleanup" and step.applied is True and step.changed is True and step.note == "cleanup_ok"
         for step in (out.steps or [])
     )
+
+
+def test_image_preprocess_applies_handwriting_cleanup_via_heuristic_backend(tmp_path: Path, monkeypatch) -> None:
+    from PIL import Image
+
+    img = tmp_path / "handwritten-note.png"
+    Image.new("RGB", (8, 8), color=(180, 180, 180)).save(img)
+
+    monkeypatch.setattr(settings, "IMAGE_PREPROCESS_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "ORIENTATION_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "DESKEW_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "WATERMARK_REMOVAL_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "HANDWRITING_CLEANUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "HANDWRITING_CLEANUP_BACKEND", "heuristic", raising=False)
+
+    out = preprocess_image_document(input_path=img, document_id="doc-handwriting", pdf_quality=None)
+
+    assert out.changed is True
+    assert out.output_path != str(img)
+    assert Path(out.output_path).exists()
+    assert any(
+        step.id == "handwriting_cleanup" and step.applied is True and step.changed is True and step.note == "cleanup_ok"
+        for step in (out.steps or [])
+    )

@@ -35,6 +35,25 @@ def cleanup_handwriting_document(
         normalized_backend = "http" if str(api_url or "").strip() else "local"
         info["backend"] = normalized_backend
 
+    if normalized_backend == "heuristic":
+        try:
+            from PIL import Image, ImageEnhance, ImageFilter, ImageOps
+
+            with Image.open(input_path) as image:
+                cleaned = ImageOps.autocontrast(ImageOps.grayscale(image))
+                cleaned = ImageEnhance.Contrast(cleaned).enhance(1.25)
+                cleaned = cleaned.filter(ImageFilter.SHARPEN)
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                cleaned.save(output_path)
+        except Exception as exc:  # noqa: BLE001
+            return False, f"heuristic_failed:{exc.__class__.__name__}", info
+
+        try:
+            changed = output_path.read_bytes() != input_path.read_bytes()
+        except Exception:
+            changed = True
+        return changed, "cleanup_ok" if changed else "cleanup_no_change", info
+
     if normalized_backend in {"local", "onnx"}:
         model_ref = str(model_path or "").strip()
         if not model_ref:
