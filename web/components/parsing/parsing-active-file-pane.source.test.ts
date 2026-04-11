@@ -52,6 +52,7 @@ describe('parsing active file pane source', () => {
     expect(src).toContain('<ParsingExtractPanel')
     expect(src).toContain('<ParsingElementsPanel')
     expect(src).toContain('documentId={activeFile.libraryId || null}')
+    expect(src).toContain('pages: element.pages ?? null')
     expect(src).toContain('const selectedExtractElement = useMemo(')
     expect(src).toContain('const selectedExtractOverlayId = useMemo(')
     expect(src).toContain('const pdfBoxesByPage = useMemo(')
