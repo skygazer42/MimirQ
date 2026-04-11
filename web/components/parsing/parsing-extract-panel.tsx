@@ -24,6 +24,7 @@ function suggestDefaults(elements: ParsingElement[]) {
     return {
       fieldName: 'company_name',
       sourceKind: 'seal',
+      sourceVisualKind: '',
       aliases: '公司, 公章',
       prompt: '提取主印章对应的主体名称',
     }
@@ -33,13 +34,27 @@ function suggestDefaults(elements: ParsingElement[]) {
     return {
       fieldName: 'main_formula',
       sourceKind: 'equation',
+      sourceVisualKind: '',
       aliases: '公式',
       prompt: '提取主要公式',
+    }
+  }
+  const hasChartImage = elements.some(
+    (item) => item.kind === 'image' && String((item.attributes as Record<string, unknown> | null)?.visual_kind || '').trim() === 'chart'
+  )
+  if (hasChartImage) {
+    return {
+      fieldName: 'chart_summary',
+      sourceKind: 'image',
+      sourceVisualKind: 'chart',
+      aliases: '图表, chart',
+      prompt: '提取主要图表说明',
     }
   }
   return {
     fieldName: 'primary_text',
     sourceKind: '',
+    sourceVisualKind: '',
     aliases: '',
     prompt: '提取当前文档最重要的字段',
   }
@@ -86,9 +101,11 @@ export function ParsingExtractPanel({
   const [mode, setMode] = useState<'schema' | 'prompt'>('schema')
   const [schemaFieldName, setSchemaFieldName] = useState('')
   const [schemaSourceKind, setSchemaSourceKind] = useState('')
+  const [schemaSourceVisualKind, setSchemaSourceVisualKind] = useState('')
   const [schemaAliases, setSchemaAliases] = useState('')
   const [promptFieldName, setPromptFieldName] = useState('')
   const [promptSourceKind, setPromptSourceKind] = useState('')
+  const [promptSourceVisualKind, setPromptSourceVisualKind] = useState('')
   const [promptAliases, setPromptAliases] = useState('')
   const [promptText, setPromptText] = useState('')
   const [result, setResult] = useState<ParsingExtractResponse | null>(null)
@@ -108,9 +125,11 @@ export function ParsingExtractPanel({
     const defaults = suggestDefaults(activeElements)
     setSchemaFieldName(defaults.fieldName)
     setSchemaSourceKind(defaults.sourceKind)
+    setSchemaSourceVisualKind(defaults.sourceVisualKind)
     setSchemaAliases(defaults.aliases)
     setPromptFieldName(defaults.fieldName)
     setPromptSourceKind(defaults.sourceKind)
+    setPromptSourceVisualKind(defaults.sourceVisualKind)
     setPromptAliases(defaults.aliases)
     setPromptText(defaults.prompt)
     setResult(null)
@@ -133,6 +152,7 @@ export function ParsingExtractPanel({
             [fieldName]: {
               type: 'string',
               source_kind: schemaSourceKind.trim() || null,
+              source_visual_kind: schemaSourceVisualKind.trim() || null,
               aliases: parseAliases(schemaAliases),
             },
           },
@@ -147,6 +167,7 @@ export function ParsingExtractPanel({
             [fieldName]: {
               type: 'string',
               source_kind: promptSourceKind.trim() || null,
+              source_visual_kind: promptSourceVisualKind.trim() || null,
               aliases: parseAliases(promptAliases),
             },
           },
@@ -228,6 +249,19 @@ export function ParsingExtractPanel({
                 ))}
               </select>
             </div>
+          </div>
+
+          <div className="mt-3 space-y-1.5">
+            <div className="text-[11px] font-medium text-muted-foreground">来源 visual kind</div>
+            <Input
+              value={mode === 'schema' ? schemaSourceVisualKind : promptSourceVisualKind}
+              onChange={(event) =>
+                mode === 'schema'
+                  ? setSchemaSourceVisualKind(event.target.value)
+                  : setPromptSourceVisualKind(event.target.value)
+              }
+              placeholder="chart / qr / barcode"
+            />
           </div>
 
           <div className="mt-3 space-y-1.5">
