@@ -4,6 +4,7 @@ from uuid import uuid4
 import cv2
 from langchain_core.documents import Document
 from PIL import Image as PILImage
+from PIL import ImageDraw
 
 from app.core.config import settings
 from app.parsing.processors.processor import ChunkAssetStage, DocumentProcessorService
@@ -137,3 +138,65 @@ def test_decode_image_codes_decodes_committed_qr_fixture() -> None:
 
     assert out["visual_kind"] == "qr"
     assert out["text"] == "HELLO-QR"
+
+
+def _build_ean13_image(data12: str) -> PILImage.Image:
+    l_codes = {"0": "0001101", "1": "0011001", "2": "0010011", "3": "0111101", "4": "0100011", "5": "0110001", "6": "0101111", "7": "0111011", "8": "0110111", "9": "0001011"}
+    g_codes = {"0": "0100111", "1": "0110011", "2": "0011011", "3": "0100001", "4": "0011101", "5": "0111001", "6": "0000101", "7": "0010001", "8": "0001001", "9": "0010111"}
+    r_codes = {"0": "1110010", "1": "1100110", "2": "1101100", "3": "1000010", "4": "1011100", "5": "1001110", "6": "1010000", "7": "1000100", "8": "1001000", "9": "1110100"}
+    parity_patterns = {"0": "LLLLLL", "1": "LLGLGG", "2": "LLGGLG", "3": "LLGGGL", "4": "LGLLGG", "5": "LGGLLG", "6": "LGGGLL", "7": "LGLGLG", "8": "LGLGGL", "9": "LGGLGL"}
+
+    def checksum12(value: str) -> str:
+        total = 0
+        for index, ch in enumerate(value, start=1):
+            digit = int(ch)
+            total += digit if index % 2 == 1 else 3 * digit
+        return str((10 - (total % 10)) % 10)
+
+    full = data12 + checksum12(data12)
+    bits = "101"
+    for digit, parity in zip(full[1:7], parity_patterns[full[0]], strict=True):
+        bits += l_codes[digit] if parity == "L" else g_codes[digit]
+    bits += "01010"
+    for digit in full[7:]:
+        bits += r_codes[digit]
+    bits += "101"
+
+    module = 4
+    quiet_zone = 12
+    width = (len(bits) + quiet_zone * 2) * module
+    height = 160
+    image = PILImage.new("L", (width, height), color=255)
+    draw = ImageDraw.Draw(image)
+    cursor = quiet_zone * module
+    for bit in bits:
+        if bit == "1":
+            draw.rectangle([cursor, 0, cursor + module - 1, height - 1], fill=0)
+        cursor += module
+    return image
+
+
+def test_decode_image_codes_decodes_real_ean13_barcode() -> None:
+    from app.parsing.enrich.image_understanding import decode_image_codes  # noqa: WPS433
+
+    image = _build_ean13_image("590123412345")
+
+    out = decode_image_codes(image)
+
+    assert out["visual_kind"] == "barcode"
+    assert out["text"] == "5901234123457"
+    assert out["values"] == ["5901234123457"]
+
+
+def test_decode_image_codes_decodes_committed_barcode_fixture() -> None:
+    from app.parsing.enrich.image_understanding import decode_image_codes  # noqa: WPS433
+
+    fixture = Path("tests/fixtures/parsing_golden/barcode_label/input/barcode.png")
+    image = PILImage.open(fixture)
+    try:
+        out = decode_image_codes(image)
+    finally:
+        image.close()
+
+    assert out["visual_kind"] == "barcode"
+    assert out["text"] == "5901234123457"
