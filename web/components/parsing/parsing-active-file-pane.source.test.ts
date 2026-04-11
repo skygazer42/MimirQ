@@ -41,6 +41,7 @@ describe('parsing active file pane source', () => {
     expect(src).toContain("label: '公式'")
     expect(src).toContain("label: '主印章'")
     expect(src).toContain("label: '公式样例'")
+    expect(src).toContain("label: '图片子类'")
     expect(src).toContain('结构元素')
   })
 
