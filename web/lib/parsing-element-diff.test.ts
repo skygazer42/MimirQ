@@ -39,13 +39,19 @@ describe('parsing-element-diff', () => {
 
   it('treats visual_kind changes as a structural diff for image elements', () => {
     const diff = diffParsingElements(
-      [{ id: 'img-a', kind: 'image', page: 1, text: 'Revenue growth', visual_kind: 'diagram' }],
-      [{ id: 'img-a', kind: 'image', page: 1, text: 'Revenue growth', visual_kind: 'chart' }]
+      [
+        { id: 'img-a', kind: 'image', page: 1, text: 'Revenue growth', visual_kind: 'diagram' },
+        { id: 'img-b', kind: 'image', page: 1, text: 'Revenue growth copy', visual_kind: 'diagram' },
+      ],
+      [
+        { id: 'img-a', kind: 'image', page: 1, text: 'Revenue growth', visual_kind: 'chart' },
+        { id: 'img-b', kind: 'image', page: 1, text: 'Revenue growth copy', visual_kind: 'chart' },
+      ]
     )
 
-    expect(diff.addedByKind.image).toBe(1)
-    expect(diff.removedByKind.image).toBe(1)
-    expect(diff.addedImageVisualKinds).toContain('chart')
-    expect(diff.removedImageVisualKinds).toContain('diagram')
+    expect(diff.addedByKind.image).toBe(2)
+    expect(diff.removedByKind.image).toBe(2)
+    expect(diff.addedImageVisualKinds).toEqual(['chart'])
+    expect(diff.removedImageVisualKinds).toEqual(['diagram'])
   })
 })

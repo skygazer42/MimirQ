@@ -19,6 +19,10 @@ function normalizeText(value: string | null | undefined): string {
   return String(value || '').replace(/\s+/g, ' ').trim()
 }
 
+function uniqueSorted(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean))).sort()
+}
+
 function normalizePages(pages: number[] | null | undefined): string {
   if (!Array.isArray(pages) || pages.length === 0) return 'na'
   return pages
@@ -94,7 +98,7 @@ export function diffParsingElements(
     removedByKind,
     addedSealTexts,
     removedSealTexts,
-    addedImageVisualKinds,
-    removedImageVisualKinds,
+    addedImageVisualKinds: uniqueSorted(addedImageVisualKinds),
+    removedImageVisualKinds: uniqueSorted(removedImageVisualKinds),
   }
 }

@@ -13,5 +13,7 @@ describe('parse compare dialog source', () => {
     expect(src).toContain('新增')
     expect(src).toContain('移除')
     expect(src).toContain('图像子类')
+    expect(src).toContain('新增图像子类')
+    expect(src).toContain('移除图像子类')
   })
 })
