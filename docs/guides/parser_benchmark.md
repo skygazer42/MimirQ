@@ -99,7 +99,7 @@ The report (`mimirq.parser_benchmark.v1`) includes:
 - top-level reproducibility fields:
   - `fixture_hash`
   - `profile_hash`
-  - optional `fixture_issues` for corpus problems such as missing local image assets referenced by golden markdown
+  - optional `fixture_issues` for corpus problems such as missing local image assets referenced by input or golden markdown
 - Per-case/per-backend attempts with:
   - `elapsed_ms`
   - `text_quality` / `parse_quality`
