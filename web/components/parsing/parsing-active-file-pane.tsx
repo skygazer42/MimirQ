@@ -129,6 +129,29 @@ function formatElementBbox(bbox: ParsingElement['bbox'] | ParsingExtractEvidence
   return `${bbox.x0},${bbox.y0},${bbox.x1},${bbox.y1}`
 }
 
+function formatEvidencePages(
+  evidence: ParsingExtractEvidence | null | undefined,
+  element: ParsingElement | null | undefined
+): string {
+  const rawPages = Array.isArray(element?.pages)
+    ? element?.pages
+    : Array.isArray(evidence?.pages)
+      ? evidence?.pages
+      : []
+  const pages = rawPages.filter((value) => Number.isInteger(value) && value > 0)
+  if (pages.length >= 2) {
+    if (pages.length === 2 && pages[1] === pages[0] + 1) {
+      return `跨页 ${pages[0]}-${pages[1]}`
+    }
+    return `跨页 ${pages.join(',')}`
+  }
+  const page = element?.page ?? evidence?.page
+  if (typeof page === 'number') {
+    return `页 ${page}`
+  }
+  return ''
+}
+
 function toLayoutKind(kind: string | null | undefined): ParsingLayoutKind {
   const normalized = String(kind || '').trim().toLowerCase()
   if (normalized === 'seal') return 'seal'
@@ -144,9 +167,26 @@ function buildExtractEvidencePosition(
   evidence: ParsingExtractEvidence | null | undefined,
   element: ParsingElement | null | undefined
 ): ParsingPosition | null {
+  const rawPages = Array.isArray(element?.pages)
+    ? element?.pages
+    : Array.isArray(evidence?.pages)
+      ? evidence?.pages
+      : []
+  const pages = rawPages.filter((value) => Number.isInteger(value) && value > 0)
   const page = element?.page ?? evidence?.page
   const bbox = element?.bbox ?? evidence?.bbox
-  if (typeof page !== 'number' || !bbox) return null
+  if (!bbox) return null
+  if (pages.length >= 1) {
+    return {
+      pages: pages.map((value) => Math.max(0, value - 1)),
+      left: bbox.x0,
+      right: bbox.x1,
+      top: bbox.y0,
+      bottom: bbox.y1,
+      raw: `extract:${String(evidence?.element_id || element?.id || '')}`,
+    }
+  }
+  if (typeof page !== 'number') return null
   return {
     pages: [Math.max(0, page - 1)],
     left: bbox.x0,
@@ -568,8 +608,8 @@ export function ParsingActiveFilePane({
                   {selectedExtractElement?.id || selectedExtractEvidence.evidence.element_id ? (
                     <span>{selectedExtractElement?.id || selectedExtractEvidence.evidence.element_id}</span>
                   ) : null}
-                  {typeof (selectedExtractElement?.page ?? selectedExtractEvidence.evidence.page) === 'number' ? (
-                    <span>页 {selectedExtractElement?.page ?? selectedExtractEvidence.evidence.page}</span>
+                  {formatEvidencePages(selectedExtractEvidence.evidence, selectedExtractElement) ? (
+                    <span>{formatEvidencePages(selectedExtractEvidence.evidence, selectedExtractElement)}</span>
                   ) : null}
                   {formatElementBbox(selectedExtractElement?.bbox || selectedExtractEvidence.evidence.bbox) ? (
                     <span className="font-mono">

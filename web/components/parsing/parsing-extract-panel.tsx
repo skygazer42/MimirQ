@@ -61,6 +61,22 @@ function formatBbox(bbox: ParsingElement['bbox']): string {
   return `${bbox.x0},${bbox.y0},${bbox.x1},${bbox.y1}`
 }
 
+function formatEvidencePages(evidence: ParsingExtractEvidence): string {
+  const pages = Array.isArray(evidence.pages)
+    ? evidence.pages.filter((value) => Number.isInteger(value) && value > 0)
+    : []
+  if (pages.length >= 2) {
+    if (pages.length === 2 && pages[1] === pages[0] + 1) {
+      return `跨页 ${pages[0]}-${pages[1]}`
+    }
+    return `跨页 ${pages.join(',')}`
+  }
+  if (typeof evidence.page === 'number') {
+    return `页 ${evidence.page}`
+  }
+  return ''
+}
+
 export function ParsingExtractPanel({
   documentId,
   activeElements,
@@ -283,7 +299,7 @@ export function ParsingExtractPanel({
                           className="w-full rounded-md border border-border/50 bg-background/80 px-2 py-1 text-left text-[11px] text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5"
                         >
                           <div className="flex flex-wrap items-center gap-2">
-                            {typeof evidence.page === 'number' ? <span>页 {evidence.page}</span> : null}
+                            {formatEvidencePages(evidence) ? <span>{formatEvidencePages(evidence)}</span> : null}
                             {evidence.kind ? <span>{evidence.kind}</span> : null}
                             {evidence.element_id ? <span>{evidence.element_id}</span> : null}
                           </div>

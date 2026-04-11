@@ -12,6 +12,8 @@ describe('parsing extract panel source', () => {
     expect(src).toContain('onSelectEvidence?:')
     expect(src).toContain('parsingApi.extract(')
     expect(src).toContain('onSelectEvidence?.(')
+    expect(src).toContain('evidence.pages')
+    expect(src).toContain('跨页')
     expect(src).toContain('运行抽取')
     expect(src).toContain('抽取结果')
     expect(src).toContain('Prompt')
