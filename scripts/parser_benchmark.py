@@ -13,6 +13,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from langchain_core.documents import Document
+
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
@@ -195,6 +197,47 @@ def _collect_image_code_values(documents: Iterable[Any]) -> dict[str, list[str]]
         if text not in bucket:
             bucket.append(text)
     return values_by_kind
+
+
+def _augment_documents_with_inline_image_codes(*, documents: list[Any], markdown: str, origin_path: Path) -> list[Any]:
+    from app.parsing.enrich.image_code import add_image_code_blocks
+
+    try:
+        _next_markdown, added, audit = add_image_code_blocks(markdown, origin_path=origin_path)
+    except Exception:
+        return list(documents or [])
+    if int(added or 0) <= 0:
+        return list(documents or [])
+
+    derived = list(documents or [])
+    existing_signatures: set[tuple[str, str]] = set()
+    for item in list(documents or []):
+        meta = getattr(item, "metadata", None)
+        if not isinstance(meta, dict):
+            continue
+        if str(meta.get("doc_type_kwd") or meta.get("element_kind") or "").strip().lower() != "image":
+            continue
+        visual_kind = str(meta.get("visual_kind") or "").strip().lower()
+        text = str(meta.get("image_code_text") or getattr(item, "page_content", "") or "").strip()
+        if visual_kind and text:
+            existing_signatures.add((visual_kind, text))
+    for item in list(getattr(audit, "code_elements", None) or []):
+        if not isinstance(item, dict):
+            continue
+        visual_kind = str(item.get("visual_kind") or "").strip().lower()
+        text = str(item.get("text") or "").strip()
+        if visual_kind and text and (visual_kind, text) in existing_signatures:
+            continue
+        metadata = {
+            "element_kind": str(item.get("kind") or "image"),
+            "element_text": str(item.get("text") or ""),
+            "element_id": str(item.get("id") or ""),
+            "page": item.get("page"),
+            "visual_kind": item.get("visual_kind"),
+            "element_attributes": dict(item.get("attributes") or {}),
+        }
+        derived.append(Document(page_content=str(item.get("text") or ""), metadata=metadata))
+    return derived
 
 
 def _build_fixture_hash(*, cases: list[BenchmarkCase], manifest_path: Path | None) -> str:
@@ -828,12 +871,17 @@ def main() -> int:
                     pdf_quality=pdf_quality,
                 )
                 md = _join_documents_to_markdown(docs)
+                metric_docs = _augment_documents_with_inline_image_codes(
+                    documents=list(docs or []),
+                    markdown=md,
+                    origin_path=case.path,
+                )
                 tq = score_parsed_text_quality(md).to_dict()
                 pq = score_document_parse_quality(pdf_quality=pdf_quality, parsed_text_quality=tq)
                 struct = _structure_metrics(md)
-                specialty_counts = _count_specialty_elements(docs)
-                image_visual_kind_counts = _count_image_visual_kinds(docs)
-                image_code_values = _collect_image_code_values(docs)
+                specialty_counts = _count_specialty_elements(metric_docs)
+                image_visual_kind_counts = _count_image_visual_kinds(metric_docs)
+                image_code_values = _collect_image_code_values(metric_docs)
 
                 attempt.update(
                     {
