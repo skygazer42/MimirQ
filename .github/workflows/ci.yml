@@ -189,6 +189,13 @@ jobs:
           python scripts/run_sample_parsing_retrieval_proof.py \
             --out-dir artifacts/parsing_proof_broader_sample
 
+      - name: Build broader parsing proof summary artifacts
+        run: |
+          python scripts/build_parsing_retrieval_proof_artifacts.py \
+            --batch-report artifacts/parsing_proof_broader_sample/batch.report.json \
+            --summary-out artifacts/parsing_proof_broader_sample/summary.json \
+            --report-out artifacts/parsing_proof_broader_sample/report.json
+
       - name: Build query-set health snapshot from bounded benchmark
         run: |
           python scripts/run_queryset_health_diagnostics.py \
@@ -784,6 +791,8 @@ jobs:
             artifacts/sample_retrieval_bench.colbert.json
             artifacts/queryset_health_policy.normalized.json
             artifacts/queryset_health.snapshot.json
+            artifacts/parsing_proof_broader_sample/summary.json
+            artifacts/parsing_proof_broader_sample/report.json
             artifacts/queryset_health.snapshot.hybrid.json
             artifacts/queryset_health.snapshot.sparse.json
             artifacts/queryset_health.diff.json
