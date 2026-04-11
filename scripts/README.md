@@ -76,6 +76,9 @@ The Makefile is the source of truth for common workflows; these scripts are the 
 - `run_parsing_retrieval_proof.py`: build a retrieval fixture from parser-like outputs and immediately run the deterministic retrieval benchmark
   - Outputs: retrieval fixture JSON plus benchmark report JSON
   - Example: `python scripts/run_parsing_retrieval_proof.py --documents-json runs/parsed_docs.json --queries-json runs/proof_queries.json --fixture-out runs/parsing_proof.fixture.json --report-out runs/parsing_proof.report.json`
+- `run_parsing_retrieval_proof_from_file.py`: parse a real source file, build a retrieval fixture from the parsed output, and immediately run the deterministic retrieval benchmark
+  - Outputs: retrieval fixture JSON plus benchmark report JSON
+  - Example: `python scripts/run_parsing_retrieval_proof_from_file.py --input-file tests/fixtures/parsing_golden_broader/cross_page_table_pdf/input/sample.pdf --queries-json runs/proof_queries.json --fixture-out runs/parsing_file_proof.fixture.json --report-out runs/parsing_file_proof.report.json --parser-backend basic`
 - `run_queryset_health_diagnostics.py`: build query-set health snapshot from benchmark report and maintain bounded trend history
   - Output snapshot schema: `mimirq.queryset_health_snapshot.v1`
   - Adds risk summary (`miss_rate`, `weak_hit_rate`, `hard_cases`) and trend deltas for nightly drift checks
