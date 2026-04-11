@@ -1,0 +1,81 @@
+// @vitest-environment jsdom
+
+import React, { act } from 'react'
+import { createRoot } from 'react-dom/client'
+import { afterEach, describe, expect, it } from 'vitest'
+
+import { ParsingExtractPanel } from './parsing-extract-panel'
+
+function renderComponent(element: React.ReactElement) {
+  ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+
+  const container = document.createElement('div')
+  document.body.appendChild(container)
+  const root = createRoot(container)
+
+  act(() => {
+    root.render(element)
+  })
+
+  return {
+    container,
+    unmount() {
+      act(() => {
+        root.unmount()
+      })
+      container.remove()
+    },
+  }
+}
+
+const rendered: Array<ReturnType<typeof renderComponent>> = []
+
+afterEach(() => {
+  while (rendered.length > 0) {
+    rendered.pop()?.unmount()
+  }
+})
+
+describe('parsing extract panel behavior', () => {
+  it('shows visual kind choices for image extraction and hides them for non-image kinds', () => {
+    const view = renderComponent(
+      React.createElement(ParsingExtractPanel, {
+        documentId: 'doc-1',
+        activeElements: [
+          {
+            id: 'image:1:0',
+            kind: 'image',
+            page: 1,
+            text: 'Revenue growth chart',
+            visual_kind: 'chart',
+          },
+          {
+            id: 'seal:1:0',
+            kind: 'seal',
+            page: 1,
+            text: '杭州测试科技有限公司',
+          },
+        ],
+      })
+    )
+    rendered.push(view)
+
+    const selects = Array.from(view.container.querySelectorAll('select'))
+    expect(selects.length).toBeGreaterThanOrEqual(1)
+    const sourceKindSelect = selects[0] as HTMLSelectElement
+    act(() => {
+      sourceKindSelect.value = 'image'
+      sourceKindSelect.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+
+    expect(view.container.textContent).toContain('来源 visual kind')
+    expect(view.container.textContent).toContain('chart')
+
+    act(() => {
+      sourceKindSelect.value = 'seal'
+      sourceKindSelect.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+
+    expect(view.container.textContent).not.toContain('来源 visual kind')
+  })
+})
