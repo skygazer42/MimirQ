@@ -29,6 +29,12 @@
       "path": "diagram_page/input/sample.md",
       "golden_markdown": "diagram_page/golden/sample.md",
       "specialty_elements_path": "diagram_page/golden/sample.specialty.json"
+    },
+    {
+      "id": "barcode_label_case",
+      "path": "barcode_label/input/sample.md",
+      "golden_markdown": "barcode_label/golden/sample.md",
+      "specialty_elements_path": "barcode_label/golden/sample.specialty.json"
     }
   ]
 }

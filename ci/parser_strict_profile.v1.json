@@ -11,6 +11,7 @@
     "mean_image_recall": 1.0,
     "mean_chart_image_recall": 1.0,
     "mean_qr_image_recall": 1.0,
+    "mean_barcode_image_recall": 1.0,
     "mean_diagram_image_recall": 1.0
   },
   "severity_bands": {
