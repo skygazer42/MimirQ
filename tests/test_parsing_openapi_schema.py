@@ -44,3 +44,19 @@ def test_parsing_openapi_schema_reuses_typed_bbox_for_extract_evidence() -> None
     assert bbox_ref.get("$ref") == "#/components/schemas/ParsingElementBBox"
     assert pages_array.get("type") == "array"
     assert (pages_array.get("items") or {}).get("type") == "integer"
+
+
+def test_parsing_openapi_schema_exposes_source_visual_kind_on_extract_field_spec() -> None:
+    from app.main import app  # noqa: WPS433
+
+    schema = app.openapi()
+    components = schema.get("components") or {}
+    schemas = components.get("schemas") or {}
+    field_spec_schema = schemas.get("ParsingExtractFieldSpec") or {}
+    properties = field_spec_schema.get("properties") or {}
+    source_visual_kind = properties.get("source_visual_kind") or {}
+    any_of = source_visual_kind.get("anyOf") if isinstance(source_visual_kind, dict) else None
+    string_option = next((item for item in (any_of or []) if isinstance(item, dict) and item.get("type") == "string"), {})
+
+    assert field_spec_schema.get("type") == "object"
+    assert string_option.get("type") == "string"
