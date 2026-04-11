@@ -27,35 +27,14 @@ def _load_module():
     return mod
 
 
+def _fixture_root() -> Path:
+    return _repo_root() / "tests" / "fixtures" / "parsing_golden" / "specialty_smoke"
+
+
 def test_parser_benchmark_reports_specialty_element_counts(monkeypatch, tmp_path: Path) -> None:
     mod = _load_module()
-
-    input_dir = tmp_path / "golden"
-    input_dir.mkdir(parents=True, exist_ok=True)
-    sample_path = input_dir / "sample.md"
-    sample_path.write_text("合同正文\n", encoding="utf-8")
-    golden_path = input_dir / "sample.golden.md"
-    golden_path.write_text("合同正文\n", encoding="utf-8")
+    input_dir = _fixture_root()
     manifest_path = input_dir / "manifest.json"
-    manifest_path.write_text(
-        json.dumps(
-            {
-                "cases": [
-                    {
-                        "id": "seal-formula-case",
-                        "path": "sample.md",
-                        "golden_markdown": "sample.golden.md",
-                        "specialty_elements": {
-                            "seal": 1,
-                            "equation": 1,
-                        },
-                    }
-                ]
-            },
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
 
     factory_mod = ModuleType("app.parsing.factory")
 
@@ -131,6 +110,8 @@ def test_parser_benchmark_reports_specialty_element_counts(monkeypatch, tmp_path
     assert rc == 0
 
     payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert payload["cases"][0]["golden"]["specialty_elements"]["seal"] == 1
+    assert payload["cases"][0]["golden"]["specialty_elements"]["equation"] == 1
     assert payload["cases"][0]["attempts"][0]["specialty_elements"]["seal"] == 1
     assert payload["cases"][0]["attempts"][0]["specialty_elements"]["equation"] == 1
     assert payload["cases"][0]["attempts"][0]["specialty_recall"]["seal"] == 1.0
