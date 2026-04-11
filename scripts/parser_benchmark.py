@@ -32,6 +32,7 @@ _LIST_ITEM_RE = re.compile(r"(?m)^\s*(?:[-*+]|\d+\.)\s+\S+")
 _FENCE_RE = re.compile(r"(?m)^\s*```")
 _TABLE_SEP_RE = re.compile(r"(?m)^\s*\|?(?:\s*:?-+:?\s*\|)+\s*:?-+:?\s*\|?\s*$")
 _MD_IMAGE_RE = re.compile(r"!\[[^\]]*\]\([^)]+\)")
+_MD_IMAGE_CAPTURE_RE = re.compile(r"!\[[^\]]*\]\(([^)\s]+)")
 _HTML_IMG_RE = re.compile(r"(?i)<img\\b[^>]*>")
 _STRICT_PROFILE_SCHEMA_V1 = "mimirq.parser_benchmark_strict_profile.v1"
 _SPECIALTY_KINDS = ("seal", "equation", "table", "image")
@@ -247,6 +248,21 @@ def _structure_metrics(markdown: str) -> dict[str, Any]:
         "table_separators": int(len(_TABLE_SEP_RE.findall(md))),
         "image_refs": int(len(_MD_IMAGE_RE.findall(md)) + len(_HTML_IMG_RE.findall(md))),
     }
+
+
+def _find_missing_local_markdown_assets(markdown_path: Path | None) -> list[str]:
+    if markdown_path is None or not markdown_path.exists():
+        return []
+    text = _read_text(markdown_path)
+    missing: list[str] = []
+    for raw_ref in _MD_IMAGE_CAPTURE_RE.findall(text):
+        ref = str(raw_ref or "").strip()
+        if not ref or ref.startswith(("http://", "https://", "data:")):
+            continue
+        candidate = (markdown_path.parent / ref).resolve()
+        if not candidate.exists():
+            missing.append(ref)
+    return sorted(set(missing))
 
 
 def _similarity(a: str, b: str) -> float:
@@ -659,6 +675,7 @@ def main() -> int:
             max_files=int(args.max_files or 0),
         ),
         "backends": backends,
+        "fixture_issues": [],
         "cases": [],
         "summary": {},
     }
@@ -697,6 +714,7 @@ def main() -> int:
         golden_image_visual_kinds = (
             dict(case.golden_image_visual_kinds or {}) if isinstance(case.golden_image_visual_kinds, dict) else None
         )
+        missing_local_assets = _find_missing_local_markdown_assets(case.golden_markdown_path)
 
         case_row: dict[str, Any] = {
             "id": case.case_id,
@@ -708,12 +726,21 @@ def main() -> int:
                     "structure": golden_struct,
                     "specialty_elements": golden_specialty,
                     "image_visual_kinds": golden_image_visual_kinds,
+                    "missing_local_assets": missing_local_assets or None,
                 }
                 if golden_struct or golden_specialty or golden_image_visual_kinds
                 else None
             ),
             "attempts": [],
         }
+        if missing_local_assets:
+            report["fixture_issues"].append(
+                {
+                    "case_id": str(case.case_id),
+                    "type": "missing_local_assets",
+                    "items": list(missing_local_assets),
+                }
+            )
 
         for backend in backends:
             by_backend[backend]["attempts"] += 1

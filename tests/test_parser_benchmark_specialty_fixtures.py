@@ -328,3 +328,54 @@ def test_repo_parser_benchmark_baseline_matches_fake_fixture_smoke(monkeypatch, 
     baseline_summary = (baseline.get("summary") or {}).get("basic") or {}
     for key, value in baseline_summary.items():
         assert payload_summary.get(key) == value
+
+
+def test_parser_benchmark_reports_missing_local_markdown_assets(monkeypatch, tmp_path: Path) -> None:
+    mod = _load_module()
+    fixture_root = tmp_path / "fixture"
+    (fixture_root / "input").mkdir(parents=True, exist_ok=True)
+    (fixture_root / "golden").mkdir(parents=True, exist_ok=True)
+    (fixture_root / "input" / "sample.md").write_text("正文。", encoding="utf-8")
+    (fixture_root / "golden" / "sample.md").write_text("![chart](missing-chart.png)\n", encoding="utf-8")
+    (fixture_root / "manifest.json").write_text(
+        json.dumps(
+            {
+                "cases": [
+                    {
+                        "id": "missing-asset-case",
+                        "path": "input/sample.md",
+                        "golden_markdown": "golden/sample.md",
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    _install_fake_parser_benchmark_modules(monkeypatch)
+
+    out_path = tmp_path / "parser_benchmark.missing-asset.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "parser_benchmark.py",
+            "--input-dir",
+            str(fixture_root),
+            "--manifest",
+            str(fixture_root / "manifest.json"),
+            "--backends",
+            "deepdoc",
+            "--out",
+            str(out_path),
+        ],
+    )
+
+    rc = mod.main()  # type: ignore[attr-defined]
+    assert rc == 0
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert payload["fixture_issues"][0]["case_id"] == "missing-asset-case"
+    assert payload["fixture_issues"][0]["type"] == "missing_local_assets"
+    assert payload["fixture_issues"][0]["items"] == ["missing-chart.png"]
