@@ -310,3 +310,84 @@ def test_build_fixture_accepts_flat_parser_element_shapes() -> None:
     assert doc["metadata"]["pages"] == [1, 2]
     assert doc["metadata"]["bbox"] == {"x0": 10, "y0": 20, "x1": 300, "y1": 520}
     assert doc["metadata"]["visual_kind"] == "table"
+
+
+def test_build_fixture_accepts_preview_segments_payload_shape() -> None:
+    mod = _load_script()
+
+    payload = mod.build_fixture(  # type: ignore[attr-defined]
+        documents=[
+            {
+                "id": "seg-1",
+                "text": "East region revenue accelerated in Q3.",
+                "page": 1,
+                "bbox": {"x0": 1, "y0": 2, "x1": 3, "y1": 4},
+            }
+        ],
+        queries=[
+            {
+                "question": "Which region accelerated in Q3?",
+                "expected_chunk_ids": ["seg-1"],
+            }
+        ],
+        top_k=1,
+        retrieval_mode="keyword",
+    )
+
+    doc = payload["documents"][0]
+    assert doc["chunk_id"] == "seg-1"
+    assert doc["text"] == "East region revenue accelerated in Q3."
+    assert doc["metadata"]["page"] == 1
+    assert doc["metadata"]["bbox"] == {"x0": 1, "y0": 2, "x1": 3, "y1": 4}
+
+
+def test_build_fixture_cli_accepts_root_object_with_segments_array(tmp_path: Path) -> None:
+    mod = _load_script()
+    docs_path = tmp_path / "preview.json"
+    queries_path = tmp_path / "queries.json"
+    out_path = tmp_path / "fixture.json"
+
+    docs_path.write_text(
+        json.dumps(
+            {
+                "parser_backend": "basic",
+                "segments": [
+                    {
+                        "id": "seg-1",
+                        "text": "East region revenue accelerated in Q3.",
+                        "page": 1,
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    queries_path.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "q1",
+                    "question": "Which region accelerated in Q3?",
+                    "expected_chunk_ids": ["seg-1"],
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    rc = mod.main(  # type: ignore[attr-defined]
+        [
+            "--documents-json",
+            str(docs_path),
+            "--queries-json",
+            str(queries_path),
+            "--out",
+            str(out_path),
+        ]
+    )
+
+    assert rc == 0
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert payload["documents"][0]["chunk_id"] == "seg-1"
