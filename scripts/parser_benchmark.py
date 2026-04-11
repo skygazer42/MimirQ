@@ -279,6 +279,10 @@ def resolve_strict_thresholds(
         "parse_score_mean": _pick("parse_score_mean", float(args.strict_max_parse_score_drop)),
         "golden_similarity_mean": _pick("golden_similarity_mean", float(args.strict_max_golden_similarity_drop)),
         "golden_coverage_ratio_mean": _pick("golden_coverage_ratio_mean", float(args.strict_max_golden_coverage_drop)),
+        "mean_seal_recall": _pick("mean_seal_recall", float(args.strict_max_seal_recall_drop)),
+        "mean_equation_recall": _pick("mean_equation_recall", float(args.strict_max_equation_recall_drop)),
+        "mean_table_recall": _pick("mean_table_recall", float(args.strict_max_table_recall_drop)),
+        "mean_image_recall": _pick("mean_image_recall", float(args.strict_max_image_recall_drop)),
     }
 
 
@@ -404,6 +408,30 @@ def main() -> int:
         type=float,
         default=0.05,
         help="Allowed maximum drop for summary.<backend>.golden_coverage_ratio_mean under --strict.",
+    )
+    ap.add_argument(
+        "--strict-max-seal-recall-drop",
+        type=float,
+        default=0.10,
+        help="Allowed maximum drop for summary.<backend>.mean_seal_recall under --strict.",
+    )
+    ap.add_argument(
+        "--strict-max-equation-recall-drop",
+        type=float,
+        default=0.10,
+        help="Allowed maximum drop for summary.<backend>.mean_equation_recall under --strict.",
+    )
+    ap.add_argument(
+        "--strict-max-table-recall-drop",
+        type=float,
+        default=0.10,
+        help="Allowed maximum drop for summary.<backend>.mean_table_recall under --strict.",
+    )
+    ap.add_argument(
+        "--strict-max-image-recall-drop",
+        type=float,
+        default=0.10,
+        help="Allowed maximum drop for summary.<backend>.mean_image_recall under --strict.",
     )
     ap.add_argument(
         "--strict-profile",
