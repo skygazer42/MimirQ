@@ -29,6 +29,7 @@ from app.models.document import DocumentChunk, DocumentParsedContent
 from app.parsing.artifact_stats import compute_parsing_artifact_stats
 from app.parsing.enrich.formula_ocr import add_formula_latex_blocks
 from app.parsing.enrich.image_caption import add_image_captions
+from app.parsing.enrich.image_code import add_image_code_blocks
 from app.parsing.enrich.vlm_image_caption import add_vlm_image_captions
 from app.parsing.errors import ParsingError
 from app.parsing.preprocess.file_preprocessor import preprocess_file
@@ -125,6 +126,8 @@ class InlineAssetResult:
     documents: list[Document]
     uploaded_img_ids: list[str]
     next_asset_index: int
+    image_codes_added: int = 0
+    image_code_audit: dict[str, Any] | None = None
     captions_added: int = 0
     caption_backend: str | None = None
     caption_audit: dict[str, Any] | None = None
@@ -1002,13 +1005,16 @@ class InlineAssetStage:
         caption_enabled = bool(image_caption_enabled)
         formula_url = str(getattr(settings, "FORMULA_OCR_API_URL", "") or "").strip()
         formula_enabled = bool(getattr(settings, "FORMULA_OCR_ENABLED", False)) and bool(formula_url)
-        if not upload_enabled and not caption_enabled and not formula_enabled:
+        image_code_enabled = True
+        if not upload_enabled and not caption_enabled and not formula_enabled and not image_code_enabled:
             return InlineAssetResult(documents=documents, uploaded_img_ids=[], next_asset_index=int(start_index or 0))
 
         inline_cache: dict[str, str] = {}
         asset_idx = int(start_index or 0)
         uploaded: list[str] = []
         processed_docs: list[Document] = []
+        image_codes_added_total = 0
+        image_code_audit: dict[str, Any] | None = None
         captions_added_total = 0
         caption_backend: str | None = None
         caption_audit: dict[str, Any] | None = None
@@ -1026,6 +1032,32 @@ class InlineAssetStage:
 
             next_content = content
             next_meta = dict(original_meta)
+            if next_content:
+                try:
+                    next_content, added, audit = add_image_code_blocks(
+                        next_content,
+                        origin_path=origin_for_doc,
+                    )
+                    image_codes_added_total += int(added or 0)
+                    image_code_audit = audit.to_dict()
+                    raw_code_elements = getattr(audit, "code_elements", None)
+                    if isinstance(raw_code_elements, list) and raw_code_elements:
+                        derived = [item for item in (next_meta.get("derived_elements") or []) if isinstance(item, dict)]
+                        page_hint = next_meta.get("element_page") or next_meta.get("page")
+                        for raw_element in raw_code_elements:
+                            if not isinstance(raw_element, dict):
+                                continue
+                            item = dict(raw_element)
+                            if item.get("page") is None and page_hint is not None:
+                                item["page"] = page_hint
+                            if not str(item.get("id") or "").strip():
+                                page_part = item.get("page") if item.get("page") is not None else "na"
+                                item["id"] = f"image_code:{page_part}:{len(derived)}"
+                            derived.append(item)
+                        if derived:
+                            next_meta["derived_elements"] = derived
+                except Exception:
+                    pass
             # Opt3: Formula OCR / LaTeX conversion (best-effort) before asset rewriting
             # so we can still read local image files.
             if formula_enabled and next_content:
@@ -1128,6 +1160,8 @@ class InlineAssetStage:
             documents=processed_docs,
             uploaded_img_ids=uploaded,
             next_asset_index=asset_idx,
+            image_codes_added=int(image_codes_added_total),
+            image_code_audit=(dict(image_code_audit) if isinstance(image_code_audit, dict) else None),
             captions_added=int(captions_added_total),
             caption_backend=caption_backend,
             caption_audit=(dict(caption_audit) if isinstance(caption_audit, dict) else None),
@@ -2634,13 +2668,18 @@ class DocumentProcessorService:
                             document_img_ids.add(iid)
                     # Persist optional enrichment audit (best-effort; useful for dashboards/debug).
                     if (
-                        int(getattr(inline_result, "captions_added", 0) or 0) > 0
+                        int(getattr(inline_result, "image_codes_added", 0) or 0) > 0
+                        or isinstance(getattr(inline_result, "image_code_audit", None), dict)
+                        or int(getattr(inline_result, "captions_added", 0) or 0) > 0
                         or isinstance(getattr(inline_result, "caption_audit", None), dict)
                         or int(getattr(inline_result, "formulas_added", 0) or 0) > 0
                         or isinstance(getattr(inline_result, "formula_audit", None), dict)
                     ):
                         try:
                             meta_patch = dict(db_document.doc_metadata or {})
+                            meta_patch["image_codes_added"] = int(getattr(inline_result, "image_codes_added", 0) or 0)
+                            if isinstance(getattr(inline_result, "image_code_audit", None), dict):
+                                meta_patch["image_code_audit"] = dict(inline_result.image_code_audit or {})
                             meta_patch["image_captions_added"] = int(getattr(inline_result, "captions_added", 0) or 0)
                             if getattr(inline_result, "caption_backend", None):
                                 meta_patch["image_caption_backend"] = str(inline_result.caption_backend or "")
@@ -2876,13 +2915,18 @@ class DocumentProcessorService:
                             document_img_ids.add(iid)
                     # Persist optional enrichment audit (best-effort; useful for dashboards/debug).
                     if (
-                        int(getattr(inline_result, "captions_added", 0) or 0) > 0
+                        int(getattr(inline_result, "image_codes_added", 0) or 0) > 0
+                        or isinstance(getattr(inline_result, "image_code_audit", None), dict)
+                        or int(getattr(inline_result, "captions_added", 0) or 0) > 0
                         or isinstance(getattr(inline_result, "caption_audit", None), dict)
                         or int(getattr(inline_result, "formulas_added", 0) or 0) > 0
                         or isinstance(getattr(inline_result, "formula_audit", None), dict)
                     ):
                         try:
                             meta_patch = dict(db_document.doc_metadata or {})
+                            meta_patch["image_codes_added"] = int(getattr(inline_result, "image_codes_added", 0) or 0)
+                            if isinstance(getattr(inline_result, "image_code_audit", None), dict):
+                                meta_patch["image_code_audit"] = dict(inline_result.image_code_audit or {})
                             meta_patch["image_captions_added"] = int(getattr(inline_result, "captions_added", 0) or 0)
                             if getattr(inline_result, "caption_backend", None):
                                 meta_patch["image_caption_backend"] = str(inline_result.caption_backend or "")
