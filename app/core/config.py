@@ -455,7 +455,7 @@ class Settings(BaseSettings):
     ORIENTATION_ENABLED: bool = False
     # Optional handwriting/noise cleanup before parsing.
     HANDWRITING_CLEANUP_ENABLED: bool = False
-    # auto | local | http | skip
+    # auto | heuristic | local | http | skip
     HANDWRITING_CLEANUP_BACKEND: str = "auto"
     HANDWRITING_CLEANUP_MODEL_PATH: str = ""
     HANDWRITING_CLEANUP_API_URL: str = ""
