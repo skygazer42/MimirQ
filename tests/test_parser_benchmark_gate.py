@@ -93,6 +93,8 @@ def test_resolve_strict_thresholds_prefers_profile_values() -> None:
         strict_max_table_recall_drop=0.08,
         strict_max_image_recall_drop=0.09,
         strict_max_chart_image_recall_drop=0.11,
+        strict_max_qr_image_recall_drop=0.12,
+        strict_max_diagram_image_recall_drop=0.13,
     )
     thresholds = mod.resolve_strict_thresholds(  # type: ignore[attr-defined]
         args=args,
@@ -106,6 +108,8 @@ def test_resolve_strict_thresholds_prefers_profile_values() -> None:
                 "mean_seal_recall": 0.5,
                 "mean_equation_recall": 0.4,
                 "mean_chart_image_recall": 0.3,
+                "mean_qr_image_recall": 0.2,
+                "mean_diagram_image_recall": 0.1,
             },
         },
     )
@@ -118,6 +122,8 @@ def test_resolve_strict_thresholds_prefers_profile_values() -> None:
     assert thresholds["mean_table_recall"] == pytest.approx(0.08)
     assert thresholds["mean_image_recall"] == pytest.approx(0.09)
     assert thresholds["mean_chart_image_recall"] == pytest.approx(0.3)
+    assert thresholds["mean_qr_image_recall"] == pytest.approx(0.2)
+    assert thresholds["mean_diagram_image_recall"] == pytest.approx(0.1)
 
 
 def test_load_strict_profile_requires_known_schema(tmp_path: Path) -> None:
