@@ -47,6 +47,10 @@ def _coerce_float(value: Any) -> float | None:
         return None
 
 
+def _normalize_string(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
 def _get_metadata(item: Any) -> dict[str, Any]:
     if isinstance(item, Mapping):
         meta = item.get("metadata")
@@ -288,7 +292,7 @@ def _normalize_derived_elements(
         if bbox is None:
             bbox = _extract_bbox(raw)
         attributes = _extract_derived_attributes(raw)
-        visual_kind = _normalize_kind(raw.get("visual_kind")) or _infer_visual_kind(kind=kind, text=text, attributes=attributes)
+        visual_kind = _normalize_string(raw.get("visual_kind")) or _infer_visual_kind(kind=kind, text=text, attributes=attributes)
         if visual_kind:
             attrs = dict(attributes or {})
             attrs["visual_kind"] = visual_kind
