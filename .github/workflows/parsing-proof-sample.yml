@@ -1,0 +1,62 @@
+name: Parsing Proof Sample
+
+on:
+  workflow_dispatch:
+
+jobs:
+  parsing-proof-sample:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      LLM_MOCK_ENABLED: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir --retries 5 --timeout 120 \
+            "torch @ https://download-r2.pytorch.org/whl/cpu/torch-2.10.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
+            "torchvision @ https://download-r2.pytorch.org/whl/cpu/torchvision-0.25.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl"
+          python -m pip install --no-cache-dir --retries 10 --timeout 120 -r requirements.txt
+
+      - name: Run sample broader parsing proof sweep
+        run: |
+          mkdir -p artifacts/parsing_proof_broader_sample
+          python scripts/run_sample_parsing_retrieval_proof.py \
+            --out-dir artifacts/parsing_proof_broader_sample
+
+      - name: Build broader parsing proof summary artifacts
+        run: |
+          python scripts/build_parsing_retrieval_proof_artifacts.py \
+            --batch-report artifacts/parsing_proof_broader_sample/batch.report.json \
+            --summary-out artifacts/parsing_proof_broader_sample/summary.json \
+            --report-out artifacts/parsing_proof_broader_sample/report.json
+
+      - name: Evaluate broader parsing proof thresholds
+        run: |
+          python scripts/parsing_retrieval_proof_gate.py \
+            --input artifacts/parsing_proof_broader_sample/summary.json \
+            --thresholds ci/parsing_retrieval_proof_thresholds.v1.json \
+            --out artifacts/parsing_proof_broader_sample/gate.json || true
+
+      - name: Upload parsing proof artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parsing-proof-sample
+          path: |
+            artifacts/parsing_proof_broader_sample/parsing_proof_batch.spec.json
+            artifacts/parsing_proof_broader_sample/*.fixture.json
+            artifacts/parsing_proof_broader_sample/*.report.json
+            artifacts/parsing_proof_broader_sample/summary.json
+            artifacts/parsing_proof_broader_sample/gate.json
