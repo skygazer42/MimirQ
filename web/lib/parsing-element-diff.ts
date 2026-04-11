@@ -11,6 +11,8 @@ export type ParsingElementDiffSummary = {
   removedByKind: ElementCountMap
   addedSealTexts: string[]
   removedSealTexts: string[]
+  addedImageVisualKinds: string[]
+  removedImageVisualKinds: string[]
 }
 
 function normalizeText(value: string | null | undefined): string {
@@ -24,7 +26,7 @@ function normalizePages(pages: number[] | null | undefined): string {
     .join(',')
 }
 
-function elementSignature(element: Pick<ParsingElement, 'kind' | 'page' | 'pages' | 'text' | 'bbox'>): string {
+function elementSignature(element: Pick<ParsingElement, 'kind' | 'page' | 'pages' | 'visual_kind' | 'text' | 'bbox'>): string {
   const bbox = element.bbox
     ? `${element.bbox.x0}:${element.bbox.y0}:${element.bbox.x1}:${element.bbox.y1}`
     : 'na'
@@ -32,6 +34,7 @@ function elementSignature(element: Pick<ParsingElement, 'kind' | 'page' | 'pages
     String(element.kind || 'unknown'),
     typeof element.page === 'number' ? String(element.page) : 'na',
     normalizePages(element.pages),
+    String(element.visual_kind || '').trim().toLowerCase() || 'na',
     normalizeText(element.text),
     bbox,
   ].join('|')
@@ -42,8 +45,8 @@ function incrementCount(map: ElementCountMap, kind: ElementKind) {
 }
 
 export function diffParsingElements(
-  base: Array<Pick<ParsingElement, 'id' | 'kind' | 'page' | 'pages' | 'text' | 'bbox'>> | null | undefined,
-  compare: Array<Pick<ParsingElement, 'id' | 'kind' | 'page' | 'pages' | 'text' | 'bbox'>> | null | undefined
+  base: Array<Pick<ParsingElement, 'id' | 'kind' | 'page' | 'pages' | 'visual_kind' | 'text' | 'bbox'>> | null | undefined,
+  compare: Array<Pick<ParsingElement, 'id' | 'kind' | 'page' | 'pages' | 'visual_kind' | 'text' | 'bbox'>> | null | undefined
 ): ParsingElementDiffSummary {
   const baseItems = base || []
   const compareItems = compare || []
@@ -53,6 +56,8 @@ export function diffParsingElements(
   const removedByKind: ElementCountMap = {}
   const addedSealTexts: string[] = []
   const removedSealTexts: string[] = []
+  const addedImageVisualKinds: string[] = []
+  const removedImageVisualKinds: string[] = []
 
   for (const element of compareItems) {
     const signature = elementSignature(element)
@@ -61,6 +66,10 @@ export function diffParsingElements(
     if (element.kind === 'seal') {
       const text = normalizeText(element.text)
       if (text) addedSealTexts.push(text)
+    }
+    if (element.kind === 'image') {
+      const visualKind = String(element.visual_kind || '').trim().toLowerCase()
+      if (visualKind) addedImageVisualKinds.push(visualKind)
     }
   }
 
@@ -72,6 +81,10 @@ export function diffParsingElements(
       const text = normalizeText(element.text)
       if (text) removedSealTexts.push(text)
     }
+    if (element.kind === 'image') {
+      const visualKind = String(element.visual_kind || '').trim().toLowerCase()
+      if (visualKind) removedImageVisualKinds.push(visualKind)
+    }
   }
 
   return {
@@ -81,5 +94,7 @@ export function diffParsingElements(
     removedByKind,
     addedSealTexts,
     removedSealTexts,
+    addedImageVisualKinds,
+    removedImageVisualKinds,
   }
 }
