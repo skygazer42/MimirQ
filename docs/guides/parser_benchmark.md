@@ -94,6 +94,9 @@ python3 scripts/parser_benchmark.py \
 ## Output
 
 The report (`mimirq.parser_benchmark.v1`) includes:
+- top-level reproducibility fields:
+  - `fixture_hash`
+  - `profile_hash`
 - Per-case/per-backend attempts with:
   - `elapsed_ms`
   - `text_quality` / `parse_quality`

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import hashlib
 import json
 import re
 import sys
@@ -52,6 +53,14 @@ def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+def _stable_hash_text(text: str) -> str:
+    return hashlib.sha256(str(text or "").encode("utf-8", errors="ignore")).hexdigest()[:24]
+
+
+def _stable_hash_obj(obj: Any) -> str:
+    return _stable_hash_text(json.dumps(obj, ensure_ascii=False, sort_keys=True))
+
+
 def _coerce_specialty_elements(value: Any) -> dict[str, int] | None:
     if not isinstance(value, dict):
         return None
@@ -100,6 +109,49 @@ def _count_specialty_elements(documents: Iterable[Any]) -> dict[str, int]:
         if kind in counts:
             counts[kind] += 1
     return counts
+
+
+def _build_fixture_hash(*, cases: list[BenchmarkCase], manifest_path: Path | None) -> str:
+    payload: list[dict[str, Any]] = []
+    if manifest_path and manifest_path.exists():
+        payload.append(
+            {
+                "manifest_path": str(manifest_path),
+                "manifest_hash": _stable_hash_text(manifest_path.read_text(encoding="utf-8", errors="replace")),
+            }
+        )
+
+    for case in cases:
+        row: dict[str, Any] = {
+            "id": str(case.case_id),
+            "path": str(case.path),
+            "path_hash": _stable_hash_text(case.path.read_text(encoding="utf-8", errors="replace")) if case.path.exists() else None,
+            "golden_markdown_path": (str(case.golden_markdown_path) if case.golden_markdown_path else None),
+            "golden_markdown_hash": (
+                _stable_hash_text(case.golden_markdown_path.read_text(encoding="utf-8", errors="replace"))
+                if case.golden_markdown_path and case.golden_markdown_path.exists()
+                else None
+            ),
+            "golden_specialty_elements": dict(case.golden_specialty_elements or {}) if isinstance(case.golden_specialty_elements, dict) else None,
+        }
+        payload.append(row)
+    return _stable_hash_obj(payload)
+
+
+def _build_profile_hash(
+    *,
+    strict_profile: dict[str, Any] | None,
+    strict_thresholds: dict[str, float],
+    backends: list[str],
+    max_files: int,
+) -> str:
+    payload = {
+        "strict_profile": dict(strict_profile or {}) if isinstance(strict_profile, dict) else {},
+        "strict_thresholds": dict(strict_thresholds or {}),
+        "backends": list(backends or []),
+        "max_files": int(max_files or 0),
+    }
+    return _stable_hash_obj(payload)
 
 
 def _markdown_to_plain_text(markdown: str) -> str:
@@ -483,6 +535,13 @@ def main() -> int:
         "manifest": str(manifest_path) if manifest_path else None,
         "baseline": str(baseline_path) if baseline_path else None,
         "strict_profile": str(strict_profile_path) if strict_profile_path else None,
+        "fixture_hash": _build_fixture_hash(cases=cases, manifest_path=manifest_path),
+        "profile_hash": _build_profile_hash(
+            strict_profile=(strict_profile if isinstance(strict_profile, dict) else {}),
+            strict_thresholds=strict_thresholds,
+            backends=backends,
+            max_files=int(args.max_files or 0),
+        ),
         "backends": backends,
         "cases": [],
         "summary": {},
