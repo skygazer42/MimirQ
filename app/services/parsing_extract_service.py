@@ -90,10 +90,13 @@ def _match_element(
 
 def _build_evidence(element: Mapping[str, Any], *, score: float, value: str) -> dict[str, Any]:
     bbox = element.get("bbox") if isinstance(element.get("bbox"), Mapping) else None
+    raw_pages = element.get("pages") if isinstance(element.get("pages"), list) else None
+    pages = [int(item) for item in raw_pages if isinstance(item, int)] if raw_pages else None
     return {
         "element_id": str(element.get("id") or "").strip() or None,
         "kind": _normalize_kind(element.get("kind")) or None,
         "page": int(element.get("page")) if isinstance(element.get("page"), int) else None,
+        "pages": pages,
         "bbox": dict(bbox) if isinstance(bbox, Mapping) else None,
         "text": value or None,
         "score": round(float(score), 3),
