@@ -28,6 +28,7 @@ class BenchmarkCase:
     golden_specialty_elements: dict[str, int] | None = None
     golden_image_visual_kinds: dict[str, int] | None = None
     golden_image_code_values: dict[str, list[str]] | None = None
+    golden_table_continuity: dict[str, Any] | None = None
 
 
 _HEADING_RE = re.compile(r"(?m)^#{1,6}\s+\S+")
@@ -39,6 +40,7 @@ _MD_IMAGE_CAPTURE_RE = re.compile(r"!\[[^\]]*\]\(([^)\s]+)")
 _HTML_IMG_RE = re.compile(r"(?i)<img\\b[^>]*>")
 _HTML_IMG_TAG_RE = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
 _HTML_IMG_ATTR_RE = re.compile(r"(src)\s*=\s*([\"'])(.*?)\2", re.IGNORECASE)
+_POSITION_TAG_INLINE_RE = re.compile(r"@@[0-9-]+\t[0-9.]+\t[0-9.]+\t[0-9.]+\t[0-9.]+##")
 _STRICT_PROFILE_SCHEMA_V1 = "mimirq.parser_benchmark_strict_profile.v1"
 _SPECIALTY_KINDS = ("seal", "equation", "table", "image")
 _IMAGE_VISUAL_KINDS = ("chart", "qr", "barcode", "diagram")
@@ -150,11 +152,76 @@ def _load_image_code_values(input_dir: Path, row: dict[str, Any]) -> dict[str, l
     return out or None
 
 
+def _load_table_continuity(input_dir: Path, row: dict[str, Any]) -> dict[str, Any] | None:
+    payload = _load_specialty_payload(input_dir, row)
+    raw = (payload or {}).get("table_continuity")
+    if not isinstance(raw, dict):
+        return None
+    header = str(raw.get("header") or "").strip()
+    rows = raw.get("rows")
+    header_occurrences = raw.get("header_occurrences")
+    out: dict[str, Any] = {}
+    if header:
+        out["header"] = header
+    try:
+        if rows is not None:
+            out["rows"] = max(0, int(rows))
+    except Exception:
+        pass
+    try:
+        if header_occurrences is not None:
+            out["header_occurrences"] = max(0, int(header_occurrences))
+    except Exception:
+        pass
+    return out or None
+
+
 def _join_documents_to_markdown(documents: Iterable[Any]) -> str:
     parts: list[str] = []
+    saw_image_ref = False
     for d in documents or []:
-        parts.append(str(getattr(d, "page_content", "") or ""))
+        text = str(getattr(d, "page_content", "") or "")
+        if _MD_IMAGE_RE.search(text) or _HTML_IMG_RE.search(text):
+            saw_image_ref = True
+        meta = getattr(d, "metadata", None)
+        if isinstance(meta, dict):
+            doc_type = str(meta.get("doc_type_kwd") or meta.get("content_type") or "").strip().lower()
+            has_image_ref = bool(_MD_IMAGE_RE.search(text) or _HTML_IMG_RE.search(text))
+            if doc_type == "image" and not has_image_ref and not saw_image_ref:
+                visual_kind = str(meta.get("visual_kind") or "").strip().lower() or "image"
+                page = str(meta.get("page") or "na").strip() or "na"
+                image_index = str(meta.get("image_index") or 0).strip() or "0"
+                synthetic_ref = f"embedded-page-{page}-image-{image_index}.png"
+                text = f"![{visual_kind}]({synthetic_ref})" + (f"\n\n{text}" if text else "")
+                saw_image_ref = True
+        parts.append(text)
     return "\n\n".join(parts).strip()
+
+
+def _table_continuity_recall(*, golden_markdown: str, parsed_markdown: str) -> float | None:
+    golden_blocks = _extract_markdown_table_blocks(golden_markdown)
+    if not golden_blocks:
+        return None
+    target = golden_blocks[0]
+    expectation = {
+        "header": str(target[0] or "").strip() if target else "",
+        "rows": max(0, len(target) - 2) if len(target) >= 2 else 0,
+        "header_occurrences": 1,
+    }
+    return _score_table_continuity(parsed_markdown, expectation)
+
+
+def _reading_order_score(markdown: str) -> float | None:
+    from app.parsing.quality.reading_order import score_reading_order
+
+    result = score_reading_order(markdown)
+    if not isinstance(result, dict):
+        return None
+    raw = result.get("score")
+    try:
+        return None if raw is None else round(float(raw), 4)
+    except Exception:
+        return None
 
 
 def _count_specialty_elements(documents: Iterable[Any]) -> dict[str, int]:
@@ -240,6 +307,62 @@ def _augment_documents_with_inline_image_codes(*, documents: list[Any], markdown
     return derived
 
 
+def _extract_markdown_table_blocks(markdown: str) -> list[list[str]]:
+    blocks: list[list[str]] = []
+    current: list[str] = []
+    for raw_line in str(markdown or "").splitlines():
+        line = _POSITION_TAG_INLINE_RE.sub("", raw_line).rstrip()
+        stripped = line.strip()
+        is_table_row = stripped.startswith("|") and stripped.endswith("|") and stripped.count("|") >= 2
+        if is_table_row:
+            current.append(stripped)
+            continue
+        if current:
+            blocks.append(current)
+            current = []
+    if current:
+        blocks.append(current)
+    return blocks
+
+
+def _score_table_continuity(markdown: str, expectation: dict[str, Any] | None) -> float | None:
+    if not isinstance(expectation, dict):
+        return None
+    blocks = _extract_markdown_table_blocks(markdown)
+    if not blocks:
+        return 0.0
+
+    header = str(expectation.get("header") or "").strip()
+    expected_rows = expectation.get("rows")
+    expected_header_occurrences = expectation.get("header_occurrences")
+
+    target = blocks[0]
+    if header:
+        for block in blocks:
+            if block and block[0] == header:
+                target = block
+                break
+
+    scores: list[float] = []
+    if header:
+        actual_occurrences = str(markdown or "").count(header)
+        target_occurrences = max(1, int(expected_header_occurrences or 1))
+        header_score = 1.0 if actual_occurrences == target_occurrences else 0.0
+        scores.append(float(header_score))
+
+    try:
+        expected_rows_i = max(0, int(expected_rows))
+    except Exception:
+        expected_rows_i = 0
+    if expected_rows_i > 0:
+        actual_rows = max(0, len(target) - 2) if len(target) >= 2 else 0
+        row_score = min(float(actual_rows) / float(expected_rows_i), 1.0)
+        scores.append(float(row_score))
+
+    scores.append(1.0 if target else 0.0)
+    return round(sum(scores) / float(len(scores)), 4) if scores else None
+
+
 def _build_fixture_hash(*, cases: list[BenchmarkCase], manifest_path: Path | None) -> str:
     payload: list[dict[str, Any]] = []
     if manifest_path and manifest_path.exists():
@@ -279,6 +402,8 @@ def _build_fixture_hash(*, cases: list[BenchmarkCase], manifest_path: Path | Non
             "case_root": str(case_root),
             "case_files": case_files,
         }
+        if isinstance(case.golden_table_continuity, dict) and case.golden_table_continuity:
+            row["golden_table_continuity"] = dict(case.golden_table_continuity or {})
         payload.append(row)
     return _stable_hash_obj(payload)
 
@@ -301,6 +426,7 @@ def _build_profile_hash(
 
 def _markdown_to_plain_text(markdown: str) -> str:
     s = str(markdown or "")
+    s = _POSITION_TAG_INLINE_RE.sub("", s)
     # Drop fenced code blocks (cheap).
     s = re.sub(r"```[\s\S]*?```", " ", s)
     # Inline code.
@@ -386,6 +512,7 @@ def _load_cases(input_dir: Path, *, manifest_path: Path | None, max_files: int) 
                     golden_specialty_elements=_load_specialty_elements(input_dir, row),
                     golden_image_visual_kinds=_load_image_visual_kinds(input_dir, row),
                     golden_image_code_values=_load_image_code_values(input_dir, row),
+                    golden_table_continuity=_load_table_continuity(input_dir, row),
                 )
             )
         return cases[: max(0, int(max_files or 0))]
@@ -756,6 +883,7 @@ def main() -> int:
         raise SystemExit("no_cases_found")
 
     from app.parsing.factory import parser_factory
+    from app.parsing.processors.cross_page_merge import merge_cross_page_documents
     from app.parsing.quality.document_quality import score_document_parse_quality
     from app.parsing.quality.scorer import score_pdf_quality
     from app.parsing.quality.text_quality import score_parsed_text_quality
@@ -790,6 +918,8 @@ def main() -> int:
             "similarity": [],
             "coverage_ratio": [],
             "image_ref_recall": [],
+            "table_continuity_recall": [],
+            "reading_order_score": [],
             "specialty_recall": {kind: [] for kind in _SPECIALTY_KINDS},
             "specialty_image_visual_kind_recall": {},
             "specialty_image_code_value_recall": {},
@@ -819,6 +949,9 @@ def main() -> int:
         golden_image_code_values = (
             dict(case.golden_image_code_values or {}) if isinstance(case.golden_image_code_values, dict) else None
         )
+        golden_table_continuity = (
+            dict(case.golden_table_continuity or {}) if isinstance(case.golden_table_continuity, dict) else None
+        )
         missing_input_assets = _find_missing_local_markdown_assets(case.path)
         missing_local_assets = _find_missing_local_markdown_assets(case.golden_markdown_path)
 
@@ -834,9 +967,10 @@ def main() -> int:
                     "specialty_elements": golden_specialty,
                     "image_visual_kinds": golden_image_visual_kinds,
                     "image_code_values": golden_image_code_values,
+                    "table_continuity": golden_table_continuity,
                     "missing_local_assets": missing_local_assets or None,
                 }
-                if golden_struct or golden_specialty or golden_image_visual_kinds or golden_image_code_values
+                if golden_struct or golden_specialty or golden_image_visual_kinds or golden_image_code_values or golden_table_continuity
                 else None
             ),
             "attempts": [],
@@ -870,6 +1004,7 @@ def main() -> int:
                     parser_backend=backend,
                     pdf_quality=pdf_quality,
                 )
+                docs = merge_cross_page_documents(list(docs or []))
                 md = _join_documents_to_markdown(docs)
                 metric_docs = _augment_documents_with_inline_image_codes(
                     documents=list(docs or []),
@@ -879,6 +1014,7 @@ def main() -> int:
                 tq = score_parsed_text_quality(md).to_dict()
                 pq = score_document_parse_quality(pdf_quality=pdf_quality, parsed_text_quality=tq)
                 struct = _structure_metrics(md)
+                reading_order_score = _reading_order_score(md)
                 specialty_counts = _count_specialty_elements(metric_docs)
                 image_visual_kind_counts = _count_image_visual_kinds(metric_docs)
                 image_code_values = _collect_image_code_values(metric_docs)
@@ -891,11 +1027,14 @@ def main() -> int:
                         "text_quality": tq,
                         "parse_quality": pq,
                         "structure": struct,
+                        "reading_order_score": reading_order_score,
                         "specialty_elements": specialty_counts,
                         "specialty_image_visual_kinds": image_visual_kind_counts,
                         "specialty_image_code_values": image_code_values,
                     }
                 )
+                if reading_order_score is not None:
+                    by_backend[backend]["reading_order_score"].append(float(reading_order_score))
                 if golden_md:
                     sim = _similarity(md, golden_md)
                     attempt["golden_similarity"] = round(float(sim), 4)
@@ -908,6 +1047,12 @@ def main() -> int:
                         img_recall = float(struct.get("image_refs") or 0) / float(golden_image_refs)
                         attempt["golden_image_ref_recall"] = round(float(img_recall), 4)
                         by_backend[backend]["image_ref_recall"].append(float(img_recall))
+                    table_continuity = _score_table_continuity(md, golden_table_continuity)
+                    if table_continuity is None:
+                        table_continuity = _table_continuity_recall(golden_markdown=golden_md, parsed_markdown=md)
+                    if table_continuity is not None:
+                        attempt["table_continuity_recall"] = round(float(table_continuity), 4)
+                        by_backend[backend]["table_continuity_recall"].append(float(table_continuity))
                 if golden_specialty:
                     specialty_recall: dict[str, float] = {}
                     for kind in _SPECIALTY_KINDS:
@@ -978,6 +1123,8 @@ def main() -> int:
         sims = [float(x) for x in stats.get("similarity") or []]
         covs = [float(x) for x in stats.get("coverage_ratio") or []]
         img_recalls = [float(x) for x in stats.get("image_ref_recall") or []]
+        table_continuity = [float(x) for x in stats.get("table_continuity_recall") or []]
+        reading_order_scores = [float(x) for x in stats.get("reading_order_score") or []]
         specialty_recalls = stats.get("specialty_recall") if isinstance(stats.get("specialty_recall"), dict) else {}
         image_visual_kind_recalls = (
             stats.get("specialty_image_visual_kind_recall") if isinstance(stats.get("specialty_image_visual_kind_recall"), dict) else {}
@@ -1003,6 +1150,8 @@ def main() -> int:
             "golden_similarity_mean": (round(sum(sims) / len(sims), 4) if sims else None),
             "golden_coverage_ratio_mean": (round(sum(covs) / len(covs), 4) if covs else None),
             "golden_image_ref_recall_mean": (round(sum(img_recalls) / len(img_recalls), 4) if img_recalls else None),
+            "mean_table_continuity_recall": (round(sum(table_continuity) / len(table_continuity), 4) if table_continuity else None),
+            "mean_reading_order_score": (round(sum(reading_order_scores) / len(reading_order_scores), 4) if reading_order_scores else None),
         }
         for kind in _SPECIALTY_KINDS:
             values = specialty_recalls.get(kind) if isinstance(specialty_recalls, dict) else None

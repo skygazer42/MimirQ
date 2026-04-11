@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 
 import cv2
+import fitz
 from PIL import Image, ImageDraw
 
 
@@ -75,6 +76,236 @@ def _write_diagram(path: Path) -> None:
     image.save(path)
 
 
+def _draw_text_block(draw: ImageDraw.ImageDraw, *, x: int, y: int, lines: list[str], fill: tuple[int, int, int]) -> int:
+    cursor = y
+    for line in lines:
+        draw.text((x, cursor), line, fill=fill)
+        cursor += 22
+    return cursor
+
+
+def _write_table_page(
+    path: Path,
+    *,
+    header: list[str],
+    rows: list[list[str]],
+    title: str = "",
+    merged_header: str = "",
+    borderless: bool = False,
+    leading_paragraph: list[str] | None = None,
+) -> None:
+    image = Image.new("RGB", (900, 1200), color=(250, 250, 249))
+    draw = ImageDraw.Draw(image)
+    ink = (51, 65, 85)
+    accent = (100, 116, 139)
+    left = 72
+    top = 72
+    width = 756
+    row_height = 58
+    col_width = width // max(1, len(header))
+    cursor_y = top
+
+    if title:
+        draw.text((left, cursor_y), title, fill=ink)
+        cursor_y += 36
+    if leading_paragraph:
+        cursor_y = _draw_text_block(draw, x=left, y=cursor_y, lines=list(leading_paragraph), fill=ink) + 20
+
+    table_top = cursor_y
+    if merged_header:
+        draw.rectangle([left, cursor_y, left + width, cursor_y + row_height], outline=accent, width=2)
+        draw.text((left + 16, cursor_y + 16), merged_header, fill=ink)
+        cursor_y += row_height
+
+    if borderless:
+        draw.text((left, cursor_y), "   ".join(header), fill=ink)
+        cursor_y += row_height
+        draw.line([left, cursor_y - 10, left + width, cursor_y - 10], fill=accent, width=2)
+        for row in rows:
+            draw.text((left, cursor_y), "   ".join(row), fill=ink)
+            cursor_y += row_height
+    else:
+        total_rows = 1 + len(rows)
+        draw.rectangle([left, cursor_y, left + width, cursor_y + row_height * total_rows], outline=accent, width=2)
+        for index in range(1, len(header)):
+            x = left + index * col_width
+            draw.line([x, cursor_y, x, cursor_y + row_height * total_rows], fill=accent, width=2)
+        for row_index in range(1, total_rows):
+            y = cursor_y + row_index * row_height
+            draw.line([left, y, left + width, y], fill=accent, width=2)
+        for col_index, cell in enumerate(header):
+            draw.text((left + col_index * col_width + 12, cursor_y + 16), cell, fill=ink)
+        for row_index, row in enumerate(rows, start=1):
+            for col_index, cell in enumerate(row):
+                draw.text((left + col_index * col_width + 12, cursor_y + row_index * row_height + 16), cell, fill=ink)
+        cursor_y += row_height * total_rows
+
+    draw.text((left, cursor_y + 28), f"Rows: {len(rows)}", fill=accent)
+    if table_top > top:
+        draw.line([left, table_top - 18, left + width, table_top - 18], fill=(226, 232, 240), width=1)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    image.save(path)
+
+
+def _write_pdf_from_image(image_path: Path, pdf_path: Path) -> None:
+    with Image.open(image_path) as image:
+        pdf_path.parent.mkdir(parents=True, exist_ok=True)
+        image.convert("RGB").save(pdf_path, "PDF")
+
+
+def _write_pdf_from_images(image_paths: list[Path], pdf_path: Path) -> None:
+    if not image_paths:
+        return
+    loaded: list[Image.Image] = []
+    try:
+        for path in image_paths:
+            loaded.append(Image.open(path).convert("RGB"))
+        pdf_path.parent.mkdir(parents=True, exist_ok=True)
+        head, tail = loaded[0], loaded[1:]
+        head.save(pdf_path, "PDF", save_all=True, append_images=tail)
+    finally:
+        for image in loaded:
+            image.close()
+
+
+def _write_text_pdf(page_lines: list[list[str]], pdf_path: Path) -> None:
+    doc = fitz.open()
+    try:
+        for lines in page_lines:
+            page = doc.new_page(width=612, height=792)
+            page.insert_textbox(
+                fitz.Rect(48, 48, 564, 744),
+                "\n".join(lines),
+                fontname="courier",
+                fontsize=12,
+                lineheight=1.4,
+            )
+        pdf_path.parent.mkdir(parents=True, exist_ok=True)
+        doc.save(pdf_path)
+    finally:
+        doc.close()
+
+
+def _write_two_column_pdf(pdf_path: Path) -> None:
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=612, height=792)
+        page.insert_textbox(
+            fitz.Rect(48, 60, 276, 744),
+            "\n\n".join(
+                [
+                    "North region revenue increased steadily.",
+                    "Operating margin held above target.",
+                    "Backlog remained within forecast.",
+                ]
+            ),
+            fontname="courier",
+            fontsize=12,
+            lineheight=1.4,
+        )
+        page.insert_textbox(
+            fitz.Rect(336, 60, 564, 744),
+            "\n\n".join(
+                [
+                    "East region revenue accelerated in Q3.",
+                    "Customer churn declined year over year.",
+                    "Logistics cost stayed flat.",
+                ]
+            ),
+            fontname="courier",
+            fontsize=12,
+            lineheight=1.4,
+        )
+        pdf_path.parent.mkdir(parents=True, exist_ok=True)
+        doc.save(pdf_path)
+    finally:
+        doc.close()
+
+
+def _write_header_footer_noise_pdf(pdf_path: Path) -> None:
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=612, height=792)
+        page.insert_textbox(
+            fitz.Rect(48, 24, 564, 50),
+            "Quarterly Operations Report | Internal Use Only | Finance and Operations",
+            fontname="courier",
+            fontsize=10,
+            lineheight=1.2,
+        )
+        page.insert_textbox(
+            fitz.Rect(48, 80, 276, 744),
+            "\n\n".join(
+                [
+                    "North region revenue increased steadily.",
+                    "Operating margin held above target.",
+                ]
+            ),
+            fontname="courier",
+            fontsize=12,
+            lineheight=1.4,
+        )
+        page.insert_textbox(
+            fitz.Rect(336, 80, 564, 744),
+            "\n\n".join(
+                [
+                    "East region revenue accelerated in Q3.",
+                    "Customer churn declined year over year.",
+                ]
+            ),
+            fontname="courier",
+            fontsize=12,
+            lineheight=1.4,
+        )
+        page.insert_textbox(
+            fitz.Rect(120, 756, 492, 784),
+            "Page 1 of 1 | Prepared for the quarterly business review",
+            fontname="courier",
+            fontsize=10,
+            lineheight=1.2,
+        )
+        pdf_path.parent.mkdir(parents=True, exist_ok=True)
+        doc.save(pdf_path)
+    finally:
+        doc.close()
+
+
+def _write_mixed_layout_pdf(pdf_path: Path) -> None:
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=612, height=792)
+        page.insert_textbox(
+            fitz.Rect(48, 60, 276, 220),
+            "North region revenue increased steadily.\n\nOperating margin held above target.",
+            fontname="courier",
+            fontsize=12,
+            lineheight=1.4,
+        )
+        page.insert_textbox(
+            fitz.Rect(336, 60, 564, 220),
+            "East region revenue accelerated in Q3.\n\nCustomer churn declined year over year.",
+            fontname="courier",
+            fontsize=12,
+            lineheight=1.4,
+        )
+        page.insert_textbox(
+            fitz.Rect(48, 320, 564, 420),
+            (
+                "Diagram summary remains aligned with the layout flow and should appear "
+                "after both text columns.\n\n"
+                "The final synthesis block should remain below the two-column content "
+                "instead of being pulled into the left column."
+            ),
+            fontname="courier",
+            fontsize=12,
+            lineheight=1.4,
+        )
+        pdf_path.parent.mkdir(parents=True, exist_ok=True)
+        doc.save(pdf_path)
+    finally:
+        doc.close()
+
+
 def generate_assets(output_root: Path) -> None:
     targets = [
         (output_root / "qr_sheet" / "input" / "qr.png", lambda path: _write_qr(path, "HELLO-QR")),
@@ -91,6 +322,139 @@ def generate_assets(output_root: Path) -> None:
         writer(path)
 
 
+def generate_broader_assets(output_root: Path) -> None:
+    chart_image = output_root / "chart_pdf" / "input" / "chart.png"
+    diagram_image = output_root / "diagram_pdf" / "input" / "diagram.png"
+    qr_image = output_root / "qr_image" / "input" / "sample.png"
+    barcode_image = output_root / "barcode_image" / "input" / "sample.png"
+    cross_page_page_1 = output_root / "cross_page_table_pdf" / "input" / "page-1.png"
+    cross_page_page_2 = output_root / "cross_page_table_pdf" / "input" / "page-2.png"
+    borderless_table_image = output_root / "borderless_table_scan" / "input" / "sample.png"
+    merged_header_image = output_root / "merged_header_table_pdf" / "input" / "table.png"
+    leading_paragraph_image = output_root / "table_with_leading_paragraph_pdf" / "input" / "page.png"
+    two_column_pdf = output_root / "two_column_pdf" / "input" / "sample.pdf"
+    header_footer_noise_pdf = output_root / "header_footer_noise_pdf" / "input" / "sample.pdf"
+    mixed_layout_pdf = output_root / "mixed_layout_pdf" / "input" / "sample.pdf"
+
+    for path, writer in (
+        (chart_image, _write_chart),
+        (diagram_image, _write_diagram),
+        (qr_image, lambda target: _write_qr(target, "HELLO-QR")),
+        (barcode_image, lambda target: _write_barcode(target, "590123412345")),
+    ):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        writer(path)
+
+    _write_table_page(
+        cross_page_page_1,
+        title="Quarterly revenue by region",
+        header=["Region", "Q1", "Q2"],
+        rows=[["North", "120", "132"], ["South", "98", "110"], ["West", "115", "121"]],
+    )
+    _write_table_page(
+        cross_page_page_2,
+        header=["Region", "Q1", "Q2"],
+        rows=[["East", "107", "116"], ["Central", "111", "119"], ["APAC", "126", "138"]],
+    )
+    _write_table_page(
+        borderless_table_image,
+        title="Inventory snapshot",
+        header=["Item", "Qty", "Warehouse"],
+        rows=[["Paper", "220", "HZ-A"], ["Pens", "540", "HZ-B"], ["Folders", "180", "HZ-A"]],
+        borderless=True,
+    )
+    _write_table_page(
+        merged_header_image,
+        title="Project budget summary",
+        merged_header="Budget 2026",
+        header=["Team", "Approved", "Spent"],
+        rows=[["Platform", "320", "188"], ["Search", "280", "154"], ["Ops", "160", "97"]],
+    )
+    _write_table_page(
+        leading_paragraph_image,
+        title="Operations report",
+        leading_paragraph=[
+            "The following table summarizes the latest quarterly on-time delivery metrics.",
+            "All values are percentages and should be indexed with the table content.",
+        ],
+        header=["Quarter", "On-time", "Delayed"],
+        rows=[["Q1", "96%", "4%"], ["Q2", "94%", "6%"], ["Q3", "97%", "3%"]],
+    )
+
+    _write_pdf_from_image(chart_image, output_root / "chart_pdf" / "input" / "sample.pdf")
+    _write_pdf_from_image(diagram_image, output_root / "diagram_pdf" / "input" / "sample.pdf")
+    _write_text_pdf(
+        [
+            [
+                "Quarterly revenue by region.",
+                "",
+                "| Region | Q1 | Q2 |",
+                "| --- | --- | --- |",
+                "| North | 120 | 132 |",
+                "| South | 98 | 110 |",
+                "| West | 115 | 121 |",
+            ],
+            [
+                "| Region | Q1 | Q2 |",
+                "| --- | --- | --- |",
+                "| East | 107 | 116 |",
+                "| Central | 111 | 119 |",
+                "| APAC | 126 | 138 |",
+            ],
+        ],
+        output_root / "cross_page_table_pdf" / "input" / "sample.pdf",
+    )
+    _write_text_pdf(
+        [
+            [
+                "Project budget summary.",
+                "",
+                "Budget 2026",
+                "",
+                "| Team | Approved | Spent |",
+                "| --- | --- | --- |",
+                "| Platform | 320 | 188 |",
+                "| Search | 280 | 154 |",
+                "| Ops | 160 | 97 |",
+            ]
+        ],
+        output_root / "merged_header_table_pdf" / "input" / "sample.pdf",
+    )
+    _write_text_pdf(
+        [
+            [
+                "The following table summarizes the latest quarterly on-time delivery metrics.",
+                "",
+                "All values are percentages and should be indexed with the table content.",
+                "",
+                "| Quarter | On-time | Delayed |",
+                "| --- | --- | --- |",
+                "| Q1 | 96% | 4% |",
+                "| Q2 | 94% | 6% |",
+                "| Q3 | 97% | 3% |",
+            ]
+        ],
+        output_root / "table_with_leading_paragraph_pdf" / "input" / "sample.pdf",
+    )
+    _write_two_column_pdf(two_column_pdf)
+    _write_header_footer_noise_pdf(header_footer_noise_pdf)
+    _write_mixed_layout_pdf(mixed_layout_pdf)
+
+    for src, dst in (
+        (chart_image, output_root / "chart_pdf" / "golden" / "chart.png"),
+        (diagram_image, output_root / "diagram_pdf" / "golden" / "diagram.png"),
+        (qr_image, output_root / "qr_image" / "golden" / "sample.png"),
+        (barcode_image, output_root / "barcode_image" / "golden" / "sample.png"),
+        (cross_page_page_1, output_root / "cross_page_table_pdf" / "golden" / "page-1.png"),
+        (cross_page_page_2, output_root / "cross_page_table_pdf" / "golden" / "page-2.png"),
+        (borderless_table_image, output_root / "borderless_table_scan" / "golden" / "sample.png"),
+        (merged_header_image, output_root / "merged_header_table_pdf" / "golden" / "table.png"),
+        (leading_paragraph_image, output_root / "table_with_leading_paragraph_pdf" / "golden" / "page.png"),
+    ):
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_bytes(src.read_bytes())
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Generate deterministic image assets for parser benchmark root fixtures.")
     parser.add_argument(
@@ -98,11 +462,20 @@ def main(argv: list[str] | None = None) -> int:
         default="tests/fixtures/parsing_golden",
         help="Root fixture directory to populate (default: tests/fixtures/parsing_golden)",
     )
+    parser.add_argument(
+        "--profile",
+        choices=("smoke", "broader", "all"),
+        default="smoke",
+        help="Asset profile to generate (default: smoke)",
+    )
     args = parser.parse_args(argv)
 
     output_root = Path(str(args.output_root)).resolve()
     output_root.mkdir(parents=True, exist_ok=True)
-    generate_assets(output_root)
+    if args.profile in {"smoke", "all"}:
+        generate_assets(output_root)
+    if args.profile in {"broader", "all"}:
+        generate_broader_assets(output_root)
     print(f"[generate-parsing-golden-assets] wrote assets under {output_root}")
     return 0
 

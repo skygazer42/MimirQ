@@ -1417,6 +1417,7 @@ class ChunkAssetStage:
             append_image_understanding_text,
             decode_image_codes,
             derive_image_caption,
+            infer_visual_kind_from_pixels,
             load_image_for_ocr,
             ocr_image,
         )
@@ -1462,7 +1463,12 @@ class ChunkAssetStage:
                         caption = derive_image_caption(chunk.page_content or "", meta)
                     except Exception:
                         caption = ""
-                if bool(image_ocr_enabled) and (ocr_remaining is None or ocr_remaining > 0):
+                need_image_inspection = (
+                    not str(meta.get("visual_kind") or "").strip()
+                    or not str(meta.get("image_code_text") or "").strip()
+                    or (bool(image_ocr_enabled) and (ocr_remaining is None or ocr_remaining > 0))
+                )
+                if need_image_inspection:
                     img, should_close = load_image_for_ocr(meta, _tenant_id=str(tenant_id))
                     try:
                         if img is not None:
@@ -1480,9 +1486,17 @@ class ChunkAssetStage:
                                 visual_kind = str(code_info.get("visual_kind") or "").strip().lower()
                                 if visual_kind:
                                     meta["visual_kind"] = visual_kind
-                            ocr_text = ocr_image(img, _max_chars=int(image_ocr_max_chars))
-                            if ocr_remaining is not None:
-                                ocr_remaining -= 1
+                            if not str(meta.get("visual_kind") or "").strip():
+                                try:
+                                    visual_kind = str(infer_visual_kind_from_pixels(img) or "").strip().lower()
+                                except Exception:
+                                    visual_kind = ""
+                                if visual_kind:
+                                    meta["visual_kind"] = visual_kind
+                            if bool(image_ocr_enabled) and (ocr_remaining is None or ocr_remaining > 0):
+                                ocr_text = ocr_image(img, _max_chars=int(image_ocr_max_chars))
+                                if ocr_remaining is not None:
+                                    ocr_remaining -= 1
                     except Exception:
                         ocr_text = ""
                     finally:

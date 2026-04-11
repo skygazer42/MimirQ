@@ -19,3 +19,16 @@ def test_image_parser_emits_markdown_reference(tmp_path: Path) -> None:
     assert meta.get("parser_backend") == "image"
     assert meta.get("asset_base_dir") == str(tmp_path.resolve(strict=False))
 
+
+def test_image_parser_emits_table_document_for_borderless_table_fixture() -> None:
+    img = Path("tests/fixtures/parsing_golden_broader/borderless_table_scan/input/sample.png")
+
+    docs = ImageParser().parse(img)
+
+    assert len(docs) == 1
+    doc = docs[0]
+    meta = doc.metadata or {}
+    assert meta.get("doc_type_kwd") == "table"
+    assert meta.get("content_type") == "table"
+    assert "| Item | Qty | Warehouse |" in (doc.page_content or "")
+    assert "| Paper | 220 | HZ-A |" in (doc.page_content or "")

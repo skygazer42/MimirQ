@@ -1,0 +1,8 @@
+{
+  "table": 1,
+  "table_continuity": {
+    "header": "| Team | Approved | Spent |",
+    "rows": 3,
+    "header_occurrences": 1
+  }
+}

@@ -200,3 +200,144 @@ def test_decode_image_codes_decodes_committed_barcode_fixture() -> None:
 
     assert out["visual_kind"] == "barcode"
     assert out["text"] == "5901234123457"
+
+
+def test_infer_visual_kind_from_pixels_detects_committed_chart_fixture() -> None:
+    from app.parsing.enrich.image_understanding import infer_visual_kind_from_pixels  # noqa: WPS433
+
+    fixture = Path("tests/fixtures/parsing_golden/table_scan/input/chart.png")
+    image = PILImage.open(fixture)
+    try:
+        out = infer_visual_kind_from_pixels(image)
+    finally:
+        image.close()
+
+    assert out == "chart"
+
+
+def test_infer_visual_kind_from_pixels_detects_committed_diagram_fixture() -> None:
+    from app.parsing.enrich.image_understanding import infer_visual_kind_from_pixels  # noqa: WPS433
+
+    fixture = Path("tests/fixtures/parsing_golden/diagram_page/input/diagram.png")
+    image = PILImage.open(fixture)
+    try:
+        out = infer_visual_kind_from_pixels(image)
+    finally:
+        image.close()
+
+    assert out == "diagram"
+
+
+def test_chunk_asset_stage_falls_back_to_pixel_visual_kind_for_image_chunk(monkeypatch):  # noqa: ANN001
+    import app.parsing.enrich.image_understanding as iu_mod
+    import app.parsing.processors.processor as processor_mod
+
+    monkeypatch.setattr(settings, "MINIO_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "MINIO_IMAGE_MAX_BYTES", 0, raising=False)
+
+    monkeypatch.setattr(
+        iu_mod,
+        "ocr_image",
+        lambda *_a, **_k: "",
+        raising=True,
+    )
+    monkeypatch.setattr(
+        iu_mod,
+        "decode_image_codes",
+        lambda *_a, **_k: {},
+        raising=True,
+    )
+    monkeypatch.setattr(
+        iu_mod,
+        "infer_visual_kind_from_pixels",
+        lambda *_a, **_k: "chart",
+        raising=True,
+    )
+    monkeypatch.setattr(
+        processor_mod.minio_service,
+        "upload_image",
+        lambda *_a, **_k: "img-chart",
+        raising=True,
+    )
+
+    tenant_id = uuid4()
+    image = PILImage.new("RGB", (32, 32), color=(255, 255, 255))
+    chunks = [
+        Document(
+            page_content="",
+            metadata={"doc_type_kwd": "image", "image": image},
+        )
+    ]
+
+    stage = ChunkAssetStage(DocumentProcessorService())
+    out = stage.run(
+        chunks=chunks,
+        tenant_id=tenant_id,
+        dataset_id="ds",
+        document_id=uuid4(),
+        resolved_backend="basic",
+        resolved_chunk_strategy="basic",
+        image_ocr_enabled=True,
+        image_ocr_max_chars=2000,
+    )
+
+    assert out.chunks[0].metadata.get("img_id") == "img-chart"
+    assert out.chunks[0].metadata.get("visual_kind") == "chart"
+
+
+def test_chunk_asset_stage_infers_pixel_visual_kind_without_image_ocr(monkeypatch):  # noqa: ANN001
+    import app.parsing.enrich.image_understanding as iu_mod
+    import app.parsing.processors.processor as processor_mod
+
+    monkeypatch.setattr(settings, "MINIO_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "MINIO_IMAGE_MAX_BYTES", 0, raising=False)
+
+    monkeypatch.setattr(
+        iu_mod,
+        "decode_image_codes",
+        lambda *_a, **_k: {},
+        raising=True,
+    )
+    monkeypatch.setattr(
+        iu_mod,
+        "infer_visual_kind_from_pixels",
+        lambda *_a, **_k: "diagram",
+        raising=True,
+    )
+    monkeypatch.setattr(
+        iu_mod,
+        "ocr_image",
+        lambda *_a, **_k: "UNUSED",
+        raising=True,
+    )
+    monkeypatch.setattr(
+        processor_mod.minio_service,
+        "upload_image",
+        lambda *_a, **_k: "img-diagram",
+        raising=True,
+    )
+
+    tenant_id = uuid4()
+    image = PILImage.new("RGB", (32, 32), color=(255, 255, 255))
+    chunks = [
+        Document(
+            page_content="",
+            metadata={"doc_type_kwd": "image", "image": image},
+        )
+    ]
+
+    stage = ChunkAssetStage(DocumentProcessorService())
+    out = stage.run(
+        chunks=chunks,
+        tenant_id=tenant_id,
+        dataset_id="ds",
+        document_id=uuid4(),
+        resolved_backend="basic",
+        resolved_chunk_strategy="basic",
+        image_ocr_enabled=False,
+        image_ocr_max_chars=2000,
+    )
+
+    assert out.chunks[0].metadata.get("img_id") == "img-diagram"
+    assert out.chunks[0].metadata.get("visual_kind") == "diagram"
+    assert out.chunks[0].metadata.get("image_ocr_text") is None

@@ -86,3 +86,67 @@ def test_does_not_merge_tables_when_column_shape_changes() -> None:
     out = merge_cross_page_documents(docs)
 
     assert len(out) == 2
+
+
+def test_merge_cross_page_tables_drops_continuation_label_and_repeated_header() -> None:
+    from app.parsing.processors.cross_page_merge import merge_cross_page_documents
+
+    docs = [
+        Document(
+            page_content="| Name | Value |\n| --- | --- |\n| alpha | 1 |",
+            metadata={
+                "page": 1,
+                "doc_type_kwd": "table",
+                "table_columns": ["Name", "Value"],
+                "table_header_present": True,
+                "table_truncated": True,
+            },
+        ),
+        Document(
+            page_content="Table 1 (continued)\n| Name | Value |\n| --- | --- |\n| beta | 2 |",
+            metadata={
+                "page": 2,
+                "doc_type_kwd": "table",
+                "table_columns": ["Name", "Value"],
+                "table_header_present": True,
+                "table_continued": True,
+            },
+        ),
+    ]
+
+    out = merge_cross_page_documents(docs)
+
+    assert len(out) == 1
+    assert out[0].page_content.count("| Name | Value |") == 1
+    assert "Table 1 (continued)" not in out[0].page_content
+    assert "| beta | 2 |" in out[0].page_content
+
+
+def test_does_not_merge_tables_when_following_page_starts_with_prose_before_rows() -> None:
+    from app.parsing.processors.cross_page_merge import merge_cross_page_documents
+
+    docs = [
+        Document(
+            page_content="| Name | Value |\n| --- | --- |\n| alpha | 1 |",
+            metadata={
+                "page": 1,
+                "doc_type_kwd": "table",
+                "table_columns": ["Name", "Value"],
+                "table_header_present": True,
+                "table_truncated": True,
+            },
+        ),
+        Document(
+            page_content="说明：下页开始前有额外备注。\n| beta | 2 |\n| gamma | 3 |",
+            metadata={
+                "page": 2,
+                "doc_type_kwd": "table",
+                "table_columns": ["Name", "Value"],
+                "table_header_present": False,
+            },
+        ),
+    ]
+
+    out = merge_cross_page_documents(docs)
+
+    assert len(out) == 2
