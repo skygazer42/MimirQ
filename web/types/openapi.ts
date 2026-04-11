@@ -16836,6 +16836,8 @@ export interface components {
             page?: number | null;
             /** Pages */
             pages?: number[] | null;
+            /** Visual Kind */
+            visual_kind?: string | null;
             /** Text */
             text?: string | null;
             /** Confidence */

@@ -124,6 +124,11 @@ export function ParsingElementsPanel({
           const attributes = (element.attributes as Record<string, unknown> | null) ?? null
           const pageLabel = formatPageLabel(element)
           const crossPageLabel = formatPageSpan(element)
+          const visualKind = typeof element.visual_kind === 'string' && element.visual_kind
+            ? element.visual_kind
+            : typeof attributes?.visual_kind === 'string'
+              ? (attributes.visual_kind as string)
+              : ''
 
           return (
             <button
@@ -141,9 +146,9 @@ export function ParsingElementsPanel({
                     {attributes.source_content_type as string}
                   </span>
                 ) : null}
-                {typeof attributes?.visual_kind === 'string' ? (
+                {visualKind ? (
                   <span className="rounded-full border border-border/60 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                    {attributes.visual_kind as string}
+                    {visualKind}
                   </span>
                 ) : null}
                 {typeof element.confidence === 'number' ? (

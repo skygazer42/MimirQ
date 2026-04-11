@@ -92,6 +92,7 @@ class ParsingElementOut(BaseModel):
     kind: Literal["heading", "paragraph", "list", "table", "image", "equation", "seal", "unknown"]
     page: int | None = None
     pages: list[int] | None = None
+    visual_kind: str | None = None
     text: str | None = None
     confidence: float | None = None
     bbox: ParsingElementBBox | None = None
