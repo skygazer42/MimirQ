@@ -69,7 +69,7 @@ def _install_fake_parser_benchmark_modules(monkeypatch) -> None:  # noqa: ANN001
                 docs = [
                     Document(
                         page_content="Customer service QR code\n\n![qrcode](qr.png)",
-                        metadata={"doc_type_kwd": "image", "page": 1, "visual_kind": "qr"},
+                        metadata={"doc_type_kwd": "image", "page": 1, "visual_kind": "qr", "image_code_text": "HELLO-QR"},
                     ),
                 ]
             elif "diagram_page" in path_str:
@@ -83,7 +83,7 @@ def _install_fake_parser_benchmark_modules(monkeypatch) -> None:  # noqa: ANN001
                 docs = [
                     Document(
                         page_content="Inventory barcode label\n\n![barcode](barcode.png)",
-                        metadata={"doc_type_kwd": "image", "page": 1, "visual_kind": "barcode"},
+                        metadata={"doc_type_kwd": "image", "page": 1, "visual_kind": "barcode", "image_code_text": "5901234123457"},
                     ),
                 ]
             else:
@@ -162,8 +162,10 @@ def test_parser_benchmark_reports_specialty_element_counts(monkeypatch, tmp_path
     assert by_case["table_scan_case"]["golden"]["specialty_elements"]["image"] == 1
     assert by_case["table_scan_case"]["golden"]["image_visual_kinds"]["chart"] == 1
     assert by_case["qr_sheet_case"]["golden"]["image_visual_kinds"]["qr"] == 1
+    assert by_case["qr_sheet_case"]["golden"]["image_code_values"]["qr"] == ["HELLO-QR"]
     assert by_case["diagram_page_case"]["golden"]["image_visual_kinds"]["diagram"] == 1
     assert by_case["barcode_label_case"]["golden"]["image_visual_kinds"]["barcode"] == 1
+    assert by_case["barcode_label_case"]["golden"]["image_code_values"]["barcode"] == ["5901234123457"]
     assert by_case["seal_invoice_case"]["attempts"][0]["specialty_recall"]["seal"] == 1.0
     assert by_case["formula_pdf_case"]["attempts"][0]["specialty_recall"]["equation"] == 1.0
     assert by_case["table_scan_case"]["attempts"][0]["specialty_recall"]["table"] == 1.0
@@ -173,12 +175,14 @@ def test_parser_benchmark_reports_specialty_element_counts(monkeypatch, tmp_path
     assert by_case["qr_sheet_case"]["attempts"][0]["specialty_recall"]["image"] == 1.0
     assert by_case["qr_sheet_case"]["attempts"][0]["specialty_image_visual_kinds"]["qr"] == 1
     assert by_case["qr_sheet_case"]["attempts"][0]["specialty_image_visual_kind_recall"]["qr"] == 1.0
+    assert by_case["qr_sheet_case"]["attempts"][0]["specialty_image_code_value_recall"]["qr"] == 1.0
     assert by_case["diagram_page_case"]["attempts"][0]["specialty_recall"]["image"] == 1.0
     assert by_case["diagram_page_case"]["attempts"][0]["specialty_image_visual_kinds"]["diagram"] == 1
     assert by_case["diagram_page_case"]["attempts"][0]["specialty_image_visual_kind_recall"]["diagram"] == 1.0
     assert by_case["barcode_label_case"]["attempts"][0]["specialty_recall"]["image"] == 1.0
     assert by_case["barcode_label_case"]["attempts"][0]["specialty_image_visual_kinds"]["barcode"] == 1
     assert by_case["barcode_label_case"]["attempts"][0]["specialty_image_visual_kind_recall"]["barcode"] == 1.0
+    assert by_case["barcode_label_case"]["attempts"][0]["specialty_image_code_value_recall"]["barcode"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_seal_recall"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_equation_recall"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_table_recall"] == 1.0
@@ -188,6 +192,8 @@ def test_parser_benchmark_reports_specialty_element_counts(monkeypatch, tmp_path
     assert payload["summary"]["deepdoc"]["mean_qr_image_recall"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_barcode_image_recall"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_diagram_image_recall"] == 1.0
+    assert payload["summary"]["deepdoc"]["mean_qr_code_value_recall"] == 1.0
+    assert payload["summary"]["deepdoc"]["mean_barcode_code_value_recall"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_image_visual_kind_recall"]["chart"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_image_visual_kind_recall"]["qr"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_image_visual_kind_recall"]["barcode"] == 1.0

@@ -119,6 +119,8 @@ The report (`mimirq.parser_benchmark.v1`) includes:
 - Optional nested `mean_image_visual_kind_recall` in `summary` when golden image subtype annotations exist
 - Stable image subtype metrics such as `mean_chart_image_recall` can also appear in `summary` when that subtype is annotated in the golden set
 - When golden markdown includes explicit image refs, `golden_image_ref_recall_mean` becomes a stable smoke metric as well
+- When golden annotations include decodable QR/barcode values, stable metrics such as `mean_qr_code_value_recall` and `mean_barcode_code_value_recall` can appear in `summary`
+- When golden annotations include decodable QR/barcode values, stable metrics such as `mean_qr_code_value_recall` and `mean_barcode_code_value_recall` can appear in `summary`
 
 ## Baseline Diff (Optional)
 
@@ -164,6 +166,8 @@ Strict mode compares current `summary.<backend>` against baseline and fails when
 - `--strict-max-qr-image-recall-drop`
 - `--strict-max-barcode-image-recall-drop`
 - `--strict-max-diagram-image-recall-drop`
+- `--strict-max-qr-code-value-recall-drop`
+- `--strict-max-barcode-code-value-recall-drop`
 
 You can pin CI thresholds via strict profile JSON:
 
@@ -171,7 +175,7 @@ You can pin CI thresholds via strict profile JSON:
 - schema: `mimirq.parser_benchmark_strict_profile.v1`
 - fields:
   - `thresholds`: per-metric max drop
-  - Specialty/structure metrics use summary keys such as `golden_image_ref_recall_mean`, `mean_seal_recall`, `mean_equation_recall`, `mean_table_recall`, `mean_image_recall`, and promoted subtype metrics such as `mean_chart_image_recall`, `mean_qr_image_recall`, `mean_barcode_image_recall`, or `mean_diagram_image_recall`
+  - Specialty/structure metrics use summary keys such as `golden_image_ref_recall_mean`, `mean_seal_recall`, `mean_equation_recall`, `mean_table_recall`, `mean_image_recall`, and promoted subtype metrics such as `mean_chart_image_recall`, `mean_qr_image_recall`, `mean_barcode_image_recall`, `mean_diagram_image_recall`, `mean_qr_code_value_recall`, or `mean_barcode_code_value_recall`
   - `severity_bands`: ratios used to classify drift severity
 
 CI usually pairs this with a diff artifact (`artifacts/parser_benchmark.diff.json`) so reviewers can inspect what changed even when gate passes.
