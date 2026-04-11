@@ -34,23 +34,27 @@ def test_evaluate_strict_regressions_detects_metric_drop() -> None:
             "auto": {
                 "ok_rate": 0.80,
                 "parse_score_mean": 0.70,
+                "mean_seal_recall": 0.20,
             }
         },
         baseline_summary={
             "auto": {
                 "ok_rate": 0.90,
                 "parse_score_mean": 0.76,
+                "mean_seal_recall": 0.80,
             }
         },
         max_drop_by_metric={
             "ok_rate": 0.02,
             "parse_score_mean": 0.03,
+            "mean_seal_recall": 0.10,
         },
     )
     assert out["passed"] is False
     failures = list(out.get("failures") or [])
     assert any("auto.ok_rate" in str(msg) for msg in failures)
     assert any("parse_score_mean" in str(msg) for msg in failures)
+    assert any("mean_seal_recall" in str(msg) for msg in failures)
 
 
 def test_evaluate_strict_regressions_passes_within_threshold() -> None:
@@ -84,6 +88,10 @@ def test_resolve_strict_thresholds_prefers_profile_values() -> None:
         strict_max_parse_score_drop=0.03,
         strict_max_golden_similarity_drop=0.03,
         strict_max_golden_coverage_drop=0.05,
+        strict_max_seal_recall_drop=0.06,
+        strict_max_equation_recall_drop=0.07,
+        strict_max_table_recall_drop=0.08,
+        strict_max_image_recall_drop=0.09,
     )
     thresholds = mod.resolve_strict_thresholds(  # type: ignore[attr-defined]
         args=args,
@@ -94,6 +102,8 @@ def test_resolve_strict_thresholds_prefers_profile_values() -> None:
                 "parse_score_mean": 0.8,
                 "golden_similarity_mean": 0.7,
                 "golden_coverage_ratio_mean": 0.6,
+                "mean_seal_recall": 0.5,
+                "mean_equation_recall": 0.4,
             },
         },
     )
@@ -101,6 +111,10 @@ def test_resolve_strict_thresholds_prefers_profile_values() -> None:
     assert thresholds["parse_score_mean"] == pytest.approx(0.8)
     assert thresholds["golden_similarity_mean"] == pytest.approx(0.7)
     assert thresholds["golden_coverage_ratio_mean"] == pytest.approx(0.6)
+    assert thresholds["mean_seal_recall"] == pytest.approx(0.5)
+    assert thresholds["mean_equation_recall"] == pytest.approx(0.4)
+    assert thresholds["mean_table_recall"] == pytest.approx(0.08)
+    assert thresholds["mean_image_recall"] == pytest.approx(0.09)
 
 
 def test_load_strict_profile_requires_known_schema(tmp_path: Path) -> None:

@@ -114,6 +114,10 @@ Strict mode compares current `summary.<backend>` against baseline and fails when
 - `--strict-max-parse-score-drop`
 - `--strict-max-golden-similarity-drop`
 - `--strict-max-golden-coverage-drop`
+- `--strict-max-seal-recall-drop`
+- `--strict-max-equation-recall-drop`
+- `--strict-max-table-recall-drop`
+- `--strict-max-image-recall-drop`
 
 You can pin CI thresholds via strict profile JSON:
 
@@ -121,6 +125,7 @@ You can pin CI thresholds via strict profile JSON:
 - schema: `mimirq.parser_benchmark_strict_profile.v1`
 - fields:
   - `thresholds`: per-metric max drop
+  - Specialty recall metrics use the summary keys `mean_seal_recall`, `mean_equation_recall`, `mean_table_recall`, and `mean_image_recall`
   - `severity_bands`: ratios used to classify drift severity
 
 CI usually pairs this with a diff artifact (`artifacts/parser_benchmark.diff.json`) so reviewers can inspect what changed even when gate passes.
