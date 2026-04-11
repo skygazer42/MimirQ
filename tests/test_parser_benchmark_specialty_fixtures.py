@@ -31,11 +31,7 @@ def _fixture_root() -> Path:
     return _repo_root() / "tests" / "fixtures" / "parsing_golden"
 
 
-def test_parser_benchmark_reports_specialty_element_counts(monkeypatch, tmp_path: Path) -> None:
-    mod = _load_module()
-    input_dir = _fixture_root()
-    manifest_path = input_dir / "manifest.json"
-
+def _install_fake_parser_benchmark_modules(monkeypatch) -> None:  # noqa: ANN001
     factory_mod = ModuleType("app.parsing.factory")
 
     class _Factory:
@@ -106,6 +102,14 @@ def test_parser_benchmark_reports_specialty_element_counts(monkeypatch, tmp_path
     text_quality_mod.score_parsed_text_quality = lambda *_args, **_kwargs: _TextQuality()  # noqa: E731
     monkeypatch.setitem(sys.modules, "app.parsing.quality.text_quality", text_quality_mod)
 
+
+def test_parser_benchmark_reports_specialty_element_counts(monkeypatch, tmp_path: Path) -> None:
+    mod = _load_module()
+    input_dir = _fixture_root()
+    manifest_path = input_dir / "manifest.json"
+
+    _install_fake_parser_benchmark_modules(monkeypatch)
+
     out_path = tmp_path / "parser_benchmark.json"
     monkeypatch.setattr(
         sys,
@@ -143,3 +147,57 @@ def test_parser_benchmark_reports_specialty_element_counts(monkeypatch, tmp_path
     assert payload["summary"]["deepdoc"]["mean_equation_recall"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_table_recall"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_image_recall"] == 1.0
+
+
+def test_parser_benchmark_strict_fails_when_baseline_hashes_mismatch(monkeypatch, tmp_path: Path) -> None:
+    mod = _load_module()
+    input_dir = _fixture_root()
+    manifest_path = input_dir / "manifest.json"
+
+    _install_fake_parser_benchmark_modules(monkeypatch)
+
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_text(
+        json.dumps(
+            {
+                "schema": "mimirq.parser_benchmark.v1",
+                "fixture_hash": "fixture-mismatch",
+                "profile_hash": "profile-mismatch",
+                "summary": {},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    out_path = tmp_path / "parser_benchmark.strict.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "parser_benchmark.py",
+            "--input-dir",
+            str(input_dir),
+            "--manifest",
+            str(manifest_path),
+            "--backends",
+            "deepdoc",
+            "--strict",
+            "--baseline",
+            str(baseline_path),
+            "--out",
+            str(out_path),
+        ],
+    )
+
+    rc = mod.main()  # type: ignore[attr-defined]
+    assert rc == 2
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    strict_gate = payload.get("strict_gate") or {}
+    assert strict_gate.get("passed") is False
+    compatibility = strict_gate.get("compatibility") or {}
+    assert compatibility.get("compatible") is False
+    mismatches = list(compatibility.get("mismatches") or [])
+    assert any("fixture_hash" in item for item in mismatches)
+    assert any("profile_hash" in item for item in mismatches)
