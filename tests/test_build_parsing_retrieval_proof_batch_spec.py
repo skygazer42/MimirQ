@@ -107,3 +107,44 @@ def test_build_batch_spec_cli_writes_json(tmp_path: Path) -> None:
     assert payload["schema"] == "mimirq.parsing_retrieval_proof_batch.v1"
     assert payload["cases"][0]["id"] == "case-a"
     assert payload["cases"][0]["parser_backend"] == "basic"
+
+
+def test_real_broader_manifest_sample_query_map_can_build_and_run_batch_spec(tmp_path: Path) -> None:
+    build_mod = _load_script()
+
+    runner_path = _repo_root() / "scripts" / "run_parsing_retrieval_proof_batch.py"
+    spec = importlib.util.spec_from_file_location("run_parsing_retrieval_proof_batch", str(runner_path))
+    assert spec and spec.loader
+    runner_mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = runner_mod
+    spec.loader.exec_module(runner_mod)  # type: ignore[union-attr]
+
+    manifest_path = _repo_root() / "tests" / "fixtures" / "parsing_golden_broader" / "manifest.json"
+    case_queries_path = _repo_root() / "tests" / "fixtures" / "parsing_retrieval_proof" / "broader_case_queries.sample.json"
+    out_path = tmp_path / "batch.spec.json"
+    out_dir = tmp_path / "batch-run"
+
+    rc = build_mod.main(  # type: ignore[attr-defined]
+        [
+            "--manifest-json",
+            str(manifest_path),
+            "--case-queries-json",
+            str(case_queries_path),
+            "--out",
+            str(out_path),
+        ]
+    )
+    assert rc == 0
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert payload["schema"] == "mimirq.parsing_retrieval_proof_batch.v1"
+    assert [item["id"] for item in payload["cases"]] == [
+        "cross_page_table_pdf_case",
+        "borderless_table_scan_case",
+        "two_column_pdf_case",
+    ]
+
+    report = runner_mod.run_batch(spec_path=out_path, out_dir=out_dir)  # type: ignore[attr-defined]
+    assert report["cases_total"] == 3
+    assert report["summary"]["hit_at_k_mean"] == 1.0
+    assert report["summary"]["mrr_mean"] == 1.0
