@@ -76,16 +76,55 @@ def test_stronger_layout_parsing_fixture_beats_weaker_layout_parsing_in_retrieva
 
 def test_stronger_table_parsing_fixture_beats_weaker_table_parsing_in_retrieval(tmp_path: Path) -> None:
     mod = _load_script("scripts/run_sample_retrieval_benchmark.py")
-    fixture_root = _repo_root() / "tests" / "fixtures" / "parsing_retrieval_proof"
+    helper = _fixture_helper()
+
+    strong_fixture = helper.build_retrieval_fixture(  # type: ignore[attr-defined]
+        documents=[
+            {"chunk_id": "table_answer", "document_id": "table-doc", "text": "APAC Q2 revenue amount 138", "metadata": {}},
+            {"chunk_id": "noise1", "document_id": "noise-doc", "text": "APAC value 126", "metadata": {}},
+            {"chunk_id": "noise2", "document_id": "noise-doc", "text": "Q2 revenue 132 North", "metadata": {}},
+        ],
+        queries=[
+            {
+                "id": "table-q1",
+                "question": "For APAC, what is the Q2 revenue amount?",
+                "expected_chunk_ids": ["table_answer"],
+            }
+        ],
+        top_k=1,
+        retrieval_mode="keyword",
+    )
+    weak_fixture = helper.build_retrieval_fixture(  # type: ignore[attr-defined]
+        documents=[
+            {"chunk_id": "table_answer", "document_id": "table-doc", "text": "APAC revenue", "metadata": {}},
+            {"chunk_id": "table_split", "document_id": "table-doc", "text": "APAC Q2 revenue amount 138", "metadata": {}},
+            {"chunk_id": "noise1", "document_id": "noise-doc", "text": "APAC value 126", "metadata": {}},
+            {"chunk_id": "noise2", "document_id": "noise-doc", "text": "Q2 revenue 132 North", "metadata": {}},
+        ],
+        queries=[
+            {
+                "id": "table-q1",
+                "question": "For APAC, what is the Q2 revenue amount?",
+                "expected_chunk_ids": ["table_answer"],
+            }
+        ],
+        top_k=1,
+        retrieval_mode="keyword",
+    )
+
+    strong_path = tmp_path / "table-strong.fixture.json"
+    weak_path = tmp_path / "table-weak.fixture.json"
+    strong_path.write_text(__import__("json").dumps(strong_fixture, ensure_ascii=False), encoding="utf-8")
+    weak_path.write_text(__import__("json").dumps(weak_fixture, ensure_ascii=False), encoding="utf-8")
 
     strong = mod.run_benchmark(  # type: ignore[attr-defined]
-        fixture_path=fixture_root / "table_strong.fixture.json",
+        fixture_path=strong_path,
         output_path=tmp_path / "table-strong.json",
         top_k=1,
         retrieval_mode="keyword",
     )
     weak = mod.run_benchmark(  # type: ignore[attr-defined]
-        fixture_path=fixture_root / "table_weak.fixture.json",
+        fixture_path=weak_path,
         output_path=tmp_path / "table-weak.json",
         top_k=1,
         retrieval_mode="keyword",
