@@ -127,6 +127,8 @@ def test_parser_benchmark_reports_specialty_element_counts(monkeypatch, tmp_path
     assert rc == 0
 
     payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert isinstance(payload.get("fixture_hash"), str) and len(payload["fixture_hash"]) == 24
+    assert isinstance(payload.get("profile_hash"), str) and len(payload["profile_hash"]) == 24
     assert len(payload["cases"]) == 3
     by_case = {row["id"]: row for row in payload["cases"]}
     assert by_case["seal_invoice_case"]["golden"]["specialty_elements"]["seal"] == 1
