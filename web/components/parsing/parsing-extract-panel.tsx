@@ -162,7 +162,7 @@ export function ParsingExtractPanel({
     return Array.from(values)
   }, [activeElements])
   const currentSourceKind = mode === 'schema' ? schemaSourceKind.trim() : promptSourceKind.trim()
-  const showVisualKindField = currentSourceKind === '' || currentSourceKind === 'image'
+  const showVisualKindField = (currentSourceKind === '' || currentSourceKind === 'image') && availableVisualKinds.length > 1
 
   useEffect(() => {
     if (showVisualKindField) return
