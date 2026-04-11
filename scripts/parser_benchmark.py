@@ -57,6 +57,14 @@ def _stable_hash_text(text: str) -> str:
     return hashlib.sha256(str(text or "").encode("utf-8", errors="ignore")).hexdigest()[:24]
 
 
+def _stable_hash_bytes(data: bytes) -> str:
+    return hashlib.sha256(bytes(data or b"")).hexdigest()[:24]
+
+
+def _stable_hash_file(path: Path) -> str:
+    return _stable_hash_bytes(path.read_bytes())
+
+
 def _stable_hash_obj(obj: Any) -> str:
     return _stable_hash_text(json.dumps(obj, ensure_ascii=False, sort_keys=True))
 
@@ -117,7 +125,7 @@ def _build_fixture_hash(*, cases: list[BenchmarkCase], manifest_path: Path | Non
         payload.append(
             {
                 "manifest_path": str(manifest_path),
-                "manifest_hash": _stable_hash_text(manifest_path.read_text(encoding="utf-8", errors="replace")),
+                "manifest_hash": _stable_hash_file(manifest_path),
             }
         )
 
@@ -125,10 +133,10 @@ def _build_fixture_hash(*, cases: list[BenchmarkCase], manifest_path: Path | Non
         row: dict[str, Any] = {
             "id": str(case.case_id),
             "path": str(case.path),
-            "path_hash": _stable_hash_text(case.path.read_text(encoding="utf-8", errors="replace")) if case.path.exists() else None,
+            "path_hash": _stable_hash_file(case.path) if case.path.exists() else None,
             "golden_markdown_path": (str(case.golden_markdown_path) if case.golden_markdown_path else None),
             "golden_markdown_hash": (
-                _stable_hash_text(case.golden_markdown_path.read_text(encoding="utf-8", errors="replace"))
+                _stable_hash_file(case.golden_markdown_path)
                 if case.golden_markdown_path and case.golden_markdown_path.exists()
                 else None
             ),
