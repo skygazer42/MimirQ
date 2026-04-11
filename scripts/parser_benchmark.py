@@ -35,6 +35,7 @@ _MD_IMAGE_RE = re.compile(r"!\[[^\]]*\]\([^)]+\)")
 _HTML_IMG_RE = re.compile(r"(?i)<img\\b[^>]*>")
 _STRICT_PROFILE_SCHEMA_V1 = "mimirq.parser_benchmark_strict_profile.v1"
 _SPECIALTY_KINDS = ("seal", "equation", "table", "image")
+_IMAGE_VISUAL_KINDS = ("chart", "qr", "barcode", "diagram")
 
 
 def _iter_files(root: Path, *, exts: Iterable[str]) -> list[Path]:
@@ -401,6 +402,7 @@ def resolve_strict_thresholds(
         "mean_equation_recall": _pick("mean_equation_recall", float(args.strict_max_equation_recall_drop)),
         "mean_table_recall": _pick("mean_table_recall", float(args.strict_max_table_recall_drop)),
         "mean_image_recall": _pick("mean_image_recall", float(args.strict_max_image_recall_drop)),
+        "mean_chart_image_recall": _pick("mean_chart_image_recall", float(args.strict_max_chart_image_recall_drop)),
     }
 
 
@@ -550,6 +552,12 @@ def main() -> int:
         type=float,
         default=0.10,
         help="Allowed maximum drop for summary.<backend>.mean_image_recall under --strict.",
+    )
+    ap.add_argument(
+        "--strict-max-chart-image-recall-drop",
+        type=float,
+        default=0.10,
+        help="Allowed maximum drop for summary.<backend>.mean_chart_image_recall under --strict.",
     )
     ap.add_argument(
         "--strict-profile",
@@ -794,6 +802,9 @@ def main() -> int:
             subtype_summary[str(visual_kind)] = round(sum(numeric) / len(numeric), 4)
         if subtype_summary:
             summary[backend]["mean_image_visual_kind_recall"] = subtype_summary
+        for visual_kind in _IMAGE_VISUAL_KINDS:
+            value = subtype_summary.get(visual_kind) if isinstance(subtype_summary, dict) else None
+            summary[backend][f"mean_{visual_kind}_image_recall"] = value if value is not None else None
 
     report["summary"] = summary
 
@@ -834,6 +845,7 @@ def main() -> int:
                     ("mean_equation_recall", _metric(before, after, "mean_equation_recall")),
                     ("mean_table_recall", _metric(before, after, "mean_table_recall")),
                     ("mean_image_recall", _metric(before, after, "mean_image_recall")),
+                    ("mean_chart_image_recall", _metric(before, after, "mean_chart_image_recall")),
                 )
                 if v is not None
             }

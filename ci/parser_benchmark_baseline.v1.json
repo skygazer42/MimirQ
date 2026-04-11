@@ -1,7 +1,7 @@
 {
   "schema": "mimirq.parser_benchmark.v1",
   "fixture_hash": "21ed6a7ace1da0c93c1e2e7e",
-  "profile_hash": "36f2717241ef3de960cd3625",
+  "profile_hash": "6fbd8d09f309a35937544fd4",
   "summary": {
     "basic": {
       "attempts": 3,
@@ -13,7 +13,8 @@
       "mean_seal_recall": 0.0,
       "mean_equation_recall": 0.0,
       "mean_table_recall": 0.0,
-      "mean_image_recall": 0.0
+      "mean_image_recall": 0.0,
+      "mean_chart_image_recall": 0.0
     }
   }
 }
