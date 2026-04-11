@@ -53,6 +53,28 @@ jobs:
             --summary-out artifacts/answer_quality.summary.json \
             --report-out artifacts/rag_quality_gate.report.json
 
+      - name: Run sample broader parsing proof sweep
+        env:
+          LLM_MOCK_ENABLED: "true"
+        run: |
+          mkdir -p artifacts/parsing_proof_broader_sample
+          python scripts/run_sample_parsing_retrieval_proof.py \
+            --out-dir artifacts/parsing_proof_broader_sample
+
+      - name: Build broader parsing proof summary artifacts
+        run: |
+          python scripts/build_parsing_retrieval_proof_artifacts.py \
+            --batch-report artifacts/parsing_proof_broader_sample/batch.report.json \
+            --summary-out artifacts/parsing_proof_broader_sample/summary.json \
+            --report-out artifacts/parsing_proof_broader_sample/report.json
+
+      - name: Evaluate broader parsing proof thresholds
+        run: |
+          python scripts/parsing_retrieval_proof_gate.py \
+            --input artifacts/parsing_proof_broader_sample/summary.json \
+            --thresholds ci/parsing_retrieval_proof_thresholds.v1.json \
+            --out artifacts/parsing_proof_broader_sample/gate.json || true
+
       - name: Run RAG quality gate test
         run: pytest -q tests/rag/evaluation/test_rag_quality_gate.py --junitxml=artifacts/rag_quality_gate.junit.xml
 
@@ -66,3 +88,8 @@ jobs:
             artifacts/answer_quality.summary.json
             artifacts/rag_quality_gate.report.json
             artifacts/rag_quality_gate.junit.xml
+            artifacts/parsing_proof_broader_sample/parsing_proof_batch.spec.json
+            artifacts/parsing_proof_broader_sample/*.fixture.json
+            artifacts/parsing_proof_broader_sample/*.report.json
+            artifacts/parsing_proof_broader_sample/summary.json
+            artifacts/parsing_proof_broader_sample/gate.json
