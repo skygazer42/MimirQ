@@ -172,6 +172,8 @@ CI usually pairs this with a diff artifact (`artifacts/parser_benchmark.diff.jso
 
 When the baseline includes `fixture_hash` / `profile_hash`, strict mode also checks that the current run used the same fixture set and strict-profile shape before comparing summary metrics.
 
+Strict mode also fails when `fixture_issues` reports missing local assets referenced by golden markdown, so broken image-bearing fixtures do not silently pass the smoke gate.
+
 `parser_benchmark` now also emits `regression_severity` (schema `mimirq.parser_benchmark_regression_severity.v1`) when baseline is provided, including:
 
 - `levels.critical/high/medium/low`
