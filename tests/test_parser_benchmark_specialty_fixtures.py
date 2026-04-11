@@ -243,3 +243,43 @@ def test_parser_benchmark_strict_passes_with_repo_fixture_baseline(monkeypatch, 
     compatibility = strict_gate.get("compatibility") or {}
     assert compatibility.get("compatible") is True
     assert list(compatibility.get("mismatches") or []) == []
+
+
+def test_repo_parser_benchmark_baseline_matches_fake_fixture_smoke(monkeypatch, tmp_path: Path) -> None:
+    mod = _load_module()
+    input_dir = _fixture_root()
+    manifest_path = input_dir / "manifest.json"
+
+    out_path = tmp_path / "parser_benchmark.baseline.check.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "parser_benchmark.py",
+            "--input-dir",
+            str(input_dir),
+            "--manifest",
+            str(manifest_path),
+            "--backends",
+            "basic",
+            "--max-files",
+            "3",
+            "--strict-profile",
+            str(_repo_root() / "ci" / "parser_strict_profile.v1.json"),
+            "--out",
+            str(out_path),
+        ],
+    )
+
+    rc = mod.main()  # type: ignore[attr-defined]
+    assert rc == 0
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    baseline = json.loads((_repo_root() / "ci" / "parser_benchmark_baseline.v1.json").read_text(encoding="utf-8"))
+
+    assert payload.get("fixture_hash") == baseline.get("fixture_hash")
+    assert payload.get("profile_hash") == baseline.get("profile_hash")
+    payload_summary = (payload.get("summary") or {}).get("basic") or {}
+    baseline_summary = (baseline.get("summary") or {}).get("basic") or {}
+    for key, value in baseline_summary.items():
+        assert payload_summary.get(key) == value
