@@ -73,7 +73,7 @@ python3 scripts/parser_benchmark.py \
   --input-dir tests/fixtures/parsing_golden \
   --manifest tests/fixtures/parsing_golden/manifest.json \
   --backends basic \
-  --max-files 5 \
+  --max-files 6 \
   --out /tmp/parser_benchmark_fixture_smoke.json
 ```
 
@@ -84,7 +84,7 @@ python3 scripts/parser_benchmark.py \
   --input-dir tests/fixtures/parsing_golden \
   --manifest tests/fixtures/parsing_golden/manifest.json \
   --backends basic \
-  --max-files 5 \
+  --max-files 6 \
   --out /tmp/parser_benchmark_strict_smoke.json \
   --baseline ci/parser_benchmark_baseline.v1.json \
   --strict-profile ci/parser_strict_profile.v1.json \

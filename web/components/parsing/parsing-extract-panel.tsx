@@ -161,6 +161,14 @@ export function ParsingExtractPanel({
     }
     return Array.from(values)
   }, [activeElements])
+  const currentSourceKind = mode === 'schema' ? schemaSourceKind.trim() : promptSourceKind.trim()
+  const showVisualKindField = currentSourceKind === '' || currentSourceKind === 'image'
+
+  useEffect(() => {
+    if (showVisualKindField) return
+    setSchemaSourceVisualKind('')
+    setPromptSourceVisualKind('')
+  }, [showVisualKindField])
 
   useEffect(() => {
     const defaults = suggestDefaults(activeElements)
@@ -292,24 +300,26 @@ export function ParsingExtractPanel({
             </div>
           </div>
 
-          <div className="mt-3 space-y-1.5">
-            <div className="text-[11px] font-medium text-muted-foreground">来源 visual kind</div>
-            <select
-              value={mode === 'schema' ? schemaSourceVisualKind : promptSourceVisualKind}
-              onChange={(event) =>
-                mode === 'schema'
-                  ? setSchemaSourceVisualKind(event.target.value)
-                  : setPromptSourceVisualKind(event.target.value)
-              }
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm"
-            >
-              {availableVisualKinds.map((visualKind) => (
-                <option key={visualKind || 'auto'} value={visualKind}>
-                  {visualKind || '自动'}
-                </option>
-              ))}
-            </select>
-          </div>
+          {showVisualKindField ? (
+            <div className="mt-3 space-y-1.5">
+              <div className="text-[11px] font-medium text-muted-foreground">来源 visual kind</div>
+              <select
+                value={mode === 'schema' ? schemaSourceVisualKind : promptSourceVisualKind}
+                onChange={(event) =>
+                  mode === 'schema'
+                    ? setSchemaSourceVisualKind(event.target.value)
+                    : setPromptSourceVisualKind(event.target.value)
+                }
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm"
+              >
+                {availableVisualKinds.map((visualKind) => (
+                  <option key={visualKind || 'auto'} value={visualKind}>
+                    {visualKind || '自动'}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
 
           <div className="mt-3 space-y-1.5">
             <div className="text-[11px] font-medium text-muted-foreground">别名</div>

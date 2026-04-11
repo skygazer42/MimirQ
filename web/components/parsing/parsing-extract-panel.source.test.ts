@@ -15,6 +15,8 @@ describe('parsing extract panel source', () => {
     expect(src).toContain('evidence.pages')
     expect(src).toContain('source_visual_kind')
     expect(src).toContain('const availableVisualKinds = useMemo(')
+    expect(src).toContain('const currentSourceKind =')
+    expect(src).toContain('const showVisualKindField =')
     expect(src).toContain('evidence.visual_kind')
     expect(src).toContain('来源 visual kind')
     expect(src).toContain('跨页')
