@@ -113,3 +113,24 @@ def test_normalize_document_elements_exposes_cross_page_pages_as_typed_field():
     assert out[0]["kind"] == "table"
     assert out[0]["page"] == 1
     assert out[0]["pages"] == [1, 2]
+
+
+def test_normalize_document_elements_infers_visual_kind_for_image_elements():
+    from app.parsing.utils.document_elements import normalize_document_elements  # noqa: WPS433
+
+    docs = [
+        Document(
+            page_content="chart preview",
+            metadata={
+                "doc_type_kwd": "image",
+                "page": 3,
+                "element_kind": "image",
+                "element_text": "Revenue growth chart for Q1",
+            },
+        )
+    ]
+
+    out = normalize_document_elements(docs)
+
+    assert out[0]["kind"] == "image"
+    assert out[0]["attributes"]["visual_kind"] == "chart"

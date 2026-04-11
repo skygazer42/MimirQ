@@ -11,6 +11,7 @@ describe('parsing elements panel source', () => {
     expect(src).toContain('const visibleElements = useMemo(')
     expect(src).toContain('onSelectElement')
     expect(src).toContain('source_content_type')
+    expect(src).toContain('visual_kind')
     expect(src).toContain('bbox')
     expect(src).toContain('confidence')
     expect(src).toContain('cross_page_merge_pages')

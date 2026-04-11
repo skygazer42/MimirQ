@@ -141,6 +141,11 @@ export function ParsingElementsPanel({
                     {attributes.source_content_type as string}
                   </span>
                 ) : null}
+                {typeof attributes?.visual_kind === 'string' ? (
+                  <span className="rounded-full border border-border/60 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                    {attributes.visual_kind as string}
+                  </span>
+                ) : null}
                 {typeof element.confidence === 'number' ? (
                   <span className="font-mono text-[10px] text-muted-foreground">{element.confidence.toFixed(2)}</span>
                 ) : null}
