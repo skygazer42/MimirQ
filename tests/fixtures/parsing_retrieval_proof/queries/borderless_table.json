@@ -1,0 +1,7 @@
+[
+  {
+    "id": "q-borderless",
+    "question": "Which warehouse stores Paper?",
+    "expected_chunk_indexes": [0]
+  }
+]
