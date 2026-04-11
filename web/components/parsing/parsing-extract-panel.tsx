@@ -19,6 +19,12 @@ type ParsingExtractPanelProps = {
 }
 
 function suggestDefaults(elements: ParsingElement[]) {
+  const imageVisualKinds = new Set(
+    elements
+      .filter((item) => item.kind === 'image')
+      .map((item) => String((item.attributes as Record<string, unknown> | null)?.visual_kind || '').trim())
+      .filter(Boolean)
+  )
   const hasSeal = elements.some((item) => item.kind === 'seal')
   if (hasSeal) {
     return {
@@ -49,6 +55,33 @@ function suggestDefaults(elements: ParsingElement[]) {
       sourceVisualKind: 'chart',
       aliases: '图表, chart',
       prompt: '提取主要图表说明',
+    }
+  }
+  if (imageVisualKinds.has('qr')) {
+    return {
+      fieldName: 'qr_text',
+      sourceKind: 'image',
+      sourceVisualKind: 'qr',
+      aliases: '二维码, QR',
+      prompt: '提取二维码对应的文本或说明',
+    }
+  }
+  if (imageVisualKinds.has('barcode')) {
+    return {
+      fieldName: 'barcode_text',
+      sourceKind: 'image',
+      sourceVisualKind: 'barcode',
+      aliases: '条码, barcode',
+      prompt: '提取条码对应的文本或说明',
+    }
+  }
+  if (imageVisualKinds.has('diagram')) {
+    return {
+      fieldName: 'diagram_summary',
+      sourceKind: 'image',
+      sourceVisualKind: 'diagram',
+      aliases: '示意图, diagram',
+      prompt: '提取主要示意图说明',
     }
   }
   return {
@@ -117,6 +150,14 @@ export function ParsingExtractPanel({
     for (const element of activeElements || []) {
       const kind = String(element.kind || '').trim()
       if (kind) values.add(kind)
+    }
+    return Array.from(values)
+  }, [activeElements])
+  const availableVisualKinds = useMemo(() => {
+    const values = new Set<string>([''])
+    for (const element of activeElements || []) {
+      const visualKind = String((element.attributes as Record<string, unknown> | null)?.visual_kind || '').trim()
+      if (visualKind) values.add(visualKind)
     }
     return Array.from(values)
   }, [activeElements])
@@ -253,15 +294,21 @@ export function ParsingExtractPanel({
 
           <div className="mt-3 space-y-1.5">
             <div className="text-[11px] font-medium text-muted-foreground">来源 visual kind</div>
-            <Input
+            <select
               value={mode === 'schema' ? schemaSourceVisualKind : promptSourceVisualKind}
               onChange={(event) =>
                 mode === 'schema'
                   ? setSchemaSourceVisualKind(event.target.value)
                   : setPromptSourceVisualKind(event.target.value)
               }
-              placeholder="chart / qr / barcode"
-            />
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm"
+            >
+              {availableVisualKinds.map((visualKind) => (
+                <option key={visualKind || 'auto'} value={visualKind}>
+                  {visualKind || '自动'}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="mt-3 space-y-1.5">

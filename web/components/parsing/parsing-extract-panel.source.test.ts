@@ -14,6 +14,8 @@ describe('parsing extract panel source', () => {
     expect(src).toContain('onSelectEvidence?.(')
     expect(src).toContain('evidence.pages')
     expect(src).toContain('source_visual_kind')
+    expect(src).toContain('const availableVisualKinds = useMemo(')
+    expect(src).toContain('来源 visual kind')
     expect(src).toContain('跨页')
     expect(src).toContain('运行抽取')
     expect(src).toContain('抽取结果')
