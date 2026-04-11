@@ -32,8 +32,20 @@ def cleanup_handwriting_document(
         return False, "skipped", info
 
     if normalized_backend == "auto":
-        normalized_backend = "http" if str(api_url or "").strip() else "local"
+        has_api = bool(str(api_url or "").strip())
+        has_model = bool(str(model_path or "").strip())
+        if has_api:
+            normalized_backend = "http"
+        elif has_model:
+            normalized_backend = "local"
+        elif input_path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}:
+            normalized_backend = "heuristic"
+        else:
+            normalized_backend = "skip"
         info["backend"] = normalized_backend
+
+    if normalized_backend == "skip":
+        return False, "skipped", info
 
     if normalized_backend == "heuristic":
         try:

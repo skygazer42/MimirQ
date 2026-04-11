@@ -88,3 +88,54 @@ def test_image_preprocess_applies_handwriting_cleanup_via_heuristic_backend(tmp_
         step.id == "handwriting_cleanup" and step.applied is True and step.changed is True and step.note == "cleanup_ok"
         for step in (out.steps or [])
     )
+
+
+def test_image_preprocess_auto_backend_falls_back_to_heuristic_for_images(tmp_path: Path, monkeypatch) -> None:
+    from PIL import Image
+
+    img = tmp_path / "handwritten-note.png"
+    Image.new("RGB", (8, 8), color=(180, 180, 180)).save(img)
+
+    monkeypatch.setattr(settings, "IMAGE_PREPROCESS_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "ORIENTATION_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "DESKEW_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "WATERMARK_REMOVAL_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "HANDWRITING_CLEANUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "HANDWRITING_CLEANUP_BACKEND", "auto", raising=False)
+    monkeypatch.setattr(settings, "HANDWRITING_CLEANUP_API_URL", "", raising=False)
+    monkeypatch.setattr(settings, "HANDWRITING_CLEANUP_MODEL_PATH", "", raising=False)
+
+    out = preprocess_image_document(input_path=img, document_id="doc-handwriting", pdf_quality=None)
+
+    assert out.changed is True
+    assert out.output_path != str(img)
+    assert Path(out.output_path).exists()
+    assert any(
+        step.id == "handwriting_cleanup" and step.applied is True and step.changed is True and step.note == "cleanup_ok"
+        for step in (out.steps or [])
+    )
+
+
+def test_image_preprocess_auto_backend_skips_pdf_when_no_local_or_http_cleanup_exists(tmp_path: Path, monkeypatch) -> None:
+    pdf = tmp_path / "handwritten-note.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n%fake\n")
+
+    monkeypatch.setattr(settings, "IMAGE_PREPROCESS_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "PREPROCESS_SKIP_HIGH_QUALITY", False, raising=False)
+    monkeypatch.setattr(settings, "ORIENTATION_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "DESKEW_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "WATERMARK_REMOVAL_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "HANDWRITING_CLEANUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "HANDWRITING_CLEANUP_BACKEND", "auto", raising=False)
+    monkeypatch.setattr(settings, "HANDWRITING_CLEANUP_API_URL", "", raising=False)
+    monkeypatch.setattr(settings, "HANDWRITING_CLEANUP_MODEL_PATH", "", raising=False)
+
+    out = preprocess_image_document(input_path=pdf, document_id="doc-handwriting", pdf_quality={"score": 0.2, "is_scanned": True})
+
+    assert out.changed is False
+    assert out.output_path == str(pdf)
+    assert "handwriting_cleanup_model_missing" not in (out.warnings or [])
+    assert any(
+        step.id == "handwriting_cleanup" and step.applied is True and step.changed is False and step.note == "skipped"
+        for step in (out.steps or [])
+    )
