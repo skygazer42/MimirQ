@@ -201,3 +201,45 @@ def test_parser_benchmark_strict_fails_when_baseline_hashes_mismatch(monkeypatch
     mismatches = list(compatibility.get("mismatches") or [])
     assert any("fixture_hash" in item for item in mismatches)
     assert any("profile_hash" in item for item in mismatches)
+
+
+def test_parser_benchmark_strict_passes_with_repo_fixture_baseline(monkeypatch, tmp_path: Path) -> None:
+    mod = _load_module()
+    input_dir = _fixture_root()
+    manifest_path = input_dir / "manifest.json"
+
+    _install_fake_parser_benchmark_modules(monkeypatch)
+
+    out_path = tmp_path / "parser_benchmark.strict.ok.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "parser_benchmark.py",
+            "--input-dir",
+            str(input_dir),
+            "--manifest",
+            str(manifest_path),
+            "--backends",
+            "basic",
+            "--max-files",
+            "3",
+            "--strict",
+            "--baseline",
+            str(_repo_root() / "ci" / "parser_benchmark_baseline.v1.json"),
+            "--strict-profile",
+            str(_repo_root() / "ci" / "parser_strict_profile.v1.json"),
+            "--out",
+            str(out_path),
+        ],
+    )
+
+    rc = mod.main()  # type: ignore[attr-defined]
+    assert rc == 0
+
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    strict_gate = payload.get("strict_gate") or {}
+    assert strict_gate.get("passed") is True
+    compatibility = strict_gate.get("compatibility") or {}
+    assert compatibility.get("compatible") is True
+    assert list(compatibility.get("mismatches") or []) == []
