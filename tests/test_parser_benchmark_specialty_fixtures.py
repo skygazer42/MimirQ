@@ -379,3 +379,91 @@ def test_parser_benchmark_reports_missing_local_markdown_assets(monkeypatch, tmp
     assert payload["fixture_issues"][0]["case_id"] == "missing-asset-case"
     assert payload["fixture_issues"][0]["type"] == "missing_local_assets"
     assert payload["fixture_issues"][0]["items"] == ["missing-chart.png"]
+
+
+def test_parser_benchmark_strict_fails_on_fixture_issues_even_with_matching_baseline(monkeypatch, tmp_path: Path) -> None:
+    mod = _load_module()
+    fixture_root = tmp_path / "fixture"
+    (fixture_root / "input").mkdir(parents=True, exist_ok=True)
+    (fixture_root / "golden").mkdir(parents=True, exist_ok=True)
+    (fixture_root / "input" / "sample.md").write_text("正文。", encoding="utf-8")
+    (fixture_root / "golden" / "sample.md").write_text("![chart](missing-chart.png)\n", encoding="utf-8")
+    (fixture_root / "manifest.json").write_text(
+        json.dumps(
+            {
+                "cases": [
+                    {
+                        "id": "missing-asset-case",
+                        "path": "input/sample.md",
+                        "golden_markdown": "golden/sample.md",
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    _install_fake_parser_benchmark_modules(monkeypatch)
+
+    preflight_out = tmp_path / "preflight.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "parser_benchmark.py",
+            "--input-dir",
+            str(fixture_root),
+            "--manifest",
+            str(fixture_root / "manifest.json"),
+            "--backends",
+            "deepdoc",
+            "--out",
+            str(preflight_out),
+        ],
+    )
+    rc = mod.main()  # type: ignore[attr-defined]
+    assert rc == 0
+    preflight = json.loads(preflight_out.read_text(encoding="utf-8"))
+
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_text(
+        json.dumps(
+            {
+                "schema": "mimirq.parser_benchmark.v1",
+                "fixture_hash": preflight["fixture_hash"],
+                "profile_hash": preflight["profile_hash"],
+                "summary": {},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    strict_out = tmp_path / "strict.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "parser_benchmark.py",
+            "--input-dir",
+            str(fixture_root),
+            "--manifest",
+            str(fixture_root / "manifest.json"),
+            "--backends",
+            "deepdoc",
+            "--strict",
+            "--baseline",
+            str(baseline_path),
+            "--out",
+            str(strict_out),
+        ],
+    )
+    rc = mod.main()  # type: ignore[attr-defined]
+    assert rc == 2
+
+    payload = json.loads(strict_out.read_text(encoding="utf-8"))
+    strict_gate = payload.get("strict_gate") or {}
+    assert strict_gate.get("passed") is False
+    failures = list(strict_gate.get("failures") or [])
+    assert any("missing_local_assets" in item for item in failures)

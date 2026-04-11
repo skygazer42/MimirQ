@@ -961,8 +961,13 @@ def main() -> int:
         )
         compatibility = evaluate_baseline_compatibility(current_report=report, baseline_report=baseline_obj)
         compatibility_mismatches = list(compatibility.get("mismatches") or [])
-        passed = bool(strict_result.get("passed")) and len(compatibility_mismatches) == 0
-        failures = list(strict_result.get("failures") or []) + compatibility_mismatches
+        fixture_issue_failures = [
+            f"{str(item.get('case_id') or 'unknown')}: missing_local_assets -> {', '.join(str(x) for x in (item.get('items') or []))}"
+            for item in list(report.get("fixture_issues") or [])
+            if str(item.get("type") or "") == "missing_local_assets"
+        ]
+        passed = bool(strict_result.get("passed")) and len(compatibility_mismatches) == 0 and len(fixture_issue_failures) == 0
+        failures = list(strict_result.get("failures") or []) + compatibility_mismatches + fixture_issue_failures
         report["strict_gate"] = {
             "enabled": True,
             "thresholds": dict(strict_thresholds or {}),
@@ -970,6 +975,7 @@ def main() -> int:
             "failures": failures,
             "by_backend": dict(strict_result.get("by_backend") or {}),
             "compatibility": compatibility,
+            "fixture_issues": list(report.get("fixture_issues") or []),
         }
 
     out_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
