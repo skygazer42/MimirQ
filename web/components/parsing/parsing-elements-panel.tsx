@@ -26,6 +26,22 @@ function formatBbox(value: ParsingElement['bbox']): string {
   return `${value.x0},${value.y0},${value.x1},${value.y1}`
 }
 
+function formatPageLabel(element: ParsingElement): string {
+  const pages = Array.isArray(element.pages)
+    ? element.pages.filter((value) => Number.isInteger(value) && value > 0)
+    : []
+  if (pages.length >= 2) {
+    if (pages.length === 2 && pages[1] === pages[0] + 1) {
+      return `页 ${pages[0]}-${pages[1]}`
+    }
+    return `页 ${pages.join(',')}`
+  }
+  if (typeof element.page === 'number') {
+    return `页 ${element.page}`
+  }
+  return ''
+}
+
 function formatCrossPageMergePages(attributes: ParsingElement['attributes']): string {
   const raw = (attributes as Record<string, unknown> | null)?.cross_page_merge_pages
   if (!Array.isArray(raw)) return ''
@@ -106,6 +122,7 @@ export function ParsingElementsPanel({
       <div className="mt-3 grid gap-2 md:grid-cols-2">
         {visibleElements.map((element) => {
           const attributes = (element.attributes as Record<string, unknown> | null) ?? null
+          const pageLabel = formatPageLabel(element)
           const crossPageLabel = formatPageSpan(element)
 
           return (
@@ -117,9 +134,7 @@ export function ParsingElementsPanel({
             >
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[11px] font-semibold text-foreground">{kindLabel(String(element.kind || 'paragraph'))}</span>
-                {typeof element.page === 'number' ? (
-                  <span className="font-mono text-[10px] text-muted-foreground">页 {element.page}</span>
-                ) : null}
+                {pageLabel ? <span className="font-mono text-[10px] text-muted-foreground">{pageLabel}</span> : null}
                 <span className="font-mono text-[10px] text-muted-foreground">{element.id}</span>
                 {typeof attributes?.source_content_type === 'string' ? (
                   <span className="rounded-full border border-border/60 px-1.5 py-0.5 text-[10px] text-muted-foreground">
