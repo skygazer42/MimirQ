@@ -19,18 +19,47 @@ def _load_script(rel_path: str):
     return mod
 
 
+def _fixture_helper():
+    return _load_script("scripts/build_parsing_retrieval_fixture.py")
+
+
 def test_stronger_layout_parsing_fixture_beats_weaker_layout_parsing_in_retrieval(tmp_path: Path) -> None:
     mod = _load_script("scripts/run_sample_retrieval_benchmark.py")
-    fixture_root = _repo_root() / "tests" / "fixtures" / "parsing_retrieval_proof"
+    helper = _fixture_helper()
+
+    strong_fixture = helper.build_retrieval_fixture(  # type: ignore[attr-defined]
+        documents=[
+            {"chunk_id": "layout_answer", "document_id": "layout-doc", "text": "East region revenue accelerated in Q3.", "metadata": {}},
+            {"chunk_id": "layout_noise", "document_id": "layout-doc", "text": "North region revenue increased steadily.", "metadata": {}},
+        ],
+        queries=[{"id": "layout-q1", "question": "Which region accelerated in Q3?", "expected_chunk_ids": ["layout_answer"]}],
+        top_k=1,
+        retrieval_mode="keyword",
+    )
+    weak_fixture = helper.build_retrieval_fixture(  # type: ignore[attr-defined]
+        documents=[
+            {"chunk_id": "layout_answer", "document_id": "layout-doc", "text": "East region", "metadata": {}},
+            {"chunk_id": "layout_split_tail", "document_id": "layout-doc", "text": "accelerated in Q3", "metadata": {}},
+            {"chunk_id": "layout_noise", "document_id": "layout-doc", "text": "North region revenue increased steadily.", "metadata": {}},
+        ],
+        queries=[{"id": "layout-q1", "question": "Which region accelerated in Q3?", "expected_chunk_ids": ["layout_answer"]}],
+        top_k=1,
+        retrieval_mode="keyword",
+    )
+
+    strong_path = tmp_path / "layout-strong.fixture.json"
+    weak_path = tmp_path / "layout-weak.fixture.json"
+    strong_path.write_text(__import__("json").dumps(strong_fixture, ensure_ascii=False), encoding="utf-8")
+    weak_path.write_text(__import__("json").dumps(weak_fixture, ensure_ascii=False), encoding="utf-8")
 
     strong = mod.run_benchmark(  # type: ignore[attr-defined]
-        fixture_path=fixture_root / "layout_strong.fixture.json",
+        fixture_path=strong_path,
         output_path=tmp_path / "strong.json",
         top_k=1,
         retrieval_mode="keyword",
     )
     weak = mod.run_benchmark(  # type: ignore[attr-defined]
-        fixture_path=fixture_root / "layout_weak.fixture.json",
+        fixture_path=weak_path,
         output_path=tmp_path / "weak.json",
         top_k=1,
         retrieval_mode="keyword",

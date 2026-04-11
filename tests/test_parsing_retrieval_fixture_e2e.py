@@ -90,3 +90,65 @@ def test_build_fixture_helper_round_trips_into_sample_retrieval_benchmark(tmp_pa
     assert report["summary"]["hit_at_k"] == 1.0
     assert report["summary"]["mrr"] == 1.0
     assert report["cases"][0]["ranked_chunk_ids"] == ["table-answer"]
+
+
+def test_real_pdf_parser_output_can_round_trip_through_helper_and_benchmark(tmp_path: Path) -> None:
+    build_mod = _load_script("scripts/build_parsing_retrieval_fixture.py")
+    bench_mod = _load_script("scripts/run_sample_retrieval_benchmark.py")
+
+    from app.parsing.parsers.pdf_parser import PDFParser  # noqa: WPS433
+
+    docs = PDFParser().parse(Path("tests/fixtures/parsing_golden_broader/cross_page_table_pdf/input/sample.pdf"))
+    docs_path = tmp_path / "documents.json"
+    queries_path = tmp_path / "queries.json"
+    fixture_path = tmp_path / "fixture.json"
+    report_path = tmp_path / "report.json"
+
+    docs_path.write_text(
+        json.dumps(
+            [{"page_content": doc.page_content, "metadata": dict(doc.metadata or {})} for doc in docs],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    queries_path.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "q-cross-page",
+                    "question": "What is APAC Q2 revenue?",
+                    "expected_chunk_indexes": [1],
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    rc = build_mod.main(  # type: ignore[attr-defined]
+        [
+            "--documents-json",
+            str(docs_path),
+            "--queries-json",
+            str(queries_path),
+            "--out",
+            str(fixture_path),
+            "--top-k",
+            "2",
+            "--retrieval-mode",
+            "keyword",
+        ]
+    )
+
+    assert rc == 0
+
+    report = bench_mod.run_benchmark(  # type: ignore[attr-defined]
+        fixture_path=fixture_path,
+        output_path=report_path,
+        top_k=2,
+        retrieval_mode="keyword",
+    )
+
+    assert report["summary"]["hit_at_k"] == 1.0
+    assert report["summary"]["mrr"] == 1.0
+    assert report["cases"][0]["ranked_chunk_ids"][0].startswith("chunk-")
