@@ -1,0 +1,40 @@
+{
+  "schema": "mimirq.sample_retrieval_fixture.v1",
+  "defaults": {
+    "top_k": 1,
+    "retrieval_mode": "keyword"
+  },
+  "documents": [
+    {
+      "chunk_id": "layout_answer",
+      "document_id": "layout-doc",
+      "text": "East region",
+      "metadata": {
+        "source": "layout-weak.md"
+      }
+    },
+    {
+      "chunk_id": "layout_split_tail",
+      "document_id": "layout-doc",
+      "text": "accelerated in Q3",
+      "metadata": {
+        "source": "layout-weak.md"
+      }
+    },
+    {
+      "chunk_id": "layout_noise",
+      "document_id": "layout-doc",
+      "text": "North region revenue increased steadily.",
+      "metadata": {
+        "source": "layout-weak.md"
+      }
+    }
+  ],
+  "queries": [
+    {
+      "id": "layout-q1",
+      "question": "Which region accelerated in Q3?",
+      "expected_chunk_ids": ["layout_answer"]
+    }
+  ]
+}
