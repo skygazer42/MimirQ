@@ -125,6 +125,18 @@ def test_load_strict_profile_requires_known_schema(tmp_path: Path) -> None:
         mod.load_strict_profile(p)  # type: ignore[attr-defined]
 
 
+def test_evaluate_baseline_compatibility_detects_fixture_and_profile_mismatch() -> None:
+    mod = _load_module()
+    out = mod.evaluate_baseline_compatibility(  # type: ignore[attr-defined]
+        current_report={"fixture_hash": "fixture-new", "profile_hash": "profile-new"},
+        baseline_report={"fixture_hash": "fixture-old", "profile_hash": "profile-old"},
+    )
+    assert out["compatible"] is False
+    mismatches = list(out.get("mismatches") or [])
+    assert any("fixture_hash" in item for item in mismatches)
+    assert any("profile_hash" in item for item in mismatches)
+
+
 def test_build_regression_severity_summary_emits_levels() -> None:
     mod = _load_module()
     out = mod.build_regression_severity_summary(  # type: ignore[attr-defined]

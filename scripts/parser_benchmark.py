@@ -294,6 +294,22 @@ def evaluate_strict_regressions(
     }
 
 
+def evaluate_baseline_compatibility(
+    *,
+    current_report: dict[str, Any],
+    baseline_report: dict[str, Any],
+) -> dict[str, Any]:
+    mismatches: list[str] = []
+    for key in ("fixture_hash", "profile_hash"):
+        current = str((current_report or {}).get(key) or "").strip()
+        baseline = str((baseline_report or {}).get(key) or "").strip()
+        if not current or not baseline:
+            continue
+        if current != baseline:
+            mismatches.append(f"{key} mismatch (current={current}, baseline={baseline})")
+    return {"compatible": bool(len(mismatches) == 0), "mismatches": mismatches}
+
+
 def load_strict_profile(path: Path | None) -> dict[str, Any]:
     if path is None:
         return {}
@@ -741,6 +757,7 @@ def main() -> int:
 
         report["regressions"] = {
             "baseline": str(baseline_path),
+            "compatibility": evaluate_baseline_compatibility(current_report=report, baseline_report=baseline_obj),
             "by_backend": diffs,
         }
         severity_bands = strict_profile.get("severity_bands") if isinstance(strict_profile, dict) else {}
@@ -774,12 +791,17 @@ def main() -> int:
             baseline_summary=baseline_summary,
             max_drop_by_metric=strict_thresholds,
         )
+        compatibility = evaluate_baseline_compatibility(current_report=report, baseline_report=baseline_obj)
+        compatibility_mismatches = list(compatibility.get("mismatches") or [])
+        passed = bool(strict_result.get("passed")) and len(compatibility_mismatches) == 0
+        failures = list(strict_result.get("failures") or []) + compatibility_mismatches
         report["strict_gate"] = {
             "enabled": True,
             "thresholds": dict(strict_thresholds or {}),
-            "passed": bool(strict_result.get("passed")),
-            "failures": list(strict_result.get("failures") or []),
+            "passed": passed,
+            "failures": failures,
             "by_backend": dict(strict_result.get("by_backend") or {}),
+            "compatibility": compatibility,
         }
 
     out_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")

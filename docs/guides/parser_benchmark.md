@@ -158,6 +158,8 @@ You can pin CI thresholds via strict profile JSON:
 
 CI usually pairs this with a diff artifact (`artifacts/parser_benchmark.diff.json`) so reviewers can inspect what changed even when gate passes.
 
+When the baseline includes `fixture_hash` / `profile_hash`, strict mode also checks that the current run used the same fixture set and strict-profile shape before comparing summary metrics.
+
 `parser_benchmark` now also emits `regression_severity` (schema `mimirq.parser_benchmark_regression_severity.v1`) when baseline is provided, including:
 
 - `levels.critical/high/medium/low`
