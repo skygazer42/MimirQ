@@ -208,6 +208,86 @@ def decode_image_codes(image: PILImage.Image) -> dict[str, Any]:
     }
 
 
+def infer_visual_kind_from_pixels(image: PILImage.Image) -> str:
+    """
+    Best-effort local visual-kind inference from image pixels.
+
+    Current supported kinds:
+    - chart: multiple solid bar-like regions
+    - diagram: multiple box-like regions connected by sparse lines
+    """
+    try:
+        import cv2
+        import numpy as np
+    except Exception:
+        return ""
+
+    try:
+        rgb = image.convert("RGB")
+        arr = np.array(rgb)
+    except Exception:
+        return ""
+
+    if arr.size == 0 or arr.ndim != 3:
+        return ""
+
+    height, width = arr.shape[:2]
+    if height < 24 or width < 24:
+        return ""
+
+    gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
+    mask = cv2.threshold(gray, 220, 255, cv2.THRESH_BINARY_INV)[1]
+    ink_ratio = float(mask.mean() / 255.0)
+    if ink_ratio <= 0.01:
+        return ""
+
+    min_component_area = max(32, int(width * height * 0.004))
+    component_count, _labels, stats, _centroids = cv2.connectedComponentsWithStats(mask, connectivity=8)
+
+    solid_rects: list[tuple[int, int, int, int, int]] = []
+    for index in range(1, int(component_count)):
+        x, y, w, h, area = (int(value) for value in stats[index])
+        if area < min_component_area or w <= 0 or h <= 0:
+            continue
+        fill_ratio = float(area / float(w * h))
+        aspect_ratio = float(w / float(h))
+        if fill_ratio >= 0.55 and 0.18 <= aspect_ratio <= 1.8 and h >= int(height * 0.12):
+            solid_rects.append((x, y, w, h, area))
+
+    if len(solid_rects) >= 3:
+        solid_rects.sort(key=lambda item: item[0])
+        heights = [item[3] for item in solid_rects]
+        unique_heights = len({int(round(value / 4.0) * 4) for value in heights})
+        if unique_heights >= 3 and max(heights) - min(heights) >= int(height * 0.12):
+            return "chart"
+
+    contours, _hierarchy = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    rectangular_regions = 0
+    for contour in contours:
+        x, y, w, h = (int(value) for value in cv2.boundingRect(contour))
+        if w <= 0 or h <= 0:
+            continue
+        box_area = w * h
+        if box_area < min_component_area:
+            continue
+        contour_area = float(cv2.contourArea(contour))
+        if contour_area < float(min_component_area):
+            continue
+        perimeter = float(cv2.arcLength(contour, True))
+        if perimeter <= 0:
+            continue
+        approx = cv2.approxPolyDP(contour, 0.03 * perimeter, True)
+        aspect_ratio = float(w / float(h))
+        extent = contour_area / float(box_area)
+        if 4 <= len(approx) <= 10 and 1.2 <= aspect_ratio <= 4.5 and extent >= 0.45:
+            rectangular_regions += 1
+
+    if rectangular_regions >= 3 and len(solid_rects) < 3 and ink_ratio <= 0.12:
+        return "diagram"
+
+    return ""
+
+
 def append_image_understanding_text(
     text: str,
     *,
@@ -242,6 +322,7 @@ __all__ = [
     "append_image_understanding_text",
     "decode_image_codes",
     "derive_image_caption",
+    "infer_visual_kind_from_pixels",
     "load_image_for_ocr",
     "ocr_image",
 ]

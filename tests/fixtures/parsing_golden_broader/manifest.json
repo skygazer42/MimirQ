@@ -1,0 +1,70 @@
+{
+  "cases": [
+    {
+      "id": "chart_pdf_case",
+      "path": "chart_pdf/input/sample.pdf",
+      "golden_markdown": "chart_pdf/golden/sample.md",
+      "specialty_elements_path": "chart_pdf/golden/sample.specialty.json"
+    },
+    {
+      "id": "diagram_pdf_case",
+      "path": "diagram_pdf/input/sample.pdf",
+      "golden_markdown": "diagram_pdf/golden/sample.md",
+      "specialty_elements_path": "diagram_pdf/golden/sample.specialty.json"
+    },
+    {
+      "id": "qr_image_case",
+      "path": "qr_image/input/sample.png",
+      "golden_markdown": "qr_image/golden/sample.md",
+      "specialty_elements_path": "qr_image/golden/sample.specialty.json"
+    },
+    {
+      "id": "barcode_image_case",
+      "path": "barcode_image/input/sample.png",
+      "golden_markdown": "barcode_image/golden/sample.md",
+      "specialty_elements_path": "barcode_image/golden/sample.specialty.json"
+    },
+    {
+      "id": "cross_page_table_pdf_case",
+      "path": "cross_page_table_pdf/input/sample.pdf",
+      "golden_markdown": "cross_page_table_pdf/golden/sample.md",
+      "specialty_elements_path": "cross_page_table_pdf/golden/sample.specialty.json"
+    },
+    {
+      "id": "borderless_table_scan_case",
+      "path": "borderless_table_scan/input/sample.png",
+      "golden_markdown": "borderless_table_scan/golden/sample.md",
+      "specialty_elements_path": "borderless_table_scan/golden/sample.specialty.json"
+    },
+    {
+      "id": "merged_header_table_pdf_case",
+      "path": "merged_header_table_pdf/input/sample.pdf",
+      "golden_markdown": "merged_header_table_pdf/golden/sample.md",
+      "specialty_elements_path": "merged_header_table_pdf/golden/sample.specialty.json"
+    },
+    {
+      "id": "table_with_leading_paragraph_pdf_case",
+      "path": "table_with_leading_paragraph_pdf/input/sample.pdf",
+      "golden_markdown": "table_with_leading_paragraph_pdf/golden/sample.md",
+      "specialty_elements_path": "table_with_leading_paragraph_pdf/golden/sample.specialty.json"
+    },
+    {
+      "id": "two_column_pdf_case",
+      "path": "two_column_pdf/input/sample.pdf",
+      "golden_markdown": "two_column_pdf/golden/sample.md",
+      "specialty_elements_path": "two_column_pdf/golden/sample.specialty.json"
+    },
+    {
+      "id": "header_footer_noise_pdf_case",
+      "path": "header_footer_noise_pdf/input/sample.pdf",
+      "golden_markdown": "header_footer_noise_pdf/golden/sample.md",
+      "specialty_elements_path": "header_footer_noise_pdf/golden/sample.specialty.json"
+    },
+    {
+      "id": "mixed_layout_pdf_case",
+      "path": "mixed_layout_pdf/input/sample.pdf",
+      "golden_markdown": "mixed_layout_pdf/golden/sample.md",
+      "specialty_elements_path": "mixed_layout_pdf/golden/sample.specialty.json"
+    }
+  ]
+}

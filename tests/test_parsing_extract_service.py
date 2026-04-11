@@ -99,6 +99,53 @@ def test_extract_parsing_fields_carries_cross_page_span_into_evidence():
     assert evidence["pages"] == [1, 2]
 
 
+def test_extract_parsing_fields_carries_cross_page_table_pages_after_merge() -> None:
+    from app.parsing.processors.cross_page_merge import merge_cross_page_documents  # noqa: WPS433
+    from app.parsing.utils.document_elements import normalize_document_elements  # noqa: WPS433
+    from app.services.parsing_extract_service import extract_parsing_fields  # noqa: WPS433
+
+    docs = merge_cross_page_documents(
+        [
+            __import__("langchain_core.documents", fromlist=["Document"]).Document(
+                page_content="| Region | Q1 | Q2 |\n| --- | --- | --- |\n| North | 120 | 132 |",
+                metadata={
+                    "page": 1,
+                    "doc_type_kwd": "table",
+                    "table_columns": ["Region", "Q1", "Q2"],
+                    "table_header_present": True,
+                    "table_truncated": True,
+                },
+            ),
+            __import__("langchain_core.documents", fromlist=["Document"]).Document(
+                page_content="| Region | Q1 | Q2 |\n| --- | --- | --- |\n| South | 98 | 110 |",
+                metadata={
+                    "page": 2,
+                    "doc_type_kwd": "table",
+                    "table_columns": ["Region", "Q1", "Q2"],
+                    "table_header_present": True,
+                    "table_continued": True,
+                },
+            ),
+        ]
+    )
+
+    result = extract_parsing_fields(
+        markdown=docs[0].page_content,
+        elements=normalize_document_elements(docs),
+        mode="schema",
+        schema={
+            "regional_table": {
+                "type": "string",
+                "source_kind": "table",
+            }
+        },
+    )
+
+    evidence = result["regional_table"]["evidence"][0]
+    assert evidence["page"] == 1
+    assert evidence["pages"] == [1, 2]
+
+
 def test_extract_parsing_fields_uses_markdown_alias_value_fallback_before_generic_excerpt():
     from app.services.parsing_extract_service import extract_parsing_fields  # noqa: WPS433
 

@@ -15,6 +15,100 @@ import requests
 
 from app.parsing.preprocess.model_loader import get_preprocess_model_loader
 
+_RASTER_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff"}
+
+
+def _positive_int(value: Any) -> int | None:
+    try:
+        number = int(value)
+    except Exception:
+        return None
+    return number if number > 0 else None
+
+
+def _infer_onnx_layout(shape: Any) -> str:
+    dims = list(shape or [])
+    if len(dims) != 4:
+        return "nchw"
+    if _positive_int(dims[-1]) in {1, 3}:
+        return "nhwc"
+    if _positive_int(dims[1]) in {1, 3}:
+        return "nchw"
+    return "nchw"
+
+
+def _run_local_onnx_cleanup(*, input_path: Path, output_path: Path, session: Any) -> bool:
+    import numpy as np
+    from PIL import Image
+
+    if input_path.suffix.lower() not in _RASTER_EXTS:
+        raise ValueError("unsupported_input_type")
+
+    inputs = list(session.get_inputs() or [])
+    input_name = str(getattr(inputs[0], "name", "") or "input")
+    input_shape = getattr(inputs[0], "shape", None) if inputs else None
+    input_layout = _infer_onnx_layout(input_shape)
+
+    target_width: int | None = None
+    target_height: int | None = None
+    dims = list(input_shape or [])
+    if len(dims) == 4:
+        if input_layout == "nhwc":
+            target_height = _positive_int(dims[1])
+            target_width = _positive_int(dims[2])
+        else:
+            target_height = _positive_int(dims[2])
+            target_width = _positive_int(dims[3])
+
+    with Image.open(input_path) as image:
+        source = image.convert("RGB")
+        original_size = source.size
+        prepared = source
+        if target_width and target_height and (target_width, target_height) != original_size:
+            prepared = source.resize((target_width, target_height))
+
+        arr = np.asarray(prepared, dtype=np.float32)
+        if input_layout == "nhwc":
+            tensor = (arr / 255.0)[None, ...]
+        else:
+            tensor = np.transpose(arr / 255.0, (2, 0, 1))[None, ...]
+
+    outputs = list(session.run(None, {input_name: tensor}) or [])
+    if not outputs:
+        raise ValueError("empty_output")
+
+    result = np.asarray(outputs[0])
+    if result.ndim == 4:
+        result = result[0]
+    if result.ndim == 3 and result.shape[0] in {1, 3} and result.shape[-1] not in {1, 3}:
+        result = np.transpose(result, (1, 2, 0))
+    if result.ndim == 3 and result.shape[-1] == 1:
+        result = result[..., 0]
+    if result.ndim not in {2, 3}:
+        raise ValueError("unsupported_output_shape")
+
+    if result.dtype.kind in {"f", "c"}:
+        if float(result.min()) < 0.0:
+            result = (result + 1.0) / 2.0
+        if float(result.max()) <= 1.5:
+            result = result * 255.0
+    result = np.clip(result, 0, 255).astype("uint8")
+
+    if result.ndim == 2:
+        cleaned = Image.fromarray(result, mode="L")
+    else:
+        cleaned = Image.fromarray(result, mode="RGB")
+    if cleaned.size != original_size:
+        cleaned = cleaned.resize(original_size)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    cleaned.save(output_path)
+
+    try:
+        return output_path.read_bytes() != input_path.read_bytes()
+    except Exception:
+        return True
+
 
 def cleanup_handwriting_document(
     *,
@@ -76,7 +170,13 @@ def cleanup_handwriting_document(
             info["model_name"] = str(loaded.name or "")
         except Exception as exc:  # noqa: BLE001
             return False, f"model_unavailable:{exc.__class__.__name__}", info
-        return False, "model_loaded_not_implemented", info
+        try:
+            changed = _run_local_onnx_cleanup(input_path=input_path, output_path=output_path, session=loaded.handle)
+        except ValueError as exc:
+            return False, f"onnx_{exc}", info
+        except Exception as exc:  # noqa: BLE001
+            return False, f"onnx_failed:{exc.__class__.__name__}", info
+        return changed, "cleanup_ok" if changed else "cleanup_no_change", info
 
     if normalized_backend != "http":
         return False, "unsupported_backend", info

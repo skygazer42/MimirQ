@@ -51,6 +51,8 @@ def _handwriting_warning(note: str) -> str | None:
         return "handwriting_cleanup_backend_failed"
     if normalized.startswith("heuristic_failed:"):
         return "handwriting_cleanup_backend_failed"
+    if normalized.startswith("onnx_"):
+        return "handwriting_cleanup_backend_failed"
     return None
 
 

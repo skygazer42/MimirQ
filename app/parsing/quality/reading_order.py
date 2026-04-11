@@ -372,12 +372,16 @@ def _score_reading_order_markdown(markdown: str, *, max_blocks: int = 600, min_b
         page_width[int(page)] = float(width if width > 0.0 else 1.0)
 
     page_is_two_col: dict[int, bool] = {}
+    page_min_top: dict[int, float] = {}
+    page_max_bottom: dict[int, float] = {}
     for page, items in by_page.items():
         width = page_width.get(int(page), 1.0) or 1.0
         centers = [((float(item.left) + float(item.right)) / 2.0) / float(width) for item in items]
         left_any = any(center < 0.45 for center in centers)
         right_any = any(center > 0.55 for center in centers)
         page_is_two_col[int(page)] = bool(left_any and right_any)
+        page_min_top[int(page)] = min((float(item.top) for item in items), default=0.0)
+        page_max_bottom[int(page)] = max((float(item.bottom) for item in items), default=0.0)
 
     def col_idx(block: _Block) -> int:
         if not page_is_two_col.get(int(block.page), False):
@@ -386,9 +390,25 @@ def _score_reading_order_markdown(markdown: str, *, max_blocks: int = 600, min_b
         center = ((float(block.left) + float(block.right)) / 2.0) / float(width)
         return 1 if center > 0.5 else 0
 
+    def flow_group(block: _Block) -> int:
+        if not page_is_two_col.get(int(block.page), False):
+            return 0
+        width = page_width.get(int(block.page), 1.0) or 1.0
+        span_ratio = max(0.0, float(block.right) - float(block.left)) / float(width)
+        if span_ratio < 0.75:
+            return col_idx(block)
+        top_min = float(page_min_top.get(int(block.page), 0.0))
+        bottom_max = float(page_max_bottom.get(int(block.page), float(block.bottom)))
+        vertical_span = max(1.0, bottom_max - top_min)
+        if float(block.top) <= top_min + vertical_span * 0.12:
+            return -1
+        if float(block.bottom) >= bottom_max - vertical_span * 0.12:
+            return 2
+        return 2 if float(block.top) >= top_min + vertical_span * 0.35 else -1
+
     expected = sorted(
         blocks,
-        key=lambda block: (int(block.page), col_idx(block), float(block.top), float(block.left), int(block.idx)),
+        key=lambda block: (int(block.page), flow_group(block), float(block.top), float(block.left), int(block.idx)),
     )
     expected_rank = {int(block.idx): index + 1 for index, block in enumerate(expected)}
     observed_ranks = [expected_rank.get(int(block.idx), 0) for block in blocks]

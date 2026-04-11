@@ -100,3 +100,30 @@ def test_merge_cross_page_table_mismatch_does_not_merge() -> None:
     assert stats["tables_merged"] == 0
     assert merged[1].lstrip().startswith("| A | B | C |")
 
+
+def test_merge_cross_page_tables_skips_continuation_hint_before_repeated_header() -> None:
+    prev = "\n".join(
+        [
+            "| A | B |",
+            "| --- | --- |",
+            "| 1 | 2 |",
+            "",
+        ]
+    )
+    nxt = "\n".join(
+        [
+            "Table 1 (continued)",
+            "| A | B |",
+            "| --- | --- |",
+            "| 3 | 4 |",
+            "Tail",
+            "",
+        ]
+    )
+
+    merged, stats = merge_cross_page_markdown_pages([prev, nxt])
+    assert stats["tables_merged"] == 1
+    assert merged[0].count("| A | B |") == 1
+    assert "Table 1 (continued)" not in merged[0]
+    assert "| 3 | 4 |" in merged[0]
+    assert merged[1].lstrip().startswith("Tail")

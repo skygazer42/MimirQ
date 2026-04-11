@@ -115,6 +115,42 @@ def test_normalize_document_elements_exposes_cross_page_pages_as_typed_field():
     assert out[0]["pages"] == [1, 2]
 
 
+def test_normalize_document_elements_preserves_cross_page_table_pages_after_merge() -> None:
+    from app.parsing.processors.cross_page_merge import merge_cross_page_documents  # noqa: WPS433
+    from app.parsing.utils.document_elements import normalize_document_elements  # noqa: WPS433
+
+    docs = [
+        Document(
+            page_content="| Region | Q1 | Q2 |\n| --- | --- | --- |\n| North | 120 | 132 |",
+            metadata={
+                "page": 1,
+                "doc_type_kwd": "table",
+                "table_columns": ["Region", "Q1", "Q2"],
+                "table_header_present": True,
+                "table_truncated": True,
+            },
+        ),
+        Document(
+            page_content="| Region | Q1 | Q2 |\n| --- | --- | --- |\n| South | 98 | 110 |",
+            metadata={
+                "page": 2,
+                "doc_type_kwd": "table",
+                "table_columns": ["Region", "Q1", "Q2"],
+                "table_header_present": True,
+                "table_continued": True,
+            },
+        ),
+    ]
+
+    merged = merge_cross_page_documents(docs)
+    out = normalize_document_elements(merged)
+
+    assert len(out) == 1
+    assert out[0]["kind"] == "table"
+    assert out[0]["page"] == 1
+    assert out[0]["pages"] == [1, 2]
+
+
 def test_normalize_document_elements_infers_visual_kind_for_image_elements():
     from app.parsing.utils.document_elements import normalize_document_elements  # noqa: WPS433
 

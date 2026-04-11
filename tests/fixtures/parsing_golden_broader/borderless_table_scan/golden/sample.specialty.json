@@ -1,0 +1,8 @@
+{
+  "table": 1,
+  "table_continuity": {
+    "header": "| Item | Qty | Warehouse |",
+    "rows": 3,
+    "header_occurrences": 1
+  }
+}

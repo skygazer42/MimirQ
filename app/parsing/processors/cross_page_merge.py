@@ -8,6 +8,7 @@ from langchain_core.documents import Document
 
 _NUMBERED_LIST_RE = re.compile(r"^\s*(\d+)[.)]\s+")
 _BULLET_LIST_RE = re.compile(r"^\s*([-*+])\s+")
+_TABLE_CONTINUATION_LABEL_RE = re.compile(r"(?i)^(?:table|tbl|表)\s*[\w.\-() ]*continued[\w.\-() ]*$|^(?:续表|下表续页|表格续页)")
 
 
 def _page_number(meta: dict[str, Any]) -> int:
@@ -25,7 +26,7 @@ def _non_empty_lines(text: str) -> list[str]:
 
 
 def _table_columns_from_markdown(text: str) -> list[str]:
-    lines = _non_empty_lines(text)
+    lines = _table_lines_without_continuation_labels(text)
     if len(lines) < 2:
         return []
     header = lines[0]
@@ -61,10 +62,29 @@ def _is_table_segment(meta: dict[str, Any]) -> bool:
 
 
 def _strip_redundant_table_header(text: str) -> str:
-    lines = _non_empty_lines(text)
+    lines = _table_lines_without_continuation_labels(text)
     if len(lines) >= 2 and _table_columns_from_markdown("\n".join(lines[:2])):
         return "\n".join(lines[2:]).strip()
-    return (text or "").strip()
+    return "\n".join(lines).strip()
+
+
+def _is_table_continuation_label(line: str) -> bool:
+    return bool(_TABLE_CONTINUATION_LABEL_RE.match(str(line or "").strip()))
+
+
+def _table_lines_without_continuation_labels(text: str) -> list[str]:
+    lines = _non_empty_lines(text)
+    while lines and _is_table_continuation_label(lines[0]):
+        lines = lines[1:]
+    return lines
+
+
+def _has_leading_prose_before_table_rows(text: str) -> bool:
+    lines = _table_lines_without_continuation_labels(text)
+    if not lines:
+        return False
+    first_table_row = next((idx for idx, line in enumerate(lines) if _looks_like_table_row(line)), None)
+    return first_table_row is not None and int(first_table_row) > 0
 
 
 def _can_merge_tables(prev: Document, cur: Document, *, max_page_gap: int) -> bool:
@@ -78,6 +98,8 @@ def _can_merge_tables(prev: Document, cur: Document, *, max_page_gap: int) -> bo
     if prev_page <= 0 or cur_page <= 0:
         return False
     if cur_page - prev_page < 1 or cur_page - prev_page > int(max_page_gap):
+        return False
+    if _has_leading_prose_before_table_rows(cur.page_content or ""):
         return False
 
     prev_cols = _table_columns(prev_meta, prev.page_content or "")
@@ -293,10 +315,47 @@ def _extract_leading_block(lines: list[str], pred: Callable[[str], bool]) -> tup
         start += 1
     if start >= len(lines):
         return None
+    if pred is _looks_like_table_row:
+        body_start = start
+        while body_start < len(lines) and _is_table_continuation_label(lines[body_start]):
+            body_start += 1
+        if body_start >= len(lines) or not pred(lines[body_start]):
+            return None
+        end = body_start + 1
+        while end < len(lines) and pred(lines[end]):
+            end += 1
+        return int(start), int(end)
     if not pred(lines[start]):
         return None
     end = start + 1
     while end < len(lines) and pred(lines[end]):
+        end += 1
+    return int(start), int(end)
+
+
+def _extract_leading_table_block(lines: list[str]) -> tuple[int, int] | None:
+    """
+    Return the leading table block while tolerating a continuation label such as
+    "Table 1 (continued)" or "续表" ahead of the repeated header.
+    """
+    if not lines:
+        return None
+    start = 0
+    while start < len(lines) and not (lines[start] or "").strip():
+        start += 1
+    if start >= len(lines):
+        return None
+
+    cursor = start
+    while cursor < len(lines) and _is_table_continuation_label(lines[cursor]):
+        cursor += 1
+        while cursor < len(lines) and not (lines[cursor] or "").strip():
+            cursor += 1
+    if cursor >= len(lines) or not _looks_like_table_row(lines[cursor]):
+        return None
+
+    end = cursor + 1
+    while end < len(lines) and _looks_like_table_row(lines[end]):
         end += 1
     return int(start), int(end)
 
@@ -317,6 +376,10 @@ def _extract_ordered_num(line: str) -> int | None:
 def _merge_table_blocks(prev_block: list[str], next_block: list[str]) -> list[str] | None:
     if not prev_block or not next_block:
         return None
+    while next_block and _is_table_continuation_label(next_block[0]):
+        next_block = next_block[1:]
+    if not next_block:
+        return prev_block
     prev_cols = _table_col_count(prev_block[0])
     next_cols = _table_col_count(next_block[0])
     if prev_cols <= 0 or next_cols <= 0 or prev_cols != next_cols:
@@ -390,7 +453,7 @@ def merge_cross_page_markdown_pages(pages: list[str]) -> tuple[list[str], dict[s
 
         # 1) Table continuation: trailing table in prev + leading table in next.
         prev_tbl = _extract_trailing_block(prev_lines, _looks_like_table_row)
-        next_tbl = _extract_leading_block(next_lines, _looks_like_table_row)
+        next_tbl = _extract_leading_table_block(next_lines)
         if prev_tbl and next_tbl:
             ps, pe = prev_tbl
             ns, ne = next_tbl

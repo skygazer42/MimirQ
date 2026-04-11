@@ -19,7 +19,7 @@ from urllib.parse import unquote, urlparse
 
 from PIL import Image as PILImage
 
-from app.parsing.enrich.image_understanding import decode_image_codes
+from app.parsing.enrich.image_understanding import decode_image_codes, infer_visual_kind_from_pixels
 
 _MD_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 _HTML_IMG_TAG_RE = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
@@ -216,35 +216,40 @@ def add_image_code_blocks(
                 continue
             try:
                 code_info = decode_image_codes(image)
+                visual_kind = str(code_info.get("visual_kind") or "").strip().lower() if isinstance(code_info, dict) else ""
+                if not visual_kind:
+                    visual_kind = str(infer_visual_kind_from_pixels(image) or "").strip().lower()
             finally:
                 try:
                     image.close()
                 except Exception:
                     pass
             if not isinstance(code_info, dict):
-                continue
+                code_info = {}
             code_text = str(code_info.get("text") or "").strip()
-            visual_kind = str(code_info.get("visual_kind") or "").strip().lower()
-            if not code_text:
+            if not code_text and not visual_kind:
                 continue
             if max_code_chars > 0 and len(code_text) > max_code_chars:
                 code_text = code_text[: max_code_chars - 3].rstrip() + "..."
 
             images_succeeded += 1
-            codes_added += 1
-            out_lines.append(f"Image code: {code_text}")
+            if code_text:
+                codes_added += 1
+                out_lines.append(f"Image code: {code_text}")
+            element_text = code_text or str(alt or "").strip() or f"{visual_kind or 'image'} image"
             code_elements.append(
                 {
                     "kind": "image",
                     "visual_kind": visual_kind or None,
-                    "text": code_text,
+                    "text": element_text,
                     "attributes": {
-                        "source_content_type": "image_code",
-                        "source_doc_type": "image_code",
-                        "image_code_text": code_text,
+                        "source_content_type": "image_code" if code_text else "image_understanding",
+                        "source_doc_type": "image_code" if code_text else "image",
+                        "image_code_text": code_text or None,
                         "image_code_values": list(code_info.get("values") or []),
                         "image_code_src": str(src or ""),
                         "image_code_alt": str(alt or ""),
+                        "image_visual_kind_source": "pixel",
                     },
                 }
             )
