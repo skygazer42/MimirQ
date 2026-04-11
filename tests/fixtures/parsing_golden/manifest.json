@@ -1,0 +1,22 @@
+{
+  "cases": [
+    {
+      "id": "seal_invoice_case",
+      "path": "seal_invoice/input/sample.md",
+      "golden_markdown": "seal_invoice/golden/sample.md",
+      "specialty_elements_path": "seal_invoice/golden/sample.specialty.json"
+    },
+    {
+      "id": "formula_pdf_case",
+      "path": "formula_pdf/input/sample.md",
+      "golden_markdown": "formula_pdf/golden/sample.md",
+      "specialty_elements_path": "formula_pdf/golden/sample.specialty.json"
+    },
+    {
+      "id": "table_scan_case",
+      "path": "table_scan/input/sample.md",
+      "golden_markdown": "table_scan/golden/sample.md",
+      "specialty_elements_path": "table_scan/golden/sample.specialty.json"
+    }
+  ]
+}

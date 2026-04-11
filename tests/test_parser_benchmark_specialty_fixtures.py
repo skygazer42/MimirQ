@@ -28,7 +28,7 @@ def _load_module():
 
 
 def _fixture_root() -> Path:
-    return _repo_root() / "tests" / "fixtures" / "parsing_golden" / "specialty_smoke"
+    return _repo_root() / "tests" / "fixtures" / "parsing_golden"
 
 
 def test_parser_benchmark_reports_specialty_element_counts(monkeypatch, tmp_path: Path) -> None:
@@ -39,14 +39,18 @@ def test_parser_benchmark_reports_specialty_element_counts(monkeypatch, tmp_path
     factory_mod = ModuleType("app.parsing.factory")
 
     class _Factory:
-        def parse_with_provenance(self, *_args, **_kwargs):  # noqa: ANN001, ANN002, ANN003
-            return (
-                [
+        def parse_with_provenance(self, path, *_args, **_kwargs):  # noqa: ANN001, ANN002, ANN003
+            path_str = str(path)
+            if "seal_invoice" in path_str:
+                docs = [
                     Document(page_content="合同正文", metadata={"page": 1}),
                     Document(
                         page_content="印章识别：甲方公章",
                         metadata={"doc_type_kwd": "seal", "page": 1, "seal_score": 0.97},
                     ),
+                ]
+            elif "formula_pdf" in path_str:
+                docs = [
                     Document(
                         page_content="![formula](eq.png)\n$$ E = mc^2 $$\n",
                         metadata={
@@ -64,7 +68,20 @@ def test_parser_benchmark_reports_specialty_element_counts(monkeypatch, tmp_path
                             ],
                         },
                     ),
-                ],
+                ]
+            else:
+                docs = [
+                    Document(
+                        page_content="| A | B |\n| --- | --- |\n| 1 | 2 |",
+                        metadata={"doc_type_kwd": "table", "page": 1},
+                    ),
+                    Document(
+                        page_content="Figure 1",
+                        metadata={"doc_type_kwd": "image", "page": 1},
+                    ),
+                ]
+            return (
+                docs,
                 "deepdoc",
                 {"attempts": [{"backend": "deepdoc"}]},
             )
@@ -110,11 +127,17 @@ def test_parser_benchmark_reports_specialty_element_counts(monkeypatch, tmp_path
     assert rc == 0
 
     payload = json.loads(out_path.read_text(encoding="utf-8"))
-    assert payload["cases"][0]["golden"]["specialty_elements"]["seal"] == 1
-    assert payload["cases"][0]["golden"]["specialty_elements"]["equation"] == 1
-    assert payload["cases"][0]["attempts"][0]["specialty_elements"]["seal"] == 1
-    assert payload["cases"][0]["attempts"][0]["specialty_elements"]["equation"] == 1
-    assert payload["cases"][0]["attempts"][0]["specialty_recall"]["seal"] == 1.0
-    assert payload["cases"][0]["attempts"][0]["specialty_recall"]["equation"] == 1.0
+    assert len(payload["cases"]) == 3
+    by_case = {row["id"]: row for row in payload["cases"]}
+    assert by_case["seal_invoice_case"]["golden"]["specialty_elements"]["seal"] == 1
+    assert by_case["formula_pdf_case"]["golden"]["specialty_elements"]["equation"] == 1
+    assert by_case["table_scan_case"]["golden"]["specialty_elements"]["table"] == 1
+    assert by_case["table_scan_case"]["golden"]["specialty_elements"]["image"] == 1
+    assert by_case["seal_invoice_case"]["attempts"][0]["specialty_recall"]["seal"] == 1.0
+    assert by_case["formula_pdf_case"]["attempts"][0]["specialty_recall"]["equation"] == 1.0
+    assert by_case["table_scan_case"]["attempts"][0]["specialty_recall"]["table"] == 1.0
+    assert by_case["table_scan_case"]["attempts"][0]["specialty_recall"]["image"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_seal_recall"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_equation_recall"] == 1.0
+    assert payload["summary"]["deepdoc"]["mean_table_recall"] == 1.0
+    assert payload["summary"]["deepdoc"]["mean_image_recall"] == 1.0
