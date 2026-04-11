@@ -177,3 +177,38 @@ def test_extract_parsing_fields_supports_source_visual_kind_for_image_elements()
     assert field["value"] == "Revenue growth chart"
     assert field["evidence"][0]["element_id"] == "image:1:1"
     assert field["evidence"][0]["visual_kind"] == "chart"
+
+
+def test_extract_parsing_fields_prefers_image_code_text_for_qr_elements():
+    from app.services.parsing_extract_service import extract_parsing_fields  # noqa: WPS433
+
+    result = extract_parsing_fields(
+        markdown="二维码见附件。",
+        elements=[
+            {
+                "id": "image:1:0",
+                "kind": "image",
+                "page": 1,
+                "text": "Image",
+                "confidence": 0.93,
+                "bbox": {"x0": 5, "y0": 6, "x1": 7, "y1": 8},
+                "attributes": {
+                    "visual_kind": "qr",
+                    "image_code_text": "HELLO-QR",
+                },
+            },
+        ],
+        mode="schema",
+        schema={
+            "qr_text": {
+                "type": "string",
+                "source_kind": "image",
+                "source_visual_kind": "qr",
+            }
+        },
+    )
+
+    field = result["qr_text"]
+    assert field["value"] == "HELLO-QR"
+    assert field["evidence"][0]["element_id"] == "image:1:0"
+    assert field["evidence"][0]["visual_kind"] == "qr"

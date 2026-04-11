@@ -1381,6 +1381,7 @@ class ChunkAssetStage:
     ) -> ChunkAssetResult:
         from app.parsing.enrich.image_understanding import (
             append_image_understanding_text,
+            decode_image_codes,
             derive_image_caption,
             load_image_for_ocr,
             ocr_image,
@@ -1416,6 +1417,7 @@ class ChunkAssetStage:
             # Image understanding (best-effort): keep it off by default; never fail ingest.
             caption = ""
             ocr_text = ""
+            image_code_text = ""
             doc_type = str(meta.get("doc_type_kwd") or "").strip().lower()
             if doc_type == "image":
                 # Structural chunk roles: keep this lightweight and deterministic so downstream
@@ -1430,6 +1432,20 @@ class ChunkAssetStage:
                     img, should_close = load_image_for_ocr(meta, _tenant_id=str(tenant_id))
                     try:
                         if img is not None:
+                            try:
+                                code_info = decode_image_codes(img)
+                            except Exception:
+                                code_info = {}
+                            if isinstance(code_info, dict):
+                                image_code_text = str(code_info.get("text") or "").strip()
+                                if image_code_text:
+                                    meta["image_code_text"] = image_code_text
+                                    raw_values = code_info.get("values")
+                                    if isinstance(raw_values, list):
+                                        meta["image_code_values"] = [str(item).strip() for item in raw_values if str(item).strip()]
+                                visual_kind = str(code_info.get("visual_kind") or "").strip().lower()
+                                if visual_kind:
+                                    meta["visual_kind"] = visual_kind
                             ocr_text = ocr_image(img, _max_chars=int(image_ocr_max_chars))
                             if ocr_remaining is not None:
                                 ocr_remaining -= 1
@@ -1489,11 +1505,12 @@ class ChunkAssetStage:
 
                 # Keep OCR in the image chunk content for backwards compatibility (retrieval expects it),
                 # but also emit an OCR-only chunk (role="ocr") to enable dedup and explicit filtering.
-                if caption or ocr_text:
+                if caption or ocr_text or image_code_text:
                     chunk.page_content = append_image_understanding_text(
                         chunk.page_content or "",
                         caption=caption,
                         ocr_text=ocr_text,
+                        code_text=image_code_text,
                     )
 
             content_norm = normalize_text(chunk.page_content or "", normalize_line_endings=True, remove_control_chars=True)

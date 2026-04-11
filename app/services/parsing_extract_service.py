@@ -58,6 +58,12 @@ def _preferred_element_text(element: Mapping[str, Any]) -> str:
             if text:
                 return text.removeprefix("印章识别：").strip()
         return ""
+    if kind == "image":
+        for value in (attrs.get("image_code_text"), element.get("text")):
+            text = _normalize_text(value)
+            if text:
+                return text
+        return ""
     return _normalize_text(element.get("text"))
 
 
