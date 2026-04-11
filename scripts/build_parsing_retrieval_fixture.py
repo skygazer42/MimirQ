@@ -126,6 +126,17 @@ def _read_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _coerce_documents_payload(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, dict)]
+    if isinstance(value, dict):
+        for key in ("documents", "segments"):
+            raw = value.get(key)
+            if isinstance(raw, list):
+                return [item for item in raw if isinstance(item, dict)]
+    return []
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Build a deterministic retrieval fixture from parser-like document rows and query specs.")
     parser.add_argument(
@@ -141,10 +152,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--retrieval-mode", default="keyword", help="Fixture default retrieval mode.")
     args = parser.parse_args(argv)
 
-    documents = _read_json(Path(str(args.documents_json)).resolve())
+    documents = _coerce_documents_payload(_read_json(Path(str(args.documents_json)).resolve()))
     queries = _read_json(Path(str(args.queries_json)).resolve())
     fixture = build_retrieval_fixture(
-        documents=documents if isinstance(documents, list) else [],
+        documents=documents,
         queries=queries if isinstance(queries, list) else [],
         top_k=int(args.top_k or 1),
         retrieval_mode=str(args.retrieval_mode or "keyword"),
