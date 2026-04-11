@@ -1,0 +1,13 @@
+{
+  "schema": "mimirq.parsing_retrieval_proof_thresholds.v1",
+  "metrics": {
+    "hit_at_k_mean": {
+      "min": 1.0,
+      "required": true
+    },
+    "mrr_mean": {
+      "min": 1.0,
+      "required": true
+    }
+  }
+}

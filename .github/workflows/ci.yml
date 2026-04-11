@@ -196,6 +196,13 @@ jobs:
             --summary-out artifacts/parsing_proof_broader_sample/summary.json \
             --report-out artifacts/parsing_proof_broader_sample/report.json
 
+      - name: Evaluate broader parsing proof thresholds (non-blocking artifact)
+        run: |
+          python scripts/parsing_retrieval_proof_gate.py \
+            --input artifacts/parsing_proof_broader_sample/summary.json \
+            --thresholds ci/parsing_retrieval_proof_thresholds.v1.json \
+            --out artifacts/parsing_proof_broader_sample/gate.json || true
+
       - name: Build query-set health snapshot from bounded benchmark
         run: |
           python scripts/run_queryset_health_diagnostics.py \
@@ -793,6 +800,7 @@ jobs:
             artifacts/queryset_health.snapshot.json
             artifacts/parsing_proof_broader_sample/summary.json
             artifacts/parsing_proof_broader_sample/report.json
+            artifacts/parsing_proof_broader_sample/gate.json
             artifacts/queryset_health.snapshot.hybrid.json
             artifacts/queryset_health.snapshot.sparse.json
             artifacts/queryset_health.diff.json
