@@ -45,6 +45,32 @@ def test_stronger_layout_parsing_fixture_beats_weaker_layout_parsing_in_retrieva
     assert weak_summary["mrr"] < strong_summary["mrr"]
 
 
+def test_stronger_table_parsing_fixture_beats_weaker_table_parsing_in_retrieval(tmp_path: Path) -> None:
+    mod = _load_script("scripts/run_sample_retrieval_benchmark.py")
+    fixture_root = _repo_root() / "tests" / "fixtures" / "parsing_retrieval_proof"
+
+    strong = mod.run_benchmark(  # type: ignore[attr-defined]
+        fixture_path=fixture_root / "table_strong.fixture.json",
+        output_path=tmp_path / "table-strong.json",
+        top_k=1,
+        retrieval_mode="keyword",
+    )
+    weak = mod.run_benchmark(  # type: ignore[attr-defined]
+        fixture_path=fixture_root / "table_weak.fixture.json",
+        output_path=tmp_path / "table-weak.json",
+        top_k=1,
+        retrieval_mode="keyword",
+    )
+
+    strong_summary = strong["summary"]
+    weak_summary = weak["summary"]
+
+    assert strong_summary["hit_at_k"] == 1.0
+    assert strong_summary["mrr"] == 1.0
+    assert weak_summary["hit_at_k"] == 0.0
+    assert weak_summary["mrr"] == 0.0
+
+
 def test_stronger_table_parsing_preserves_cross_page_extract_evidence() -> None:
     from app.services.parsing_extract_service import extract_parsing_fields  # noqa: WPS433
 
