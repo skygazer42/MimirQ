@@ -714,12 +714,14 @@ def main() -> int:
         golden_image_visual_kinds = (
             dict(case.golden_image_visual_kinds or {}) if isinstance(case.golden_image_visual_kinds, dict) else None
         )
+        missing_input_assets = _find_missing_local_markdown_assets(case.path)
         missing_local_assets = _find_missing_local_markdown_assets(case.golden_markdown_path)
 
         case_row: dict[str, Any] = {
             "id": case.case_id,
             "path": str(case.path),
             "file_type": file_ext.lstrip("."),
+            "input_missing_local_assets": missing_input_assets or None,
             "golden_markdown_path": str(case.golden_markdown_path) if case.golden_markdown_path else None,
             "golden": (
                 {
@@ -733,11 +735,21 @@ def main() -> int:
             ),
             "attempts": [],
         }
+        if missing_input_assets:
+            report["fixture_issues"].append(
+                {
+                    "case_id": str(case.case_id),
+                    "type": "missing_local_assets",
+                    "stage": "input",
+                    "items": list(missing_input_assets),
+                }
+            )
         if missing_local_assets:
             report["fixture_issues"].append(
                 {
                     "case_id": str(case.case_id),
                     "type": "missing_local_assets",
+                    "stage": "golden",
                     "items": list(missing_local_assets),
                 }
             )
