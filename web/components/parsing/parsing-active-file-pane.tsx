@@ -129,6 +129,20 @@ function formatElementBbox(bbox: ParsingElement['bbox'] | ParsingExtractEvidence
   return `${bbox.x0},${bbox.y0},${bbox.x1},${bbox.y1}`
 }
 
+function formatElementPages(element: ParsingElement | null | undefined): string {
+  const pages = Array.isArray(element?.pages) ? element.pages.filter((value) => Number.isInteger(value) && value > 0) : []
+  if (pages.length >= 2) {
+    if (pages.length === 2 && pages[1] === pages[0] + 1) {
+      return `跨页 ${pages[0]}-${pages[1]}`
+    }
+    return `跨页 ${pages.join(',')}`
+  }
+  if (typeof element?.page === 'number') {
+    return `页 ${element.page}`
+  }
+  return ''
+}
+
 function formatEvidencePages(
   evidence: ParsingExtractEvidence | null | undefined,
   element: ParsingElement | null | undefined
@@ -379,6 +393,7 @@ export function ParsingActiveFilePane({
         element_id: String(element.id || '').trim() || null,
         kind: element.kind,
         page: element.page ?? null,
+        pages: element.pages ?? null,
         bbox: element.bbox ?? null,
         text: element.text ?? null,
         score: element.confidence ?? null,
@@ -472,7 +487,7 @@ export function ParsingActiveFilePane({
       .sort((left, right) => Number(right.confidence || 0) - Number(left.confidence || 0))[0]
     if (primarySeal) {
       const sealMeta: string[] = []
-      if (typeof primarySeal.page === 'number') sealMeta.push(`页 ${primarySeal.page}`)
+      if (formatElementPages(primarySeal)) sealMeta.push(formatElementPages(primarySeal))
       if (typeof primarySeal.confidence === 'number') sealMeta.push(primarySeal.confidence.toFixed(2))
       highlights.push({
         key: 'primary-seal',
