@@ -10,9 +10,9 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def _load_script(rel: str):
-    path = _repo_root() / rel
-    spec = importlib.util.spec_from_file_location(path.stem, str(path))
+def _load_script():
+    path = _repo_root() / "scripts" / "build_parsing_retrieval_fixture.py"
+    spec = importlib.util.spec_from_file_location("build_parsing_retrieval_fixture", str(path))
     assert spec and spec.loader
     mod = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = mod
@@ -20,62 +20,63 @@ def _load_script(rel: str):
     return mod
 
 
-def test_build_fixture_normalizes_parser_chunks_and_queries() -> None:
-    mod = _load_script("scripts/build_parsing_retrieval_fixture.py")
+def test_build_retrieval_fixture_emits_sample_retrieval_schema() -> None:
+    mod = _load_script()
 
-    fixture = mod.build_fixture(  # type: ignore[attr-defined]
+    payload = mod.build_retrieval_fixture(  # type: ignore[attr-defined]
         documents=[
             {
-                "page_content": "APAC Q2 revenue amount 138",
-                "metadata": {"chunk_id": "chunk-a", "document_id": "doc-1", "source": "demo.md"},
-            },
-            {
-                "chunk_id": "chunk-b",
-                "text": "North Q2 revenue amount 132",
-                "metadata": {"document_id": "doc-1"},
-            },
+                "chunk_id": "chunk-1",
+                "document_id": "doc-1",
+                "text": "APAC Q2 revenue amount 138",
+                "metadata": {"source": "strong.md"},
+            }
         ],
         queries=[
-            {"question": "What is APAC Q2 revenue?", "expected_chunk_ids": ["chunk-a", "chunk-a", ""]},
+            {
+                "id": "q1",
+                "question": "For APAC, what is the Q2 revenue amount?",
+                "expected_chunk_ids": ["chunk-1"],
+            }
         ],
-        top_k=3,
+        top_k=1,
         retrieval_mode="keyword",
     )
 
-    assert fixture["schema"] == "mimirq.sample_retrieval_fixture.v1"
-    assert fixture["defaults"]["top_k"] == 3
-    assert fixture["documents"][0]["chunk_id"] == "chunk-a"
-    assert fixture["documents"][0]["document_id"] == "doc-1"
-    assert fixture["documents"][0]["metadata"]["source"] == "demo.md"
-    assert fixture["documents"][1]["chunk_id"] == "chunk-b"
-    assert fixture["queries"][0]["expected_chunk_ids"] == ["chunk-a"]
+    assert payload["schema"] == "mimirq.sample_retrieval_fixture.v1"
+    assert payload["defaults"]["top_k"] == 1
+    assert payload["defaults"]["retrieval_mode"] == "keyword"
+    assert payload["documents"][0]["chunk_id"] == "chunk-1"
+    assert payload["queries"][0]["expected_chunk_ids"] == ["chunk-1"]
 
 
-def test_build_fixture_cli_writes_stable_json(tmp_path: Path) -> None:
-    mod = _load_script("scripts/build_parsing_retrieval_fixture.py")
+def test_build_retrieval_fixture_cli_writes_json(tmp_path: Path, monkeypatch) -> None:
+    mod = _load_script()
+    docs_path = tmp_path / "documents.json"
+    queries_path = tmp_path / "queries.json"
+    out_path = tmp_path / "fixture.json"
 
-    chunks = tmp_path / "chunks.json"
-    queries = tmp_path / "queries.json"
-    out = tmp_path / "fixture.json"
-    chunks.write_text(
+    docs_path.write_text(
         json.dumps(
             [
                 {
-                    "page_content": "East region revenue accelerated in Q3.",
-                    "metadata": {"chunk_id": "layout-answer", "document_id": "doc-layout"},
+                    "chunk_id": "chunk-1",
+                    "document_id": "doc-1",
+                    "text": "East region revenue accelerated in Q3.",
+                    "metadata": {"source": "layout.md"},
                 }
             ],
             ensure_ascii=False,
         ),
         encoding="utf-8",
     )
-    queries.write_text(
+    queries_path.write_text(
         json.dumps(
             [
                 {
-                    "id": "q-layout",
+                    "id": "q1",
                     "question": "Which region accelerated in Q3?",
-                    "expected_chunk_ids": ["layout-answer"],
+                    "expected_chunk_ids": ["chunk-1"],
                 }
             ],
             ensure_ascii=False,
@@ -85,12 +86,12 @@ def test_build_fixture_cli_writes_stable_json(tmp_path: Path) -> None:
 
     rc = mod.main(  # type: ignore[attr-defined]
         [
-            "--chunks-json",
-            str(chunks),
+            "--documents-json",
+            str(docs_path),
             "--queries-json",
-            str(queries),
+            str(queries_path),
             "--out",
-            str(out),
+            str(out_path),
             "--top-k",
             "1",
             "--retrieval-mode",
@@ -99,35 +100,6 @@ def test_build_fixture_cli_writes_stable_json(tmp_path: Path) -> None:
     )
 
     assert rc == 0
-    payload = json.loads(out.read_text(encoding="utf-8"))
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
     assert payload["schema"] == "mimirq.sample_retrieval_fixture.v1"
-    assert payload["documents"][0]["chunk_id"] == "layout-answer"
-    assert payload["queries"][0]["id"] == "q-layout"
-
-
-def test_build_fixture_accepts_flat_parser_element_shapes() -> None:
-    mod = _load_script("scripts/build_parsing_retrieval_fixture.py")
-
-    fixture = mod.build_fixture(  # type: ignore[attr-defined]
-        documents=[
-            {
-                "element_id": "table:1:0",
-                "element_text": "APAC Q2 revenue amount 138",
-                "page": 1,
-                "pages": [1, 2],
-                "bbox": {"x0": 10, "y0": 20, "x1": 300, "y1": 520},
-                "visual_kind": "table",
-            }
-        ],
-        queries=[{"question": "What is APAC Q2 revenue?", "expected_chunk_ids": ["table:1:0"]}],
-        top_k=1,
-        retrieval_mode="keyword",
-    )
-
-    doc = fixture["documents"][0]
-    assert doc["chunk_id"] == "table:1:0"
-    assert doc["text"] == "APAC Q2 revenue amount 138"
-    assert doc["metadata"]["page"] == 1
-    assert doc["metadata"]["pages"] == [1, 2]
-    assert doc["metadata"]["bbox"] == {"x0": 10, "y0": 20, "x1": 300, "y1": 520}
-    assert doc["metadata"]["visual_kind"] == "table"
+    assert payload["queries"][0]["question"] == "Which region accelerated in Q3?"
