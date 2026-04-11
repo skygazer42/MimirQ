@@ -78,4 +78,23 @@ describe('parsing extract panel behavior', () => {
 
     expect(view.container.textContent).not.toContain('来源 visual kind')
   })
+
+  it('does not render a visual kind selector when no image subtypes are available', () => {
+    const view = renderComponent(
+      React.createElement(ParsingExtractPanel, {
+        documentId: 'doc-2',
+        activeElements: [
+          {
+            id: 'seal:1:0',
+            kind: 'seal',
+            page: 1,
+            text: '杭州测试科技有限公司',
+          },
+        ],
+      })
+    )
+    rendered.push(view)
+
+    expect(view.container.textContent).not.toContain('来源 visual kind')
+  })
 })
