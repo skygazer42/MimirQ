@@ -47,6 +47,22 @@ export function ParsingMobileInspectorContent({
   const t = useTranslations('ParsingWorkbench')
   const layoutEntries = buildParsingLayoutEntries(activeBlocksWithPositions)
 
+  const formatElementPages = (element: ParsingElement): string => {
+    const pages = Array.isArray(element.pages)
+      ? element.pages.filter((value) => Number.isInteger(value) && value > 0)
+      : []
+    if (pages.length >= 2) {
+      if (pages.length === 2 && pages[1] === pages[0] + 1) {
+        return t('mobileInspector.pageLabel', { page: `${pages[0]}-${pages[1]}` })
+      }
+      return t('mobileInspector.pageLabel', { page: pages.join(',') })
+    }
+    if (typeof element.page === 'number') {
+      return t('mobileInspector.pageLabel', { page: String(element.page) })
+    }
+    return ''
+  }
+
   return (
     <div className="flex-1 min-h-0 space-y-5 overflow-y-auto overscroll-contain no-scrollbar bg-muted/10 p-4">
       <div className="space-y-2">
@@ -180,10 +196,8 @@ export function ParsingMobileInspectorContent({
                           <div className="truncate font-medium text-foreground/85">{String(element.kind || 'paragraph')}</div>
                           {element.text ? <div className="truncate text-xs text-muted-foreground">{String(element.text)}</div> : null}
                         </div>
-                        {typeof element.page === 'number' ? (
-                          <div className="font-mono text-[11px] tabular-nums text-muted-foreground">
-                            {t('mobileInspector.pageLabel', { page: String(element.page) })}
-                          </div>
+                        {formatElementPages(element) ? (
+                          <div className="font-mono text-[11px] tabular-nums text-muted-foreground">{formatElementPages(element)}</div>
                         ) : null}
                       </div>
                     </button>

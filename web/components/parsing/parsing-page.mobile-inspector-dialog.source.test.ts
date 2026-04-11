@@ -25,6 +25,7 @@ describe('ParsingPage mobile inspector dialog', () => {
     expect(contentSrc).toContain("t('mobileInspector.blocks')")
     expect(contentSrc).toContain("t('mobileInspector.blockLabel'")
     expect(contentSrc).toContain("t('mobileInspector.pageLabel'")
+    expect(contentSrc).toContain('Array.isArray(element.pages)')
     expect(contentSrc).toContain("t('mobileInspector.elements')")
     expect(contentSrc).toContain("t('mobileInspector.toc')")
     expect(contentSrc).toContain("t('mobileInspector.quickActions')")
