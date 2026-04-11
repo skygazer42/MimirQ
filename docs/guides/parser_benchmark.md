@@ -79,6 +79,12 @@ python3 scripts/parser_benchmark.py \
 
 The root image cases now include tiny deterministic PNG assets generated in-repo so image subtype coverage can be exercised without external downloads or extra dependencies.
 
+If you need to refresh those committed assets after editing the root fixture corpus, run:
+
+```bash
+python3 scripts/generate_parsing_golden_assets.py --output-root tests/fixtures/parsing_golden
+```
+
 You can also run the same fixture against the checked-in baseline in strict mode:
 
 ```bash
