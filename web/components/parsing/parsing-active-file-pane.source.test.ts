@@ -56,6 +56,8 @@ describe('parsing active file pane source', () => {
     expect(src).toContain('const selectedExtractOverlayId = useMemo(')
     expect(src).toContain('const pdfBoxesByPage = useMemo(')
     expect(src).toContain('const pdfActiveBlockIds = useMemo(')
+    expect(src).toContain('Array.isArray(evidence?.pages)')
+    expect(src).toContain('跨页')
     expect(src).toContain('证据定位')
   })
 })
