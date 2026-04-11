@@ -8,7 +8,8 @@
     "mean_seal_recall": 1.0,
     "mean_equation_recall": 1.0,
     "mean_table_recall": 1.0,
-    "mean_image_recall": 1.0
+    "mean_image_recall": 1.0,
+    "mean_chart_image_recall": 1.0
   },
   "severity_bands": {
     "critical": 3.0,

@@ -108,6 +108,7 @@ The report (`mimirq.parser_benchmark.v1`) includes:
 - An aggregate `summary` keyed by backend (ok rate, latency percentiles, mean parse score, mean similarity)
 - Specialty recall means in `summary`, for example `mean_seal_recall` / `mean_equation_recall`, when golden specialty annotations exist
 - Optional nested `mean_image_visual_kind_recall` in `summary` when golden image subtype annotations exist
+- Stable image subtype metrics such as `mean_chart_image_recall` can also appear in `summary` when that subtype is annotated in the golden set
 
 ## Baseline Diff (Optional)
 
@@ -148,6 +149,7 @@ Strict mode compares current `summary.<backend>` against baseline and fails when
 - `--strict-max-equation-recall-drop`
 - `--strict-max-table-recall-drop`
 - `--strict-max-image-recall-drop`
+- `--strict-max-chart-image-recall-drop`
 
 You can pin CI thresholds via strict profile JSON:
 
@@ -155,7 +157,7 @@ You can pin CI thresholds via strict profile JSON:
 - schema: `mimirq.parser_benchmark_strict_profile.v1`
 - fields:
   - `thresholds`: per-metric max drop
-  - Specialty recall metrics use the summary keys `mean_seal_recall`, `mean_equation_recall`, `mean_table_recall`, and `mean_image_recall`
+  - Specialty recall metrics use the summary keys `mean_seal_recall`, `mean_equation_recall`, `mean_table_recall`, `mean_image_recall`, and any promoted stable subtype metrics such as `mean_chart_image_recall`
   - `severity_bands`: ratios used to classify drift severity
 
 CI usually pairs this with a diff artifact (`artifacts/parser_benchmark.diff.json`) so reviewers can inspect what changed even when gate passes.

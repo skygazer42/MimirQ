@@ -150,6 +150,7 @@ def test_parser_benchmark_reports_specialty_element_counts(monkeypatch, tmp_path
     assert payload["summary"]["deepdoc"]["mean_equation_recall"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_table_recall"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_image_recall"] == 1.0
+    assert payload["summary"]["deepdoc"]["mean_chart_image_recall"] == 1.0
     assert payload["summary"]["deepdoc"]["mean_image_visual_kind_recall"]["chart"] == 1.0
 
 
