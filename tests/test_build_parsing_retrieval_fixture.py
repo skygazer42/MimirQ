@@ -177,3 +177,36 @@ def test_generated_fixture_can_run_in_sample_retrieval_benchmark(tmp_path: Path)
 
     assert report["summary"]["hit_at_k"] == 1.0
     assert report["summary"]["mrr"] == 1.0
+
+
+def test_build_fixture_accepts_flat_parser_element_shapes() -> None:
+    mod = _load_script()
+
+    payload = mod.build_fixture(  # type: ignore[attr-defined]
+        documents=[
+            {
+                "element_id": "table:1:0",
+                "element_text": "APAC Q2 revenue amount 138",
+                "page": 1,
+                "pages": [1, 2],
+                "bbox": {"x0": 10, "y0": 20, "x1": 300, "y1": 520},
+                "visual_kind": "table",
+            }
+        ],
+        queries=[
+            {
+                "question": "For APAC, what is the Q2 revenue amount?",
+                "expected_chunk_ids": ["table:1:0"],
+            }
+        ],
+        top_k=1,
+        retrieval_mode="keyword",
+    )
+
+    doc = payload["documents"][0]
+    assert doc["chunk_id"] == "table:1:0"
+    assert doc["text"] == "APAC Q2 revenue amount 138"
+    assert doc["metadata"]["page"] == 1
+    assert doc["metadata"]["pages"] == [1, 2]
+    assert doc["metadata"]["bbox"] == {"x0": 10, "y0": 20, "x1": 300, "y1": 520}
+    assert doc["metadata"]["visual_kind"] == "table"
