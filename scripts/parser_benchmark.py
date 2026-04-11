@@ -34,6 +34,8 @@ _TABLE_SEP_RE = re.compile(r"(?m)^\s*\|?(?:\s*:?-+:?\s*\|)+\s*:?-+:?\s*\|?\s*$")
 _MD_IMAGE_RE = re.compile(r"!\[[^\]]*\]\([^)]+\)")
 _MD_IMAGE_CAPTURE_RE = re.compile(r"!\[[^\]]*\]\(([^)\s]+)")
 _HTML_IMG_RE = re.compile(r"(?i)<img\\b[^>]*>")
+_HTML_IMG_TAG_RE = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
+_HTML_IMG_ATTR_RE = re.compile(r"(src)\s*=\s*([\"'])(.*?)\2", re.IGNORECASE)
 _STRICT_PROFILE_SCHEMA_V1 = "mimirq.parser_benchmark_strict_profile.v1"
 _SPECIALTY_KINDS = ("seal", "equation", "table", "image")
 _IMAGE_VISUAL_KINDS = ("chart", "qr", "barcode", "diagram")
@@ -255,7 +257,13 @@ def _find_missing_local_markdown_assets(markdown_path: Path | None) -> list[str]
         return []
     text = _read_text(markdown_path)
     missing: list[str] = []
-    for raw_ref in _MD_IMAGE_CAPTURE_RE.findall(text):
+    refs: list[str] = list(_MD_IMAGE_CAPTURE_RE.findall(text))
+    for tag in _HTML_IMG_TAG_RE.findall(text):
+        for key, _q, val in _HTML_IMG_ATTR_RE.findall(tag):
+            if str(key or "").strip().lower() == "src":
+                refs.append(str(val or ""))
+
+    for raw_ref in refs:
         ref = str(raw_ref or "").strip()
         if not ref or ref.startswith(("http://", "https://", "data:")):
             continue
