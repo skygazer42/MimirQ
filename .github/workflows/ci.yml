@@ -986,7 +986,8 @@ jobs:
             --queryset-health-diff bounded_gate_artifacts/artifacts/queryset_health.diff.json \
             --queryset-health-diff-hybrid bounded_gate_artifacts/artifacts/queryset_health.diff.hybrid.json \
             --skip-regression \
-            --out-report artifacts/release_gate.report.json
+            --out-report artifacts/release_gate.report.json \
+            --out-report-md artifacts/release_gate.report.md
 
       - name: Diff thresholds (baseline vs generated)
         if: always()
@@ -1026,6 +1027,7 @@ jobs:
           path: |
             artifacts/**
             artifacts/must_recall_provenance_gate.report.json
+            artifacts/release_gate.report.md
             bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/summary.json
             bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/report.json
             bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/gate.json
