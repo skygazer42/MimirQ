@@ -307,6 +307,16 @@ def _augment_documents_with_inline_image_codes(*, documents: list[Any], markdown
     return derived
 
 
+def _augment_markdown_with_inline_image_ocr(*, markdown: str, origin_path: Path) -> str:
+    from app.parsing.enrich.image_ocr import add_image_ocr_blocks
+
+    try:
+        next_markdown, _added, _audit = add_image_ocr_blocks(markdown, origin_path=origin_path)
+    except Exception:
+        return str(markdown or "")
+    return str(next_markdown or markdown or "")
+
+
 def _extract_markdown_table_blocks(markdown: str) -> list[list[str]]:
     blocks: list[list[str]] = []
     current: list[str] = []
@@ -1006,6 +1016,7 @@ def main() -> int:
                 )
                 docs = merge_cross_page_documents(list(docs or []))
                 md = _join_documents_to_markdown(docs)
+                md = _augment_markdown_with_inline_image_ocr(markdown=md, origin_path=case.path)
                 metric_docs = _augment_documents_with_inline_image_codes(
                     documents=list(docs or []),
                     markdown=md,

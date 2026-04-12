@@ -356,6 +356,37 @@ def _resolve_multilingual_font() -> Path | None:
     return None
 
 
+def _resolve_handwriting_font() -> Path | None:
+    for candidate in (
+        "/usr/share/fonts/truetype/arphic/ukai.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    ):
+        path = Path(candidate)
+        if path.exists():
+            return path
+    return None
+
+
+def _write_handwriting_note(path: Path) -> None:
+    from PIL import ImageFont
+
+    image = Image.new("L", (420, 160), color=246)
+    draw = ImageDraw.Draw(image)
+    font_path = _resolve_handwriting_font()
+    font = ImageFont.load_default()
+    if font_path is not None:
+        try:
+            font = ImageFont.truetype(str(font_path), 34)
+        except Exception:
+            font = ImageFont.load_default()
+    draw.text((26, 54), "Approved 72", fill=28, font=font)
+    image = image.rotate(-3, expand=False, fillcolor=246)
+    noisy = _apply_scan_noise(image.convert("RGB"), seed=19, jpeg_quality=48).convert("L")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    noisy.save(path)
+
+
 def _write_multilingual_pdf(pdf_path: Path) -> None:
     doc = fitz.open()
     try:
@@ -418,6 +449,7 @@ def generate_broader_assets(output_root: Path) -> None:
     header_footer_noise_pdf = output_root / "header_footer_noise_pdf" / "input" / "sample.pdf"
     mixed_layout_pdf = output_root / "mixed_layout_pdf" / "input" / "sample.pdf"
     multilingual_pdf = output_root / "multilingual_pdf" / "input" / "sample.pdf"
+    handwriting_note_image = output_root / "handwriting_note_image" / "input" / "sample.png"
 
     for path, writer in (
         (chart_image, _write_chart),
@@ -525,6 +557,7 @@ def generate_broader_assets(output_root: Path) -> None:
     _write_header_footer_noise_pdf(header_footer_noise_pdf)
     _write_mixed_layout_pdf(mixed_layout_pdf)
     _write_multilingual_pdf(multilingual_pdf)
+    _write_handwriting_note(handwriting_note_image)
 
     for src, dst in (
         (chart_image, output_root / "chart_pdf" / "golden" / "chart.png"),
@@ -537,6 +570,7 @@ def generate_broader_assets(output_root: Path) -> None:
         (borderless_table_image, output_root / "borderless_table_scan" / "golden" / "sample.png"),
         (merged_header_image, output_root / "merged_header_table_pdf" / "golden" / "table.png"),
         (leading_paragraph_image, output_root / "table_with_leading_paragraph_pdf" / "golden" / "page.png"),
+        (handwriting_note_image, output_root / "handwriting_note_image" / "golden" / "sample.png"),
     ):
         dst.parent.mkdir(parents=True, exist_ok=True)
         dst.write_bytes(src.read_bytes())

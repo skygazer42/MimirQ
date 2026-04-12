@@ -83,6 +83,12 @@
       "path": "formula_markdown/input/sample.md",
       "golden_markdown": "formula_markdown/golden/sample.md",
       "specialty_elements_path": "formula_markdown/golden/sample.specialty.json"
+    },
+    {
+      "id": "handwriting_note_image_case",
+      "path": "handwriting_note_image/input/sample.png",
+      "golden_markdown": "handwriting_note_image/golden/sample.md",
+      "specialty_elements_path": "handwriting_note_image/golden/sample.specialty.json"
     }
   ]
 }

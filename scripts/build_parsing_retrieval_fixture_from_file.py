@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from app.parsing.enrich.image_ocr import add_image_ocr_blocks
 from scripts.build_parsing_retrieval_fixture import build_retrieval_fixture
 
 
@@ -44,6 +45,13 @@ def main(argv: list[str] | None = None) -> int:
         input_path,
         parser_backend=str(args.parser_backend or "basic").strip().lower() or "basic",
     )
+    for item in documents or []:
+        page_content = str(getattr(item, "page_content", "") or "")
+        try:
+            next_content, _added, _audit = add_image_ocr_blocks(page_content, origin_path=input_path)
+        except Exception:
+            next_content = page_content
+        item.page_content = next_content
     fixture = build_retrieval_fixture(
         documents=_serialize_documents(documents),
         queries=queries if isinstance(queries, list) else [],

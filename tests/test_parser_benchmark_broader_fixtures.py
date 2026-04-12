@@ -194,6 +194,13 @@ def _install_fake_parser_benchmark_modules(monkeypatch) -> None:  # noqa: ANN001
                         metadata={"page": 1},
                     ),
                 ]
+            elif "handwriting_note_image" in path_str:
+                docs = [
+                    Document(
+                        page_content="原始图片为手写审批便签。\n\n![handwriting](sample.png)\n\nImage OCR:\nApproved72",
+                        metadata={"page": 1},
+                    ),
+                ]
             else:
                 docs = [
                     Document(
@@ -256,7 +263,7 @@ def test_parser_benchmark_reports_broader_pdf_and_image_corpus(monkeypatch, tmp_
     assert rc == 0
 
     payload = json.loads(out_path.read_text(encoding="utf-8"))
-    assert len(payload["cases"]) == 14
+    assert len(payload["cases"]) == 15
     by_case = {row["id"]: row for row in payload["cases"]}
     assert by_case["chart_pdf_case"]["golden"]["image_visual_kinds"]["chart"] == 1
     assert by_case["line_chart_pdf_case"]["golden"]["image_visual_kinds"]["chart"] == 1
@@ -272,6 +279,7 @@ def test_parser_benchmark_reports_broader_pdf_and_image_corpus(monkeypatch, tmp_
     assert by_case["header_footer_noise_pdf_case"]["golden"]["structure"]["image_refs"] == 0
     assert by_case["mixed_layout_pdf_case"]["golden"]["structure"]["image_refs"] == 0
     assert by_case["multilingual_pdf_case"]["golden"]["structure"]["image_refs"] == 0
+    assert by_case["handwriting_note_image_case"]["golden"]["structure"]["image_refs"] == 1
     assert payload["summary"]["basic"]["mean_image_recall"] == 1.0
     assert payload["summary"]["basic"]["mean_table_recall"] == 1.0
     assert payload["summary"]["basic"]["mean_table_continuity_recall"] == 1.0

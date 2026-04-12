@@ -8,7 +8,7 @@ def test_parsing_proof_summary_baseline_matches_current_sample_contract() -> Non
     payload = json.loads(Path("ci/parsing_retrieval_proof_summary_baseline.v1.json").read_text(encoding="utf-8"))
 
     assert payload.get("schema") == "mimirq.parsing_retrieval_proof_summary.v1"
-    assert payload.get("cases_total") == 14
+    assert payload.get("cases_total") == 15
     assert payload.get("hit_at_k_mean") == 1.0
     assert payload.get("mrr_mean") == 1.0
     assert payload.get("failed_case_ids") == []
@@ -29,4 +29,5 @@ def test_parsing_proof_summary_baseline_matches_current_sample_contract() -> Non
         "mixed_layout_pdf_case",
         "multilingual_pdf_case",
         "formula_markdown_case",
+        "handwriting_note_image_case",
     ]

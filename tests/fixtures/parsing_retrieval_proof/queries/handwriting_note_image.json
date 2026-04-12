@@ -1,0 +1,12 @@
+[
+  {
+    "id": "q-handwriting-1",
+    "question": "What number is written in the handwritten approval note?",
+    "expected_chunk_indexes": [0]
+  },
+  {
+    "id": "q-handwriting-2",
+    "question": "Which handwritten note says Approved72?",
+    "expected_chunk_indexes": [0]
+  }
+]
