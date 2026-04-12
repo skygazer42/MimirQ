@@ -22,6 +22,7 @@ def build_review_markdown(
     diff: dict[str, Any],
 ) -> str:
     checks = report.get("checks") if isinstance(report.get("checks"), list) else []
+    case_rows = summary.get("cases") if isinstance(summary.get("cases"), list) else []
     lines: list[str] = []
     lines.append("# Parsing Proof Review")
     lines.append("")
@@ -31,6 +32,13 @@ def build_review_markdown(
     lines.append(f"- `hit_at_k_mean`: `{summary.get('hit_at_k_mean')}`")
     lines.append(f"- `mrr_mean`: `{summary.get('mrr_mean')}`")
     lines.append(f"- `failed_case_ids`: `{', '.join(summary.get('failed_case_ids') or [])}`")
+    lines.append("")
+    lines.append("## Artifacts")
+    lines.append("")
+    lines.append(f"- `summary_path`: `{report.get('summary_path')}`")
+    lines.append(f"- `report_schema`: `{report.get('schema')}`")
+    lines.append(f"- `gate_schema`: `{gate.get('schema')}`")
+    lines.append(f"- `diff_schema`: `{diff.get('schema')}`")
     lines.append("")
     lines.append("## Threshold Checks")
     lines.append("")
@@ -52,6 +60,20 @@ def build_review_markdown(
     lines.append(f"- `mrr_mean_delta`: `{metric_deltas.get('mrr_mean_delta')}`")
     lines.append(f"- Added failed cases: `{', '.join(failed_drift.get('added_ids') or [])}`")
     lines.append(f"- Removed failed cases: `{', '.join(failed_drift.get('removed_ids') or [])}`")
+    lines.append("")
+    lines.append("## Cases")
+    lines.append("")
+    if case_rows:
+        lines.append("| Case | hit@k | mrr |")
+        lines.append("| --- | --- | --- |")
+        for row in case_rows:
+            if not isinstance(row, dict):
+                continue
+            lines.append(
+                f"| {row.get('id') or ''} | {row.get('hit_at_k')} | {row.get('mrr')} |"
+            )
+    else:
+        lines.append("- None")
     lines.append("")
     lines.append("## Gate")
     lines.append("")
