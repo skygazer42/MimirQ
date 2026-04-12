@@ -86,8 +86,19 @@ def test_run_parsing_retrieval_proof_batch_writes_per_case_outputs_and_summary(t
     report = mod.run_batch(spec_path=spec_path, out_dir=out_dir)  # type: ignore[attr-defined]
 
     assert report["cases_total"] == 2
+    assert report["query_count_total"] == 2
     assert report["summary"]["hit_at_k_mean"] == 1.0
     assert report["summary"]["mrr_mean"] == 1.0
+    assert report["provenance"]["spec_path"] == str(spec_path.resolve())
+    assert report["case_family_counts"]["table"] == 2
+    case_map = {item["id"]: item for item in report["cases"]}
+    assert case_map["borderless-table"]["case_family"] == "table"
+    assert case_map["borderless-table"]["case_category"] == "borderless_table_scan"
+    assert case_map["borderless-table"]["query_count"] == 1
+    assert case_map["borderless-table"]["provenance"]["queries_json"] == str(q_table.resolve())
+    assert case_map["cross-page-table"]["case_family"] == "table"
+    assert case_map["cross-page-table"]["case_category"] == "cross_page_table_pdf"
+    assert case_map["cross-page-table"]["query_count"] == 1
     assert (out_dir / "borderless-table.fixture.json").exists()
     assert (out_dir / "borderless-table.report.json").exists()
     assert (out_dir / "cross-page-table.fixture.json").exists()
@@ -149,4 +160,9 @@ def test_run_parsing_retrieval_proof_batch_cli_writes_batch_report(tmp_path: Pat
     assert rc == 0
     batch_report = json.loads((out_dir / "batch.report.json").read_text(encoding="utf-8"))
     assert batch_report["cases_total"] == 1
+    assert batch_report["query_count_total"] == 1
     assert batch_report["summary"]["hit_at_k_mean"] == 1.0
+    assert batch_report["provenance"]["spec_path"] == str(spec_path.resolve())
+    assert batch_report["cases"][0]["case_family"] == "table"
+    assert batch_report["cases"][0]["case_category"] == "borderless_table_scan"
+    assert batch_report["cases"][0]["query_count"] == 1

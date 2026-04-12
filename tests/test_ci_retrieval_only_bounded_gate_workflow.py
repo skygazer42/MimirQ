@@ -5,6 +5,14 @@ from pathlib import Path
 
 def test_ci_has_retrieval_only_bounded_gate_job() -> None:
     text = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
+    parsing_proof_surface = (
+        "summary.json",
+        "report.json",
+        "gate.json",
+        "diff.json",
+        "diff.md",
+    )
+
     assert "retrieval-only-bounded-gate" in text
     assert "run_sample_retrieval_benchmark.py" in text
     assert "run_sample_parsing_retrieval_proof.py" in text
@@ -31,12 +39,13 @@ def test_ci_has_retrieval_only_bounded_gate_job() -> None:
     assert "ci/queryset_health_policy.v1.json" in text
     assert "ci/parsing_retrieval_proof_thresholds.v1.json" in text
     assert "ci/parsing_retrieval_proof_summary_baseline.v1.json" in text
+    assert "--batch-report artifacts/parsing_proof_broader_sample/batch.report.json" in text
+    assert "--summary-out artifacts/parsing_proof_broader_sample/summary.json" in text
+    assert "--report-out artifacts/parsing_proof_broader_sample/report.json" in text
+    assert "--input artifacts/parsing_proof_broader_sample/summary.json" in text
+    assert "--a ci/parsing_retrieval_proof_summary_baseline.v1.json" in text
+    assert "--b artifacts/parsing_proof_broader_sample/summary.json" in text
     assert "artifacts/queryset_health.snapshot.json" in text
-    assert "artifacts/parsing_proof_broader_sample/summary.json" in text
-    assert "artifacts/parsing_proof_broader_sample/report.json" in text
-    assert "artifacts/parsing_proof_broader_sample/gate.json" in text
-    assert "artifacts/parsing_proof_broader_sample/diff.json" in text
-    assert "artifacts/parsing_proof_broader_sample/diff.md" in text
     assert "artifacts/queryset_health.snapshot.hybrid.json" in text
     assert "artifacts/queryset_health.snapshot.sparse.json" in text
     assert "artifacts/queryset_health.diff.json" in text
@@ -62,3 +71,15 @@ def test_ci_has_retrieval_only_bounded_gate_job() -> None:
     assert "artifacts/claim_verifier.contract.json" in text
     assert "verify_claim" in text
     assert "delta" in text.lower()
+
+    for artifact_name in parsing_proof_surface:
+        assert f"artifacts/parsing_proof_broader_sample/{artifact_name}" in text
+        assert f"bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/{artifact_name}" in text
+
+    assert "bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/review.md" in text
+
+    sample_index = text.index("run_sample_parsing_retrieval_proof.py")
+    build_index = text.index("build_parsing_retrieval_proof_artifacts.py")
+    gate_index = text.index("parsing_retrieval_proof_gate.py")
+    diff_index = text.index("diff_parsing_retrieval_proof_summaries.py")
+    assert sample_index < build_index < gate_index < diff_index

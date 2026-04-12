@@ -1,12 +1,12 @@
 [
   {
     "id": "q-mixed-layout",
-    "question": "Which region accelerated in Q3?",
+    "question": "What summary should appear after both text columns in the mixed layout page?",
     "expected_chunk_indexes": [0]
   },
   {
     "id": "q-mixed-layout-2",
-    "question": "What should appear after both text columns?",
+    "question": "What should remain below the two-column content instead of being pulled into the left column?",
     "expected_chunk_indexes": [0]
   }
 ]

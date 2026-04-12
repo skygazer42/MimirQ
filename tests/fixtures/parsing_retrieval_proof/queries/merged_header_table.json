@@ -1,12 +1,12 @@
 [
   {
     "id": "q-merged-header-1",
-    "question": "Which team spent 154?",
+    "question": "In Budget 2026, which team spent 154?",
     "expected_chunk_indexes": [0]
   },
   {
     "id": "q-merged-header-2",
-    "question": "What budget section is summarized in the table?",
+    "question": "What budget title appears above the approved and spent table?",
     "expected_chunk_indexes": [0]
   }
 ]

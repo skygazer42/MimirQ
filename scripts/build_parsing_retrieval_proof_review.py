@@ -14,6 +14,46 @@ def _load_json(path: Path) -> dict[str, Any]:
     return obj
 
 
+def _normalize_checks(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, dict)]
+    if not isinstance(value, dict):
+        return []
+    rows: list[dict[str, Any]] = []
+    for metric in sorted(value):
+        item = value.get(metric)
+        if not isinstance(item, dict):
+            continue
+        rows.append(
+            {
+                "metric": metric,
+                "value": item.get("value"),
+                "min": item.get("min"),
+                "passed": item.get("passed"),
+            }
+        )
+    return rows
+
+
+def _append_group_table(lines: list[str], *, title: str, groups: Any) -> None:
+    rows = groups if isinstance(groups, list) else []
+    lines.append(title)
+    lines.append("")
+    if rows:
+        lines.append("| Name | Cases | hit@k mean | mrr mean | Failed cases |")
+        lines.append("| --- | --- | --- | --- | --- |")
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            failed = ", ".join(row.get("failed_case_ids") or [])
+            lines.append(
+                f"| {row.get('name') or ''} | {row.get('cases_total')} | {row.get('hit_at_k_mean')} | {row.get('mrr_mean')} | {failed} |"
+            )
+    else:
+        lines.append("- None")
+    lines.append("")
+
+
 def build_review_markdown(
     *,
     summary: dict[str, Any],
@@ -21,7 +61,7 @@ def build_review_markdown(
     gate: dict[str, Any],
     diff: dict[str, Any],
 ) -> str:
-    checks = report.get("checks") if isinstance(report.get("checks"), list) else []
+    checks = _normalize_checks(report.get("checks"))
     case_rows = summary.get("cases") if isinstance(summary.get("cases"), list) else []
     lines: list[str] = []
     lines.append("# Parsing Proof Review")
@@ -61,6 +101,8 @@ def build_review_markdown(
     lines.append(f"- Added failed cases: `{', '.join(failed_drift.get('added_ids') or [])}`")
     lines.append(f"- Removed failed cases: `{', '.join(failed_drift.get('removed_ids') or [])}`")
     lines.append("")
+    _append_group_table(lines, title="## Category Summary", groups=summary.get("category_summaries"))
+    _append_group_table(lines, title="## Slice Summary", groups=summary.get("slice_summaries"))
     lines.append("## Cases")
     lines.append("")
     if case_rows:

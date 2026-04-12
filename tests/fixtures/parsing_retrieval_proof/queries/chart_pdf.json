@@ -1,12 +1,12 @@
 [
   {
     "id": "q-chart-1",
-    "question": "What kind of image shows revenue growth?",
+    "question": "Which attachment is parsed as a chart image?",
     "expected_chunk_indexes": [0]
   },
   {
     "id": "q-chart-2",
-    "question": "Which visual is a chart?",
+    "question": "If someone asks for the chart image attachment, which chunk should be retrieved?",
     "expected_chunk_indexes": [0]
   }
 ]

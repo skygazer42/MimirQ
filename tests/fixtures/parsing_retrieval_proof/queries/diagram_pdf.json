@@ -1,12 +1,12 @@
 [
   {
     "id": "q-diagram-1",
-    "question": "Which visual is a workflow diagram?",
+    "question": "Which attachment is parsed as a diagram image?",
     "expected_chunk_indexes": [0]
   },
   {
     "id": "q-diagram-2",
-    "question": "What type of image is shown on the page?",
+    "question": "If someone asks for the diagram image attachment, which chunk should be retrieved?",
     "expected_chunk_indexes": [0]
   }
 ]

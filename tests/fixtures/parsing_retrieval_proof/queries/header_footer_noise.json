@@ -1,12 +1,12 @@
 [
   {
     "id": "q-header-footer",
-    "question": "Which region accelerated in Q3?",
+    "question": "In the quarterly operations report, which region revenue accelerated in Q3?",
     "expected_chunk_indexes": [0]
   },
   {
     "id": "q-header-footer-2",
-    "question": "What did customer churn do year over year?",
+    "question": "In the quarterly operations report, what happened to customer churn year over year?",
     "expected_chunk_indexes": [0]
   }
 ]

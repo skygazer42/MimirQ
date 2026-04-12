@@ -23,6 +23,81 @@ def _coerce_float(value: Any, default: float = 0.0) -> float:
         return float(default)
 
 
+def _normalize_case_id(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    while text.endswith("_case"):
+        text = text[: -len("_case")]
+    return text
+
+
+def _mean(rows: list[dict[str, Any]], field: str) -> float:
+    if not rows:
+        return 0.0
+    total = sum(_coerce_float(row.get(field)) for row in rows)
+    return round(total / float(len(rows)), 6)
+
+
+def _classify_case_category(case_id: Any) -> str:
+    normalized = _normalize_case_id(case_id)
+    if "table" in normalized:
+        return "table"
+    if any(token in normalized for token in ("layout", "column", "header_footer", "mixed")):
+        return "layout"
+    if any(token in normalized for token in ("image", "chart", "diagram", "qr", "barcode")):
+        return "image"
+    return "other"
+
+
+def _classify_case_slice(case_id: Any) -> str:
+    normalized = _normalize_case_id(case_id)
+    for slice_name in (
+        "cross_page_table",
+        "borderless_table",
+        "merged_header_table",
+        "table_with_leading_paragraph",
+        "two_column",
+        "header_footer_noise",
+        "mixed_layout",
+        "chart",
+        "diagram",
+        "qr",
+        "barcode",
+        "table",
+        "layout",
+        "image",
+    ):
+        if slice_name in normalized:
+            return slice_name
+    return "other"
+
+
+def _build_group_summaries(
+    case_rows: list[dict[str, Any]],
+    *,
+    classifier,
+) -> list[dict[str, Any]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in case_rows:
+        group_name = str(classifier(row.get("id")) or "other").strip() or "other"
+        grouped.setdefault(group_name, []).append(row)
+
+    summaries: list[dict[str, Any]] = []
+    for group_name in sorted(grouped):
+        rows = grouped[group_name]
+        failed_case_ids = [str(item.get("id") or "").strip() for item in rows if _coerce_float(item.get("hit_at_k")) < 1.0 or _coerce_float(item.get("mrr")) < 1.0]
+        summaries.append(
+            {
+                "name": group_name,
+                "cases_total": len(rows),
+                "case_ids": [str(item.get("id") or "").strip() for item in rows if str(item.get("id") or "").strip()],
+                "hit_at_k_mean": _mean(rows, "hit_at_k"),
+                "mrr_mean": _mean(rows, "mrr"),
+                "failed_case_ids": failed_case_ids,
+            }
+        )
+    return summaries
+
+
 def build_parsing_proof_summary(batch_payload: Any) -> dict[str, Any]:
     payload = batch_payload if isinstance(batch_payload, dict) else {}
     summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
@@ -45,6 +120,9 @@ def build_parsing_proof_summary(batch_payload: Any) -> dict[str, Any]:
         if hit < 1.0 or mrr < 1.0:
             failed_cases.append(case_id)
 
+    category_summaries = _build_group_summaries(case_summaries, classifier=_classify_case_category)
+    slice_summaries = _build_group_summaries(case_summaries, classifier=_classify_case_slice)
+
     return {
         "schema": "mimirq.parsing_retrieval_proof_summary.v1",
         "cases_total": int(payload.get("cases_total") or len(cases)),
@@ -52,6 +130,8 @@ def build_parsing_proof_summary(batch_payload: Any) -> dict[str, Any]:
         "mrr_mean": _coerce_float(summary.get("mrr_mean")),
         "failed_case_ids": [item for item in failed_cases if item],
         "cases": case_summaries,
+        "category_summaries": category_summaries,
+        "slice_summaries": slice_summaries,
     }
 
 
@@ -80,6 +160,8 @@ def build_parsing_proof_report(
         "thresholds": {name: float(value) for name, value in thresholds.items()},
         "checks": checks,
         "failed_case_ids": list(payload.get("failed_case_ids") or []),
+        "category_summaries": list(payload.get("category_summaries") or []),
+        "slice_summaries": list(payload.get("slice_summaries") or []),
         "passed": bool(all(item["passed"] for item in checks.values())),
     }
 

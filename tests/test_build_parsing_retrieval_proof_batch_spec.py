@@ -48,11 +48,17 @@ def test_build_batch_spec_selects_only_cases_with_query_mapping(tmp_path: Path) 
     )
 
     assert spec["schema"] == "mimirq.parsing_retrieval_proof_batch.v1"
+    assert spec["cases_total"] == 1
+    assert spec["query_count_total"] == 0
+    assert spec["provenance"]["manifest_path"] == str(manifest_path.resolve())
     assert len(spec["cases"]) == 1
     assert spec["cases"][0]["id"] == "case-a"
     assert spec["cases"][0]["parser_backend"] == "basic"
     assert spec["cases"][0]["top_k"] == 2
     assert spec["cases"][0]["retrieval_mode"] == "keyword"
+    assert spec["cases"][0]["case_family"] == "document"
+    assert spec["cases"][0]["case_category"] == "a"
+    assert spec["cases"][0]["query_count"] == 0
 
 
 def test_build_batch_spec_cli_writes_json(tmp_path: Path) -> None:
@@ -105,8 +111,14 @@ def test_build_batch_spec_cli_writes_json(tmp_path: Path) -> None:
     assert rc == 0
     payload = json.loads(out_path.read_text(encoding="utf-8"))
     assert payload["schema"] == "mimirq.parsing_retrieval_proof_batch.v1"
+    assert payload["cases_total"] == 1
+    assert payload["query_count_total"] == 0
+    assert payload["provenance"]["manifest_path"] == str(manifest_path.resolve())
+    assert payload["provenance"]["case_queries_path"] == str(case_queries_path.resolve())
+    assert len(payload["cases"]) == 1
     assert payload["cases"][0]["id"] == "case-a"
     assert payload["cases"][0]["parser_backend"] == "basic"
+    assert payload["cases"][0]["query_count"] == 0
 
 
 def test_real_broader_manifest_sample_query_map_can_build_and_run_batch_spec(tmp_path: Path) -> None:
@@ -138,6 +150,11 @@ def test_real_broader_manifest_sample_query_map_can_build_and_run_batch_spec(tmp
 
     payload = json.loads(out_path.read_text(encoding="utf-8"))
     assert payload["schema"] == "mimirq.parsing_retrieval_proof_batch.v1"
+    assert payload["cases_total"] == 11
+    assert payload["query_count_total"] == 22
+    assert payload["provenance"]["manifest_path"] == str(manifest_path.resolve())
+    assert payload["provenance"]["case_queries_path"] == str(case_queries_path.resolve())
+    assert len(payload["cases"]) == 11
     assert [item["id"] for item in payload["cases"]] == [
         "chart_pdf_case",
         "diagram_pdf_case",
@@ -151,8 +168,64 @@ def test_real_broader_manifest_sample_query_map_can_build_and_run_batch_spec(tmp
         "header_footer_noise_pdf_case",
         "mixed_layout_pdf_case",
     ]
+    case_map = {item["id"]: item for item in payload["cases"]}
+    assert case_map["chart_pdf_case"]["case_family"] == "specialty"
+    assert case_map["chart_pdf_case"]["case_category"] == "chart"
+    assert case_map["chart_pdf_case"]["query_count"] == 2
+    assert case_map["two_column_pdf_case"]["case_family"] == "layout"
+    assert case_map["cross_page_table_pdf_case"]["case_family"] == "table"
 
     report = runner_mod.run_batch(spec_path=out_path, out_dir=out_dir)  # type: ignore[attr-defined]
     assert report["cases_total"] == 11
+    assert report["query_count_total"] == 22
+    assert len(report["cases"]) == 11
     assert report["summary"]["hit_at_k_mean"] == 1.0
     assert report["summary"]["mrr_mean"] == 1.0
+    assert report["case_family_counts"]["specialty"] == 4
+    assert report["case_family_counts"]["table"] == 4
+    assert report["case_family_counts"]["layout"] == 3
+
+
+def test_real_broader_sample_queries_are_case_specific() -> None:
+    case_queries_path = _repo_root() / "tests" / "fixtures" / "parsing_retrieval_proof" / "broader_case_queries.sample.json"
+    case_queries = json.loads(case_queries_path.read_text(encoding="utf-8"))
+
+    banned_questions = {
+        "What kind of image shows revenue growth?",
+        "Which visual is a chart?",
+        "Which visual is a workflow diagram?",
+        "What type of image is shown on the page?",
+        "Which region accelerated in Q3?",
+        "What should appear after both text columns?",
+        "What stayed flat?",
+    }
+    required_case_anchors = {
+        "chart_pdf_case": ("chart image",),
+        "diagram_pdf_case": ("diagram image",),
+        "qr_image_case": ("qr", "hello-qr"),
+        "barcode_image_case": ("barcode", "5901234123457"),
+        "cross_page_table_pdf_case": ("apac", "138"),
+        "borderless_table_scan_case": ("inventory snapshot", "paper", "pens"),
+        "merged_header_table_pdf_case": ("budget 2026", "approved and spent"),
+        "table_with_leading_paragraph_pdf_case": ("97%", "leading paragraph"),
+        "two_column_pdf_case": ("two-column", "stayed flat"),
+        "header_footer_noise_pdf_case": ("quarterly operations report", "customer churn"),
+        "mixed_layout_pdf_case": ("mixed layout", "two-column content"),
+    }
+
+    assert set(case_queries) == set(required_case_anchors)
+    for case_id, anchors in required_case_anchors.items():
+        query_rel_path = str(case_queries[case_id]["queries_json"])
+        query_path = (_repo_root() / query_rel_path).resolve()
+        questions = [
+            str(item.get("question") or "").strip()
+            for item in json.loads(query_path.read_text(encoding="utf-8"))
+            if isinstance(item, dict)
+        ]
+        lowered = [question.lower() for question in questions]
+        assert len(questions) == 2
+        assert len(set(questions)) == len(questions)
+        assert all(question.endswith("?") for question in questions)
+        assert all(len(question.split()) >= 5 for question in questions)
+        assert not any(question in banned_questions for question in questions)
+        assert any(anchor in question for anchor in anchors for question in lowered), case_id
