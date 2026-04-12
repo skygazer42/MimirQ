@@ -731,6 +731,61 @@ def _gate_parsing_proof_diff(
     return violations, notes, observed
 
 
+def _render_markdown(report: dict[str, Any]) -> str:
+    lines: list[str] = []
+    lines.append("# Release Gate Report")
+    lines.append("")
+    lines.append(f"- Passed: `{bool(report.get('passed'))}`")
+    lines.append("")
+
+    def _emit_section(name: str) -> None:
+        payload = report.get(name) if isinstance(report.get(name), dict) else {}
+        lines.append(f"## {name}")
+        lines.append("")
+        lines.append(f"- Policy: `{str(payload.get('policy') or '')}`")
+        lines.append(f"- Path: `{str(payload.get('path') or '')}`")
+        observed = payload.get("observed") if isinstance(payload.get("observed"), dict) else {}
+        for key, value in observed.items():
+            lines.append(f"- `{key}`: `{value}`")
+        lines.append("")
+
+    for section in (
+        "queryset_health",
+        "queryset_health_hybrid",
+        "queryset_health_diff",
+        "queryset_health_diff_hybrid",
+        "parsing_proof",
+        "parsing_proof_diff",
+        "retrieval_leaderboard",
+    ):
+        _emit_section(section)
+
+    notes = list(report.get("notes") or [])
+    lines.append("## Notes")
+    lines.append("")
+    if notes:
+        for item in notes:
+            lines.append(f"- {item}")
+    else:
+        lines.append("- None")
+    lines.append("")
+
+    violations = list(report.get("violations") or [])
+    lines.append("## Violations")
+    lines.append("")
+    if violations:
+        for item in violations:
+            if not isinstance(item, dict):
+                continue
+            lines.append(
+                f"- `{item.get('area')}.{item.get('metric')}` value=`{item.get('value')}` threshold=`{item.get('threshold')}` message=`{item.get('message')}`"
+            )
+    else:
+        lines.append("- None")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="Release gate: regression + SLO + cost budgets.")
     p.add_argument("--base-url", default="http://localhost:8000/api/v1", help="API base url (default: %(default)s)")
@@ -787,6 +842,7 @@ def main() -> int:
     p.add_argument("--parsing-proof-diff", default="", help="Broader parsing-proof diff JSON path (optional)")
 
     p.add_argument("--out-report", default="", help="Write a JSON report to a file (optional)")
+    p.add_argument("--out-report-md", default="", help="Write a Markdown summary to a file (optional)")
 
     args = p.parse_args()
 
@@ -1238,6 +1294,10 @@ def main() -> int:
         out_path = Path(args.out_report)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         _write_json(out_path, report)
+    if args.out_report_md:
+        out_md = Path(args.out_report_md)
+        out_md.parent.mkdir(parents=True, exist_ok=True)
+        out_md.write_text(_render_markdown(report), encoding="utf-8")
 
     for n in notes:
         print(str(n), file=sys.stderr)
