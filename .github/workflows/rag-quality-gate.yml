@@ -93,3 +93,5 @@ jobs:
             artifacts/parsing_proof_broader_sample/*.report.json
             artifacts/parsing_proof_broader_sample/summary.json
             artifacts/parsing_proof_broader_sample/gate.json
+            artifacts/parsing_proof_broader_sample/diff.json
+            artifacts/parsing_proof_broader_sample/diff.md
