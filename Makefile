@@ -1,4 +1,4 @@
-.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend web test test-web test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build diagnostics db-upgrade db-revision verify enterprise-checks parser-status check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance compose-diagnostics helm-template helm-lint clean doctor
+.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend web test test-web test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build diagnostics db-upgrade db-revision verify enterprise-checks parser-status check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
 
 # Prefer project venv when available so local dev doesn't depend on global tooling.
 PY := python3
@@ -101,6 +101,7 @@ help:
 	@echo "  make check-retrieval-profile-compat - validate retrieval profile + reranker compatibility"
 	@echo "  make check-queryset-health-policy - validate query-set health threshold policy JSON"
 	@echo "  make check-parsing-proof-governance - validate broader parsing-proof governance JSON"
+	@echo "  make check-parsing-proof-rollout - validate broader parsing-proof staged rollout JSON"
 	@echo "  make helm-template - helm template smoke (deploy/helm/mimirq)"
 	@echo "  make helm-lint  - helm lint (deploy/helm/mimirq)"
 	@echo "  make clean     - remove local caches"
@@ -241,6 +242,9 @@ check-queryset-health-policy:
 check-parsing-proof-governance:
 	$(PY) scripts/validate_parsing_retrieval_proof_governance.py --governance ci/parsing_retrieval_proof_governance.v1.json
 
+check-parsing-proof-rollout:
+	$(PY) scripts/validate_parsing_retrieval_proof_rollout.py --rollout ci/parsing_retrieval_proof_rollout.v1.json
+
 compose-diagnostics:
 	$(PY) scripts/compose_diagnostics.py
 
@@ -342,6 +346,7 @@ verify:
 	@$(MAKE) lint-py
 	@$(MAKE) check-queryset-health-policy
 	@$(MAKE) check-parsing-proof-governance
+	@$(MAKE) check-parsing-proof-rollout
 	@$(MAKE) api-check
 	cd web && pnpm run lint
 	cd web && pnpm run ui-check

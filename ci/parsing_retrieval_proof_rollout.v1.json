@@ -1,0 +1,29 @@
+{
+  "schema": "mimirq.parsing_retrieval_proof_rollout.v1",
+  "current_stage": "informational",
+  "allowed_stages": [
+    "informational",
+    "warn",
+    "fail"
+  ],
+  "promotion_requirements": {
+    "informational_to_warn": [
+      "stable_sample_corpus",
+      "baseline_update_process",
+      "owner_agreement",
+      "low_noise_history"
+    ],
+    "warn_to_fail": [
+      "stable_sample_corpus",
+      "baseline_update_process",
+      "owner_agreement",
+      "low_noise_history",
+      "release_surface_reviewable"
+    ]
+  },
+  "owner_roles": [
+    "parsing",
+    "retrieval",
+    "release-quality"
+  ]
+}
