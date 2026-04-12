@@ -139,6 +139,10 @@ def test_real_broader_manifest_sample_query_map_can_build_and_run_batch_spec(tmp
     payload = json.loads(out_path.read_text(encoding="utf-8"))
     assert payload["schema"] == "mimirq.parsing_retrieval_proof_batch.v1"
     assert [item["id"] for item in payload["cases"]] == [
+        "chart_pdf_case",
+        "diagram_pdf_case",
+        "qr_image_case",
+        "barcode_image_case",
         "cross_page_table_pdf_case",
         "borderless_table_scan_case",
         "two_column_pdf_case",
@@ -147,6 +151,6 @@ def test_real_broader_manifest_sample_query_map_can_build_and_run_batch_spec(tmp
     ]
 
     report = runner_mod.run_batch(spec_path=out_path, out_dir=out_dir)  # type: ignore[attr-defined]
-    assert report["cases_total"] == 5
+    assert report["cases_total"] == 9
     assert report["summary"]["hit_at_k_mean"] == 1.0
     assert report["summary"]["mrr_mean"] == 1.0

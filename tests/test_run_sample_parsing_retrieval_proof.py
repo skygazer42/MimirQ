@@ -30,7 +30,7 @@ def test_run_sample_parsing_retrieval_proof_writes_batch_outputs(tmp_path: Path)
         out_dir=out_dir,
     )
 
-    assert report["cases_total"] == 5
+    assert report["cases_total"] == 9
     assert report["summary"]["hit_at_k_mean"] == 1.0
     assert report["summary"]["mrr_mean"] == 1.0
     assert (out_dir / "parsing_proof_batch.spec.json").exists()
@@ -60,7 +60,7 @@ def test_run_sample_parsing_retrieval_proof_cli_writes_batch_report(tmp_path: Pa
 
     assert rc == 0
     payload = json.loads((out_dir / "batch.report.json").read_text(encoding="utf-8"))
-    assert payload["cases_total"] == 5
+    assert payload["cases_total"] == 9
     assert payload["summary"]["hit_at_k_mean"] == 1.0
     assert json.loads((out_dir / "summary.json").read_text(encoding="utf-8"))["schema"] == "mimirq.parsing_retrieval_proof_summary.v1"
     assert json.loads((out_dir / "report.json").read_text(encoding="utf-8"))["schema"] == "mimirq.parsing_retrieval_proof_report.v1"

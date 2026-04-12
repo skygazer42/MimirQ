@@ -1,4 +1,28 @@
 {
+  "chart_pdf_case": {
+    "queries_json": "tests/fixtures/parsing_retrieval_proof/queries/chart_pdf.json",
+    "parser_backend": "basic",
+    "top_k": 1,
+    "retrieval_mode": "keyword"
+  },
+  "diagram_pdf_case": {
+    "queries_json": "tests/fixtures/parsing_retrieval_proof/queries/diagram_pdf.json",
+    "parser_backend": "basic",
+    "top_k": 1,
+    "retrieval_mode": "keyword"
+  },
+  "qr_image_case": {
+    "queries_json": "tests/fixtures/parsing_retrieval_proof/queries/qr_image.json",
+    "parser_backend": "image",
+    "top_k": 1,
+    "retrieval_mode": "keyword"
+  },
+  "barcode_image_case": {
+    "queries_json": "tests/fixtures/parsing_retrieval_proof/queries/barcode_image.json",
+    "parser_backend": "image",
+    "top_k": 1,
+    "retrieval_mode": "keyword"
+  },
   "borderless_table_scan_case": {
     "queries_json": "tests/fixtures/parsing_retrieval_proof/queries/borderless_table.json",
     "parser_backend": "image",

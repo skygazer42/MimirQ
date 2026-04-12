@@ -1,0 +1,12 @@
+[
+  {
+    "id": "q-qr-1",
+    "question": "What code value is in the QR image?",
+    "expected_chunk_indexes": [0]
+  },
+  {
+    "id": "q-qr-2",
+    "question": "Which image contains HELLO-QR?",
+    "expected_chunk_indexes": [0]
+  }
+]
