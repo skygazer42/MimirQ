@@ -150,13 +150,14 @@ def test_real_broader_manifest_sample_query_map_can_build_and_run_batch_spec(tmp
 
     payload = json.loads(out_path.read_text(encoding="utf-8"))
     assert payload["schema"] == "mimirq.parsing_retrieval_proof_batch.v1"
-    assert payload["cases_total"] == 11
-    assert payload["query_count_total"] == 22
+    assert payload["cases_total"] == 12
+    assert payload["query_count_total"] == 24
     assert payload["provenance"]["manifest_path"] == str(manifest_path.resolve())
     assert payload["provenance"]["case_queries_path"] == str(case_queries_path.resolve())
-    assert len(payload["cases"]) == 11
+    assert len(payload["cases"]) == 12
     assert [item["id"] for item in payload["cases"]] == [
         "chart_pdf_case",
+        "line_chart_pdf_case",
         "diagram_pdf_case",
         "qr_image_case",
         "barcode_image_case",
@@ -172,16 +173,19 @@ def test_real_broader_manifest_sample_query_map_can_build_and_run_batch_spec(tmp
     assert case_map["chart_pdf_case"]["case_family"] == "specialty"
     assert case_map["chart_pdf_case"]["case_category"] == "chart"
     assert case_map["chart_pdf_case"]["query_count"] == 2
+    assert case_map["line_chart_pdf_case"]["case_family"] == "specialty"
+    assert case_map["line_chart_pdf_case"]["case_category"] == "chart"
+    assert case_map["line_chart_pdf_case"]["query_count"] == 2
     assert case_map["two_column_pdf_case"]["case_family"] == "layout"
     assert case_map["cross_page_table_pdf_case"]["case_family"] == "table"
 
     report = runner_mod.run_batch(spec_path=out_path, out_dir=out_dir)  # type: ignore[attr-defined]
-    assert report["cases_total"] == 11
-    assert report["query_count_total"] == 22
-    assert len(report["cases"]) == 11
+    assert report["cases_total"] == 12
+    assert report["query_count_total"] == 24
+    assert len(report["cases"]) == 12
     assert report["summary"]["hit_at_k_mean"] == 1.0
     assert report["summary"]["mrr_mean"] == 1.0
-    assert report["case_family_counts"]["specialty"] == 4
+    assert report["case_family_counts"]["specialty"] == 5
     assert report["case_family_counts"]["table"] == 4
     assert report["case_family_counts"]["layout"] == 3
 
@@ -201,6 +205,7 @@ def test_real_broader_sample_queries_are_case_specific() -> None:
     }
     required_case_anchors = {
         "chart_pdf_case": ("chart image",),
+        "line_chart_pdf_case": ("line chart", "trend chart"),
         "diagram_pdf_case": ("diagram image",),
         "qr_image_case": ("qr", "hello-qr"),
         "barcode_image_case": ("barcode", "5901234123457"),

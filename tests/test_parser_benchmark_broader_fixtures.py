@@ -37,7 +37,14 @@ def _install_fake_parser_benchmark_modules(monkeypatch) -> None:  # noqa: ANN001
     class _Factory:
         def parse_with_provenance(self, path, *_args, **_kwargs):  # noqa: ANN001, ANN002, ANN003
             path_str = str(path)
-            if "chart_pdf" in path_str:
+            if "line_chart_pdf" in path_str:
+                docs = [
+                    Document(
+                        page_content="扫描版折线趋势图 PDF。\n\n![asset](line_chart.png)",
+                        metadata={"doc_type_kwd": "image", "page": 1, "visual_kind": "chart"},
+                    ),
+                ]
+            elif "chart_pdf" in path_str:
                 docs = [
                     Document(
                         page_content="扫描版财务图表 PDF。\n\n![asset](chart.png)",
@@ -229,9 +236,10 @@ def test_parser_benchmark_reports_broader_pdf_and_image_corpus(monkeypatch, tmp_
     assert rc == 0
 
     payload = json.loads(out_path.read_text(encoding="utf-8"))
-    assert len(payload["cases"]) == 11
+    assert len(payload["cases"]) == 12
     by_case = {row["id"]: row for row in payload["cases"]}
     assert by_case["chart_pdf_case"]["golden"]["image_visual_kinds"]["chart"] == 1
+    assert by_case["line_chart_pdf_case"]["golden"]["image_visual_kinds"]["chart"] == 1
     assert by_case["diagram_pdf_case"]["golden"]["image_visual_kinds"]["diagram"] == 1
     assert by_case["qr_image_case"]["golden"]["image_code_values"]["qr"] == ["HELLO-QR"]
     assert by_case["barcode_image_case"]["golden"]["image_code_values"]["barcode"] == ["5901234123457"]

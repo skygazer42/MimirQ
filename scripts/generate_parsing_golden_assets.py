@@ -63,6 +63,25 @@ def _write_chart(path: Path) -> None:
     image.save(path)
 
 
+def _write_line_chart(path: Path) -> None:
+    image = Image.new("RGB", (320, 220), color=(248, 250, 252))
+    draw = ImageDraw.Draw(image)
+    frame = (28, 20, 296, 194)
+    draw.rectangle(frame, outline=(203, 213, 225), width=2)
+    draw.text((40, 28), "Revenue trend", fill=(51, 65, 85))
+    draw.line((52, 48, 52, 172), fill=(100, 116, 139), width=3)
+    draw.line((52, 172, 272, 172), fill=(100, 116, 139), width=3)
+    points = [(68, 152), (106, 138), (146, 144), (188, 110), (228, 94), (264, 74)]
+    draw.line(points, fill=(37, 99, 235), width=5)
+    for x, y in points:
+        draw.ellipse((x - 5, y - 5, x + 5, y + 5), fill=(37, 99, 235))
+    draw.text((48, 182), "Q1", fill=(71, 85, 105))
+    draw.text((108, 182), "Q2", fill=(71, 85, 105))
+    draw.text((168, 182), "Q3", fill=(71, 85, 105))
+    draw.text((228, 182), "Q4", fill=(71, 85, 105))
+    image.save(path)
+
+
 def _write_diagram(path: Path) -> None:
     image = Image.new("RGB", (256, 160), color=(250, 250, 249))
     draw = ImageDraw.Draw(image)
@@ -324,6 +343,7 @@ def generate_assets(output_root: Path) -> None:
 
 def generate_broader_assets(output_root: Path) -> None:
     chart_image = output_root / "chart_pdf" / "input" / "chart.png"
+    line_chart_image = output_root / "line_chart_pdf" / "input" / "line_chart.png"
     diagram_image = output_root / "diagram_pdf" / "input" / "diagram.png"
     qr_image = output_root / "qr_image" / "input" / "sample.png"
     barcode_image = output_root / "barcode_image" / "input" / "sample.png"
@@ -338,6 +358,7 @@ def generate_broader_assets(output_root: Path) -> None:
 
     for path, writer in (
         (chart_image, _write_chart),
+        (line_chart_image, _write_line_chart),
         (diagram_image, _write_diagram),
         (qr_image, lambda target: _write_qr(target, "HELLO-QR")),
         (barcode_image, lambda target: _write_barcode(target, "590123412345")),
@@ -382,6 +403,7 @@ def generate_broader_assets(output_root: Path) -> None:
     )
 
     _write_pdf_from_image(chart_image, output_root / "chart_pdf" / "input" / "sample.pdf")
+    _write_pdf_from_image(line_chart_image, output_root / "line_chart_pdf" / "input" / "sample.pdf")
     _write_pdf_from_image(diagram_image, output_root / "diagram_pdf" / "input" / "sample.pdf")
     _write_text_pdf(
         [
@@ -442,6 +464,7 @@ def generate_broader_assets(output_root: Path) -> None:
 
     for src, dst in (
         (chart_image, output_root / "chart_pdf" / "golden" / "chart.png"),
+        (line_chart_image, output_root / "line_chart_pdf" / "golden" / "line_chart.png"),
         (diagram_image, output_root / "diagram_pdf" / "golden" / "diagram.png"),
         (qr_image, output_root / "qr_image" / "golden" / "sample.png"),
         (barcode_image, output_root / "barcode_image" / "golden" / "sample.png"),
