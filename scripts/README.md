@@ -90,6 +90,8 @@ The Makefile is the source of truth for common workflows; these scripts are the 
   - Example: `python scripts/parsing_retrieval_proof_gate.py --input runs/parsing_proof_batch/summary.json --thresholds ci/parsing_retrieval_proof_thresholds.v1.json --out runs/parsing_proof_batch/gate.json`
 - `diff_parsing_retrieval_proof_summaries.py`: diff a baseline parsing-proof summary and a current one into JSON/Markdown review artifacts
   - Example: `python scripts/diff_parsing_retrieval_proof_summaries.py --a ci/parsing_retrieval_proof_summary_baseline.v1.json --b runs/parsing_proof_batch/summary.json --out runs/parsing_proof_batch/diff.json --out-md runs/parsing_proof_batch/diff.md`
+- `validate_parsing_retrieval_proof_governance.py`: validate the machine-readable broader parsing-proof governance JSON
+  - Example: `python scripts/validate_parsing_retrieval_proof_governance.py --governance ci/parsing_retrieval_proof_governance.v1.json`
 - `run_sample_parsing_retrieval_proof.py`: run the repo's sample broader parsing-proof sweep using the checked-in broader manifest and sample query map
   - Outputs: a generated batch spec plus per-case reports, `summary.json`, `report.json`, `gate.json`, and `diff.json` / `diff.md`
   - Example: `python scripts/run_sample_parsing_retrieval_proof.py --out-dir runs/parsing_proof_broader_sample`
