@@ -84,8 +84,14 @@ The Makefile is the source of truth for common workflows; these scripts are the 
   - Example: `python scripts/run_parsing_retrieval_proof_batch.py --spec-json runs/parsing_proof_batch.spec.json --out-dir runs/parsing_proof_batch`
 - `build_parsing_retrieval_proof_batch_spec.py`: derive a batch proof spec from a parser manifest plus a case-id -> queries mapping JSON
   - Example: `python scripts/build_parsing_retrieval_proof_batch_spec.py --manifest-json tests/fixtures/parsing_golden_broader/manifest.json --case-queries-json runs/parsing_proof_case_queries.json --out runs/parsing_proof_batch.spec.json`
+- `build_parsing_retrieval_proof_artifacts.py`: derive normalized `summary.json` and `report.json` from a parsing-proof batch report
+  - Example: `python scripts/build_parsing_retrieval_proof_artifacts.py --batch-report runs/parsing_proof_batch/batch.report.json --summary-out runs/parsing_proof_batch/summary.json --report-out runs/parsing_proof_batch/report.json`
+- `parsing_retrieval_proof_gate.py`: evaluate parsing-proof summary artifacts against thresholds and emit `gate.json`
+  - Example: `python scripts/parsing_retrieval_proof_gate.py --input runs/parsing_proof_batch/summary.json --thresholds ci/parsing_retrieval_proof_thresholds.v1.json --out runs/parsing_proof_batch/gate.json`
+- `diff_parsing_retrieval_proof_summaries.py`: diff a baseline parsing-proof summary and a current one into JSON/Markdown review artifacts
+  - Example: `python scripts/diff_parsing_retrieval_proof_summaries.py --a ci/parsing_retrieval_proof_summary_baseline.v1.json --b runs/parsing_proof_batch/summary.json --out runs/parsing_proof_batch/diff.json --out-md runs/parsing_proof_batch/diff.md`
 - `run_sample_parsing_retrieval_proof.py`: run the repo's sample broader parsing-proof sweep using the checked-in broader manifest and sample query map
-  - Outputs: a generated batch spec plus per-case and aggregate batch reports under the target output directory
+  - Outputs: a generated batch spec plus per-case reports, `summary.json`, `report.json`, `gate.json`, and `diff.json` / `diff.md`
   - Example: `python scripts/run_sample_parsing_retrieval_proof.py --out-dir runs/parsing_proof_broader_sample`
 - `run_queryset_health_diagnostics.py`: build query-set health snapshot from benchmark report and maintain bounded trend history
   - Output snapshot schema: `mimirq.queryset_health_snapshot.v1`
