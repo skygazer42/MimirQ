@@ -159,6 +159,18 @@ def test_rag_quality_gate_uses_sample_summary() -> None:
 
 def test_rag_quality_gate_workflow_exists() -> None:
     text = Path(".github/workflows/rag-quality-gate.yml").read_text(encoding="utf-8")
+    artifact_root = "artifacts/parsing_proof_broader_sample"
+    uploaded_surface = (
+        "parsing_proof_batch.spec.json",
+        "*.fixture.json",
+        "*.report.json",
+        "summary.json",
+        "gate.json",
+        "diff.json",
+        "diff.md",
+        "review.md",
+    )
+
     assert "RAG Quality Gate" in text
     assert "tests/rag/evaluation/test_rag_quality_gate.py" in text
     assert "RAG_EVAL_GATE_ENABLED" in text
@@ -170,14 +182,26 @@ def test_rag_quality_gate_workflow_exists() -> None:
     assert "scripts/run_sample_parsing_retrieval_proof.py" in text
     assert "scripts/build_parsing_retrieval_proof_artifacts.py" in text
     assert "scripts/parsing_retrieval_proof_gate.py" in text
+    assert "ci/parsing_retrieval_proof_thresholds.v1.json" in text
     assert "data/sample/retrieval_fixture_v1.json" in text
     assert text.count("data/sample/retrieval_fixture_v1.json") >= 2
     assert "artifacts/answer_quality.summary.json" in text
     assert "artifacts/rag_quality_gate.report.json" in text
-    assert "artifacts/parsing_proof_broader_sample/summary.json" in text
-    assert "artifacts/parsing_proof_broader_sample/report.json" in text
-    assert "artifacts/parsing_proof_broader_sample/gate.json" in text
-    assert "artifacts/parsing_proof_broader_sample/diff.json" in text
-    assert "artifacts/parsing_proof_broader_sample/diff.md" in text
-    assert "artifacts/parsing_proof_broader_sample/review.md" in text
     assert "actions/upload-artifact@v4" in text
+    assert f"--out-dir {artifact_root}" in text
+    assert f"--batch-report {artifact_root}/batch.report.json" in text
+    assert f"--summary-out {artifact_root}/summary.json" in text
+    assert f"--report-out {artifact_root}/report.json" in text
+    assert f"--input {artifact_root}/summary.json" in text
+    assert f"--out {artifact_root}/gate.json" in text
+
+    for artifact_name in uploaded_surface:
+        assert f"{artifact_root}/{artifact_name}" in text
+
+    retrieval_index = text.index("scripts/run_sample_retrieval_benchmark.py")
+    quality_build_index = text.index("scripts/build_rag_quality_gate_artifacts.py")
+    parsing_sample_index = text.index("scripts/run_sample_parsing_retrieval_proof.py")
+    parsing_build_index = text.index("scripts/build_parsing_retrieval_proof_artifacts.py")
+    parsing_gate_index = text.index("scripts/parsing_retrieval_proof_gate.py")
+    upload_index = text.index("Upload RAG quality gate artifacts")
+    assert retrieval_index < quality_build_index < parsing_sample_index < parsing_build_index < parsing_gate_index < upload_index

@@ -1,12 +1,12 @@
 [
   {
     "id": "q-qr-1",
-    "question": "What code value is in the QR image?",
+    "question": "What QR payload value is encoded in the sample image?",
     "expected_chunk_indexes": [0]
   },
   {
     "id": "q-qr-2",
-    "question": "Which image contains HELLO-QR?",
+    "question": "Which QR image contains the payload HELLO-QR?",
     "expected_chunk_indexes": [0]
   }
 ]

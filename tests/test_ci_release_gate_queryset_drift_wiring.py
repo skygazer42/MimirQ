@@ -6,6 +6,14 @@ from pathlib import Path
 
 def test_ci_release_gate_consumes_bounded_queryset_artifacts() -> None:
     text = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
+    parsing_proof_surface = (
+        "summary.json",
+        "report.json",
+        "gate.json",
+        "diff.json",
+        "diff.md",
+        "review.md",
+    )
 
     assert "actions/download-artifact@v4" in text
     assert "retrieval-only-bounded-gate" in text
@@ -25,6 +33,14 @@ def test_ci_release_gate_consumes_bounded_queryset_artifacts() -> None:
     assert "bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/review.md" in text
     assert "--out-report-md artifacts/release_gate.report.md" in text
     assert "continue-on-error: true" not in text
+
+    for artifact_name in parsing_proof_surface:
+        assert f"bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/{artifact_name}" in text
+
+    download_index = text.index("name: retrieval-only-bounded-gate")
+    release_gate_index = text.index("python scripts/release_gate.py")
+    upload_index = text.index("name: retrieval-regression-gate")
+    assert download_index < release_gate_index < upload_index
 
 
 def test_release_gate_budgets_include_queryset_drift_thresholds() -> None:
@@ -55,12 +71,14 @@ def test_release_gate_budgets_include_queryset_drift_thresholds() -> None:
         }
 
     assert parsing_proof.get("policy") == "warn"
+    assert parsing_proof.get("path") == "artifacts/parsing_proof_broader_sample/summary.json"
     assert (parsing_proof.get("thresholds") or {}) == {
         "hit_at_k_mean": {"min": 1.0},
         "mrr_mean": {"min": 1.0},
         "failed_case_count": {"max": 0},
     }
     assert parsing_proof_diff.get("policy") == "warn"
+    assert parsing_proof_diff.get("path") == "artifacts/parsing_proof_broader_sample/diff.json"
     assert (parsing_proof_diff.get("thresholds") or {}) == {
         "hit_at_k_mean_delta": {"min": 0.0},
         "mrr_mean_delta": {"min": 0.0},

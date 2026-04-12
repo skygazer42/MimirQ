@@ -35,6 +35,7 @@ def run_sample_parsing_retrieval_proof(
         manifest_path=Path(manifest_path).resolve(),
         case_queries=case_queries if isinstance(case_queries, dict) else {},
         defaults={"parser_backend": "basic", "top_k": 1, "retrieval_mode": "keyword"},
+        case_queries_path=Path(case_queries_path).resolve(),
     )
 
     out_dir = Path(out_dir).resolve()
@@ -84,6 +85,12 @@ def run_sample_parsing_retrieval_proof(
         "failures": [],
         "input": str(summary_path),
         "thresholds": str(Path(thresholds_path).resolve()) if thresholds_path is not None else None,
+        "provenance": {
+            "manifest_path": str(Path(manifest_path).resolve()),
+            "case_queries_path": str(Path(case_queries_path).resolve()),
+            "spec_path": str(spec_path),
+            "batch_report_path": str(out_dir / "batch.report.json"),
+        },
     }
     for check in list(report_payload.get("checks") or []):
         if isinstance(check, dict) and not bool(check.get("passed")):
@@ -151,6 +158,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         "[sample-parsing-proof] "
         f"cases={report.get('cases_total', 0)} "
+        f"queries={report.get('query_count_total', 0)} "
         f"hit@k_mean={summary.get('hit_at_k_mean', 0.0)} "
         f"mrr_mean={summary.get('mrr_mean', 0.0)} "
         f"out={Path(str(args.out_dir)).resolve()}"
