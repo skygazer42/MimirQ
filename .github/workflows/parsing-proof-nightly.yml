@@ -1,0 +1,57 @@
+name: Parsing Proof Nightly
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 04:00 UTC daily (12:00 Asia/Shanghai)
+    - cron: "0 4 * * *"
+
+concurrency:
+  group: parsing-proof-nightly
+  cancel-in-progress: true
+
+jobs:
+  parsing-proof-nightly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      LLM_MOCK_ENABLED: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir --retries 5 --timeout 120 \
+            "torch @ https://download-r2.pytorch.org/whl/cpu/torch-2.10.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
+            "torchvision @ https://download-r2.pytorch.org/whl/cpu/torchvision-0.25.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl"
+          python -m pip install --no-cache-dir --retries 10 --timeout 120 -r requirements.txt
+
+      - name: Run sample broader parsing proof sweep
+        run: |
+          mkdir -p artifacts/parsing_proof_broader_nightly
+          python scripts/run_sample_parsing_retrieval_proof.py \
+            --out-dir artifacts/parsing_proof_broader_nightly
+
+      - name: Upload nightly parsing proof artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parsing-proof-nightly
+          path: |
+            artifacts/parsing_proof_broader_nightly/parsing_proof_batch.spec.json
+            artifacts/parsing_proof_broader_nightly/*.fixture.json
+            artifacts/parsing_proof_broader_nightly/*.report.json
+            artifacts/parsing_proof_broader_nightly/summary.json
+            artifacts/parsing_proof_broader_nightly/gate.json
+            artifacts/parsing_proof_broader_nightly/diff.json
+            artifacts/parsing_proof_broader_nightly/diff.md
