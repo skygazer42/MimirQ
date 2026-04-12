@@ -24,16 +24,33 @@ def test_build_parsing_proof_review_mentions_summary_checks_and_diff(tmp_path: P
     mod = _load_script()
 
     review = mod.build_review_markdown(  # type: ignore[attr-defined]
-        summary={"cases_total": 5, "hit_at_k_mean": 1.0, "mrr_mean": 1.0, "failed_case_ids": []},
-        report={"checks": [{"metric": "hit_at_k_mean", "value": 1.0, "min": 1.0, "passed": True}]},
-        gate={"passed": True, "failures": []},
-        diff={"metric_deltas": {"hit_at_k_mean_delta": 0.0, "mrr_mean_delta": 0.0}, "failed_case_drift": {"added_ids": [], "removed_ids": []}},
+        summary={
+            "cases_total": 5,
+            "hit_at_k_mean": 1.0,
+            "mrr_mean": 1.0,
+            "failed_case_ids": [],
+            "cases": [{"id": "case-a", "hit_at_k": 1.0, "mrr": 1.0}],
+        },
+        report={
+            "schema": "mimirq.parsing_retrieval_proof_report.v1",
+            "summary_path": "artifacts/parsing_proof.summary.json",
+            "checks": [{"metric": "hit_at_k_mean", "value": 1.0, "min": 1.0, "passed": True}],
+        },
+        gate={"schema": "mimirq.parsing_retrieval_proof_gate_report.v1", "passed": True, "failures": []},
+        diff={
+            "schema": "mimirq.parsing_retrieval_proof_diff.v1",
+            "metric_deltas": {"hit_at_k_mean_delta": 0.0, "mrr_mean_delta": 0.0},
+            "failed_case_drift": {"added_ids": [], "removed_ids": []},
+        },
     )
 
     assert "# Parsing Proof Review" in review
     assert "`cases_total`: `5`" in review
     assert "`hit_at_k_mean`: `1.0`" in review
     assert "`mrr_mean_delta`: `0.0`" in review
+    assert "## Artifacts" in review
+    assert "| Case | hit@k | mrr |" in review
+    assert "| case-a | 1.0 | 1.0 |" in review
 
 
 def test_build_parsing_proof_review_main_writes_markdown(tmp_path: Path) -> None:
@@ -44,10 +61,36 @@ def test_build_parsing_proof_review_main_writes_markdown(tmp_path: Path) -> None
     diff = tmp_path / "diff.json"
     out = tmp_path / "review.md"
 
-    summary.write_text(json.dumps({"cases_total": 5, "hit_at_k_mean": 1.0, "mrr_mean": 1.0, "failed_case_ids": []}), encoding="utf-8")
-    report.write_text(json.dumps({"checks": [{"metric": "hit_at_k_mean", "value": 1.0, "min": 1.0, "passed": True}]}), encoding="utf-8")
-    gate.write_text(json.dumps({"passed": True, "failures": []}), encoding="utf-8")
-    diff.write_text(json.dumps({"metric_deltas": {"hit_at_k_mean_delta": 0.0, "mrr_mean_delta": 0.0}, "failed_case_drift": {"added_ids": [], "removed_ids": []}}), encoding="utf-8")
+    summary.write_text(
+        json.dumps(
+            {"cases_total": 5, "hit_at_k_mean": 1.0, "mrr_mean": 1.0, "failed_case_ids": [], "cases": [{"id": "case-a", "hit_at_k": 1.0, "mrr": 1.0}]}
+        ),
+        encoding="utf-8",
+    )
+    report.write_text(
+        json.dumps(
+            {
+                "schema": "mimirq.parsing_retrieval_proof_report.v1",
+                "summary_path": "artifacts/parsing_proof.summary.json",
+                "checks": [{"metric": "hit_at_k_mean", "value": 1.0, "min": 1.0, "passed": True}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    gate.write_text(
+        json.dumps({"schema": "mimirq.parsing_retrieval_proof_gate_report.v1", "passed": True, "failures": []}),
+        encoding="utf-8",
+    )
+    diff.write_text(
+        json.dumps(
+            {
+                "schema": "mimirq.parsing_retrieval_proof_diff.v1",
+                "metric_deltas": {"hit_at_k_mean_delta": 0.0, "mrr_mean_delta": 0.0},
+                "failed_case_drift": {"added_ids": [], "removed_ids": []},
+            }
+        ),
+        encoding="utf-8",
+    )
 
     rc = mod.main(  # type: ignore[attr-defined]
         [
