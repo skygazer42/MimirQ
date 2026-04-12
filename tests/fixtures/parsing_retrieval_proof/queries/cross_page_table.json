@@ -3,5 +3,10 @@
     "id": "q-cross-page",
     "question": "What is APAC Q2 revenue?",
     "expected_chunk_indexes": [1]
+  },
+  {
+    "id": "q-cross-page-2",
+    "question": "Which region has Q2 value 138?",
+    "expected_chunk_indexes": [1]
   }
 ]

@@ -3,5 +3,10 @@
     "id": "q-layout",
     "question": "Which region accelerated in Q3?",
     "expected_chunk_indexes": [0]
+  },
+  {
+    "id": "q-layout-2",
+    "question": "What stayed flat?",
+    "expected_chunk_indexes": [0]
   }
 ]
