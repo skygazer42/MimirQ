@@ -54,6 +54,19 @@ def _append_group_table(lines: list[str], *, title: str, groups: Any) -> None:
     lines.append("")
 
 
+def _append_sample_composition(lines: list[str], summary: dict[str, Any]) -> None:
+    composition = summary.get("sample_composition") if isinstance(summary.get("sample_composition"), dict) else {}
+    family_counts = composition.get("case_family_counts") if isinstance(composition.get("case_family_counts"), dict) else {}
+    category_counts = composition.get("case_category_counts") if isinstance(composition.get("case_category_counts"), dict) else {}
+    family_text = ", ".join(f"{key}={family_counts[key]}" for key in sorted(family_counts)) or "none"
+    category_text = ", ".join(f"{key}={category_counts[key]}" for key in sorted(category_counts)) or "none"
+    lines.append("## Sample Composition")
+    lines.append("")
+    lines.append(f"- `case_family_counts`: `{family_text}`")
+    lines.append(f"- `case_category_counts`: `{category_text}`")
+    lines.append("")
+
+
 def _append_rollout_section(lines: list[str], rollout: Any) -> None:
     payload = rollout if isinstance(rollout, dict) else {}
     if not payload:
@@ -86,10 +99,12 @@ def build_review_markdown(
     lines.append("## Summary")
     lines.append("")
     lines.append(f"- `cases_total`: `{summary.get('cases_total')}`")
+    lines.append(f"- `query_count_total`: `{summary.get('query_count_total')}`")
     lines.append(f"- `hit_at_k_mean`: `{summary.get('hit_at_k_mean')}`")
     lines.append(f"- `mrr_mean`: `{summary.get('mrr_mean')}`")
     lines.append(f"- `failed_case_ids`: `{', '.join(summary.get('failed_case_ids') or [])}`")
     lines.append("")
+    _append_sample_composition(lines, summary)
     lines.append("## Artifacts")
     lines.append("")
     lines.append(f"- `summary_path`: `{report.get('summary_path')}`")

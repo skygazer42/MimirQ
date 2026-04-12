@@ -25,6 +25,9 @@ def test_build_parsing_proof_summary_uses_batch_metrics() -> None:
     payload = mod.build_parsing_proof_summary(  # type: ignore[attr-defined]
         {
             "cases_total": 4,
+            "query_count_total": 8,
+            "case_family_counts": {"specialty": 2, "table": 1, "layout": 1},
+            "case_category_counts": {"chart": 1, "qr": 1, "cross_page_table_pdf": 1, "two_column_pdf": 1},
             "summary": {"hit_at_k_mean": 0.75, "mrr_mean": 0.625},
             "cases": [
                 {"id": "chart_pdf_case", "summary": {"hit_at_k": 1.0, "mrr": 1.0}},
@@ -36,9 +39,14 @@ def test_build_parsing_proof_summary_uses_batch_metrics() -> None:
     )
     assert payload["schema"] == "mimirq.parsing_retrieval_proof_summary.v1"
     assert payload["cases_total"] == 4
+    assert payload["query_count_total"] == 8
     assert payload["hit_at_k_mean"] == 0.75
     assert payload["mrr_mean"] == 0.625
     assert payload["failed_case_ids"] == ["qr_image_case", "cross_page_table_pdf_case"]
+    assert payload["sample_composition"] == {
+        "case_family_counts": {"specialty": 2, "table": 1, "layout": 1},
+        "case_category_counts": {"chart": 1, "qr": 1, "cross_page_table_pdf": 1, "two_column_pdf": 1},
+    }
     assert payload["category_summaries"] == [
         {
             "name": "image",
@@ -108,6 +116,11 @@ def test_build_parsing_proof_report_uses_threshold_checks() -> None:
             "hit_at_k_mean": 1.0,
             "mrr_mean": 0.75,
             "failed_case_ids": ["case-b"],
+            "query_count_total": 2,
+            "sample_composition": {
+                "case_family_counts": {"specialty": 1},
+                "case_category_counts": {"chart": 1},
+            },
             "category_summaries": [
                 {"name": "image", "cases_total": 1, "case_ids": ["chart_pdf_case"], "hit_at_k_mean": 1.0, "mrr_mean": 0.75, "failed_case_ids": ["case-b"]}
             ],
@@ -139,6 +152,11 @@ def test_build_parsing_proof_report_uses_threshold_checks() -> None:
     assert report["slice_summaries"] == [
         {"name": "chart", "cases_total": 1, "case_ids": ["chart_pdf_case"], "hit_at_k_mean": 1.0, "mrr_mean": 0.75, "failed_case_ids": ["case-b"]}
     ]
+    assert report["query_count_total"] == 2
+    assert report["sample_composition"] == {
+        "case_family_counts": {"specialty": 1},
+        "case_category_counts": {"chart": 1},
+    }
     assert report["rollout"] == {
         "schema": "mimirq.parsing_retrieval_proof_rollout.v1",
         "current_stage": "informational",
@@ -156,6 +174,9 @@ def test_parsing_proof_artifacts_builder_main_writes_relative_summary_path(tmp_p
         json.dumps(
             {
                 "cases_total": 1,
+                "query_count_total": 2,
+                "case_family_counts": {"document": 1},
+                "case_category_counts": {"other": 1},
                 "summary": {"hit_at_k_mean": 1.0, "mrr_mean": 1.0},
                 "cases": [{"id": "case-a", "summary": {"hit_at_k": 1.0, "mrr": 1.0}}],
             }
@@ -178,6 +199,11 @@ def test_parsing_proof_artifacts_builder_main_writes_relative_summary_path(tmp_p
     assert rc == 0
     summary = json.loads((tmp_path / "artifacts" / "parsing_proof.summary.json").read_text(encoding="utf-8"))
     report = json.loads((tmp_path / "artifacts" / "parsing_proof.report.json").read_text(encoding="utf-8"))
+    assert summary["query_count_total"] == 2
+    assert summary["sample_composition"] == {
+        "case_family_counts": {"document": 1},
+        "case_category_counts": {"other": 1},
+    }
     assert summary["category_summaries"] == [
         {
             "name": "other",
@@ -199,3 +225,4 @@ def test_parsing_proof_artifacts_builder_main_writes_relative_summary_path(tmp_p
         }
     ]
     assert report["summary_path"] == "artifacts/parsing_proof.summary.json"
+    assert report["query_count_total"] == 2

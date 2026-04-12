@@ -26,9 +26,14 @@ def test_build_parsing_proof_review_mentions_summary_checks_and_diff(tmp_path: P
     review = mod.build_review_markdown(  # type: ignore[attr-defined]
         summary={
             "cases_total": 5,
+            "query_count_total": 10,
             "hit_at_k_mean": 1.0,
             "mrr_mean": 1.0,
             "failed_case_ids": [],
+            "sample_composition": {
+                "case_family_counts": {"specialty": 2, "layout": 1, "document": 2},
+                "case_category_counts": {"chart": 1, "formula_markdown": 1, "mixed_layout_pdf": 1, "multilingual_pdf": 1, "qr": 1},
+            },
             "category_summaries": [
                 {"name": "image", "cases_total": 2, "case_ids": ["chart_pdf_case", "qr_image_case"], "hit_at_k_mean": 1.0, "mrr_mean": 0.75, "failed_case_ids": ["qr_image_case"]}
             ],
@@ -63,8 +68,12 @@ def test_build_parsing_proof_review_mentions_summary_checks_and_diff(tmp_path: P
 
     assert "# Parsing Proof Review" in review
     assert "`cases_total`: `5`" in review
+    assert "`query_count_total`: `10`" in review
     assert "`hit_at_k_mean`: `1.0`" in review
     assert "`mrr_mean_delta`: `0.0`" in review
+    assert "## Sample Composition" in review
+    assert "- `case_family_counts`: `document=2, layout=1, specialty=2`" in review
+    assert "- `case_category_counts`: `chart=1, formula_markdown=1, mixed_layout_pdf=1, multilingual_pdf=1, qr=1`" in review
     assert "## Artifacts" in review
     assert "## Rollout" in review
     assert "`current_stage`: `informational`" in review
@@ -91,9 +100,14 @@ def test_build_parsing_proof_review_main_writes_markdown(tmp_path: Path) -> None
         json.dumps(
             {
                 "cases_total": 5,
+                "query_count_total": 10,
                 "hit_at_k_mean": 1.0,
                 "mrr_mean": 1.0,
                 "failed_case_ids": [],
+                "sample_composition": {
+                    "case_family_counts": {"layout": 1, "document": 4},
+                    "case_category_counts": {"multilingual_pdf": 1, "two_column_pdf": 1},
+                },
                 "category_summaries": [
                     {"name": "layout", "cases_total": 1, "case_ids": ["two_column_pdf_case"], "hit_at_k_mean": 1.0, "mrr_mean": 1.0, "failed_case_ids": []}
                 ],
@@ -156,6 +170,7 @@ def test_build_parsing_proof_review_main_writes_markdown(tmp_path: Path) -> None
     assert out.exists()
     text = out.read_text(encoding="utf-8")
     assert "# Parsing Proof Review" in text
+    assert "## Sample Composition" in text
     assert "## Rollout" in text
     assert "## Category Summary" in text
     assert "## Slice Summary" in text
