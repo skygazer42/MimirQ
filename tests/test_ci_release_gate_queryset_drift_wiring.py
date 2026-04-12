@@ -20,6 +20,7 @@ def test_ci_release_gate_consumes_bounded_queryset_artifacts() -> None:
     assert "bounded_gate_artifacts/artifacts/queryset_health.diff.hybrid.json" in text
     assert "bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/summary.json" in text
     assert "bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/report.json" in text
+    assert "bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/gate.json" in text
     assert "bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/diff.json" in text
     assert "continue-on-error: true" not in text
 
@@ -33,11 +34,15 @@ def test_release_gate_budgets_include_queryset_drift_thresholds() -> None:
     hybrid_diff = payload.get("queryset_health_diff_hybrid")
     default_snapshot = payload.get("queryset_health")
     hybrid_snapshot = payload.get("queryset_health_hybrid")
+    parsing_proof = payload.get("parsing_proof")
+    parsing_proof_diff = payload.get("parsing_proof_diff")
 
     assert isinstance(default_snapshot, dict)
     assert isinstance(hybrid_snapshot, dict)
     assert isinstance(default_diff, dict)
     assert isinstance(hybrid_diff, dict)
+    assert isinstance(parsing_proof, dict)
+    assert isinstance(parsing_proof_diff, dict)
 
     for cfg in (default_diff, hybrid_diff):
         thresholds = cfg.get("thresholds") if isinstance(cfg, dict) else {}
@@ -46,3 +51,16 @@ def test_release_gate_budgets_include_queryset_drift_thresholds() -> None:
             "degradation_flag_added_count": {"max": 0},
             "parse_risk_tail_added_count": {"max": 0},
         }
+
+    assert parsing_proof.get("policy") == "warn"
+    assert (parsing_proof.get("thresholds") or {}) == {
+        "hit_at_k_mean": {"min": 1.0},
+        "mrr_mean": {"min": 1.0},
+        "failed_case_count": {"max": 0},
+    }
+    assert parsing_proof_diff.get("policy") == "warn"
+    assert (parsing_proof_diff.get("thresholds") or {}) == {
+        "hit_at_k_mean_delta": {"min": 0.0},
+        "mrr_mean_delta": {"min": 0.0},
+        "failed_case_added_count": {"max": 0},
+    }
