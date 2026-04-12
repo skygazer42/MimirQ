@@ -1,0 +1,12 @@
+[
+  {
+    "id": "q-leading-table-1",
+    "question": "Which quarter has 97% on-time delivery?",
+    "expected_chunk_indexes": [0]
+  },
+  {
+    "id": "q-leading-table-2",
+    "question": "What should be indexed with the table content?",
+    "expected_chunk_indexes": [0]
+  }
+]

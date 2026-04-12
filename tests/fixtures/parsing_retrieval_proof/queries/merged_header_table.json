@@ -1,0 +1,12 @@
+[
+  {
+    "id": "q-merged-header-1",
+    "question": "Which team spent 154?",
+    "expected_chunk_indexes": [0]
+  },
+  {
+    "id": "q-merged-header-2",
+    "question": "What budget section is summarized in the table?",
+    "expected_chunk_indexes": [0]
+  }
+]

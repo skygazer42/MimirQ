@@ -145,12 +145,14 @@ def test_real_broader_manifest_sample_query_map_can_build_and_run_batch_spec(tmp
         "barcode_image_case",
         "cross_page_table_pdf_case",
         "borderless_table_scan_case",
+        "merged_header_table_pdf_case",
+        "table_with_leading_paragraph_pdf_case",
         "two_column_pdf_case",
         "header_footer_noise_pdf_case",
         "mixed_layout_pdf_case",
     ]
 
     report = runner_mod.run_batch(spec_path=out_path, out_dir=out_dir)  # type: ignore[attr-defined]
-    assert report["cases_total"] == 9
+    assert report["cases_total"] == 11
     assert report["summary"]["hit_at_k_mean"] == 1.0
     assert report["summary"]["mrr_mean"] == 1.0
