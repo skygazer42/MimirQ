@@ -35,6 +35,18 @@
     "top_k": 2,
     "retrieval_mode": "keyword"
   },
+  "merged_header_table_pdf_case": {
+    "queries_json": "tests/fixtures/parsing_retrieval_proof/queries/merged_header_table.json",
+    "parser_backend": "basic",
+    "top_k": 1,
+    "retrieval_mode": "keyword"
+  },
+  "table_with_leading_paragraph_pdf_case": {
+    "queries_json": "tests/fixtures/parsing_retrieval_proof/queries/table_with_leading_paragraph.json",
+    "parser_backend": "basic",
+    "top_k": 1,
+    "retrieval_mode": "keyword"
+  },
   "two_column_pdf_case": {
     "queries_json": "tests/fixtures/parsing_retrieval_proof/queries/two_column_layout.json",
     "parser_backend": "basic",
