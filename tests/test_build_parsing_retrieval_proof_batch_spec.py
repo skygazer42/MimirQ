@@ -150,11 +150,11 @@ def test_real_broader_manifest_sample_query_map_can_build_and_run_batch_spec(tmp
 
     payload = json.loads(out_path.read_text(encoding="utf-8"))
     assert payload["schema"] == "mimirq.parsing_retrieval_proof_batch.v1"
-    assert payload["cases_total"] == 13
-    assert payload["query_count_total"] == 26
+    assert payload["cases_total"] == 14
+    assert payload["query_count_total"] == 28
     assert payload["provenance"]["manifest_path"] == str(manifest_path.resolve())
     assert payload["provenance"]["case_queries_path"] == str(case_queries_path.resolve())
-    assert len(payload["cases"]) == 13
+    assert len(payload["cases"]) == 14
     assert [item["id"] for item in payload["cases"]] == [
         "chart_pdf_case",
         "line_chart_pdf_case",
@@ -169,6 +169,7 @@ def test_real_broader_manifest_sample_query_map_can_build_and_run_batch_spec(tmp
         "header_footer_noise_pdf_case",
         "mixed_layout_pdf_case",
         "multilingual_pdf_case",
+        "formula_markdown_case",
     ]
     case_map = {item["id"]: item for item in payload["cases"]}
     assert case_map["chart_pdf_case"]["case_family"] == "specialty"
@@ -181,17 +182,19 @@ def test_real_broader_manifest_sample_query_map_can_build_and_run_batch_spec(tmp
     assert case_map["cross_page_table_pdf_case"]["case_family"] == "table"
     assert case_map["multilingual_pdf_case"]["case_family"] == "document"
     assert case_map["multilingual_pdf_case"]["query_count"] == 2
+    assert case_map["formula_markdown_case"]["case_family"] == "document"
+    assert case_map["formula_markdown_case"]["query_count"] == 2
 
     report = runner_mod.run_batch(spec_path=out_path, out_dir=out_dir)  # type: ignore[attr-defined]
-    assert report["cases_total"] == 13
-    assert report["query_count_total"] == 26
-    assert len(report["cases"]) == 13
+    assert report["cases_total"] == 14
+    assert report["query_count_total"] == 28
+    assert len(report["cases"]) == 14
     assert report["summary"]["hit_at_k_mean"] == 1.0
     assert report["summary"]["mrr_mean"] == 1.0
     assert report["case_family_counts"]["specialty"] == 5
     assert report["case_family_counts"]["table"] == 4
     assert report["case_family_counts"]["layout"] == 3
-    assert report["case_family_counts"]["document"] == 1
+    assert report["case_family_counts"]["document"] == 2
 
 
 def test_real_broader_sample_queries_are_case_specific() -> None:
@@ -221,6 +224,7 @@ def test_real_broader_sample_queries_are_case_specific() -> None:
         "header_footer_noise_pdf_case": ("quarterly operations report", "customer churn"),
         "mixed_layout_pdf_case": ("mixed layout", "two-column content"),
         "multilingual_pdf_case": ("apac revenue", "94%"),
+        "formula_markdown_case": ("e = mc^2", "core formula"),
     }
 
     assert set(case_queries) == set(required_case_anchors)

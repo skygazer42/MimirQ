@@ -76,5 +76,11 @@
     "parser_backend": "basic",
     "top_k": 1,
     "retrieval_mode": "keyword"
+  },
+  "formula_markdown_case": {
+    "queries_json": "tests/fixtures/parsing_retrieval_proof/queries/formula_markdown.json",
+    "parser_backend": "basic",
+    "top_k": 1,
+    "retrieval_mode": "keyword"
   }
 }

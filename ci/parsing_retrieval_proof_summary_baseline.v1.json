@@ -1,6 +1,6 @@
 {
   "schema": "mimirq.parsing_retrieval_proof_summary.v1",
-  "cases_total": 13,
+  "cases_total": 14,
   "hit_at_k_mean": 1.0,
   "mrr_mean": 1.0,
   "failed_case_ids": [],
@@ -69,6 +69,11 @@
       "id": "multilingual_pdf_case",
       "hit_at_k": 1.0,
       "mrr": 1.0
+    },
+    {
+      "id": "formula_markdown_case",
+      "hit_at_k": 1.0,
+      "mrr": 1.0
     }
   ],
   "category_summaries": [
@@ -100,9 +105,10 @@
     },
     {
       "name": "other",
-      "cases_total": 1,
+      "cases_total": 2,
       "case_ids": [
-        "multilingual_pdf_case"
+        "multilingual_pdf_case",
+        "formula_markdown_case"
       ],
       "hit_at_k_mean": 1.0,
       "mrr_mean": 1.0,
@@ -215,9 +221,10 @@
     },
     {
       "name": "other",
-      "cases_total": 1,
+      "cases_total": 2,
       "case_ids": [
-        "multilingual_pdf_case"
+        "multilingual_pdf_case",
+        "formula_markdown_case"
       ],
       "hit_at_k_mean": 1.0,
       "mrr_mean": 1.0,

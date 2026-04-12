@@ -8,6 +8,7 @@ from langchain_core.documents import Document
 
 _KNOWN_KINDS = {"heading", "paragraph", "list", "table", "image", "equation", "seal"}
 _POSITION_TAG_RE = re.compile(r"@@[0-9-]+\t[0-9.]+\t[0-9.]+\t[0-9.]+\t[0-9.]+##")
+_DISPLAY_MATH_RE = re.compile(r"^\s*(\$\$.*\$\$|\\\[.*\\\])\s*$", re.DOTALL)
 _SKIP_ATTRIBUTE_KEYS = {
     "image",
     "images",
@@ -164,6 +165,8 @@ def _classify_kind(meta: Mapping[str, Any], text: str) -> str:
     stripped = text.strip()
     if not stripped:
         return "unknown"
+    if _DISPLAY_MATH_RE.match(stripped):
+        return "equation"
     return "paragraph"
 
 

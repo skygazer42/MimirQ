@@ -187,6 +187,13 @@ def _install_fake_parser_benchmark_modules(monkeypatch) -> None:  # noqa: ANN001
                         metadata={"page": 1},
                     ),
                 ]
+            elif "formula_markdown" in path_str:
+                docs = [
+                    Document(
+                        page_content="$$ E = mc^2 $$",
+                        metadata={"page": 1},
+                    ),
+                ]
             else:
                 docs = [
                     Document(
@@ -249,7 +256,7 @@ def test_parser_benchmark_reports_broader_pdf_and_image_corpus(monkeypatch, tmp_
     assert rc == 0
 
     payload = json.loads(out_path.read_text(encoding="utf-8"))
-    assert len(payload["cases"]) == 13
+    assert len(payload["cases"]) == 14
     by_case = {row["id"]: row for row in payload["cases"]}
     assert by_case["chart_pdf_case"]["golden"]["image_visual_kinds"]["chart"] == 1
     assert by_case["line_chart_pdf_case"]["golden"]["image_visual_kinds"]["chart"] == 1
@@ -260,6 +267,7 @@ def test_parser_benchmark_reports_broader_pdf_and_image_corpus(monkeypatch, tmp_
     assert by_case["borderless_table_scan_case"]["golden"]["specialty_elements"]["table"] == 1
     assert by_case["merged_header_table_pdf_case"]["golden"]["specialty_elements"]["table"] == 1
     assert by_case["table_with_leading_paragraph_pdf_case"]["golden"]["specialty_elements"]["table"] == 1
+    assert by_case["formula_markdown_case"]["golden"]["specialty_elements"]["equation"] == 1
     assert by_case["two_column_pdf_case"]["golden"]["structure"]["image_refs"] == 0
     assert by_case["header_footer_noise_pdf_case"]["golden"]["structure"]["image_refs"] == 0
     assert by_case["mixed_layout_pdf_case"]["golden"]["structure"]["image_refs"] == 0
