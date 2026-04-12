@@ -5,6 +5,7 @@ from pathlib import Path
 
 import cv2
 import fitz
+import numpy as np
 from PIL import Image, ImageDraw
 
 
@@ -79,7 +80,17 @@ def _write_line_chart(path: Path) -> None:
     draw.text((108, 182), "Q2", fill=(71, 85, 105))
     draw.text((168, 182), "Q3", fill=(71, 85, 105))
     draw.text((228, 182), "Q4", fill=(71, 85, 105))
-    image.save(path)
+    arr = np.array(image.convert("RGB"))
+    blurred = cv2.GaussianBlur(arr, (5, 5), 0)
+    rng = np.random.default_rng(7)
+    noise = rng.normal(loc=0.0, scale=11.0, size=blurred.shape)
+    noisy = np.clip(blurred.astype("float32") + noise, 0, 255).astype("uint8")
+    encoded_ok, encoded = cv2.imencode(".jpg", cv2.cvtColor(noisy, cv2.COLOR_RGB2BGR), [int(cv2.IMWRITE_JPEG_QUALITY), 42])
+    if encoded_ok:
+        decoded = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
+        if decoded is not None:
+            noisy = cv2.cvtColor(decoded, cv2.COLOR_BGR2RGB)
+    Image.fromarray(noisy).save(path)
 
 
 def _write_diagram(path: Path) -> None:
