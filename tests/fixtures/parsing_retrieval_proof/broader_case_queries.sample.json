@@ -16,5 +16,17 @@
     "parser_backend": "basic",
     "top_k": 1,
     "retrieval_mode": "keyword"
+  },
+  "header_footer_noise_pdf_case": {
+    "queries_json": "tests/fixtures/parsing_retrieval_proof/queries/header_footer_noise.json",
+    "parser_backend": "basic",
+    "top_k": 1,
+    "retrieval_mode": "keyword"
+  },
+  "mixed_layout_pdf_case": {
+    "queries_json": "tests/fixtures/parsing_retrieval_proof/queries/mixed_layout.json",
+    "parser_backend": "basic",
+    "top_k": 1,
+    "retrieval_mode": "keyword"
   }
 }
