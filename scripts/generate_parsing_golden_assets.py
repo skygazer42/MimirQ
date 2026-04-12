@@ -336,6 +336,49 @@ def _write_mixed_layout_pdf(pdf_path: Path) -> None:
         doc.close()
 
 
+def _resolve_multilingual_font() -> Path | None:
+    for candidate in (
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/arphic/uming.ttc",
+        "/usr/share/fonts/truetype/arphic/ukai.ttc",
+    ):
+        path = Path(candidate)
+        if path.exists():
+            return path
+    return None
+
+
+def _write_multilingual_pdf(pdf_path: Path) -> None:
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=612, height=792)
+        font_path = _resolve_multilingual_font()
+        font_name = "courier"
+        if font_path is not None:
+            font_name = "multilingual_cjk"
+            page.insert_font(fontname=font_name, fontfile=str(font_path))
+        page.insert_textbox(
+            fitz.Rect(48, 48, 564, 744),
+            "\n".join(
+                [
+                    "Multilingual revenue summary.",
+                    "",
+                    "APAC revenue 同比增长 12%。",
+                    "North America customer retention remained 94%.",
+                    "EMEA pipeline status 保持 stable。",
+                    "Support contact alias is bilingual-helpdesk.",
+                ]
+            ),
+            fontname=font_name,
+            fontsize=12,
+            lineheight=1.5,
+        )
+        pdf_path.parent.mkdir(parents=True, exist_ok=True)
+        doc.save(pdf_path)
+    finally:
+        doc.close()
+
+
 def generate_assets(output_root: Path) -> None:
     targets = [
         (output_root / "qr_sheet" / "input" / "qr.png", lambda path: _write_qr(path, "HELLO-QR")),
@@ -366,6 +409,7 @@ def generate_broader_assets(output_root: Path) -> None:
     two_column_pdf = output_root / "two_column_pdf" / "input" / "sample.pdf"
     header_footer_noise_pdf = output_root / "header_footer_noise_pdf" / "input" / "sample.pdf"
     mixed_layout_pdf = output_root / "mixed_layout_pdf" / "input" / "sample.pdf"
+    multilingual_pdf = output_root / "multilingual_pdf" / "input" / "sample.pdf"
 
     for path, writer in (
         (chart_image, _write_chart),
@@ -472,6 +516,7 @@ def generate_broader_assets(output_root: Path) -> None:
     _write_two_column_pdf(two_column_pdf)
     _write_header_footer_noise_pdf(header_footer_noise_pdf)
     _write_mixed_layout_pdf(mixed_layout_pdf)
+    _write_multilingual_pdf(multilingual_pdf)
 
     for src, dst in (
         (chart_image, output_root / "chart_pdf" / "golden" / "chart.png"),

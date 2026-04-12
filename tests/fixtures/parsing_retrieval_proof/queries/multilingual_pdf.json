@@ -1,0 +1,12 @@
+[
+  {
+    "id": "q-multilingual-1",
+    "question": "In the multilingual summary, APAC revenue 同比增长多少?",
+    "expected_chunk_indexes": [0]
+  },
+  {
+    "id": "q-multilingual-2",
+    "question": "Which region in the multilingual summary kept customer retention at 94%?",
+    "expected_chunk_indexes": [0]
+  }
+]

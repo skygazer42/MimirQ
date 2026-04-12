@@ -71,6 +71,12 @@
       "path": "mixed_layout_pdf/input/sample.pdf",
       "golden_markdown": "mixed_layout_pdf/golden/sample.md",
       "specialty_elements_path": "mixed_layout_pdf/golden/sample.specialty.json"
+    },
+    {
+      "id": "multilingual_pdf_case",
+      "path": "multilingual_pdf/input/sample.pdf",
+      "golden_markdown": "multilingual_pdf/golden/sample.md",
+      "specialty_elements_path": "multilingual_pdf/golden/sample.specialty.json"
     }
   ]
 }
