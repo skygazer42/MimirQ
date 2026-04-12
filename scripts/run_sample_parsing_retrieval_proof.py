@@ -25,6 +25,7 @@ def run_sample_parsing_retrieval_proof(
         build_parsing_proof_summary,
     )
     from scripts.build_parsing_retrieval_proof_batch_spec import build_batch_spec
+    from scripts.build_parsing_retrieval_proof_review import build_review_markdown
     from scripts.diff_parsing_retrieval_proof_summaries import run as run_parsing_proof_diff
     from scripts.parsing_retrieval_proof_gate import normalize_thresholds
     from scripts.run_parsing_retrieval_proof_batch import run_batch
@@ -50,6 +51,7 @@ def run_sample_parsing_retrieval_proof(
     gate_path = out_dir / "gate.json"
     diff_path = out_dir / "diff.json"
     diff_md_path = out_dir / "diff.md"
+    review_md_path = out_dir / "review.md"
 
     summary_payload = build_parsing_proof_summary(report)
     report_payload = build_parsing_proof_report(
@@ -94,6 +96,17 @@ def run_sample_parsing_retrieval_proof(
             current_path=summary_path,
             out=diff_path,
             out_md=diff_md_path,
+        )
+    if diff_path.exists():
+        diff_payload = json.loads(diff_path.read_text(encoding="utf-8"))
+        review_md_path.write_text(
+            build_review_markdown(
+                summary=summary_payload,
+                report=report_payload,
+                gate=gate_payload,
+                diff=diff_payload if isinstance(diff_payload, dict) else {},
+            ),
+            encoding="utf-8",
         )
     return report
 
