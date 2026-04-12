@@ -744,12 +744,52 @@ def _coerce_str_list(value: Any, *, limit: int = 10) -> list[str]:
     return out
 
 
-def _extract_parsing_proof_summary_details(summary: Any) -> dict[str, Any]:
+def _normalize_parsing_proof_rollout(rollout: Any) -> dict[str, Any]:
+    payload = rollout if isinstance(rollout, dict) else {}
+    current_stage = str(payload.get("current_stage") or "").strip().lower()
+    if current_stage not in {"informational", "warn", "fail"}:
+        return {}
+
+    next_stage = ""
+    requirements_key = ""
+    if current_stage == "informational":
+        next_stage = "warn"
+        requirements_key = "informational_to_warn"
+    elif current_stage == "warn":
+        next_stage = "fail"
+        requirements_key = "warn_to_fail"
+
+    requirements_obj = payload.get("promotion_requirements") if isinstance(payload.get("promotion_requirements"), dict) else {}
+    return {
+        "current_stage": current_stage,
+        "next_stage": next_stage,
+        "owner_roles": _coerce_str_list(payload.get("owner_roles"), limit=20),
+        "promotion_requirements": _coerce_str_list(requirements_obj.get(requirements_key), limit=20),
+    }
+
+
+def _load_parsing_proof_rollout_details(artifact_path: Path | None) -> dict[str, Any]:
+    if artifact_path is None:
+        return {}
+    rollout_path = artifact_path.with_name("rollout.json")
+    if not rollout_path.exists():
+        return {}
+    try:
+        return _normalize_parsing_proof_rollout(_load_json(rollout_path))
+    except Exception:
+        return {}
+
+
+def _extract_parsing_proof_summary_details(summary: Any, *, artifact_path: Path | None = None) -> dict[str, Any]:
     payload = summary if isinstance(summary, dict) else {}
     failed_case_ids = _coerce_str_list(payload.get("failed_case_ids"))
-    return {
+    details = {
         "failed_case_ids": failed_case_ids,
     }
+    rollout = _load_parsing_proof_rollout_details(artifact_path)
+    if rollout:
+        details["rollout"] = rollout
+    return details
 
 
 def _extract_parsing_proof_diff_details(diff: Any) -> dict[str, Any]:
@@ -765,6 +805,7 @@ def _render_parsing_proof_section(name: str, payload: dict[str, Any], lines: lis
     observed = payload.get("observed") if isinstance(payload.get("observed"), dict) else {}
     details = payload.get("details") if isinstance(payload.get("details"), dict) else {}
     failed_case_ids = _coerce_str_list(details.get("failed_case_ids"))
+    rollout = details.get("rollout") if isinstance(details.get("rollout"), dict) else {}
     failed_case_count = int(observed.get("failed_case_count") or len(failed_case_ids))
     lines.append(f"## {name}")
     lines.append("")
@@ -783,6 +824,15 @@ def _render_parsing_proof_section(name: str, payload: dict[str, Any], lines: lis
     else:
         lines.append("- Failed case IDs: `none`")
         lines.append("- Callout: `no parsing-proof failures in current sample`")
+    if rollout:
+        owner_roles = ", ".join(_coerce_str_list(rollout.get("owner_roles"), limit=20)) or "none"
+        requirements = ", ".join(_coerce_str_list(rollout.get("promotion_requirements"), limit=20)) or "none"
+        lines.append(
+            f"- Rollout: `current_stage={str(rollout.get('current_stage') or '')}`"
+            f" `next_stage={str(rollout.get('next_stage') or '') or 'none'}`"
+        )
+        lines.append(f"- Rollout owners: `{owner_roles}`")
+        lines.append(f"- Rollout requirements: `{requirements}`")
     lines.append("")
 
 
@@ -1277,7 +1327,7 @@ def main() -> int:
                     "path": str(proof_path),
                     "policy": proof_policy,
                     "observed": proof_observed,
-                    "details": _extract_parsing_proof_summary_details(proof_obj),
+                    "details": _extract_parsing_proof_summary_details(proof_obj, artifact_path=proof_path),
                 }
                 if proof_policy == "warn":
                     notes.extend(proof_notes)

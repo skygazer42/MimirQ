@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 
 def test_release_gate_parsing_proof_warn_mode_emits_notes() -> None:
     import scripts.release_gate as mod
@@ -75,4 +77,41 @@ def test_release_gate_extracts_parsing_proof_markdown_details() -> None:
     assert diff_details == {
         "failed_case_added_ids": ["case-c"],
         "failed_case_removed_ids": ["case-a"],
+    }
+
+
+def test_release_gate_extracts_parsing_proof_rollout_from_neighbor_artifact(tmp_path) -> None:  # noqa: ANN001
+    import scripts.release_gate as mod
+
+    summary_path = tmp_path / "summary.json"
+    summary_path.write_text(json.dumps({"failed_case_ids": []}), encoding="utf-8")
+    (tmp_path / "rollout.json").write_text(
+        json.dumps(
+            {
+                "schema": "mimirq.parsing_retrieval_proof_rollout.v1",
+                "current_stage": "informational",
+                "allowed_stages": ["informational", "warn", "fail"],
+                "promotion_requirements": {
+                    "informational_to_warn": ["stable_sample_corpus", "owner_agreement"],
+                    "warn_to_fail": ["release_surface_reviewable"],
+                },
+                "owner_roles": ["parsing", "retrieval", "release-quality"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    summary_details = mod._extract_parsing_proof_summary_details(  # noqa: SLF001
+        {"failed_case_ids": []},
+        artifact_path=summary_path,
+    )
+
+    assert summary_details == {
+        "failed_case_ids": [],
+        "rollout": {
+            "current_stage": "informational",
+            "next_stage": "warn",
+            "owner_roles": ["parsing", "retrieval", "release-quality"],
+            "promotion_requirements": ["stable_sample_corpus", "owner_agreement"],
+        },
     }
