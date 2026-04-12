@@ -3,5 +3,10 @@
     "id": "q-header-footer",
     "question": "Which region accelerated in Q3?",
     "expected_chunk_indexes": [0]
+  },
+  {
+    "id": "q-header-footer-2",
+    "question": "What did customer churn do year over year?",
+    "expected_chunk_indexes": [0]
   }
 ]
