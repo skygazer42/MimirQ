@@ -213,7 +213,7 @@ def infer_visual_kind_from_pixels(image: PILImage.Image) -> str:
     Best-effort local visual-kind inference from image pixels.
 
     Current supported kinds:
-    - chart: multiple solid bar-like regions
+    - chart: multiple solid bar-like regions, or axis + sloped line plot
     - diagram: multiple box-like regions connected by sparse lines
     """
     try:
@@ -259,6 +259,39 @@ def infer_visual_kind_from_pixels(image: PILImage.Image) -> str:
         heights = [item[3] for item in solid_rects]
         unique_heights = len({int(round(value / 4.0) * 4) for value in heights})
         if unique_heights >= 3 and max(heights) - min(heights) >= int(height * 0.12):
+            return "chart"
+
+    edges = cv2.Canny(gray, 60, 180)
+    lines = cv2.HoughLinesP(
+        edges,
+        1,
+        np.pi / 180.0,
+        threshold=max(20, int(min(width, height) * 0.08)),
+        minLineLength=max(18, int(min(width, height) * 0.12)),
+        maxLineGap=max(6, int(min(width, height) * 0.03)),
+    )
+    if lines is not None:
+        horizontal_axes = 0
+        vertical_axes = 0
+        sloped_segments = 0
+        for raw in lines:
+            x1, y1, x2, y2 = (int(value) for value in raw[0])
+            dx = x2 - x1
+            dy = y2 - y1
+            length = float((dx * dx + dy * dy) ** 0.5)
+            if length < float(max(18, int(min(width, height) * 0.12))):
+                continue
+            abs_dx = abs(dx)
+            abs_dy = abs(dy)
+            if abs_dy <= 4 and length >= float(width * 0.35) and max(y1, y2) >= int(height * 0.55):
+                horizontal_axes += 1
+                continue
+            if abs_dx <= 4 and length >= float(height * 0.35) and min(x1, x2) <= int(width * 0.25):
+                vertical_axes += 1
+                continue
+            if abs_dx >= 8 and abs_dy >= 8 and 0.2 <= float(abs_dy) / float(abs_dx) <= 5.0:
+                sloped_segments += 1
+        if horizontal_axes >= 1 and vertical_axes >= 1 and sloped_segments >= 2 and ink_ratio <= 0.2:
             return "chart"
 
     contours, _hierarchy = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
