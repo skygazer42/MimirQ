@@ -678,6 +678,7 @@ def _gate_parsing_proof_summary(
 
     observed = {
         "cases_total": int((summary or {}).get("cases_total") or 0),
+        "query_count_total": int((summary or {}).get("query_count_total") or 0),
         "hit_at_k_mean": _safe_float((summary or {}).get("hit_at_k_mean")),
         "mrr_mean": _safe_float((summary or {}).get("mrr_mean")),
         "failed_case_count": int(len((summary or {}).get("failed_case_ids") or [])),
@@ -783,8 +784,21 @@ def _load_parsing_proof_rollout_details(artifact_path: Path | None) -> dict[str,
 def _extract_parsing_proof_summary_details(summary: Any, *, artifact_path: Path | None = None) -> dict[str, Any]:
     payload = summary if isinstance(summary, dict) else {}
     failed_case_ids = _coerce_str_list(payload.get("failed_case_ids"))
+    sample_composition_obj = payload.get("sample_composition") if isinstance(payload.get("sample_composition"), dict) else {}
     details = {
         "failed_case_ids": failed_case_ids,
+        "sample_composition": {
+            "case_family_counts": {
+                str(key): int(value)
+                for key, value in sorted((sample_composition_obj.get("case_family_counts") or {}).items())
+                if int(value or 0) > 0
+            },
+            "case_category_counts": {
+                str(key): int(value)
+                for key, value in sorted((sample_composition_obj.get("case_category_counts") or {}).items())
+                if int(value or 0) > 0
+            },
+        },
     }
     rollout = _load_parsing_proof_rollout_details(artifact_path)
     if rollout:
@@ -805,6 +819,7 @@ def _render_parsing_proof_section(name: str, payload: dict[str, Any], lines: lis
     observed = payload.get("observed") if isinstance(payload.get("observed"), dict) else {}
     details = payload.get("details") if isinstance(payload.get("details"), dict) else {}
     failed_case_ids = _coerce_str_list(details.get("failed_case_ids"))
+    sample_composition = details.get("sample_composition") if isinstance(details.get("sample_composition"), dict) else {}
     rollout = details.get("rollout") if isinstance(details.get("rollout"), dict) else {}
     failed_case_count = int(observed.get("failed_case_count") or len(failed_case_ids))
     lines.append(f"## {name}")
@@ -814,6 +829,7 @@ def _render_parsing_proof_section(name: str, payload: dict[str, Any], lines: lis
     lines.append(
         "- Summary:"
         f" `cases_total={observed.get('cases_total')}`"
+        f" `query_count_total={observed.get('query_count_total')}`"
         f" `hit_at_k_mean={observed.get('hit_at_k_mean')}`"
         f" `mrr_mean={observed.get('mrr_mean')}`"
     )
@@ -824,6 +840,11 @@ def _render_parsing_proof_section(name: str, payload: dict[str, Any], lines: lis
     else:
         lines.append("- Failed case IDs: `none`")
         lines.append("- Callout: `no parsing-proof failures in current sample`")
+    family_counts = sample_composition.get("case_family_counts") if isinstance(sample_composition.get("case_family_counts"), dict) else {}
+    category_counts = sample_composition.get("case_category_counts") if isinstance(sample_composition.get("case_category_counts"), dict) else {}
+    family_text = ", ".join(f"{key}={family_counts[key]}" for key in sorted(family_counts)) or "none"
+    category_text = ", ".join(f"{key}={category_counts[key]}" for key in sorted(category_counts)) or "none"
+    lines.append(f"- Sample composition: `families={family_text}` `categories={category_text}`")
     if rollout:
         owner_roles = ", ".join(_coerce_str_list(rollout.get("owner_roles"), limit=20)) or "none"
         requirements = ", ".join(_coerce_str_list(rollout.get("promotion_requirements"), limit=20)) or "none"

@@ -17,9 +17,13 @@ def test_release_gate_render_markdown_mentions_parsing_proof_sections() -> None:
             "parsing_proof": {
                 "policy": "warn",
                 "path": "artifacts/parsing_proof_broader_sample/summary.json",
-                "observed": {"cases_total": 2, "hit_at_k_mean": 1.0, "mrr_mean": 1.0, "failed_case_count": 1},
+                "observed": {"cases_total": 2, "query_count_total": 4, "hit_at_k_mean": 1.0, "mrr_mean": 1.0, "failed_case_count": 1},
                 "details": {
                     "failed_case_ids": ["case-a"],
+                    "sample_composition": {
+                        "case_family_counts": {"specialty": 2},
+                        "case_category_counts": {"chart": 1, "qr": 1},
+                    },
                     "rollout": {
                         "current_stage": "informational",
                         "next_stage": "warn",
@@ -42,9 +46,10 @@ def test_release_gate_render_markdown_mentions_parsing_proof_sections() -> None:
 
     assert "## parsing_proof" in markdown
     assert "artifacts/parsing_proof_broader_sample/summary.json" in markdown
-    assert "Summary: `cases_total=2` `hit_at_k_mean=1.0` `mrr_mean=1.0`" in markdown
+    assert "Summary: `cases_total=2` `query_count_total=4` `hit_at_k_mean=1.0` `mrr_mean=1.0`" in markdown
     assert "Failed cases: `1`" in markdown
     assert "Failed case IDs: `case-a`" in markdown
+    assert "Sample composition: `families=specialty=2` `categories=chart=1, qr=1`" in markdown
     assert "Rollout: `current_stage=informational` `next_stage=warn`" in markdown
     assert "Rollout owners: `parsing, retrieval, release-quality`" in markdown
     assert "Rollout requirements: `stable_sample_corpus, owner_agreement`" in markdown
@@ -63,9 +68,13 @@ def test_release_gate_render_markdown_highlights_clean_parsing_proof_sections() 
             "parsing_proof": {
                 "policy": "warn",
                 "path": "artifacts/parsing_proof_broader_sample/summary.json",
-                "observed": {"cases_total": 11, "hit_at_k_mean": 1.0, "mrr_mean": 1.0, "failed_case_count": 0},
+                "observed": {"cases_total": 16, "query_count_total": 32, "hit_at_k_mean": 1.0, "mrr_mean": 1.0, "failed_case_count": 0},
                 "details": {
                     "failed_case_ids": [],
+                    "sample_composition": {
+                        "case_family_counts": {"document": 4, "layout": 3, "specialty": 5, "table": 4},
+                        "case_category_counts": {"chart": 2, "diagram": 1, "formula_markdown": 1},
+                    },
                     "rollout": {
                         "current_stage": "warn",
                         "next_stage": "fail",
@@ -86,6 +95,7 @@ def test_release_gate_render_markdown_highlights_clean_parsing_proof_sections() 
     )
 
     assert "Failed case IDs: `none`" in markdown
+    assert "Sample composition: `families=document=4, layout=3, specialty=5, table=4` `categories=chart=2, diagram=1, formula_markdown=1`" in markdown
     assert "Rollout: `current_stage=warn` `next_stage=fail`" in markdown
     assert "Callout: `no parsing-proof failures in current sample`" in markdown
     assert "Added failed cases: `none`" in markdown
@@ -120,7 +130,21 @@ def test_release_gate_main_writes_markdown_report(tmp_path, monkeypatch) -> None
         ),
         encoding="utf-8",
     )
-    summary.write_text(json.dumps({"hit_at_k_mean": 1.0, "mrr_mean": 1.0, "failed_case_ids": []}), encoding="utf-8")
+    summary.write_text(
+        json.dumps(
+            {
+                "query_count_total": 32,
+                "hit_at_k_mean": 1.0,
+                "mrr_mean": 1.0,
+                "failed_case_ids": [],
+                "sample_composition": {
+                    "case_family_counts": {"document": 4, "layout": 3, "specialty": 5, "table": 4},
+                    "case_category_counts": {"chart": 2, "diagram": 1, "formula_markdown": 1},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     diff.write_text(
         json.dumps({"metric_deltas": {"hit_at_k_mean_delta": 0.0, "mrr_mean_delta": 0.0}, "failed_case_drift": {"added_ids": []}}),
         encoding="utf-8",
@@ -170,7 +194,10 @@ def test_release_gate_main_writes_markdown_report(tmp_path, monkeypatch) -> None
     assert out_md.exists()
     report = json.loads(out.read_text(encoding="utf-8"))
     markdown = out_md.read_text(encoding="utf-8")
+    assert report["parsing_proof"]["observed"]["query_count_total"] == 32
+    assert report["parsing_proof"]["details"]["sample_composition"]["case_family_counts"]["specialty"] == 5
     assert report["parsing_proof"]["details"]["rollout"]["current_stage"] == "informational"
     assert report["parsing_proof"]["details"]["rollout"]["next_stage"] == "warn"
     assert "## parsing_proof" in markdown
+    assert "Sample composition: `families=document=4, layout=3, specialty=5, table=4` `categories=chart=2, diagram=1, formula_markdown=1`" in markdown
     assert "Rollout: `current_stage=informational` `next_stage=warn`" in markdown
