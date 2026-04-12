@@ -16,8 +16,9 @@ class _FakeResponse:
 
 
 class _FakeOrtValue:
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, shape=None) -> None:  # noqa: ANN001
         self.name = name
+        self.shape = shape
 
 
 class _FakeOnnxSession:
@@ -31,9 +32,43 @@ class _FakeOnnxSession:
         return [1.0 - batch]
 
 
+class _FakeGrayNchwOnnxSession:
+    def get_inputs(self) -> list[_FakeOrtValue]:
+        return [_FakeOrtValue("image", [1, 1, 8, 8])]
+
+    def run(self, _output_names, feeds):  # noqa: ANN001, ANN202
+        import numpy as np
+
+        batch = np.array(feeds["image"], dtype=np.float32, copy=True)
+        assert batch.shape == (1, 1, 8, 8)
+        return [1.0 - batch]
+
+
+class _FakeGrayNhwcOnnxSession:
+    def get_inputs(self) -> list[_FakeOrtValue]:
+        return [_FakeOrtValue("image", [1, 8, 8, 1])]
+
+    def run(self, _output_names, feeds):  # noqa: ANN001, ANN202
+        import numpy as np
+
+        batch = np.array(feeds["image"], dtype=np.float32, copy=True)
+        assert batch.shape == (1, 8, 8, 1)
+        return [1.0 - batch]
+
+
 class _FakeLoader:
     def load_onnx(self, *, name: str, model_path: str) -> LoadedModel:
         return LoadedModel(name=name, backend="onnxruntime", handle=_FakeOnnxSession())
+
+
+class _FakeGrayNchwLoader:
+    def load_onnx(self, *, name: str, model_path: str) -> LoadedModel:
+        return LoadedModel(name=name, backend="onnxruntime", handle=_FakeGrayNchwOnnxSession())
+
+
+class _FakeGrayNhwcLoader:
+    def load_onnx(self, *, name: str, model_path: str) -> LoadedModel:
+        return LoadedModel(name=name, backend="onnxruntime", handle=_FakeGrayNhwcOnnxSession())
 
 
 def test_image_preprocess_records_handwriting_cleanup_warning_when_model_missing(
@@ -140,6 +175,66 @@ def test_image_preprocess_applies_handwriting_cleanup_via_local_onnx_backend(tmp
         for step in (out.steps or [])
     )
     assert (out.meta.get("handwriting_cleanup") or {}).get("model_backend") == "onnxruntime"
+
+
+def test_image_preprocess_local_onnx_supports_single_channel_nchw_models(tmp_path: Path, monkeypatch) -> None:
+    from PIL import Image
+
+    img = tmp_path / "handwritten-note.png"
+    Image.new("L", (8, 8), color=140).save(img)
+
+    monkeypatch.setattr(settings, "IMAGE_PREPROCESS_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "ORIENTATION_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "DESKEW_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "WATERMARK_REMOVAL_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "HANDWRITING_CLEANUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "HANDWRITING_CLEANUP_BACKEND", "local", raising=False)
+    monkeypatch.setattr(settings, "HANDWRITING_CLEANUP_MODEL_PATH", "/models/handwriting-cleanup-gray-nchw.onnx", raising=False)
+
+    import app.parsing.preprocess.handwriting_cleanup as cleanup_mod
+
+    monkeypatch.setattr(
+        cleanup_mod,
+        "get_preprocess_model_loader",
+        lambda: _FakeGrayNchwLoader(),
+        raising=True,
+    )
+
+    out = preprocess_image_document(input_path=img, document_id="doc-handwriting", pdf_quality=None)
+
+    assert out.changed is True
+    assert Path(out.output_path).exists()
+    assert "handwriting_cleanup_backend_failed" not in (out.warnings or [])
+
+
+def test_image_preprocess_local_onnx_supports_single_channel_nhwc_models(tmp_path: Path, monkeypatch) -> None:
+    from PIL import Image
+
+    img = tmp_path / "handwritten-note.png"
+    Image.new("L", (8, 8), color=140).save(img)
+
+    monkeypatch.setattr(settings, "IMAGE_PREPROCESS_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "ORIENTATION_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "DESKEW_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "WATERMARK_REMOVAL_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "HANDWRITING_CLEANUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "HANDWRITING_CLEANUP_BACKEND", "local", raising=False)
+    monkeypatch.setattr(settings, "HANDWRITING_CLEANUP_MODEL_PATH", "/models/handwriting-cleanup-gray-nhwc.onnx", raising=False)
+
+    import app.parsing.preprocess.handwriting_cleanup as cleanup_mod
+
+    monkeypatch.setattr(
+        cleanup_mod,
+        "get_preprocess_model_loader",
+        lambda: _FakeGrayNhwcLoader(),
+        raising=True,
+    )
+
+    out = preprocess_image_document(input_path=img, document_id="doc-handwriting", pdf_quality=None)
+
+    assert out.changed is True
+    assert Path(out.output_path).exists()
+    assert "handwriting_cleanup_backend_failed" not in (out.warnings or [])
 
 
 def test_image_preprocess_auto_backend_prefers_local_onnx_when_model_path_present(tmp_path: Path, monkeypatch) -> None:
