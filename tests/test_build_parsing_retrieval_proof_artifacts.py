@@ -117,6 +117,16 @@ def test_build_parsing_proof_report_uses_threshold_checks() -> None:
         },
         summary_path="artifacts/parsing_proof.summary.json",
         thresholds={"hit_at_k_mean": 1.0, "mrr_mean": 0.8},
+        rollout={
+            "schema": "mimirq.parsing_retrieval_proof_rollout.v1",
+            "current_stage": "informational",
+            "allowed_stages": ["informational", "warn", "fail"],
+            "promotion_requirements": {
+                "informational_to_warn": ["stable_sample_corpus", "low_noise_history"],
+                "warn_to_fail": ["stable_sample_corpus", "release_surface_reviewable"],
+            },
+            "owner_roles": ["parsing", "retrieval", "release-quality"],
+        },
     )
     assert report["schema"] == "mimirq.parsing_retrieval_proof_report.v1"
     assert report["summary_path"] == "artifacts/parsing_proof.summary.json"
@@ -129,6 +139,13 @@ def test_build_parsing_proof_report_uses_threshold_checks() -> None:
     assert report["slice_summaries"] == [
         {"name": "chart", "cases_total": 1, "case_ids": ["chart_pdf_case"], "hit_at_k_mean": 1.0, "mrr_mean": 0.75, "failed_case_ids": ["case-b"]}
     ]
+    assert report["rollout"] == {
+        "schema": "mimirq.parsing_retrieval_proof_rollout.v1",
+        "current_stage": "informational",
+        "next_stage": "warn",
+        "owner_roles": ["parsing", "retrieval", "release-quality"],
+        "promotion_requirements": ["stable_sample_corpus", "low_noise_history"],
+    }
     assert report["passed"] is False
 
 

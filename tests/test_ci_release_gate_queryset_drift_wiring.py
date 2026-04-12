@@ -7,6 +7,7 @@ from pathlib import Path
 def test_ci_release_gate_consumes_bounded_queryset_artifacts() -> None:
     text = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
     parsing_proof_surface = (
+        "rollout.json",
         "summary.json",
         "report.json",
         "gate.json",

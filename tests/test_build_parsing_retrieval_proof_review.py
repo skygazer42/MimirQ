@@ -45,6 +45,13 @@ def test_build_parsing_proof_review_mentions_summary_checks_and_diff(tmp_path: P
                 "hit_at_k_mean": {"value": 1.0, "min": 1.0, "passed": True},
                 "mrr_mean": {"value": 1.0, "min": 1.0, "passed": True},
             },
+            "rollout": {
+                "schema": "mimirq.parsing_retrieval_proof_rollout.v1",
+                "current_stage": "informational",
+                "next_stage": "warn",
+                "owner_roles": ["parsing", "retrieval", "release-quality"],
+                "promotion_requirements": ["stable_sample_corpus", "low_noise_history"],
+            },
         },
         gate={"schema": "mimirq.parsing_retrieval_proof_gate_report.v1", "passed": True, "failures": []},
         diff={
@@ -59,6 +66,11 @@ def test_build_parsing_proof_review_mentions_summary_checks_and_diff(tmp_path: P
     assert "`hit_at_k_mean`: `1.0`" in review
     assert "`mrr_mean_delta`: `0.0`" in review
     assert "## Artifacts" in review
+    assert "## Rollout" in review
+    assert "`current_stage`: `informational`" in review
+    assert "`next_stage`: `warn`" in review
+    assert "`owner_roles`: `parsing, retrieval, release-quality`" in review
+    assert "`promotion_requirements`: `stable_sample_corpus, low_noise_history`" in review
     assert "## Category Summary" in review
     assert "| image | 2 | 1.0 | 0.75 | qr_image_case |" in review
     assert "## Slice Summary" in review
@@ -99,6 +111,13 @@ def test_build_parsing_proof_review_main_writes_markdown(tmp_path: Path) -> None
                 "schema": "mimirq.parsing_retrieval_proof_report.v1",
                 "summary_path": "artifacts/parsing_proof.summary.json",
                 "checks": {"hit_at_k_mean": {"value": 1.0, "min": 1.0, "passed": True}},
+                "rollout": {
+                    "schema": "mimirq.parsing_retrieval_proof_rollout.v1",
+                    "current_stage": "informational",
+                    "next_stage": "warn",
+                    "owner_roles": ["parsing", "retrieval", "release-quality"],
+                    "promotion_requirements": ["stable_sample_corpus", "low_noise_history"],
+                },
             }
         ),
         encoding="utf-8",
@@ -137,5 +156,6 @@ def test_build_parsing_proof_review_main_writes_markdown(tmp_path: Path) -> None
     assert out.exists()
     text = out.read_text(encoding="utf-8")
     assert "# Parsing Proof Review" in text
+    assert "## Rollout" in text
     assert "## Category Summary" in text
     assert "## Slice Summary" in text

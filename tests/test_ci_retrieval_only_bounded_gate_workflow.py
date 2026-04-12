@@ -6,6 +6,7 @@ from pathlib import Path
 def test_ci_has_retrieval_only_bounded_gate_job() -> None:
     text = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
     parsing_proof_surface = (
+        "rollout.json",
         "summary.json",
         "report.json",
         "gate.json",
@@ -77,6 +78,7 @@ def test_ci_has_retrieval_only_bounded_gate_job() -> None:
         assert f"bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/{artifact_name}" in text
 
     assert "bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/review.md" in text
+    assert "bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/rollout.json" in text
 
     sample_index = text.index("run_sample_parsing_retrieval_proof.py")
     build_index = text.index("build_parsing_retrieval_proof_artifacts.py")

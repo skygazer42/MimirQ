@@ -22,11 +22,13 @@ This writes a broader sample proof run under:
 
 - `runs/parsing_proof_broader_sample/parsing_proof_batch.spec.json`
 - `runs/parsing_proof_broader_sample/batch.report.json`
+- `runs/parsing_proof_broader_sample/rollout.json`
 - `runs/parsing_proof_broader_sample/summary.json`
 - `runs/parsing_proof_broader_sample/report.json`
 - `runs/parsing_proof_broader_sample/gate.json`
 - `runs/parsing_proof_broader_sample/diff.json`
 - `runs/parsing_proof_broader_sample/diff.md`
+- `runs/parsing_proof_broader_sample/review.md`
 
 ### File-driven run
 
@@ -70,6 +72,10 @@ Baseline summary:
 
 - `ci/parsing_retrieval_proof_summary_baseline.v1.json`
 
+Rollout policy:
+
+- `ci/parsing_retrieval_proof_rollout.v1.json`
+
 ## CI / Workflow Surfaces
 
 Current non-blocking surfaces:
@@ -84,11 +90,13 @@ These publish parsing-proof artifacts but do not yet hard-fail on parsing-proof 
 
 When reviewing a parsing-proof run, read artifacts in this order:
 
-1. `summary.json`
-2. `report.json`
-3. `gate.json`
-4. `diff.json`
-5. `diff.md`
+1. `rollout.json`
+2. `summary.json`
+3. `report.json`
+4. `gate.json`
+5. `diff.json`
+6. `diff.md`
+7. `review.md`
 
 ## Current Policy
 

@@ -10,6 +10,7 @@ def test_parsing_proof_sample_workflow_exists_and_wires_sample_runner() -> None:
         "parsing_proof_batch.spec.json",
         "*.fixture.json",
         "*.report.json",
+        "rollout.json",
         "summary.json",
         "gate.json",
         "diff.json",

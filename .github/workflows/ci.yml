@@ -806,11 +806,13 @@ jobs:
             artifacts/sample_retrieval_bench.colbert.json
             artifacts/queryset_health_policy.normalized.json
             artifacts/queryset_health.snapshot.json
+            artifacts/parsing_proof_broader_sample/rollout.json
             artifacts/parsing_proof_broader_sample/summary.json
             artifacts/parsing_proof_broader_sample/report.json
             artifacts/parsing_proof_broader_sample/gate.json
             artifacts/parsing_proof_broader_sample/diff.json
             artifacts/parsing_proof_broader_sample/diff.md
+            artifacts/parsing_proof_broader_sample/review.md
             artifacts/queryset_health.snapshot.hybrid.json
             artifacts/queryset_health.snapshot.sparse.json
             artifacts/queryset_health.diff.json
@@ -1028,6 +1030,7 @@ jobs:
             artifacts/**
             artifacts/must_recall_provenance_gate.report.json
             artifacts/release_gate.report.md
+            bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/rollout.json
             bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/summary.json
             bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/report.json
             bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/gate.json
