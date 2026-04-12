@@ -51,6 +51,7 @@ def _classify_case_category(case_id: Any) -> str:
 def _classify_case_slice(case_id: Any) -> str:
     normalized = _normalize_case_id(case_id)
     for slice_name in (
+        "line_chart",
         "cross_page_table",
         "borderless_table",
         "merged_header_table",

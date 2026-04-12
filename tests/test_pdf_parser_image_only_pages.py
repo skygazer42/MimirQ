@@ -17,6 +17,17 @@ def test_basic_pdf_parser_emits_chart_image_doc_for_image_only_pdf_page() -> Non
     assert docs[0].metadata["page"] == 1
 
 
+def test_basic_pdf_parser_emits_line_chart_image_doc_for_image_only_pdf_page() -> None:
+    parser = PDFParser()
+
+    docs = parser.parse(Path("tests/fixtures/parsing_golden_broader/line_chart_pdf/input/sample.pdf"))
+
+    assert len(docs) == 1
+    assert docs[0].metadata["doc_type_kwd"] == "image"
+    assert docs[0].metadata["visual_kind"] == "chart"
+    assert docs[0].metadata["page"] == 1
+
+
 def test_basic_pdf_parser_emits_diagram_image_doc_for_image_only_pdf_page() -> None:
     parser = PDFParser()
 

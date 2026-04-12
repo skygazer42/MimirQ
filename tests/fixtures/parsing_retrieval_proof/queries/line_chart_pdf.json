@@ -1,0 +1,12 @@
+[
+  {
+    "id": "q-line-chart-1",
+    "question": "Which attachment contains the revenue trend chart image?",
+    "expected_chunk_indexes": [0]
+  },
+  {
+    "id": "q-line-chart-2",
+    "question": "If someone asks for the trend chart image, which chunk should be retrieved?",
+    "expected_chunk_indexes": [0]
+  }
+]

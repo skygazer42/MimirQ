@@ -5,6 +5,12 @@
     "top_k": 1,
     "retrieval_mode": "keyword"
   },
+  "line_chart_pdf_case": {
+    "queries_json": "tests/fixtures/parsing_retrieval_proof/queries/line_chart_pdf.json",
+    "parser_backend": "basic",
+    "top_k": 1,
+    "retrieval_mode": "keyword"
+  },
   "diagram_pdf_case": {
     "queries_json": "tests/fixtures/parsing_retrieval_proof/queries/diagram_pdf.json",
     "parser_backend": "basic",

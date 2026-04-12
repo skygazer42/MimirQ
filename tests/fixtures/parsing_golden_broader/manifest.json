@@ -7,6 +7,12 @@
       "specialty_elements_path": "chart_pdf/golden/sample.specialty.json"
     },
     {
+      "id": "line_chart_pdf_case",
+      "path": "line_chart_pdf/input/sample.pdf",
+      "golden_markdown": "line_chart_pdf/golden/sample.md",
+      "specialty_elements_path": "line_chart_pdf/golden/sample.specialty.json"
+    },
+    {
       "id": "diagram_pdf_case",
       "path": "diagram_pdf/input/sample.pdf",
       "golden_markdown": "diagram_pdf/golden/sample.md",

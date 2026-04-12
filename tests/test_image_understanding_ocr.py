@@ -232,6 +232,19 @@ def test_infer_visual_kind_from_pixels_detects_synthetic_line_chart() -> None:
     assert out == "chart"
 
 
+def test_infer_visual_kind_from_pixels_detects_committed_line_chart_fixture() -> None:
+    from app.parsing.enrich.image_understanding import infer_visual_kind_from_pixels  # noqa: WPS433
+
+    fixture = Path("tests/fixtures/parsing_golden_broader/line_chart_pdf/input/line_chart.png")
+    image = PILImage.open(fixture)
+    try:
+        out = infer_visual_kind_from_pixels(image)
+    finally:
+        image.close()
+
+    assert out == "chart"
+
+
 def test_infer_visual_kind_from_pixels_detects_committed_diagram_fixture() -> None:
     from app.parsing.enrich.image_understanding import infer_visual_kind_from_pixels  # noqa: WPS433
 
