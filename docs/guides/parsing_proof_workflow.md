@@ -30,6 +30,13 @@ This writes a broader sample proof run under:
 - `runs/parsing_proof_broader_sample/diff.md`
 - `runs/parsing_proof_broader_sample/review.md`
 
+Current committed bounded sample:
+
+- `16-case / 32-query`
+- includes noisy `line_chart` and noisy `diagram` fixtures
+- includes `multilingual`, `formula`, and two `handwriting` note cases
+- `summary.json` / `report.json` now surface `query_count_total` plus sample composition counts by family/category
+
 ### File-driven run
 
 ```bash
@@ -92,6 +99,7 @@ When reviewing a parsing-proof run, read artifacts in this order:
 
 1. `rollout.json`
 2. `summary.json`
+   Check `query_count_total` and `sample_composition` first so you know what the bounded sample currently covers.
 3. `report.json`
 4. `gate.json`
 5. `diff.json`

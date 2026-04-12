@@ -29,6 +29,7 @@ deterministic parsing-impact signals (summary + diff) alongside retrieval/querys
    degradation flags, or parse-risk tail documents
 7. **Broader parsing-proof summary (optional)**: surface `hit_at_k_mean`, `mrr_mean`, and failed-case count
 8. **Broader parsing-proof diff (optional)**: surface delta from the checked-in parsing-proof baseline
+9. **Broader parsing-proof sample composition (optional)**: surface the bounded sample size and case family/category mix (`query_count_total`, `case_family_counts`, `case_category_counts`)
 
 All outputs are PII-safe by construction (numbers, hashes, low-cardinality labels).
 
@@ -65,6 +66,11 @@ The GitHub Actions workflow runs:
 - `artifacts/parsing_proof_broader_sample/gate.json`
 - `artifacts/parsing_proof_broader_sample/diff.json`
 - `artifacts/parsing_proof_broader_sample/diff.md`
+
+Current parsing-proof bounded sample scale:
+
+- `16 cases / 32 queries`
+- current families: `document=4`, `layout=3`, `specialty=5`, `table=4`
 - Then `scripts/release_gate.py --skip-regression` with a small probe traffic to ensure SLO/cost summaries have data and to ingest the bounded query-set artifacts.
 
 Budgets live in:
@@ -150,9 +156,13 @@ Semantics:
   - `parse_risk_tail_added_count`
 - Broader parsing-proof summary observed fields:
   - `cases_total`
+  - `query_count_total`
   - `hit_at_k_mean`
   - `mrr_mean`
   - `failed_case_count`
+- Broader parsing-proof sample composition details surfaced in release reports:
+  - `case_family_counts`
+  - `case_category_counts`
 - Broader parsing-proof diff observed fields:
   - `hit_at_k_mean_delta`
   - `mrr_mean_delta`

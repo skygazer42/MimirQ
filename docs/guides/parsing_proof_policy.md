@@ -15,6 +15,10 @@ The current parsing-proof surface covers sample deterministic cases derived from
 - table continuity and table retrieval
 - layout-sensitive retrieval
 - cross-page table extraction evidence
+- specialty image retrieval (`chart`, noisy `line_chart`, noisy `diagram`, `qr`, `barcode`)
+- multilingual text retrieval
+- formula/display-math retrieval
+- bounded handwriting-note retrieval
 
 Current execution surfaces:
 
@@ -40,6 +44,12 @@ The broader parsing-proof sample currently emits:
 - `diff.json`
 - `diff.md`
 - `review.md`
+
+Current bounded sample scale:
+
+- `16-case / 32-query`
+- `summary.json` includes `query_count_total` and `sample_composition`
+- `report.json` mirrors the same sample-shape fields so release-quality surfaces can show coverage, not only gate outcome
 
 Schemas:
 
