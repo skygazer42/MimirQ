@@ -78,3 +78,15 @@ def test_basic_pdf_parser_marks_cross_page_table_continuation_metadata() -> None
     assert docs[1].metadata["doc_type_kwd"] == "table"
     assert docs[1].metadata["table_continued"] is True
     assert docs[1].metadata["table_columns"] == ["Region", "Q1", "Q2"]
+
+
+def test_basic_pdf_parser_preserves_multilingual_text_pdf_page() -> None:
+    parser = PDFParser()
+
+    docs = parser.parse(Path("tests/fixtures/parsing_golden_broader/multilingual_pdf/input/sample.pdf"))
+
+    assert len(docs) == 1
+    text = (docs[0].page_content or "").replace("\xa0", " ")
+    assert "APAC revenue" in text
+    assert "同比增长 12%" in text
+    assert "customer retention remained 94%" in text

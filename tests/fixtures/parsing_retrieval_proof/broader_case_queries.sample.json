@@ -70,5 +70,11 @@
     "parser_backend": "basic",
     "top_k": 1,
     "retrieval_mode": "keyword"
+  },
+  "multilingual_pdf_case": {
+    "queries_json": "tests/fixtures/parsing_retrieval_proof/queries/multilingual_pdf.json",
+    "parser_backend": "basic",
+    "top_k": 1,
+    "retrieval_mode": "keyword"
   }
 }
