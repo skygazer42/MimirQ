@@ -15,10 +15,16 @@ def run_sample_parsing_retrieval_proof(
     manifest_path: Path,
     case_queries_path: Path,
     out_dir: Path,
+    thresholds_path: Path | None = None,
 ) -> dict[str, Any]:
     import json
 
+    from scripts.build_parsing_retrieval_proof_artifacts import (
+        build_parsing_proof_report,
+        build_parsing_proof_summary,
+    )
     from scripts.build_parsing_retrieval_proof_batch_spec import build_batch_spec
+    from scripts.parsing_retrieval_proof_gate import normalize_thresholds
     from scripts.run_parsing_retrieval_proof_batch import run_batch
 
     case_queries = json.loads(Path(case_queries_path).resolve().read_text(encoding="utf-8"))
@@ -32,7 +38,49 @@ def run_sample_parsing_retrieval_proof(
     out_dir.mkdir(parents=True, exist_ok=True)
     spec_path = out_dir / "parsing_proof_batch.spec.json"
     spec_path.write_text(json.dumps(spec, ensure_ascii=False, indent=2), encoding="utf-8")
-    return run_batch(spec_path=spec_path, out_dir=out_dir)
+    report = run_batch(spec_path=spec_path, out_dir=out_dir)
+
+    summary_path = out_dir / "summary.json"
+    report_path = out_dir / "report.json"
+    gate_path = out_dir / "gate.json"
+
+    summary_payload = build_parsing_proof_summary(report)
+    report_payload = build_parsing_proof_report(
+        summary_payload,
+        summary_path=str(summary_path),
+        thresholds={
+            "hit_at_k_mean": 1.0,
+            "mrr_mean": 1.0,
+        },
+    )
+
+    if thresholds_path is not None:
+        thresholds_obj = json.loads(Path(thresholds_path).resolve().read_text(encoding="utf-8"))
+        normalized = normalize_thresholds(thresholds_obj)
+        report_payload = build_parsing_proof_report(
+            summary_payload,
+            summary_path=str(summary_path),
+            thresholds={
+                "hit_at_k_mean": float((normalized.get("hit_at_k_mean") or {}).get("min") or 0.0),
+                "mrr_mean": float((normalized.get("mrr_mean") or {}).get("min") or 0.0),
+            },
+        )
+
+    summary_path.write_text(json.dumps(summary_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    report_path.write_text(json.dumps(report_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    gate_payload = {
+        "schema": "mimirq.parsing_retrieval_proof_gate_report.v1",
+        "passed": bool(report_payload.get("passed")),
+        "checks": list(report_payload.get("checks") or []),
+        "failures": [],
+        "input": str(summary_path),
+        "thresholds": str(Path(thresholds_path).resolve()) if thresholds_path is not None else None,
+    }
+    for check in list(report_payload.get("checks") or []):
+        if isinstance(check, dict) and not bool(check.get("passed")):
+            gate_payload["failures"].append(f"{check.get('metric')}: below threshold")
+    gate_path.write_text(json.dumps(gate_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return report
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -52,12 +100,18 @@ def main(argv: list[str] | None = None) -> int:
         default=str(_REPO_ROOT / "runs" / "parsing_proof_broader_sample"),
         help="Output directory for generated batch spec and reports.",
     )
+    parser.add_argument(
+        "--thresholds-json",
+        default=str(_REPO_ROOT / "ci" / "parsing_retrieval_proof_thresholds.v1.json"),
+        help="Thresholds JSON used to derive the parsing-proof gate artifact.",
+    )
     args = parser.parse_args(argv)
 
     report = run_sample_parsing_retrieval_proof(
         manifest_path=Path(str(args.manifest_json)),
         case_queries_path=Path(str(args.case_queries_json)),
         out_dir=Path(str(args.out_dir)),
+        thresholds_path=Path(str(args.thresholds_json)) if str(args.thresholds_json or "").strip() else None,
     )
     summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
     print(
