@@ -37,6 +37,17 @@ def _infer_onnx_layout(shape: Any) -> str:
     return "nchw"
 
 
+def _infer_onnx_channels(shape: Any, *, layout: str) -> int:
+    dims = list(shape or [])
+    if len(dims) != 4:
+        return 3
+    if layout == "nhwc":
+        channels = _positive_int(dims[-1])
+    else:
+        channels = _positive_int(dims[1])
+    return channels if channels in {1, 3} else 3
+
+
 def _run_local_onnx_cleanup(*, input_path: Path, output_path: Path, session: Any) -> bool:
     import numpy as np
     from PIL import Image
@@ -48,6 +59,7 @@ def _run_local_onnx_cleanup(*, input_path: Path, output_path: Path, session: Any
     input_name = str(getattr(inputs[0], "name", "") or "input")
     input_shape = getattr(inputs[0], "shape", None) if inputs else None
     input_layout = _infer_onnx_layout(input_shape)
+    input_channels = _infer_onnx_channels(input_shape, layout=input_layout)
 
     target_width: int | None = None
     target_height: int | None = None
@@ -61,7 +73,7 @@ def _run_local_onnx_cleanup(*, input_path: Path, output_path: Path, session: Any
             target_width = _positive_int(dims[3])
 
     with Image.open(input_path) as image:
-        source = image.convert("RGB")
+        source = image.convert("L" if input_channels == 1 else "RGB")
         original_size = source.size
         prepared = source
         if target_width and target_height and (target_width, target_height) != original_size:
@@ -69,9 +81,19 @@ def _run_local_onnx_cleanup(*, input_path: Path, output_path: Path, session: Any
 
         arr = np.asarray(prepared, dtype=np.float32)
         if input_layout == "nhwc":
-            tensor = (arr / 255.0)[None, ...]
+            if input_channels == 1:
+                if arr.ndim == 2:
+                    arr = arr[..., None]
+                tensor = (arr / 255.0)[None, ...]
+            else:
+                tensor = (arr / 255.0)[None, ...]
         else:
-            tensor = np.transpose(arr / 255.0, (2, 0, 1))[None, ...]
+            if input_channels == 1:
+                if arr.ndim == 3:
+                    arr = arr[..., 0]
+                tensor = (arr / 255.0)[None, None, ...]
+            else:
+                tensor = np.transpose(arr / 255.0, (2, 0, 1))[None, ...]
 
     outputs = list(session.run(None, {input_name: tensor}) or [])
     if not outputs:
