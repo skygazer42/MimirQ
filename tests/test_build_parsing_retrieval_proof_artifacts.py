@@ -24,19 +24,81 @@ def test_build_parsing_proof_summary_uses_batch_metrics() -> None:
     mod = _load_script()
     payload = mod.build_parsing_proof_summary(  # type: ignore[attr-defined]
         {
-            "cases_total": 2,
-            "summary": {"hit_at_k_mean": 1.0, "mrr_mean": 0.75},
+            "cases_total": 4,
+            "summary": {"hit_at_k_mean": 0.75, "mrr_mean": 0.625},
             "cases": [
-                {"id": "case-a", "summary": {"hit_at_k": 1.0, "mrr": 1.0}},
-                {"id": "case-b", "summary": {"hit_at_k": 1.0, "mrr": 0.5}},
+                {"id": "chart_pdf_case", "summary": {"hit_at_k": 1.0, "mrr": 1.0}},
+                {"id": "qr_image_case", "summary": {"hit_at_k": 1.0, "mrr": 0.5}},
+                {"id": "cross_page_table_pdf_case", "summary": {"hit_at_k": 0.0, "mrr": 0.0}},
+                {"id": "two_column_pdf_case", "summary": {"hit_at_k": 1.0, "mrr": 1.0}},
             ],
         }
     )
     assert payload["schema"] == "mimirq.parsing_retrieval_proof_summary.v1"
-    assert payload["cases_total"] == 2
-    assert payload["hit_at_k_mean"] == 1.0
-    assert payload["mrr_mean"] == 0.75
-    assert payload["failed_case_ids"] == ["case-b"]
+    assert payload["cases_total"] == 4
+    assert payload["hit_at_k_mean"] == 0.75
+    assert payload["mrr_mean"] == 0.625
+    assert payload["failed_case_ids"] == ["qr_image_case", "cross_page_table_pdf_case"]
+    assert payload["category_summaries"] == [
+        {
+            "name": "image",
+            "cases_total": 2,
+            "case_ids": ["chart_pdf_case", "qr_image_case"],
+            "hit_at_k_mean": 1.0,
+            "mrr_mean": 0.75,
+            "failed_case_ids": ["qr_image_case"],
+        },
+        {
+            "name": "layout",
+            "cases_total": 1,
+            "case_ids": ["two_column_pdf_case"],
+            "hit_at_k_mean": 1.0,
+            "mrr_mean": 1.0,
+            "failed_case_ids": [],
+        },
+        {
+            "name": "table",
+            "cases_total": 1,
+            "case_ids": ["cross_page_table_pdf_case"],
+            "hit_at_k_mean": 0.0,
+            "mrr_mean": 0.0,
+            "failed_case_ids": ["cross_page_table_pdf_case"],
+        },
+    ]
+    assert payload["slice_summaries"] == [
+        {
+            "name": "chart",
+            "cases_total": 1,
+            "case_ids": ["chart_pdf_case"],
+            "hit_at_k_mean": 1.0,
+            "mrr_mean": 1.0,
+            "failed_case_ids": [],
+        },
+        {
+            "name": "cross_page_table",
+            "cases_total": 1,
+            "case_ids": ["cross_page_table_pdf_case"],
+            "hit_at_k_mean": 0.0,
+            "mrr_mean": 0.0,
+            "failed_case_ids": ["cross_page_table_pdf_case"],
+        },
+        {
+            "name": "qr",
+            "cases_total": 1,
+            "case_ids": ["qr_image_case"],
+            "hit_at_k_mean": 1.0,
+            "mrr_mean": 0.5,
+            "failed_case_ids": ["qr_image_case"],
+        },
+        {
+            "name": "two_column",
+            "cases_total": 1,
+            "case_ids": ["two_column_pdf_case"],
+            "hit_at_k_mean": 1.0,
+            "mrr_mean": 1.0,
+            "failed_case_ids": [],
+        },
+    ]
 
 
 def test_build_parsing_proof_report_uses_threshold_checks() -> None:
@@ -46,6 +108,12 @@ def test_build_parsing_proof_report_uses_threshold_checks() -> None:
             "hit_at_k_mean": 1.0,
             "mrr_mean": 0.75,
             "failed_case_ids": ["case-b"],
+            "category_summaries": [
+                {"name": "image", "cases_total": 1, "case_ids": ["chart_pdf_case"], "hit_at_k_mean": 1.0, "mrr_mean": 0.75, "failed_case_ids": ["case-b"]}
+            ],
+            "slice_summaries": [
+                {"name": "chart", "cases_total": 1, "case_ids": ["chart_pdf_case"], "hit_at_k_mean": 1.0, "mrr_mean": 0.75, "failed_case_ids": ["case-b"]}
+            ],
         },
         summary_path="artifacts/parsing_proof.summary.json",
         thresholds={"hit_at_k_mean": 1.0, "mrr_mean": 0.8},
@@ -55,6 +123,12 @@ def test_build_parsing_proof_report_uses_threshold_checks() -> None:
     assert report["checks"]["hit_at_k_mean"]["passed"] is True
     assert report["checks"]["mrr_mean"]["passed"] is False
     assert report["failed_case_ids"] == ["case-b"]
+    assert report["category_summaries"] == [
+        {"name": "image", "cases_total": 1, "case_ids": ["chart_pdf_case"], "hit_at_k_mean": 1.0, "mrr_mean": 0.75, "failed_case_ids": ["case-b"]}
+    ]
+    assert report["slice_summaries"] == [
+        {"name": "chart", "cases_total": 1, "case_ids": ["chart_pdf_case"], "hit_at_k_mean": 1.0, "mrr_mean": 0.75, "failed_case_ids": ["case-b"]}
+    ]
     assert report["passed"] is False
 
 
@@ -85,5 +159,26 @@ def test_parsing_proof_artifacts_builder_main_writes_relative_summary_path(tmp_p
     )
 
     assert rc == 0
+    summary = json.loads((tmp_path / "artifacts" / "parsing_proof.summary.json").read_text(encoding="utf-8"))
     report = json.loads((tmp_path / "artifacts" / "parsing_proof.report.json").read_text(encoding="utf-8"))
+    assert summary["category_summaries"] == [
+        {
+            "name": "other",
+            "cases_total": 1,
+            "case_ids": ["case-a"],
+            "hit_at_k_mean": 1.0,
+            "mrr_mean": 1.0,
+            "failed_case_ids": [],
+        }
+    ]
+    assert summary["slice_summaries"] == [
+        {
+            "name": "other",
+            "cases_total": 1,
+            "case_ids": ["case-a"],
+            "hit_at_k_mean": 1.0,
+            "mrr_mean": 1.0,
+            "failed_case_ids": [],
+        }
+    ]
     assert report["summary_path"] == "artifacts/parsing_proof.summary.json"

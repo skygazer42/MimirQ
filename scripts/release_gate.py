@@ -731,6 +731,94 @@ def _gate_parsing_proof_diff(
     return violations, notes, observed
 
 
+def _coerce_str_list(value: Any, *, limit: int = 10) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    out: list[str] = []
+    for item in value:
+        text = str(item or "").strip()
+        if text:
+            out.append(text)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _extract_parsing_proof_summary_details(summary: Any) -> dict[str, Any]:
+    payload = summary if isinstance(summary, dict) else {}
+    failed_case_ids = _coerce_str_list(payload.get("failed_case_ids"))
+    return {
+        "failed_case_ids": failed_case_ids,
+    }
+
+
+def _extract_parsing_proof_diff_details(diff: Any) -> dict[str, Any]:
+    payload = diff if isinstance(diff, dict) else {}
+    failed_drift = payload.get("failed_case_drift") if isinstance(payload.get("failed_case_drift"), dict) else {}
+    return {
+        "failed_case_added_ids": _coerce_str_list(failed_drift.get("added_ids")),
+        "failed_case_removed_ids": _coerce_str_list(failed_drift.get("removed_ids")),
+    }
+
+
+def _render_parsing_proof_section(name: str, payload: dict[str, Any], lines: list[str]) -> None:
+    observed = payload.get("observed") if isinstance(payload.get("observed"), dict) else {}
+    details = payload.get("details") if isinstance(payload.get("details"), dict) else {}
+    failed_case_ids = _coerce_str_list(details.get("failed_case_ids"))
+    failed_case_count = int(observed.get("failed_case_count") or len(failed_case_ids))
+    lines.append(f"## {name}")
+    lines.append("")
+    lines.append(f"- Policy: `{str(payload.get('policy') or '')}`")
+    lines.append(f"- Path: `{str(payload.get('path') or '')}`")
+    lines.append(
+        "- Summary:"
+        f" `cases_total={observed.get('cases_total')}`"
+        f" `hit_at_k_mean={observed.get('hit_at_k_mean')}`"
+        f" `mrr_mean={observed.get('mrr_mean')}`"
+    )
+    lines.append(f"- Failed cases: `{failed_case_count}`")
+    if failed_case_ids:
+        lines.append(f"- Failed case IDs: `{', '.join(failed_case_ids)}`")
+        lines.append("- Callout: `parsing-proof regressions need review`")
+    else:
+        lines.append("- Failed case IDs: `none`")
+        lines.append("- Callout: `no parsing-proof failures in current sample`")
+    lines.append("")
+
+
+def _render_parsing_proof_diff_section(name: str, payload: dict[str, Any], lines: list[str]) -> None:
+    observed = payload.get("observed") if isinstance(payload.get("observed"), dict) else {}
+    details = payload.get("details") if isinstance(payload.get("details"), dict) else {}
+    added_ids = _coerce_str_list(details.get("failed_case_added_ids"))
+    removed_ids = _coerce_str_list(details.get("failed_case_removed_ids"))
+    added_count = int(observed.get("failed_case_added_count") or len(added_ids))
+    hit_delta = observed.get("hit_at_k_mean_delta")
+    mrr_delta = observed.get("mrr_mean_delta")
+    has_regression = (
+        (isinstance(hit_delta, (int, float)) and float(hit_delta) < 0.0)
+        or (isinstance(mrr_delta, (int, float)) and float(mrr_delta) < 0.0)
+        or added_count > 0
+    )
+
+    lines.append(f"## {name}")
+    lines.append("")
+    lines.append(f"- Policy: `{str(payload.get('policy') or '')}`")
+    lines.append(f"- Path: `{str(payload.get('path') or '')}`")
+    lines.append(
+        "- Delta summary:"
+        f" `hit_at_k_mean_delta={hit_delta}`"
+        f" `mrr_mean_delta={mrr_delta}`"
+        f" `failed_case_added_count={added_count}`"
+    )
+    lines.append(f"- Added failed cases: `{', '.join(added_ids) if added_ids else 'none'}`")
+    lines.append(f"- Removed failed cases: `{', '.join(removed_ids) if removed_ids else 'none'}`")
+    if has_regression:
+        lines.append("- Callout: `baseline drift detected in parsing-proof deltas`")
+    else:
+        lines.append("- Callout: `no negative parsing-proof drift vs baseline`")
+    lines.append("")
+
+
 def _render_markdown(report: dict[str, Any]) -> str:
     lines: list[str] = []
     lines.append("# Release Gate Report")
@@ -740,6 +828,12 @@ def _render_markdown(report: dict[str, Any]) -> str:
 
     def _emit_section(name: str) -> None:
         payload = report.get(name) if isinstance(report.get(name), dict) else {}
+        if name == "parsing_proof":
+            _render_parsing_proof_section(name, payload, lines)
+            return
+        if name == "parsing_proof_diff":
+            _render_parsing_proof_diff_section(name, payload, lines)
+            return
         lines.append(f"## {name}")
         lines.append("")
         lines.append(f"- Policy: `{str(payload.get('policy') or '')}`")
@@ -1183,6 +1277,7 @@ def main() -> int:
                     "path": str(proof_path),
                     "policy": proof_policy,
                     "observed": proof_observed,
+                    "details": _extract_parsing_proof_summary_details(proof_obj),
                 }
                 if proof_policy == "warn":
                     notes.extend(proof_notes)
@@ -1227,6 +1322,7 @@ def main() -> int:
                     "path": str(proof_diff_path),
                     "policy": proof_diff_policy,
                     "observed": diff_observed,
+                    "details": _extract_parsing_proof_diff_details(proof_diff_obj),
                 }
                 if proof_diff_policy == "warn":
                     notes.extend(diff_notes)

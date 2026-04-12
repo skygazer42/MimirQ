@@ -52,3 +52,27 @@ def test_release_gate_parsing_proof_diff_warn_mode_emits_notes() -> None:
     assert len(violations) == 3
     assert notes
     assert observed.get("failed_case_added_count") == 1
+
+
+def test_release_gate_extracts_parsing_proof_markdown_details() -> None:
+    import scripts.release_gate as mod
+
+    summary_details = mod._extract_parsing_proof_summary_details(  # noqa: SLF001
+        {
+            "failed_case_ids": ["case-a", "", None, "case-b"],
+        }
+    )
+    diff_details = mod._extract_parsing_proof_diff_details(  # noqa: SLF001
+        {
+            "failed_case_drift": {
+                "added_ids": ["case-c"],
+                "removed_ids": ["case-a", ""],
+            }
+        }
+    )
+
+    assert summary_details == {"failed_case_ids": ["case-a", "case-b"]}
+    assert diff_details == {
+        "failed_case_added_ids": ["case-c"],
+        "failed_case_removed_ids": ["case-a"],
+    }
