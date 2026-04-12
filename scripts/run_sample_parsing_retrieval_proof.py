@@ -17,6 +17,7 @@ def run_sample_parsing_retrieval_proof(
     out_dir: Path,
     thresholds_path: Path | None = None,
     baseline_summary_path: Path | None = None,
+    rollout_path: Path | None = None,
 ) -> dict[str, Any]:
     import json
 
@@ -29,6 +30,7 @@ def run_sample_parsing_retrieval_proof(
     from scripts.diff_parsing_retrieval_proof_summaries import run as run_parsing_proof_diff
     from scripts.parsing_retrieval_proof_gate import normalize_thresholds
     from scripts.run_parsing_retrieval_proof_batch import run_batch
+    from scripts.validate_parsing_retrieval_proof_rollout import validate_rollout
 
     case_queries = json.loads(Path(case_queries_path).resolve().read_text(encoding="utf-8"))
     spec = build_batch_spec(
@@ -49,10 +51,19 @@ def run_sample_parsing_retrieval_proof(
 
     summary_path = out_dir / "summary.json"
     report_path = out_dir / "report.json"
+    rollout_artifact_path = out_dir / "rollout.json"
     gate_path = out_dir / "gate.json"
     diff_path = out_dir / "diff.json"
     diff_md_path = out_dir / "diff.md"
     review_md_path = out_dir / "review.md"
+    if rollout_path is None:
+        rollout_path = _REPO_ROOT / "ci" / "parsing_retrieval_proof_rollout.v1.json"
+    resolved_rollout_path = Path(rollout_path).resolve() if rollout_path is not None else None
+    rollout_payload = None
+    if resolved_rollout_path is not None and resolved_rollout_path.exists():
+        rollout_raw = json.loads(resolved_rollout_path.read_text(encoding="utf-8"))
+        rollout_payload = validate_rollout(rollout_raw if isinstance(rollout_raw, dict) else {})
+        rollout_artifact_path.write_text(json.dumps(rollout_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     summary_payload = build_parsing_proof_summary(report)
     report_payload = build_parsing_proof_report(
@@ -62,6 +73,7 @@ def run_sample_parsing_retrieval_proof(
             "hit_at_k_mean": 1.0,
             "mrr_mean": 1.0,
         },
+        rollout=rollout_payload,
     )
 
     if thresholds_path is not None:
@@ -74,6 +86,7 @@ def run_sample_parsing_retrieval_proof(
                 "hit_at_k_mean": float((normalized.get("hit_at_k_mean") or {}).get("min") or 0.0),
                 "mrr_mean": float((normalized.get("mrr_mean") or {}).get("min") or 0.0),
             },
+            rollout=rollout_payload,
         )
 
     summary_path.write_text(json.dumps(summary_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -90,6 +103,7 @@ def run_sample_parsing_retrieval_proof(
             "case_queries_path": str(Path(case_queries_path).resolve()),
             "spec_path": str(spec_path),
             "batch_report_path": str(out_dir / "batch.report.json"),
+            "rollout_path": str(resolved_rollout_path) if resolved_rollout_path is not None else None,
         },
     }
     for check in list(report_payload.get("checks") or []):
@@ -145,6 +159,11 @@ def main(argv: list[str] | None = None) -> int:
         default=str(_REPO_ROOT / "ci" / "parsing_retrieval_proof_summary_baseline.v1.json"),
         help="Optional baseline parsing-proof summary JSON used to derive diff artifacts.",
     )
+    parser.add_argument(
+        "--rollout-json",
+        default=str(_REPO_ROOT / "ci" / "parsing_retrieval_proof_rollout.v1.json"),
+        help="Optional staged rollout JSON used to annotate parsing-proof artifacts.",
+    )
     args = parser.parse_args(argv)
 
     report = run_sample_parsing_retrieval_proof(
@@ -153,6 +172,7 @@ def main(argv: list[str] | None = None) -> int:
         out_dir=Path(str(args.out_dir)),
         thresholds_path=Path(str(args.thresholds_json)) if str(args.thresholds_json or "").strip() else None,
         baseline_summary_path=Path(str(args.baseline_summary_json)) if str(args.baseline_summary_json or "").strip() else None,
+        rollout_path=Path(str(args.rollout_json)) if str(args.rollout_json or "").strip() else None,
     )
     summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
     print(

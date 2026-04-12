@@ -98,6 +98,48 @@ def _build_group_summaries(
     return summaries
 
 
+def _build_rollout_summary(rollout_payload: Any) -> dict[str, Any] | None:
+    payload = rollout_payload if isinstance(rollout_payload, dict) else {}
+    current_stage = str(payload.get("current_stage") or "").strip().lower()
+    if current_stage not in {"informational", "warn", "fail"}:
+        return None
+
+    next_stage: str | None = None
+    promotion_key: str | None = None
+    if current_stage == "informational":
+        next_stage = "warn"
+        promotion_key = "informational_to_warn"
+    elif current_stage == "warn":
+        next_stage = "fail"
+        promotion_key = "warn_to_fail"
+
+    promotion_requirements_obj = (
+        payload.get("promotion_requirements")
+        if isinstance(payload.get("promotion_requirements"), dict)
+        else {}
+    )
+    promotion_requirements = []
+    if promotion_key is not None:
+        promotion_requirements = [
+            str(value).strip()
+            for value in (promotion_requirements_obj.get(promotion_key) or [])
+            if str(value).strip()
+        ]
+
+    owner_roles = [
+        str(value).strip()
+        for value in (payload.get("owner_roles") or [])
+        if str(value).strip()
+    ]
+    return {
+        "schema": str(payload.get("schema") or "").strip(),
+        "current_stage": current_stage,
+        "next_stage": next_stage,
+        "owner_roles": owner_roles,
+        "promotion_requirements": promotion_requirements,
+    }
+
+
 def build_parsing_proof_summary(batch_payload: Any) -> dict[str, Any]:
     payload = batch_payload if isinstance(batch_payload, dict) else {}
     summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
@@ -140,6 +182,7 @@ def build_parsing_proof_report(
     *,
     summary_path: str,
     thresholds: dict[str, float],
+    rollout: Any = None,
 ) -> dict[str, Any]:
     payload = summary_payload if isinstance(summary_payload, dict) else {}
     values = {
@@ -154,7 +197,7 @@ def build_parsing_proof_report(
         }
         for name in values
     }
-    return {
+    report = {
         "schema": "mimirq.parsing_retrieval_proof_report.v1",
         "summary_path": str(summary_path),
         "thresholds": {name: float(value) for name, value in thresholds.items()},
@@ -164,6 +207,10 @@ def build_parsing_proof_report(
         "slice_summaries": list(payload.get("slice_summaries") or []),
         "passed": bool(all(item["passed"] for item in checks.values())),
     }
+    rollout_summary = _build_rollout_summary(rollout)
+    if rollout_summary is not None:
+        report["rollout"] = rollout_summary
+    return report
 
 
 def main(argv: list[str] | None = None) -> int:

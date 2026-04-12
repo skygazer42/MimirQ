@@ -164,6 +164,7 @@ def test_rag_quality_gate_workflow_exists() -> None:
         "parsing_proof_batch.spec.json",
         "*.fixture.json",
         "*.report.json",
+        "rollout.json",
         "summary.json",
         "gate.json",
         "diff.json",

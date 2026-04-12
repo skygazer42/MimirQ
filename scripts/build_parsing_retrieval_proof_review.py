@@ -54,6 +54,23 @@ def _append_group_table(lines: list[str], *, title: str, groups: Any) -> None:
     lines.append("")
 
 
+def _append_rollout_section(lines: list[str], rollout: Any) -> None:
+    payload = rollout if isinstance(rollout, dict) else {}
+    if not payload:
+        return
+    owner_roles = ", ".join(str(value).strip() for value in (payload.get("owner_roles") or []) if str(value).strip())
+    promotion_requirements = ", ".join(
+        str(value).strip() for value in (payload.get("promotion_requirements") or []) if str(value).strip()
+    )
+    lines.append("## Rollout")
+    lines.append("")
+    lines.append(f"- `current_stage`: `{payload.get('current_stage')}`")
+    lines.append(f"- `next_stage`: `{payload.get('next_stage')}`")
+    lines.append(f"- `owner_roles`: `{owner_roles}`")
+    lines.append(f"- `promotion_requirements`: `{promotion_requirements}`")
+    lines.append("")
+
+
 def build_review_markdown(
     *,
     summary: dict[str, Any],
@@ -80,6 +97,7 @@ def build_review_markdown(
     lines.append(f"- `gate_schema`: `{gate.get('schema')}`")
     lines.append(f"- `diff_schema`: `{diff.get('schema')}`")
     lines.append("")
+    _append_rollout_section(lines, report.get("rollout"))
     lines.append("## Threshold Checks")
     lines.append("")
     if checks:

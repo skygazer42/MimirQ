@@ -51,6 +51,7 @@ jobs:
             artifacts/parsing_proof_broader_nightly/parsing_proof_batch.spec.json
             artifacts/parsing_proof_broader_nightly/*.fixture.json
             artifacts/parsing_proof_broader_nightly/*.report.json
+            artifacts/parsing_proof_broader_nightly/rollout.json
             artifacts/parsing_proof_broader_nightly/summary.json
             artifacts/parsing_proof_broader_nightly/gate.json
             artifacts/parsing_proof_broader_nightly/diff.json

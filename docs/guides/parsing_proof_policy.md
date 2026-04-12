@@ -33,11 +33,13 @@ The broader parsing-proof sample currently emits:
 - per-case `*.fixture.json`
 - per-case `*.report.json`
 - `batch.report.json`
+- `rollout.json`
 - `summary.json`
 - `report.json`
 - `gate.json`
 - `diff.json`
 - `diff.md`
+- `review.md`
 
 Schemas:
 
@@ -66,6 +68,10 @@ The repo does not currently encode personal owners in code. Treat these as role 
 Baseline file:
 
 - `ci/parsing_retrieval_proof_summary_baseline.v1.json`
+
+Rollout policy file:
+
+- `ci/parsing_retrieval_proof_rollout.v1.json`
 
 Only update the baseline when at least one of these is true:
 
@@ -117,10 +123,12 @@ If the corpus broadens:
 
 When a parsing-proof diff changes:
 
-1. Read `summary.json`
-2. Read `report.json`
-3. Read `diff.json` and `diff.md`
-4. Determine whether the change is:
+1. Read `rollout.json` to confirm the current stage and next promotion target.
+2. Read `summary.json`
+3. Read `report.json`
+4. Read `review.md`
+5. Read `diff.json` and `diff.md`
+6. Determine whether the change is:
    - intentional parser improvement
    - fixture drift
    - retrieval semantics drift
