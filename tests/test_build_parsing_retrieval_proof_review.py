@@ -29,12 +29,22 @@ def test_build_parsing_proof_review_mentions_summary_checks_and_diff(tmp_path: P
             "hit_at_k_mean": 1.0,
             "mrr_mean": 1.0,
             "failed_case_ids": [],
+            "category_summaries": [
+                {"name": "image", "cases_total": 2, "case_ids": ["chart_pdf_case", "qr_image_case"], "hit_at_k_mean": 1.0, "mrr_mean": 0.75, "failed_case_ids": ["qr_image_case"]}
+            ],
+            "slice_summaries": [
+                {"name": "chart", "cases_total": 1, "case_ids": ["chart_pdf_case"], "hit_at_k_mean": 1.0, "mrr_mean": 1.0, "failed_case_ids": []},
+                {"name": "qr", "cases_total": 1, "case_ids": ["qr_image_case"], "hit_at_k_mean": 1.0, "mrr_mean": 0.5, "failed_case_ids": ["qr_image_case"]},
+            ],
             "cases": [{"id": "case-a", "hit_at_k": 1.0, "mrr": 1.0}],
         },
         report={
             "schema": "mimirq.parsing_retrieval_proof_report.v1",
             "summary_path": "artifacts/parsing_proof.summary.json",
-            "checks": [{"metric": "hit_at_k_mean", "value": 1.0, "min": 1.0, "passed": True}],
+            "checks": {
+                "hit_at_k_mean": {"value": 1.0, "min": 1.0, "passed": True},
+                "mrr_mean": {"value": 1.0, "min": 1.0, "passed": True},
+            },
         },
         gate={"schema": "mimirq.parsing_retrieval_proof_gate_report.v1", "passed": True, "failures": []},
         diff={
@@ -49,6 +59,10 @@ def test_build_parsing_proof_review_mentions_summary_checks_and_diff(tmp_path: P
     assert "`hit_at_k_mean`: `1.0`" in review
     assert "`mrr_mean_delta`: `0.0`" in review
     assert "## Artifacts" in review
+    assert "## Category Summary" in review
+    assert "| image | 2 | 1.0 | 0.75 | qr_image_case |" in review
+    assert "## Slice Summary" in review
+    assert "| qr | 1 | 1.0 | 0.5 | qr_image_case |" in review
     assert "| Case | hit@k | mrr |" in review
     assert "| case-a | 1.0 | 1.0 |" in review
 
@@ -63,7 +77,19 @@ def test_build_parsing_proof_review_main_writes_markdown(tmp_path: Path) -> None
 
     summary.write_text(
         json.dumps(
-            {"cases_total": 5, "hit_at_k_mean": 1.0, "mrr_mean": 1.0, "failed_case_ids": [], "cases": [{"id": "case-a", "hit_at_k": 1.0, "mrr": 1.0}]}
+            {
+                "cases_total": 5,
+                "hit_at_k_mean": 1.0,
+                "mrr_mean": 1.0,
+                "failed_case_ids": [],
+                "category_summaries": [
+                    {"name": "layout", "cases_total": 1, "case_ids": ["two_column_pdf_case"], "hit_at_k_mean": 1.0, "mrr_mean": 1.0, "failed_case_ids": []}
+                ],
+                "slice_summaries": [
+                    {"name": "two_column", "cases_total": 1, "case_ids": ["two_column_pdf_case"], "hit_at_k_mean": 1.0, "mrr_mean": 1.0, "failed_case_ids": []}
+                ],
+                "cases": [{"id": "case-a", "hit_at_k": 1.0, "mrr": 1.0}],
+            }
         ),
         encoding="utf-8",
     )
@@ -72,7 +98,7 @@ def test_build_parsing_proof_review_main_writes_markdown(tmp_path: Path) -> None
             {
                 "schema": "mimirq.parsing_retrieval_proof_report.v1",
                 "summary_path": "artifacts/parsing_proof.summary.json",
-                "checks": [{"metric": "hit_at_k_mean", "value": 1.0, "min": 1.0, "passed": True}],
+                "checks": {"hit_at_k_mean": {"value": 1.0, "min": 1.0, "passed": True}},
             }
         ),
         encoding="utf-8",
@@ -109,4 +135,7 @@ def test_build_parsing_proof_review_main_writes_markdown(tmp_path: Path) -> None
 
     assert rc == 0
     assert out.exists()
-    assert "# Parsing Proof Review" in out.read_text(encoding="utf-8")
+    text = out.read_text(encoding="utf-8")
+    assert "# Parsing Proof Review" in text
+    assert "## Category Summary" in text
+    assert "## Slice Summary" in text
