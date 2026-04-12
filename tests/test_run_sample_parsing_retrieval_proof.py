@@ -38,6 +38,8 @@ def test_run_sample_parsing_retrieval_proof_writes_batch_outputs(tmp_path: Path)
     assert (out_dir / "summary.json").exists()
     assert (out_dir / "report.json").exists()
     assert (out_dir / "gate.json").exists()
+    assert (out_dir / "diff.json").exists()
+    assert (out_dir / "diff.md").exists()
 
 
 def test_run_sample_parsing_retrieval_proof_cli_writes_batch_report(tmp_path: Path) -> None:
@@ -62,3 +64,4 @@ def test_run_sample_parsing_retrieval_proof_cli_writes_batch_report(tmp_path: Pa
     assert json.loads((out_dir / "summary.json").read_text(encoding="utf-8"))["schema"] == "mimirq.parsing_retrieval_proof_summary.v1"
     assert json.loads((out_dir / "report.json").read_text(encoding="utf-8"))["schema"] == "mimirq.parsing_retrieval_proof_report.v1"
     assert json.loads((out_dir / "gate.json").read_text(encoding="utf-8"))["schema"] == "mimirq.parsing_retrieval_proof_gate_report.v1"
+    assert json.loads((out_dir / "diff.json").read_text(encoding="utf-8"))["schema"] == "mimirq.parsing_retrieval_proof_diff.v1"

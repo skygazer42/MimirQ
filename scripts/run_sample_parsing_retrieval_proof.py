@@ -16,6 +16,7 @@ def run_sample_parsing_retrieval_proof(
     case_queries_path: Path,
     out_dir: Path,
     thresholds_path: Path | None = None,
+    baseline_summary_path: Path | None = None,
 ) -> dict[str, Any]:
     import json
 
@@ -24,6 +25,7 @@ def run_sample_parsing_retrieval_proof(
         build_parsing_proof_summary,
     )
     from scripts.build_parsing_retrieval_proof_batch_spec import build_batch_spec
+    from scripts.diff_parsing_retrieval_proof_summaries import run as run_parsing_proof_diff
     from scripts.parsing_retrieval_proof_gate import normalize_thresholds
     from scripts.run_parsing_retrieval_proof_batch import run_batch
 
@@ -40,9 +42,14 @@ def run_sample_parsing_retrieval_proof(
     spec_path.write_text(json.dumps(spec, ensure_ascii=False, indent=2), encoding="utf-8")
     report = run_batch(spec_path=spec_path, out_dir=out_dir)
 
+    if baseline_summary_path is None:
+        baseline_summary_path = _REPO_ROOT / "ci" / "parsing_retrieval_proof_summary_baseline.v1.json"
+
     summary_path = out_dir / "summary.json"
     report_path = out_dir / "report.json"
     gate_path = out_dir / "gate.json"
+    diff_path = out_dir / "diff.json"
+    diff_md_path = out_dir / "diff.md"
 
     summary_payload = build_parsing_proof_summary(report)
     report_payload = build_parsing_proof_report(
@@ -80,6 +87,14 @@ def run_sample_parsing_retrieval_proof(
         if isinstance(check, dict) and not bool(check.get("passed")):
             gate_payload["failures"].append(f"{check.get('metric')}: below threshold")
     gate_path.write_text(json.dumps(gate_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    if baseline_summary_path is not None and Path(baseline_summary_path).exists():
+        run_parsing_proof_diff(
+            baseline_path=Path(baseline_summary_path).resolve(),
+            current_path=summary_path,
+            out=diff_path,
+            out_md=diff_md_path,
+        )
     return report
 
 
@@ -105,6 +120,11 @@ def main(argv: list[str] | None = None) -> int:
         default=str(_REPO_ROOT / "ci" / "parsing_retrieval_proof_thresholds.v1.json"),
         help="Thresholds JSON used to derive the parsing-proof gate artifact.",
     )
+    parser.add_argument(
+        "--baseline-summary-json",
+        default=str(_REPO_ROOT / "ci" / "parsing_retrieval_proof_summary_baseline.v1.json"),
+        help="Optional baseline parsing-proof summary JSON used to derive diff artifacts.",
+    )
     args = parser.parse_args(argv)
 
     report = run_sample_parsing_retrieval_proof(
@@ -112,6 +132,7 @@ def main(argv: list[str] | None = None) -> int:
         case_queries_path=Path(str(args.case_queries_json)),
         out_dir=Path(str(args.out_dir)),
         thresholds_path=Path(str(args.thresholds_json)) if str(args.thresholds_json or "").strip() else None,
+        baseline_summary_path=Path(str(args.baseline_summary_json)) if str(args.baseline_summary_json or "").strip() else None,
     )
     summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
     print(
