@@ -54,5 +54,23 @@
       "degradation_flag_added_count": { "max": 0 },
       "parse_risk_tail_added_count": { "max": 0 }
     }
+  },
+  "parsing_proof": {
+    "path": "artifacts/parsing_proof_broader_sample/summary.json",
+    "policy": "warn",
+    "thresholds": {
+      "hit_at_k_mean": { "min": 1.0 },
+      "mrr_mean": { "min": 1.0 },
+      "failed_case_count": { "max": 0 }
+    }
+  },
+  "parsing_proof_diff": {
+    "path": "artifacts/parsing_proof_broader_sample/diff.json",
+    "policy": "warn",
+    "thresholds": {
+      "hit_at_k_mean_delta": { "min": 0.0 },
+      "mrr_mean_delta": { "min": 0.0 },
+      "failed_case_added_count": { "max": 0 }
+    }
   }
 }

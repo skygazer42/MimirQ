@@ -667,6 +667,70 @@ def _gate_queryset_health_diff(
     return violations, notes, observed
 
 
+def _gate_parsing_proof_summary(
+    *,
+    summary: Any,
+    cfg: dict[str, Any],
+    area: str = "parsing_proof",
+) -> tuple[list[GateViolation], list[str], dict[str, Any]]:
+    policy = _policy((cfg or {}).get("policy"), default="warn")
+    thresholds = normalize_thresholds((cfg or {}).get("thresholds"))
+
+    observed = {
+        "cases_total": int((summary or {}).get("cases_total") or 0),
+        "hit_at_k_mean": _safe_float((summary or {}).get("hit_at_k_mean")),
+        "mrr_mean": _safe_float((summary or {}).get("mrr_mean")),
+        "failed_case_count": int(len((summary or {}).get("failed_case_ids") or [])),
+    }
+
+    violations: list[GateViolation] = []
+    notes: list[str] = []
+    for metric, threshold in thresholds.items():
+        value = _safe_float(observed.get(metric))
+        viol = _check_threshold(area=area, metric=metric, value=value, threshold=threshold)
+        if viol is None:
+            continue
+        violations.append(viol)
+        if policy == "warn":
+            notes.append(f"[release_gate] WARN: {area}.{metric}: value={viol.value} threshold={threshold} msg={viol.message}")
+    return violations, notes, observed
+
+
+def _gate_parsing_proof_diff(
+    *,
+    diff: Any,
+    cfg: dict[str, Any],
+    area: str = "parsing_proof_diff",
+) -> tuple[list[GateViolation], list[str], dict[str, Any]]:
+    policy = _policy((cfg or {}).get("policy"), default="warn")
+    thresholds = normalize_thresholds((cfg or {}).get("thresholds"))
+
+    metric_deltas = (diff.get("metric_deltas") if isinstance(diff, dict) and isinstance(diff.get("metric_deltas"), dict) else {})
+    failed_drift = (
+        diff.get("failed_case_drift")
+        if isinstance(diff, dict) and isinstance(diff.get("failed_case_drift"), dict)
+        else {}
+    )
+
+    observed = {
+        "hit_at_k_mean_delta": _safe_float(metric_deltas.get("hit_at_k_mean_delta")),
+        "mrr_mean_delta": _safe_float(metric_deltas.get("mrr_mean_delta")),
+        "failed_case_added_count": int(len((failed_drift.get("added_ids") or []))),
+    }
+
+    violations: list[GateViolation] = []
+    notes: list[str] = []
+    for metric, threshold in thresholds.items():
+        value = _safe_float(observed.get(metric))
+        viol = _check_threshold(area=area, metric=metric, value=value, threshold=threshold)
+        if viol is None:
+            continue
+        violations.append(viol)
+        if policy == "warn":
+            notes.append(f"[release_gate] WARN: {area}.{metric}: value={viol.value} threshold={threshold} msg={viol.message}")
+    return violations, notes, observed
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="Release gate: regression + SLO + cost budgets.")
     p.add_argument("--base-url", default="http://localhost:8000/api/v1", help="API base url (default: %(default)s)")
@@ -719,6 +783,8 @@ def main() -> int:
         default="",
         help="Override queryset health policy drift gate behavior (warn|fail). Empty uses budgets file.",
     )
+    p.add_argument("--parsing-proof-summary", default="", help="Broader parsing-proof summary JSON path (optional)")
+    p.add_argument("--parsing-proof-diff", default="", help="Broader parsing-proof diff JSON path (optional)")
 
     p.add_argument("--out-report", default="", help="Write a JSON report to a file (optional)")
 
@@ -767,6 +833,8 @@ def main() -> int:
         "queryset_health_hybrid": {},
         "queryset_health_diff": {},
         "queryset_health_diff_hybrid": {},
+        "parsing_proof": {},
+        "parsing_proof_diff": {},
         "retrieval_leaderboard": {},
         "violations": [],
         "notes": [],
@@ -1022,6 +1090,94 @@ def main() -> int:
                     violations.extend(qs_violations)
         else:
             report["queryset_health_diff_hybrid"] = {"policy": qs_policy, "observed": {}}
+
+    parsing_proof_cfg = budgets.get("parsing_proof") if isinstance(budgets.get("parsing_proof"), dict) else {}
+    if args.parsing_proof_summary:
+        parsing_proof_cfg = dict(parsing_proof_cfg or {})
+        parsing_proof_cfg["path"] = str(args.parsing_proof_summary)
+
+    if isinstance(parsing_proof_cfg, dict) and parsing_proof_cfg:
+        proof_path_text = str(parsing_proof_cfg.get("path") or "").strip()
+        proof_policy = _policy(parsing_proof_cfg.get("policy"), default="warn")
+        if proof_path_text:
+            proof_path = Path(proof_path_text)
+            if not proof_path.exists():
+                msg = f"parsing proof summary not found: {proof_path}"
+                if proof_policy == "fail":
+                    violations.append(
+                        GateViolation(
+                            area="parsing_proof",
+                            metric="artifact_path",
+                            value=None,
+                            threshold={},
+                            message=msg,
+                        )
+                    )
+                else:
+                    notes.append(f"[release_gate] WARN: {msg}")
+                report["parsing_proof"] = {"path": str(proof_path), "policy": proof_policy, "observed": {}}
+            else:
+                proof_obj = _load_json(proof_path)
+                proof_violations, proof_notes, proof_observed = _gate_parsing_proof_summary(
+                    summary=proof_obj,
+                    cfg=parsing_proof_cfg,
+                    area="parsing_proof",
+                )
+                report["parsing_proof"] = {
+                    "path": str(proof_path),
+                    "policy": proof_policy,
+                    "observed": proof_observed,
+                }
+                if proof_policy == "warn":
+                    notes.extend(proof_notes)
+                else:
+                    violations.extend(proof_violations)
+        else:
+            report["parsing_proof"] = {"policy": proof_policy, "observed": {}}
+
+    parsing_proof_diff_cfg = budgets.get("parsing_proof_diff") if isinstance(budgets.get("parsing_proof_diff"), dict) else {}
+    if args.parsing_proof_diff:
+        parsing_proof_diff_cfg = dict(parsing_proof_diff_cfg or {})
+        parsing_proof_diff_cfg["path"] = str(args.parsing_proof_diff)
+
+    if isinstance(parsing_proof_diff_cfg, dict) and parsing_proof_diff_cfg:
+        proof_diff_path_text = str(parsing_proof_diff_cfg.get("path") or "").strip()
+        proof_diff_policy = _policy(parsing_proof_diff_cfg.get("policy"), default="warn")
+        if proof_diff_path_text:
+            proof_diff_path = Path(proof_diff_path_text)
+            if not proof_diff_path.exists():
+                msg = f"parsing proof diff not found: {proof_diff_path}"
+                if proof_diff_policy == "fail":
+                    violations.append(
+                        GateViolation(
+                            area="parsing_proof_diff",
+                            metric="artifact_path",
+                            value=None,
+                            threshold={},
+                            message=msg,
+                        )
+                    )
+                else:
+                    notes.append(f"[release_gate] WARN: {msg}")
+                report["parsing_proof_diff"] = {"path": str(proof_diff_path), "policy": proof_diff_policy, "observed": {}}
+            else:
+                proof_diff_obj = _load_json(proof_diff_path)
+                diff_violations, diff_notes, diff_observed = _gate_parsing_proof_diff(
+                    diff=proof_diff_obj,
+                    cfg=parsing_proof_diff_cfg,
+                    area="parsing_proof_diff",
+                )
+                report["parsing_proof_diff"] = {
+                    "path": str(proof_diff_path),
+                    "policy": proof_diff_policy,
+                    "observed": diff_observed,
+                }
+                if proof_diff_policy == "warn":
+                    notes.extend(diff_notes)
+                else:
+                    violations.extend(diff_violations)
+        else:
+            report["parsing_proof_diff"] = {"policy": proof_diff_policy, "observed": {}}
 
     # Optional retrieval leaderboard drift gate.
     lb_cfg = budgets.get("retrieval_leaderboard") if isinstance(budgets.get("retrieval_leaderboard"), dict) else {}
