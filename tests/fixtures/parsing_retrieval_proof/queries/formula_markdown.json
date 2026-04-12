@@ -1,0 +1,12 @@
+[
+  {
+    "id": "q-formula-1",
+    "question": "What is the core formula shown in the derivation note?",
+    "expected_chunk_indexes": [0]
+  },
+  {
+    "id": "q-formula-2",
+    "question": "Which chunk contains the equation E = mc^2 in display math form?",
+    "expected_chunk_indexes": [0]
+  }
+]

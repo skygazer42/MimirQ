@@ -77,6 +77,12 @@
       "path": "multilingual_pdf/input/sample.pdf",
       "golden_markdown": "multilingual_pdf/golden/sample.md",
       "specialty_elements_path": "multilingual_pdf/golden/sample.specialty.json"
+    },
+    {
+      "id": "formula_markdown_case",
+      "path": "formula_markdown/input/sample.md",
+      "golden_markdown": "formula_markdown/golden/sample.md",
+      "specialty_elements_path": "formula_markdown/golden/sample.specialty.json"
     }
   ]
 }
