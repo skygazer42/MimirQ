@@ -258,6 +258,19 @@ def test_infer_visual_kind_from_pixels_detects_committed_diagram_fixture() -> No
     assert out == "diagram"
 
 
+def test_infer_visual_kind_from_pixels_detects_committed_broader_diagram_fixture() -> None:
+    from app.parsing.enrich.image_understanding import infer_visual_kind_from_pixels  # noqa: WPS433
+
+    fixture = Path("tests/fixtures/parsing_golden_broader/diagram_pdf/input/diagram.png")
+    image = PILImage.open(fixture)
+    try:
+        out = infer_visual_kind_from_pixels(image)
+    finally:
+        image.close()
+
+    assert out == "diagram"
+
+
 def test_chunk_asset_stage_falls_back_to_pixel_visual_kind_for_image_chunk(monkeypatch):  # noqa: ANN001
     import app.parsing.enrich.image_understanding as iu_mod
     import app.parsing.processors.processor as processor_mod
