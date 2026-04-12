@@ -215,6 +215,23 @@ def test_infer_visual_kind_from_pixels_detects_committed_chart_fixture() -> None
     assert out == "chart"
 
 
+def test_infer_visual_kind_from_pixels_detects_synthetic_line_chart() -> None:
+    from app.parsing.enrich.image_understanding import infer_visual_kind_from_pixels  # noqa: WPS433
+
+    image = PILImage.new("RGB", (320, 220), color=(255, 255, 255))
+    draw = ImageDraw.Draw(image)
+    draw.line((32, 24, 32, 186), fill=(0, 0, 0), width=4)
+    draw.line((32, 186, 286, 186), fill=(0, 0, 0), width=4)
+    points = [(48, 162), (92, 142), (138, 150), (184, 112), (232, 94), (272, 68)]
+    draw.line(points, fill=(33, 102, 172), width=6)
+    for x, y in points:
+        draw.ellipse((x - 5, y - 5, x + 5, y + 5), fill=(33, 102, 172))
+
+    out = infer_visual_kind_from_pixels(image)
+
+    assert out == "chart"
+
+
 def test_infer_visual_kind_from_pixels_detects_committed_diagram_fixture() -> None:
     from app.parsing.enrich.image_understanding import infer_visual_kind_from_pixels  # noqa: WPS433
 
