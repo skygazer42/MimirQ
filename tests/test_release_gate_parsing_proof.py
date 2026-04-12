@@ -7,9 +7,14 @@ def test_release_gate_parsing_proof_warn_mode_emits_notes() -> None:
     import scripts.release_gate as mod
 
     summary = {
+        "query_count_total": 8,
         "hit_at_k_mean": 0.9,
         "mrr_mean": 0.8,
         "failed_case_ids": ["case-a"],
+        "sample_composition": {
+            "case_family_counts": {"specialty": 2, "table": 1, "layout": 1},
+            "case_category_counts": {"chart": 1, "qr": 1, "cross_page_table_pdf": 1, "two_column_pdf": 1},
+        },
     }
     cfg = {
         "policy": "warn",
@@ -27,6 +32,7 @@ def test_release_gate_parsing_proof_warn_mode_emits_notes() -> None:
 
     assert len(violations) == 3
     assert notes
+    assert observed.get("query_count_total") == 8
     assert observed.get("failed_case_count") == 1
 
 
@@ -62,6 +68,10 @@ def test_release_gate_extracts_parsing_proof_markdown_details() -> None:
     summary_details = mod._extract_parsing_proof_summary_details(  # noqa: SLF001
         {
             "failed_case_ids": ["case-a", "", None, "case-b"],
+            "sample_composition": {
+                "case_family_counts": {"document": 2, "specialty": 1},
+                "case_category_counts": {"formula_markdown": 1, "multilingual_pdf": 1, "chart": 1},
+            },
         }
     )
     diff_details = mod._extract_parsing_proof_diff_details(  # noqa: SLF001
@@ -73,7 +83,13 @@ def test_release_gate_extracts_parsing_proof_markdown_details() -> None:
         }
     )
 
-    assert summary_details == {"failed_case_ids": ["case-a", "case-b"]}
+    assert summary_details == {
+        "failed_case_ids": ["case-a", "case-b"],
+        "sample_composition": {
+            "case_family_counts": {"document": 2, "specialty": 1},
+            "case_category_counts": {"chart": 1, "formula_markdown": 1, "multilingual_pdf": 1},
+        },
+    }
     assert diff_details == {
         "failed_case_added_ids": ["case-c"],
         "failed_case_removed_ids": ["case-a"],
@@ -108,6 +124,10 @@ def test_release_gate_extracts_parsing_proof_rollout_from_neighbor_artifact(tmp_
 
     assert summary_details == {
         "failed_case_ids": [],
+        "sample_composition": {
+            "case_family_counts": {},
+            "case_category_counts": {},
+        },
         "rollout": {
             "current_stage": "informational",
             "next_stage": "warn",
