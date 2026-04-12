@@ -203,6 +203,14 @@ jobs:
             --thresholds ci/parsing_retrieval_proof_thresholds.v1.json \
             --out artifacts/parsing_proof_broader_sample/gate.json || true
 
+      - name: Build broader parsing proof diff artifacts
+        run: |
+          python scripts/diff_parsing_retrieval_proof_summaries.py \
+            --a ci/parsing_retrieval_proof_summary_baseline.v1.json \
+            --b artifacts/parsing_proof_broader_sample/summary.json \
+            --out artifacts/parsing_proof_broader_sample/diff.json \
+            --out-md artifacts/parsing_proof_broader_sample/diff.md
+
       - name: Build query-set health snapshot from bounded benchmark
         run: |
           python scripts/run_queryset_health_diagnostics.py \
@@ -801,6 +809,8 @@ jobs:
             artifacts/parsing_proof_broader_sample/summary.json
             artifacts/parsing_proof_broader_sample/report.json
             artifacts/parsing_proof_broader_sample/gate.json
+            artifacts/parsing_proof_broader_sample/diff.json
+            artifacts/parsing_proof_broader_sample/diff.md
             artifacts/queryset_health.snapshot.hybrid.json
             artifacts/queryset_health.snapshot.sparse.json
             artifacts/queryset_health.diff.json
