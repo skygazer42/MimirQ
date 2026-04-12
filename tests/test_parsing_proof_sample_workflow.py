@@ -15,3 +15,5 @@ def test_parsing_proof_sample_workflow_exists_and_wires_sample_runner() -> None:
     assert "artifacts/parsing_proof_broader_sample/summary.json" in text
     assert "artifacts/parsing_proof_broader_sample/report.json" in text
     assert "artifacts/parsing_proof_broader_sample/gate.json" in text
+    assert "artifacts/parsing_proof_broader_sample/diff.json" in text
+    assert "artifacts/parsing_proof_broader_sample/diff.md" in text

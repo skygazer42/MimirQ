@@ -177,4 +177,6 @@ def test_rag_quality_gate_workflow_exists() -> None:
     assert "artifacts/parsing_proof_broader_sample/summary.json" in text
     assert "artifacts/parsing_proof_broader_sample/report.json" in text
     assert "artifacts/parsing_proof_broader_sample/gate.json" in text
+    assert "artifacts/parsing_proof_broader_sample/diff.json" in text
+    assert "artifacts/parsing_proof_broader_sample/diff.md" in text
     assert "actions/upload-artifact@v4" in text
