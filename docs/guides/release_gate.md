@@ -14,6 +14,8 @@ Wave44 adds optional **queryset health policy metadata ingestion** so release re
 distinguish quality drift from threshold-policy edits.
 Wave46 adds explicit **queryset drift-class gating** for both the default bounded fixture and the
 hybrid bounded fixture.
+Wave48 adds optional **broader parsing-proof ingestion** so release reports can surface
+deterministic parsing-impact signals (summary + diff) alongside retrieval/queryset artifacts.
 
 ## What It Gates
 
@@ -25,6 +27,8 @@ hybrid bounded fixture.
    `policy_source`, `trend.policy_changed`) and optionally fail/warn on policy changes
 6. **Queryset drift-class thresholds (optional)**: fail when bounded diffs introduce new hard cases,
    degradation flags, or parse-risk tail documents
+7. **Broader parsing-proof summary (optional)**: surface `hit_at_k_mean`, `mrr_mean`, and failed-case count
+8. **Broader parsing-proof diff (optional)**: surface delta from the checked-in parsing-proof baseline
 
 All outputs are PII-safe by construction (numbers, hashes, low-cardinality labels).
 
@@ -50,12 +54,17 @@ The GitHub Actions workflow runs:
 - `retrieval-regression-gate` job (retrieval-only regression gate)
 - `retrieval-only-bounded-gate` job to publish deterministic artifacts:
   - `artifacts/sample_retrieval_bench.json`
-  - `artifacts/sample_retrieval_bench.hybrid.json`
-  - `artifacts/sample_retrieval_bench.colbert.json`
-  - `artifacts/retrieval_profile.grounded_strict.contract.json`
-  - `artifacts/claim_verifier.contract.json`
-  - `artifacts/queryset_health.snapshot*.json`
-  - `artifacts/queryset_health.diff*.json`
+- `artifacts/sample_retrieval_bench.hybrid.json`
+- `artifacts/sample_retrieval_bench.colbert.json`
+- `artifacts/retrieval_profile.grounded_strict.contract.json`
+- `artifacts/claim_verifier.contract.json`
+- `artifacts/queryset_health.snapshot*.json`
+- `artifacts/queryset_health.diff*.json`
+- `artifacts/parsing_proof_broader_sample/summary.json`
+- `artifacts/parsing_proof_broader_sample/report.json`
+- `artifacts/parsing_proof_broader_sample/gate.json`
+- `artifacts/parsing_proof_broader_sample/diff.json`
+- `artifacts/parsing_proof_broader_sample/diff.md`
 - Then `scripts/release_gate.py --skip-regression` with a small probe traffic to ensure SLO/cost summaries have data and to ingest the bounded query-set artifacts.
 
 Budgets live in:
@@ -110,6 +119,24 @@ Optional queryset-health policy drift config (in budgets JSON):
       "degradation_flag_added_count": { "max": 0 },
       "parse_risk_tail_added_count": { "max": 0 }
     }
+  },
+  "parsing_proof": {
+    "path": "artifacts/parsing_proof_broader_sample/summary.json",
+    "policy": "warn",
+    "thresholds": {
+      "hit_at_k_mean": { "min": 1.0 },
+      "mrr_mean": { "min": 1.0 },
+      "failed_case_count": { "max": 0 }
+    }
+  },
+  "parsing_proof_diff": {
+    "path": "artifacts/parsing_proof_broader_sample/diff.json",
+    "policy": "warn",
+    "thresholds": {
+      "hit_at_k_mean_delta": { "min": 0.0 },
+      "mrr_mean_delta": { "min": 0.0 },
+      "failed_case_added_count": { "max": 0 }
+    }
   }
 }
 ```
@@ -121,7 +148,17 @@ Semantics:
   - `hard_case_added_count`
   - `degradation_flag_added_count`
   - `parse_risk_tail_added_count`
+- Broader parsing-proof summary observed fields:
+  - `cases_total`
+  - `hit_at_k_mean`
+  - `mrr_mean`
+  - `failed_case_count`
+- Broader parsing-proof diff observed fields:
+  - `hit_at_k_mean_delta`
+  - `mrr_mean_delta`
+  - `failed_case_added_count`
 - In CI we gate both the default bounded queryset diff and the hybrid bounded queryset diff.
+  Broader parsing-proof remains `warn`-mode and informational at this stage.
 
 ## Local / Staging Usage
 
@@ -189,6 +226,8 @@ python scripts/release_gate.py \
   --queryset-health-snapshot-hybrid artifacts/queryset_health.snapshot.hybrid.json \
   --queryset-health-diff artifacts/queryset_health.diff.json \
   --queryset-health-diff-hybrid artifacts/queryset_health.diff.hybrid.json \
+  --parsing-proof-summary artifacts/parsing_proof_broader_sample/summary.json \
+  --parsing-proof-diff artifacts/parsing_proof_broader_sample/diff.json \
   --queryset-health-policy warn \
   --skip-regression
 ```
@@ -223,6 +262,14 @@ python scripts/release_gate.py \
   - `hard_case_added_count`
   - `degradation_flag_added_count`
   - `parse_risk_tail_added_count`
+- Broader parsing-proof observed fields captured in report:
+  - `hit_at_k_mean`
+  - `mrr_mean`
+  - `failed_case_count`
+- Broader parsing-proof diff observed fields captured in report:
+  - `hit_at_k_mean_delta`
+  - `mrr_mean_delta`
+  - `failed_case_added_count`
 - Bounded-gate interpretation:
   - `retrieval_profile.grounded_strict.contract.json` proves the strict retrieval profile still enforces evidence-only semantics.
   - `claim_verifier.contract.json` proves claim-verifier diagnostics still emit stable `reason_code` and `contradiction_type` values.
