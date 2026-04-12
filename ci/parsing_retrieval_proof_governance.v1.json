@@ -1,0 +1,26 @@
+{
+  "schema": "mimirq.parsing_retrieval_proof_governance.v1",
+  "mode": "informational",
+  "owner_roles": [
+    "parsing",
+    "retrieval",
+    "release-quality"
+  ],
+  "sample_runner": "make parsing-proof-sample",
+  "baseline_summary_path": "ci/parsing_retrieval_proof_summary_baseline.v1.json",
+  "thresholds_path": "ci/parsing_retrieval_proof_thresholds.v1.json",
+  "policy_doc_path": "docs/guides/parsing_proof_policy.md",
+  "workflow_doc_path": "docs/guides/parsing_proof_workflow.md",
+  "workflows": [
+    ".github/workflows/ci.yml",
+    ".github/workflows/parsing-proof-sample.yml",
+    ".github/workflows/parsing-proof-nightly.yml",
+    ".github/workflows/rag-quality-gate.yml"
+  ],
+  "promotion_requirements": [
+    "stable_sample_corpus",
+    "baseline_update_process",
+    "owner_agreement",
+    "low_noise_history"
+  ]
+}
