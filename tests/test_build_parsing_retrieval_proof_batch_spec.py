@@ -150,11 +150,11 @@ def test_real_broader_manifest_sample_query_map_can_build_and_run_batch_spec(tmp
 
     payload = json.loads(out_path.read_text(encoding="utf-8"))
     assert payload["schema"] == "mimirq.parsing_retrieval_proof_batch.v1"
-    assert payload["cases_total"] == 15
-    assert payload["query_count_total"] == 30
+    assert payload["cases_total"] == 16
+    assert payload["query_count_total"] == 32
     assert payload["provenance"]["manifest_path"] == str(manifest_path.resolve())
     assert payload["provenance"]["case_queries_path"] == str(case_queries_path.resolve())
-    assert len(payload["cases"]) == 15
+    assert len(payload["cases"]) == 16
     assert [item["id"] for item in payload["cases"]] == [
         "chart_pdf_case",
         "line_chart_pdf_case",
@@ -171,6 +171,7 @@ def test_real_broader_manifest_sample_query_map_can_build_and_run_batch_spec(tmp
         "multilingual_pdf_case",
         "formula_markdown_case",
         "handwriting_note_image_case",
+        "handwriting_skewed_note_image_case",
     ]
     case_map = {item["id"]: item for item in payload["cases"]}
     assert case_map["chart_pdf_case"]["case_family"] == "specialty"
@@ -187,17 +188,19 @@ def test_real_broader_manifest_sample_query_map_can_build_and_run_batch_spec(tmp
     assert case_map["formula_markdown_case"]["query_count"] == 2
     assert case_map["handwriting_note_image_case"]["case_family"] == "document"
     assert case_map["handwriting_note_image_case"]["query_count"] == 2
+    assert case_map["handwriting_skewed_note_image_case"]["case_family"] == "document"
+    assert case_map["handwriting_skewed_note_image_case"]["query_count"] == 2
 
     report = runner_mod.run_batch(spec_path=out_path, out_dir=out_dir)  # type: ignore[attr-defined]
-    assert report["cases_total"] == 15
-    assert report["query_count_total"] == 30
-    assert len(report["cases"]) == 15
+    assert report["cases_total"] == 16
+    assert report["query_count_total"] == 32
+    assert len(report["cases"]) == 16
     assert report["summary"]["hit_at_k_mean"] == 1.0
     assert report["summary"]["mrr_mean"] == 1.0
     assert report["case_family_counts"]["specialty"] == 5
     assert report["case_family_counts"]["table"] == 4
     assert report["case_family_counts"]["layout"] == 3
-    assert report["case_family_counts"]["document"] == 3
+    assert report["case_family_counts"]["document"] == 4
 
 
 def test_real_broader_sample_queries_are_case_specific() -> None:
@@ -229,6 +232,7 @@ def test_real_broader_sample_queries_are_case_specific() -> None:
         "multilingual_pdf_case": ("apac revenue", "94%"),
         "formula_markdown_case": ("e = mc^2", "core formula"),
         "handwriting_note_image_case": ("approved72", "handwritten approval note"),
+        "handwriting_skewed_note_image_case": ("apac128", "skewed handwritten apac note"),
     }
 
     assert set(case_queries) == set(required_case_anchors)

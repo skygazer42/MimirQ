@@ -1,0 +1,12 @@
+[
+  {
+    "id": "q-handwriting-skewed-1",
+    "question": "What code is written in the skewed handwritten APAC note?",
+    "expected_chunk_indexes": [0]
+  },
+  {
+    "id": "q-handwriting-skewed-2",
+    "question": "Which handwritten note contains APAC128?",
+    "expected_chunk_indexes": [0]
+  }
+]
