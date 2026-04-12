@@ -10,6 +10,7 @@ def test_ci_has_retrieval_only_bounded_gate_job() -> None:
     assert "run_sample_parsing_retrieval_proof.py" in text
     assert "build_parsing_retrieval_proof_artifacts.py" in text
     assert "parsing_retrieval_proof_gate.py" in text
+    assert "diff_parsing_retrieval_proof_summaries.py" in text
     assert "run_queryset_health_diagnostics.py" in text
     assert "diff_queryset_health_snapshots.py" in text
     assert "ci/retrieval_thresholds.v2.json" in text
@@ -29,10 +30,13 @@ def test_ci_has_retrieval_only_bounded_gate_job() -> None:
     assert "data/sample/retrieval_fixture_sparse_v1.json" in text
     assert "ci/queryset_health_policy.v1.json" in text
     assert "ci/parsing_retrieval_proof_thresholds.v1.json" in text
+    assert "ci/parsing_retrieval_proof_summary_baseline.v1.json" in text
     assert "artifacts/queryset_health.snapshot.json" in text
     assert "artifacts/parsing_proof_broader_sample/summary.json" in text
     assert "artifacts/parsing_proof_broader_sample/report.json" in text
     assert "artifacts/parsing_proof_broader_sample/gate.json" in text
+    assert "artifacts/parsing_proof_broader_sample/diff.json" in text
+    assert "artifacts/parsing_proof_broader_sample/diff.md" in text
     assert "artifacts/queryset_health.snapshot.hybrid.json" in text
     assert "artifacts/queryset_health.snapshot.sparse.json" in text
     assert "artifacts/queryset_health.diff.json" in text
