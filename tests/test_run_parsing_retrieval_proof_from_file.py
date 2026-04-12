@@ -101,3 +101,40 @@ def test_run_parsing_retrieval_proof_from_file_cli_accepts_pdf_parser_output(tmp
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["summary"]["hit_at_k"] == 1.0
     assert report["summary"]["mrr"] == 1.0
+
+
+def test_run_parsing_retrieval_proof_from_file_augments_handwriting_image_with_local_ocr(tmp_path: Path) -> None:
+    mod = _load_script()
+    fixture_path = tmp_path / "fixture.json"
+    report_path = tmp_path / "report.json"
+    queries_path = tmp_path / "queries.json"
+
+    queries_path.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "q-handwriting",
+                    "question": "What number is written in the handwritten approval note?",
+                    "expected_chunk_indexes": [0],
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    report = mod.run_parsing_retrieval_proof_from_file(  # type: ignore[attr-defined]
+        input_file=_repo_root() / "tests" / "fixtures" / "parsing_golden_broader" / "handwriting_note_image" / "input" / "sample.png",
+        queries_path=queries_path,
+        fixture_output_path=fixture_path,
+        report_output_path=report_path,
+        parser_backend="image",
+        top_k=1,
+        retrieval_mode="keyword",
+    )
+
+    fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+    assert "Image OCR:" in fixture["documents"][0]["text"]
+    assert "Approved72" in fixture["documents"][0]["text"]
+    assert report["summary"]["hit_at_k"] == 1.0
+    assert report["summary"]["mrr"] == 1.0

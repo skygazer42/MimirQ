@@ -82,5 +82,11 @@
     "parser_backend": "basic",
     "top_k": 1,
     "retrieval_mode": "keyword"
+  },
+  "handwriting_note_image_case": {
+    "queries_json": "tests/fixtures/parsing_retrieval_proof/queries/handwriting_note_image.json",
+    "parser_backend": "image",
+    "top_k": 1,
+    "retrieval_mode": "keyword"
   }
 }

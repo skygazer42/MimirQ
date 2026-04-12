@@ -60,6 +60,7 @@ def run_parsing_retrieval_proof_from_file(
     colbert_retrieval_enabled: bool | None = None,
     colbert_retrieval_provider: str | None = None,
 ) -> dict[str, Any]:
+    from app.parsing.enrich.image_ocr import add_image_ocr_blocks
     from app.parsing.factory import parser_factory
     from scripts.build_parsing_retrieval_fixture import _read_json, build_retrieval_fixture
     from scripts.run_sample_retrieval_benchmark import run_benchmark
@@ -70,8 +71,19 @@ def run_parsing_retrieval_proof_from_file(
         input_file,
         parser_backend=str(parser_backend or "basic").strip().lower() or "basic",
     )
+    augmented_documents = []
+    for item in documents or []:
+        page_content = str(getattr(item, "page_content", "") or "")
+        metadata = dict(getattr(item, "metadata", None) or {})
+        try:
+            next_content, _added, _audit = add_image_ocr_blocks(page_content, origin_path=input_file)
+        except Exception:
+            next_content = page_content
+        item.page_content = next_content
+        item.metadata = metadata
+        augmented_documents.append(item)
     fixture = build_retrieval_fixture(
-        documents=_serialize_documents(documents),
+        documents=_serialize_documents(augmented_documents),
         queries=queries if isinstance(queries, list) else [],
         top_k=int(top_k or 1),
         retrieval_mode=str(retrieval_mode or "keyword"),
