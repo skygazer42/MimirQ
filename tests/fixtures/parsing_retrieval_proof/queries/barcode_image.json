@@ -1,0 +1,12 @@
+[
+  {
+    "id": "q-barcode-1",
+    "question": "What code value is in the barcode image?",
+    "expected_chunk_indexes": [0]
+  },
+  {
+    "id": "q-barcode-2",
+    "question": "Which image contains 5901234123457?",
+    "expected_chunk_indexes": [0]
+  }
+]

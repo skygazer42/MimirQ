@@ -11,14 +11,35 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 
+def _json_safe(value: Any) -> Any:
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, dict):
+        out: dict[str, Any] = {}
+        for key, item in value.items():
+            safe = _json_safe(item)
+            if safe is not None:
+                out[str(key)] = safe
+        return out
+    if isinstance(value, (list, tuple)):
+        out = []
+        for item in value:
+            safe = _json_safe(item)
+            if safe is not None:
+                out.append(safe)
+        return out
+    return None
+
+
 def _serialize_documents(items: list[Any] | None) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for item in items or []:
         meta = getattr(item, "metadata", None)
+        safe_meta = _json_safe(dict(meta)) if isinstance(meta, dict) else {}
         out.append(
             {
                 "page_content": str(getattr(item, "page_content", "") or ""),
-                "metadata": dict(meta) if isinstance(meta, dict) else {},
+                "metadata": safe_meta if isinstance(safe_meta, dict) else {},
                 "id": getattr(item, "id", None),
             }
         )

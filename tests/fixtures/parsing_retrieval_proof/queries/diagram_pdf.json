@@ -1,0 +1,12 @@
+[
+  {
+    "id": "q-diagram-1",
+    "question": "Which visual is a workflow diagram?",
+    "expected_chunk_indexes": [0]
+  },
+  {
+    "id": "q-diagram-2",
+    "question": "What type of image is shown on the page?",
+    "expected_chunk_indexes": [0]
+  }
+]

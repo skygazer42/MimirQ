@@ -1,0 +1,12 @@
+[
+  {
+    "id": "q-chart-1",
+    "question": "What kind of image shows revenue growth?",
+    "expected_chunk_indexes": [0]
+  },
+  {
+    "id": "q-chart-2",
+    "question": "Which visual is a chart?",
+    "expected_chunk_indexes": [0]
+  }
+]
