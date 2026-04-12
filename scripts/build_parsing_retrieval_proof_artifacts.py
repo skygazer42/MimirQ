@@ -99,6 +99,19 @@ def _build_group_summaries(
     return summaries
 
 
+def _normalize_count_map(value: Any) -> dict[str, int]:
+    payload = value if isinstance(value, dict) else {}
+    out: dict[str, int] = {}
+    for key in sorted(payload):
+        try:
+            count = int(payload.get(key) or 0)
+        except Exception:
+            continue
+        if count > 0:
+            out[str(key)] = count
+    return out
+
+
 def _build_rollout_summary(rollout_payload: Any) -> dict[str, Any] | None:
     payload = rollout_payload if isinstance(rollout_payload, dict) else {}
     current_stage = str(payload.get("current_stage") or "").strip().lower()
@@ -169,9 +182,14 @@ def build_parsing_proof_summary(batch_payload: Any) -> dict[str, Any]:
     return {
         "schema": "mimirq.parsing_retrieval_proof_summary.v1",
         "cases_total": int(payload.get("cases_total") or len(cases)),
+        "query_count_total": int(payload.get("query_count_total") or 0),
         "hit_at_k_mean": _coerce_float(summary.get("hit_at_k_mean")),
         "mrr_mean": _coerce_float(summary.get("mrr_mean")),
         "failed_case_ids": [item for item in failed_cases if item],
+        "sample_composition": {
+            "case_family_counts": _normalize_count_map(payload.get("case_family_counts")),
+            "case_category_counts": _normalize_count_map(payload.get("case_category_counts")),
+        },
         "cases": case_summaries,
         "category_summaries": category_summaries,
         "slice_summaries": slice_summaries,
@@ -204,6 +222,11 @@ def build_parsing_proof_report(
         "thresholds": {name: float(value) for name, value in thresholds.items()},
         "checks": checks,
         "failed_case_ids": list(payload.get("failed_case_ids") or []),
+        "query_count_total": int(payload.get("query_count_total") or 0),
+        "sample_composition": {
+            "case_family_counts": _normalize_count_map((payload.get("sample_composition") or {}).get("case_family_counts")),
+            "case_category_counts": _normalize_count_map((payload.get("sample_composition") or {}).get("case_category_counts")),
+        },
         "category_summaries": list(payload.get("category_summaries") or []),
         "slice_summaries": list(payload.get("slice_summaries") or []),
         "passed": bool(all(item["passed"] for item in checks.values())),
