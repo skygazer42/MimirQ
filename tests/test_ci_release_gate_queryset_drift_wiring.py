@@ -18,6 +18,9 @@ def test_ci_release_gate_consumes_bounded_queryset_artifacts() -> None:
     assert "bounded_gate_artifacts/artifacts/queryset_health.snapshot.hybrid.json" in text
     assert "bounded_gate_artifacts/artifacts/queryset_health.diff.json" in text
     assert "bounded_gate_artifacts/artifacts/queryset_health.diff.hybrid.json" in text
+    assert "bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/summary.json" in text
+    assert "bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/report.json" in text
+    assert "bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/diff.json" in text
     assert "continue-on-error: true" not in text
 
 

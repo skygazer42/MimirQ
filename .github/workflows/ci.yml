@@ -1026,6 +1026,11 @@ jobs:
           path: |
             artifacts/**
             artifacts/must_recall_provenance_gate.report.json
+            bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/summary.json
+            bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/report.json
+            bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/gate.json
+            bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/diff.json
+            bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/diff.md
             ci/retrieval_regression_fixture.v1.json
             ci/retrieval_thresholds.v2.json
 
