@@ -178,13 +178,19 @@ class Settings(BaseSettings):
     EMBEDDING_CACHE_PREFIX: str = "emb"
 
     # Chat response cache (Redis; best-effort; safe by default).
-    # Stores fully rendered assistant replies for identical requests (guarded by doc scope + config).
-    CHAT_RESPONSE_CACHE_ENABLED: bool = False
+    # Stores fully rendered assistant replies for identical requests (guarded by
+    # tenant/account/scope/config + corpus token), so repeated stateless asks do
+    # not pay repeated LLM latency.
+    CHAT_RESPONSE_CACHE_ENABLED: bool = True
     CHAT_RESPONSE_CACHE_TTL_SEC: int = 300
     CHAT_RESPONSE_CACHE_PREFIX: str = "chat"
     CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES: int = 200_000
     # Default guardrail: only cache stateless requests (no explicit history).
     CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY: bool = True
+    # Best-effort in-process de-duplication for concurrent identical cacheable
+    # requests. Followers wait for the leader result instead of starting a second
+    # identical LLM call.
+    CHAT_RESPONSE_SINGLEFLIGHT_ENABLED: bool = True
 
     # Retrieval candidate cache (Redis, short TTL; best-effort; safe by default).
     # Stores retrieval outputs for identical scoped requests to reduce repeated vector/BM25 work.
@@ -244,6 +250,10 @@ class Settings(BaseSettings):
     INPUT_GUARD_LOG_BLOCKED: bool = True
     OUTPUT_GUARD_ENABLED: bool = False
     LLM_TEMPERATURE: float = 0.7
+    # Structured JSON output is latency-sensitive and benefits from deterministic decoding.
+    # Keep this separate from the general chat temperature so `/api/v1/chat` can stay fast
+    # for structured presets without changing the default free-form chat behavior.
+    LLM_STRUCTURED_TEMPERATURE: float = 0.0
     LLM_TIMEOUT: int = 60
     LLM_MAX_RETRIES: int = 3
     # Some OpenAI-compatible providers fail when LangChain reuses the shared pooled

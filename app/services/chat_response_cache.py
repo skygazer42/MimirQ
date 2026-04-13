@@ -6,13 +6,14 @@ This cache stores full assistant responses for identical (safe) requests to redu
 - repeated LLM costs
 
 Security posture:
-- disabled by default
+- enabled by default for stateless scoped requests
 - key includes tenant + account + doc-scope hash + config hash
 - best-effort fail-open (cache errors never break chat)
 """
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from collections.abc import Sequence
@@ -27,6 +28,8 @@ from app.services.corpus_cache_tokens import resolve_corpus_cache_token
 logger = get_logger("chat.cache")
 
 _redis_client: Any | None = None
+_inflight_response_futures: dict[str, asyncio.Future[dict[str, Any]]] = {}
+_inflight_response_lock: asyncio.Lock | None = None
 
 
 def _get_redis_client():  # noqa: ANN202
@@ -51,6 +54,13 @@ def _get_redis_client():  # noqa: ANN202
 def _invalidate_redis_client() -> None:
     global _redis_client
     _redis_client = None
+
+
+def _get_inflight_response_lock() -> asyncio.Lock:
+    global _inflight_response_lock
+    if _inflight_response_lock is None:
+        _inflight_response_lock = asyncio.Lock()
+    return _inflight_response_lock
 
 
 def _hash_doc_scope(document_ids: list[str]) -> str:
@@ -209,3 +219,47 @@ def set_cached_chat_response(key: str, payload: dict[str, Any]) -> bool:
         logger.warning("Chat cache write failed: %s", str(exc)[:200])
         _invalidate_redis_client()
         return False
+
+
+async def acquire_inflight_chat_response(key: str) -> tuple[bool, asyncio.Future[dict[str, Any]]]:
+    """
+    Claim a best-effort singleflight slot for a cacheable chat request.
+
+    Returns:
+    - (True, future) for the leader request, which must later resolve/reject the future.
+    - (False, future) for follower requests, which should await the future and reuse the
+      leader payload instead of starting another identical LLM call.
+    """
+    loop = asyncio.get_running_loop()
+    async with _get_inflight_response_lock():
+        current = _inflight_response_futures.get(key)
+        if current is not None:
+            return False, current
+        future: asyncio.Future[dict[str, Any]] = loop.create_future()
+        _inflight_response_futures[key] = future
+        return True, future
+
+
+def _pop_inflight_chat_response_future(key: str) -> asyncio.Future[dict[str, Any]] | None:
+    return _inflight_response_futures.pop(key, None)
+
+
+def resolve_inflight_chat_response(key: str, payload: dict[str, Any]) -> None:
+    future = _pop_inflight_chat_response_future(key)
+    if future is None or future.done():
+        return
+    future.set_result(payload)
+
+
+def reject_inflight_chat_response(key: str, exc: BaseException) -> None:
+    future = _pop_inflight_chat_response_future(key)
+    if future is None or future.done():
+        return
+    future.set_exception(exc)
+
+
+def clear_inflight_chat_responses() -> None:
+    """
+    Test helper: drop all in-process singleflight state.
+    """
+    _inflight_response_futures.clear()

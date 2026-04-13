@@ -378,6 +378,54 @@ Requirements:
             streaming=True,
         )
 
+    @staticmethod
+    def _model_name_for_route(*, llm: Any, model_route: str) -> str:
+        route = str(model_route or "").strip().lower()
+        if route == "heavy" and settings.LLM_MODEL_HEAVY:
+            return str(settings.LLM_MODEL_HEAVY)
+        if route == "fast" and settings.LLM_MODEL_FAST:
+            return str(settings.LLM_MODEL_FAST)
+        value = getattr(llm, "model_name", None) or getattr(llm, "model", None) or settings.LLM_MODEL
+        return str(value or settings.LLM_MODEL or "gpt-4-turbo-preview")
+
+    def _maybe_override_llm_for_request(
+        self,
+        *,
+        llm: Any,
+        model_route: str,
+        structured_output: bool,
+    ) -> tuple[Any, dict[str, Any]]:
+        base_temperature = float(getattr(settings, "LLM_TEMPERATURE", 0.0) or 0.0)
+        target_temperature = float(getattr(settings, "LLM_STRUCTURED_TEMPERATURE", base_temperature) or 0.0)
+        meta = {
+            "structured_temperature": target_temperature,
+            "base_temperature": base_temperature,
+            "structured_temperature_override_applied": False,
+        }
+
+        if not structured_output or bool(getattr(settings, "LLM_MOCK_ENABLED", False)):
+            return llm, meta
+        if abs(target_temperature - base_temperature) < 1e-9:
+            return llm, meta
+
+        model_name = self._model_name_for_route(llm=llm, model_route=model_route)
+        request_llm = build_chat_model_from_config(
+            model_config={
+                "model": model_name,
+                "api_key": settings.LLM_API_KEY,
+                "base_url": normalize_openai_compatible_base_url(settings.LLM_API_BASE),
+                "temperature": target_temperature,
+                "timeout": settings.LLM_TIMEOUT,
+                "max_retries": settings.LLM_MAX_RETRIES,
+            },
+            http_client=self.http_client,
+            http_async_client=self.http_async_client,
+            streaming=True,
+        )
+        meta["structured_temperature_override_applied"] = True
+        meta["model_name"] = model_name
+        return request_llm, meta
+
     def _score_question_complexity(self, question: str, history: list[dict[str, str]] | None) -> float:
         """
         Coarse-grained complexity scoring:
@@ -885,6 +933,15 @@ Requirements:
                 return
 
             llm, model_route, routing_reason = self._select_llm(question, history)
+            llm, request_llm_meta = self._maybe_override_llm_for_request(
+                llm=llm,
+                model_route=model_route,
+                structured_output=bool(structured_output),
+            )
+            if request_llm_meta.get("structured_temperature_override_applied"):
+                routing_reason = (
+                    f"{routing_reason}; structured_temperature={request_llm_meta.get('structured_temperature')}"
+                )
 
             # Load prompt template (id / key latest / A/B experiment)
             current_prompt_template = self.prompt_template
@@ -931,6 +988,10 @@ Requirements:
                         "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
                         "route": model_route,
                         "reason": routing_reason,
+                        "structured_temperature": request_llm_meta.get("structured_temperature"),
+                        "structured_temperature_override_applied": bool(
+                            request_llm_meta.get("structured_temperature_override_applied")
+                        ),
                         "prompt_template_id": str(selected_prompt_template_id) if selected_prompt_template_id else None,
                         "prompt_template_key": selected_prompt_template_key,
                         "prompt_ab_experiment_key": selected_prompt_ab_experiment_key,
@@ -3155,6 +3216,10 @@ Requirements:
                     "model_route": model_route,
                     "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
                     "reason": routing_reason,
+                    "structured_temperature": request_llm_meta.get("structured_temperature"),
+                    "structured_temperature_override_applied": bool(
+                        request_llm_meta.get("structured_temperature_override_applied")
+                    ),
                 },
             }
 
