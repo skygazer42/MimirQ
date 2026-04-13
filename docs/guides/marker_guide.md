@@ -18,6 +18,14 @@ MARKER_TIMEOUT_SEC=600
 
 3. 重启后端服务。
 
+## 资源说明
+
+基于当前仓库实测：
+
+- `marker` 这条服务链路没有观测到本地 GPU 分配
+- 可按 **CPU-only parser** 部署
+- 仍建议独立容器运行，避免把 OCR / PDF 依赖塞进主后端镜像
+
 ## 使用方式
 
 - 解析预览：在解析工作台选择解析器为 `marker`（也兼容 `marker-pdf` / `marker_pdf`）。

@@ -38,10 +38,12 @@ RUN if [ "${MINERU_PREFETCH_MODELS}" = "1" ]; then \
       MINERU_MODEL_SOURCE="${MINERU_MODEL_DOWNLOAD_SOURCE}" mineru-models-download -s "${MINERU_MODEL_DOWNLOAD_SOURCE}" -m "${MINERU_MODEL_DOWNLOAD_TYPE}"; \
     fi
 
+COPY start_local_api.py /app/start_local_api.py
+
 EXPOSE 8000
 
 # Reset the inherited vLLM entrypoint. MinerU local ZIP mode should start the
 # `mineru-api` service directly, not the OpenAI-compatible vLLM server baked
 # into the upstream image.
 ENTRYPOINT []
-CMD ["mineru-api", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python3", "/app/start_local_api.py"]
