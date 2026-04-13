@@ -46,8 +46,11 @@ from app.rag.preprocessing.tokenization import tokenize_for_bm25
 from app.rag.trace_schema import RagTraceListResponse
 from app.services.audit_log_service import audit_log_event, build_chat_audit_details
 from app.services.chat_response_cache import (
+    acquire_inflight_chat_response,
     get_cached_chat_response,
+    reject_inflight_chat_response,
     resolve_chat_response_cache_key,
+    resolve_inflight_chat_response,
     set_cached_chat_response,
 )
 from app.services.conversation_summary_service import (
@@ -169,6 +172,23 @@ def _annotate_chat_cache_metrics(
         out["chat_cache_skip_reason"] = str(skip_reason)
     else:
         out.pop("chat_cache_skip_reason", None)
+    return out
+
+
+def _annotate_chat_singleflight_metrics(
+    metrics: dict[str, Any] | None,
+    *,
+    enabled: bool,
+    hit: bool,
+    role: str | None = None,
+) -> dict[str, Any]:
+    out = dict(metrics or {})
+    out["chat_singleflight_enabled"] = bool(enabled)
+    out["chat_singleflight_hit"] = bool(hit)
+    if role:
+        out["chat_singleflight_role"] = str(role)
+    else:
+        out.pop("chat_singleflight_role", None)
     return out
 
 
@@ -949,6 +969,9 @@ async def chat(
     # Optional chat response cache (best-effort).
     cache_key: str | None = None
     cache_hit = False
+    singleflight_hit = False
+    singleflight_leader = False
+    singleflight_key: str | None = None
     cache_scope_dataset_id = dataset_id_used or scope_dataset_id
     rag_cfg = jsonable_encoder(effective_rag_config.model_dump())
     prompt_cfg = {
@@ -986,9 +1009,40 @@ async def chat(
         )
         structured_data = cached.get("structured_data")
         cache_hit = True
+        metrics_data = _annotate_chat_singleflight_metrics(
+            metrics_data,
+            enabled=bool(getattr(settings, "CHAT_RESPONSE_SINGLEFLIGHT_ENABLED", False)),
+            hit=False,
+            role=None,
+        )
+    else:
+        singleflight_feature_enabled = bool(getattr(settings, "CHAT_RESPONSE_SINGLEFLIGHT_ENABLED", False))
+        singleflight_key = cache_key if singleflight_feature_enabled and cache_key else None
+        if singleflight_key:
+            singleflight_leader, inflight_future = await acquire_inflight_chat_response(singleflight_key)
+            if not singleflight_leader:
+                shared_payload = await asyncio.shield(inflight_future)
+                full_response = str(shared_payload.get("content") or "")
+                citations_data = (
+                    shared_payload.get("citations") if isinstance(shared_payload.get("citations"), list) else []
+                )
+                metrics_data = _annotate_chat_cache_metrics(
+                    dict(shared_payload.get("metrics") or {}),
+                    enabled=cache_feature_enabled,
+                    hit=False,
+                    skip_reason=cache_skip_reason,
+                )
+                metrics_data = _annotate_chat_singleflight_metrics(
+                    metrics_data,
+                    enabled=singleflight_feature_enabled,
+                    hit=True,
+                    role="follower",
+                )
+                structured_data = shared_payload.get("structured_data")
+                singleflight_hit = True
 
     try:
-        if not cache_hit:
+        if not cache_hit and not singleflight_hit:
             # Graph path (LangGraph): invoke once and return the final state.
             if effective_rag_config.use_graph:
                 from app.rag.pipelines.langgraph import build_rag_state, rag_workflow
@@ -1237,6 +1291,12 @@ async def chat(
             hit=cache_hit,
             skip_reason=None if cache_hit else cache_skip_reason,
         )
+        metrics_data = _annotate_chat_singleflight_metrics(
+            metrics_data,
+            enabled=bool(getattr(settings, "CHAT_RESPONSE_SINGLEFLIGHT_ENABLED", False)),
+            hit=singleflight_hit,
+            role=("follower" if singleflight_hit else ("leader" if singleflight_leader else None)),
+        )
 
         # Best-effort: sampled online evaluation (async, PII-minimal outputs).
         #
@@ -1311,6 +1371,19 @@ async def chat(
             stored = bool(set_cached_chat_response(cache_key, cache_payload))
             metrics_data.setdefault("chat_cache_store_ok", stored)
 
+        if singleflight_key and singleflight_leader:
+            resolve_inflight_chat_response(
+                singleflight_key,
+                jsonable_encoder(
+                    {
+                        "content": full_response,
+                        "citations": citations_data,
+                        "metrics": metrics_data,
+                        "structured_data": structured_data,
+                    }
+                ),
+            )
+
         message_metadata = {**(metrics_data or {}), "request_id": str(request_id)}
         if (
             bool(getattr(request, "enable_structured_memory", False))
@@ -1361,6 +1434,8 @@ async def chat(
         db.commit()
 
     except Exception as exc:  # noqa: BLE001
+        if singleflight_key and singleflight_leader:
+            reject_inflight_chat_response(singleflight_key, exc)
         logger.error("Chat error: %s", str(exc)[:200])
         raise HTTPException(status_code=500, detail=_format_stream_error_message(exc)) from exc
 
