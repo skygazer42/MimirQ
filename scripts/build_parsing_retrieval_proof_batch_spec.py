@@ -85,6 +85,11 @@ def build_batch_spec(
                 "parser_backend": str(query_cfg.get("parser_backend") or defaults_obj.get("parser_backend") or "basic"),
                 "top_k": int(query_cfg.get("top_k") or defaults_obj.get("top_k") or 1),
                 "retrieval_mode": str(query_cfg.get("retrieval_mode") or defaults_obj.get("retrieval_mode") or "keyword"),
+                "governance_rule_packs": [
+                    str(item).strip()
+                    for item in (query_cfg.get("governance_rule_packs") or [])
+                    if str(item).strip()
+                ],
                 "case_family": _derive_case_family(case_category),
                 "case_category": case_category,
                 "query_count": _count_queries(resolved_queries_path),

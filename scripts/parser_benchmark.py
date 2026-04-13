@@ -29,6 +29,7 @@ class BenchmarkCase:
     golden_image_visual_kinds: dict[str, int] | None = None
     golden_image_code_values: dict[str, list[str]] | None = None
     golden_table_continuity: dict[str, Any] | None = None
+    governance_rule_packs: list[str] | None = None
 
 
 _HEADING_RE = re.compile(r"(?m)^#{1,6}\s+\S+")
@@ -174,6 +175,34 @@ def _load_table_continuity(input_dir: Path, row: dict[str, Any]) -> dict[str, An
     except Exception:
         pass
     return out or None
+
+
+def _load_governance_rule_packs(row: dict[str, Any]) -> list[str] | None:
+    raw = row.get("governance_rule_packs")
+    if not isinstance(raw, list):
+        return None
+    out = [str(item).strip() for item in raw if str(item).strip()]
+    return out or None
+
+
+def _apply_governance_cleaning(*, markdown: str, governance_rule_packs: list[str] | None) -> str:
+    packs = [str(item).strip() for item in (governance_rule_packs or []) if str(item).strip()]
+    if not packs:
+        return str(markdown or "")
+
+    from app.rag.preprocessing.cleaning import clean_markdown
+    from app.rag.preprocessing.rules import build_governance_rules
+
+    result = clean_markdown(
+        str(markdown or ""),
+        rules=build_governance_rules([], rule_packs=packs),
+        remove_toc_lines=False,
+        remove_noise_lines=False,
+        unwrap_lines=False,
+        remove_common_lines=False,
+        collapse_blank_lines=True,
+    )
+    return str(result.markdown or markdown or "")
 
 
 def _join_documents_to_markdown(documents: Iterable[Any]) -> str:
@@ -409,6 +438,7 @@ def _build_fixture_hash(*, cases: list[BenchmarkCase], manifest_path: Path | Non
             "golden_specialty_elements": dict(case.golden_specialty_elements or {}) if isinstance(case.golden_specialty_elements, dict) else None,
             "golden_image_visual_kinds": dict(case.golden_image_visual_kinds or {}) if isinstance(case.golden_image_visual_kinds, dict) else None,
             "golden_image_code_values": dict(case.golden_image_code_values or {}) if isinstance(case.golden_image_code_values, dict) else None,
+            "governance_rule_packs": list(case.governance_rule_packs or []),
             "case_root": str(case_root),
             "case_files": case_files,
         }
@@ -523,6 +553,7 @@ def _load_cases(input_dir: Path, *, manifest_path: Path | None, max_files: int) 
                     golden_image_visual_kinds=_load_image_visual_kinds(input_dir, row),
                     golden_image_code_values=_load_image_code_values(input_dir, row),
                     golden_table_continuity=_load_table_continuity(input_dir, row),
+                    governance_rule_packs=_load_governance_rule_packs(row),
                 )
             )
         return cases[: max(0, int(max_files or 0))]
@@ -1017,6 +1048,7 @@ def main() -> int:
                 docs = merge_cross_page_documents(list(docs or []))
                 md = _join_documents_to_markdown(docs)
                 md = _augment_markdown_with_inline_image_ocr(markdown=md, origin_path=case.path)
+                md = _apply_governance_cleaning(markdown=md, governance_rule_packs=case.governance_rule_packs)
                 metric_docs = _augment_documents_with_inline_image_codes(
                     documents=list(docs or []),
                     markdown=md,

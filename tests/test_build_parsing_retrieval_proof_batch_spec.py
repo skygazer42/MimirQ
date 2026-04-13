@@ -150,11 +150,11 @@ def test_real_broader_manifest_sample_query_map_can_build_and_run_batch_spec(tmp
 
     payload = json.loads(out_path.read_text(encoding="utf-8"))
     assert payload["schema"] == "mimirq.parsing_retrieval_proof_batch.v1"
-    assert payload["cases_total"] == 16
-    assert payload["query_count_total"] == 32
+    assert payload["cases_total"] == 21
+    assert payload["query_count_total"] == 42
     assert payload["provenance"]["manifest_path"] == str(manifest_path.resolve())
     assert payload["provenance"]["case_queries_path"] == str(case_queries_path.resolve())
-    assert len(payload["cases"]) == 16
+    assert len(payload["cases"]) == 21
     assert [item["id"] for item in payload["cases"]] == [
         "chart_pdf_case",
         "line_chart_pdf_case",
@@ -172,6 +172,11 @@ def test_real_broader_manifest_sample_query_map_can_build_and_run_batch_spec(tmp
         "formula_markdown_case",
         "handwriting_note_image_case",
         "handwriting_skewed_note_image_case",
+        "mixed_scan_memo_image_case",
+        "word_project_brief_docx_case",
+        "watermark_heavy_pdf_case",
+        "excel_budget_sheet_xlsx_case",
+        "watermark_overlay_scan_image_case",
     ]
     case_map = {item["id"]: item for item in payload["cases"]}
     assert case_map["chart_pdf_case"]["case_family"] == "specialty"
@@ -190,17 +195,28 @@ def test_real_broader_manifest_sample_query_map_can_build_and_run_batch_spec(tmp
     assert case_map["handwriting_note_image_case"]["query_count"] == 2
     assert case_map["handwriting_skewed_note_image_case"]["case_family"] == "document"
     assert case_map["handwriting_skewed_note_image_case"]["query_count"] == 2
+    assert case_map["mixed_scan_memo_image_case"]["case_family"] == "document"
+    assert case_map["mixed_scan_memo_image_case"]["query_count"] == 2
+    assert case_map["word_project_brief_docx_case"]["case_family"] == "document"
+    assert case_map["word_project_brief_docx_case"]["query_count"] == 2
+    assert case_map["watermark_heavy_pdf_case"]["case_family"] == "document"
+    assert case_map["watermark_heavy_pdf_case"]["query_count"] == 2
+    assert case_map["watermark_heavy_pdf_case"]["governance_rule_packs"] == ["pdf_watermark"]
+    assert case_map["excel_budget_sheet_xlsx_case"]["case_family"] == "document"
+    assert case_map["excel_budget_sheet_xlsx_case"]["query_count"] == 2
+    assert case_map["watermark_overlay_scan_image_case"]["case_family"] == "document"
+    assert case_map["watermark_overlay_scan_image_case"]["query_count"] == 2
 
     report = runner_mod.run_batch(spec_path=out_path, out_dir=out_dir)  # type: ignore[attr-defined]
-    assert report["cases_total"] == 16
-    assert report["query_count_total"] == 32
-    assert len(report["cases"]) == 16
+    assert report["cases_total"] == 21
+    assert report["query_count_total"] == 42
+    assert len(report["cases"]) == 21
     assert report["summary"]["hit_at_k_mean"] == 1.0
     assert report["summary"]["mrr_mean"] == 1.0
     assert report["case_family_counts"]["specialty"] == 5
     assert report["case_family_counts"]["table"] == 4
     assert report["case_family_counts"]["layout"] == 3
-    assert report["case_family_counts"]["document"] == 4
+    assert report["case_family_counts"]["document"] == 9
 
 
 def test_real_broader_sample_queries_are_case_specific() -> None:
@@ -233,6 +249,11 @@ def test_real_broader_sample_queries_are_case_specific() -> None:
         "formula_markdown_case": ("e = mc^2", "core formula"),
         "handwriting_note_image_case": ("approved72", "handwritten approval note"),
         "handwriting_skewed_note_image_case": ("apac128", "skewed handwritten apac note"),
+        "mixed_scan_memo_image_case": ("mixed scan memo", "jakarta handoff"),
+        "word_project_brief_docx_case": ("word project brief", "lina chen"),
+        "watermark_heavy_pdf_case": ("watermark-heavy memo", "launch rehearsal"),
+        "excel_budget_sheet_xlsx_case": ("excel budget sheet", "apac"),
+        "watermark_overlay_scan_image_case": ("watermark overlay scan", "han xu"),
     }
 
     assert set(case_queries) == set(required_case_anchors)

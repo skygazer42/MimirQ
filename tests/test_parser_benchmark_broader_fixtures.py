@@ -208,6 +208,76 @@ def _install_fake_parser_benchmark_modules(monkeypatch) -> None:  # noqa: ANN001
                         metadata={"page": 1},
                     ),
                 ]
+            elif "mixed_scan_memo_image" in path_str:
+                docs = [
+                    Document(
+                        page_content=(
+                            "原始图片为脏扫描运营备忘录。\n\n"
+                            "![memo](sample.png)\n\n"
+                            "Image OCR:\n"
+                            "Mixed scan memo.\n"
+                            "North cluster backlog stayed within forecast.\n"
+                            "West cluster returns dropped to 3 percent.\n"
+                            "APAC pilot approval moved to wave 2.\n"
+                            "Customer retention stayed at 94 percent.\n"
+                            "Escalate the Jakarta handoff on Tuesday."
+                        ),
+                        metadata={"page": 1},
+                    ),
+                ]
+            elif "word_project_brief_docx" in path_str:
+                docs = [
+                    Document(
+                        page_content=(
+                            "# Word Project Brief\n\n"
+                            "Owner: Lina Chen\n\n"
+                            "Delivery milestone ships on Monday.\n\n"
+                            "- Review the onboarding packet.\n"
+                            "- Confirm the budget note."
+                        ),
+                        metadata={"page": 1, "file_type": "docx"},
+                    ),
+                ]
+            elif "watermark_heavy_pdf" in path_str:
+                docs = [
+                    Document(
+                        page_content=(
+                            "DRAFT\n\n"
+                            "Company Confidential\n\n"
+                            "仅供内部使用\n\n"
+                            "# Watermark-Heavy Memo\n\n"
+                            "Owner: Mei Lin\n\n"
+                            "Launch rehearsal: 2026-05-03"
+                        ),
+                        metadata={"page": 1, "file_type": "pdf"},
+                    ),
+                ]
+            elif "excel_budget_sheet_xlsx" in path_str:
+                docs = [
+                    Document(
+                        page_content=(
+                            "Excel: sample.xlsx\n\n"
+                            "## Sheet: Budget\n\n"
+                            "| Region | Budget | Status |\n"
+                            "| --- | --- | --- |\n"
+                            "| North | 120 | Locked |\n"
+                            "| APAC | 138 | Review |"
+                        ),
+                        metadata={"page": 1, "file_type": "xlsx"},
+                    ),
+                ]
+            elif "watermark_overlay_scan_image" in path_str:
+                docs = [
+                    Document(
+                        page_content=(
+                            "原始图片为带斜向半透明水印的扫描通知。\n\n"
+                            "Watermark Overlay Scan.\n\n"
+                            "Owner: Han Xu\n"
+                            "Escalation date: 2026-06-12"
+                        ),
+                        metadata={"page": 1, "file_type": "png"},
+                    ),
+                ]
             else:
                 docs = [
                     Document(
@@ -270,7 +340,7 @@ def test_parser_benchmark_reports_broader_pdf_and_image_corpus(monkeypatch, tmp_
     assert rc == 0
 
     payload = json.loads(out_path.read_text(encoding="utf-8"))
-    assert len(payload["cases"]) == 16
+    assert len(payload["cases"]) == 21
     by_case = {row["id"]: row for row in payload["cases"]}
     assert by_case["chart_pdf_case"]["golden"]["image_visual_kinds"]["chart"] == 1
     assert by_case["line_chart_pdf_case"]["golden"]["image_visual_kinds"]["chart"] == 1
@@ -288,6 +358,11 @@ def test_parser_benchmark_reports_broader_pdf_and_image_corpus(monkeypatch, tmp_
     assert by_case["multilingual_pdf_case"]["golden"]["structure"]["image_refs"] == 0
     assert by_case["handwriting_note_image_case"]["golden"]["structure"]["image_refs"] == 1
     assert by_case["handwriting_skewed_note_image_case"]["golden"]["structure"]["image_refs"] == 1
+    assert by_case["mixed_scan_memo_image_case"]["golden"]["structure"]["image_refs"] == 1
+    assert by_case["word_project_brief_docx_case"]["golden"]["structure"]["image_refs"] == 0
+    assert by_case["watermark_heavy_pdf_case"]["golden"]["structure"]["image_refs"] == 0
+    assert by_case["excel_budget_sheet_xlsx_case"]["golden"]["structure"]["image_refs"] == 0
+    assert by_case["watermark_overlay_scan_image_case"]["golden"]["structure"]["image_refs"] == 0
     assert payload["summary"]["basic"]["mean_image_recall"] == 1.0
     assert payload["summary"]["basic"]["mean_table_recall"] == 1.0
     assert payload["summary"]["basic"]["mean_table_continuity_recall"] == 1.0

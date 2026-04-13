@@ -453,6 +453,15 @@ class Settings(BaseSettings):
     DESKEW_PADDLE_URL: str = ""
     DESKEW_TIMEOUT_SEC: int = 60
     ORIENTATION_ENABLED: bool = False
+    # Optional: PaddleOCR DocPreprocessor for raster-image orientation/unwarp before parsing.
+    PADDLE_OCR_PREPROCESS_ENABLED: bool = False
+    # local | skip
+    PADDLE_OCR_PREPROCESS_BACKEND: str = "local"
+    PADDLE_OCR_PREPROCESS_DEVICE: str = "cpu"
+    PADDLE_OCR_PREPROCESS_LANG: str = "ch"
+    PADDLE_OCR_USE_DOC_ORIENTATION_CLASSIFY: bool = True
+    PADDLE_OCR_USE_DOC_UNWARPING: bool = True
+    PADDLE_OCR_USE_TEXTLINE_ORIENTATION: bool = False
     # Optional handwriting/noise cleanup before parsing.
     HANDWRITING_CLEANUP_ENABLED: bool = False
     # auto | heuristic | local | http | skip
@@ -462,6 +471,9 @@ class Settings(BaseSettings):
     HANDWRITING_CLEANUP_TIMEOUT_SEC: int = 60
     # Watermark removal can be destructive; keep it off by default.
     WATERMARK_REMOVAL_ENABLED: bool = False
+    # auto | local | http | skip
+    WATERMARK_REMOVAL_BACKEND: str = "auto"
+    WATERMARK_REMOVAL_MODEL_PATH: str = ""
     # Optional: external watermark-removal backend (image or pdf -> processed bytes).
     WATERMARK_REMOVAL_API_URL: str = ""
     WATERMARK_TIMEOUT_SEC: int = 120

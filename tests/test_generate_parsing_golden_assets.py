@@ -51,3 +51,8 @@ def test_generate_parsing_golden_assets_writes_broader_pdf_and_image_corpus(tmp_
     assert (tmp_path / "two_column_pdf" / "input" / "sample.pdf").exists()
     assert (tmp_path / "header_footer_noise_pdf" / "input" / "sample.pdf").exists()
     assert (tmp_path / "mixed_layout_pdf" / "input" / "sample.pdf").exists()
+    assert (tmp_path / "mixed_scan_memo_image" / "input" / "sample.png").exists()
+    assert (tmp_path / "word_project_brief_docx" / "input" / "sample.docx").exists()
+    assert (tmp_path / "watermark_heavy_pdf" / "input" / "sample.pdf").exists()
+    assert (tmp_path / "excel_budget_sheet_xlsx" / "input" / "sample.xlsx").exists()
+    assert (tmp_path / "watermark_overlay_scan_image" / "input" / "sample.png").exists()

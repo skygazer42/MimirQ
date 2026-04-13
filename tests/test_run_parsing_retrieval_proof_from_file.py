@@ -138,3 +138,44 @@ def test_run_parsing_retrieval_proof_from_file_augments_handwriting_image_with_l
     assert "Approved72" in fixture["documents"][0]["text"]
     assert report["summary"]["hit_at_k"] == 1.0
     assert report["summary"]["mrr"] == 1.0
+
+
+def test_run_parsing_retrieval_proof_from_file_applies_governance_rule_packs(tmp_path: Path) -> None:
+    mod = _load_script()
+    fixture_path = tmp_path / "fixture.json"
+    report_path = tmp_path / "report.json"
+    queries_path = tmp_path / "queries.json"
+
+    queries_path.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "q-watermark",
+                    "question": "In the watermark-heavy memo, what date is the launch rehearsal?",
+                    "expected_chunk_indexes": [0],
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    report = mod.run_parsing_retrieval_proof_from_file(  # type: ignore[attr-defined]
+        input_file=_repo_root() / "tests" / "fixtures" / "parsing_golden_broader" / "watermark_heavy_pdf" / "input" / "sample.pdf",
+        queries_path=queries_path,
+        fixture_output_path=fixture_path,
+        report_output_path=report_path,
+        parser_backend="basic",
+        top_k=1,
+        retrieval_mode="keyword",
+        governance_rule_packs=["pdf_watermark"],
+    )
+
+    fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+    text = fixture["documents"][0]["text"]
+    assert "DRAFT" not in text
+    assert "Company Confidential" not in text
+    assert "仅供内部使用" not in text
+    assert "Launch rehearsal: 2026-05-03" in text
+    assert report["summary"]["hit_at_k"] == 1.0
+    assert report["summary"]["mrr"] == 1.0

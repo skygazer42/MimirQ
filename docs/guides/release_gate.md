@@ -69,8 +69,8 @@ The GitHub Actions workflow runs:
 
 Current parsing-proof bounded sample scale:
 
-- `16 cases / 32 queries`
-- current families: `document=4`, `layout=3`, `specialty=5`, `table=4`
+- `21 cases / 42 queries`
+- current families: `document=9`, `layout=3`, `specialty=5`, `table=4`
 - Then `scripts/release_gate.py --skip-regression` with a small probe traffic to ensure SLO/cost summaries have data and to ingest the bounded query-set artifacts.
 
 Budgets live in:

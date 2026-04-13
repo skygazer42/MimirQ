@@ -17,14 +17,19 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path
 from typing import Any
+
+import fitz
+from PIL import Image
 
 from app.core.config import settings
 from app.parsing.preprocess.deskew import deskew_via_http
 from app.parsing.preprocess.handwriting_cleanup import cleanup_handwriting_document
 from app.parsing.preprocess.orientation import fix_exif_orientation, normalize_pdf_rotation
-from app.parsing.preprocess.watermark import remove_watermark_via_http, strip_pdf_watermark_annotations
+from app.parsing.preprocess.paddle_doc_preprocess import preprocess_with_paddle_doc
+from app.parsing.preprocess.watermark import cleanup_watermark_document, strip_pdf_watermark_annotations
 from app.rag.core.logging import get_logger
 
 logger = get_logger("parsing.image_preprocess")
@@ -53,6 +58,32 @@ def _handwriting_warning(note: str) -> str | None:
         return "handwriting_cleanup_backend_failed"
     if normalized.startswith("onnx_"):
         return "handwriting_cleanup_backend_failed"
+    return None
+
+
+def _watermark_warning(note: str) -> str | None:
+    normalized = str(note or "").strip().lower()
+    if normalized == "missing_model_path":
+        return "watermark_model_missing"
+    if normalized.startswith("model_unavailable:"):
+        return "watermark_model_unavailable"
+    if normalized == "missing_api_url":
+        return "watermark_api_url_missing"
+    if normalized in {"no_mask_boxes", "unsupported_input_type"}:
+        return None
+    if normalized.startswith("http_") or normalized.startswith("watermark_http_"):
+        return "watermark_backend_failed"
+    if normalized.startswith("onnx_") or normalized.startswith("watermark_write_failed:") or normalized.startswith("watermark_empty_response"):
+        return "watermark_backend_failed"
+    return None
+
+
+def _paddle_warning(note: str) -> str | None:
+    normalized = str(note or "").strip().lower()
+    if normalized.startswith("backend_unavailable:"):
+        return "paddle_ocr_backend_unavailable"
+    if normalized.startswith("predict_failed:"):
+        return "paddle_ocr_backend_failed"
     return None
 
 
@@ -102,6 +133,105 @@ def _run_handwriting_cleanup_stage(
         ),
         info,
     )
+
+
+def _run_paddle_doc_preprocess_stage(
+    *,
+    current: Path,
+    artifact_root: Path,
+    output_stem: str,
+    warnings: list[str],
+) -> tuple[Path, bool, ImagePreprocessStepLog, dict[str, Any] | None]:
+    t0 = time.perf_counter()
+    if not bool(getattr(settings, "PADDLE_OCR_PREPROCESS_ENABLED", False)):
+        return (
+            current,
+            False,
+            ImagePreprocessStepLog(
+                id="paddle_ocr_preprocess",
+                applied=False,
+                changed=False,
+                note="disabled",
+                elapsed_ms=int(round((time.perf_counter() - t0) * 1000)),
+            ),
+            None,
+        )
+
+    output_path = artifact_root / f"{output_stem}.paddleocr{current.suffix.lower()}"
+    changed, note, info = preprocess_with_paddle_doc(
+        input_path=current,
+        output_path=output_path,
+        backend=str(getattr(settings, "PADDLE_OCR_PREPROCESS_BACKEND", "local") or "local"),
+        device=str(getattr(settings, "PADDLE_OCR_PREPROCESS_DEVICE", "cpu") or "cpu"),
+        lang=str(getattr(settings, "PADDLE_OCR_PREPROCESS_LANG", "ch") or "ch"),
+        use_doc_orientation_classify=bool(getattr(settings, "PADDLE_OCR_USE_DOC_ORIENTATION_CLASSIFY", True)),
+        use_doc_unwarping=bool(getattr(settings, "PADDLE_OCR_USE_DOC_UNWARPING", True)),
+        use_textline_orientation=bool(getattr(settings, "PADDLE_OCR_USE_TEXTLINE_ORIENTATION", False)),
+    )
+    warning = _paddle_warning(note)
+    if warning:
+        warnings.append(warning)
+    return (
+        output_path if changed else current,
+        bool(changed),
+        ImagePreprocessStepLog(
+            id="paddle_ocr_preprocess",
+            applied=True,
+            changed=bool(changed),
+            note=note,
+            elapsed_ms=int(round((time.perf_counter() - t0) * 1000)),
+        ),
+        info,
+    )
+
+
+def _preprocess_pdf_pages_via_raster(
+    *,
+    input_path: Path,
+    output_path: Path,
+    document_id: str | None,
+    warnings: list[str],
+) -> tuple[bool, str, dict[str, Any]]:
+    src = fitz.open(str(input_path))
+    out = fitz.open()
+    changed_any = False
+    processed_pages = 0
+    try:
+        for page_index in range(int(src.page_count or 0)):
+            page = src.load_page(page_index)
+            pix = page.get_pixmap(alpha=False)
+            image = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            tmp_in = output_path.parent / f"{input_path.stem}.page-{page_index + 1}.png"
+            image.save(tmp_in)
+
+            result = preprocess_image_document(
+                input_path=tmp_in,
+                document_id=f"{document_id or input_path.stem}-page-{page_index + 1}",
+                pdf_quality={"score": 0.0, "is_scanned": True, "page_count": 1},
+            )
+            page_img_path = Path(result.output_path)
+            with Image.open(page_img_path) as processed:
+                buf = BytesIO()
+                processed.convert("RGB").save(buf, format="PNG")
+                rect = fitz.Rect(0, 0, float(processed.width), float(processed.height))
+                out_page = out.new_page(width=rect.width, height=rect.height)
+                out_page.insert_image(rect, stream=buf.getvalue())
+            changed_any = changed_any or bool(result.changed)
+            processed_pages += 1
+        if not changed_any:
+            return False, "pagewise_no_change", {"backend": "pagewise_raster", "processed_pages": processed_pages}
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        out.save(str(output_path), garbage=4, deflate=True)
+        return True, "pagewise_pdf_rebuilt", {"backend": "pagewise_raster", "processed_pages": processed_pages}
+    finally:
+        try:
+            src.close()
+        except Exception:
+            pass
+        try:
+            out.close()
+        except Exception:
+            pass
 
 
 @dataclass(frozen=True, slots=True)
@@ -253,6 +383,18 @@ def preprocess_image_document(
                 )
             )
 
+        current, changed, step, info = _run_paddle_doc_preprocess_stage(
+            current=current,
+            artifact_root=artifact_root,
+            output_stem=input_path.stem,
+            warnings=warnings,
+        )
+        if isinstance(info, dict):
+            meta["paddle_ocr_preprocess"] = info
+        if changed:
+            changed_any = True
+        steps.append(step)
+
         # Step: deskew via external backend (optional).
         t1 = time.perf_counter()
         if bool(getattr(settings, "DESKEW_ENABLED", False)):
@@ -343,21 +485,33 @@ def preprocess_image_document(
             t3 = time.perf_counter()
             api_url = str(getattr(settings, "WATERMARK_REMOVAL_API_URL", "") or "").strip()
             timeout_sec = float(getattr(settings, "WATERMARK_TIMEOUT_SEC", 120) or 120)
-            changed = False
-            note = "missing_api_url"
-            if api_url:
-                out_path = artifact_root / f"{input_path.stem}.dewatermark.pdf"
-                changed, note = remove_watermark_via_http(
+            backend = str(getattr(settings, "WATERMARK_REMOVAL_BACKEND", "auto") or "auto").strip().lower() or "auto"
+            model_path = str(getattr(settings, "WATERMARK_REMOVAL_MODEL_PATH", "") or "")
+            out_path = artifact_root / f"{input_path.stem}.dewatermark.pdf"
+            if backend in {"local", "auto"} and str(model_path or "").strip():
+                changed, note, info = _preprocess_pdf_pages_via_raster(
                     input_path=current,
                     output_path=out_path,
-                    url=api_url,
+                    document_id=document_id,
+                    warnings=warnings,
+                )
+            else:
+                changed, note, info = cleanup_watermark_document(
+                    input_path=current,
+                    output_path=out_path,
+                    backend=backend,
+                    model_path=model_path,
+                    api_url=api_url,
                     timeout_sec=timeout_sec,
                 )
-                if changed:
-                    current = out_path
-                    changed_any = True
-            else:
-                warnings.append("watermark_api_url_missing")
+            if isinstance(info, dict):
+                meta["watermark_removal"] = info
+            warning = _watermark_warning(note)
+            if warning:
+                warnings.append(warning)
+            if changed:
+                current = out_path
+                changed_any = True
             steps.append(
                 ImagePreprocessStepLog(
                     id="watermark_removal",
@@ -437,6 +591,18 @@ def preprocess_image_document(
             )
         )
 
+    current, changed, step, info = _run_paddle_doc_preprocess_stage(
+        current=current,
+        artifact_root=artifact_root,
+        output_stem=input_path.stem,
+        warnings=warnings,
+    )
+    if isinstance(info, dict):
+        meta["paddle_ocr_preprocess"] = info
+    if changed:
+        changed_any = True
+    steps.append(step)
+
     # Step: deskew
     t1 = time.perf_counter()
     if bool(getattr(settings, "DESKEW_ENABLED", False)):
@@ -495,21 +661,25 @@ def preprocess_image_document(
     if bool(getattr(settings, "WATERMARK_REMOVAL_ENABLED", False)):
         api_url = str(getattr(settings, "WATERMARK_REMOVAL_API_URL", "") or "").strip()
         timeout_sec = float(getattr(settings, "WATERMARK_TIMEOUT_SEC", 120) or 120)
-        changed = False
-        note = "missing_api_url"
-        if api_url:
-            out_path = artifact_root / f"{input_path.stem}.dewatermark{input_path.suffix.lower()}"
-            changed, note = remove_watermark_via_http(
-                input_path=current,
-                output_path=out_path,
-                url=api_url,
-                timeout_sec=timeout_sec,
-            )
-            if changed:
-                current = out_path
-                changed_any = True
-        else:
-            warnings.append("watermark_api_url_missing")
+        backend = str(getattr(settings, "WATERMARK_REMOVAL_BACKEND", "auto") or "auto").strip().lower() or "auto"
+        model_path = str(getattr(settings, "WATERMARK_REMOVAL_MODEL_PATH", "") or "")
+        out_path = artifact_root / f"{input_path.stem}.dewatermark{input_path.suffix.lower()}"
+        changed, note, info = cleanup_watermark_document(
+            input_path=current,
+            output_path=out_path,
+            backend=backend,
+            model_path=model_path,
+            api_url=api_url,
+            timeout_sec=timeout_sec,
+        )
+        if isinstance(info, dict):
+            meta["watermark_removal"] = info
+        warning = _watermark_warning(note)
+        if warning:
+            warnings.append(warning)
+        if changed:
+            current = out_path
+            changed_any = True
         steps.append(
             ImagePreprocessStepLog(
                 id="watermark_removal",

@@ -32,9 +32,9 @@ This writes a broader sample proof run under:
 
 Current committed bounded sample:
 
-- `16-case / 32-query`
+- `21-case / 42-query`
 - includes noisy `line_chart` and noisy `diagram` fixtures
-- includes `multilingual`, `formula`, and two `handwriting` note cases
+- includes `multilingual`, `formula`, two `handwriting` note cases, one dirty `mixed_scan_memo` image case, one `Word(.docx)` brief case, one watermark-heavy PDF cleaning case, one `Excel(.xlsx)` sheet case, and one watermark-overlay scanned image case
 - `summary.json` / `report.json` now surface `query_count_total` plus sample composition counts by family/category
 
 ### File-driven run

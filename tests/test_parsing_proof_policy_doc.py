@@ -11,5 +11,5 @@ def test_parsing_proof_policy_doc_exists_and_mentions_baseline_and_gate_rules() 
     assert "blocking" in text.lower()
     assert "gate.json" in text
     assert "diff.json" in text
-    assert "16-case / 32-query" in text
+    assert "21-case / 42-query" in text
     assert "query_count_total" in text

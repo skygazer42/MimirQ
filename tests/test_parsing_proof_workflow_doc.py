@@ -10,7 +10,7 @@ def test_parsing_proof_workflow_doc_mentions_sample_runner_and_artifacts() -> No
     assert "runs/parsing_proof_broader_sample/summary.json" in text
     assert "runs/parsing_proof_broader_sample/gate.json" in text
     assert "runs/parsing_proof_broader_sample/diff.md" in text
-    assert "16-case / 32-query" in text
+    assert "21-case / 42-query" in text
     assert "query_count_total" in text
     assert "sample composition" in text.lower()
     assert "tests/fixtures/parsing_golden_broader/manifest.json" in text

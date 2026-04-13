@@ -46,6 +46,30 @@ def _serialize_documents(items: list[Any] | None) -> list[dict[str, Any]]:
     return out
 
 
+def _apply_governance_cleaning(
+    *,
+    text: str,
+    governance_rule_packs: list[str] | None = None,
+) -> str:
+    packs = [str(item).strip() for item in (governance_rule_packs or []) if str(item).strip()]
+    if not packs:
+        return str(text or "")
+
+    from app.rag.preprocessing.cleaning import clean_markdown
+    from app.rag.preprocessing.rules import build_governance_rules
+
+    result = clean_markdown(
+        str(text or ""),
+        rules=build_governance_rules([], rule_packs=packs),
+        remove_toc_lines=False,
+        remove_noise_lines=False,
+        unwrap_lines=False,
+        remove_common_lines=False,
+        collapse_blank_lines=True,
+    )
+    return str(result.markdown or text or "")
+
+
 def run_parsing_retrieval_proof_from_file(
     *,
     input_file: Path,
@@ -59,6 +83,7 @@ def run_parsing_retrieval_proof_from_file(
     sparse_retrieval_provider: str = "deterministic",
     colbert_retrieval_enabled: bool | None = None,
     colbert_retrieval_provider: str | None = None,
+    governance_rule_packs: list[str] | None = None,
 ) -> dict[str, Any]:
     from app.parsing.enrich.image_ocr import add_image_ocr_blocks
     from app.parsing.factory import parser_factory
@@ -79,6 +104,10 @@ def run_parsing_retrieval_proof_from_file(
             next_content, _added, _audit = add_image_ocr_blocks(page_content, origin_path=input_file)
         except Exception:
             next_content = page_content
+        next_content = _apply_governance_cleaning(
+            text=next_content,
+            governance_rule_packs=governance_rule_packs,
+        )
         item.page_content = next_content
         item.metadata = metadata
         augmented_documents.append(item)
@@ -137,6 +166,12 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="ColBERT retrieval provider (deterministic|hf).",
     )
+    parser.add_argument(
+        "--governance-rule-pack",
+        action="append",
+        default=[],
+        help="Optional governance rule pack(s) applied to parsed text before building the retrieval fixture.",
+    )
     args = parser.parse_args(argv)
 
     report = run_parsing_retrieval_proof_from_file(
@@ -151,6 +186,11 @@ def main(argv: list[str] | None = None) -> int:
         sparse_retrieval_provider=str(args.sparse_retrieval_provider or "deterministic"),
         colbert_retrieval_enabled=args.enable_colbert_retrieval,
         colbert_retrieval_provider=args.colbert_retrieval_provider,
+        governance_rule_packs=[
+            str(item).strip()
+            for item in (args.governance_rule_pack or [])
+            if str(item).strip()
+        ],
     )
     summary = report.get("summary") if isinstance(report, dict) and isinstance(report.get("summary"), dict) else {}
     print(
