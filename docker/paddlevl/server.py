@@ -40,7 +40,7 @@ def _run_doc_parser(
         "doc_parser",
         "-i",
         str(pdf_path),
-        "-o",
+        "--save_path",
         str(out_dir),
         "--pipeline_version",
         str(pipeline_version or "v1.5"),
@@ -108,4 +108,3 @@ async def convert(
             raise HTTPException(status_code=500, detail=str(exc)[:2000]) from exc
 
         return Response(content=_make_zip(output_root), media_type="application/zip")
-

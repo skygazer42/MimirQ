@@ -23,11 +23,13 @@ make up-paddlevl
 
 ```bash
 PADDLEOCR_PIPELINE_VERSION=v1.5
-PADDLEOCR_DEVICE=cpu
+PADDLEOCR_DEVICE=gpu:0
 ```
 
 备注：
-- 当前 `docker/paddlevl` 默认安装的是 CPU 版 `paddlepaddle==3.2.1`。如需 GPU，请自行替换为对应的 `paddlepaddle-gpu` 轮子/基础镜像，并把 `PADDLEOCR_DEVICE` 设为 `gpu`。
+- 当前 `docker/paddlevl` 默认使用官方 `paddleocr-vl:latest-nvidia-gpu` 基础镜像，并通过 Compose 的 `gpus: all` 暴露本机 GPU。
+- 这条默认链路是 **GPU 优先** 的；如果你明确想切回 CPU，可把 `PADDLEOCR_DEVICE` 改为 `cpu`。
+- Paddle 官方安装/镜像链路目前优先覆盖 CUDA 12.6 / 12.9 等已发布支持组合；若你强制要求精确的 CUDA 12.8，自定义基础镜像/轮子组合需要额外兼容性验证。
 
 ## 2) 配置 MimirQ 后端
 
@@ -62,4 +64,3 @@ PADDLE_VL_TIMEOUT_SEC=600
 
 - `系统 → 设置 → 连接状态（/api/v1/settings/status）` 可以看到 `paddle_vl` 的可用性与 `/health` 探测结果（包含 pipeline_version）。
 - 确认 `PADDLE_VL_API_URL` 可从后端容器访问（Docker 内一般用 service 名 `http://mimirq-paddlevl:9030/convert`）。
-

@@ -231,7 +231,16 @@ async def run_e2e_load_test(cfg: E2ELoadTestConfig, *, client: httpx.AsyncClient
                     r = await client.post(
                         _join(base_url, "rag/retrieve-preview"),
                         headers=headers,
-                        json={"query": str(cfg.query or "hello"), "document_ids": doc_ids_for_queries},
+                        json={
+                            "query": str(cfg.query or "hello"),
+                            "dataset_id": dataset_id,
+                            "document_ids": doc_ids_for_queries,
+                            "rag_config": {
+                                "top_k": 10,
+                                "enable_multi_query": False,
+                                "use_graph": False,
+                            },
+                        },
                     )
                 except Exception:
                     retrieve_errors += 1
@@ -258,7 +267,18 @@ async def run_e2e_load_test(cfg: E2ELoadTestConfig, *, client: httpx.AsyncClient
                     r = await client.post(
                         _join(base_url, "chat"),
                         headers=headers,
-                        json={"message": str(cfg.message or "hello"), "document_ids": doc_ids_for_queries},
+                        json={
+                            "message": str(cfg.message or "hello"),
+                            "dataset_id": dataset_id,
+                            "document_ids": doc_ids_for_queries,
+                            "structured_output": True,
+                            "structured_preset": "summary",
+                            "rag_config": {
+                                "top_k": 10,
+                                "enable_multi_query": False,
+                                "use_graph": False,
+                            },
+                        },
                     )
                 except Exception:
                     chat_errors += 1

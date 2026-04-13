@@ -110,6 +110,7 @@ make up-paddlevl
 ```env
 PADDLE_VL_ENABLED=true
 PADDLE_VL_API_URL=http://mimirq-paddlevl:9030/convert
+PADDLEOCR_DEVICE=gpu:0
 ```
 
 ### (可选) 启用 Qianfan-OCR（外部 OCR）

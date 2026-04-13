@@ -46,13 +46,19 @@ services:
     build:
       context: ./paddlevl
     restart: unless-stopped
+    gpus: all
     ports:
       - "9030:9030"
     environment:
       TZ: Asia/Shanghai
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
       # Service-side options (PaddleOCR doc_parser / PaddleOCR-VL pipeline).
       PADDLEOCR_PIPELINE_VERSION: ${PADDLEOCR_PIPELINE_VERSION:-v1.5}
-      PADDLEOCR_DEVICE: ${PADDLEOCR_DEVICE:-cpu}
+      PADDLEOCR_DEVICE: ${PADDLEOCR_DEVICE:-gpu:0}
+      # Skip startup connectivity probes against upstream model mirrors; the
+      # runtime convert endpoint will still surface real download/model errors.
+      PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: ${PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK:-True}
     volumes:
       - paddlevl_cache:/root/.paddleocr
     healthcheck:
@@ -84,7 +90,7 @@ services:
       # Keep FastAPI docs enabled by default (so /docs and /openapi.json work).
       MINERU_API_ENABLE_FASTAPI_DOCS: ${MINERU_API_ENABLE_FASTAPI_DOCS:-1}
       # Optional: limit concurrent requests at MinerU side (503 when saturated).
-      MINERU_API_MAX_CONCURRENT_REQUESTS: ${MINERU_API_MAX_CONCURRENT_REQUESTS:-0}
+      MINERU_API_MAX_CONCURRENT_REQUESTS: ${MINERU_API_MAX_CONCURRENT_REQUESTS:-1}
     volumes:
       # Persist downloaded models/caches across restarts.
       - mineru_cache:/root/.cache
@@ -101,10 +107,13 @@ services:
     build:
       context: ./olmocr
     restart: unless-stopped
+    gpus: all
     ports:
       - "2085:2085"
     environment:
       TZ: Asia/Shanghai
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
       # Server-side concurrency guard (1 = recommended for a single GPU).
       OLMOCR_MAX_CONCURRENT_JOBS: ${OLMOCR_MAX_CONCURRENT_JOBS:-1}
       OLMOCR_PIPELINE_TIMEOUT_SEC: ${OLMOCR_PIPELINE_TIMEOUT_SEC:-1800}

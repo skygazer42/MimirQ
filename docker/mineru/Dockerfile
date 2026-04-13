@@ -28,8 +28,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 ARG MINERU_PIP_SPEC="mineru[core]>=2.7.0"
-RUN python3 -m pip install -U "${MINERU_PIP_SPEC}" --break-system-packages && \
-    python3 -m pip cache purge
+RUN python3 -m pip install -U "${MINERU_PIP_SPEC}" --break-system-packages
 
 # Optional: pre-download models during build (offline/air-gapped deployments).
 ARG MINERU_PREFETCH_MODELS=0
@@ -41,4 +40,8 @@ RUN if [ "${MINERU_PREFETCH_MODELS}" = "1" ]; then \
 
 EXPOSE 8000
 
+# Reset the inherited vLLM entrypoint. MinerU local ZIP mode should start the
+# `mineru-api` service directly, not the OpenAI-compatible vLLM server baked
+# into the upstream image.
+ENTRYPOINT []
 CMD ["mineru-api", "--host", "0.0.0.0", "--port", "8000"]

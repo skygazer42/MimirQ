@@ -16,6 +16,7 @@ import re
 import zipfile
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import requests
 from langchain_core.documents import Document
@@ -25,6 +26,7 @@ from app.parsing.utils.zip_processor import ZipImageProcessor
 from app.rag.core.logging import get_logger
 
 logger = get_logger("parsing.marker")
+_ENDPOINT_MISMATCH_STATUSES = {404, 405, 415, 422}
 
 
 def _sanitize_run_id(value: str) -> str:
@@ -63,12 +65,54 @@ class MarkerParser:
         run_id = _sanitize_run_id(document_id or file_path.stem or "marker")
         return (file_path.parent / ".marker" / run_id).absolute()
 
+    def _candidate_upload_urls(self) -> list[str]:
+        """
+        Return the configured URL plus known Marker upload-compatible fallbacks.
+
+        Historical docs/config in this repo used `/convert`, but the upstream
+        Marker service exposed by `marker_server` currently serves multipart PDF
+        uploads at `/marker/upload`.
+        """
+
+        raw = self._api_url.strip()
+        if not raw:
+            return []
+
+        candidates: list[str] = [raw]
+        try:
+            parts = urlsplit(raw)
+        except Exception:
+            return candidates
+
+        fallback = urlunsplit((parts.scheme, parts.netloc, "/marker/upload", parts.query, parts.fragment))
+        if fallback and fallback not in candidates:
+            candidates.append(fallback)
+        return candidates
+
     def _post_multipart(self, *, file_path: Path) -> requests.Response:
         file_bytes = file_path.read_bytes()
         files = {"file": (file_path.name, file_bytes, "application/pdf")}
         # Keep params minimal; servers can ignore unknown fields.
         data = {"output_format": "markdown"}
-        return self._session.post(self._api_url, files=files, data=data, timeout=self._timeout_sec)
+        candidate_urls = self._candidate_upload_urls()
+        last_response: requests.Response | None = None
+
+        for index, url in enumerate(candidate_urls):
+            resp = self._session.post(url, files=files, data=data, timeout=self._timeout_sec)
+            last_response = resp
+            if resp.status_code not in _ENDPOINT_MISMATCH_STATUSES or index == len(candidate_urls) - 1:
+                return resp
+
+            logger.warning(
+                "[marker] multipart upload endpoint mismatch at %s (status=%s); retrying fallback %s",
+                url,
+                resp.status_code,
+                candidate_urls[index + 1],
+            )
+
+        if last_response is None:
+            raise RuntimeError("Marker parser requires at least one candidate upload URL.")
+        return last_response
 
     @staticmethod
     def _looks_like_zip(resp: requests.Response) -> bool:
@@ -81,7 +125,7 @@ class MarkerParser:
     @staticmethod
     def _extract_markdown_from_json(data: Any) -> str:
         if isinstance(data, dict):
-            for key in ("markdown", "md", "content", "text", "result"):
+            for key in ("markdown", "md", "content", "text", "result", "output"):
                 val = data.get(key)
                 if isinstance(val, str) and val.strip():
                     return val
