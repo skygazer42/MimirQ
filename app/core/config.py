@@ -597,6 +597,25 @@ class Settings(BaseSettings):
     # Whether to request Layout-as-Thought mode from the external service.
     QIANFAN_OCR_LAYOUT_AS_THOUGHT: bool = False
 
+    # TextIn xParse (document -> Markdown external API; optional)
+    TEXTIN_ENABLED: bool = False
+    # Full endpoint URL, defaults to the official xParse quickstart endpoint.
+    TEXTIN_API_URL: str = "https://api.textin.com/ai/service/v1/pdf_to_markdown"
+    TEXTIN_APP_ID: str = ""
+    TEXTIN_SECRET_CODE: str = ""
+    TEXTIN_TIMEOUT_SEC: int = 180
+    # auto | scan | parse | lite | vlm
+    TEXTIN_PARSE_MODE: str = "auto"
+    # html | markdown
+    TEXTIN_TABLE_FLAVOR: str = "html"
+    TEXTIN_APPLY_DOCUMENT_TREE: bool = True
+    TEXTIN_MARKDOWN_DETAILS: bool = True
+    # none | objects | pages | both
+    TEXTIN_GET_IMAGE: str = "none"
+    TEXTIN_DPI: int = 144
+    # 0 = all pages
+    TEXTIN_PAGE_COUNT: int = 0
+
     # PDF quality OCR validation (used by parse-preview scoring)
     RAPIDOCR_ENABLED: bool = False
 

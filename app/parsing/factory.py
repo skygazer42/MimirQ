@@ -45,6 +45,7 @@ if TYPE_CHECKING:
     from app.parsing.parsers.pandoc_parser import PandocParser
     from app.parsing.parsers.pdf_parser import PDFParser
     from app.parsing.parsers.qianfan_ocr_parser import QianfanOCRParser
+    from app.parsing.parsers.textin_parser import TextInParser
 
 
 class ParserFactory:
@@ -58,6 +59,7 @@ class ParserFactory:
         "glm_ocr",
         "olmocr",
         "qianfan_ocr",
+        "textin",
         "mineru",
         "deepdoc",
         "deepseek_ocr",
@@ -118,7 +120,7 @@ class ParserFactory:
     SUPPORTED_NON_PDF_EXTENSIONS = SUPPORTED_NON_PDF_EXTENSIONS | IMAGE_EXTENSIONS
     # Non-PDF formats are primarily handled by general converters (MarkItDown/Pandoc),
     # but some advanced backends (e.g. DeepDoc/Docling) can also handle DOCX when enabled.
-    SUPPORTED_NON_PDF_BACKENDS = {"auto", "markitdown", "pandoc", "excel", "docx", "pptx", "html", "csv", "json", "deepdoc", "docling", "email", "image"}
+    SUPPORTED_NON_PDF_BACKENDS = {"auto", "markitdown", "pandoc", "excel", "docx", "pptx", "html", "csv", "json", "deepdoc", "docling", "email", "image", "textin"}
 
     def __init__(self):
         self._basic_pdf_parser: PDFParser | None = None
@@ -127,6 +129,7 @@ class ParserFactory:
         self._glm_ocr_parser: GlmOCRParser | None = None
         self._olmocr_parser: OlmocrParser | None = None
         self._qianfan_ocr_parser: QianfanOCRParser | None = None
+        self._textin_parser: TextInParser | None = None
         self._mineru_parser: MinerUParser | None = None
         self._deepdoc_parser: DeepDocParser | None = None
         self._deepseek_ocr_parser: DeepSeekOCRParser | None = None
@@ -149,6 +152,8 @@ class ParserFactory:
             logger.debug("[pdf] olmOCR parser available (requires selection)")
         if bool(getattr(settings, "QIANFAN_OCR_ENABLED", False)) and bool((getattr(settings, "QIANFAN_OCR_API_URL", "") or "").strip()):
             logger.debug("[pdf] Qianfan-OCR parser available (requires selection)")
+        if bool(getattr(settings, "TEXTIN_ENABLED", False)) and bool((getattr(settings, "TEXTIN_APP_ID", "") or "").strip()) and bool((getattr(settings, "TEXTIN_SECRET_CODE", "") or "").strip()):
+            logger.debug("[pdf] TextIn parser available (requires selection)")
         if settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL):
             logger.debug("[pdf] MinerU parser available (requires selection)")
         if settings.DEEPDOC_ENABLED:
@@ -204,6 +209,8 @@ class ParserFactory:
             if file_ext in IMAGE_EXTENSIONS:
                 # Standalone images: treat as a first-class supported ingest type.
                 # Ignore unrelated backend hints and always route to the lightweight image adapter.
+                if normalized == "textin":
+                    return "textin"
                 return "image"
             if file_ext not in self.SUPPORTED_NON_PDF_EXTENSIONS:
                 raise ValueError(f"Unsupported file type: {file_ext}")
@@ -347,6 +354,18 @@ class ParserFactory:
                 raise ValueError("Qianfan-OCR parser requires QIANFAN_OCR_API_URL.")
             return "qianfan_ocr"
 
+        if normalized == "textin":
+            if not bool(getattr(settings, "TEXTIN_ENABLED", False)):
+                raise ValueError(
+                    "TextIn parser is not enabled. "
+                    "Please set TEXTIN_ENABLED=True and configure TEXTIN credentials."
+                )
+            if not bool((getattr(settings, "TEXTIN_APP_ID", "") or "").strip()):
+                raise ValueError("TextIn parser requires TEXTIN_APP_ID.")
+            if not bool((getattr(settings, "TEXTIN_SECRET_CODE", "") or "").strip()):
+                raise ValueError("TextIn parser requires TEXTIN_SECRET_CODE.")
+            return "textin"
+
         if normalized == "mineru":
             if not (settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL)):
                 raise ValueError(
@@ -426,7 +445,7 @@ class ParserFactory:
             elif file_ext == ".md":
                 parser = self.parsers[".md"]
             elif file_ext in self.SUPPORTED_NON_PDF_EXTENSIONS:
-                if backend in {"deepdoc", "docling"}:
+                if backend in {"deepdoc", "docling", "textin"}:
                     # These parsers are initialized in the PDF backend factory, but can also
                     # handle certain non-PDF formats (e.g. DOCX) when explicitly requested.
                     parser = self._get_pdf_parser(backend)
@@ -468,7 +487,7 @@ class ParserFactory:
                 raise ValueError(f"Unsupported file type: {file_ext}")
 
             # Some parsers need dataset/document ids to produce stable artifacts.
-            if backend in {"marker", "paddle_vl", "glm_ocr", "olmocr", "qianfan_ocr", "mineru", "magicpdf", "deepseek_ocr", "etl4llm", "pandoc"}:
+            if backend in {"marker", "paddle_vl", "glm_ocr", "olmocr", "qianfan_ocr", "textin", "mineru", "magicpdf", "deepseek_ocr", "etl4llm", "pandoc"}:
                 documents = parser.parse(
                     file_path,
                     dataset_id=dataset_id,
@@ -538,7 +557,7 @@ class ParserFactory:
             elif file_ext == ".md":
                 parser = self.parsers[".md"]
             elif file_ext in self.SUPPORTED_NON_PDF_EXTENSIONS:
-                if selected_backend in {"deepdoc", "docling"}:
+                if selected_backend in {"deepdoc", "docling", "textin"}:
                     parser = self._get_pdf_parser(selected_backend)
                 elif selected_backend == "markitdown":
                     parser = self._get_markitdown_parser()
@@ -577,7 +596,7 @@ class ParserFactory:
             else:
                 raise ValueError(f"Unsupported file type: {file_ext}")
 
-            if selected_backend in {"marker", "paddle_vl", "glm_ocr", "olmocr", "qianfan_ocr", "mineru", "magicpdf", "deepseek_ocr", "etl4llm", "pandoc"}:
+            if selected_backend in {"marker", "paddle_vl", "glm_ocr", "olmocr", "qianfan_ocr", "textin", "mineru", "magicpdf", "deepseek_ocr", "etl4llm", "pandoc"}:
                 return parser.parse(
                     file_path,
                     dataset_id=dataset_id,
@@ -675,7 +694,7 @@ class ParserFactory:
         file_ext = (file_ext or "").strip().lower()
 
         # PDF advanced backends (may fail to import due to binary deps or external services); fall back to basic PyMuPDF.
-        if file_ext == ".pdf" and backend in {"docling", "deepdoc", "marker", "paddle_vl", "glm_ocr", "olmocr", "qianfan_ocr", "mineru", "magicpdf", "deepseek_ocr", "etl4llm"}:
+        if file_ext == ".pdf" and backend in {"docling", "deepdoc", "marker", "paddle_vl", "glm_ocr", "olmocr", "qianfan_ocr", "textin", "mineru", "magicpdf", "deepseek_ocr", "etl4llm"}:
             logger.warning(
                 "[parse] PDF backend '%s' failed for %s: %s; falling back to 'basic'",
                 backend,
@@ -693,7 +712,7 @@ class ParserFactory:
                 return None, backend
 
         # DOCX advanced backends (optional); fall back to Pandoc/MarkItDown/DocxParser.
-        if file_ext == DOCX_EXTENSION and backend in {"docling", "deepdoc"}:
+        if file_ext == DOCX_EXTENSION and backend in {"docling", "deepdoc", "textin"}:
             logger.warning(
                 "[parse] DOCX backend '%s' failed for %s: %s; falling back to office converters",
                 backend,
@@ -860,6 +879,14 @@ class ParserFactory:
                 logger.info("[pdf] Initializing Qianfan-OCR parser (external service)")
                 self._qianfan_ocr_parser = QianfanOCRParser()
             return self._qianfan_ocr_parser
+
+        if backend == "textin":
+            if self._textin_parser is None:
+                from app.parsing.parsers.textin_parser import TextInParser
+
+                logger.info("[pdf] Initializing TextIn xParse parser (external API)")
+                self._textin_parser = TextInParser()
+            return self._textin_parser
 
         if backend == "mineru":
             if self._mineru_parser is None:

@@ -1,7 +1,7 @@
 'use client'
 
 import { Input } from '@/components/ui/input'
-import type { Etl4LlmConfig, MagicPDFConfig, MarkerConfig, PaddleVLConfig } from '@/lib/api'
+import type { Etl4LlmConfig, MagicPDFConfig, MarkerConfig, PaddleVLConfig, TextInConfig } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { LayoutGrid, ScanLine, Wand2 } from 'lucide-react'
 import { systemPageTokens, systemWorkbenchTokens } from '@/components/ui/system-page-tokens'
@@ -10,10 +10,12 @@ type ParserServicesSectionProps = {
   etl4llm: Etl4LlmConfig
   marker: MarkerConfig
   paddleVl: PaddleVLConfig
+  textIn: TextInConfig
   magicPdf: MagicPDFConfig
   updateEtl4Llm: (patch: Partial<Etl4LlmConfig>) => void
   updateMarker: (patch: Partial<MarkerConfig>) => void
   updatePaddleVL: (patch: Partial<PaddleVLConfig>) => void
+  updateTextIn: (patch: Partial<TextInConfig>) => void
   updateMagicPDF: (patch: Partial<MagicPDFConfig>) => void
 }
 
@@ -52,10 +54,12 @@ export function ParserServicesSection({
   etl4llm,
   marker,
   paddleVl,
+  textIn,
   magicPdf,
   updateEtl4Llm,
   updateMarker,
   updatePaddleVL,
+  updateTextIn,
   updateMagicPDF,
 }: Readonly<ParserServicesSectionProps>) {
   return (
@@ -239,6 +243,147 @@ export function ParserServicesSection({
               />
               <div className={FIELD_HINT}>扫描件/OCR 场景建议调大</div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2 className={SECTION_TITLE}>
+          <LayoutGrid className="h-4 w-4 text-cyan-600 dark:text-cyan-300" />
+          TextIn xParse 配置
+        </h2>
+
+        <div className={CARD}>
+          <div className={GRID}>
+            <div className="space-y-2 lg:col-span-2">
+              <div className={FIELD_LABEL}>API 地址</div>
+              <Input
+                className={DENSE_INPUT}
+                value={textIn.api_url}
+                onChange={(event) => updateTextIn({ api_url: event.target.value })}
+                placeholder="https://api.textin.com/ai/service/v1/pdf_to_markdown"
+              />
+              <div className={FIELD_HINT}>
+                启用后会写入 `TEXTIN_API_URL`，并用于解析器 `textin`。
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className={FIELD_LABEL}>超时（秒）</div>
+              <Input
+                className={DENSE_INPUT}
+                type="number"
+                min={10}
+                value={textIn.timeout_sec}
+                onChange={(event) =>
+                  updateTextIn({
+                    timeout_sec: Number.parseInt(event.target.value || '0', 10) || 180,
+                  })
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className={FIELD_LABEL}>APP ID</div>
+              <Input
+                className={DENSE_INPUT}
+                value={textIn.app_id}
+                onChange={(event) => updateTextIn({ app_id: event.target.value })}
+                placeholder="你的 TextIn APP ID"
+              />
+            </div>
+
+            <div className="space-y-2 lg:col-span-2">
+              <div className={FIELD_LABEL}>Secret Code</div>
+              <Input
+                className={DENSE_INPUT}
+                type="password"
+                value={textIn.secret_code}
+                onChange={(event) => updateTextIn({ secret_code: event.target.value })}
+                placeholder="你的 TextIn Secret Code"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className={FIELD_LABEL}>解析模式</div>
+              <select
+                value={textIn.parse_mode}
+                onChange={(event) => updateTextIn({ parse_mode: event.target.value })}
+                className={DENSE_SELECT}
+              >
+                <option value="auto">auto</option>
+                <option value="scan">scan</option>
+                <option value="parse">parse</option>
+                <option value="lite">lite</option>
+                <option value="vlm">vlm</option>
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <div className={FIELD_LABEL}>表格输出</div>
+              <select
+                value={textIn.table_flavor}
+                onChange={(event) => updateTextIn({ table_flavor: event.target.value })}
+                className={DENSE_SELECT}
+              >
+                <option value="html">html</option>
+                <option value="markdown">markdown</option>
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <div className={FIELD_LABEL}>DPI</div>
+              <Input
+                className={DENSE_INPUT}
+                type="number"
+                min={72}
+                value={textIn.dpi}
+                onChange={(event) =>
+                  updateTextIn({
+                    dpi: Number.parseInt(event.target.value || '0', 10) || 144,
+                  })
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className={FIELD_LABEL}>页数限制（0=全部）</div>
+              <Input
+                className={DENSE_INPUT}
+                type="number"
+                min={0}
+                value={textIn.page_count}
+                onChange={(event) =>
+                  updateTextIn({
+                    page_count: Number.parseInt(event.target.value || '0', 10) || 0,
+                  })
+                }
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between border-t border-border/70 pt-3">
+            <div>
+              <div className="text-[12px] font-medium text-foreground/80">应用文档树</div>
+              <div className={FIELD_HINT}>尽量保留标题层级 / 文档结构</div>
+            </div>
+            <TogglePill
+              enabled={textIn.apply_document_tree}
+              onClick={() => updateTextIn({ apply_document_tree: !textIn.apply_document_tree })}
+              accentClassName="border-info/20 bg-info/10 text-info"
+            />
+          </div>
+
+          <div className="flex items-center justify-between border-t border-border/70 pt-3">
+            <div>
+              <div className="text-[12px] font-medium text-foreground/80">Markdown 细节增强</div>
+              <div className={FIELD_HINT}>返回更丰富的 Markdown 结构</div>
+            </div>
+            <TogglePill
+              enabled={textIn.markdown_details}
+              onClick={() => updateTextIn({ markdown_details: !textIn.markdown_details })}
+              accentClassName="border-info/20 bg-info/10 text-info"
+            />
           </div>
         </div>
       </section>

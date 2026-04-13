@@ -58,6 +58,13 @@ export const PARSER_BACKEND_OPTIONS: ParserBackendOption[] = [
     badge: '外部',
   },
   {
+    value: 'textin',
+    label: 'TextIn xParse（外部 API）',
+    description: 'TextIn xParse · 文档解析 API，适合 PDF / Office / 图片等转 Markdown',
+    icon: 'mineru',
+    badge: 'API',
+  },
+  {
     value: 'olmocr',
     label: 'olmOCR（外部）',
     description: 'olmOCR · OCR 转 Markdown，适合扫描件/图片型 PDF（需自建服务/GPU）',
@@ -181,6 +188,8 @@ function normalizeParserValue(value?: string) {
   if (normalized === 'deepseek-ocr') return 'deepseek_ocr'
   if (normalized === 'qianfan-ocr') return 'qianfan_ocr'
   if (normalized === 'qianfanocr') return 'qianfan_ocr'
+  if (normalized === 'textin-xparse') return 'textin'
+  if (normalized === 'textinxparse') return 'textin'
   if (normalized === 'etl-4llm') return 'etl4llm'
   if (normalized === 'bisheng-unstructured') return 'etl4llm'
   if (normalized === 'bishengunstructured') return 'etl4llm'

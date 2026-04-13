@@ -20,6 +20,10 @@ _BACKEND_ALIASES: dict[str, str] = {
     # Qianfan OCR
     "qianfan-ocr": "qianfan_ocr",
     "qianfanocr": "qianfan_ocr",
+    # TextIn xParse
+    "textin": "textin",
+    "textin-xparse": "textin",
+    "textinxparse": "textin",
     # ETL4LLM (layout/table/image-aware parsing service)
     "etl4llm": "etl4llm",
     "etl-4llm": "etl4llm",

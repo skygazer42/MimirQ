@@ -181,12 +181,13 @@ class PDFBackends:
     DEEPDOC = "deepdoc"
     DEEPSEEK_OCR = "deepseek_ocr"
     QIANFAN_OCR = "qianfan_ocr"
+    TEXTIN = "textin"
     MARKITDOWN = "markitdown"
     DOCLING = "docling"
     TCADP = "tcadp"
 
     ALL: frozenset[str] = frozenset({
-        "auto", "basic", "mineru", "deepdoc", "deepseek_ocr", "qianfan_ocr", "markitdown", "docling", "tcadp"
+        "auto", "basic", "mineru", "deepdoc", "deepseek_ocr", "qianfan_ocr", "textin", "markitdown", "docling", "tcadp"
     })
 
 

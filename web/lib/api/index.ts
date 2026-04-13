@@ -60,6 +60,7 @@ export type {
   SafetyConfig,
   SystemSettings,
   SystemStatus,
+  TextInConfig,
   TestLLMRequest,
   TestLLMResponse,
 } from './settings'

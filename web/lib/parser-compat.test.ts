@@ -9,6 +9,7 @@ describe('parser-compat', () => {
     expect(normalizeParserBackendName('bisheng-unstructured')).toBe('etl4llm')
     expect(normalizeParserBackendName('olm-ocr')).toBe('olmocr')
     expect(normalizeParserBackendName('olmocr-pdf')).toBe('olmocr')
+    expect(normalizeParserBackendName('textin-xparse')).toBe('textin')
     expect(normalizeParserBackendName('')).toBe('auto')
   })
 
@@ -19,6 +20,10 @@ describe('parser-compat', () => {
     })
     expect(resolveParserBackendForFilename('example.pdf', 'olm-ocr')).toEqual({
       backend: 'olmocr',
+      changed: false,
+    })
+    expect(resolveParserBackendForFilename('example.docx', 'textin-xparse')).toEqual({
+      backend: 'textin',
       changed: false,
     })
   })
