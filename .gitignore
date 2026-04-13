@@ -64,6 +64,8 @@ logs/
 chroma_db/
 artifacts/
 runs/perf/
+runs/parser_checks/
+runs/smoke/
 .worktrees/
 .beads/.migration-hint-ts
 web/coverage/
