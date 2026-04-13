@@ -47,7 +47,7 @@ The broader parsing-proof sample currently emits:
 
 Current bounded sample scale:
 
-- `16-case / 32-query`
+- `21-case / 42-query`
 - `summary.json` includes `query_count_total` and `sample_composition`
 - `report.json` mirrors the same sample-shape fields so release-quality surfaces can show coverage, not only gate outcome
 

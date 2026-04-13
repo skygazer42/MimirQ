@@ -403,6 +403,152 @@ def _write_handwriting_note_variant(path: Path, *, text: str, variant: str) -> N
     noisy.save(path)
 
 
+def _write_mixed_scan_memo(path: Path) -> None:
+    from PIL import ImageFont
+
+    image = Image.new("L", (920, 1180), color=241)
+    draw = ImageDraw.Draw(image)
+    font_path = _resolve_handwriting_font()
+    title_font = ImageFont.load_default()
+    body_font = ImageFont.load_default()
+    if font_path is not None:
+        try:
+            title_font = ImageFont.truetype(str(font_path), 34)
+            body_font = ImageFont.truetype(str(font_path), 28)
+        except Exception:
+            title_font = ImageFont.load_default()
+            body_font = ImageFont.load_default()
+
+    draw.text((86, 82), "Mixed scan memo", fill=28, font=title_font)
+    left_lines = [
+        "North cluster backlog stayed within forecast.",
+        "West cluster returns dropped to 3 percent.",
+    ]
+    right_lines = [
+        "APAC pilot approval moved to wave 2.",
+        "Customer retention stayed at 94 percent.",
+    ]
+    footer_lines = [
+        "Mixed scan synthesis should appear after both columns.",
+        "Escalate the Jakarta handoff on Tuesday.",
+    ]
+
+    left_y = 182
+    for line in left_lines:
+        draw.text((88, left_y), line, fill=24, font=body_font)
+        left_y += 58
+
+    right_y = 182
+    for line in right_lines:
+        draw.text((494, right_y), line, fill=24, font=body_font)
+        right_y += 58
+
+    footer_y = 498
+    for line in footer_lines:
+        draw.text((116, footer_y), line, fill=30, font=body_font)
+        footer_y += 60
+
+    draw.line((78, 148, 848, 148), fill=168, width=2)
+    draw.line((454, 162, 454, 336), fill=196, width=1)
+    draw.line((96, 454, 838, 454), fill=182, width=1)
+
+    arr = np.array(image)
+    blurred = cv2.GaussianBlur(arr, (5, 5), 0)
+    noise = np.random.default_rng(29).normal(loc=0.0, scale=10.5, size=blurred.shape)
+    noisy = np.clip(blurred.astype("float32") + noise, 0, 255).astype("uint8")
+    src = np.float32([[16, 20], [arr.shape[1] - 18, 8], [28, arr.shape[0] - 18], [arr.shape[1] - 24, arr.shape[0] - 12]])
+    dst = np.float32([[0, 0], [arr.shape[1], 14], [8, arr.shape[0]], [arr.shape[1], arr.shape[0] - 18]])
+    mat = cv2.getPerspectiveTransform(src, dst)
+    warped = cv2.warpPerspective(noisy, mat, (arr.shape[1], arr.shape[0]), borderValue=241)
+    final = _apply_scan_noise(Image.fromarray(warped).convert("RGB"), seed=31, jpeg_quality=43).convert("L")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    final.save(path)
+
+
+def _write_word_project_brief_docx(path: Path) -> None:
+    from docx import Document as DocxDocument  # type: ignore
+
+    doc = DocxDocument()
+    doc.add_heading("Word Project Brief", level=1)
+    doc.add_paragraph("Owner: Lina Chen")
+    doc.add_paragraph("Delivery milestone ships on Monday.")
+    try:
+        doc.add_paragraph("Review the onboarding packet.", style="List Bullet")
+        doc.add_paragraph("Confirm the budget note.", style="List Bullet")
+    except Exception:
+        doc.add_paragraph("- Review the onboarding packet.")
+        doc.add_paragraph("- Confirm the budget note.")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    doc.save(str(path))
+
+
+def _write_watermark_heavy_pdf(pdf_path: Path) -> None:
+    _write_text_pdf(
+        [
+            [
+                "DRAFT",
+                "Company Confidential",
+                "仅供内部使用",
+                "",
+                "Watermark-Heavy Memo",
+                "",
+                "Owner: Mei Lin",
+                "Launch rehearsal: 2026-05-03",
+                "Checklist status: ready for review.",
+            ]
+        ],
+        pdf_path,
+    )
+
+
+def _write_excel_budget_sheet(path: Path) -> None:
+    from openpyxl import Workbook  # type: ignore
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Budget"
+    ws.append(["Region", "Budget", "Status"])
+    ws.append(["North", 120, "Locked"])
+    ws.append(["APAC", 138, "Review"])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    wb.save(str(path))
+
+
+def _write_watermark_overlay_scan(path: Path) -> None:
+    from PIL import ImageFont
+
+    image = Image.new("RGB", (860, 1180), color=(244, 244, 240))
+    draw = ImageDraw.Draw(image)
+    font_path = _resolve_handwriting_font()
+    title_font = ImageFont.load_default()
+    body_font = ImageFont.load_default()
+    overlay_font = ImageFont.load_default()
+    if font_path is not None:
+        try:
+            title_font = ImageFont.truetype(str(font_path), 32)
+            body_font = ImageFont.truetype(str(font_path), 26)
+            overlay_font = ImageFont.truetype(str(font_path), 48)
+        except Exception:
+            title_font = ImageFont.load_default()
+            body_font = ImageFont.load_default()
+            overlay_font = ImageFont.load_default()
+
+    draw.text((96, 96), "Watermark Overlay Scan", fill=(45, 45, 45), font=title_font)
+    draw.text((96, 172), "Owner: Han Xu", fill=(35, 35, 35), font=body_font)
+    draw.text((96, 226), "Escalation date: 2026-06-12", fill=(35, 35, 35), font=body_font)
+    draw.text((96, 280), "Follow-up route: APAC controls team.", fill=(35, 35, 35), font=body_font)
+    draw.text((96, 334), "This scan includes a heavy diagonal watermark.", fill=(35, 35, 35), font=body_font)
+
+    overlay = Image.new("RGBA", image.size, (255, 255, 255, 0))
+    odraw = ImageDraw.Draw(overlay)
+    odraw.text((170, 500), "CONFIDENTIAL", fill=(140, 140, 140, 88), font=overlay_font)
+    overlay = overlay.rotate(-28, resample=Image.Resampling.BICUBIC, expand=False)
+    composed = Image.alpha_composite(image.convert("RGBA"), overlay).convert("RGB")
+    noisy = _apply_scan_noise(composed, seed=37, jpeg_quality=40)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    noisy.save(path)
+
+
 def _write_multilingual_pdf(pdf_path: Path) -> None:
     doc = fitz.open()
     try:
@@ -467,6 +613,11 @@ def generate_broader_assets(output_root: Path) -> None:
     multilingual_pdf = output_root / "multilingual_pdf" / "input" / "sample.pdf"
     handwriting_note_image = output_root / "handwriting_note_image" / "input" / "sample.png"
     handwriting_skewed_note_image = output_root / "handwriting_skewed_note_image" / "input" / "sample.png"
+    mixed_scan_memo_image = output_root / "mixed_scan_memo_image" / "input" / "sample.png"
+    word_project_brief_docx = output_root / "word_project_brief_docx" / "input" / "sample.docx"
+    watermark_heavy_pdf = output_root / "watermark_heavy_pdf" / "input" / "sample.pdf"
+    excel_budget_sheet_xlsx = output_root / "excel_budget_sheet_xlsx" / "input" / "sample.xlsx"
+    watermark_overlay_scan_image = output_root / "watermark_overlay_scan_image" / "input" / "sample.png"
 
     for path, writer in (
         (chart_image, _write_chart),
@@ -576,6 +727,11 @@ def generate_broader_assets(output_root: Path) -> None:
     _write_multilingual_pdf(multilingual_pdf)
     _write_handwriting_note(handwriting_note_image)
     _write_handwriting_note_variant(handwriting_skewed_note_image, text="APAC128", variant="combo")
+    _write_mixed_scan_memo(mixed_scan_memo_image)
+    _write_word_project_brief_docx(word_project_brief_docx)
+    _write_watermark_heavy_pdf(watermark_heavy_pdf)
+    _write_excel_budget_sheet(excel_budget_sheet_xlsx)
+    _write_watermark_overlay_scan(watermark_overlay_scan_image)
 
     for src, dst in (
         (chart_image, output_root / "chart_pdf" / "golden" / "chart.png"),
@@ -590,6 +746,8 @@ def generate_broader_assets(output_root: Path) -> None:
         (leading_paragraph_image, output_root / "table_with_leading_paragraph_pdf" / "golden" / "page.png"),
         (handwriting_note_image, output_root / "handwriting_note_image" / "golden" / "sample.png"),
         (handwriting_skewed_note_image, output_root / "handwriting_skewed_note_image" / "golden" / "sample.png"),
+        (mixed_scan_memo_image, output_root / "mixed_scan_memo_image" / "golden" / "sample.png"),
+        (watermark_overlay_scan_image, output_root / "watermark_overlay_scan_image" / "golden" / "sample.png"),
     ):
         dst.parent.mkdir(parents=True, exist_ok=True)
         dst.write_bytes(src.read_bytes())

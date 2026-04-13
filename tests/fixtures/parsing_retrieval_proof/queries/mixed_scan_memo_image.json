@@ -1,0 +1,12 @@
+[
+  {
+    "id": "q-mixed-scan-memo-1",
+    "question": "In the mixed scan memo, which cluster returns dropped to 3 percent?",
+    "expected_chunk_indexes": [0]
+  },
+  {
+    "id": "q-mixed-scan-memo-2",
+    "question": "In the mixed scan memo, what should happen to the Jakarta handoff on Tuesday?",
+    "expected_chunk_indexes": [0]
+  }
+]

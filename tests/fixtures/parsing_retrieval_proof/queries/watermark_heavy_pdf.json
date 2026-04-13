@@ -1,0 +1,12 @@
+[
+  {
+    "id": "q-watermark-heavy-1",
+    "question": "In the watermark-heavy memo, who owns the checklist review?",
+    "expected_chunk_indexes": [0]
+  },
+  {
+    "id": "q-watermark-heavy-2",
+    "question": "In the watermark-heavy memo, what date is the launch rehearsal?",
+    "expected_chunk_indexes": [0]
+  }
+]

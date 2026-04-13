@@ -94,5 +94,36 @@
     "parser_backend": "image",
     "top_k": 1,
     "retrieval_mode": "keyword"
+  },
+  "mixed_scan_memo_image_case": {
+    "queries_json": "tests/fixtures/parsing_retrieval_proof/queries/mixed_scan_memo_image.json",
+    "parser_backend": "image",
+    "top_k": 1,
+    "retrieval_mode": "keyword"
+  },
+  "word_project_brief_docx_case": {
+    "queries_json": "tests/fixtures/parsing_retrieval_proof/queries/word_project_brief_docx.json",
+    "parser_backend": "docx",
+    "top_k": 1,
+    "retrieval_mode": "keyword"
+  },
+  "watermark_heavy_pdf_case": {
+    "queries_json": "tests/fixtures/parsing_retrieval_proof/queries/watermark_heavy_pdf.json",
+    "parser_backend": "basic",
+    "top_k": 1,
+    "retrieval_mode": "keyword",
+    "governance_rule_packs": ["pdf_watermark"]
+  },
+  "excel_budget_sheet_xlsx_case": {
+    "queries_json": "tests/fixtures/parsing_retrieval_proof/queries/excel_budget_sheet_xlsx.json",
+    "parser_backend": "excel",
+    "top_k": 1,
+    "retrieval_mode": "keyword"
+  },
+  "watermark_overlay_scan_image_case": {
+    "queries_json": "tests/fixtures/parsing_retrieval_proof/queries/watermark_overlay_scan_image.json",
+    "parser_backend": "image",
+    "top_k": 1,
+    "retrieval_mode": "keyword"
   }
 }

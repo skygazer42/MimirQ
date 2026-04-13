@@ -1,0 +1,12 @@
+[
+  {
+    "id": "q-word-project-brief-1",
+    "question": "In the Word project brief, who owns the rollout?",
+    "expected_chunk_indexes": [0]
+  },
+  {
+    "id": "q-word-project-brief-2",
+    "question": "In the Word project brief, when does the delivery milestone ship?",
+    "expected_chunk_indexes": [0]
+  }
+]

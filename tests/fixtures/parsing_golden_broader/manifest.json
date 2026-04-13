@@ -95,6 +95,37 @@
       "path": "handwriting_skewed_note_image/input/sample.png",
       "golden_markdown": "handwriting_skewed_note_image/golden/sample.md",
       "specialty_elements_path": "handwriting_skewed_note_image/golden/sample.specialty.json"
+    },
+    {
+      "id": "mixed_scan_memo_image_case",
+      "path": "mixed_scan_memo_image/input/sample.png",
+      "golden_markdown": "mixed_scan_memo_image/golden/sample.md",
+      "specialty_elements_path": "mixed_scan_memo_image/golden/sample.specialty.json"
+    },
+    {
+      "id": "word_project_brief_docx_case",
+      "path": "word_project_brief_docx/input/sample.docx",
+      "golden_markdown": "word_project_brief_docx/golden/sample.md",
+      "specialty_elements_path": "word_project_brief_docx/golden/sample.specialty.json"
+    },
+    {
+      "id": "watermark_heavy_pdf_case",
+      "path": "watermark_heavy_pdf/input/sample.pdf",
+      "golden_markdown": "watermark_heavy_pdf/golden/sample.md",
+      "specialty_elements_path": "watermark_heavy_pdf/golden/sample.specialty.json",
+      "governance_rule_packs": ["pdf_watermark"]
+    },
+    {
+      "id": "excel_budget_sheet_xlsx_case",
+      "path": "excel_budget_sheet_xlsx/input/sample.xlsx",
+      "golden_markdown": "excel_budget_sheet_xlsx/golden/sample.md",
+      "specialty_elements_path": "excel_budget_sheet_xlsx/golden/sample.specialty.json"
+    },
+    {
+      "id": "watermark_overlay_scan_image_case",
+      "path": "watermark_overlay_scan_image/input/sample.png",
+      "golden_markdown": "watermark_overlay_scan_image/golden/sample.md",
+      "specialty_elements_path": "watermark_overlay_scan_image/golden/sample.specialty.json"
     }
   ]
 }

@@ -110,6 +110,11 @@ def run_batch(*, spec_path: Path, out_dir: Path) -> dict[str, Any]:
             parser_backend=parser_backend,
             top_k=top_k,
             retrieval_mode=retrieval_mode,
+            governance_rule_packs=[
+                str(item).strip()
+                for item in (case.get("governance_rule_packs") or [])
+                if str(item).strip()
+            ],
         )
         summary = report.get("summary") if isinstance(report, dict) and isinstance(report.get("summary"), dict) else {}
         hit_at_k = float(summary.get("hit_at_k") or 0.0)
@@ -127,6 +132,11 @@ def run_batch(*, spec_path: Path, out_dir: Path) -> dict[str, Any]:
                 "parser_backend": parser_backend,
                 "top_k": int(top_k),
                 "retrieval_mode": retrieval_mode,
+                "governance_rule_packs": [
+                    str(item).strip()
+                    for item in (case.get("governance_rule_packs") or [])
+                    if str(item).strip()
+                ],
                 "case_family": case_family,
                 "case_category": case_category,
                 "query_count": query_count,
