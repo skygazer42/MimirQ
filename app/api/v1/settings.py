@@ -196,6 +196,7 @@ class FeatureFlags(BaseModel):
     etl4llm_enabled: bool = False
     marker_enabled: bool = False
     paddle_vl_enabled: bool = False
+    textin_enabled: bool = False
     markitdown_enabled: bool = False
     llama_index_enabled: bool = False
     mineru_enabled: bool = False
@@ -360,6 +361,21 @@ class PaddleVLConfig(BaseModel):
     mode: str = "doc_parser"
 
 
+class TextInConfig(BaseModel):
+    """TextIn xParse external document->Markdown API config."""
+    api_url: str = "https://api.textin.com/ai/service/v1/pdf_to_markdown"
+    app_id: str = ""
+    secret_code: str = ""
+    timeout_sec: int = 180
+    parse_mode: str = "auto"
+    table_flavor: str = "html"
+    apply_document_tree: bool = True
+    markdown_details: bool = True
+    get_image: str = "none"
+    dpi: int = 144
+    page_count: int = 0
+
+
 class SystemSettings(BaseModel):
     """Full system config."""
     feature_flags: FeatureFlags
@@ -375,6 +391,7 @@ class SystemSettings(BaseModel):
     etl4llm: Etl4LlmConfig
     marker: MarkerConfig
     paddle_vl: PaddleVLConfig
+    textin: TextInConfig
     magicpdf: MagicPDFConfig
     observability: ObservabilityConfig
     safety: SafetyConfig
@@ -397,6 +414,7 @@ class UpdateSettingsRequest(BaseModel):
     etl4llm: Etl4LlmConfig | None = None
     marker: MarkerConfig | None = None
     paddle_vl: PaddleVLConfig | None = None
+    textin: TextInConfig | None = None
     magicpdf: MagicPDFConfig | None = None
     observability: ObservabilityConfig | None = None
     safety: SafetyConfig | None = None
@@ -776,6 +794,7 @@ async def get_settings(
             etl4llm_enabled=bool(getattr(settings, "ETL4LLM_ENABLED", False)),
             marker_enabled=bool(getattr(settings, "MARKER_ENABLED", False)),
             paddle_vl_enabled=bool(getattr(settings, "PADDLE_VL_ENABLED", False)),
+            textin_enabled=bool(getattr(settings, "TEXTIN_ENABLED", False)),
             markitdown_enabled=settings.MARKITDOWN_ENABLED,
             llama_index_enabled=settings.LLAMA_INDEX_ENABLED,
             mineru_enabled=settings.MINERU_ENABLED,
@@ -865,6 +884,19 @@ async def get_settings(
             pipeline_version=str(getattr(settings, "PADDLE_VL_PIPELINE_VERSION", "v1.5") or "v1.5"),
             mode=str(getattr(settings, "PADDLE_VL_MODE", "doc_parser") or "doc_parser"),
         ),
+        textin=TextInConfig(
+            api_url=str(getattr(settings, "TEXTIN_API_URL", "") or "https://api.textin.com/ai/service/v1/pdf_to_markdown"),
+            app_id=str(getattr(settings, "TEXTIN_APP_ID", "") or ""),
+            secret_code=mask_secret(str(getattr(settings, "TEXTIN_SECRET_CODE", "") or "")),
+            timeout_sec=int(getattr(settings, "TEXTIN_TIMEOUT_SEC", 180) or 180),
+            parse_mode=str(getattr(settings, "TEXTIN_PARSE_MODE", "auto") or "auto"),
+            table_flavor=str(getattr(settings, "TEXTIN_TABLE_FLAVOR", "html") or "html"),
+            apply_document_tree=bool(getattr(settings, "TEXTIN_APPLY_DOCUMENT_TREE", True)),
+            markdown_details=bool(getattr(settings, "TEXTIN_MARKDOWN_DETAILS", True)),
+            get_image=str(getattr(settings, "TEXTIN_GET_IMAGE", "none") or "none"),
+            dpi=int(getattr(settings, "TEXTIN_DPI", 144) or 144),
+            page_count=int(getattr(settings, "TEXTIN_PAGE_COUNT", 0) or 0),
+        ),
         magicpdf=MagicPDFConfig(
             cli=getattr(settings, "MAGIC_PDF_CLI", "magic-pdf") or "magic-pdf",
             method=getattr(settings, "MAGIC_PDF_METHOD", "auto") or "auto",
@@ -929,6 +961,7 @@ async def update_settings(
             env_vars["ETL4LLM_ENABLED"] = str(getattr(ff, "etl4llm_enabled", False)).lower()
             env_vars["MARKER_ENABLED"] = str(getattr(ff, "marker_enabled", False)).lower()
             env_vars["PADDLE_VL_ENABLED"] = str(getattr(ff, "paddle_vl_enabled", False)).lower()
+            env_vars["TEXTIN_ENABLED"] = str(getattr(ff, "textin_enabled", False)).lower()
             env_vars["MARKITDOWN_ENABLED"] = str(ff.markitdown_enabled).lower()
             env_vars["LLAMA_INDEX_ENABLED"] = str(ff.llama_index_enabled).lower()
             env_vars["MINERU_ENABLED"] = str(ff.mineru_enabled).lower()
@@ -941,6 +974,7 @@ async def update_settings(
                     "ETL4LLM_ENABLED",
                     "MARKER_ENABLED",
                     "PADDLE_VL_ENABLED",
+                    "TEXTIN_ENABLED",
                     "MARKITDOWN_ENABLED",
                     "LLAMA_INDEX_ENABLED",
                     "MINERU_ENABLED",
@@ -1150,6 +1184,45 @@ async def update_settings(
             env_vars["PADDLE_VL_MODE"] = _sanitize_env_value("PADDLE_VL_MODE", mode)
 
             updated_keys.extend(["PADDLE_VL_API_URL", "PADDLE_VL_TIMEOUT_SEC", "PADDLE_VL_PIPELINE_VERSION", "PADDLE_VL_MODE"])
+
+        if request.textin:
+            tx = request.textin
+            env_vars["TEXTIN_API_URL"] = _sanitize_env_value("TEXTIN_API_URL", tx.api_url or "")
+            env_vars["TEXTIN_APP_ID"] = _sanitize_env_value("TEXTIN_APP_ID", tx.app_id or "")
+            if tx.secret_code and "***" not in tx.secret_code:
+                env_vars["TEXTIN_SECRET_CODE"] = _sanitize_env_value("TEXTIN_SECRET_CODE", tx.secret_code or "")
+                updated_keys.append("TEXTIN_SECRET_CODE")
+            env_vars["TEXTIN_TIMEOUT_SEC"] = str(int(tx.timeout_sec or 0))
+            parse_mode = (tx.parse_mode or "auto").strip().lower() or "auto"
+            if parse_mode not in {"auto", "scan", "parse", "lite", "vlm"}:
+                parse_mode = "auto"
+            env_vars["TEXTIN_PARSE_MODE"] = _sanitize_env_value("TEXTIN_PARSE_MODE", parse_mode)
+            table_flavor = (tx.table_flavor or "html").strip().lower() or "html"
+            if table_flavor not in {"html", "markdown"}:
+                table_flavor = "html"
+            env_vars["TEXTIN_TABLE_FLAVOR"] = _sanitize_env_value("TEXTIN_TABLE_FLAVOR", table_flavor)
+            get_image = (tx.get_image or "none").strip().lower() or "none"
+            if get_image not in {"none", "objects", "pages", "both"}:
+                get_image = "none"
+            env_vars["TEXTIN_GET_IMAGE"] = _sanitize_env_value("TEXTIN_GET_IMAGE", get_image)
+            env_vars["TEXTIN_APPLY_DOCUMENT_TREE"] = str(bool(tx.apply_document_tree)).lower()
+            env_vars["TEXTIN_MARKDOWN_DETAILS"] = str(bool(tx.markdown_details)).lower()
+            env_vars["TEXTIN_DPI"] = str(max(0, int(tx.dpi or 0)))
+            env_vars["TEXTIN_PAGE_COUNT"] = str(max(0, int(tx.page_count or 0)))
+            updated_keys.extend(
+                [
+                    "TEXTIN_API_URL",
+                    "TEXTIN_APP_ID",
+                    "TEXTIN_TIMEOUT_SEC",
+                    "TEXTIN_PARSE_MODE",
+                    "TEXTIN_TABLE_FLAVOR",
+                    "TEXTIN_GET_IMAGE",
+                    "TEXTIN_APPLY_DOCUMENT_TREE",
+                    "TEXTIN_MARKDOWN_DETAILS",
+                    "TEXTIN_DPI",
+                    "TEXTIN_PAGE_COUNT",
+                ]
+            )
 
         if request.magicpdf:
             mp = request.magicpdf
@@ -1417,6 +1490,27 @@ async def get_system_status(
             paddlevl_entry["message"] = _CONFIGURED_HEALTH_UNREACHABLE_MESSAGE
 
     parsers["paddle_vl"] = paddlevl_entry
+
+    textin_enabled = bool(getattr(settings, "TEXTIN_ENABLED", False))
+    textin_api_url = bool((getattr(settings, "TEXTIN_API_URL", "") or "").strip())
+    textin_app_id = bool((getattr(settings, "TEXTIN_APP_ID", "") or "").strip())
+    textin_secret = bool((getattr(settings, "TEXTIN_SECRET_CODE", "") or "").strip())
+    textin_available = bool(textin_enabled and textin_api_url and textin_app_id and textin_secret)
+    if not textin_enabled:
+        textin_message = "disabled"
+    elif not textin_api_url:
+        textin_message = "missing api_url"
+    elif not textin_app_id:
+        textin_message = "missing app_id"
+    elif not textin_secret:
+        textin_message = "missing secret_code"
+    else:
+        textin_message = "configured"
+    parsers["textin"] = {
+        "enabled": textin_enabled,
+        "available": textin_available,
+        "message": textin_message,
+    }
 
     olmocr_enabled = bool(getattr(settings, "OLMOCR_ENABLED", False))
     olmocr_api_url = (getattr(settings, "OLMOCR_API_URL", "") or "").strip()

@@ -78,6 +78,14 @@ const FEATURE_FLAGS_CONFIG: FeatureFlagDescriptor[] = [
     dependencies: ['PaddleOCR-VL 服务地址（API URL）'],
   },
   {
+    key: 'textin_enabled',
+    name: 'TextIn xParse 外部解析',
+    description: '启用 TextIn 文档解析 API（可用于 PDF/Office/图片等文档转 Markdown）',
+    icon: CloudCog,
+    color: 'cyan',
+    dependencies: ['TextIn API 地址', 'TextIn APP ID', 'TextIn Secret Code'],
+  },
+  {
     key: 'markitdown_enabled',
     name: 'MarkItDown 文档解析',
     description: '启用多格式转 Markdown（Office/表格/PDF），自动选择与解析工作台会使用',

@@ -22,6 +22,7 @@ import {
   type SafetyConfig,
   type SystemSettings,
   type SystemStatus,
+  type TextInConfig,
 } from '@/lib/api'
 import {
   MODEL_PROVIDERS,
@@ -99,6 +100,7 @@ const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
   etl4llm_enabled: false,
   marker_enabled: false,
   paddle_vl_enabled: false,
+  textin_enabled: false,
   markitdown_enabled: false,
   llama_index_enabled: false,
   mineru_enabled: false,
@@ -159,6 +161,20 @@ const DEFAULT_MARKER: MarkerConfig = {
 const DEFAULT_PADDLE_VL: PaddleVLConfig = {
   api_url: '',
   timeout_sec: 600,
+}
+
+const DEFAULT_TEXTIN: TextInConfig = {
+  api_url: 'https://api.textin.com/ai/service/v1/pdf_to_markdown',
+  app_id: '',
+  secret_code: '',
+  timeout_sec: 180,
+  parse_mode: 'auto',
+  table_flavor: 'html',
+  apply_document_tree: true,
+  markdown_details: true,
+  get_image: 'none',
+  dpi: 144,
+  page_count: 0,
 }
 
 function trimmedPrimitiveString(value: unknown): string {
@@ -268,6 +284,10 @@ export function useSettingsPageState() {
   const paddleVlMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_PADDLE_VL, settings?.paddle_vl, editedSettings.paddle_vl),
     [settings?.paddle_vl, editedSettings.paddle_vl]
+  )
+  const textInMerged = useMemo(
+    () => mergeWithDefaults(DEFAULT_TEXTIN, settings?.textin, editedSettings.textin),
+    [settings?.textin, editedSettings.textin]
   )
   const magicPdfMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_MAGICPDF, settings?.magicpdf, editedSettings.magicpdf),
@@ -493,6 +513,16 @@ export function useSettingsPageState() {
     }))
   }
 
+  const updateTextIn = (patch: Partial<TextInConfig>) => {
+    setEditedSettings((prev) => ({
+      ...prev,
+      textin: mergeConfig(
+        mergeWithDefaults(DEFAULT_TEXTIN, settings?.textin, prev.textin),
+        patch
+      ),
+    }))
+  }
+
   const updateRag = (patch: Partial<RagSettings>) => {
     setEditedSettings((prev) => ({
       ...prev,
@@ -631,6 +661,7 @@ export function useSettingsPageState() {
     markerMerged,
     observabilityMerged,
     paddleVlMerged,
+    textInMerged,
     ragMerged,
     refreshAll,
     refreshLtrModels,
@@ -655,6 +686,7 @@ export function useSettingsPageState() {
     updateMarker,
     updateObservability,
     updatePaddleVL,
+    updateTextIn,
     updateRag,
     updateSafety,
     updateUrlIngest,

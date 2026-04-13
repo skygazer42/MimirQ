@@ -9,6 +9,7 @@ import {
 describe('parser options registry', () => {
   it('keeps the interactive parser dropdown focused while exposing a broader shared registry', () => {
     expect(PARSER_BACKEND_OPTIONS.some((option) => option.value === 'pandoc')).toBe(false)
+    expect(PARSER_BACKEND_OPTIONS.some((option) => option.value === 'textin')).toBe(true)
     expect(PARSER_BACKEND_REGISTRY_OPTIONS.some((option) => option.value === 'pandoc')).toBe(true)
     expect(PARSER_BACKEND_REGISTRY_OPTIONS.some((option) => option.value === 'excel')).toBe(true)
     expect(PARSER_BACKEND_REGISTRY_OPTIONS.some((option) => option.value === 'markdown')).toBe(true)
@@ -18,5 +19,6 @@ describe('parser options registry', () => {
     expect(getParserLabel('pandoc')).toBe('pandoc（Office/HTML）')
     expect(getParserLabel('excel')).toBe('excel（.xls/.xlsx）')
     expect(getParserLabel('markdown')).toBe('markdown（.md）')
+    expect(getParserLabel('textin')).toBe('TextIn xParse（外部 API）')
   })
 })

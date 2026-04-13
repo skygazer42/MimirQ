@@ -7,6 +7,7 @@ export interface FeatureFlags {
   etl4llm_enabled: boolean
   marker_enabled: boolean
   paddle_vl_enabled: boolean
+  textin_enabled: boolean
   markitdown_enabled: boolean
   llama_index_enabled: boolean
   mineru_enabled: boolean
@@ -107,6 +108,20 @@ export interface PaddleVLConfig {
   timeout_sec: number
 }
 
+export interface TextInConfig {
+  api_url: string
+  app_id: string
+  secret_code: string
+  timeout_sec: number
+  parse_mode: string
+  table_flavor: string
+  apply_document_tree: boolean
+  markdown_details: boolean
+  get_image: string
+  dpi: number
+  page_count: number
+}
+
 export interface MagicPDFConfig {
   cli: string
   method: string
@@ -156,6 +171,7 @@ export interface SystemSettings {
   etl4llm: Etl4LlmConfig
   marker: MarkerConfig
   paddle_vl: PaddleVLConfig
+  textin: TextInConfig
   magicpdf: MagicPDFConfig
   observability: ObservabilityConfig
   safety: SafetyConfig

@@ -274,10 +274,12 @@ function SettingsContent({ state, parserBackend, setParserBackend, chunkStrategy
             etl4llm={state.etl4llmMerged}
             marker={state.markerMerged}
             paddleVl={state.paddleVlMerged}
+            textIn={state.textInMerged}
             magicPdf={state.magicPdfMerged}
             updateEtl4Llm={state.updateEtl4Llm}
             updateMarker={state.updateMarker}
             updatePaddleVL={state.updatePaddleVL}
+            updateTextIn={state.updateTextIn}
             updateMagicPDF={state.updateMagicPDF}
           />
         </div>

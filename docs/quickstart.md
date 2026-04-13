@@ -130,6 +130,31 @@ QIANFAN_OCR_SERVER_URL=http://host.docker.internal:8000/v1
 QIANFAN_OCR_MODEL=baidu/Qianfan-OCR
 ```
 
+### (可选) 启用 TextIn xParse（外部 API 文档解析）
+
+TextIn xParse 通过官方 API 直接返回 Markdown/结构化结果，适合把 PDF / Office / 图片等
+文档解析能力接入到 MimirQ，而无需自建重型 OCR/版面服务。
+
+然后在 `.env` / `docker/.env` 里配置：
+
+```env
+TEXTIN_ENABLED=true
+TEXTIN_API_URL=https://api.textin.com/ai/service/v1/pdf_to_markdown
+TEXTIN_APP_ID=your-app-id
+TEXTIN_SECRET_CODE=your-secret-code
+TEXTIN_TIMEOUT_SEC=180
+TEXTIN_PARSE_MODE=auto
+TEXTIN_TABLE_FLAVOR=html
+TEXTIN_APPLY_DOCUMENT_TREE=true
+TEXTIN_MARKDOWN_DETAILS=true
+```
+
+说明：
+
+- 前端设置页会暴露 TextIn 的开关和凭证配置
+- 后端会把它作为 `parser_backend=textin` 接入
+- 这是**外部 API parser**，不属于本地模型部署
+
 ### (可选) 启用 MinerU（本地 FastAPI ZIP 模式）
 
 MinerU 建议以独立容器运行（依赖/模型较重），MimirQ 通过 HTTP 调用其 `/file_parse` 接口拿到 ZIP（Markdown + images）。

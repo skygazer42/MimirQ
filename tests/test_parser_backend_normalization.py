@@ -24,6 +24,13 @@ def test_normalize_parser_backend_qianfan_ocr_aliases():
     assert normalize_parser_backend("qianfanocr") == "qianfan_ocr"
 
 
+def test_normalize_parser_backend_textin_aliases():
+    assert normalize_parser_backend("textin") == "textin"
+    assert normalize_parser_backend("textin-xparse") == "textin"
+    assert normalize_parser_backend("textin_xparse") == "textin"
+    assert normalize_parser_backend("textinxparse") == "textin"
+
+
 def test_normalize_parser_backend_etl4llm_aliases():
     assert normalize_parser_backend("etl4llm") == "etl4llm"
     assert normalize_parser_backend("etl-4llm") == "etl4llm"
