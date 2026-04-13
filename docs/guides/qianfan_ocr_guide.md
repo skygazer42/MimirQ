@@ -5,6 +5,12 @@ MimirQ 支持将 **Qianfan-OCR** 作为可选 PDF OCR 解析后端，通过 **�
 
 > `docker/qianfanocr` 是一个轻量包装服务：负责 PDF 分页渲染、调用上游 OpenAI-compatible 视觉接口并汇总 Markdown。实际模型推理在你配置的上游服务中完成。
 
+资源说明（当前仓库实测）：
+
+- 本地 `qianfanocr` 容器本身没有观测到本地 GPU 分配
+- 它主要承担 **PDF 分页 + 请求编排 + Markdown 汇总**
+- 真正的显存压力在你配置的**上游视觉推理服务**，请按上游模型单独评估
+
 ## 启用方式
 
 1. 启动 Qianfan-OCR 包装服务（独立容器/独立机器均可）。

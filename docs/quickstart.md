@@ -141,12 +141,14 @@ make up-mineru
 然后在 `docker/.env` 里配置（后端跑在 Docker 时）：
 ```env
 MINERU_ENABLED=true
+MINERU_MODEL_SOURCE=local
 MINERU_LOCAL_SERVER_URL=http://mimirq-mineru:8000
 ```
 
 如果你是“本地跑后端 + Docker 跑 MinerU”，可用：
 ```env
 MINERU_ENABLED=true
+MINERU_MODEL_SOURCE=local
 MINERU_LOCAL_SERVER_URL=http://localhost:30001
 ```
 
@@ -160,6 +162,28 @@ PANDOC_ENABLED=true
 # 旧格式（.doc/.ppt/.xls）需要 LibreOffice 辅助转换
 LIBREOFFICE_ENABLED=true
 ```
+
+### 可选解析器部署 / 显存要求（基于当前仓库实测）
+
+下表是本仓库在 **2026-04-13** 这轮 rebuilt runtime 验证里，对同一份 `runs/deepseek_ocr_smoke.pdf`
+逐个 parser 单独部署 / 单独触发时记录到的结果。它描述的是**当前这套镜像、当前这条调用链**
+下的观测值，不代表所有硬件/驱动/模型配置下的绝对上限。
+
+| 解析器 | 本地模型/推理形态 | 实测本地 GPU 峰值 | 部署建议 |
+|---|---|---:|---|
+| `marker` | CPU-only 本地服务 | ~0 GiB | 无需 GPU；建议独立容器运行 |
+| `etl4llm` | CPU / 无本地 GPU 分配 | ~0 GiB | 无需 GPU；建议独立容器运行 |
+| `qianfan_ocr` | 本地轻量 wrapper，实际推理在上游视觉服务 | ~0 GiB | 本地容器无需 GPU；上游服务显存单独评估 |
+| `mineru`（`backend=pipeline` / `file_parse`） | 本地 `mineru-api` + 本地缓存模型 | 当前验证流未观测到独立 GPU 峰值 | 建议单独部署；若切换不同 backend / 模型链路，需重新量测 |
+| `paddle_vl` | 本地 GPU 推理（`gpu:0`） | ~8.2 GiB | 建议至少预留 **10 GiB** 可用显存 |
+| `olmocr` | 本地 GPU 重模型推理 | ~43.7 GiB | 建议至少预留 **44 GiB** 可用显存，基本等同 48G 级别单卡独占 |
+
+补充说明：
+
+- 以上显存数据来自 `runs/parser_checks/vram-measurements.json`
+- rebuilt runtime 下的 parser 解析成功证据见：`runs/parser_checks/20260413T071030Z-rebuilt/`
+- 如果同一张卡上还有别的长驻进程，请按“**外部占用 + parser 峰值 + 安全余量**”一起估算
+- `olmocr` 明显比其余 parser 慢，当前验证里单次 preview 级请求耗时约 **151 秒**
 
 ### 生产部署（推荐）
 
