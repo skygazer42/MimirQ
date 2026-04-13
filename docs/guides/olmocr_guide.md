@@ -14,7 +14,7 @@ MimirQ 支持将 **olmOCR** 作为可选 PDF OCR 解析后端，通过 **独立�
 ```bash
 OLMOCR_ENABLED=true
 # 填 olmOCR 服务的“转换接口完整 URL”（以你的服务为准，常见是 /convert）
-OLMOCR_API_URL=http://mimirq-olmocr:2085/convert
+OLMOCR_API_URL=http://127.0.0.1:2085/convert
 OLMOCR_TIMEOUT_SEC=1800
 ```
 
@@ -45,4 +45,3 @@ OLMOCR_MODEL=
 
 - 后端会将本次解析结果 best-effort 落盘在上传文件同级目录：`.olmocr/<document_id>/result.md`（用于排障/复现）。
 - 入库流程会对解析器产物目录做 best-effort 清理；如需保留排查问题，可临时设置 `MAGIC_PDF_KEEP_ARTIFACTS=true`（全局开关）。
-

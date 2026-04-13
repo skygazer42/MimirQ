@@ -37,7 +37,7 @@ PADDLEOCR_DEVICE=gpu:0
 
 ```bash
 PADDLE_VL_ENABLED=true
-PADDLE_VL_API_URL=http://mimirq-paddlevl:9030/convert
+PADDLE_VL_API_URL=http://127.0.0.1:9030/convert
 PADDLE_VL_TIMEOUT_SEC=600
 ```
 
@@ -63,4 +63,4 @@ PADDLE_VL_TIMEOUT_SEC=600
 ## 5) 排障建议
 
 - `系统 → 设置 → 连接状态（/api/v1/settings/status）` 可以看到 `paddle_vl` 的可用性与 `/health` 探测结果（包含 pipeline_version）。
-- 确认 `PADDLE_VL_API_URL` 可从后端容器访问（Docker 内一般用 service 名 `http://mimirq-paddlevl:9030/convert`）。
+- 当前推荐让 PaddleOCR-VL 容器跑在 共享后端网络命名空间；后端容器通过 `http://127.0.0.1:9030/convert` 访问它。

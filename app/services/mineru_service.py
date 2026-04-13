@@ -847,6 +847,66 @@ class MinerUService:
             except Exception:
                 pass
 
+    def _documents_from_zip_bytes(
+        self,
+        *,
+        zip_bytes: bytes,
+        file_path: Path,
+        tenant_id: str | None = None,
+        dataset_id: str | None = None,
+        document_id: str | None = None,
+        parser_name: str = "mineru_local",
+        extra_metadata: dict[str, Any] | None = None,
+    ) -> list[Document]:
+        images_meta: list[dict] = []
+        if dataset_id and document_id and settings.MINIO_ENABLED:
+            tmp_zip_path: Path | None = None
+            try:
+                with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
+                    tmp_zip.write(zip_bytes)
+                    tmp_zip_path = Path(tmp_zip.name)
+
+                result = zip_image_processor.process_zip_with_images(
+                    zip_path=tmp_zip_path,
+                    tenant_id=str(tenant_id) if tenant_id else None,
+                    dataset_id=str(dataset_id),
+                    document_id=str(document_id),
+                )
+                markdown_content = result.get("markdown", "") or ""
+                images_meta = result.get("images") or []
+                position_tagged_markdown = extract_position_tagged_markdown_from_zip_path(tmp_zip_path)
+            finally:
+                if tmp_zip_path and tmp_zip_path.exists():
+                    try:
+                        tmp_zip_path.unlink()
+                    except Exception:
+                        pass
+        else:
+            markdown_content = self._extract_markdown_from_zip_bytes(zip_bytes)
+            if tenant_id:
+                markdown_content, _preview_images = self._extract_preview_images_from_zip_bytes(
+                    zip_bytes=zip_bytes,
+                    markdown=markdown_content,
+                    tenant_id=str(tenant_id),
+                )
+            position_tagged_markdown = extract_position_tagged_markdown_from_zip_bytes(zip_bytes)
+
+        metadata: dict[str, Any] = {
+            "source": file_path.name,
+            "file_type": file_path.suffix.lstrip("."),
+            "parser": parser_name,
+        }
+        if extra_metadata:
+            metadata.update(extra_metadata)
+        if position_tagged_markdown:
+            metadata["position_tagged_markdown"] = position_tagged_markdown
+        if images_meta:
+            metadata["images"] = images_meta
+            metadata["image_count"] = len(images_meta)
+
+        logger.info("Parse complete. Content length: %s chars", len(markdown_content))
+        return [Document(page_content=markdown_content, metadata=metadata)]
+
     async def aparse_file(
         self,
         file_path: Path,
@@ -943,8 +1003,8 @@ class MinerUService:
         self,
         *,
         file_path: Path,
-        dataset_id: str,
-        document_id: str,
+        dataset_id: str | None = None,
+        document_id: str | None = None,
         tenant_id: str | None = None,
         params: dict[str, Any] | None = None,
     ) -> list[Document]:
@@ -984,7 +1044,6 @@ class MinerUService:
         logger.info("MinerU local parsing started (async): %s", file_path.name)
 
         pool = get_http_client_pool()
-        tmp_zip_path: Path | None = None
         try:
             # multipart upload (keep file open until request finishes)
             async with aiofiles.open(file_path, "rb") as f:
@@ -1010,48 +1069,18 @@ class MinerUService:
             if ("zip" not in content_type.lower()) and (OCTET_STREAM not in content_type.lower()):
                 raise RuntimeError(f"MinerU returned unexpected content type: {content_type}")
 
-            async with aiofiles.tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
-                await tmp_zip.write(body)
-                tmp_zip_path = Path(tmp_zip.name)
-
-            # Process ZIP in a thread (includes MinIO uploads)
-            result = await asyncio.to_thread(
-                zip_image_processor.process_zip_with_images,
-                zip_path=tmp_zip_path,
+            return await asyncio.to_thread(
+                self._documents_from_zip_bytes,
+                zip_bytes=body,
+                file_path=file_path,
                 tenant_id=str(tenant_id) if tenant_id else None,
-                dataset_id=dataset_id,
-                document_id=document_id,
+                dataset_id=str(dataset_id) if dataset_id else None,
+                document_id=str(document_id) if document_id else None,
+                parser_name="mineru_local",
             )
-
-            markdown_content = result["markdown"]
-            images = result["images"]
-            position_tagged_markdown = extract_position_tagged_markdown_from_zip_path(tmp_zip_path)
-
-            logger.info(
-                "MinerU local parse done (async): %s chars, %s images",
-                len(markdown_content),
-                len(images),
-            )
-
-            metadata = {
-                "source": file_path.name,
-                "file_type": file_path.suffix.lstrip("."),
-                "parser": "mineru_local",
-                "image_count": len(images),
-                "images": images,
-            }
-            if position_tagged_markdown:
-                metadata["position_tagged_markdown"] = position_tagged_markdown
-            return [Document(page_content=markdown_content, metadata=metadata)]
         except Exception as e:  # noqa: BLE001
             logger.error("MinerU local parsing failed (async): %s", str(e)[:200])
             raise RuntimeError(f"MinerU local parsing failed: {str(e)}") from e
-        finally:
-            if tmp_zip_path and tmp_zip_path.exists():
-                try:
-                    tmp_zip_path.unlink()
-                except Exception:
-                    pass
 
     def parse_file(
         self,
@@ -1162,8 +1191,8 @@ class MinerUService:
     def parse_file_local(
         self,
         file_path: Path,
-        dataset_id: str,
-        document_id: str,
+        dataset_id: str | None = None,
+        document_id: str | None = None,
         tenant_id: str | None = None,
         params: dict[str, Any] | None = None
     ) -> list[Document]:
@@ -1230,47 +1259,14 @@ class MinerUService:
                 except (ValueError, TypeError) as json_err:
                     raise RuntimeError(f"MinerU returned unexpected content type: {content_type}") from json_err
             
-            # Save ZIP to temp file.
-            with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
-                tmp_zip.write(response.content)
-                tmp_zip_path = Path(tmp_zip.name)
-            
-            try:
-                # Process ZIP: extract images and upload to MinIO.
-                result = zip_image_processor.process_zip_with_images(
-                    zip_path=tmp_zip_path,
-                    tenant_id=str(tenant_id) if tenant_id else None,
-                    dataset_id=dataset_id,
-                    document_id=document_id
-                )
-                
-                markdown_content = result["markdown"]
-                images = result["images"]
-                position_tagged_markdown = extract_position_tagged_markdown_from_zip_path(tmp_zip_path)
-                
-                logger.info(
-                    "MinerU local parse done: %s chars, %s images",
-                    len(markdown_content),
-                    len(images),
-                )
-                
-                # Build metadata.
-                metadata = {
-                    "source": file_path.name,
-                    "file_type": file_path.suffix.lstrip('.'),
-                    "parser": "mineru_local",
-                    "image_count": len(images),
-                    "images": images,  # [{img_id, original_path, url}]
-                }
-                if position_tagged_markdown:
-                    metadata["position_tagged_markdown"] = position_tagged_markdown
-                
-                return [Document(page_content=markdown_content, metadata=metadata)]
-                
-            finally:
-                # Clean up temp ZIP file.
-                if tmp_zip_path.exists():
-                    tmp_zip_path.unlink()
+            return self._documents_from_zip_bytes(
+                zip_bytes=response.content,
+                file_path=file_path,
+                tenant_id=str(tenant_id) if tenant_id else None,
+                dataset_id=str(dataset_id) if dataset_id else None,
+                document_id=str(document_id) if document_id else None,
+                parser_name="mineru_local",
+            )
         
         except Exception as e:
             logger.error("MinerU local parsing failed: %s", e)

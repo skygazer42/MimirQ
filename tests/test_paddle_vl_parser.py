@@ -125,3 +125,36 @@ def test_paddle_vl_parser_zip_minio_enabled_uses_zip_processor(monkeypatch, tmp_
     assert called.get("dataset_id") == "ds1"
     assert called.get("document_id") == "doc1"
     assert called.get("tenant_id") == "t1"
+
+
+class _TimeoutThenZipSession:
+    def __init__(self, zip_bytes: bytes) -> None:
+        self.zip_bytes = zip_bytes
+        self.calls: list[str] = []
+
+    def post(self, url: str, *, files: dict[str, object], data: dict[str, object], timeout: float):
+        self.calls.append(url)
+        if len(self.calls) == 1:
+            raise __import__("requests").exceptions.ReadTimeout(f"timeout for {url}")
+        return _DummyZipResponse(self.zip_bytes)
+
+
+def test_paddle_vl_parser_retries_localhost_when_service_alias_times_out(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(settings, "PADDLE_VL_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "PADDLE_VL_API_URL", "http://mimirq-paddlevl:9030/convert", raising=False)
+    monkeypatch.setattr(settings, "PADDLE_VL_TIMEOUT_SEC", 3, raising=False)
+    monkeypatch.setattr(settings, "MINIO_ENABLED", False, raising=False)
+
+    parser = PaddleVLParser()
+    parser._session = _TimeoutThenZipSession(_read_fixture_zip("paddlevl_doc_parser_output.zip"))
+
+    pdf_path = tmp_path / "input.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 fake\n")
+
+    docs = parser.parse(pdf_path)
+
+    assert docs and "Parsed" in (docs[0].page_content or "")
+    assert parser._session.calls == [
+        "http://mimirq-paddlevl:9030/convert",
+        "http://127.0.0.1:9030/convert",
+    ]

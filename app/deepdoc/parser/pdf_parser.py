@@ -25,6 +25,7 @@ import sys
 import threading
 from copy import deepcopy
 from io import BytesIO
+from pathlib import Path
 from timeit import default_timer as timer
 
 import numpy as np
@@ -187,6 +188,42 @@ def _ensure_vision_runtime():
     return OCR, LayoutRecognizer, TableStructureRecognizer, Recognizer
 
 
+def _updown_concat_model_candidates(model_dir: str | os.PathLike[str]) -> list[Path]:
+    roots: list[Path] = []
+    for candidate_root in (
+        Path(__file__).resolve().parent.parent / "resources/data_parser/qieci",
+        Path(model_dir),
+    ):
+        resolved = candidate_root.resolve(strict=False)
+        if resolved not in roots:
+            roots.append(resolved)
+
+    candidates: list[Path] = []
+    for root in roots:
+        candidates.extend(
+            [
+                root / "updown_concat_xgb.ubj",
+                root / "updown_concat_xgb.json",
+                root / "updown_concat_xgb.model",
+            ]
+        )
+    return candidates
+
+
+def _load_updown_concat_model(booster: xgb.Booster, model_dir: str | os.PathLike[str]) -> Path:
+    errors: list[str] = []
+    for candidate in _updown_concat_model_candidates(model_dir):
+        if not candidate.exists():
+            continue
+        try:
+            booster.load_model(str(candidate))
+            return candidate
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"{candidate.name}: {str(exc)[:200]}")
+    joined = "; ".join(errors) or "no compatible model file found"
+    raise RuntimeError(joined)
+
+
 class IntegratedPipelinePdfParser:
     def __init__(self, **kwargs):
         """
@@ -213,6 +250,7 @@ class IntegratedPipelinePdfParser:
         self.tbl_det = table_cls()  # Initialize table structure recognizer
 
         self.updown_cnt_mdl = xgb.Booster()  # Initialize xgboost model for paragraph concatenation prediction
+        self._updown_cnt_model_error = ""
         if not LIGHTEN:
             try:
                 import torch
@@ -221,17 +259,27 @@ class IntegratedPipelinePdfParser:
             except Exception:
                 logging.exception("IntegratedPipelinePdfParser __init__")
         try:
-            # Try to load local model; if failed, download model snapshot from HuggingFace
+            # Prefer repo-bundled UBJ/JSON artifacts so newer xgboost versions can
+            # still load the paragraph-concatenation model without deprecated
+            # legacy-binary support.
             model_dir = get_default_resource_dir()
-            self.updown_cnt_mdl.load_model(os.path.join(
-                model_dir, "updown_concat_xgb.model"))
-        except Exception:
-            model_dir = snapshot_download(
-                repo_id="InfiniFlow/text_concat_xgb_v1.0",
-                local_dir=get_default_resource_dir(),
-                local_dir_use_symlinks=False)
-            self.updown_cnt_mdl.load_model(os.path.join(
-                model_dir, "updown_concat_xgb.model"))
+            _load_updown_concat_model(self.updown_cnt_mdl, model_dir)
+        except Exception as first_exc:
+            try:
+                model_dir = snapshot_download(
+                    repo_id="InfiniFlow/text_concat_xgb_v1.0",
+                    local_dir=get_default_resource_dir(),
+                    local_dir_use_symlinks=False)
+                _load_updown_concat_model(self.updown_cnt_mdl, model_dir)
+            except Exception as second_exc:
+                self._updown_cnt_model_error = (
+                    f"local={str(first_exc)[:200]}; downloaded={str(second_exc)[:200]}"
+                )
+                logging.warning(
+                    "IntegratedPipelinePdfParser paragraph-concat model unavailable; continuing with heuristic-only merging: %s",
+                    self._updown_cnt_model_error,
+                )
+                self.updown_cnt_mdl = None
         # Set page starting number
         self.page_from = 0
 
@@ -728,11 +776,21 @@ class IntegratedPipelinePdfParser:
                         i += 1
                         continue
 
-                    fea = self._updown_concat_features(up, down)
-                    if self.updown_cnt_mdl.predict(
-                            xgb.DMatrix([fea]))[0] <= 0.5:
-                        i += 1
-                        continue
+                    if self.updown_cnt_mdl is not None:
+                        fea = self._updown_concat_features(up, down)
+                        try:
+                            should_concat = self.updown_cnt_mdl.predict(xgb.DMatrix([fea]))[0] > 0.5
+                        except Exception as exc:
+                            self._updown_cnt_model_error = str(exc)[:200]
+                            logging.warning(
+                                "IntegratedPipelinePdfParser paragraph-concat prediction failed; disabling model: %s",
+                                self._updown_cnt_model_error,
+                            )
+                            self.updown_cnt_mdl = None
+                            should_concat = False
+                        if not should_concat:
+                            i += 1
+                            continue
                     dfs(down, i + 1)
                     boxes.pop(i)
                     return
