@@ -26,6 +26,8 @@ from app.parsing.utils.artifact_normalizer import normalize_extracted_artifacts
 from app.parsing.utils.zip_processor import ZipImageProcessor
 from app.rag.core.logging import get_logger
 
+from .service_url_fallback import build_docker_service_url_candidates
+
 logger = get_logger("parsing.paddle_vl")
 
 
@@ -67,11 +69,34 @@ class PaddleVLParser:
         run_id = _sanitize_run_id(document_id or file_path.stem or "paddlevl")
         return (file_path.parent / ".paddlevl" / run_id).absolute()
 
+    def _candidate_api_urls(self) -> list[str]:
+        return build_docker_service_url_candidates(
+            self._api_url,
+            service_hostnames={"mimirq-paddlevl"},
+        )
+
     def _post_multipart(self, *, file_path: Path) -> requests.Response:
         file_bytes = file_path.read_bytes()
         files = {"file": (file_path.name, file_bytes, "application/pdf")}
         data = {"output_format": "markdown"}
-        return self._session.post(self._api_url, files=files, data=data, timeout=self._timeout_sec)
+        candidate_urls = self._candidate_api_urls()
+        last_error: Exception | None = None
+        for index, url in enumerate(candidate_urls):
+            try:
+                return self._session.post(url, files=files, data=data, timeout=self._timeout_sec)
+            except requests.RequestException as exc:
+                last_error = exc
+                if index == len(candidate_urls) - 1:
+                    raise
+                logger.warning(
+                    "[paddle_vl] request to %s failed (%s); retrying fallback %s",
+                    url,
+                    exc.__class__.__name__,
+                    candidate_urls[index + 1],
+                )
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("PaddleOCR-VL parser requires at least one candidate API URL.")
 
     @staticmethod
     def _looks_like_zip(resp: requests.Response) -> bool:

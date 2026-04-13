@@ -93,13 +93,15 @@ class MinerUParser(BaseAdvancedParser):
         document_id = kwargs.get("document_id")
         tenant_id = kwargs.get("tenant_id")
 
-        # 1) Prefer local ZIP mode (best for images) when ids are available.
-        if getattr(settings, "MINERU_LOCAL_SERVER_URL", "") and dataset_id and document_id:
+        # 1) Prefer local ZIP mode whenever a local MinerU service is configured.
+        # When dataset/document ids are unavailable (preview flows), the service
+        # still returns markdown and preview-local images without requiring MinIO.
+        if getattr(settings, "MINERU_LOCAL_SERVER_URL", ""):
             try:
                 return mineru_service.parse_file_local(
                     file_path=file_path,
-                    dataset_id=str(dataset_id),
-                    document_id=str(document_id),
+                    dataset_id=str(dataset_id) if dataset_id else None,
+                    document_id=str(document_id) if document_id else None,
                     tenant_id=str(tenant_id) if tenant_id else None,
                 )
             except Exception:

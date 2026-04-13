@@ -109,7 +109,7 @@ make up-paddlevl
 然后在 `docker/.env` 里配置：
 ```env
 PADDLE_VL_ENABLED=true
-PADDLE_VL_API_URL=http://mimirq-paddlevl:9030/convert
+PADDLE_VL_API_URL=http://127.0.0.1:9030/convert
 PADDLEOCR_DEVICE=gpu:0
 ```
 

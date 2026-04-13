@@ -17,8 +17,13 @@ services:
     profiles: ["etl4llm"]
     image: dataelement/bisheng-unstructured:v0.0.3.14
     restart: unless-stopped
+    hostname: mimirq-etl4llm
     environment:
       TZ: Asia/Shanghai
+    networks:
+      default:
+        aliases:
+          - mimirq-etl4llm
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:10001/health"]
       interval: 30s
@@ -32,23 +37,27 @@ services:
     build:
       context: ./marker
     restart: unless-stopped
+    hostname: mimirq-marker
     ports:
       - "2080:2080"
     environment:
       TZ: Asia/Shanghai
+    networks:
+      default:
+        aliases:
+          - mimirq-marker
     volumes:
       - marker_cache:/root/.cache
 
   # PaddleOCR-VL parser service (optional; heavyweight).
-  # Then set `PADDLE_VL_ENABLED=true` and `PADDLE_VL_API_URL=http://mimirq-paddlevl:9030/convert` in docker/.env.
+  # Then set `PADDLE_VL_ENABLED=true` and `PADDLE_VL_API_URL=http://127.0.0.1:9030/convert` in docker/.env.
   mimirq-paddlevl:
     profiles: ["paddlevl"]
     build:
       context: ./paddlevl
     restart: unless-stopped
+    network_mode: "service:mimirq-api"
     gpus: all
-    ports:
-      - "9030:9030"
     environment:
       TZ: Asia/Shanghai
       NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
@@ -80,6 +89,7 @@ services:
     build:
       context: ./mineru
     restart: unless-stopped
+    hostname: mimirq-mineru
     ports:
       # Avoid clashing with MimirQ backend (8000).
       - "30001:8000"
@@ -91,6 +101,10 @@ services:
       MINERU_API_ENABLE_FASTAPI_DOCS: ${MINERU_API_ENABLE_FASTAPI_DOCS:-1}
       # Optional: limit concurrent requests at MinerU side (503 when saturated).
       MINERU_API_MAX_CONCURRENT_REQUESTS: ${MINERU_API_MAX_CONCURRENT_REQUESTS:-1}
+    networks:
+      default:
+        aliases:
+          - mimirq-mineru
     volumes:
       # Persist downloaded models/caches across restarts.
       - mineru_cache:/root/.cache
@@ -101,15 +115,14 @@ services:
       retries: 10
 
   # olmOCR PDF -> Markdown parser service (optional; heavyweight; requires GPU).
-  # Then set `OLMOCR_ENABLED=true` and `OLMOCR_API_URL=http://mimirq-olmocr:2085/convert` in docker/.env.
+  # Then set `OLMOCR_ENABLED=true` and `OLMOCR_API_URL=http://127.0.0.1:2085/convert` in docker/.env.
   mimirq-olmocr:
     profiles: ["olmocr"]
     build:
       context: ./olmocr
     restart: unless-stopped
+    network_mode: "service:mimirq-api"
     gpus: all
-    ports:
-      - "2085:2085"
     environment:
       TZ: Asia/Shanghai
       NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
@@ -142,6 +155,7 @@ services:
     build:
       context: ./qianfanocr
     restart: unless-stopped
+    hostname: mimirq-qianfanocr
     ports:
       - "2090:2090"
     environment:
@@ -157,6 +171,10 @@ services:
       QIANFAN_OCR_LAYOUT_AS_THOUGHT: ${QIANFAN_OCR_LAYOUT_AS_THOUGHT:-false}
       QIANFAN_OCR_LAYOUT_TRIGGER: ${QIANFAN_OCR_LAYOUT_TRIGGER:-}
       QIANFAN_OCR_PROMPT: ${QIANFAN_OCR_PROMPT:-}
+    networks:
+      default:
+        aliases:
+          - mimirq-qianfanocr
     healthcheck:
       test:
         [

@@ -132,8 +132,8 @@ ragas==0.4.3
 llama-index-core==0.14.20
 
 # Task Queue / Redis (ingest throughput: task queue, idempotency locks, cache)
-# NOTE: arq currently requires redis-py < 6.
-redis==7.4.0
+# NOTE: arq 0.27.x requires redis-py < 6.
+redis==5.3.1
 arq==0.27.0
 # Dev / test tooling
 pip-audit==2.10.0
