@@ -170,7 +170,9 @@ def _ensure_vision_runtime():
         return OCR, LayoutRecognizer, TableStructureRecognizer, Recognizer
 
     try:
-        from ..vision import OCR as _OCR, LayoutRecognizer as _LayoutRecognizer, TableStructureRecognizer as _TableStructureRecognizer
+        from ..vision import OCR as _OCR
+        from ..vision import LayoutRecognizer as _LayoutRecognizer
+        from ..vision import TableStructureRecognizer as _TableStructureRecognizer
         from ..vision.recognizer import Recognizer as _Recognizer
     except Exception:
         if _VISION_IMPORT_ERROR is not None:

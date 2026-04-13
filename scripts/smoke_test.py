@@ -426,10 +426,22 @@ def main(argv: list[str] | None = None) -> int:
                     "What is the value of launch_code in SMOKE_FACT? "
                     "Return only the structured JSON object as instructed."
                 ),
-                "document_ids": [doc_id],
+                # Use the dataset scope for the freshly uploaded smoke corpus.
+                # In real environments this is more stable than document-id scoped
+                # retrieval immediately after ingestion, while still keeping the
+                # query bounded to the synthetic smoke dataset created by this script.
+                "dataset_id": str(dataset_id),
                 "structured_output": True,
                 "structured_preset": str(args.structured_preset or "summary"),
                 "stream": False,
+                # Keep the smoke path deterministic and bounded in real environments:
+                # - avoid the graph pipeline and multi-query fan-out
+                # - use a mid-scale top_k that matches the repo guardrail
+                "rag_config": {
+                    "use_graph": False,
+                    "top_k": 10,
+                    "enable_multi_query": False,
+                },
             }
             chat_resp = request_with_retries(
                 client,
@@ -526,4 +538,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

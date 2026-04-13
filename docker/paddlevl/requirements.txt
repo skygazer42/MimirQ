@@ -1,8 +1,4 @@
-# PaddleOCR-VL v1.5 (doc_parser pipeline)
-# NOTE: Paddle's CPU/GPU wheels are large; keep this service isolated from the main backend image.
-paddlepaddle==3.2.1
-paddleocr[doc-parser]>=3.2.0
-
+# Base image already provides PaddleOCR-VL + PaddlePaddle GPU runtime.
 fastapi==0.128.0
 uvicorn==0.40.0
 python-multipart==0.0.21

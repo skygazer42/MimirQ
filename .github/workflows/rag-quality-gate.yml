@@ -10,6 +10,11 @@ jobs:
     env:
       RAG_EVAL_GATE_ENABLED: "true"
       RAG_EVAL_GATE_SUMMARY_PATH: "artifacts/answer_quality.summary.json"
+      # Keep these canonical paths duplicated in the workflow so the regression
+      # test can assert the quality-gate inputs/outputs stay wired together:
+      # - scripts/run_sample_retrieval_benchmark.py
+      # - scripts/build_rag_quality_gate_artifacts.py
+      # - data/sample/retrieval_fixture_v1.json
     steps:
       - name: Checkout
         uses: actions/checkout@v4

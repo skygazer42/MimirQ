@@ -8,6 +8,7 @@ import pytest
 from app.core.logging_config import bind_request_context, reset_request_context
 from tests.helpers.async_utils import yield_control
 
+
 @pytest.mark.asyncio
 async def test_request_with_retry_can_use_external_client(monkeypatch):
     import app.core.http_client as hc

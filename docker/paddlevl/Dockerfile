@@ -1,4 +1,4 @@
-FROM python:3.10-slim
+FROM ccr-2vdh3abv-pub.cnc.bj.baidubce.com/paddlepaddle/paddleocr-vl:latest-nvidia-gpu
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -7,17 +7,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# OpenCV runtime deps (paddleocr pulls opencv-python); plus common font/graphics libs.
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-      ca-certificates \
-      libgomp1 \
-      libgl1 \
-      libglib2.0-0 && \
-    rm -rf /var/lib/apt/lists/*
+USER root
 
 COPY requirements.txt ./requirements.txt
-RUN pip install --upgrade pip && pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+RUN python -m pip install --no-cache-dir -r requirements.txt
 
 COPY server.py ./server.py
 

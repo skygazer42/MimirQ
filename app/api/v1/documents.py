@@ -10224,7 +10224,11 @@ async def preview_chunking(
             "remove_toc_lines": pipeline_effective.governance_remove_toc_lines,
             "remove_noise_lines": pipeline_effective.governance_remove_noise_lines,
             "unwrap_lines": pipeline_effective.governance_unwrap_lines,
-            "remove_common_lines": pipeline_effective.governance_remove_common_lines,
+            # Preview runs operate on a single uploaded document (often multiple pages/segments
+            # from the same source). Treating repeated page text as cross-document boilerplate
+            # makes offset rebasing and duplicate/overlap diagnostics unstable, so keep
+            # common-line dropping disabled in preview mode.
+            "remove_common_lines": False,
             "remove_boilerplate": pipeline_effective.governance_remove_boilerplate,
             "remove_images": pipeline_effective.governance_remove_images,
             "extract_frontmatter": pipeline_effective.governance_extract_frontmatter,
@@ -11133,7 +11137,9 @@ async def preview_chunking_by_sha(
         "remove_toc_lines": pipeline_effective.governance_remove_toc_lines,
         "remove_noise_lines": pipeline_effective.governance_remove_noise_lines,
         "unwrap_lines": pipeline_effective.governance_unwrap_lines,
-        "remove_common_lines": pipeline_effective.governance_remove_common_lines,
+        # See /chunk-preview: disable common-line dropping in preview mode so
+        # per-page duplicates remain visible to the tuning diagnostics.
+        "remove_common_lines": False,
         "remove_boilerplate": pipeline_effective.governance_remove_boilerplate,
         "remove_images": pipeline_effective.governance_remove_images,
         "extract_frontmatter": pipeline_effective.governance_extract_frontmatter,
