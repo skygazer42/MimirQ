@@ -126,19 +126,23 @@ vi.mock('@/components/parsing/pdf-viewer', async () => {
   return {
     PdfViewer({
       activeBlockIds,
+      boxesByPage,
       hoveredBlockIds,
       onClickBlockId,
       onHoverBlockId,
     }: Readonly<{
       activeBlockIds?: string[] | null
+      boxesByPage?: Map<number, Array<{ id: string }>> | null
       hoveredBlockIds?: string[] | null
       onClickBlockId?: (blockId: string) => void
       onHoverBlockId?: (blockId: string | null) => void
     }>) {
+      const boxCount = Array.from(boxesByPage?.values() || []).reduce((sum, items) => sum + items.length, 0)
       return React.createElement(
         'div',
         {
           'data-active-ids': (activeBlockIds || []).join(','),
+          'data-box-count': String(boxCount),
           'data-hovered-ids': (hoveredBlockIds || []).join(','),
           'data-testid': 'pdf-viewer',
         },
@@ -744,6 +748,36 @@ describe('ParsingActiveFilePane lazy compare interactions', () => {
     })
 
     expect(onActiveBlockIdChange).toHaveBeenCalledWith('pdf-block-1')
+
+    view.unmount()
+  })
+
+  it('falls back to element bbox overlays when layout blocks are missing', async () => {
+    const view = renderComponent(
+      React.createElement(
+        ParsingActiveFilePane,
+        makePaneProps({
+          activeBlocksWithPositions: [],
+          activeElements: [
+            {
+              id: 'elem-1',
+              kind: 'table',
+              page: 1,
+              pages: [1],
+              text: 'Budget table',
+              bbox: { x0: 10, y0: 20, x1: 80, y1: 90 },
+              confidence: 0.95,
+            },
+          ],
+          isPdf: true,
+        })
+      )
+    )
+
+    await waitForAssertion(() => {
+      const viewer = view.container.querySelector('[data-testid="pdf-viewer"]')
+      expect(viewer?.getAttribute('data-box-count')).toBe('1')
+    })
 
     view.unmount()
   })

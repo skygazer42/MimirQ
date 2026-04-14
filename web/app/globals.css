@@ -99,6 +99,84 @@
     --surface-3: var(--popover);
   }
 
+  html:not(.dark)[data-surface-theme="classic"] {
+    --background: 210 16.7% 97.6%;
+    --foreground: 210 10.8% 14.5%;
+    --card: 0 0% 100%;
+    --card-foreground: 210 10.8% 14.5%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 210 10.8% 14.5%;
+    --primary: 211.1 100% 50%;
+    --secondary: 210 18% 94.5%;
+    --secondary-foreground: 210 10.8% 14.5%;
+    --muted: 210 18% 95.5%;
+    --muted-foreground: 210 9% 35%;
+    --accent: 211.1 100% 50%;
+    --accent-foreground: 0 0% 100%;
+    --border: 210 16% 88%;
+    --input: 210 16% 88%;
+    --ring: 211.1 95% 56%;
+    --sidebar-background: 210 18% 99%;
+    --sidebar-foreground: 210 10.8% 14.5%;
+    --sidebar-border: 210 16% 88%;
+    --code-background: 210 18% 95%;
+    --surface-2: 210 18% 96.2%;
+  }
+
+  html:not(.dark)[data-surface-theme="earth"] {
+    --background: 36.9 39.4% 93.5%;
+    --foreground: 36 19.6% 20%;
+    --card: 40 28% 96%;
+    --card-foreground: 36 19.6% 20%;
+    --popover: 40 28% 96%;
+    --popover-foreground: 36 19.6% 20%;
+    --primary: 32.1 35.3% 40.6%;
+    --secondary: 36 26% 88%;
+    --secondary-foreground: 36 19.6% 20%;
+    --muted: 36 22% 88%;
+    --muted-foreground: 34 14% 38%;
+    --accent: 28 45% 60%;
+    --accent-foreground: 0 0% 100%;
+    --border: 34 20% 80%;
+    --input: 34 20% 80%;
+    --ring: 32.1 40% 48%;
+    --sidebar-background: 40 36% 95.5%;
+    --sidebar-foreground: 36 19.6% 20%;
+    --sidebar-border: 34 20% 82%;
+    --code-background: 35 24% 88%;
+    --surface-2: 38 24% 90.5%;
+  }
+
+  html.dark[data-surface-theme="classic"] {
+    --background: 216 15% 12%;
+    --card: 216 14% 15%;
+    --popover: 216 14% 15%;
+    --secondary: 216 12% 18%;
+    --muted: 216 12% 18%;
+    --accent: 211.1 100% 60%;
+    --accent-foreground: 0 0% 100%;
+    --border: 216 10% 23%;
+    --input: 216 10% 23%;
+    --sidebar-background: 216 16% 10%;
+    --sidebar-border: 216 10% 20%;
+  }
+
+  html.dark[data-surface-theme="earth"] {
+    --background: 28 18% 12%;
+    --card: 30 16% 15%;
+    --popover: 30 16% 15%;
+    --primary: 32.1 42% 56%;
+    --secondary: 30 12% 19%;
+    --muted: 30 12% 19%;
+    --accent: 28 34% 44%;
+    --accent-foreground: 0 0% 100%;
+    --border: 30 10% 24%;
+    --input: 30 10% 24%;
+    --sidebar-background: 30 20% 10%;
+    --sidebar-border: 30 10% 22%;
+    --code-background: 30 14% 14%;
+  }
+
   html.dark {
     /* Base - Deep Ink (更深邃的墨色) */
     --background: 225 35% 9%;
@@ -517,4 +595,3 @@ html.dark .custom-scrollbar::-webkit-scrollbar-thumb {
 .animate-shimmer {
   background: linear-gradient(100deg, transparent, hsl(var(--primary) / 0.04), transparent);
 }
-

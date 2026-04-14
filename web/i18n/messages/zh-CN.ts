@@ -84,7 +84,23 @@ const zhCNMessages = {
       openLabel: '打开主题定制',
       title: '主题定制',
       description: '自定义界面颜色与风格',
-      resetColor: '重置主色调',
+      resetAppearance: '重置外观',
+      surfaceLabel: '背景风格',
+      surfacePresetLabel: '选择背景风格：{name}',
+      surfacePresets: {
+        ocean: {
+          title: '默认海洋',
+          description: '冷静蓝绿，保持当前默认观感。',
+        },
+        classic: {
+          title: '经典白灰',
+          description: '背景 #F8F9FA，正文深灰，强调蓝色，干净现代且阅读友好。',
+        },
+        earth: {
+          title: '米白大地',
+          description: '暖米白背景与柔和灰褐层次，长时间阅读更温和。',
+        },
+      },
       colorLabel: '主色调',
       modeLabel: '模式',
       presetLabel: '选择主色调：{name}',

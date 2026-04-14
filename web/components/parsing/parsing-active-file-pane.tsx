@@ -296,6 +296,33 @@ export function ParsingActiveFilePane({
   const qualityReasons = getQualityGateReasons(activeQualityGate)
   const qualityEvidenceSummary = buildQualityEvidenceSummary(activeQualityGate, activePdfQuality)
   const layoutEntries = useMemo(() => buildParsingLayoutEntries(activeBlocksWithPositions), [activeBlocksWithPositions])
+  const elementOverlayItems = useMemo(() => {
+    return (activeElements || [])
+      .map((element) => {
+        const bbox = element.bbox
+        if (!bbox) return null
+        const rawPages = Array.isArray(element.pages) ? element.pages.filter((value) => Number.isInteger(value) && value > 0) : []
+        const pages = rawPages.length > 0
+          ? rawPages.map((value) => Math.max(0, value - 1))
+          : typeof element.page === 'number'
+            ? [Math.max(0, element.page - 1)]
+            : []
+        if (pages.length === 0) return null
+        return {
+          id: String(element.id || '').trim(),
+          kind: toLayoutKind(element.kind),
+          position: {
+            pages,
+            left: bbox.x0,
+            right: bbox.x1,
+            top: bbox.y0,
+            bottom: bbox.y1,
+            raw: `element:${String(element.id || '')}`,
+          },
+        }
+      })
+      .filter((item): item is { id: string; kind: ParsingLayoutKind; position: ParsingPosition } => Boolean(item?.id))
+  }, [activeElements])
   const layoutBoxesByPage = useMemo(() => {
     const next = new Map<number, Array<{ id: string; kind: ParsingLayoutKind; position: (typeof layoutEntries)[number]['position'] }>>()
     for (const entry of layoutEntries) {
@@ -306,6 +333,17 @@ export function ParsingActiveFilePane({
     }
     return next
   }, [layoutEntries])
+  const fallbackElementBoxesByPage = useMemo(() => {
+    const next = new Map<number, Array<{ id: string; kind: ParsingLayoutKind; position: ParsingPosition }>>()
+    for (const entry of elementOverlayItems) {
+      const pageIndex = entry.position.pages[0]
+      if (typeof pageIndex !== 'number') continue
+      const list = next.get(pageIndex) || []
+      list.push(entry)
+      next.set(pageIndex, list)
+    }
+    return next
+  }, [elementOverlayItems])
   const layoutEntryIdToPageIndex = useMemo(() => {
     const next = new Map<string, number>()
     for (const entry of layoutEntries) {
@@ -314,6 +352,15 @@ export function ParsingActiveFilePane({
     }
     return next
   }, [layoutEntries])
+  const fallbackElementIdToPageIndex = useMemo(() => {
+    const next = new Map<string, number>()
+    for (const entry of elementOverlayItems) {
+      const pageIndex = entry.position.pages[0]
+      if (typeof pageIndex !== 'number') continue
+      next.set(entry.id, pageIndex)
+    }
+    return next
+  }, [elementOverlayItems])
   const activeEditSelection = useMemo(
     () =>
       findEditSelectionForActiveParsingEntry(
@@ -338,12 +385,16 @@ export function ParsingActiveFilePane({
     if (!position) return null
     return `extract-evidence:${targetId}`
   }, [layoutEntries, selectedExtractElement, selectedExtractEvidence])
+  const basePdfBoxesByPage = useMemo(() => {
+    if (layoutBoxesByPage.size > 0) return layoutBoxesByPage
+    return fallbackElementBoxesByPage
+  }, [fallbackElementBoxesByPage, layoutBoxesByPage])
   const pdfBoxesByPage = useMemo(() => {
-    if (!selectedExtractOverlayId || !selectedExtractEvidence) return layoutBoxesByPage
+    if (!selectedExtractOverlayId || !selectedExtractEvidence) return basePdfBoxesByPage
     const position = buildExtractEvidencePosition(selectedExtractEvidence.evidence, selectedExtractElement)
-    if (!position) return layoutBoxesByPage
+    if (!position) return basePdfBoxesByPage
     const pageIndex = position.pages[0] ?? 0
-    const next = new Map(layoutBoxesByPage)
+    const next = new Map(basePdfBoxesByPage)
     const list = [...(next.get(pageIndex) || [])]
     list.push({
       id: selectedExtractOverlayId,
@@ -352,15 +403,19 @@ export function ParsingActiveFilePane({
     })
     next.set(pageIndex, list)
     return next
-  }, [layoutBoxesByPage, selectedExtractElement, selectedExtractEvidence, selectedExtractOverlayId])
+  }, [basePdfBoxesByPage, selectedExtractElement, selectedExtractEvidence, selectedExtractOverlayId])
+  const basePdfBlockIdToPageIndex = useMemo(() => {
+    if (layoutEntryIdToPageIndex.size > 0) return layoutEntryIdToPageIndex
+    return fallbackElementIdToPageIndex
+  }, [fallbackElementIdToPageIndex, layoutEntryIdToPageIndex])
   const pdfBlockIdToPageIndex = useMemo(() => {
-    if (!selectedExtractOverlayId || !selectedExtractEvidence) return layoutEntryIdToPageIndex
+    if (!selectedExtractOverlayId || !selectedExtractEvidence) return basePdfBlockIdToPageIndex
     const position = buildExtractEvidencePosition(selectedExtractEvidence.evidence, selectedExtractElement)
-    if (!position) return layoutEntryIdToPageIndex
-    const next = new Map(layoutEntryIdToPageIndex)
+    if (!position) return basePdfBlockIdToPageIndex
+    const next = new Map(basePdfBlockIdToPageIndex)
     next.set(selectedExtractOverlayId, position.pages[0] ?? 0)
     return next
-  }, [layoutEntryIdToPageIndex, selectedExtractElement, selectedExtractEvidence, selectedExtractOverlayId])
+  }, [basePdfBlockIdToPageIndex, selectedExtractElement, selectedExtractEvidence, selectedExtractOverlayId])
   const pdfActiveBlockIds = useMemo(() => {
     const ids: string[] = []
     if (selectedExtractOverlayId) ids.push(selectedExtractOverlayId)
@@ -369,6 +424,11 @@ export function ParsingActiveFilePane({
   }, [activeBlockId, selectedExtractOverlayId])
 
   const handleSelectPdfBlock = (blockId: string, hint?: ParsingEditFocusHint) => {
+    const fallbackElement = (activeElements || []).find((element) => String(element.id || '').trim() === blockId)
+    if (fallbackElement && !layoutEntries.some((entry) => entry.id === blockId)) {
+      handleSelectElement(fallbackElement)
+      return
+    }
     setActivePdfEditHint(hint ? { blockId, hint } : null)
     onActiveBlockIdChange(blockId)
   }

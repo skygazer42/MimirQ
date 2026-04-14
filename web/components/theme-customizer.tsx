@@ -7,6 +7,7 @@ import { useTheme } from "next-themes"
 import chroma from "chroma-js"
 
 import { cn } from "@/lib/utils"
+import { applySurfaceTheme, getSurfaceThemeMeta, readSurfaceTheme, SURFACE_THEMES, THEME_COLOR_STORAGE_KEY, type SurfaceThemeKey } from "@/lib/theme-surface"
 import { IconButton } from "@/components/ui/icon-button"
 import {
   Popover,
@@ -30,8 +31,19 @@ export function ThemeCustomizer() {
   const t = useTranslations('CommonUi')
   const { theme, setTheme } = useTheme()
   const [color, setColor] = React.useState(PRESET_COLORS[0].value)
+  const [surfaceTheme, setSurfaceTheme] = React.useState<SurfaceThemeKey>('ocean')
 
   React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const nextSurfaceTheme = readSurfaceTheme(window.localStorage)
+      const storedColor = window.localStorage.getItem(THEME_COLOR_STORAGE_KEY)
+      setSurfaceTheme(nextSurfaceTheme)
+      if (storedColor && chroma.valid(storedColor)) {
+        setColor(storedColor)
+      } else {
+        setColor(getSurfaceThemeMeta(nextSurfaceTheme).defaultPrimary)
+      }
+    }
     setMounted(true)
   }, [])
 
@@ -56,8 +68,18 @@ export function ThemeCustomizer() {
     // e.g. --primary-foreground based on contrast
     const fg = chroma.contrast(primary, 'white') > 4.5 ? 'white' : 'black'
     root.style.setProperty("--primary-foreground", toHsl(chroma(fg)))
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(THEME_COLOR_STORAGE_KEY, color)
+    }
 
   }, [color])
+
+  React.useEffect(() => {
+    applySurfaceTheme(surfaceTheme)
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('mimirq.surfaceTheme', surfaceTheme)
+    }
+  }, [surfaceTheme])
 
   if (!mounted) {
     return null
@@ -84,12 +106,57 @@ export function ThemeCustomizer() {
               </p>
             </div>
             <IconButton
-              label={t('themeCustomizer.resetColor')}
+              label={t('themeCustomizer.resetAppearance')}
               variant="ghost"
-              onClick={() => setColor(PRESET_COLORS[0].value)}
+              onClick={() => {
+                setSurfaceTheme('ocean')
+                setColor(PRESET_COLORS[0].value)
+              }}
             >
                 <RefreshCw className="size-4" />
             </IconButton>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-xs">{t('themeCustomizer.surfaceLabel')}</Label>
+            <div className="grid gap-2">
+              {SURFACE_THEMES.map((preset) => (
+                <button
+                  key={preset.key}
+                  type="button"
+                  onClick={() => {
+                    setSurfaceTheme(preset.key)
+                    setColor(preset.defaultPrimary)
+                  }}
+                  className={cn(
+                    'rounded-xl border px-3 py-3 text-left transition-colors duration-200 motion-reduce:transition-none',
+                    surfaceTheme === preset.key
+                      ? 'border-primary bg-primary/5 ring-2 ring-primary/15'
+                      : 'border-border bg-card hover:border-primary/40 hover:bg-muted/60'
+                  )}
+                  aria-label={t('themeCustomizer.surfacePresetLabel', { name: preset.label })}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-medium text-foreground">{t(`themeCustomizer.surfacePresets.${preset.key}.title`)}</div>
+                      <div className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                        {t(`themeCustomizer.surfacePresets.${preset.key}.description`)}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <span
+                        className="size-4 rounded-full border border-black/5"
+                        style={{ backgroundColor: preset.key === 'classic' ? '#F8F9FA' : preset.key === 'earth' ? '#F5F0E8' : '#F7FBFC' }}
+                      />
+                      <span
+                        className="size-4 rounded-full border border-black/5"
+                        style={{ backgroundColor: preset.defaultPrimary }}
+                      />
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
           
           <div className="space-y-2">
