@@ -6,11 +6,11 @@ torch==2.11.0; platform_system == "Linux"
 torch==2.10.0; platform_system != "Linux"
 torchvision==0.26.0; platform_system == "Linux"
 torchvision==0.25.0; platform_system != "Linux"
-sentence-transformers==5.3.0
+sentence-transformers==5.4.1
 
 fastapi==0.135.3
 uvicorn[standard]==0.44.0
-python-multipart==0.0.24
+python-multipart==0.0.26
 
 # gRPC (pre-built wheels for Windows)
 grpcio==1.80.0
@@ -26,10 +26,10 @@ pyodbc==5.3.0
 
 # LangChain Ecosystem (latest major versions)
 langchain==1.2.15
-langchain-core==1.2.28
+langchain-core==1.2.29
 langchain-community==0.4.1
 langchain-chroma==1.1.0
-langchain-openai==1.1.12
+langchain-openai==1.1.13
 langchain-anthropic==1.4.0
 langchain-text-splitters==1.1.1
 # NOTE: USTC mirror / PyPI currently provides up to 1.0.5 (1.0.15 not published).
@@ -38,7 +38,7 @@ langgraph==1.1.6
 faiss-cpu==1.13.2; platform_system != "Windows"
 chromadb==1.5.7
 # Vector Database
-pymilvus==2.6.11
+pymilvus==2.6.12
 
 # Object Storage
 minio==7.2.20
@@ -56,18 +56,18 @@ markitdown==0.1.5
 # NOTE: Keep numpy on the tested 2.4.x line used by the current parsing/ML stack.
 numpy==2.4.4
 pdfplumber==0.11.9
-pypdf==6.9.2
+pypdf==6.10.2
 # NOTE: docling 2.80.0 resolves with pandas 3.0.x; keep on this tested line.
 pandas==3.0.2
 openpyxl==3.1.5
 python-docx==1.2.0
 python-pptx==1.0.2
-chardet==7.4.1
+chardet==7.4.3
 tiktoken==0.12.0
 trio==0.33.0
 xgboost==3.2.0
 # NOTE: docling 2.81.0 still requires huggingface-hub<1.
-huggingface-hub==1.9.2
+huggingface-hub==1.10.2
 # NOTE: docling currently requires pillow<12. Keep this pin compatible.
 Pillow==12.2.0
 # NOTE: opencv-python 4.13.x is compatible with the current numpy 2.4.x pin.
@@ -80,10 +80,10 @@ tqdm==4.67.3
 beartype==0.22.9
 hanziconv==0.3.2
 nltk==3.9.4
-docling==2.85.0
+docling==2.88.0
 docling-ibm-models==3.13.0
 accelerate==1.13.0
-tencentcloud-sdk-python==3.1.72
+tencentcloud-sdk-python==3.1.79
 html-text==0.7.1
 readability-lxml==0.8.4.1
 
@@ -102,7 +102,7 @@ signxml==4.4.0
 
 # Utilities
 # LangChain 1.x
-pydantic==2.12.5
+pydantic==2.13.1
 pydantic-settings==2.13.1
 email-validator==2.3.0
 backports.tarfile==1.2.0
@@ -110,15 +110,15 @@ strenum==0.4.15
 python-dotenv==1.2.2
 requests==2.33.1
 aiofiles==25.1.0
-prometheus-client==0.24.1
-sentry-sdk==2.57.0
-opentelemetry-api==1.40.0
-opentelemetry-sdk==1.40.0
-opentelemetry-exporter-otlp-proto-grpc==1.40.0
-opentelemetry-instrumentation==0.61b0
-opentelemetry-instrumentation-fastapi==0.61b0
-opentelemetry-instrumentation-httpx==0.61b0
-opentelemetry-semantic-conventions==0.61b0
+prometheus-client==0.25.0
+sentry-sdk==2.58.0
+opentelemetry-api==1.41.0
+opentelemetry-sdk==1.41.0
+opentelemetry-exporter-otlp-proto-grpc==1.41.0
+opentelemetry-instrumentation==0.62b0
+opentelemetry-instrumentation-fastapi==0.62b0
+opentelemetry-instrumentation-httpx==0.62b0
+opentelemetry-semantic-conventions==0.62b0
 
 # Development
 pytest==9.0.3
@@ -133,8 +133,8 @@ llama-index-core==0.14.20
 
 # Task Queue / Redis (ingest throughput: task queue, idempotency locks, cache)
 # NOTE: arq 0.27.x requires redis-py < 6.
-redis==5.3.1
+redis==7.4.0
 arq==0.27.0
 # Dev / test tooling
 pip-audit==2.10.0
-ruff==0.15.9
+ruff==0.15.10
