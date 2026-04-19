@@ -202,9 +202,11 @@ const markdownBaseComponents = {
 export const ChatMessageItem = memo(function ChatMessageItem({
   message,
   isStreaming = false,
+  variant = 'default',
 }: Readonly<{
   message: Message
   isStreaming?: boolean
+  variant?: 'default' | 'minimal'
 }>) {
   const router = useRouter()
   const isUser = message.role === 'user'
@@ -457,7 +459,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 
   let renderedContent: ReactNode
   if (isUser) {
-    renderedContent = <div className="whitespace-pre-wrap font-normal">{message.content}</div>
+    renderedContent = <div className="whitespace-pre-wrap font-normal text-black">{message.content}</div>
   } else if (isStreaming) {
     renderedContent = <CinematicTypewriter content={message.content} isStreaming={true} />
   } else {
@@ -546,14 +548,19 @@ export const ChatMessageItem = memo(function ChatMessageItem({
         layout={!reduceMotion && isStreaming}
         transition={streamingLayoutTransition}
 	      className={cn(
-	        'flex gap-4 px-2 group animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none',
-          isUser ? 'pb-4' : undefined,
-	        isUser ? 'justify-end' : 'justify-start'
+	        'flex gap-3 group animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none',
+          isUser ? (variant === 'minimal' ? 'justify-end' : 'pb-4 justify-end') : 'justify-start',
+          variant === 'minimal' ? 'w-full' : ''
 	      )}
 	    >
       {!isUser && (
-        <div className="flex-shrink-0 w-8 h-8 rounded-xl bg-accent/15 border border-accent/30 flex items-center justify-center shadow-sm mt-0.5">
-          <Bot className="size-4 text-accent" />
+        <div className={cn(
+          "flex-shrink-0 flex items-center justify-center shadow-sm mt-0.5 transition-all duration-300",
+          variant === 'minimal' 
+            ? "size-8 rounded-full bg-background/90 border border-border/50 group-hover:border-primary/25 group-hover:shadow-md" 
+            : "w-8 h-8 rounded-xl bg-accent/15 border border-accent/30"
+        )}>
+          <Bot className={cn("size-4", variant === 'minimal' ? "text-primary/60 group-hover:text-primary" : "text-accent")} />
         </div>
       )}
 
@@ -561,15 +568,32 @@ export const ChatMessageItem = memo(function ChatMessageItem({
           layout={!reduceMotion && isStreaming}
           transition={streamingLayoutTransition}
 	        className={cn(
-	          'max-w-3xl px-6 py-4 shadow-sm relative text-[15px] transition-shadow duration-200 motion-reduce:transition-none',
-	          isUser
-	            ? 'rounded-2xl rounded-tr-sm border border-[#8FC8E8] bg-[#AAD9F2] text-[#17384D] shadow-sm backdrop-blur-sm'
-	            : cn(
-	                'glass-card text-foreground rounded-2xl rounded-tl-sm border border-border/60 border-l-4 hover:shadow-lg hover:shadow-primary/10',
-	                confidenceMeta?.lineClass || 'border-l-primary/20'
-	              )
+          'relative text-[15px] transition-all duration-300 motion-reduce:transition-none',
+            variant === 'minimal' 
+              ? (isUser 
+                  ? 'max-w-[78%] px-4 py-3 rounded-2xl rounded-br-md border border-[#BDE0FE] bg-[#A2D2FF] text-black shadow-sm backdrop-blur-sm'
+                  : 'max-w-[88%] px-4 py-3 flex-1 rounded-2xl rounded-bl-md border border-border/60 bg-background/92 text-foreground shadow-sm backdrop-blur-sm'
+                )
+              : (isUser 
+                  ? 'max-w-3xl px-6 py-4 rounded-2xl rounded-tr-sm border border-[#8FC8E8] bg-[#AAD9F2] text-[#17384D] shadow-sm backdrop-blur-sm'
+                  : cn(
+                      'max-w-3xl px-6 py-4 glass-card text-foreground rounded-2xl rounded-tl-sm border border-border/60 border-l-4 hover:shadow-lg hover:shadow-primary/10',
+                      confidenceMeta?.lineClass || 'border-l-primary/30'
+                    )
+                ),
+            !isUser && variant === 'minimal' ? '' : (confidenceMeta?.lineClass || 'border-l-primary/30').replace('border-l-', 'border-l-')
 	        )}
+          style={undefined}
 	      >
+          {/* AI 消息 Header (Minimal 模式独有) */}
+          {!isUser && variant === 'minimal' && (
+            <div className="flex items-center gap-2 mb-2.5">
+              <span className="text-[11px] font-bold text-foreground/80 uppercase tracking-tight">MimirQ</span>
+              <span className="text-[9px] font-medium text-muted-foreground/40 tabular-nums">
+                {new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit' }).format(new Date(message.created_at))}
+              </span>
+            </div>
+          )}
         {/* 思维链 / 步骤展示 */}
 	        <AnimatePresence initial={false}>
             {!isUser && message.steps && message.steps.length > 0 ? (
@@ -581,7 +605,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                 exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
                 className="mb-4 space-y-2 motion-safe:animate-fade-in"
               >
-	            <div className="flex items-center gap-2 text-[10px] font-bold text-primary/70 uppercase ">
+	            <div className="flex items-center gap-2 text-[11px] font-bold text-primary/70 uppercase ">
 	              <div className="relative flex h-2 w-2">
 	                <span className="motion-safe:animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
 	                <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
@@ -751,7 +775,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                                       <div className="min-w-0 text-xs font-semibold text-foreground leading-relaxed line-clamp-3">
                                         {claim || `Claim #${idx + 1}`}
                                       </div>
-                                      <div className="flex-shrink-0 text-[10px] text-muted-foreground tabular-nums">
+                                      <div className="flex-shrink-0 text-[11px] text-muted-foreground tabular-nums">
                                         {evidence.length} 证据
                                       </div>
                                     </div>
@@ -791,14 +815,14 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                                                   >
                                                     {c?.document_name || docId || 'Unknown'}
                                                   </div>
-                                                  <div className="text-[10px] text-muted-foreground tabular-nums">
+                                                  <div className="text-[11px] text-muted-foreground tabular-nums">
                                                     {c?.page_number == null ? '—' : `P.${c.page_number}`}
                                                     {typeof ev?.start_char === 'number' && typeof ev?.end_char === 'number'
                                                       ? ` · ${Math.trunc(ev.start_char)}-${Math.trunc(ev.end_char)}`
                                                       : ''}
                                                   </div>
                                                 </div>
-                                                <div className="text-[10px] font-mono text-muted-foreground tabular-nums">
+                                                <div className="text-[11px] font-mono text-muted-foreground tabular-nums">
                                                   {score == null ? '' : score.toFixed(3)}
                                                 </div>
                                               </div>
@@ -877,7 +901,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 
             {citationPreviewRows.length > 0 && (
               <div className="space-y-2">
-                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/80">
+                <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground/80">
                   来源速览
                 </div>
                 <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
@@ -890,7 +914,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                         onClick={() => handleOpenCitation(citation)}
                         className="flex shrink-0 items-center gap-2 rounded-full border border-border/60 bg-background/70 px-3 py-1.5 text-xs text-foreground transition-colors hover:border-primary/25 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
                       >
-                        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/10 px-1.5 text-[10px] font-semibold text-primary">
+                        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/10 px-1.5 text-[11px] font-semibold text-primary">
                           {idx + 1}
                         </span>
                         <span className="max-w-[180px] truncate font-medium">{citation.document_name}</span>
@@ -914,7 +938,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
         <div
           className={cn(
             isUser
-              ? 'max-w-none break-words leading-relaxed text-primary-foreground [&>*]:text-inherit'
+              ? 'max-w-none break-words leading-relaxed text-black [&>*]:text-black'
               : 'prose prose-neutral dark:prose-invert max-w-none break-words leading-relaxed prose-p:my-2 prose-p:leading-7 prose-pre:bg-secondary/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-foreground prose-pre:rounded-xl prose-pre:p-4 prose-pre:my-3 prose-code:bg-[hsl(var(--code-background))] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:text-sm prose-code:font-mono prose-code:text-primary prose-code:before:content-none prose-code:after:content-none'
           )}
         >
@@ -923,7 +947,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 
         {!isUser && followupQuestions.length > 0 && (
           <div className="mt-5 pt-3 border-t border-border/40 space-y-3">
-            <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase opacity-80">
+            <div className="flex items-center gap-2 text-[11px] font-bold text-muted-foreground uppercase opacity-80">
               继续追问
             </div>
             <div className="flex flex-wrap gap-2">
@@ -947,7 +971,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
           <details className="mt-5 overflow-hidden rounded-2xl border border-border/60 bg-background/35 open:bg-background/45">
             <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
               <div>
-                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/80">
+                <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground/80">
                   来源与证据
                 </div>
                 <div className="mt-1 text-xs text-muted-foreground">
@@ -960,7 +984,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
             <div className="space-y-4 border-t border-border/50 px-4 py-4">
               {citationRows.length > 0 && (
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/80">
+                  <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground/80">
                     <Database className="size-3" />
                     参考来源
                   </div>
@@ -976,10 +1000,10 @@ export const ChatMessageItem = memo(function ChatMessageItem({
               {claimEvidenceCount > 0 && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/80">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground/80">
                       Claim Evidence
                     </div>
-                    <div className="text-[10px] text-muted-foreground">{claimEvidenceCount} 条</div>
+                    <div className="text-[11px] text-muted-foreground">{claimEvidenceCount} 条</div>
                   </div>
                   <div className="space-y-3">
                     {claimEvidence?.slice(0, 6).map((item: any, idx: number) => {
@@ -994,7 +1018,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                             <div className="min-w-0 text-sm font-medium leading-6 text-foreground/90">
                               {claim || `Claim #${idx + 1}`}
                             </div>
-                            <div className="shrink-0 text-[10px] text-muted-foreground">{evidence.length} 证据</div>
+                            <div className="shrink-0 text-[11px] text-muted-foreground">{evidence.length} 证据</div>
                           </div>
 
                           {evidence.length ? (
@@ -1030,7 +1054,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                                         >
                                           {citation?.document_name || docId || 'Unknown'}
                                         </div>
-                                        <div className="text-[10px] text-muted-foreground tabular-nums">
+                                        <div className="text-[11px] text-muted-foreground tabular-nums">
                                           {citation?.page_number == null ? '—' : `P.${citation.page_number}`}
                                           {typeof ev?.start_char === 'number' && typeof ev?.end_char === 'number'
                                             ? ` · ${Math.trunc(ev.start_char)}-${Math.trunc(ev.end_char)}`
@@ -1038,7 +1062,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                                         </div>
                                       </div>
                                       {score == null ? null : (
-                                        <div className="text-[10px] font-mono text-muted-foreground tabular-nums">
+                                        <div className="text-[11px] font-mono text-muted-foreground tabular-nums">
                                           {score.toFixed(3)}
                                         </div>
                                       )}
@@ -1069,7 +1093,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
            <details className="mt-4 overflow-hidden rounded-2xl border border-border/60 bg-background/35 open:bg-background/45">
              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
                <div>
-                 <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/80">
+                 <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground/80">
                   反馈评分
                 </div>
                 <div className="mt-1 text-xs text-muted-foreground">
@@ -1242,7 +1266,7 @@ const CitationCard = memo(function CitationCard({
 
   return (
     <>
-      <div className="group/card text-xs rounded-lg p-3 border bg-card border-border/60 shadow-sm transition-all duration-200 motion-reduce:transition-none hover:bg-muted/40 hover:border-primary/25 hover:shadow-md hover:-translate-y-px">
+      <div className="group/card text-xs rounded-lg p-3 border bg-card border-border/60 transition-colors duration-150 motion-reduce:transition-none hover:bg-foreground/[0.04]">
         <button
           type="button"
           onClick={handleClick}
@@ -1251,7 +1275,7 @@ const CitationCard = memo(function CitationCard({
           className="block w-full rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           <div className="flex items-start gap-3">
-            <span className="flex-shrink-0 w-5 h-5 bg-secondary text-primary border border-border rounded flex items-center justify-center text-[10px] font-bold group-hover/card:bg-primary group-hover/card:text-primary-foreground transition-colors">
+            <span className="flex-shrink-0 w-5 h-5 bg-secondary text-primary border border-border rounded flex items-center justify-center text-[11px] font-bold group-hover/card:bg-primary group-hover/card:text-primary-foreground transition-colors">
               {index + 1}
             </span>
             <div className="flex-1 min-w-0 space-y-1">
@@ -1267,7 +1291,7 @@ const CitationCard = memo(function CitationCard({
         </button>
 
         <div className="flex items-center gap-2 mt-2 pt-1">
-          <span className="bg-secondary/50 border border-border text-muted-foreground px-1.5 py-0.5 rounded text-[10px]">
+          <span className="bg-secondary/50 border border-border text-muted-foreground px-1.5 py-0.5 rounded text-[11px]">
             相似度 {Math.round(citation.relevance_score * 100)}%
           </span>
           {canViewEvidence ? (
@@ -1278,7 +1302,7 @@ const CitationCard = memo(function CitationCard({
                 setViewerOpen(true)
               }}
               className={cn(
-                'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium',
+                'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium',
                 'border border-border bg-background/60 text-foreground/80',
                 'hover:bg-muted/40 hover:text-foreground transition-colors'
               )}

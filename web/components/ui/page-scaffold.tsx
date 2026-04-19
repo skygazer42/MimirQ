@@ -64,7 +64,7 @@ export function PageScaffold({
             isSystemDense
               ? "px-3 md:px-4 lg:px-5 pt-4 md:pt-5 pb-2.5 md:pb-3"
               : compact
-                ? "px-5 md:px-8 pt-5 md:pt-6 pb-3 md:pb-4"
+                ? "px-5 md:px-8 pt-6 md:pt-7 pb-4 md:pb-5"
                 : "px-6 md:px-8 pt-6 md:pt-8 pb-5 md:pb-6"
           )}
         >

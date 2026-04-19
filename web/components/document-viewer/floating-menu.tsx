@@ -101,7 +101,7 @@ export function FloatingMenu() {
   return (
     <div
         ref={menuRef}
-        className="fixed z-60 flex gap-1 p-1 bg-popover/90 text-popover-foreground backdrop-blur-md rounded-lg shadow-strong border border-border/60 animate-in fade-in zoom-in-95 duration-200 motion-reduce:animate-none"
+        className="fixed z-60 flex gap-1 p-1 bg-popover text-popover-foreground rounded-lg shadow-strong border border-border/40 animate-in fade-in zoom-in-95 duration-200 motion-reduce:animate-none"
         style={{
           top: `max(${position.top}px, calc(env(safe-area-inset-top) + 8px))`,
           left: position.left,

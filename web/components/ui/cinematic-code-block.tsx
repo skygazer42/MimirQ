@@ -17,7 +17,7 @@ export function CinematicCodeBlock({ language, code }: CinematicCodeBlockProps) 
           <div className="w-2.5 h-2.5 rounded-full bg-warning/80" />
           <div className="w-2.5 h-2.5 rounded-full bg-success/80" />
         </div>
-        <span className="ml-4 text-[10px] font-mono text-muted-foreground uppercase">{language}</span>
+        <span className="ml-4 text-[11px] font-mono text-muted-foreground uppercase">{language}</span>
       </div>
       <SyntaxHighlighter
         style={oneDark}

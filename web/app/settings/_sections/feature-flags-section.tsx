@@ -171,7 +171,7 @@ export function FeatureFlagsSection({
           <Zap className="h-4 w-4 text-warning" />
           功能开关
         </h2>
-        <div className="inline-flex items-center gap-1.5 rounded-full border border-warning/20 bg-warning/10 px-2.5 py-1 text-[10px] font-semibold text-warning">
+        <div className="inline-flex items-center gap-1.5 rounded-full border border-warning/20 bg-warning/10 px-2.5 py-1 text-[11px] font-semibold text-warning">
           <AlertCircle className="h-3.5 w-3.5" />
           <span>更改后需重启后端生效</span>
         </div>
@@ -223,7 +223,7 @@ export function FeatureFlagsSection({
                         {feature.dependencies.map((dependency) => (
                           <span
                             key={dependency}
-                            className="rounded border border-border/70 bg-muted/30 px-1.5 py-0.5 text-[10px] leading-4 text-muted-foreground"
+                            className="rounded border border-border/70 bg-muted/30 px-1.5 py-0.5 text-[11px] leading-4 text-muted-foreground"
                           >
                             需要: {dependency}
                           </span>

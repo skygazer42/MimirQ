@@ -332,7 +332,7 @@ export default function DatasetWorkflowPage() {
                   <div className="text-xs font-medium text-muted-foreground">Summary</div>
                   <div className="flex flex-wrap gap-2">
                     {selectedSummary.slice(0, 20).map((s) => (
-                      <Badge key={String(s)} variant="outline" className="font-mono text-[10px]">
+                      <Badge key={String(s)} variant="outline" className="font-mono text-[11px]">
                         {String(s)}
                       </Badge>
                     ))}
@@ -377,12 +377,12 @@ export default function DatasetWorkflowPage() {
                   <div className="text-xs font-medium text-muted-foreground">Top-level keys</div>
                   <div className="flex flex-wrap gap-2">
                     {importKeys.slice(0, 24).map((k) => (
-                      <Badge key={k} variant="outline" className="font-mono text-[10px]">
+                      <Badge key={k} variant="outline" className="font-mono text-[11px]">
                         {k}
                       </Badge>
                     ))}
                     {importKeys.length > 24 ? (
-                      <Badge variant="secondary" className="font-mono text-[10px]">
+                      <Badge variant="secondary" className="font-mono text-[11px]">
                         +{importKeys.length - 24} more
                       </Badge>
                     ) : null}

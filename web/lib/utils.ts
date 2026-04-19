@@ -1,5 +1,17 @@
 import { type ClassValue, clsx } from "clsx"
-import { twMerge } from "tailwind-merge"
+import { extendTailwindMerge } from "tailwind-merge"
+
+// Teach tailwind-merge about our custom font-size scale so it won't confuse
+// `text-caption` / `text-compact` / etc. with text-color utilities.
+const twMerge = extendTailwindMerge({
+  extend: {
+    classGroups: {
+      'font-size': [
+        { text: ['micro', 'caption', 'compact', 'body', 'base-plus', 'title-sm', 'title', 'display', 'detail'] },
+      ],
+    },
+  },
+})
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))

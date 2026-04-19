@@ -19,6 +19,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
+import { cn } from '@/lib/utils'
 
 type KnowledgeWorkbenchActionsProps = {
   datasets: Dataset[]
@@ -70,7 +71,14 @@ export function KnowledgeWorkbenchActions({
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button type="button" size="sm" className={className}>
+          <Button
+            type="button"
+            size="sm"
+            className={cn(
+              'bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm',
+              className,
+            )}
+          >
             <Plus className="size-4" />
             {t('importOrCreate')}
           </Button>

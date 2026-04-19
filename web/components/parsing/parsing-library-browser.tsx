@@ -191,7 +191,7 @@ export function ParsingLibraryBrowser({
                 >
                   {folder.name}
                 </div>
-                <span className="shrink-0 text-[10px] text-muted-foreground dark:text-muted-foreground">
+                <span className="shrink-0 text-[11px] text-muted-foreground dark:text-muted-foreground">
                   {Number.isFinite(latestTs) && latestTs > 0
                     ? new Date(latestTs).toLocaleString([], {
                         month: '2-digit',
@@ -203,7 +203,7 @@ export function ParsingLibraryBrowser({
                 </span>
               </div>
               <div className="mt-0.5 flex min-h-[16px] items-center gap-2">
-                <span className="text-[10px] text-muted-foreground dark:text-muted-foreground">{stats?.count || 0} 项</span>
+                <span className="text-[11px] text-muted-foreground dark:text-muted-foreground">{stats?.count || 0} 项</span>
               </div>
             </div>
           </button>

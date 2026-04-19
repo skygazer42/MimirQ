@@ -139,7 +139,7 @@ function TestCaseRow({
                   key={tag}
                   className={cn(
                     'inline-flex items-center gap-1 rounded-full border text-muted-foreground',
-                    dense ? 'border-slate-200/80 bg-[#fffef9] px-1.5 py-0.5 text-[9px]' : 'border-border/60 bg-muted px-2 py-0.5 text-[10px]'
+                    dense ? 'border-slate-200/80 bg-[#fffef9] px-1.5 py-0.5 text-[9px]' : 'border-border/60 bg-muted px-2 py-0.5 text-[11px]'
                   )}
                 >
                   <Tag className="w-2.5 h-2.5" />
@@ -149,7 +149,7 @@ function TestCaseRow({
             </div>
           ) : null}
 
-          <div className="flex items-center gap-3 text-[10px] text-muted-foreground/80">
+          <div className="flex items-center gap-3 text-[11px] text-muted-foreground/80">
             <span className="flex items-center gap-1">
               <Calendar className="w-3 h-3" />
               {new Date(caseItem.created_at).toLocaleDateString()}
@@ -719,7 +719,7 @@ export function TestCaseManager({
             <Star className="w-3.5 h-3.5" fill={goldenOnly ? 'currentColor' : 'none'} />
             Golden
           </Button>
-          <div className={cn('text-muted-foreground', dense ? 'text-[10px]' : 'text-[11px]')}>
+          <div className={cn('text-muted-foreground', dense ? 'text-[11px]' : 'text-[11px]')}>
             golden {goldenCount} / {cases.length}
           </div>
         </div>
@@ -780,7 +780,7 @@ export function TestCaseManager({
                 取消
               </Button>
             </div>
-            <div className={cn('text-muted-foreground', dense ? 'text-[10px] leading-5' : 'text-[11px]')}>
+            <div className={cn('text-muted-foreground', dense ? 'text-[11px] leading-5' : 'text-[11px]')}>
               提示：后端要求每个用例必须提供至少 1 条 <span className="font-mono">reference_sources</span>。
               点击“检索预览”或“导入 Evidence Pack”选择 Ground Truth 证据引用后再创建。
             </div>

@@ -294,7 +294,7 @@ function SnapshotInlineStat({
 }>) {
   return (
     <div className="flex items-center gap-2 rounded-full border border-border/70 bg-card/90 px-2.5 py-1">
-      <span className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">{label}</span>
+      <span className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{label}</span>
       <span
         title={valueTitle}
         className={cn(
@@ -500,7 +500,7 @@ function JsonCodePane({
       <div className="flex h-full min-h-0 flex-col bg-card">
         <div className="flex shrink-0 items-center justify-between border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.15))] px-4 py-2.5">
         <div className="min-w-0">
-          <div className="inline-flex items-center rounded-md border border-border/70 bg-card px-2 py-0.5 text-[10px] font-semibold tracking-[0.08em] text-muted-foreground">{label}</div>
+          <div className="inline-flex items-center rounded-md border border-border/70 bg-card px-2 py-0.5 text-[11px] font-semibold tracking-[0.08em] text-muted-foreground">{label}</div>
           <div className="mt-1 truncate text-[13px] font-semibold text-foreground">{title}</div>
           {subtitle ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{subtitle}</div> : null}
         </div>
@@ -554,7 +554,7 @@ function SnapshotDiffView({
         <div className="min-w-0 flex-1">
           {typeDrift.length > 0 ? (
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">Type Drift</span>
+              <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">Type Drift</span>
               {typeDrift.slice(0, 8).map((row) => {
                 const type = String(row.type || 'unknown')
                 const delta = Number(row.delta ?? 0)
@@ -563,7 +563,7 @@ function SnapshotDiffView({
                   <Badge
                     key={`${type}:${delta}`}
                     variant="outline"
-                    className="inline-flex items-center gap-1 font-mono text-[10px]"
+                    className="inline-flex items-center gap-1 font-mono text-[11px]"
                   >
                     <span className="text-muted-foreground">{type}</span>
                     <span className={toneClassForDelta(delta)}>{sign + delta}</span>
@@ -641,7 +641,7 @@ function SnapshotAuditPanel({
           title="效果面板"
           description="快速查看快照差异强度、类型漂移与整体风险等级。"
           extra={
-            <Badge variant={severityMeta.variant} className="inline-flex items-center gap-1.5 font-mono text-[10px]">
+            <Badge variant={severityMeta.variant} className="inline-flex items-center gap-1.5 font-mono text-[11px]">
               {severityMeta.icon}
               {severityMeta.label}
             </Badge>
@@ -706,11 +706,11 @@ function SnapshotAuditPanel({
                     title={`${type} Δ ${sign}${delta}`}
                   >
                     <span className="truncate font-mono text-[12px] text-foreground">{type}</span>
-                    <Badge variant="outline" className="font-mono text-[10px] text-muted-foreground">
+                    <Badge variant="outline" className="font-mono text-[11px] text-muted-foreground">
                       Δ {sign}
                       {delta}
                     </Badge>
-                    <Badge variant={delta > 0 ? 'soft' : delta < 0 ? 'destructive' : 'outline'} className="font-mono text-[10px]">
+                    <Badge variant={delta > 0 ? 'soft' : delta < 0 ? 'destructive' : 'outline'} className="font-mono text-[11px]">
                       {delta > 0 ? 'increase' : delta < 0 ? 'decrease' : 'flat'}
                     </Badge>
                   </button>

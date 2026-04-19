@@ -202,7 +202,7 @@ export function GraphActionDialogs({
 
             {mergeTarget ? (
               <div className="rounded-xl border border-border bg-muted p-3 space-y-2">
-                <div className="text-[10px] font-medium text-muted-foreground">Preview</div>
+                <div className="text-[11px] font-medium text-muted-foreground">Preview</div>
                 <div className="text-xs text-foreground truncate" title={mergeTarget.label}>
                   Target: {mergeTarget.label || mergeTarget.id}
                 </div>

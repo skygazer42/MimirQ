@@ -219,7 +219,7 @@ function QuarantineListPanel({
                         待审核
                       </span>
                     )}
-                    <span className="text-[10px] font-mono text-muted-foreground">ID: {doc.id.slice(0, 8)}</span>
+                    <span className="text-[11px] font-mono text-muted-foreground">ID: {doc.id.slice(0, 8)}</span>
                   </div>
                   <div className="mt-2 truncate font-bold text-foreground">{doc.filename}</div>
                   <div className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{excerpt}</div>
@@ -330,7 +330,7 @@ function QuarantineDetailPanel({ selected }: Readonly<QuarantineDetailPanelProps
             { label: '切片数量', value: String(selected.chunk_count ?? 0) },
           ].map((item) => (
             <div key={item.label} className="space-y-1">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{item.label}</div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{item.label}</div>
               <div className="break-words text-xs font-mono text-foreground">{item.value}</div>
             </div>
           ))}
@@ -773,13 +773,13 @@ export default function QuarantineQueuePage() {
         description={
           <div className="flex flex-wrap items-center gap-2 text-[12px] leading-5 text-muted-foreground">
             <span>聚合命中规则，抽样预览原文，一键放行/重试/删除。</span>
-            <span className="inline-flex items-center rounded-md border border-amber-200/70 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.06em] text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
+            <span className="inline-flex items-center rounded-md border border-amber-200/70 bg-amber-50 px-1.5 py-0.5 text-[11px] font-semibold tracking-[0.06em] text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
               规则聚合
             </span>
-            <span className="inline-flex items-center rounded-md border border-sky-200/70 bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.06em] text-sky-700 dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-300">
+            <span className="inline-flex items-center rounded-md border border-sky-200/70 bg-sky-50 px-1.5 py-0.5 text-[11px] font-semibold tracking-[0.06em] text-sky-700 dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-300">
               原文抽检
             </span>
-            <span className="inline-flex items-center rounded-md border border-emerald-200/70 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.06em] text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+            <span className="inline-flex items-center rounded-md border border-emerald-200/70 bg-emerald-50 px-1.5 py-0.5 text-[11px] font-semibold tracking-[0.06em] text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
               处置闭环
             </span>
           </div>
@@ -809,8 +809,8 @@ export default function QuarantineQueuePage() {
                 { label: '已处理', value: stats.reviewed, tone: 'text-emerald-700 dark:text-emerald-300', border: 'border-emerald-200/80 dark:border-emerald-500/20' },
               ].map((item) => (
                 <div key={item.label} className={cn('rounded-xl border bg-card/90 px-4 py-3 shadow-soft', item.border)}>
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{item.label}</div>
-                  <div className={cn('mt-2 text-[1.75rem] font-black leading-none ', item.tone)}>{item.value}</div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{item.label}</div>
+                  <div className={cn('mt-2 text-[1.75rem] font-semibold leading-none ', item.tone)}>{item.value}</div>
                 </div>
               ))}
             </div>
@@ -822,7 +822,7 @@ export default function QuarantineQueuePage() {
           <div className="border-b border-border/60 px-4 py-3.5">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <div className="min-w-0">
-                <div className="text-sm font-black text-foreground">审核列表</div>
+                <div className="text-sm font-semibold text-foreground">审核列表</div>
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                   <span>{documents.length ? '选中后在右侧处置' : '当前空队列'}</span>
                   {listSummary ? (

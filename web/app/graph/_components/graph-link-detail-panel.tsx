@@ -115,11 +115,11 @@ export function GraphLinkDetailPanel({
                         aria-expanded={selfLoopGroupExpanded}
                       >
                         <div className="min-w-0">
-                          <div className="text-[10px] font-medium text-muted-foreground mb-1">Self-loop Group</div>
+                          <div className="text-[11px] font-medium text-muted-foreground mb-1">Self-loop Group</div>
                           <div className="text-sm font-medium text-foreground truncate">{srcLabel || srcId}</div>
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
-                          <span className="text-[10px] font-mono text-muted-foreground">{selfLoopLinks.length}</span>
+                          <span className="text-[11px] font-mono text-muted-foreground">{selfLoopLinks.length}</span>
                           {selfLoopGroupExpanded ? (
                             <ChevronUp className="w-4 h-4 text-muted-foreground" />
                           ) : (
@@ -152,16 +152,16 @@ export function GraphLinkDetailPanel({
                                       {edgePredicate || edgeKind || 'self-loop'}
                                     </div>
                                     {secondary ? (
-                                      <div className="text-[10px] text-muted-foreground truncate">{secondary}</div>
+                                      <div className="text-[11px] text-muted-foreground truncate">{secondary}</div>
                                     ) : null}
                                   </div>
                                   {edgeId ? (
-                                    <div className="text-[10px] font-mono text-muted-foreground">{edgeId.slice(0, 8)}</div>
+                                    <div className="text-[11px] font-mono text-muted-foreground">{edgeId.slice(0, 8)}</div>
                                   ) : null}
                                 </div>
 
                                 {createdAt || episodes || fact ? (
-                                  <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
+                                  <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
                                     {createdAt ? (
                                       <div className="truncate" title={createdAt}>
                                         <span className="opacity-70">Created</span>: {createdAt}
@@ -184,7 +184,7 @@ export function GraphLinkDetailPanel({
                           })}
 
                           {selfLoopLinks.length > 12 ? (
-                            <div className="text-[10px] text-muted-foreground">
+                            <div className="text-[11px] text-muted-foreground">
                               仅显示前 12 条（共 {selfLoopLinks.length} 条）
                             </div>
                           ) : null}
@@ -194,20 +194,20 @@ export function GraphLinkDetailPanel({
                   ) : null}
 
                   <div className="bg-muted rounded-xl p-3 border border-border">
-                    <span className="block text-[10px] font-medium text-muted-foreground mb-1">Type</span>
+                    <span className="block text-[11px] font-medium text-muted-foreground mb-1">Type</span>
                     <span className="block text-sm text-foreground">{kindLabel}</span>
                   </div>
 
                   {predicate ? (
                     <div className="bg-muted rounded-xl p-3 border border-border">
-                      <span className="block text-[10px] font-medium text-muted-foreground mb-1">Predicate</span>
+                      <span className="block text-[11px] font-medium text-muted-foreground mb-1">Predicate</span>
                       <span className="block text-sm text-foreground">{predicate}</span>
                     </div>
                   ) : null}
 
                   {confStr ? (
                     <div className="bg-muted rounded-xl p-3 border border-border">
-                      <span className="block text-[10px] font-medium text-muted-foreground mb-1">Confidence</span>
+                      <span className="block text-[11px] font-medium text-muted-foreground mb-1">Confidence</span>
                       <div className="flex items-center gap-2">
                         <div className="flex-1 h-1.5 bg-border rounded-full overflow-hidden">
                           <div
@@ -225,7 +225,7 @@ export function GraphLinkDetailPanel({
 
                   {sharedEvents && sharedEvents !== '0' ? (
                     <div className="bg-muted rounded-xl p-3 border border-border">
-                      <span className="block text-[10px] font-medium text-muted-foreground mb-1">Shared Events</span>
+                      <span className="block text-[11px] font-medium text-muted-foreground mb-1">Shared Events</span>
                       <span className="block text-sm text-foreground">{sharedEvents}</span>
                     </div>
                   ) : null}
@@ -240,25 +240,25 @@ export function GraphLinkDetailPanel({
                     <div className="space-y-3">
                       {docId ? (
                         <div className="bg-muted rounded-xl p-3 border border-border">
-                          <span className="block text-[10px] font-medium text-muted-foreground mb-1">Document</span>
+                          <span className="block text-[11px] font-medium text-muted-foreground mb-1">Document</span>
                           <span className="block text-xs font-mono text-foreground break-all">{docId}</span>
                         </div>
                       ) : null}
                       {eventId ? (
                         <div className="bg-muted rounded-xl p-3 border border-border">
-                          <span className="block text-[10px] font-medium text-muted-foreground mb-1">Event</span>
+                          <span className="block text-[11px] font-medium text-muted-foreground mb-1">Event</span>
                           <span className="block text-xs font-mono text-foreground break-all">{eventId}</span>
                         </div>
                       ) : null}
                       {chunkId ? (
                         <div className="bg-muted rounded-xl p-3 border border-border">
-                          <span className="block text-[10px] font-medium text-muted-foreground mb-1">Chunk</span>
+                          <span className="block text-[11px] font-medium text-muted-foreground mb-1">Chunk</span>
                           <span className="block text-xs font-mono text-foreground break-all">{chunkId}</span>
                         </div>
                       ) : null}
                       {page ? (
                         <div className="bg-muted rounded-xl p-3 border border-border">
-                          <span className="block text-[10px] font-medium text-muted-foreground mb-1">Page</span>
+                          <span className="block text-[11px] font-medium text-muted-foreground mb-1">Page</span>
                           <span className="block text-sm text-foreground">{page}</span>
                         </div>
                       ) : null}

@@ -8,9 +8,9 @@ import { PageHeaderBar } from '@/components/ui/page-header-bar'
 import { WorkbenchPane } from './workbench-pane'
 
 type WorkbenchScaffoldProps = {
-  title: string
+  title: React.ReactNode
   description?: React.ReactNode
-  icon: LucideIcon
+  icon?: LucideIcon
   iconColor?: string
   badge?: string
   actions?: React.ReactNode
@@ -113,7 +113,7 @@ export function WorkbenchScaffold({
         <PageContainer size={size} className="h-full">
           <div className="flex h-full min-h-0 gap-4">
             {leftPanel ? (
-              <aside className="hidden lg:flex w-80 min-h-0 overflow-hidden flex-col">
+              <aside className="hidden lg:flex w-[280px] min-h-0 overflow-hidden flex-col">
                 {leftPanel}
               </aside>
             ) : null}
@@ -123,7 +123,7 @@ export function WorkbenchScaffold({
             </section>
 
             {rightPanel ? (
-              <aside className="hidden xl:flex w-96 min-h-0 overflow-hidden flex-col">
+              <aside className="hidden xl:flex w-[360px] min-h-0 overflow-hidden flex-col">
                 {rightPanel}
               </aside>
             ) : null}

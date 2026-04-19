@@ -40,7 +40,7 @@ export function UrlIngestSection({
           <Network className="h-4 w-4 text-primary" />
           URL 导入
         </h2>
-        <div className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+        <div className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
           <span>保存后通常可立即生效</span>
         </div>
       </div>
@@ -49,7 +49,7 @@ export function UrlIngestSection({
         <div
           role="note"
           title="URL 导入会由后端发起网络请求，存在 SSRF 风险。生产环境建议保持关闭，或配置出口防火墙与允许列表（allowlist）。"
-          className="flex items-center gap-1.5 rounded-md border border-destructive/20 bg-destructive/5 px-2 py-1 text-[10px] leading-4 text-foreground/80"
+          className="flex items-center gap-1.5 rounded-md border border-destructive/20 bg-destructive/5 px-2 py-1 text-[11px] leading-4 text-foreground/80"
         >
           <AlertCircle className="h-3 w-3 shrink-0 text-destructive" />
           <span className="font-semibold text-destructive">安全风险：</span>

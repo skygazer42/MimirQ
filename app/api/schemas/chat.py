@@ -93,6 +93,7 @@ class ConversationSchema(OrmModel):
     id: UUID
     title: str | None = None
     last_message: str | None = None
+    last_message_at: datetime | None = None
     message_count: int
     created_at: datetime
     updated_at: datetime

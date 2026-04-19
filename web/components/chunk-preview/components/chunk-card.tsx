@@ -173,36 +173,36 @@ export function ChunkCard({
         <div className="flex items-center gap-2">
           <span
             className={cn(
-              'text-[10px] font-mono font-bold px-1.5 py-0.5 rounded',
+              'text-[11px] font-mono font-bold px-1.5 py-0.5 rounded',
               isSelected || isHovered ? 'bg-primary/15 text-primary' : 'bg-primary/10 text-primary'
             )}
           >
             #{index + 1}
           </span>
           {isDisabled ? (
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted/60 text-muted-foreground border border-border/60">
+            <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-muted/60 text-muted-foreground border border-border/60">
               SKIP
             </span>
           ) : null}
 
           {isEdited ? (
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-info/10 text-info border border-info/25">
+            <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-info/10 text-info border border-info/25">
               EDIT
             </span>
           ) : null}
           {isDuplicate ? (
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/25">
+            <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/25">
               DUP
             </span>
           ) : null}
           {isShort ? (
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/25">
+            <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/25">
               SHORT
             </span>
           ) : null}
           {isGap ? (
             <span
-              className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-destructive/10 text-destructive border border-destructive/25"
+              className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-destructive/10 text-destructive border border-destructive/25"
               title={typeof gapBefore === 'number' ? `gap_before: ${gapBefore}` : undefined}
             >
               GAP
@@ -210,7 +210,7 @@ export function ChunkCard({
           ) : null}
           {isOverlap ? (
             <span
-              className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/25"
+              className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/25"
               title={typeof overlapPrev === 'number' ? `overlap_prev: ${overlapPrev}` : undefined}
             >
               OVR
@@ -218,7 +218,7 @@ export function ChunkCard({
           ) : null}
           {needsReview ? (
             <span
-              className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-destructive/10 text-destructive border border-destructive/25"
+              className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-destructive/10 text-destructive border border-destructive/25"
               title={needsReviewTitle}
             >
               REVIEW
@@ -226,12 +226,12 @@ export function ChunkCard({
           ) : null}
           {(() => {
     if (chunkRole === 'parent') {
-        return (<span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/25">
+        return (<span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/25">
               PARENT
             </span>);
     }
     else if (chunkRole === 'child') {
-            return (<span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted/60 text-muted-foreground border border-border/60">
+            return (<span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-muted/60 text-muted-foreground border border-border/60">
               CHILD
             </span>);
         }
@@ -241,7 +241,7 @@ export function ChunkCard({
 })()}
           {sectionLabel ? (
             <span
-              className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted/60 text-muted-foreground border border-border/60 max-w-[180px] truncate"
+              className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-muted/60 text-muted-foreground border border-border/60 max-w-[180px] truncate"
               title={sectionLabel.full}
             >
               {sectionLabel.short}
@@ -249,24 +249,24 @@ export function ChunkCard({
           ) : null}
           {unit === 'tokens' ? (
             <>
-              <span className="text-[10px] text-muted-foreground font-mono">{tokens ?? '-'} tok</span>
-              <span className="text-[10px] text-muted-foreground font-mono">{chunk.length} chars</span>
+              <span className="text-[11px] text-muted-foreground font-mono">{tokens ?? '-'} tok</span>
+              <span className="text-[11px] text-muted-foreground font-mono">{chunk.length} chars</span>
             </>
           ) : (
             <span
-              className="text-[10px] text-muted-foreground font-mono"
+              className="text-[11px] text-muted-foreground font-mono"
               title={tokens == null ? `${chunk.length} chars` : `${chunk.length} chars · ${tokens} tok`}
             >
               {chunk.length} chars
             </span>
           )}
-          <span className="text-[10px] text-muted-foreground font-mono" title="start-end">
+          <span className="text-[11px] text-muted-foreground font-mono" title="start-end">
             {rangeLabel}
           </span>
         </div>
         <div className="flex items-center gap-1.5">
           {chunk.page_number != null && (
-            <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">P.{chunk.page_number}</span>
+            <span className="text-[11px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">P.{chunk.page_number}</span>
           )}
           <div className={cn('flex items-center gap-1', 'opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity')}>
             {onEdit ? (

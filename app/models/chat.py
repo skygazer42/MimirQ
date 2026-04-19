@@ -25,6 +25,7 @@ class Conversation(Base):
     dataset_id = Column(UUID(as_uuid=True), nullable=True, index=True)
 
     title = Column(String(500), nullable=True)
+    title_source = Column(String(16), nullable=False, default="manual", server_default="manual")
 
     # knowledge scope (document ids)
     document_ids = Column(ARRAY(UUID(as_uuid=True)), default=[])

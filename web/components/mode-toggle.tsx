@@ -20,20 +20,20 @@ export function ModeToggle() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="size-8 rounded-lg" aria-label={t("modeToggle.ariaLabel")}>
+        <Button variant="ghost" size="icon" className="size-8 rounded-lg hover:bg-[#CAF0F8]/55" aria-label={t("modeToggle.ariaLabel")}>
           <Sun className="size-5 rotate-0 scale-100 transition-transform duration-300 motion-reduce:transition-none dark:-rotate-90 dark:scale-0" />
           <Moon className="absolute size-5 rotate-90 scale-0 transition-transform duration-300 motion-reduce:transition-none dark:rotate-0 dark:scale-100" />
           <span className="sr-only">{t("modeToggle.ariaLabel")}</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" sideOffset={8}>
-        <DropdownMenuItem onClick={() => setTheme("light")}>
+        <DropdownMenuItem className="focus:bg-[#CAF0F8]/55 data-[highlighted]:bg-[#CAF0F8]/55 focus:text-foreground data-[highlighted]:text-foreground" onClick={() => setTheme("light")}>
           {t("modeToggle.light")}
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setTheme("dark")}>
+        <DropdownMenuItem className="focus:bg-[#CAF0F8]/55 data-[highlighted]:bg-[#CAF0F8]/55 focus:text-foreground data-[highlighted]:text-foreground" onClick={() => setTheme("dark")}>
           {t("modeToggle.dark")}
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setTheme("system")}>
+        <DropdownMenuItem className="focus:bg-[#CAF0F8]/55 data-[highlighted]:bg-[#CAF0F8]/55 focus:text-foreground data-[highlighted]:text-foreground" onClick={() => setTheme("system")}>
           {t("modeToggle.system")}
         </DropdownMenuItem>
       </DropdownMenuContent>

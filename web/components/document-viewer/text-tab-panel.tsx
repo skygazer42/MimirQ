@@ -70,7 +70,7 @@ export function TextTabPanel({
 }: Readonly<TextTabPanelProps>) {
   return (
     <div className="flex h-full flex-col overflow-hidden bg-muted/20 dark:bg-muted/10">
-      <div className="border-b border-border bg-background/60 p-4 backdrop-blur-sm">
+      <div className="border-b border-border bg-background p-4">
         <div className="flex flex-col gap-2">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap items-center gap-2">

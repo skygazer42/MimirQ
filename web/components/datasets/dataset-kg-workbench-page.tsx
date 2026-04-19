@@ -635,11 +635,11 @@ export default function DatasetKGWorkbenchPage() {
                 </div>
               </div>
               {docsTotal > docs.length ? (
-                <Badge variant="secondary" className="font-mono text-[10px]">
+                <Badge variant="secondary" className="font-mono text-[11px]">
                   loaded={docs.length} total={docsTotal}
                 </Badge>
               ) : (
-                <Badge variant="outline" className="font-mono text-[10px]">
+                <Badge variant="outline" className="font-mono text-[11px]">
                   loaded={docs.length}
                 </Badge>
               )}
@@ -716,10 +716,10 @@ export default function DatasetKGWorkbenchPage() {
                           />
                           <div className="min-w-0 flex-1">
                             <div className="text-xs font-medium truncate">{filename || id}</div>
-                            <div className="text-[10px] text-muted-foreground flex items-center gap-2">
+                            <div className="text-[11px] text-muted-foreground flex items-center gap-2">
                               <span className="font-mono truncate">{id}</span>
                               {status ? (
-                                <Badge variant="outline" className="font-mono text-[10px] px-1.5 py-0">
+                                <Badge variant="outline" className="font-mono text-[11px] px-1.5 py-0">
                                   {status}
                                 </Badge>
                               ) : null}
@@ -809,13 +809,13 @@ export default function DatasetKGWorkbenchPage() {
                         .slice(0, 50)
                         .map(([docId, r]) => (
                           <div key={docId} className="flex items-center justify-between gap-2 rounded-md border border-border/60 px-2 py-1">
-                            <span className="font-mono text-[10px] truncate">{docId}</span>
+                            <span className="font-mono text-[11px] truncate">{docId}</span>
                             {r.ok ? (
-                              <Badge variant="outline" className="font-mono text-[10px]">
+                              <Badge variant="outline" className="font-mono text-[11px]">
                                 events={r.res.event_count}
                               </Badge>
                             ) : (
-                              <Badge variant="soft" className="font-mono text-[10px]">
+                              <Badge variant="soft" className="font-mono text-[11px]">
                                 fail
                               </Badge>
                             )}
@@ -881,7 +881,7 @@ export default function DatasetKGWorkbenchPage() {
                         }}
                       >
                         <div className="text-xs font-medium truncate">{String(n.label || n.id)}</div>
-                        <div className="text-[10px] text-muted-foreground font-mono truncate">{String(n.id)}</div>
+                        <div className="text-[11px] text-muted-foreground font-mono truncate">{String(n.id)}</div>
                       </button>
                     ))}
                   </div>
@@ -951,23 +951,23 @@ export default function DatasetKGWorkbenchPage() {
                   <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                     {graphStats ? (
                       <>
-                        <Badge variant="outline" className="font-mono text-[10px]">
+                        <Badge variant="outline" className="font-mono text-[11px]">
                           entities={Number(graphStats.entities || 0)}
                         </Badge>
-                        <Badge variant="outline" className="font-mono text-[10px]">
+                        <Badge variant="outline" className="font-mono text-[11px]">
                           events={Number(graphStats.events || 0)}
                         </Badge>
-                        <Badge variant="outline" className="font-mono text-[10px]">
+                        <Badge variant="outline" className="font-mono text-[11px]">
                           links={Number(graphStats.links || 0)}
                         </Badge>
                       </>
                     ) : null}
                     {graphClusterResult ? (
                       <>
-                        <Badge variant="secondary" className="font-mono text-[10px]">
+                        <Badge variant="secondary" className="font-mono text-[11px]">
                           clusters={graphClusterResult.clusterCount}
                         </Badge>
-                        <Badge variant="secondary" className="font-mono text-[10px]">
+                        <Badge variant="secondary" className="font-mono text-[11px]">
                           maxCluster={Number(graphClusterResult.clusterSizes[0] || 0)}
                         </Badge>
                       </>
@@ -980,7 +980,7 @@ export default function DatasetKGWorkbenchPage() {
                 <Panel className="space-y-2">
                   <div className="flex items-center justify-between gap-2">
                     <div className="font-semibold">Node drill-down</div>
-                    <Badge variant="secondary" className="font-mono text-[10px]">
+                    <Badge variant="secondary" className="font-mono text-[11px]">
                       cluster={selectedNodeDetail.cluster}
                     </Badge>
                   </div>

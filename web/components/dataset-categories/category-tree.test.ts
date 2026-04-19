@@ -51,5 +51,9 @@ describe('DatasetCategoryTreeView', () => {
 
     expect(src).toContain('新建分类')
     expect(src).toContain('datasetCategoryApi.create')
+    expect(src).toContain('datasetCategoryApi.delete')
+    expect(src).toContain('删除分类')
+    expect(src).toContain('title={node.name}')
+    expect(src).toContain("title={selectedNodeName || '全部分类'}")
   })
 })

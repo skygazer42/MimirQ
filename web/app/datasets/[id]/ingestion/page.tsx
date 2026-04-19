@@ -980,7 +980,7 @@ export default function DatasetIngestionPolicyPage() {
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="font-semibold truncate">{r.name}</span>
-                            <Badge variant={r.enabled ? 'soft' : 'outline'} className="text-[10px] font-mono uppercase ">
+                            <Badge variant={r.enabled ? 'soft' : 'outline'} className="text-[11px] font-mono uppercase ">
                               {r.enabled ? 'enabled' : 'disabled'}
                             </Badge>
                             <span className="text-xs text-muted-foreground font-mono">#{idx + 1}</span>
@@ -1290,11 +1290,11 @@ export default function DatasetIngestionPolicyPage() {
                       <div className="text-xs text-muted-foreground mt-1">{tpl.description}</div>
                       <div className="mt-2 flex flex-wrap gap-2">
                         {tpl.tags.map((t) => (
-                          <Badge key={t} variant="outline" className="text-[10px] font-mono">
+                          <Badge key={t} variant="outline" className="text-[11px] font-mono">
                             {t}
                           </Badge>
                         ))}
-                        <Badge variant="soft" className="text-[10px] font-mono">
+                        <Badge variant="soft" className="text-[11px] font-mono">
                           rules: {tpl.rules.length}
                         </Badge>
                       </div>

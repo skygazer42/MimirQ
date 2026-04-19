@@ -21,6 +21,7 @@ export interface Conversation {
   id: string
   title?: string
   last_message?: string
+  last_message_at?: string
   message_count: number
   created_at: string
   updated_at: string

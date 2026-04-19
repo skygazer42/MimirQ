@@ -64,11 +64,11 @@ export function GraphContextMenu({
             return (
               <div>
                 <div className="border-b border-border/60 bg-muted/30 px-3 py-2">
-                  <div className="text-[10px] font-medium uppercase text-muted-foreground">Node</div>
+                  <div className="text-[11px] font-medium uppercase text-muted-foreground">Node</div>
                   <div className="truncate text-sm font-semibold text-foreground">
                     {String(node?.label || node?.id || 'Node')}
                   </div>
-                  <div className="truncate font-mono text-[10px] text-muted-foreground">
+                  <div className="truncate font-mono text-[11px] text-muted-foreground">
                     {String(node?.id || '')}
                   </div>
                 </div>
@@ -176,11 +176,11 @@ export function GraphContextMenu({
             return (
               <div>
                 <div className="border-b border-border/60 bg-muted/30 px-3 py-2">
-                  <div className="text-[10px] font-medium uppercase text-muted-foreground">Link</div>
+                  <div className="text-[11px] font-medium uppercase text-muted-foreground">Link</div>
                   <div className="truncate text-sm font-semibold text-foreground">
                     {predicate || 'Relationship'}
                   </div>
-                  <div className="truncate font-mono text-[10px] text-muted-foreground">
+                  <div className="truncate font-mono text-[11px] text-muted-foreground">
                     {String(link?.id || link?.meta?.id || '')}
                   </div>
                 </div>
@@ -218,7 +218,7 @@ export function GraphContextMenu({
         ) : (
           <div>
             <div className="border-b border-border/60 bg-muted/30 px-3 py-2">
-              <div className="text-[10px] font-medium uppercase text-muted-foreground">Graph</div>
+              <div className="text-[11px] font-medium uppercase text-muted-foreground">Graph</div>
               <div className="truncate text-sm font-semibold text-foreground">
                 {viewMode === '3d' ? '3D View' : '2D View'}
               </div>

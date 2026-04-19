@@ -135,7 +135,7 @@ export function ItemListPanel({
                         </div>
                         <Badge
                           variant={statusBadgeVariant(item.status)}
-                          className="font-mono text-[10px] uppercase"
+                          className="font-mono text-[11px] uppercase"
                         >
                           {item.status}
                         </Badge>

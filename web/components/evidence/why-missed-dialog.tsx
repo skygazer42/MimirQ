@@ -181,7 +181,7 @@ export function WhyMissedDialog({
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <div className="flex flex-wrap items-center gap-2">
-                                <Badge variant={statusVariant(reference.status)} className="font-mono text-[10px]">
+                                <Badge variant={statusVariant(reference.status)} className="font-mono text-[11px]">
                                   {statusLabel(reference)}
                                 </Badge>
                                 <div className="truncate text-xs font-mono text-foreground">
@@ -200,12 +200,12 @@ export function WhyMissedDialog({
                               {reference.hints?.document_hit_rank || reference.hints?.chunk_index_hit_rank ? (
                                 <div className="mt-2 flex flex-wrap gap-1">
                                   {reference.hints?.document_hit_rank ? (
-                                    <Badge variant="outline" className="font-mono text-[10px]">
+                                    <Badge variant="outline" className="font-mono text-[11px]">
                                       doc@{reference.hints.document_hit_rank}
                                     </Badge>
                                   ) : null}
                                   {reference.hints?.chunk_index_hit_rank ? (
-                                    <Badge variant="outline" className="font-mono text-[10px]">
+                                    <Badge variant="outline" className="font-mono text-[11px]">
                                       idx@{reference.hints.chunk_index_hit_rank}
                                     </Badge>
                                   ) : null}
@@ -260,12 +260,12 @@ export function WhyMissedDialog({
                                     #{index + 1} {citation.document_name || docId.slice(0, 8)}
                                   </div>
                                   {isRefChunk ? (
-                                    <Badge variant="soft" className="font-mono text-[10px]">
+                                    <Badge variant="soft" className="font-mono text-[11px]">
                                       ref_chunk
                                     </Badge>
                                   ) : null}
                                   {isRefDoc && !isRefChunk ? (
-                                    <Badge variant="outline" className="font-mono text-[10px]">
+                                    <Badge variant="outline" className="font-mono text-[11px]">
                                       ref_doc
                                     </Badge>
                                   ) : null}
@@ -277,7 +277,7 @@ export function WhyMissedDialog({
                                 </div>
                               </div>
                               {chunkId ? (
-                                <Badge variant="outline" className="font-mono text-[10px]">
+                                <Badge variant="outline" className="font-mono text-[11px]">
                                   {chunkId.slice(0, 8)}
                                 </Badge>
                               ) : null}

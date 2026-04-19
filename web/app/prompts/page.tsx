@@ -517,7 +517,7 @@ const inactiveStatusBadgeClass = 'rounded-md border-slate-200 bg-slate-50 text-s
                     <div className="flex min-h-6 flex-wrap gap-1">
                       {template.variables.length > 0 ? (
                         template.variables.map((variable) => (
-                          <Badge key={variable} variant="secondary" className="h-5 rounded-md bg-slate-100 px-1.5 font-mono text-[10px] text-slate-700">
+                          <Badge key={variable} variant="secondary" className="h-5 rounded-md bg-slate-100 px-1.5 font-mono text-[11px] text-slate-700">
                             {`{${variable}}`}
                           </Badge>
                         ))
@@ -532,7 +532,7 @@ const inactiveStatusBadgeClass = 'rounded-md border-slate-200 bg-slate-50 text-s
                       <div className="text-[11px] font-medium text-slate-500">标签</div>
                       <div className="flex flex-wrap gap-1">
                         {template.tags.map((tag) => (
-                          <Badge key={tag} variant="outline" className="h-5 rounded-md border-slate-200/80 bg-card px-1.5 text-[10px] text-slate-600">
+                          <Badge key={tag} variant="outline" className="h-5 rounded-md border-slate-200/80 bg-card px-1.5 text-[11px] text-slate-600">
                             {tag}
                           </Badge>
                         ))}

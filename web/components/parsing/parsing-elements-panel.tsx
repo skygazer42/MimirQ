@@ -175,30 +175,30 @@ export function ParsingElementsPanel({
             >
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[11px] font-semibold text-foreground">{kindLabel(String(element.kind || 'paragraph'))}</span>
-                {pageLabel ? <span className="font-mono text-[10px] text-muted-foreground">{pageLabel}</span> : null}
-                <span className="font-mono text-[10px] text-muted-foreground">{element.id}</span>
+                {pageLabel ? <span className="font-mono text-[11px] text-muted-foreground">{pageLabel}</span> : null}
+                <span className="font-mono text-[11px] text-muted-foreground">{element.id}</span>
                 {typeof attributes?.source_content_type === 'string' ? (
-                  <span className="rounded-full border border-border/60 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                  <span className="rounded-full border border-border/60 px-1.5 py-0.5 text-[11px] text-muted-foreground">
                     {attributes.source_content_type as string}
                   </span>
                 ) : null}
                 {visualKind ? (
-                  <span className="rounded-full border border-border/60 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                  <span className="rounded-full border border-border/60 px-1.5 py-0.5 text-[11px] text-muted-foreground">
                     {visualKind}
                   </span>
                 ) : null}
                 {typeof element.confidence === 'number' ? (
-                  <span className="font-mono text-[10px] text-muted-foreground">{element.confidence.toFixed(2)}</span>
+                  <span className="font-mono text-[11px] text-muted-foreground">{element.confidence.toFixed(2)}</span>
                 ) : null}
                 {crossPageLabel ? (
-                  <span className="rounded-full border border-border/60 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                  <span className="rounded-full border border-border/60 px-1.5 py-0.5 text-[11px] text-muted-foreground">
                     {crossPageLabel}
                   </span>
                 ) : null}
               </div>
               {element.text ? <div className="mt-1 truncate text-sm text-foreground/85">{element.text}</div> : null}
               {element.bbox ? (
-                <div className="mt-1 font-mono text-[10px] text-muted-foreground">bbox {formatBbox(element.bbox)}</div>
+                <div className="mt-1 font-mono text-[11px] text-muted-foreground">bbox {formatBbox(element.bbox)}</div>
               ) : null}
             </button>
           )

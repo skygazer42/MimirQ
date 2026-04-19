@@ -117,7 +117,7 @@ export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<C
               </span>
             )}
           </div>
-          <p className="truncate text-[10px] text-muted-foreground">{selectedOption.description}</p>
+          <p className="truncate text-[11px] text-muted-foreground">{selectedOption.description}</p>
         </div>
         <ChevronDown
           className={cn(
@@ -202,7 +202,7 @@ export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<C
                         </span>
                       )}
                     </div>
-                    <p className="truncate text-[10px] text-muted-foreground">{option.description}</p>
+                    <p className="truncate text-[11px] text-muted-foreground">{option.description}</p>
                   </div>
                   {isSelected && (
                     <Check className="size-4 text-sky-600 dark:text-sky-300 flex-shrink-0" />

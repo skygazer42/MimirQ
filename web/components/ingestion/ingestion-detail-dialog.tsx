@@ -360,7 +360,7 @@ export function IngestionDetailDialog({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {runtime.map((item) => (
                   <div key={item.k} className="bg-card rounded-xl border border-border p-3 shadow-sm hover:shadow-md transition-shadow duration-200 motion-reduce:transition-none">
-                    <div className="mb-1 text-[10px] font-semibold text-muted-foreground">{item.k}</div>
+                    <div className="mb-1 text-[11px] font-semibold text-muted-foreground">{item.k}</div>
                     <div className="break-words text-xs font-mono font-medium text-foreground">{item.v}</div>
                   </div>
                 ))}
@@ -440,14 +440,14 @@ export function IngestionDetailDialog({
                     { k: t('versions.metrics.removed'), v: diff.removed_chunks },
                   ].map((x) => (
                     <div key={x.k} className="rounded-xl border border-border bg-muted/20 p-3">
-                      <div className="text-[10px] font-semibold text-muted-foreground">{x.k}</div>
+                      <div className="text-[11px] font-semibold text-muted-foreground">{x.k}</div>
                       <div className="mt-1 text-sm font-mono font-bold text-foreground tabular-nums">{String(x.v)}</div>
                     </div>
                   ))}
 
                   {diff.changed_transforms?.length ? (
                     <div className="md:col-span-5 rounded-xl border border-border bg-background p-3">
-                      <div className="text-[10px] font-semibold text-muted-foreground">{t('versions.metrics.changedTransforms')}</div>
+                      <div className="text-[11px] font-semibold text-muted-foreground">{t('versions.metrics.changedTransforms')}</div>
                       <div className="mt-2 text-xs font-mono text-foreground break-words">
                         {diff.changed_transforms.join(', ')}
                       </div>

@@ -1,9 +1,22 @@
 import type { Metadata } from 'next'
+import { Inter, JetBrains_Mono } from 'next/font/google'
 import { headers } from 'next/headers'
 import { connection } from 'next/server'
 import { NextIntlClientProvider } from 'next-intl'
 import { getLocale, getMessages } from 'next-intl/server'
 import './globals.css'
+
+const inter = Inter({
+  subsets: ['latin', 'latin-ext'],
+  display: 'swap',
+  variable: '--font-sans',
+})
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin', 'latin-ext'],
+  display: 'swap',
+  variable: '--font-mono',
+})
 import { ThemeProvider } from "@/components/theme-provider"
 import { SonnerToaster } from "@/components/sonner-toaster"
 import { CommandMenu } from "@/components/command-menu"
@@ -48,7 +61,7 @@ export default async function RootLayout({
   return (
     <html lang={documentLang} dir={documentDir} suppressHydrationWarning className="h-full overflow-hidden">
       {/* Lock window scrolling: the app uses panel-internal scrolling for better UX. */}
-      <body className="font-sans h-dvh overflow-hidden">
+      <body className={`${inter.variable} ${jetbrainsMono.variable} font-sans h-dvh overflow-hidden`}>
         <NextIntlClientProvider locale={locale} messages={messages}>
           <ThemeProvider
             attribute="class"

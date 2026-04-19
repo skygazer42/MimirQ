@@ -94,14 +94,14 @@ function renderPreviewState(preview: DocumentPreview | null, chunkPreview: Manua
     >
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">
+          <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-mono text-muted-foreground">
             #{index + 1}
           </span>
           {typeof chunk.page_number === 'number' && (
-            <span className="text-[10px] text-muted-foreground">P.{chunk.page_number}</span>
+            <span className="text-[11px] text-muted-foreground">P.{chunk.page_number}</span>
           )}
         </div>
-        <span className="text-[10px] font-mono text-muted-foreground/60 group-hover:text-primary">
+        <span className="text-[11px] font-mono text-muted-foreground/60 group-hover:text-primary">
           {chunk.content.length} chars
         </span>
       </div>
@@ -507,7 +507,7 @@ export function ManualUploadDialog({ onUploaded }: Readonly<ManualUploadDialogPr
                       className="h-10 font-mono"
                       placeholder="例如：## "
                     />
-                    <p className="text-[10px] text-muted-foreground">
+                    <p className="text-[11px] text-muted-foreground">
                       支持字符串匹配，常用于 Markdown 标题分割。
                     </p>
                   </div>

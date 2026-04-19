@@ -2478,6 +2478,7 @@ const zhCNMessages = {
       storageUsage: '存储占用',
       processing: '处理中',
       needsAttention: '需关注',
+      failed: '失败',
     },
     tabs: {
       documents: {
@@ -2548,8 +2549,8 @@ const zhCNMessages = {
   },
   KnowledgeScopePanel: {
     header: {
-      title: '范围',
-      subtitle: 'Scope',
+      title: '导航',
+      subtitle: 'NAVIGATION',
     },
     dataset: {
       label: '数据集',
@@ -2578,6 +2579,7 @@ const zhCNMessages = {
     folder: {
       label: '目录',
       clear: '清除',
+      pendingTitle: '未选择数据集',
       empty: '选择一个数据集以浏览目录范围。',
     },
     lifecycle: {
@@ -2709,27 +2711,34 @@ const zhCNMessages = {
   },
   KnowledgeRetrievalPanel: {
     header: {
-      title: 'Index Audit',
+      badge: '索引审计',
+      title: '索引审计',
       description: '数据集级索引一致性检查（Postgres ↔ 向量库；仅 owner/admin）',
-      currentDataset: '当前数据集',
+      currentDataset: '数据集',
       noneSelected: '未选择',
     },
     actions: {
       run: '运行',
+      running: '审计中...',
     },
     metrics: {
-      vectorBackend: 'Vector Backend',
-      activeDocuments: 'Active Docs',
-      activeChunks: 'Active Chunks',
-      vectorIdMissing: 'DB Missing vector_id',
-      checkedIds: 'Checked IDs',
-      missingInBackend: 'Missing In Backend',
-      milvusSampled: 'Milvus Sampled',
-      orphanSample: 'Orphan Sample',
+      vectorBackend: '向量后端',
+      activeDocuments: '有效文档',
+      activeChunks: '有效分块',
+      vectorIdMissing: '缺失 vector_id',
+      checkedIds: '已检查 ID',
+      missingInBackend: '后端缺失',
+      milvusSampled: 'Milvus 采样',
+      orphanSample: '孤儿样本',
     },
     samples: {
-      missingInBackend: 'Missing in Vector Backend (sample)',
-      orphanIds: 'Orphan Vector IDs (sample)',
+      missingInBackend: '向量后端缺失样本',
+      orphanIds: '孤儿向量 ID 样本',
+    },
+    empty: {
+      title: '初始化审计',
+      description: '运行审计以同步索引',
+      waitingForDataset: '等待选择数据集',
     },
   },
   KnowledgeSettingsPanel: {
@@ -2811,8 +2820,13 @@ const zhCNMessages = {
     },
     connectorRuns: {
       emptyValue: '—',
-      title: 'Connectors 导入任务',
+      title: '任务中心',
       description: '用于批量 URL 导入/同步；仅展示你有写权限的数据集的运行记录。',
+      liveBadge: '实时',
+      summary: {
+        all: '全部',
+        active: '进行中',
+      },
       filter: {
         ariaLabel: '筛选运行状态',
         placeholder: '状态',
@@ -2844,6 +2858,7 @@ const zhCNMessages = {
         description: '暂无导入任务。可通过顶部“导入/新增”创建批量导入/同步任务。',
       },
       empty: {
+        title: '暂无运行记录',
         description: '当前筛选条件下暂无任务。',
         clearFilters: '清除筛选',
       },
@@ -2854,24 +2869,24 @@ const zhCNMessages = {
       location: {
         clear: '清除定位',
       },
-      datasetLabel: 'dataset',
+      datasetLabel: '数据集',
       durationLabel: '耗时',
       metrics: {
-        created: 'created',
-        failed: 'failed',
-        sync: 'sync',
+        created: '新建',
+        failed: '失败',
+        sync: '同步方式',
         acl: 'ACL',
         documents: '文档',
         members: '成员',
         groups: '组',
-        progress: 'progress',
+        progress: '进度',
       },
       errorGroupsTitle: '错误聚类：',
       errorSamplesTitle: '错误示例：',
       documentList: {
         toggle: '产物列表（{count}）',
-        title: 'Documents',
-        defaultStatus: 'created',
+        title: '产物列表',
+        defaultStatus: '已创建',
       },
       dialogs: {
         cancel: {

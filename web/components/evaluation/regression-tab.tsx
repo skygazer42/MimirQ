@@ -722,7 +722,7 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
 	                          {Object.entries(item.scores).map(([k, v]: [string, any]) => (
 	                            <span
 	                              key={k}
-	                              className="text-[10px] px-2 py-0.5 rounded-full bg-info/10 text-info border border-info/20"
+	                              className="text-[11px] px-2 py-0.5 rounded-full bg-info/10 text-info border border-info/20"
 	                            >
 	                              {k}: {typeof v === 'number' ? v.toFixed(2) : v}
 	                            </span>
@@ -767,7 +767,7 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
                             </summary>
                             <div className="mt-2 space-y-2 text-[11px] text-muted-foreground">
                               {modelUsed ? (
-                                <div className="font-mono text-[10px] text-muted-foreground">model: {String(modelUsed)}</div>
+                                <div className="font-mono text-[11px] text-muted-foreground">model: {String(modelUsed)}</div>
                               ) : null}
                               {parts.map(({ key, obj }) => {
                                 if (!obj || typeof obj !== 'object') return null
@@ -790,7 +790,7 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
                                     {quotes.length ? (
                                       <div className="mt-2 space-y-1">
                                         {quotes.slice(0, 3).map((q, i) => (
-                                          <div key={i} className="font-mono text-[10px] text-muted-foreground">
+                                          <div key={i} className="font-mono text-[11px] text-muted-foreground">
                                             “{q}”
                                           </div>
                                         ))}

@@ -188,7 +188,7 @@ export function EvidenceViewerDialog({
 
         <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-2 border-b border-border/40">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="soft" className="text-[10px]">
+            <Badge variant="soft" className="text-[11px]">
               {(() => {
     if (kind === 'image') {
         return (<span className="inline-flex items-center gap-1">
@@ -211,12 +211,12 @@ export function EvidenceViewerDialog({
 })()}
             </Badge>
             {citation?.document_name ? (
-              <Badge variant="soft" className="text-[10px]" title={String(citation.document_name)}>
+              <Badge variant="soft" className="text-[11px]" title={String(citation.document_name)}>
                 {clampText(citation.document_name, 64)}
               </Badge>
             ) : null}
             {typeof citation?.page_number === 'number' ? (
-              <Badge variant="soft" className="text-[10px]">
+              <Badge variant="soft" className="text-[11px]">
                 P.{citation.page_number}
               </Badge>
             ) : null}
@@ -319,7 +319,7 @@ export function EvidenceViewerDialog({
                       key={row.k}
                       className="rounded-xl border border-border/60 bg-card px-3 py-2"
                     >
-                      <div className="text-[10px] font-bold text-muted-foreground uppercase">
+                      <div className="text-[11px] font-bold text-muted-foreground uppercase">
                         {row.k}
                       </div>
                       <div className="mt-1 text-xs font-mono text-foreground break-words">

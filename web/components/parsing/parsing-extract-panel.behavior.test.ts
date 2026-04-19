@@ -37,6 +37,41 @@ afterEach(() => {
 })
 
 describe('parsing extract panel behavior', () => {
+  it('supports collapsing and expanding the extract panel body', () => {
+    const view = renderComponent(
+      React.createElement(ParsingExtractPanel, {
+        documentId: 'doc-collapse',
+        activeElements: [],
+      })
+    )
+    rendered.push(view)
+
+    expect(view.container.textContent).toContain('字段名')
+    const toggleButton = Array.from(view.container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('收起')
+    )
+    expect(toggleButton).not.toBeNull()
+
+    act(() => {
+      toggleButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    expect(view.container.textContent).not.toContain('字段名')
+    expect(view.container.textContent).toContain('展开')
+
+    const expandButton = Array.from(view.container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('展开')
+    )
+    expect(expandButton).not.toBeNull()
+
+    act(() => {
+      expandButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    expect(view.container.textContent).toContain('字段名')
+    expect(view.container.textContent).toContain('收起')
+  })
+
   it('shows visual kind choices for image extraction and hides them for non-image kinds', () => {
     const view = renderComponent(
       React.createElement(ParsingExtractPanel, {

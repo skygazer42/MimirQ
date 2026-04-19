@@ -192,7 +192,7 @@ export function GraphFloatingControls({
               </Button>
             </PopoverTrigger>
             <PopoverContent side="left" align="end" className="w-64 p-2">
-              <div className="px-1.5 py-1 text-[10px] font-semibold text-muted-foreground uppercase">Export</div>
+              <div className="px-1.5 py-1 text-[11px] font-semibold text-muted-foreground uppercase">Export</div>
               <div className="grid grid-cols-2 gap-2 p-1">
                 <Button type="button" size="sm" variant="outline" className="h-8" onClick={onExportPngDownload}>
                   PNG
@@ -211,7 +211,7 @@ export function GraphFloatingControls({
                   Copy SVG
                 </Button>
               </div>
-              <div className="px-2 pb-1 text-[10px] text-muted-foreground">当前视图：{viewMode === '3d' ? '3D' : '2D'}</div>
+              <div className="px-2 pb-1 text-[11px] text-muted-foreground">当前视图：{viewMode === '3d' ? '3D' : '2D'}</div>
             </PopoverContent>
           </Popover>
         </div>

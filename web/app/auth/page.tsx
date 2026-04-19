@@ -155,7 +155,7 @@ export default function AuthPage() {
                                 "focus-ring flex-1 py-2 text-sm font-medium rounded-lg transition-colors duration-200 motion-reduce:transition-none",
                                 mode === 'login'
                                     ? "bg-card/60 text-foreground shadow-sm"
-                                    : "text-muted-foreground hover:text-foreground hover:bg-accent/40"
+                                    : "text-muted-foreground hover:text-foreground hover:bg-[#CAF0F8]/55"
                             )}
                             onClick={() => setMode('login')}
                         >
@@ -167,7 +167,7 @@ export default function AuthPage() {
                                 "focus-ring flex-1 py-2 text-sm font-medium rounded-lg transition-colors duration-200 motion-reduce:transition-none",
                                 mode === 'register'
                                     ? "bg-card/60 text-foreground shadow-sm"
-                                    : "text-muted-foreground hover:text-foreground hover:bg-accent/40"
+                                    : "text-muted-foreground hover:text-foreground hover:bg-[#CAF0F8]/55"
                             )}
                             onClick={() => setMode('register')}
                         >
@@ -270,7 +270,7 @@ export default function AuthPage() {
                                   <p className="text-xs text-destructive">{error.message}</p>
                                   {error.requestId ? (
                                     <div className="mt-2 flex items-center justify-between gap-2">
-                                      <span className="min-w-0 truncate text-[10px] font-mono text-muted-foreground">
+                                      <span className="min-w-0 truncate text-[11px] font-mono text-muted-foreground">
                                         {formatRequestId(error.requestId)}
                                       </span>
                                       <Button
@@ -291,7 +291,7 @@ export default function AuthPage() {
 
                         <Button
                             type="submit"
-                            className="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-xl shadow-md transition-colors duration-200 motion-reduce:transition-none motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.98]"
+                            className="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-xl transition-colors duration-200 motion-reduce:transition-none"
                             disabled={isSubmitting}
                         >
 	                            {isSubmitting ? (

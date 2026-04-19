@@ -113,7 +113,7 @@ export function FileQueueItem({
               </span>
             ) : null}
             {typeof file.duration === 'number' && Number.isFinite(file.duration) ? (
-              <span className="ml-auto shrink-0 font-mono tabular-nums text-[10px] text-muted-foreground">
+              <span className="ml-auto shrink-0 font-mono tabular-nums text-[11px] text-muted-foreground">
                 {file.duration}s
               </span>
             ) : null}

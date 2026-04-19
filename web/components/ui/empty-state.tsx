@@ -23,24 +23,24 @@ export function EmptyState({
   return (
     <section
       className={cn(
-        "group flex min-h-[240px] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/40 px-6 py-10 text-center",
+        "group flex min-h-[240px] flex-col items-center justify-center rounded-2xl border border-border/60 bg-card/60 px-6 py-10 text-center",
         className
       )}
     >
       {Icon ? (
-        <div className="mb-6 grid size-16 place-items-center rounded-2xl border-0 bg-primary/10 shadow-subtle group-hover:scale-105 transition-transform duration-200 motion-reduce:transition-none">
-            <Icon className={cn("size-8 text-primary", iconClassName)} />
+        <div className="mb-5 grid size-14 place-items-center rounded-2xl bg-muted/50 border border-border/50">
+            <Icon className={cn("size-7 text-muted-foreground/70", iconClassName)} />
         </div>
       ) : null}
 
-      <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+      <h2 className="text-base font-semibold text-foreground">{title}</h2>
       {description ? (
-        <div className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
+        <div className="mt-1.5 max-w-md text-sm leading-relaxed text-muted-foreground/80">
           {description}
         </div>
       ) : null}
 
-      {children ? <div className="mt-6 flex items-center gap-3">{children}</div> : null}
+      {children ? <div className="mt-5 flex items-center gap-2.5">{children}</div> : null}
     </section>
   )
 }

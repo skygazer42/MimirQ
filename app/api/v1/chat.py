@@ -82,6 +82,9 @@ from app.services.structured_memory_service import build_structured_memory_conte
 logger = logging.getLogger(__name__)
 
 _BACKGROUND_TASKS: set[asyncio.Task[Any]] = set()
+CONVERSATION_TITLE_SOURCE_AUTO = "auto"
+CONVERSATION_TITLE_SOURCE_MANUAL = "manual"
+_CONVERSATION_TITLE_PREVIEW_CHARS = 50
 
 
 def _spawn_background_task(coro: Any) -> None:
@@ -107,6 +110,50 @@ def _spawn_background_task(coro: Any) -> None:
                 logger.warning("Background task failed: %s", str(exc)[:200])
 
     task.add_done_callback(_done)
+
+
+def _derive_auto_conversation_title(message: str | None) -> str | None:
+    text = re.sub(r"\s+", " ", str(message or "").strip())
+    if not text:
+        return None
+    if len(text) <= _CONVERSATION_TITLE_PREVIEW_CHARS:
+        return text
+    return text[:_CONVERSATION_TITLE_PREVIEW_CHARS] + "..."
+
+
+def _get_conversation_title_source(conversation: Conversation) -> str:
+    raw = str(getattr(conversation, "title_source", "") or "").strip().lower()
+    if raw in {CONVERSATION_TITLE_SOURCE_AUTO, CONVERSATION_TITLE_SOURCE_MANUAL}:
+        return raw
+    return CONVERSATION_TITLE_SOURCE_MANUAL if str(getattr(conversation, "title", "") or "").strip() else CONVERSATION_TITLE_SOURCE_AUTO
+
+
+def _apply_auto_conversation_title(conversation: Conversation, message: str | None) -> None:
+    if _get_conversation_title_source(conversation) == CONVERSATION_TITLE_SOURCE_MANUAL:
+        return
+    conversation.title = _derive_auto_conversation_title(message)
+    conversation.title_source = CONVERSATION_TITLE_SOURCE_AUTO
+
+
+def _get_latest_user_message_content(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    conversation_id: UUID,
+) -> str | None:
+    row = (
+        db.query(Message.content)
+        .filter(
+            Message.tenant_id == tenant_id,
+            Message.conversation_id == conversation_id,
+            Message.role == "user",
+        )
+        .order_by(Message.created_at.desc(), Message.id.desc())
+        .first()
+    )
+    if not row:
+        return None
+    return str(row[0] or "").strip() or None
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -479,13 +526,55 @@ def _ensure_conversation_access(
         doc_ids,
         check_member=False,
     )
-    if missing_ids:
-        missing = [str(doc_id) for doc_id in doc_ids if doc_id in missing_ids]
-        raise HTTPException(status_code=404, detail=f"Documents not found: {', '.join(missing)}")
-    allowed = [doc_id for doc_id in doc_ids if doc_id in allowed_ids]
-    if not allowed:
+    remaining = [doc_id for doc_id in doc_ids if doc_id not in missing_ids]
+    if remaining != doc_ids:
+        preserved_updated_at = getattr(conv, "updated_at", None)
+        db.query(Conversation).filter(
+            Conversation.id == conv.id,
+            Conversation.tenant_id == tenant_id,
+        ).update(
+            {
+                Conversation.document_ids: remaining,
+                Conversation.updated_at: preserved_updated_at,
+            },
+            synchronize_session=False,
+        )
+        db.commit()
+        db.refresh(conv)
+    allowed = [doc_id for doc_id in remaining if doc_id in allowed_ids]
+    if remaining and not allowed:
         raise HTTPException(status_code=403, detail="No accessible documents for this request")
     return allowed
+
+
+def _resolve_conversation_document_scope_for_chat(
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    conv: Conversation,
+) -> list[UUID]:
+    if not conv.document_ids:
+        return []
+    doc_ids = list(conv.document_ids)
+    allowed_ids, missing_ids = get_allowed_document_id_sets(
+        db,
+        tenant_id,
+        account_id,
+        doc_ids,
+        check_member=False,
+    )
+    remaining = [doc_id for doc_id in doc_ids if doc_id not in missing_ids]
+    if remaining != doc_ids:
+        conv.document_ids = remaining
+    allowed = [doc_id for doc_id in remaining if doc_id in allowed_ids]
+    if allowed:
+        return allowed
+    if remaining:
+        raise HTTPException(status_code=403, detail="No accessible documents for this request")
+    raise HTTPException(
+        status_code=409,
+        detail="Conversation documents are no longer available; choose new documents or dataset scope",
+    )
 
 
 def _retrieve_long_term_messages(
@@ -704,7 +793,12 @@ async def chat(
 
         elif conversation.document_ids:
             # Bound doc scope: re-validate each request.
-            allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, list(conversation.document_ids or []))
+            allowed_doc_ids = _resolve_conversation_document_scope_for_chat(
+                db,
+                tenant_id,
+                account_id,
+                conversation,
+            )
             conversation.document_ids = allowed_doc_ids
             conversation.dataset_id = None
 
@@ -774,10 +868,11 @@ async def chat(
         conversation = Conversation(
             id=uuid.uuid4(),
             tenant_id=tenant_id,
-            title=request.message[:50] + "..." if len(request.message) > 50 else request.message,
+            title_source=CONVERSATION_TITLE_SOURCE_AUTO,
             dataset_id=scope_dataset_id,
             document_ids=allowed_doc_ids,
         )
+        _apply_auto_conversation_title(conversation, request.message)
         db.add(conversation)
         db.flush()
         conversation_id = conversation.id
@@ -791,6 +886,7 @@ async def chat(
         token_count=num_tokens_from_string(request.message or ""),
     )
     db.add(user_message)
+    _apply_auto_conversation_title(conversation, request.message)
 
     # Optional: long-term memory recall (BM25 over conversation messages).
     if request.enable_long_term_memory and settings.LONG_TERM_MEMORY_ENABLED and conversation_id:
@@ -1567,7 +1663,12 @@ async def stream_chat(
             allowed_doc_ids = []
 
         elif conversation.document_ids:
-            allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, list(conversation.document_ids or []))
+            allowed_doc_ids = _resolve_conversation_document_scope_for_chat(
+                db,
+                tenant_id,
+                account_id,
+                conversation,
+            )
             conversation.document_ids = allowed_doc_ids
             conversation.dataset_id = None
         else:
@@ -1634,10 +1735,11 @@ async def stream_chat(
         conversation = Conversation(
             id=uuid.uuid4(),
             tenant_id=tenant_id,
-            title=request.message[:50] + "..." if len(request.message) > 50 else request.message,
+            title_source=CONVERSATION_TITLE_SOURCE_AUTO,
             dataset_id=scope_dataset_id,
             document_ids=allowed_doc_ids,
         )
+        _apply_auto_conversation_title(conversation, request.message)
         db.add(conversation)
         db.flush()
         conversation_id = conversation.id
@@ -1651,6 +1753,7 @@ async def stream_chat(
         token_count=num_tokens_from_string(request.message or ""),
     )
     db.add(user_message)
+    _apply_auto_conversation_title(conversation, request.message)
 
     # Optional: long-term memory recall (BM25 over conversation messages).
     if request.enable_long_term_memory and settings.LONG_TERM_MEMORY_ENABLED and conversation_id:
@@ -2774,6 +2877,7 @@ async def create_conversation(
 ):
     """Create a new conversation."""
     allow_empty_docs = bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True))
+    requested_title = str(request.title or "").strip()
 
     scope_dataset_id: UUID | None = None
     if request.document_ids:
@@ -2801,7 +2905,8 @@ async def create_conversation(
 
     conversation = Conversation(
         tenant_id=tenant_id,
-        title=request.title,
+        title=requested_title or None,
+        title_source=CONVERSATION_TITLE_SOURCE_MANUAL if requested_title else CONVERSATION_TITLE_SOURCE_AUTO,
         dataset_id=scope_dataset_id,
         document_ids=allowed_doc_ids
     )
@@ -2838,7 +2943,18 @@ async def update_conversation(
     changed = False
     if "title" in getattr(payload, "model_fields_set", set()):
         title = (payload.title or "").strip()
-        conversation.title = title or None
+        if title:
+            conversation.title = title
+            conversation.title_source = CONVERSATION_TITLE_SOURCE_MANUAL
+        else:
+            conversation.title_source = CONVERSATION_TITLE_SOURCE_AUTO
+            conversation.title = _derive_auto_conversation_title(
+                _get_latest_user_message_content(
+                    db=db,
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                )
+            )
         changed = True
 
     if changed:
@@ -3030,9 +3146,11 @@ async def list_conversations(
                 conversations.append(conv)
                 continue
             doc_id_set = set(doc_ids)
-            if doc_id_set & missing_doc_ids:
+            remaining_doc_ids = doc_id_set - missing_doc_ids
+            if not remaining_doc_ids:
+                conversations.append(conv)
                 continue
-            if doc_id_set & allowed_doc_ids:
+            if remaining_doc_ids & allowed_doc_ids:
                 conversations.append(conv)
 
         if raw_offset >= total:
@@ -3077,14 +3195,21 @@ async def list_conversations(
             "message_count": conv.message_count,
             "created_at": conv.created_at,
             "updated_at": conv.updated_at,
-            "last_message": None
+            "last_message": None,
+            "last_message_at": None,
         }
 
         last_msg = last_message_by_conversation_id.get(conv.id)
         if last_msg:
             conv_dict["last_message"] = last_msg.content[:100] + "..." if len(last_msg.content) > 100 else last_msg.content
+            conv_dict["last_message_at"] = last_msg.created_at
 
         result_items.append(conv_dict)
+
+    result_items.sort(
+        key=lambda item: item.get("last_message_at") or item.get("created_at") or item.get("updated_at"),
+        reverse=True,
+    )
 
     return {
         "total": total,

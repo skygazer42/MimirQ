@@ -138,7 +138,7 @@ export default function SettingsRbacPage() {
                   <Label className={systemPageTokens.microLabel}>搜索</Label>
                   <Input className={DENSE_INPUT} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="按用户 ID（user_id）/ 角色键（role）过滤" />
                 </div>
-                <Badge variant="outline" className="w-fit font-mono text-[10px]">
+                <Badge variant="outline" className="w-fit font-mono text-[11px]">
                   可见 {filtered.length} 人
                 </Badge>
               </div>
@@ -183,9 +183,9 @@ export default function SettingsRbacPage() {
                         </div>
                         <div className="col-span-1">
                           {m.is_current ? (
-                            <Badge variant="soft" className="font-mono text-[10px]">当前</Badge>
+                            <Badge variant="soft" className="font-mono text-[11px]">当前</Badge>
                           ) : (
-                            <Badge variant="outline" className="font-mono text-[10px] text-muted-foreground">-</Badge>
+                            <Badge variant="outline" className="font-mono text-[11px] text-muted-foreground">-</Badge>
                           )}
                         </div>
                         <div className="col-span-2 flex justify-end">

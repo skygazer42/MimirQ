@@ -2,10 +2,11 @@
 
 import type { Document } from '@/types'
 
-import { Activity, AlertTriangle, Database, Eye, Filter, Loader2, MoreVertical, Trash2, Upload } from 'lucide-react'
+import { Activity, AlertTriangle, Database, Eye, Filter, Loader2, MoreVertical, Trash2, Layers, RefreshCw, RotateCcw } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
+import { motion, AnimatePresence } from 'framer-motion'
 
 import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
@@ -34,7 +35,6 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Link } from '@/i18n/navigation'
-import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, formatDate, formatFileSize, detachPromise } from '@/lib/utils'
 import { getParserLabel } from '@/lib/parser-options'
@@ -99,6 +99,7 @@ type KnowledgeDocumentsPanelProps = {
 
   deleteDocument: (id: string) => void | Promise<void>
   handleFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void
+  onPeek?: (docId: string) => void
 }
 
 function getStatusBadge(status: string, t: TranslateFn): { status: StatusBadgeStatus; label: string } {
@@ -118,12 +119,11 @@ function getStatusBadge(status: string, t: TranslateFn): { status: StatusBadgeSt
   }
 }
 
-function statusBarClassName(status: StatusBadgeStatus) {
+function getStatusBarColor(status: string) {
   if (status === 'completed') return 'bg-success'
   if (status === 'failed') return 'bg-destructive'
   if (status === 'quarantined') return 'bg-warning'
-  if (status === 'processing') return 'bg-info'
-  if (status === 'pending') return 'bg-muted-foreground/40'
+  if (status === 'processing' || status === 'pending') return 'bg-info'
   return 'bg-muted-foreground/40'
 }
 
@@ -177,6 +177,7 @@ export function KnowledgeDocumentsPanel({
   anySelectedNotArchived,
   deleteDocument,
   handleFileUpload,
+  onPeek,
 }: Readonly<KnowledgeDocumentsPanelProps>) {
   const t = useTranslations('KnowledgeDocumentsPanel')
   const [activeDrawerDoc, setActiveDrawerDoc] = useState<Document | null>(null)
@@ -204,33 +205,7 @@ export function KnowledgeDocumentsPanel({
   const docsTablePaddingBottom = docsTableVirtualRows.length
     ? docsTableVirtualizer.getTotalSize() - docsTableVirtualRows[docsTableVirtualRows.length - 1].end
     : 0
-  const controlsClassName = embedded ? 'border-b border-border/60 bg-background/65 px-4 py-3 backdrop-blur-sm' : 'mb-4'
   const sectionInsetClassName = embedded ? 'px-4 py-4' : ''
-  const sortOptions = [
-    { value: 'created_at:desc', label: t('sort.createdDesc') },
-    { value: 'created_at:asc', label: t('sort.createdAsc') },
-    { value: 'filename:asc', label: t('sort.filenameAsc') },
-    { value: 'filename:desc', label: t('sort.filenameDesc') },
-    { value: 'file_size:desc', label: t('sort.fileSizeDesc') },
-    { value: 'file_size:asc', label: t('sort.fileSizeAsc') },
-  ]
-
-  const singleDeleteTitle = useMemo(() => {
-    if (!singleDeleteDoc) return t('singleDelete.titleDefault')
-    return t('singleDelete.title')
-  }, [singleDeleteDoc, t])
-
-  const singleDeleteDescription = useMemo(() => {
-    if (!singleDeleteDoc) return null
-    return (
-      <div className="space-y-2">
-        <div>
-          {t('singleDelete.description', { filename: singleDeleteDoc.filename })}
-        </div>
-        <div className="text-xs text-muted-foreground font-mono break-all">{singleDeleteDoc.id}</div>
-      </div>
-    )
-  }, [singleDeleteDoc, t])
 
   const confirmSingleDelete = useCallback(async () => {
     const doc = singleDeleteDoc
@@ -258,41 +233,12 @@ export function KnowledgeDocumentsPanel({
 
   const copyText = useCallback(async (text: string, okMsg: string) => {
     try {
-      if (!navigator.clipboard?.writeText) {
-        toast.error(t('toasts.copyUnsupported'))
-        return
-      }
-      await navigator.clipboard.writeText(text)
+      await globalThis.navigator.clipboard.writeText(text)
       toast.success(okMsg)
     } catch {
       toast.error(t('toasts.copyFailed'))
     }
   }, [t])
-
-  const buildCopyHandler = useCallback(
-    (text: string, okMsg: string) => () => detachPromise(copyText(text, okMsg)),
-    [copyText],
-  )
-
-  const buildToggleDocSelectionHandler = useCallback(
-    (docId: string) => () => toggleDocSelection(docId),
-    [toggleDocSelection],
-  )
-
-  const buildRequestSingleDeleteHandler = useCallback(
-    (doc: Document) => () => requestSingleDelete(doc),
-    [requestSingleDelete],
-  )
-
-  const buildOpenInspectorHandler = useCallback(
-    (doc: Document) => () => setActiveDrawerDoc(doc),
-    [],
-  )
-
-  const handleDrawerOpenChange = useCallback((open: boolean) => {
-    if (open) return
-    setActiveDrawerDoc(null)
-  }, [])
 
   const renderGridDocCard = (doc: Document) => {
     const badge = getStatusBadge(doc.status, t)
@@ -301,12 +247,13 @@ export function KnowledgeDocumentsPanel({
         <DocumentCard
           doc={doc}
           statusBadge={badge}
-          statusBarClassName={statusBarClassName(badge.status)}
+          statusBarClassName={getStatusBarColor(doc.status)}
           onRequestDelete={requestSingleDelete}
           copyText={copyText}
           t={t}
           selected={selectedSet.has(doc.id)}
-          onToggleSelect={buildToggleDocSelectionHandler(doc.id)}
+          onToggleSelect={() => toggleDocSelection(doc.id)}
+          onPeek={onPeek}
         />
       </div>
     )
@@ -330,9 +277,14 @@ export function KnowledgeDocumentsPanel({
       >
         <AlertDialogContent className="max-w-md">
           <AlertDialogHeader>
-            <AlertDialogTitle>{singleDeleteTitle}</AlertDialogTitle>
+            <AlertDialogTitle>{singleDeleteDoc ? t('singleDelete.title') : t('singleDelete.titleDefault')}</AlertDialogTitle>
             <AlertDialogDescription>
-              {singleDeleteDescription}
+              {singleDeleteDoc && (
+                <div className="space-y-2">
+                  <div>{t('singleDelete.description', { filename: singleDeleteDoc.filename })}</div>
+                  <div className="text-xs text-muted-foreground font-mono break-all">{singleDeleteDoc.id}</div>
+                </div>
+              )}
               {singleDeleteError ? (
                 <div className="mt-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive text-pretty">
                   {singleDeleteError}
@@ -361,178 +313,137 @@ export function KnowledgeDocumentsPanel({
         </AlertDialogContent>
       </AlertDialog>
 
-      <Dialog open={Boolean(activeDrawerDoc)} onOpenChange={handleDrawerOpenChange}>
-        <DialogContent className="left-auto right-0 top-0 h-dvh w-[min(480px,100vw)] max-w-[480px] translate-x-0 translate-y-0 rounded-none p-0 overflow-hidden">
-          <DialogHeader className="sr-only">
-            <DialogTitle>{activeDrawerDoc?.filename || t('actions.openInspector')}</DialogTitle>
-            <DialogDescription>{activeDrawerDoc?.id || ''}</DialogDescription>
-          </DialogHeader>
+      <AnimatePresence>
+        {selectedDocIds.length > 0 ? (
+          <motion.div
+            initial={{ opacity: 0, y: 40, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 40, scale: 0.95 }}
+            transition={{ type: 'spring', damping: 20, stiffness: 300 }}
+            className={cn(
+              'fixed bottom-8 left-1/2 z-50 -translate-x-1/2 overflow-hidden rounded-[2.25rem] border border-border/50 bg-background/70 px-4 py-3 shadow-[0_30px_90px_-32px_rgba(15,23,42,0.88),0_18px_36px_-24px_rgba(15,23,42,0.55),inset_0_1px_0_rgba(255,255,255,0.16)] backdrop-blur-2xl supports-[backdrop-filter]:bg-background/58'
+            )}
+          >
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-background/95 via-background/78 to-background/95" />
+            <div className="pointer-events-none absolute inset-x-10 top-0 h-px bg-white/30 dark:bg-white/10" />
+            <div className="pointer-events-none absolute -left-8 top-1/2 size-28 -translate-y-1/2 rounded-full bg-primary/10 blur-3xl" />
+            <div className="pointer-events-none absolute -right-6 top-2 size-24 rounded-full bg-foreground/5 blur-2xl" />
 
-          <div className="flex h-full min-h-0 flex-col bg-background">
-            <div className="flex-1 min-h-0 overflow-y-auto">
-              <KnowledgeInspector embedded selectedDocs={activeDrawerDoc ? [activeDrawerDoc] : []} />
-            </div>
-            {activeDrawerDoc ? (
-              <div className="border-t border-border/60 px-4 py-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <DocumentDetailDialog
-                    document={activeDrawerDoc}
-                    trigger={
-                      <Button type="button" size="sm" variant="outline" className="rounded-full">
-                        {t('actions.previewContent')}
-                      </Button>
-                    }
-                  />
-                  <Button asChild size="sm" variant="outline" className="rounded-full">
-                    <Link href={`/knowledge/${activeDrawerDoc.id}/health`}>{t('actions.healthCard')}</Link>
-                  </Button>
+            <div className="relative flex items-center gap-4">
+              <div className="flex items-center gap-3 pr-4 border-r border-border/40">
+                <div className="flex size-7 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold font-mono tabular-nums shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]">
+                  {selectedDocIds.length}
                 </div>
-              </div>
-            ) : null}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {(() => {
-    if (isLoading && documents.length === 0) {
-        return (<div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-          <Loader2 className="w-8 h-8 animate-spin motion-reduce:animate-none mb-3"/>
-          <p className="text-sm">{t('loading')}</p>
-        </div>);
-    }
-    else if (documents.length === 0 && hasActiveFilters) {
-            return (<div className="py-10">
-          <EmptyState icon={Filter} title={t("empty.filtered.title")} description={<span className="text-muted-foreground">{t('empty.filtered.description')}</span>} className="bg-transparent shadow-none">
-            <Button type="button" variant="outline" className="rounded-xl" onClick={onClearFilters}>
-              {t("actions.clearFilters")}
-            </Button>
-          </EmptyState>
-        </div>);
-        }
-        else if (documents.length === 0 && selectedDatasetId && onSwitchToAllDatasets) {
-                return (<div className="py-10">
-          <EmptyState icon={Database} title={t('empty.emptyDataset.title')} description={<span className="text-muted-foreground">
-                {t("empty.emptyDataset.description", {
-                  dataset: selectedDatasetLabel || selectedDatasetId,
-                })}
-              </span>} className="bg-transparent shadow-none">
-            <Button type="button" variant="outline" className="rounded-xl" onClick={onSwitchToAllDatasets}>
-              {t("empty.emptyDataset.actions.switchToAllDatasets")}
-            </Button>
-          </EmptyState>
-        </div>);
-            }
-            else if (documents.length === 0) {
-                    return (<div className="py-10">
-          <EmptyState icon={Upload} title={t('empty.blank.title')} description={<span className="text-muted-foreground">
-                {t('empty.blank.description')}
-                <br />
-                {t('empty.blank.formats')}
-              </span>} className="bg-transparent shadow-none">
-            <div>
-              <Button size="lg" className="gap-2 rounded-xl shadow-sm" asChild>
-                <span>
-                  <Upload className="w-5 h-5"/>
-                  {t('actions.uploadNow')}
+                <span className="text-[13px] font-bold text-foreground/90 whitespace-nowrap">
+                  {t('selection.selectedCount', { count: selectedDocIds.length })}
                 </span>
-              </Button>
-              <input type="file" multiple accept={UPLOAD_ACCEPT} className="hidden" onChange={handleFileUpload}/>
-            </div>
-          </EmptyState>
-        </div>);
-                }
-                else {
-                    return (<>
-          <div className={controlsClassName}>
-            <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center">
-              <div className="flex w-full flex-col gap-2.5 sm:flex-row lg:max-w-2xl">
-              <SearchInput value={docFilter} onValueChange={setDocFilter} placeholder={t('search.placeholder')} containerClassName="w-full" inputClassName="h-8 rounded-lg border-border/60 bg-background placeholder:text-muted-foreground/60 focus:border-primary/40"/>
-
-                <Select value={`${sortKey}:${sortDir}`} onValueChange={(value) => {
-                  const [k, d] = String(value || '').split(':')
-                  if (k === 'created_at' || k === 'filename' || k === 'file_size') setSortKey(k)
-                  if (d === 'asc' || d === 'desc') setSortDir(d)
-                }}>
-                  <SelectTrigger className="h-8 w-full rounded-lg border-border/60 bg-background sm:w-[190px]" aria-label={t("sort.ariaLabel")}>
-                    <SelectValue placeholder={t("sort.placeholder")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sortOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
 
-              {scopeSummary ? <div className="text-xs">{scopeSummary}</div> : null}
-            </div>
-          </div>
-
-          {selectedDocIds.length > 0 ? (<div className={cn(
-              'flex flex-col gap-3 border border-border/60 bg-muted/20 px-3 py-2 md:flex-row md:items-center md:justify-between',
-              embedded ? 'mx-4 my-3 rounded-xl' : 'mb-4 rounded-lg'
-            )}>
-              <div className="text-sm text-foreground">
-                {t('selection.selectedCount', { count: selectedDocIds.length })}
-              </div>
-              <div className="flex flex-wrap items-center gap-2 justify-end">
-                <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={toggleSelectAllVisible}>
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 pr-0.5">
+                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-bold hover:bg-muted/60" onClick={toggleSelectAllVisible}>
                   {allVisibleSelected ? t('selection.clearSelectAll') : t('selection.selectAllVisible')}
                 </Button>
-                <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => setSelectedDocIds([])}>
+                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-bold hover:bg-muted/60" onClick={() => setSelectedDocIds([])}>
                   {t('actions.clearSelection')}
                 </Button>
-                <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => detachPromise(runBatchReingest())} disabled={batchDeleting || batchLifecycleWorking || batchReingestWorking}>
+                <div className="w-px h-4 bg-border/40 mx-1" />
+                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-bold hover:bg-muted/60 text-primary" onClick={() => detachPromise(runBatchReingest())} disabled={batchDeleting || batchLifecycleWorking || batchReingestWorking}>
+                  {batchReingestWorking ? <Loader2 className="size-3 animate-spin mr-1.5" /> : <RefreshCw className="size-3 mr-1.5" />}
                   {batchReingestWorking ? t('actions.reingesting') : t('actions.reingest')}
                 </Button>
-                <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => detachPromise(runBatchLifecycle('disable'))} disabled={batchDeleting || batchLifecycleWorking || !anySelectedEnabled}>
+                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-bold hover:bg-muted/60" onClick={() => detachPromise(runBatchLifecycle('disable'))} disabled={batchDeleting || batchLifecycleWorking || !anySelectedEnabled}>
                   {t('actions.disable')}
                 </Button>
-                <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => detachPromise(runBatchLifecycle('enable'))} disabled={batchDeleting || batchLifecycleWorking || !anySelectedDisabled}>
+                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-bold hover:bg-muted/60" onClick={() => detachPromise(runBatchLifecycle('enable'))} disabled={batchDeleting || batchLifecycleWorking || !anySelectedDisabled}>
                   {t('actions.enable')}
                 </Button>
-                <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => detachPromise(runBatchLifecycle('archive'))} disabled={batchDeleting || batchLifecycleWorking || !anySelectedNotArchived}>
+                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-bold hover:bg-muted/60" onClick={() => detachPromise(runBatchLifecycle('archive'))} disabled={batchDeleting || batchLifecycleWorking || !anySelectedNotArchived}>
                   {t('actions.archive')}
                 </Button>
-                <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => detachPromise(runBatchLifecycle('unarchive'))} disabled={batchDeleting || batchLifecycleWorking || !anySelectedArchived}>
+                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-bold hover:bg-muted/60" onClick={() => detachPromise(runBatchLifecycle('unarchive'))} disabled={batchDeleting || batchLifecycleWorking || !anySelectedArchived}>
                   {t('actions.unarchive')}
                 </Button>
-                <Button type="button" variant="outline" size="sm" className="rounded-xl border-destructive/25 bg-destructive/5 text-destructive hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive" onClick={() => setBatchDeleteOpen(true)} disabled={batchDeleting || batchLifecycleWorking}>
+                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-bold bg-destructive/5 text-destructive hover:bg-destructive/15" onClick={() => setBatchDeleteOpen(true)} disabled={batchDeleting || batchLifecycleWorking}>
+                  <Trash2 className="size-3 mr-1.5" />
                   {t('actions.batchDelete')}
                 </Button>
               </div>
-            </div>) : null}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
-          <AlertDialog open={batchDeleteOpen} onOpenChange={setBatchDeleteOpen}>
-            <AlertDialogContent className="max-w-md">
-              <AlertDialogHeader>
-                <AlertDialogTitle>{t("batchDelete.title")}</AlertDialogTitle>
-                <AlertDialogDescription>
-                  {t('batchDelete.description', { count: selectedDocIds.length })}
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <Button type="button" variant="outline" onClick={() => setBatchDeleteOpen(false)} disabled={batchDeleting}>
-                  {t('actions.cancel')}
-                </Button>
-                <Button type="button" variant="destructive" onClick={() => detachPromise(confirmBatchDelete())} disabled={batchDeleting || selectedDocIds.length === 0}>
-                  {batchDeleting ? t('actions.deleting') : t('actions.confirmDelete')}
-                </Button>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+      <AlertDialog open={batchDeleteOpen} onOpenChange={setBatchDeleteOpen}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("batchDelete.title")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('batchDelete.description', { count: selectedDocIds.length })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <Button type="button" variant="outline" onClick={() => setBatchDeleteOpen(false)} disabled={batchDeleting}>
+              {t('actions.cancel')}
+            </Button>
+            <Button type="button" variant="destructive" onClick={() => detachPromise(confirmBatchDelete())} disabled={batchDeleting || selectedDocIds.length === 0}>
+              {batchDeleting ? t('actions.deleting') : t('actions.confirmDelete')}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
-          {(() => {
-                            if (filteredDocuments.length === 0) {
-                                return (<div className="py-10">
-              <EmptyState icon={Filter} title={t("empty.filtered.title")} description={<span className="text-muted-foreground">{t('empty.filtered.refinedDescription')}</span>} className="bg-transparent shadow-none">
-                <Button type="button" variant="outline" className="rounded-xl" onClick={onClearFilters}>
-                  {t("actions.clearFilters")}
-                </Button>
-              </EmptyState>
+      {(() => {
+                            if (isLoading && documents.length === 0) {
+                                return (<div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+              <Loader2 className="w-8 h-8 animate-spin motion-reduce:animate-none mb-3"/>
+              <p className="text-sm">{t('loading')}</p>
             </div>);
+                            }
+                            if (filteredDocuments.length === 0) {
+                                return (
+                                  <div className="flex flex-col items-center justify-center min-h-[400px] px-6 py-12">
+                                    <motion.div 
+                                      initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                                      className="flex flex-col items-center text-center max-w-sm"
+                                    >
+                                      <div className="relative mb-6">
+                                        <div className="absolute inset-0 bg-primary/20 rounded-full blur-2xl opacity-50 animate-pulse" />
+                                        <div className="relative size-20 rounded-3xl bg-background/80 border border-border/60 shadow-strong flex items-center justify-center backdrop-blur-md">
+                                          <Filter className="size-8 text-primary/60" />
+                                        </div>
+                                      </div>
+
+                                      <h3 className="text-lg font-bold tracking-tight text-foreground mb-2">
+                                        {docFilter ? '未找到匹配的文档' : '当前筛选无结果'}
+                                      </h3>
+                                      <p className="text-sm font-medium text-muted-foreground/60 leading-relaxed mb-8">
+                                        尝试调整筛选条件，或清空筛选后重新查看全部文档。
+                                      </p>
+
+                                      <div className="flex flex-col gap-3 w-full">
+                                        <Button 
+                                          type="button" 
+                                          className="h-11 rounded-2xl bg-primary text-primary-foreground font-bold shadow-md shadow-primary/20 hover:scale-[1.02] transition-transform active:scale-[0.98]" 
+                                          onClick={onClearFilters}
+                                        >
+                                          <RotateCcw className="mr-2 size-4" />
+                                          清空所有筛选条件
+                                        </Button>
+                                        
+                                        {!selectedDatasetId && hasActiveFilters && (
+                                          <Button 
+                                            variant="ghost" 
+                                            className="h-10 rounded-xl text-xs font-bold text-muted-foreground/80 hover:text-foreground"
+                                            onClick={onSwitchToAllDatasets}
+                                          >
+                                            回到“全部分类视图”
+                                          </Button>
+                                        )}
+                                      </div>
+                                    </motion.div>
+                                  </div>
+                                );
                             }
                             else if (viewMode === 'grid') {
                                     return (<div className={sectionInsetClassName}>
@@ -597,117 +508,85 @@ export function KnowledgeDocumentsPanel({
 
 	                  {docsTableVirtualRows.map((virtualRow: any) => {
 	                                            const doc = filteredDocuments[virtualRow.index];
-	                                            if (!doc)
-	                                                return null;
+	                                            if (!doc) return null;
 	                                            const badge = getStatusBadge(doc.status, t);
-                                            const fileType = getFileTypeMeta(doc);
-                                            const TypeIcon = fileType.icon;
-                                            const userTags = getUserTagsFromDocument(doc);
-	                                            const sourcePath = String((doc.metadata as any)?.source_path || '').trim();
-	                                            const parseScoreRaw = (doc.metadata as any)?.parse_quality?.score;
-	                                            const parseScore = typeof parseScoreRaw === 'number' && Number.isFinite(parseScoreRaw) ? parseScoreRaw : null;
-	                                            const parseLow = parseScore !== null && parseScore < 0.35;
-	                                            return (<tr key={virtualRow.key} data-index={virtualRow.index} ref={docsTableVirtualizer.measureElement} className="group hover:bg-muted/20 transition-colors">
-		                        <td className="px-3 py-2.5 align-middle">
-		                          <input type="checkbox" className="h-4 w-4 rounded border-border/60 text-primary focus-ring" checked={selectedSet.has(doc.id)} onChange={buildToggleDocSelectionHandler(doc.id)} aria-label={t('table.selectDocument', { filename: doc.filename })}/>
-		                        </td>
-	                        <td className="px-3 py-2.5 font-medium text-foreground">
-	                          <div className="flex items-start gap-2.5">
-                            <div className={cn('mt-0.5 p-1.5 rounded-md border', fileType.bg, fileType.border, fileType.color)}>
-                              <TypeIcon className="w-4 h-4"/>
-                            </div>
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  className="max-w-full truncate text-left transition-colors hover:text-primary"
-                                  onClick={buildOpenInspectorHandler(doc)}
-                                  title={doc.filename}
-                                >
-                                  {doc.filename}
-                                </button>
-	                                <span className={cn('inline-flex items-center rounded-full border px-1.5 py-0 text-[10px] font-semibold uppercase ', fileType.bg, fileType.border, fileType.color)} title={fileType.label}>
-	                                  {fileType.label}
-	                                </span>
-	                                {parseLow ? (
-	                                  <span
-	                                    className="inline-flex items-center rounded-full border border-amber-500/20 bg-amber-500/10 px-1.5 py-0 text-[10px] font-semibold text-amber-700 dark:text-amber-300"
-	                                    title={t("row.parseQualityLow", { score: parseScore?.toFixed?.(3) ?? '—' })}
-	                                  >
-	                                    <AlertTriangle className="h-3.5 w-3.5" />
-	                                  </span>
-	                                ) : null}
-	                              </div>
-	                              {sourcePath ? (<button type="button" className={cn('mt-0.5 block max-w-[380px] truncate text-[11px] font-mono tabular-nums text-muted-foreground hover:text-foreground underline underline-offset-4 transition-opacity', contextualRevealClassName)} onClick={buildCopyHandler(sourcePath, t('toasts.copySourcePath'))} title={t('row.copySourcePathTitle')}>
-	                                  {sourcePath}
-	                                </button>) : null}
+	                                            const tags = getUserTagsFromDocument(doc);
+	                                            return (<tr key={doc.id} className="group/row hover:bg-muted/35 transition-colors">
+	                        <td className="px-3 py-2.5">
+	                          <input type="checkbox" className="h-4 w-4 rounded border-border/60 text-primary focus-ring" checked={selectedSet.has(doc.id)} onChange={() => toggleDocSelection(doc.id)} aria-label={t('table.selectDocument', { filename: doc.filename })}/>
+	                        </td>
+	                        <td className="px-3 py-2.5 min-w-0">
+	                          <div className="flex items-center gap-3">
+	                            <div className={cn('size-8 shrink-0 rounded-lg flex items-center justify-center border', getFileTypeMeta(doc).bg, getFileTypeMeta(doc).border, getFileTypeMeta(doc).color)}>
+	                              {(() => { const Icon = getFileTypeMeta(doc).icon; return <Icon className="size-4.5"/>; })()}
+	                            </div>
+	                            <div className="min-w-0 flex-1">
+	                              <div className="truncate font-bold text-foreground/90 leading-none mb-1" title={doc.filename}>{doc.filename}</div>
+	                              <div className="text-[11px] font-mono text-muted-foreground/50 truncate uppercase tracking-tight">{doc.id}</div>
 	                            </div>
 	                          </div>
 	                        </td>
-	                        {showDatasetColumn ? (<td className="px-3 py-2.5 align-middle">
-	                            {doc.dataset_id ? (<span className="block truncate text-xs text-muted-foreground" title={doc.dataset_id}>
-	                                {datasetLabelById?.[doc.dataset_id] ?? doc.dataset_id}
-	                              </span>) : (<span className="text-xs text-muted-foreground">{t('table.emptyValue')}</span>)}
+	                        {showDatasetColumn ? (<td className="px-3 py-2.5">
+	                            <div className="truncate text-xs text-muted-foreground font-medium">{datasetLabelById?.[doc.dataset_id || ''] || '-'}</div>
 	                          </td>) : null}
-	                        <td className="px-3 py-2.5 align-middle">
-	                          {userTags.length ? (<DocumentTags tags={userTags} max={3} dense/>) : (<span className="text-xs text-muted-foreground">{t('table.emptyValue')}</span>)}
+	                        <td className="px-3 py-2.5">
+	                          {tags.length ? <DocumentTags tags={tags} max={2} dense/> : <span className="text-muted-foreground/30">—</span>}
 	                        </td>
-	                        <td className="px-3 py-2.5 align-middle">
+	                        <td className="px-3 py-2.5">
 	                          <StatusBadge status={badge.status} label={badge.label} dense/>
 	                        </td>
-	                        <td className="px-3 py-2.5 align-middle text-right text-xs font-mono tabular-nums text-muted-foreground">
-	                          {doc.chunk_count ?? '-'}
+	                        <td className="px-3 py-2.5 align-middle text-right text-xs font-mono tabular-nums font-semibold text-foreground/70">
+	                          {doc.chunk_count ?? '0'}
 	                        </td>
 	                        <td className="px-3 py-2.5 align-middle text-right text-xs font-mono tabular-nums text-muted-foreground">
 	                          {formatFileSize(doc.file_size)}
 	                        </td>
-	                        <td className="px-3 py-2.5 align-middle text-xs font-mono tabular-nums text-muted-foreground">
-	                          {formatDate(doc.created_at)}
+	                        <td className="px-3 py-2.5">
+	                          <div className="text-xs font-mono text-muted-foreground tabular-nums whitespace-nowrap">{formatDate(doc.created_at)}</div>
 	                        </td>
-	                        <td className="px-3 py-2.5 align-middle text-right">
-                            <div className="flex items-center justify-end gap-1">
-	                          <IconButton
-                              label={t('actions.openInspector')}
-                              variant="ghost"
-                              className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-muted"
-                              onClick={buildOpenInspectorHandler(doc)}
-                            >
-                              <Eye className="h-4 w-4"/>
-                            </IconButton>
+	                        <td className="px-3 py-2.5 text-right">
+	                          <div className="flex items-center justify-end gap-1">
+                               <Button
+                                 type="button"
+                                 variant="ghost"
+                                 size="sm"
+                                 className="h-8 rounded-full px-3 text-[11px] font-bold text-primary hover:bg-primary/10"
+                                 onClick={(e) => {
+                                   e.stopPropagation()
+                                   if (onPeek) onPeek(doc.id)
+                                   else globalThis.window.open(`/chunk-preview?docId=${doc.id}`, '_blank')
+                                 }}
+                               >
+                                 <Layers className="size-3 mr-1.5" />
+                                 {t('actions.peekChunks')}
+                               </Button>
 
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-	                              <IconButton label={t('actions.moreActions')} variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted">
-	                                <MoreVertical className="h-4 w-4"/>
-	                              </IconButton>
-	                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-56">
-                              <DropdownMenuItem onSelect={buildCopyHandler(doc.id, t('toasts.copyDocumentId'))}>
-                                {t('actions.copyDocumentId')}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onSelect={buildCopyHandler(doc.filename, t('toasts.copyFilename'))}>
-                                {t('actions.copyFilename')}
-                              </DropdownMenuItem>
-                              {sourcePath ? (<DropdownMenuItem onSelect={buildCopyHandler(sourcePath, t('toasts.copySourcePath'))}>
-                                  {t('actions.copySourcePath')}
-                                </DropdownMenuItem>) : null}
-                              <DropdownMenuItem asChild>
-                                <Link href={`/knowledge/${doc.id}/health`} className="flex items-center">
-                                  <Activity className="mr-2 h-4 w-4" />
-                                  {t('actions.healthCard')}
-                                </Link>
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={buildRequestSingleDeleteHandler(doc)}>
-                                <Trash2 className="mr-2 h-4 w-4"/>
-                                {t('actions.deleteDocument')}
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                            </div>
-                        </td>
-                      </tr>);
-                                        })}
+	                            <DropdownMenu>
+	                              <DropdownMenuTrigger asChild>
+	                                <IconButton label={t('actions.moreActions')} variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+	                                  <MoreVertical className="w-4 h-4"/>
+	                                </IconButton>
+	                              </DropdownMenuTrigger>
+	                              <DropdownMenuContent align="end" className="w-56 rounded-xl shadow-strong/10 border-border/60">
+	                                <DropdownMenuItem onSelect={() => detachPromise(copyText(doc.id, t('toasts.copyDocumentId')))}>{t('actions.copyDocumentId')}</DropdownMenuItem>
+	                                <DropdownMenuItem onSelect={() => detachPromise(copyText(doc.filename, t('toasts.copyFilename')))}>{t('actions.copyFilename')}</DropdownMenuItem>
+	                                <DropdownMenuItem asChild>
+	                                  <Link href={`/knowledge/${doc.id}/health`} className="flex items-center">
+	                                    <Activity className="mr-2 h-4 w-4"/>
+	                                    {t('actions.healthCard')}
+	                                  </Link>
+	                                </DropdownMenuItem>
+	                                <DropdownMenuSeparator />
+	                                <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => requestSingleDelete(doc)}>
+	                                  <Trash2 className="mr-2 h-4 w-4"/>
+	                                  {t('actions.deleteDocument')}
+	                                </DropdownMenuItem>
+	                              </DropdownMenuContent>
+	                            </DropdownMenu>
+	                          </div>
+	                        </td>
+	                      </tr>);
+	                                            })}
 
 	                  {docsTablePaddingBottom > 0 ? (<tr>
 		                      <td colSpan={tableColumnCount} className="p-0" style={{ height: `${docsTablePaddingBottom}px` }}/>
@@ -717,9 +596,6 @@ export function KnowledgeDocumentsPanel({
 	            </div>);
                                 }
                         })()}
-        </>);
-                }
-})()}
     </div>
   )
 }
@@ -733,6 +609,7 @@ function DocumentCard({
   t,
   selected,
   onToggleSelect,
+  onPeek,
 }: Readonly<{
   doc: Document
   statusBadge: { status: StatusBadgeStatus; label: string }
@@ -742,6 +619,7 @@ function DocumentCard({
   t: TranslateFn
   selected: boolean
   onToggleSelect: () => void
+  onPeek?: (docId: string) => void
 }>) {
   const parserLabel = doc.metadata?.parser_backend ? getParserLabel(doc.metadata.parser_backend as string) : null
   const userTags = getUserTagsFromDocument(doc)
@@ -749,127 +627,127 @@ function DocumentCard({
   const TypeIcon = fileType.icon
   const parseScoreRaw = (doc.metadata as any)?.parse_quality?.score
   const parseScore = typeof parseScoreRaw === 'number' && Number.isFinite(parseScoreRaw) ? parseScoreRaw : null
-  const parseLow = parseScore !== null && parseScore < 0.35
+  
+  // 计算质量百分比和颜色
+  const qualityPercent = parseScore !== null ? Math.round(parseScore * 100) : null
+  const qualityColor = qualityPercent !== null 
+    ? qualityPercent > 80 ? 'text-emerald-500' : qualityPercent > 50 ? 'text-amber-500' : 'text-rose-500'
+    : 'text-muted-foreground/20'
 
   return (
     <Panel
       padding="none"
-      className="group relative h-full rounded-2xl overflow-hidden hover:shadow-strong/20 hover:border-primary/30 transition-colors transition-shadow duration-200 motion-reduce:transition-none"
+      className={cn(
+        "group relative flex h-full flex-col rounded-2xl overflow-hidden transition-all duration-300 motion-reduce:transition-none border-border/50 bg-card/40 backdrop-blur-sm",
+        selected ? "ring-2 ring-primary ring-offset-2 ring-offset-background border-primary/40 bg-primary/[0.03]" : "hover:border-primary/30 hover:shadow-strong/10 hover:-translate-y-1"
+      )}
     >
-      <div className={cn('h-1.5 w-full', statusBarClassName)} />
+      <div className={cn('h-1 w-full', statusBarClassName)} />
 
+      {/* Selection Checkbox */}
       <div
         className={cn(
-          'absolute top-3 left-3 z-10 rounded-lg border border-border/60 bg-background/70 backdrop-blur-sm p-1 transition-opacity',
-          selected ? 'opacity-100' : contextualRevealClassName
+          'absolute top-4 left-4 z-10 rounded-lg border border-border/60 bg-background/80 backdrop-blur-md p-1.5 transition-all duration-300',
+          selected ? 'opacity-100 border-primary bg-primary/10' : contextualRevealClassName
         )}
       >
         <input
           type="checkbox"
-          className="h-4 w-4 rounded border-border/60 text-primary focus-ring"
+          className="h-4 w-4 rounded border-border/60 text-primary focus-ring cursor-pointer"
           checked={selected}
           onChange={onToggleSelect}
           aria-label={t('table.selectDocument', { filename: doc.filename })}
         />
       </div>
 
-      <div className="p-5 flex-1 flex flex-col">
-        <div className="flex items-start justify-between mb-4">
-          <div className={cn('w-12 h-12 rounded-xl flex items-center justify-center border', fileType.bg, fileType.border, fileType.color)}>
-            <TypeIcon className="w-6 h-6" />
+      <div className="p-6 flex-1 flex flex-col">
+        <div className="flex items-start justify-between mb-5">
+          <div className="relative">
+            <div className={cn(
+              'size-14 rounded-2xl flex items-center justify-center border shadow-sm transition-transform duration-500 group-hover:scale-110 group-hover:rotate-3', 
+              fileType.bg, fileType.border, fileType.color
+            )}>
+              <TypeIcon className="size-7" />
+            </div>
+            {/* Quality Indicator Mini-Ring */}
+            {qualityPercent !== null && (
+              <div 
+                className="absolute -bottom-1 -right-1 size-6 rounded-full bg-background border border-border/60 flex items-center justify-center shadow-sm"
+                title={`解析质量: ${qualityPercent}%`}
+              >
+                <div className={cn("text-[8px] font-semibold font-mono tabular-nums tracking-tighter", qualityColor)}>
+                  {qualityPercent}
+                </div>
+              </div>
+            )}
           </div>
-          <div className="flex items-center gap-2">
-            <div className={cn('px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border', fileType.bg, fileType.color, fileType.border)}>
+          <div className="flex flex-col items-end gap-1.5">
+            <StatusBadge status={statusBadge.status} label={statusBadge.label} dense />
+            <div className={cn('px-2 py-0.5 rounded-full text-[11px] font-bold uppercase border tracking-wider', fileType.bg, fileType.color, fileType.border)}>
               {fileType.label}
             </div>
-            {parseLow ? (
-              <div
-                className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                title={t("row.parseQualityLow", { score: parseScore?.toFixed?.(3) ?? '—' })}
-              >
-                <AlertTriangle className="h-3.5 w-3.5" />
-              </div>
-            ) : null}
-            {doc.disabled_at ? (
-              <div className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border border-border/60 bg-muted/60 text-muted-foreground">
-                {t('row.disabled')}
-              </div>
-            ) : null}
-            {!doc.disabled_at && doc.archived_at ? (
-              <div className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border border-border/60 bg-muted/60 text-muted-foreground">
-                {t('row.archived')}
-              </div>
-            ) : null}
-            <StatusBadge status={statusBadge.status} label={statusBadge.label} dense />
           </div>
         </div>
 
-        <h3 className="font-semibold text-foreground line-clamp-2 mb-2 min-h-[2.5rem]" title={doc.filename}>
+        <h3 className="text-sm font-bold text-foreground leading-snug line-clamp-2 mb-3 min-h-[2.5rem] group-hover:text-primary transition-colors" title={doc.filename}>
           {doc.filename}
         </h3>
 
-        {userTags.length ? <DocumentTags tags={userTags} max={3} dense className="mb-3 flex-nowrap overflow-hidden" /> : null}
+        {userTags.length ? <DocumentTags tags={userTags} max={3} dense className="mb-4" /> : null}
 
-        <div className="space-y-2 mt-auto">
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>{t('row.size')}</span>
-            <span className="font-mono">{formatFileSize(doc.file_size)}</span>
+        <div className="grid grid-cols-2 gap-3 mt-auto pt-4 border-t border-border/40">
+          <div className="space-y-0.5">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/50">{t('row.size')}</p>
+            <p className="text-xs font-semibold font-mono tabular-nums text-foreground/80">{formatFileSize(doc.file_size)}</p>
           </div>
-	          <div className="flex items-center justify-between text-xs text-muted-foreground">
-	            <span>{t('row.chunks')}</span>
-	            <span className="font-mono tabular-nums">{doc.chunk_count ?? '-'}</span>
-	          </div>
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>{t('row.time')}</span>
-            <span>{formatDate(doc.created_at)}</span>
+          <div className="space-y-0.5">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/50">{t('row.chunks')}</p>
+            <p className="text-xs font-semibold font-mono tabular-nums text-foreground/80">{doc.chunk_count ?? '-'}</p>
           </div>
         </div>
       </div>
 
-      <div className={cn('px-5 py-3 border-t border-border/60 bg-muted/20 flex items-center justify-between transition-opacity', contextualRevealClassName)}>
-        <span className="text-[10px] text-muted-foreground font-medium truncate max-w-[80px]">{parserLabel || t('row.parserAuto')}</span>
-        <div className="flex items-center gap-1">
-          <DocumentDetailDialog
-            document={doc}
-            trigger={
-              <IconButton
-                label={t('actions.previewContent')}
-                variant="ghost"
-                className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-muted"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Eye className="w-4 h-4" />
-              </IconButton>
-            }
-          />
-
+      <div className={cn(
+        'px-6 py-3.5 bg-muted/30 border-t border-border/40 flex items-center justify-between transition-all duration-300', 
+        contextualRevealClassName
+      )}>
+        <span className="text-[11px] text-muted-foreground/60 font-bold uppercase tracking-widest truncate max-w-[100px]">
+          {parserLabel || t('row.parserAuto')}
+        </span>
+        <div className="flex items-center gap-1.5">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 rounded-full px-3 text-[11px] font-bold text-primary hover:bg-primary/10"
+            onClick={(e) => {
+              e.stopPropagation()
+              if (onPeek) onPeek(doc.id)
+              else globalThis.window.open(`/chunk-preview?docId=${doc.id}`, '_blank')
+            }}
+          >
+            <Layers className="size-3 mr-1.5" />
+            {t('actions.peekChunks')}
+          </Button>
+          
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <IconButton
                 label={t('actions.moreActions')}
                 variant="ghost"
-                className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted"
+                className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted"
                 onClick={(e) => e.stopPropagation()}
               >
                 <MoreVertical className="w-4 h-4" />
               </IconButton>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuContent align="end" className="w-56 rounded-xl border-border/60 shadow-strong/10">
               <DropdownMenuItem onSelect={() => detachPromise(copyText(doc.id, t('toasts.copyDocumentId')))}>
                 {t('actions.copyDocumentId')}
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => detachPromise(copyText(doc.filename, t('toasts.copyFilename')))}>
                 {t('actions.copyFilename')}
               </DropdownMenuItem>
-              {String((doc.metadata as any)?.source_path || '').trim() ? (
-                <DropdownMenuItem
-                  onSelect={() =>
-                    detachPromise(copyText(String((doc.metadata as any)?.source_path || ''), t('toasts.copySourcePath')))
-                  }
-                >
-                  {t('actions.copySourcePath')}
-                </DropdownMenuItem>
-              ) : null}
               <DropdownMenuItem asChild>
                 <Link href={`/knowledge/${doc.id}/health`} className="flex items-center">
                   <Activity className="mr-2 h-4 w-4" />
@@ -890,10 +768,11 @@ function DocumentCard({
       </div>
 
       {statusBadge.status === 'processing' ? (
-        <div className="absolute bottom-0 left-0 right-0 h-1 bg-muted">
-          <div
-            className="h-full bg-primary/70 animate-pulse motion-reduce:animate-none"
-            style={{ width: `${doc.processing_progress || 60}%` }}
+        <div className="absolute bottom-0 left-0 right-0 h-1 bg-muted/40">
+          <motion.div
+            initial={{ width: 0 }}
+            animate={{ width: `${doc.processing_progress || 60}%` }}
+            className="h-full bg-primary shadow-[0_0_8px_rgba(var(--primary),0.5)]"
           />
         </div>
       ) : null}

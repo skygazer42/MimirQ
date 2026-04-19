@@ -133,12 +133,12 @@ export function SuiteListPanel({
                     {Array.isArray(suite.tags) && suite.tags.length ? (
                       <div className="mt-2 flex flex-wrap gap-1">
                         {suite.tags.slice(0, 3).map((tag) => (
-                          <Badge key={tag} variant="secondary" className="text-[10px] font-mono">
+                          <Badge key={tag} variant="secondary" className="text-[11px] font-mono">
                             {tag}
                           </Badge>
                         ))}
                         {suite.tags.length > 3 ? (
-                          <span className="text-[10px] font-mono text-muted-foreground">
+                          <span className="text-[11px] font-mono text-muted-foreground">
                             +{suite.tags.length - 3}
                           </span>
                         ) : null}

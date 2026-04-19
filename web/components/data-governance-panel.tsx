@@ -1129,7 +1129,7 @@ export function DataGovernancePanel() {
                             </div>
                             {score > 0 ? (
                               <span className={cn(
-                                "flex-shrink-0 text-[10px] px-2 py-0.5 rounded-full font-bold shadow-sm border",
+                                "flex-shrink-0 text-[11px] px-2 py-0.5 rounded-full font-bold shadow-sm border",
                                 (() => {
     if (score >= 80) {
         return "bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-700 border-emerald-500/30";
@@ -1145,12 +1145,12 @@ export function DataGovernancePanel() {
                                 {t('sidebar.scoreLabel', { score })}
                               </span>
                             ) : (
-                              <span className="flex-shrink-0 text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full border border-border font-medium">{t('sidebar.notScanned')}</span>
+                              <span className="flex-shrink-0 text-[11px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full border border-border font-medium">{t('sidebar.notScanned')}</span>
                             )}
                           </div>
 
                           {/* Row 2: Metadata (Size & Date) */}
-                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground mb-2 font-medium font-mono">
+                          <div className="flex items-center gap-2 text-[11px] text-muted-foreground mb-2 font-medium font-mono">
                             <span>{formatFileSize(file.fileSize)}</span>
                             <span className="text-muted-foreground">|</span>
                             <span>
@@ -1202,13 +1202,13 @@ export function DataGovernancePanel() {
             <div className="mt-auto border-t border-border bg-muted/50 p-3 space-y-2 backdrop-blur-sm">
               <div className="grid grid-cols-2 gap-2">
                 <div className="bg-card p-2 rounded-lg border border-border hover:border-sky-500/30 transition-colors">
-                  <div className="text-[10px] text-muted-foreground mb-0.5 uppercase ">{t('stats.storage')}</div>
+                  <div className="text-[11px] text-muted-foreground mb-0.5 uppercase ">{t('stats.storage')}</div>
                   <div className="text-sm font-bold text-foreground/80 flex items-baseline gap-1 font-mono">
                     {stats.completedFiles} <span className="text-muted-foreground font-normal text-xs">/ {stats.totalFiles}</span>
                   </div>
                 </div>
                 <div className="bg-card p-2 rounded-lg border border-border hover:border-emerald-500/30 transition-colors">
-                  <div className="text-[10px] text-muted-foreground mb-0.5 uppercase ">{t('stats.avgScore')}</div>
+                  <div className="text-[11px] text-muted-foreground mb-0.5 uppercase ">{t('stats.avgScore')}</div>
                   <div className="text-sm font-bold text-foreground/80 font-mono">
                     {stats.avgScore > 0 ? stats.avgScore.toFixed(1) : '-'}
                   </div>
@@ -1382,7 +1382,7 @@ export function DataGovernancePanel() {
                           title={tab.label}
                         >
                           <Icon className={cn("w-4 h-4 mb-1", isActive ? "text-sky-600 dark:text-sky-300" : "")} />
-                          <span className="text-[10px] font-medium scale-90">{tab.label}</span>
+                          <span className="text-[11px] font-medium scale-90">{tab.label}</span>
                           {/* 鐘舵€佺偣 */}
                           {tab.id === 'clean' && governanceState.isModified && (
                             <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-purple-500/10 dark:bg-purple-500/20 rounded-full ring-1 ring-white shadow-sm" />

@@ -73,7 +73,7 @@ function EvidenceHighlightsPanel(props: Readonly<{
     <div className="rounded-2xl border border-border/60 bg-card p-4">
       <div className="flex items-center justify-between gap-2">
         <div className="text-sm font-semibold text-foreground">{title}</div>
-        <div className={cn('rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase', toneClass)}>
+        <div className={cn('rounded-full border px-2 py-0.5 text-[11px] font-medium uppercase', toneClass)}>
           {items.length}
         </div>
       </div>
@@ -111,7 +111,7 @@ function EvidenceHighlightsPanel(props: Readonly<{
               </div>
               {item.referenceExample ? (
                 <div className="mt-3 border-t border-border/50 pt-3">
-                  <div className="text-[10px] font-medium uppercase text-muted-foreground">
+                  <div className="text-[11px] font-medium uppercase text-muted-foreground">
                     {t('compareDialog.evidence.referenceLabel')}
                   </div>
                   <div className="mt-1 whitespace-pre-wrap text-xs leading-5 text-muted-foreground">
@@ -240,7 +240,7 @@ export function ChunkCompareDialog(props: Readonly<{
                 <div className="space-y-3">
                   <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
                     <div className="bg-card border border-border/60 rounded-xl p-4">
-                      <div className="text-[10px] text-muted-foreground uppercase font-medium">
+                      <div className="text-[11px] text-muted-foreground uppercase font-medium">
                         {t('compareDialog.cards.chunkCount')}
                       </div>
                       <div className="mt-2 flex items-end justify-between">
@@ -264,7 +264,7 @@ export function ChunkCompareDialog(props: Readonly<{
                     </div>
 
                     <div className="bg-card border border-border/60 rounded-xl p-4">
-                      <div className="text-[10px] text-muted-foreground uppercase font-medium">
+                      <div className="text-[11px] text-muted-foreground uppercase font-medium">
                         {t('compareDialog.cards.lengthDistribution', { unit: diff.unit })}
                       </div>
                       <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
@@ -290,7 +290,7 @@ export function ChunkCompareDialog(props: Readonly<{
                     </div>
 
                     <div className="bg-card border border-border/60 rounded-xl p-4">
-                      <div className="text-[10px] text-muted-foreground uppercase font-medium">
+                      <div className="text-[11px] text-muted-foreground uppercase font-medium">
                         {t('compareDialog.cards.contentOverlap')}
                       </div>
                       <div className="mt-2 flex items-end justify-between">
@@ -305,7 +305,7 @@ export function ChunkCompareDialog(props: Readonly<{
                     </div>
 
                     <div className="bg-card border border-border/60 rounded-xl p-4">
-                      <div className="text-[10px] text-muted-foreground uppercase font-medium">
+                      <div className="text-[11px] text-muted-foreground uppercase font-medium">
                         {t('compareDialog.cards.qualityOverview')}
                       </div>
                       <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">

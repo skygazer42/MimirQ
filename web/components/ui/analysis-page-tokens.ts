@@ -12,7 +12,7 @@ export const analysisTypographyTokens = {
   section: 'text-[13px] font-semibold tracking-[-0.01em] text-foreground',
   body: 'text-[12px] leading-[1.45] text-muted-foreground',
   subtle: 'text-[11px] leading-4 text-muted-foreground/80',
-  label: 'text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground',
+  label: 'text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground',
   mono: 'font-mono text-[11px] leading-4 tabular-nums text-foreground',
 } as const
 

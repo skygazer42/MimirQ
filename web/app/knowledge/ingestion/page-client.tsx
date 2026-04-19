@@ -326,7 +326,7 @@ export default function IngestionMonitorPage() {
                       <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                         {stat.label}
                       </div>
-                      <div className={cn('text-3xl font-black leading-none ', stat.color)}>{stat.value}</div>
+                      <div className={cn('text-3xl font-semibold leading-none ', stat.color)}>{stat.value}</div>
                     </div>
                     <div className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border', stat.iconSurface)}>
                       <stat.icon className={cn('h-5 w-5', stat.color, stat.spin && 'animate-spin motion-reduce:animate-none')} />
@@ -349,7 +349,7 @@ export default function IngestionMonitorPage() {
                 <div className="min-w-0">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">历史窗口</div>
                   <div className="mt-1 flex flex-wrap items-center gap-2">
-                    <div className="text-sm font-black text-foreground">吞吐与错误画像</div>
+                    <div className="text-sm font-semibold text-foreground">吞吐与错误画像</div>
                   </div>
                   {/* 图表与错误画像直接铺在主画布上，避免额外外层卡片 */}
                   <div className="mt-1 text-xs text-muted-foreground">时间窗口聚合，不直接代表当前实时队列瞬时值。</div>
@@ -388,20 +388,20 @@ export default function IngestionMonitorPage() {
               <div className="space-y-4">
                 <div className="grid gap-x-6 gap-y-3 px-1 sm:grid-cols-2 xl:grid-cols-4">
                   <div className="space-y-1 border-l-2 border-border/50 pl-3">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">窗口内新建</div>
-                    <div className="text-2xl font-black text-foreground">{dashboard.created_count ?? 0}</div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">窗口内新建</div>
+                    <div className="text-2xl font-semibold text-foreground">{dashboard.created_count ?? 0}</div>
                   </div>
                   <div className="space-y-1 border-l-2 border-emerald-200/80 pl-3 dark:border-emerald-500/20">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">窗口内完成</div>
-                    <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400">{dashboardCompletedCount}</div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">窗口内完成</div>
+                    <div className="text-2xl font-semibold text-emerald-600 dark:text-emerald-400">{dashboardCompletedCount}</div>
                   </div>
                   <div className="space-y-1 border-l-2 border-red-200/80 pl-3 dark:border-red-500/20">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">窗口内失败 / 隔离</div>
-                    <div className="text-2xl font-black text-red-600 dark:text-red-400">{dashboardErrorCount}</div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">窗口内失败 / 隔离</div>
+                    <div className="text-2xl font-semibold text-red-600 dark:text-red-400">{dashboardErrorCount}</div>
                   </div>
                   <div className="space-y-1 border-l-2 border-sky-200/80 pl-3 dark:border-sky-500/20">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">平均完成耗时</div>
-                    <div className="text-2xl font-black text-foreground">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">平均完成耗时</div>
+                    <div className="text-2xl font-semibold text-foreground">
                       {dashboard.avg_completed_latency_sec == null ? '-' : `${(Number(dashboard.avg_completed_latency_sec || 0) / 60).toFixed(1)}m`}
                     </div>
                   </div>
@@ -481,7 +481,7 @@ export default function IngestionMonitorPage() {
                       <LayoutList className="h-4 w-4 text-foreground" />
                     </div>
                     <div className="min-w-0">
-                      <div className="text-sm font-black text-foreground">任务明细</div>
+                      <div className="text-sm font-semibold text-foreground">任务明细</div>
                       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                         <span>文件维度的实时进度、异常和重试动作</span>
                         <span className="text-muted-foreground/40">·</span>
@@ -621,7 +621,7 @@ export default function IngestionMonitorPage() {
                   >
                     <div className="flex items-center gap-3 mb-2">
                       <StatusPill status={doc.status} />
-                      <span className="font-mono text-[10px] text-muted-foreground">ID: {doc.id.slice(0, 8)}</span>
+                      <span className="font-mono text-[11px] text-muted-foreground">ID: {doc.id.slice(0, 8)}</span>
                     </div>
 
                     <div className="flex items-center gap-3">
@@ -648,14 +648,14 @@ export default function IngestionMonitorPage() {
                     <div className={cn('w-full max-w-[190px] shrink-0 rounded-xl border px-3 py-3', activeProgressShellClass)}>
                       <div className="flex items-end justify-between gap-3">
                         <div className="space-y-1">
-                          <div className={cn('text-[10px] font-bold uppercase tracking-[0.16em]', activeProgressTextClass)}>
+                          <div className={cn('text-[11px] font-bold uppercase tracking-[0.16em]', activeProgressTextClass)}>
                             入库进度
                           </div>
-                          <div className={cn('text-base font-black leading-none', activeProgressTextClass)}>
+                          <div className={cn('text-base font-semibold leading-none', activeProgressTextClass)}>
                             {doc.processing_progress || 0}%
                           </div>
                         </div>
-                        <div className={cn('text-[10px] font-semibold uppercase tracking-[0.14em]', activeProgressTextClass)}>
+                        <div className={cn('text-[11px] font-semibold uppercase tracking-[0.14em]', activeProgressTextClass)}>
                           {isActiveStatus && doc.current_stage ? doc.current_stage : 'QUEUED'}
                         </div>
                       </div>

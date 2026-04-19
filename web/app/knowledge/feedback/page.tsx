@@ -128,13 +128,13 @@ export default function FeedbackTriagePage() {
         description={
           <div className="flex flex-wrap items-center gap-2 text-[12px] leading-5 text-muted-foreground">
             <span>汇总点赞、点踩与低分原因，快速定位需要回归验证的反馈。</span>
-            <span className="inline-flex items-center rounded-md border border-border/60 bg-background/70 px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.04em] text-indigo-700/80 dark:text-indigo-300/80">
+            <span className="inline-flex items-center rounded-md border border-border/60 bg-background/70 px-1.5 py-0.5 text-[11px] font-semibold tracking-[0.04em] text-indigo-700/80 dark:text-indigo-300/80">
               实时分析
             </span>
-            <span className="inline-flex items-center rounded-md border border-border/60 bg-background/70 px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.04em] text-sky-700/80 dark:text-sky-300/80">
+            <span className="inline-flex items-center rounded-md border border-border/60 bg-background/70 px-1.5 py-0.5 text-[11px] font-semibold tracking-[0.04em] text-sky-700/80 dark:text-sky-300/80">
               长文本优先
             </span>
-            <span className="inline-flex items-center rounded-md border border-border/60 bg-background/70 px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.04em] text-emerald-700/80 dark:text-emerald-300/80">
+            <span className="inline-flex items-center rounded-md border border-border/60 bg-background/70 px-1.5 py-0.5 text-[11px] font-semibold tracking-[0.04em] text-emerald-700/80 dark:text-emerald-300/80">
               回归线索
             </span>
           </div>
@@ -173,7 +173,7 @@ export default function FeedbackTriagePage() {
                       {stat.label}
                     </div>
                   </div>
-                  <div className={cn('mt-3 text-[1.85rem] font-black leading-none ', stat.color)}>
+                  <div className={cn('mt-3 text-[1.85rem] font-semibold leading-none ', stat.color)}>
                     {stat.value}
                   </div>
                 </div>
@@ -187,7 +187,7 @@ export default function FeedbackTriagePage() {
           <div className="border-b border-border/60 px-4 py-3.5">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <div className="min-w-0">
-                <div className="text-sm font-black text-foreground">反馈列表</div>
+                <div className="text-sm font-semibold text-foreground">反馈列表</div>
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                   <span>{items.length ? '长反馈与答复摘要优先' : '当前暂无反馈'}</span>
                   {listSummary ? (
@@ -298,7 +298,7 @@ export default function FeedbackTriagePage() {
                           <div className="flex flex-wrap items-center gap-2">
                             <span
                               className={cn(
-                                'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-[0.05em]',
+                                'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-[0.05em]',
                                 isUp
                                   ? 'border-emerald-200/80 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
                                   : isDown
@@ -309,7 +309,7 @@ export default function FeedbackTriagePage() {
                               {toneLabel}
                             </span>
                             {ratingValue > 0 ? (
-                              <span className="inline-flex items-center rounded-full border border-border/60 bg-background px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                              <span className="inline-flex items-center rounded-full border border-border/60 bg-background px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
                                 评分 {ratingValue}/5
                               </span>
                             ) : null}
@@ -355,7 +355,7 @@ export default function FeedbackTriagePage() {
                             {item.tags.slice(0, 5).map((t) => (
                               <span
                                 key={t}
-                                className="rounded-md border border-border bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground"
+                                className="rounded-md border border-border bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground"
                               >
                                 {t}
                               </span>

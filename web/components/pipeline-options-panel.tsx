@@ -198,7 +198,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
   }, [options.chunk_strategy_params])
 
   const titleClasses = compact ? 'text-[11px]' : 'text-[13px]'
-  const descClasses = compact ? 'text-[10px]' : 'text-[11px]'
+  const descClasses = compact ? 'text-[11px]' : 'text-[11px]'
   const activeIndexPreset = useMemo(() => detectPipelineIndexPreset(options), [options])
   const pendingIndexPreset = useMemo(() => {
     if (!indexPresetDraft) return null
@@ -698,7 +698,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                 <div className={cn("font-medium text-foreground/80", compact ? "text-xs" : "text-sm")}>
                   将应用：{PIPELINE_INDEX_PRESETS[pendingIndexPreset].label}
                 </div>
-                <div className={cn("text-muted-foreground/80", compact ? "text-[10px]" : "text-xs")}>
+                <div className={cn("text-muted-foreground/80", compact ? "text-[11px]" : "text-xs")}>
                   {PIPELINE_INDEX_PRESETS[pendingIndexPreset].description} · 预计修改 {pendingPresetDiff.length} 项
                 </div>
               </div>
@@ -862,7 +862,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                     </summary>
                     <div className="space-y-4 bg-muted/16 p-3 pt-0">
                       <div className="space-y-2 pt-2">
-                        <div className={cn("text-xs font-medium text-foreground/70", compact && "text-[10px]")}>
+                        <div className={cn("text-xs font-medium text-foreground/70", compact && "text-[11px]")}>
                           治理清洗
                         </div>
                         <div className="space-y-3">
@@ -894,7 +894,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
 
                       {/* Image removal */}
                       <div className="space-y-1.5">
-                        <div className={cn("text-xs font-medium text-muted-foreground block", compact && "text-[10px]")}>图片处理</div>
+                        <div className={cn("text-xs font-medium text-muted-foreground block", compact && "text-[11px]")}>图片处理</div>
                         <Select
                           value={options.governance_remove_images || 'none'}
                           onValueChange={(value) => updateOption('governance_remove_images', coerceOneOf(GOVERNANCE_REMOVE_IMAGE_VALUES, value, 'none'))}
@@ -934,7 +934,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                       {/* PII settings */}
                       {!governanceDisabled && options.governance_pii_anonymize && (
                         <div className="space-y-1.5">
-                          <div className={cn("text-xs font-medium text-muted-foreground block", compact && "text-[10px]")}>隐私脱敏配置</div>
+                          <div className={cn("text-xs font-medium text-muted-foreground block", compact && "text-[11px]")}>隐私脱敏配置</div>
                           <div className="grid grid-cols-2 gap-2">
                             <Select
                               value={options.governance_pii_mode || 'mask'}
@@ -963,7 +963,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                       {/* Secrets settings */}
                       {!governanceDisabled && options.governance_secrets_redact && (
                         <div className="space-y-1.5">
-                          <div className={cn("text-xs font-medium text-muted-foreground block", compact && "text-[10px]")}>密钥脱敏配置</div>
+                          <div className={cn("text-xs font-medium text-muted-foreground block", compact && "text-[11px]")}>密钥脱敏配置</div>
                           <div className="grid grid-cols-2 gap-2">
                             <Select
                               value={options.governance_secrets_mode || 'mask'}
@@ -992,7 +992,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                       {/* Keyword settings */}
                       {!governanceDisabled && options.governance_extract_keywords && (
                         <div className="space-y-2">
-                          <div className={cn("text-xs font-medium text-muted-foreground block", compact && "text-[10px]")}>关键词抽取配置</div>
+                          <div className={cn("text-xs font-medium text-muted-foreground block", compact && "text-[11px]")}>关键词抽取配置</div>
                           <div className="grid grid-cols-2 gap-2">
                             <Select
                               value={options.governance_keywords_provider || 'auto'}
@@ -1039,7 +1039,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                       {/* HTML XPath */}
                       <div className="space-y-1.5">
                         <div className="flex justify-between">
-                           <div className={cn("text-xs font-medium text-muted-foreground", compact && "text-[10px]")}>HTML 提取 (XPath)</div>
+                           <div className={cn("text-xs font-medium text-muted-foreground", compact && "text-[11px]")}>HTML 提取 (XPath)</div>
                         </div>
                         <Input
                           value={options.governance_html_xpath || ''}
@@ -1062,7 +1062,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                           if (shouldHide || shouldHideLowDensity || shouldHideDepends) return null
                           return (
                             <label key={item.key} className="flex items-center justify-between gap-2">
-                              <span className={cn("text-xs text-muted-foreground truncate flex-1", compact && "text-[10px]")} title={item.hint}>{item.label}</span>
+                              <span className={cn("text-xs text-muted-foreground truncate flex-1", compact && "text-[11px]")} title={item.hint}>{item.label}</span>
                               <Input
                                 type="number"
                                 value={typeof value === 'number' ? value : ''}
@@ -1082,7 +1082,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                       </div>
 
                       <div className="pt-2 border-t border-border/60 space-y-2">
-                        <div className={cn("text-xs font-semibold text-foreground/70", compact && "text-[10px]")}>
+                        <div className={cn("text-xs font-semibold text-foreground/70", compact && "text-[11px]")}>
                           解析与去重
                         </div>
                         <div className="space-y-3">
@@ -1117,7 +1117,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                             if (shouldHide) return null
                             return (
                               <label key={item.key} className="flex items-center justify-between gap-2">
-                                <span className={cn("text-xs text-muted-foreground truncate flex-1", compact && "text-[10px]")} title={item.hint}>{item.label}</span>
+                                <span className={cn("text-xs text-muted-foreground truncate flex-1", compact && "text-[11px]")} title={item.hint}>{item.label}</span>
                                 <Input
                                   type="number"
                                   value={typeof value === 'number' ? value : ''}
@@ -1137,7 +1137,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                         </div>
 
                         <div className="pt-2 border-t border-border/60 space-y-2">
-                          <div className={cn("text-xs font-semibold text-foreground/70", compact && "text-[10px]")}>
+                          <div className={cn("text-xs font-semibold text-foreground/70", compact && "text-[11px]")}>
                             切块策略参数（高级）
                           </div>
                           <Textarea
@@ -1150,16 +1150,16 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                             disabled={pipelineDisabled}
                             className={cn(
                               "min-h-[84px] text-[11px] font-mono bg-card",
-                              compact && "min-h-[70px] text-[10px]"
+                              compact && "min-h-[70px] text-[11px]"
                             )}
                             placeholder='例如：{ "child_ratio": 0.25, "min_child_size": 300 }'
                           />
                           {chunkStrategyParamsError ? (
-                            <div className={cn("text-[11px] text-warning bg-warning/10 border border-warning/25 rounded-lg px-2 py-1", compact && "text-[10px]")}>
+                            <div className={cn("text-[11px] text-warning bg-warning/10 border border-warning/25 rounded-lg px-2 py-1", compact && "text-[11px]")}>
                               {chunkStrategyParamsError}
                             </div>
                           ) : (
-                            <div className={cn("text-[10px] text-muted-foreground leading-relaxed", compact && "text-[9px]")}>
+                            <div className={cn("text-[11px] text-muted-foreground leading-relaxed", compact && "text-[9px]")}>
                               仅允许小型 JSON 对象（primitive values），后端会做同样的安全校验；显式参数将覆盖数据集/默认值。
                             </div>
                           )}

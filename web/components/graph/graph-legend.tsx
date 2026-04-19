@@ -93,7 +93,7 @@ export function GraphLegend({ nodes, links = [], activeTypeFilters = [], onToggl
           >
             <span>Legend</span>
             <span className="flex items-center gap-1.5">
-              <span className="text-[10px] font-normal normal-case opacity-70">
+              <span className="text-[11px] font-normal normal-case opacity-70">
                 {entityTypes.length}{edgeKinds.length ? ` / ${edgeKinds.length}` : ''}
               </span>
               {collapsed ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
@@ -103,7 +103,7 @@ export function GraphLegend({ nodes, links = [], activeTypeFilters = [], onToggl
           <div className="px-3.5 pb-3 pt-0.5 space-y-3 max-h-[180px] overflow-y-auto overscroll-contain no-scrollbar">
             {entityTypes.length > 0 && (
               <div>
-                <div className="text-[10px] font-medium text-muted-foreground mb-2 uppercase">Entity Types</div>
+                <div className="text-[11px] font-medium text-muted-foreground mb-2 uppercase">Entity Types</div>
                 <div className="flex flex-wrap gap-x-4 gap-y-2">
                   {entityTypes.map(({ type, color, count }) => {
                     const isActive = activeTypeFilters.length === 0 || activeTypeFilters.includes(type)
@@ -123,7 +123,7 @@ export function GraphLegend({ nodes, links = [], activeTypeFilters = [], onToggl
                           style={{ backgroundColor: color }}
                         />
                         <span className="text-foreground/80 whitespace-nowrap">{type}</span>
-                        <span className="text-muted-foreground text-[10px]">{count}</span>
+                        <span className="text-muted-foreground text-[11px]">{count}</span>
                       </button>
                     )
                   })}
@@ -132,13 +132,13 @@ export function GraphLegend({ nodes, links = [], activeTypeFilters = [], onToggl
             )}
             {edgeKinds.length > 0 && (
               <div>
-                <div className="text-[10px] font-medium text-muted-foreground mb-2 uppercase">Edge Types</div>
+                <div className="text-[11px] font-medium text-muted-foreground mb-2 uppercase">Edge Types</div>
                 <div className="flex flex-wrap gap-x-4 gap-y-2">
                   {edgeKinds.map(({ kind, label, color, count }) => (
                     <div key={kind} className="flex items-center gap-1.5 text-xs" title={`${kind} (${count})`}>
                       <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 ring-1 ring-black/5" style={{ backgroundColor: color }} />
                       <span className="text-foreground/80 whitespace-nowrap">{label}</span>
-                      <span className="text-muted-foreground text-[10px]">{count}</span>
+                      <span className="text-muted-foreground text-[11px]">{count}</span>
                     </div>
                   ))}
                 </div>

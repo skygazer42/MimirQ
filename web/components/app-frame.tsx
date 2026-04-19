@@ -34,7 +34,7 @@ export function AppFrame({
   const { isOpen: isDocPanelOpen } = useDocumentView()
   const docPanelPadding =
     withDocumentViewerPadding && isDocPanelOpen
-      ? "mr-0 md:mr-[40vw] xl:mr-[40vw] lg:mr-[500px]"
+      ? "mr-0 md:mr-[45vw] lg:mr-[40vw] xl:mr-[35vw]"
       : undefined
 
   // Accessibility: when the sidebar acts like a modal overlay (mobile),

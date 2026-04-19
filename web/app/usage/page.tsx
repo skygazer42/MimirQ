@@ -267,7 +267,7 @@ export default function UsagePage() {
                           <tr key={JSON.stringify(r)} className="border-b border-border/40 text-[12px] transition-colors hover:bg-muted/20 last:border-0">
                             <td className="py-1.5 pr-3">
                               <div className="truncate font-semibold text-foreground" title={name}>{name}</div>
-                              {id ? <div className={cn(systemPageTokens.monoMeta, 'truncate text-[10px]')} title={id}>{id}</div> : null}
+                              {id ? <div className={cn(systemPageTokens.monoMeta, 'truncate text-[11px]')} title={id}>{id}</div> : null}
                             </td>
                             <td className={cn(DENSE_TABLE_CELL, 'text-right')}>{r.assistant_messages}</td>
                             <td className={cn(DENSE_TABLE_CELL, 'pl-3 text-right')}>{r.assistant_tokens}</td>
@@ -309,7 +309,7 @@ export default function UsagePage() {
                             <tr key={JSON.stringify(r)} className="border-b border-border/40 text-[12px] transition-colors hover:bg-muted/20 last:border-0">
                               <td className="py-1.5 pr-3">
                                 <div className="truncate font-semibold text-foreground" title={name}>{name}</div>
-                                {id ? <div className={cn(systemPageTokens.monoMeta, 'truncate text-[10px]')} title={id}>{id}</div> : null}
+                                {id ? <div className={cn(systemPageTokens.monoMeta, 'truncate text-[11px]')} title={id}>{id}</div> : null}
                               </td>
                               <td className={cn(DENSE_TABLE_CELL, 'text-right')}>{r.assistant_messages}</td>
                               <td className={cn(DENSE_TABLE_CELL, 'text-right')}>{r.llm_total_tokens}</td>

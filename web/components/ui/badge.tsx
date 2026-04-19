@@ -4,31 +4,25 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const badgeVariants = cva(
-  "inline-flex items-center rounded-full border border-border/60 px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background",
+  "inline-flex items-center rounded-md border border-transparent px-2 py-0.5 text-[11px] font-medium tracking-normal transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-ring/60 focus:ring-offset-1",
   {
     variants: {
       variant: {
         default:
-          "border-transparent bg-primary/85 text-primary-foreground hover:bg-primary/75",
+          "bg-foreground/[0.07] text-foreground",
         secondary:
-          "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
+          "bg-muted text-muted-foreground",
         destructive:
-          "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/90",
+          "bg-destructive/12 text-destructive",
         success:
-          "border-transparent bg-success text-success-foreground hover:bg-success/90",
+          "bg-success/12 text-success",
         warning:
-          "border-transparent bg-warning text-warning-foreground hover:bg-warning/90",
+          "bg-warning/12 text-warning",
         info:
-          "border-transparent bg-info text-info-foreground hover:bg-info/90",
-        accent:
-          "border-transparent bg-accent text-accent-foreground hover:bg-accent/90",
-        teal:
-          "border-transparent bg-teal text-teal-foreground hover:bg-teal/90",
-        indigo:
-          "border-transparent bg-indigo text-indigo-foreground hover:bg-indigo/90",
+          "bg-info/12 text-info",
         soft:
-          "bg-muted/60 text-foreground border-border/60 hover:bg-muted/80",
-        outline: "bg-transparent text-foreground",
+          "bg-muted/60 text-muted-foreground",
+        outline: "border-border bg-transparent text-foreground",
       },
     },
     defaultVariants: {

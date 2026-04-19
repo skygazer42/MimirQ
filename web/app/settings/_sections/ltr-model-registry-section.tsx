@@ -68,7 +68,7 @@ export function LtrModelRegistrySection({
           <Layers className="h-4 w-4 text-primary" />
           LTR 模型注册表
         </h2>
-        <div className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-muted/50 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+        <div className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-muted/50 px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
           <span>支持激活与一键回滚</span>
         </div>
       </div>
@@ -240,23 +240,23 @@ export function LtrModelRegistrySection({
                       >
                         <td className="px-2.5 py-1.5">
                           {isActive ? (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-success/25 bg-success/10 px-1.5 py-0.5 text-[10px] font-semibold text-success">
+                            <span className="inline-flex items-center gap-1 rounded-full border border-success/25 bg-success/10 px-1.5 py-0.5 text-[11px] font-semibold text-success">
                               <CheckCircle2 className="h-3 w-3" />
                               已激活（ACTIVE）
                             </span>
                           ) : (
-                            <span className="inline-flex items-center rounded-full border border-border/70 bg-muted/45 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                            <span className="inline-flex items-center rounded-full border border-border/70 bg-muted/45 px-1.5 py-0.5 text-[11px] text-muted-foreground">
                               空闲（idle）
                             </span>
                           )}
                         </td>
-                        <td className="px-2.5 py-1.5 font-mono text-[10px] tabular-nums">
+                        <td className="px-2.5 py-1.5 font-mono text-[11px] tabular-nums">
                           <span title={model.model_id}>{shortId(model.model_id, 16)}</span>
                         </td>
-                        <td className="px-2.5 py-1.5 font-mono text-[10px] tabular-nums">
+                        <td className="px-2.5 py-1.5 font-mono text-[11px] tabular-nums">
                           <span title={model.model_sha256}>{shortId(model.model_sha256, 12)}</span>
                         </td>
-                        <td className="px-2.5 py-1.5 text-[10px] text-muted-foreground">
+                        <td className="px-2.5 py-1.5 text-[11px] text-muted-foreground">
                           <div className="tabular-nums">v{model.feature_spec_version}</div>
                           <div className="max-w-[15rem] truncate" title={model.feature_schema || ''}>
                             {model.feature_schema || '-'}
@@ -265,10 +265,10 @@ export function LtrModelRegistrySection({
                             {Array.isArray(model.feature_names) ? model.feature_names.length : 0} 维（dims）
                           </div>
                         </td>
-                        <td className="px-2.5 py-1.5 text-[10px] tabular-nums">
+                        <td className="px-2.5 py-1.5 text-[11px] tabular-nums">
                           {formatBytes(model.size_bytes)}
                         </td>
-                        <td className="px-2.5 py-1.5 text-[10px] tabular-nums">
+                        <td className="px-2.5 py-1.5 text-[11px] tabular-nums">
                           {formatTime(model.created_at)}
                         </td>
                         <td className="px-2.5 py-1.5">

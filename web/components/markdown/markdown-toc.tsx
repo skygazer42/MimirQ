@@ -111,7 +111,7 @@ export const MarkdownToc = memo(function MarkdownToc({
 
   return (
     <nav className={cn('text-sm', className)} aria-label="Table of contents">
-      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
         {title}
       </div>
       <ul className="mt-2 space-y-0.5">

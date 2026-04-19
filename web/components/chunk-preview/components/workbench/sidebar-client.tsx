@@ -123,7 +123,7 @@ function SidebarNote({
   return (
     <div
       className={cn(
-        'rounded-lg border px-2.5 py-1.5 text-[10px] leading-4',
+        'rounded-lg border px-2.5 py-1.5 text-[11px] leading-4',
         SIDEBAR_TONE_STYLES[tone].note,
         className
       )}
@@ -649,9 +649,9 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
           <div className="flex items-center justify-between rounded-lg border border-border/60 bg-card/75 px-2.5 py-1.5">
             <div>
               <div className="text-[11px] font-medium text-foreground/82">{t('sidebar.autoPreview.title')}</div>
-              <div className="text-[10px] text-muted-foreground/85">{t('sidebar.autoPreview.description')}</div>
+              <div className="text-[11px] text-muted-foreground/85">{t('sidebar.autoPreview.description')}</div>
             </div>
-            <label className="inline-flex items-center gap-2 text-[10px] text-muted-foreground">
+            <label className="inline-flex items-center gap-2 text-[11px] text-muted-foreground">
               <input
                 type="checkbox"
                 checked={autoPreviewEnabled}
@@ -663,8 +663,8 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
           </div>
 
           <div className="flex items-center justify-between rounded-lg border border-border/60 bg-card/75 px-2.5 py-1.5">
-            <div className="text-[10px] text-muted-foreground">{t('sidebar.shortcuts.label')}</div>
-            <div className="text-[10px] text-muted-foreground/90">
+            <div className="text-[11px] text-muted-foreground">{t('sidebar.shortcuts.label')}</div>
+            <div className="text-[11px] text-muted-foreground/90">
               {t('sidebar.shortcuts.hint')}
             </div>
           </div>
@@ -684,9 +684,9 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
             <div className="flex items-center justify-between gap-2">
               <div>
                 <div className="text-[11px] font-medium text-foreground/82">{t('sidebar.performance.includeOriginalText.title')}</div>
-                <div className="text-[10px] text-muted-foreground">{t('sidebar.performance.includeOriginalText.description')}</div>
+                <div className="text-[11px] text-muted-foreground">{t('sidebar.performance.includeOriginalText.description')}</div>
               </div>
-              <label className="inline-flex items-center gap-2 text-[10px] text-muted-foreground">
+              <label className="inline-flex items-center gap-2 text-[11px] text-muted-foreground">
                 <input
                   type="checkbox"
                   checked={includeOriginalText}
@@ -731,9 +731,9 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
             <div className="flex items-center justify-between gap-2">
               <div>
                 <div className="text-[11px] font-medium text-foreground/82">{t('sidebar.performance.parseCache.title')}</div>
-                <div className="text-[10px] text-muted-foreground">{t('sidebar.performance.parseCache.description')}</div>
+                <div className="text-[11px] text-muted-foreground">{t('sidebar.performance.parseCache.description')}</div>
               </div>
-              <label className="inline-flex items-center gap-2 text-[10px] text-muted-foreground">
+              <label className="inline-flex items-center gap-2 text-[11px] text-muted-foreground">
                 <input
                   type="checkbox"
                   checked={useParseCache}
@@ -747,7 +747,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
             <SidebarNote tone="amber" className="py-1.5">{t('sidebar.performance.maxChunksGuidance')}</SidebarNote>
 
             {previewData?.chunks_truncated ? (
-              <div className="text-[10px] text-warning bg-warning/10 border border-warning/25 rounded-lg px-2 py-1">
+              <div className="text-[11px] text-warning bg-warning/10 border border-warning/25 rounded-lg px-2 py-1">
                 {previewData.total_chunks_full && previewData.total_chunks_full !== previewData.total_chunks
                   ? t('sidebar.performance.truncatedSummaryWithFull', {
                     current: previewData.total_chunks,
@@ -760,7 +760,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-6 px-2 ml-2 text-[10px]"
+                  className="h-6 px-2 ml-2 text-[11px]"
                   onClick={() => {
                     updatePerfSettings({ maxChunks: 0 })
                     toast.success(t('sidebar.performance.clearLimitSuccess'))
@@ -772,7 +772,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
             ) : null}
 
             {previewData?.warnings?.length ? (
-              <div className="text-[10px] text-muted-foreground space-y-1">
+              <div className="text-[11px] text-muted-foreground space-y-1">
                 {(previewData.warnings || []).slice(0, 6).map((w) => (
                   <div key={w} className="px-2 py-1 rounded-lg border border-border/60 bg-muted/40">
                     {w}
@@ -809,7 +809,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
             </Select>
             {(() => {
     if (datasetsLoading) {
-        return (<div className="text-[10px] text-muted-foreground">{t('sidebar.dataset.loading')}</div>);
+        return (<div className="text-[11px] text-muted-foreground">{t('sidebar.dataset.loading')}</div>);
     }
     else if (datasetsError) {
             return (<SidebarNote tone="amber" className="py-1.5">
@@ -824,7 +824,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
             {selectedDataset?.pipeline ? (
               <div className="rounded-lg border border-border/60 bg-background p-2">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="text-[10px] text-muted-foreground">{t('sidebar.dataset.pipelineSummary')}</div>
+                  <div className="text-[11px] text-muted-foreground">{t('sidebar.dataset.pipelineSummary')}</div>
                   <Button
                     type="button"
                     variant="outline"
@@ -840,7 +840,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     {t('sidebar.dataset.applyPipeline')}
                   </Button>
                 </div>
-                <div className="mt-2 flex flex-wrap gap-2 text-[10px]">
+                <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
                   {selectedDataset.pipeline.governance_enabled ? (
                     <span className="px-2 py-0.5 rounded-full bg-info/10 text-info border border-info/20">
                       {t('sidebar.dataset.badges.governanceOn')}
@@ -923,7 +923,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
 	            {ingestionPreview ? (
 	              <div className="space-y-2 rounded-lg border border-border/60 bg-background p-2">
 	                <div className="flex items-center justify-between gap-2">
-	                  <div className="text-[10px] text-muted-foreground">{t('sidebar.ingestionPreview.result.title')}</div>
+	                  <div className="text-[11px] text-muted-foreground">{t('sidebar.ingestionPreview.result.title')}</div>
 	                  <div className="flex items-center gap-1">
 	                    <Button
 	                      type="button"
@@ -954,25 +954,25 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     })
                     : t('sidebar.ingestionPreview.result.defaultRule')}
                 </div>
-                <div className="text-[10px] text-muted-foreground font-mono">
+                <div className="text-[11px] text-muted-foreground font-mono">
                   {t('sidebar.ingestionPreview.result.parserStrategy', {
                     parser: ingestionPreview.rule.parser_backend,
                     strategy: ingestionPreview.rule.chunk_strategy,
                   })}
                 </div>
                 {ingestionPreview.rule.governance_profile_ref ? (
-                  <div className="text-[10px] text-muted-foreground">
+                  <div className="text-[11px] text-muted-foreground">
                     {t('sidebar.ingestionPreview.result.governanceProfile', {
                       value: ingestionPreview.rule.governance_profile_ref,
                     })}
                   </div>
                 ) : null}
-	                <div className="text-[10px] text-muted-foreground">
+	                <div className="text-[11px] text-muted-foreground">
 	                  {t('sidebar.ingestionPreview.result.preprocessSteps', {
                       count: ingestionPreview.rule.preprocess_steps.length,
                     })}
 	                </div>
-	                <div className="text-[10px] text-muted-foreground">
+	                <div className="text-[11px] text-muted-foreground">
 	                  {t('sidebar.ingestionPreview.result.preprocessLabel')}{' '}
 	                  <span className={cn(ingestionPreview.preprocess.changed ? 'text-warning' : 'text-muted-foreground')}>
 	                    {ingestionPreview.preprocess.changed
@@ -1050,7 +1050,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
               }}
             />
             <SidebarNote tone="emerald" className="mt-1.5">{chunkStrategyOption.description}</SidebarNote>
-            <div className="flex flex-wrap items-center gap-2 pt-1 text-[10px] text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px] text-muted-foreground">
               <span className="opacity-80">{t('sidebar.strategy.quickPresets')}</span>
               {[
                 {
@@ -1105,7 +1105,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
               </div>
 
               <div className="flex items-center justify-between gap-2">
-                <div className="text-[10px] text-muted-foreground">{t('sidebar.separator.syncToPipeline')}</div>
+                <div className="text-[11px] text-muted-foreground">{t('sidebar.separator.syncToPipeline')}</div>
                 <Button
                   type="button"
                   size="sm"
@@ -1130,13 +1130,13 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 </Button>
               </div>
               {pipelineCtx.options.chunk_strategy_params ? (
-                <div className="text-[10px] text-muted-foreground font-mono break-all">
+                <div className="text-[11px] text-muted-foreground font-mono break-all">
                   {t('sidebar.separator.currentPipeline', {
                     value: JSON.stringify(pipelineCtx.options.chunk_strategy_params),
                   })}
                 </div>
               ) : (
-                <div className="text-[10px] text-muted-foreground font-mono">
+                <div className="text-[11px] text-muted-foreground font-mono">
                   {t('sidebar.separator.currentPipeline', {
                     value: t('sidebar.separator.currentPipelineEmpty'),
                   })}
@@ -1164,7 +1164,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                   {separatorPresetOptions.find((o) => o.value === separatorPreset)?.hint || ''}
                 </SidebarNote>
                 {effectiveSeparator ? (
-                  <div className="text-[10px] text-muted-foreground font-mono">
+                  <div className="text-[11px] text-muted-foreground font-mono">
                     {t('sidebar.separator.effectiveSeparator', {
                       value: JSON.stringify(effectiveSeparator).slice(1, -1) || t('sidebar.separator.currentPipelineEmpty'),
                       length: effectiveSeparator.length,
@@ -1190,9 +1190,9 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
               <div className="flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-card/75 px-2.5 py-1.5">
                 <div>
                   <div className="text-[11px] font-medium text-foreground/82">{t('sidebar.separator.keepSeparator.title')}</div>
-                  <div className="text-[10px] text-muted-foreground">{t('sidebar.separator.keepSeparator.description')}</div>
+                  <div className="text-[11px] text-muted-foreground">{t('sidebar.separator.keepSeparator.description')}</div>
                 </div>
-                <label className="inline-flex items-center gap-2 text-[10px] text-muted-foreground">
+                <label className="inline-flex items-center gap-2 text-[11px] text-muted-foreground">
                   <input
                     type="checkbox"
                     checked={keepSeparator}
@@ -1237,7 +1237,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="h-6 px-2 text-[10px]"
+                  className="h-6 px-2 text-[11px]"
                   onClick={() => {
                     const patch: ChunkStrategyParams = {
                       child_ratio: Number(parentChildRatio),
@@ -1327,7 +1327,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
               <div className="flex items-center justify-between gap-2">
                 <label className="text-[11px] font-medium text-muted-foreground">{chunkSizeLabel}</label>
                 <div className="flex items-center gap-2">
-                  <span className="rounded bg-primary/10 px-2 py-0.5 font-mono text-[10px] font-medium text-primary">{chunkSize}</span>
+                  <span className="rounded bg-primary/10 px-2 py-0.5 font-mono text-[11px] font-medium text-primary">{chunkSize}</span>
                   <Input
                     type="number"
                     inputMode="numeric"
@@ -1357,11 +1357,11 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 onChange={(e) => updateSettings({ chunkSize: Number(e.target.value) })}
                 className="w-full h-1.5 bg-muted/60 rounded-full appearance-none cursor-pointer accent-primary transition-colors"
               />
-              <div className="flex justify-between text-[10px] text-muted-foreground font-mono">
+              <div className="flex justify-between text-[11px] text-muted-foreground font-mono">
                 <span>{chunkSizeMin}</span>
                 <span>{chunkSizeMax}</span>
               </div>
-              <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+              <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
                 <span>{t('sidebar.chunkControls.presets')}</span>
                 {(isTokenStrategy ? [256, 512, 1024] : [600, 800, 1000, 1500]).map((size) => (
                   <button
@@ -1390,7 +1390,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
               <div className="flex items-center justify-between gap-2">
                 <label className="text-[11px] font-medium text-muted-foreground">{overlapLabel}</label>
                 <div className="flex items-center gap-2">
-                  <span className="rounded bg-primary/10 px-2 py-0.5 font-mono text-[10px] font-medium text-primary">{chunkOverlap}</span>
+                  <span className="rounded bg-primary/10 px-2 py-0.5 font-mono text-[11px] font-medium text-primary">{chunkOverlap}</span>
                   <Input
                     type="number"
                     inputMode="numeric"
@@ -1418,7 +1418,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 className="w-full h-1.5 bg-muted/60 rounded-full appearance-none cursor-pointer accent-primary transition-colors"
               />
               {overlapGuidance ? (
-                <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                <div className="flex items-center justify-between text-[11px] text-muted-foreground">
                   <span>
                     {t('sidebar.chunkControls.overlapGuidance', {
                       min: overlapGuidance.min,
@@ -1432,7 +1432,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                   </span>
                 </div>
               ) : null}
-              <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+              <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
                 <span>{t('sidebar.chunkControls.overlapShortcuts')}</span>
                 {[10, 15, 20, 25].map((pct) => (
                   <button
@@ -1510,7 +1510,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="h-6 rounded-md border-border/50 bg-background/75 px-2 text-[10px] font-medium text-muted-foreground shadow-none hover:bg-muted/45 hover:text-muted-foreground"
+                    className="h-6 rounded-md border-border/50 bg-background/75 px-2 text-[11px] font-medium text-muted-foreground shadow-none hover:bg-muted/45 hover:text-muted-foreground"
                     onClick={() => setShowAdvancedStats((v) => !v)}
                   >
                     {showAdvancedStats ? t('sidebar.analysis.detailsHide') : t('sidebar.analysis.detailsShow')}
@@ -1520,7 +1520,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="h-6 rounded-md border-border/50 bg-background/75 px-2 text-[10px] font-medium text-muted-foreground shadow-none hover:bg-muted/45 hover:text-muted-foreground"
+                  className="h-6 rounded-md border-border/50 bg-background/75 px-2 text-[11px] font-medium text-muted-foreground shadow-none hover:bg-muted/45 hover:text-muted-foreground"
                   onClick={() => setAnalysisExpanded((v) => !v)}
                 >
                   {analysisExpanded ? t('sidebar.analysis.collapse') : t('sidebar.analysis.expand')}
@@ -1581,14 +1581,14 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 {showAdvancedStats && chunkStats ? (
                   <div className="mt-3 grid grid-cols-2 gap-3">
                 <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm">
-                  <div className="text-[10px] text-muted-foreground uppercase  font-medium">{minMaxStatLabel}</div>
+                  <div className="text-[11px] text-muted-foreground uppercase  font-medium">{minMaxStatLabel}</div>
                   <div className="mt-1 text-sm font-mono text-foreground/90">
                     {chunkStats.min} / {chunkStats.max}
                   </div>
-                  <div className="mt-1 text-[10px] text-muted-foreground font-mono">{t('sidebar.stats.p10', { value: chunkStats.p10 })}</div>
+                  <div className="mt-1 text-[11px] text-muted-foreground font-mono">{t('sidebar.stats.p10', { value: chunkStats.p10 })}</div>
                 </div>
                 <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm">
-                  <div className="text-[10px] text-muted-foreground uppercase  font-medium">{t('sidebar.stats.qualitySignals')}</div>
+                  <div className="text-[11px] text-muted-foreground uppercase  font-medium">{t('sidebar.stats.qualitySignals')}</div>
                   <div className="mt-1 text-[11px] text-muted-foreground">
                     {t('sidebar.stats.qualitySummary', {
                       shortCount: chunkStats.shortCount,
@@ -1596,7 +1596,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     })}
                   </div>
                   {overlapGuidance ? (
-                    <div className={cn('mt-1 text-[10px]', overlapGuidance.outOfRange ? 'text-warning' : 'text-muted-foreground')}>
+                    <div className={cn('mt-1 text-[11px]', overlapGuidance.outOfRange ? 'text-warning' : 'text-muted-foreground')}>
                       {t('sidebar.stats.overlapSummary', {
                         ratio: Math.round(overlapGuidance.ratio * 100),
                         min: 10,
@@ -1607,7 +1607,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                   {coverageSignals ? (
                     <div
                       className={cn(
-                        'mt-1 text-[10px]',
+                        'mt-1 text-[11px]',
                         coverageSignals.coveragePct != null && coverageSignals.coveragePct < 95 ? 'text-warning' : 'text-muted-foreground'
                       )}
                       title={coverageSignals.largestGap == null ? undefined : t('sidebar.stats.largestGap', { value: coverageSignals.largestGap })}
@@ -1621,7 +1621,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                   ) : null}
                 </div>
                 <div className="col-span-2 bg-card p-3 rounded-xl border border-border/60 shadow-sm">
-                  <div className="text-[10px] text-muted-foreground uppercase  font-medium">{histogramTitle}</div>
+                  <div className="text-[11px] text-muted-foreground uppercase  font-medium">{histogramTitle}</div>
                   {histogramData.length ? (
                     <div className="mt-2 h-[120px]">
                       <ResponsiveContainer width="100%" height="100%">
@@ -1646,7 +1646,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                   ) : (
                     <div className="mt-2 text-[11px] text-muted-foreground">{t('sidebar.stats.histogramEmpty')}</div>
                   )}
-                  <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground font-mono">
+                  <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground font-mono">
                     <span>0</span>
                     <span>{histogramMax || chunkStats.max}</span>
                   </div>
@@ -1654,7 +1654,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 {previewData?.recommendations?.length || previewData?.recommendation_patches?.length ? (
                   <div className="col-span-2 bg-card p-3 rounded-xl border border-border/60 shadow-sm">
                     <div className="flex items-center justify-between gap-2">
-                      <div className="text-[10px] text-muted-foreground uppercase  font-medium">{t('sidebar.recommendations.title')}</div>
+                      <div className="text-[11px] text-muted-foreground uppercase  font-medium">{t('sidebar.recommendations.title')}</div>
                       {previewData?.recommendation_patches?.length ? (
                         <Button
                           type="button"
@@ -1703,7 +1703,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                               <div className="flex items-center justify-between gap-2">
                                 <div className="min-w-0">
                                   <div className="text-[11px] font-medium text-foreground/90">{title}</div>
-                                  {desc ? <div className="mt-0.5 text-[10px] text-muted-foreground">{desc}</div> : null}
+                                  {desc ? <div className="mt-0.5 text-[11px] text-muted-foreground">{desc}</div> : null}
                                 </div>
                                 <Button
                                   type="button"
@@ -1737,7 +1737,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                                   {t('sidebar.recommendations.apply')}
                                 </Button>
                               </div>
-                              <div className="mt-1 text-[10px] text-muted-foreground font-mono">
+                              <div className="mt-1 text-[11px] text-muted-foreground font-mono">
                                 {t('sidebar.recommendations.target', { value: targetLabel })}
                               </div>
                             </div>
@@ -1788,7 +1788,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                   type="button"
                   key={item.id}
                   className={cn(
-                    "w-full rounded-lg border border-border/60 bg-card px-2.5 py-2 text-left text-[10px] text-muted-foreground shadow-sm",
+                    "w-full rounded-lg border border-border/60 bg-card px-2.5 py-2 text-left text-[11px] text-muted-foreground shadow-sm",
                     "hover:border-primary/25 hover:bg-primary/5 transition-colors focus-ring"
                   )}
                   onClick={() => {
