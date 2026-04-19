@@ -7,6 +7,7 @@
     --font-sans: "Inter Variable", Inter, "Geist Sans", Geist, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
       Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
     --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    --font-code: "Fira Code Variable", "Fira Code", var(--font-mono);
 
     /* Base - Warm gray-white */
     --background: 220 25% 97.5%;
