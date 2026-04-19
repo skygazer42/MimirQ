@@ -253,7 +253,7 @@ export function GovernanceProfilesPage() {
         >
           <div className="flex flex-col gap-1.5 lg:flex-row lg:items-center">
             <div className="min-w-0 rounded-xl border border-border/35 bg-background/78 px-3 py-2">
-              <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/75">
+              <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/75">
                 Profile Library
               </div>
               <div className="mt-0.5 text-[11px] leading-4.5 text-foreground/72">
@@ -263,19 +263,19 @@ export function GovernanceProfilesPage() {
             <div className="grid flex-1 gap-1.5 sm:grid-cols-3">
               <div className="rounded-xl border border-border/30 bg-background/72 px-3 py-2">
                 <div className="flex items-end justify-between gap-3">
-                  <div className="text-[10px] text-muted-foreground/75">当前展示</div>
+                  <div className="text-[11px] text-muted-foreground/75">当前展示</div>
                   <div className="text-[16px] font-semibold tracking-[-0.02em] leading-none text-foreground/80">{items.length}</div>
                 </div>
               </div>
               <div className="rounded-xl border border-border/30 bg-background/72 px-3 py-2">
                 <div className="flex items-end justify-between gap-3">
-                  <div className="text-[10px] text-muted-foreground/75">内置模板</div>
+                  <div className="text-[11px] text-muted-foreground/75">内置模板</div>
                   <div className="text-[16px] font-semibold tracking-[-0.02em] leading-none text-foreground/80">{builtinCount}</div>
                 </div>
               </div>
               <div className="rounded-xl border border-border/30 bg-background/72 px-3 py-2">
                 <div className="flex items-end justify-between gap-3">
-                  <div className="text-[10px] text-muted-foreground/75">自定义模板</div>
+                  <div className="text-[11px] text-muted-foreground/75">自定义模板</div>
                   <div className="text-[16px] font-semibold tracking-[-0.02em] leading-none text-foreground/80">{customCount}</div>
                 </div>
               </div>
@@ -363,7 +363,7 @@ export function GovernanceProfilesPage() {
                         </span>
                       )}
                     </div>
-                    <div className="mt-1.5 inline-flex max-w-full items-center rounded-md border border-border/45 bg-muted/[0.14] px-2 py-0.5 font-mono text-[10px] text-muted-foreground/85 transition-colors duration-200 group-hover:border-[#aad9f2]/50 group-hover:bg-[rgba(209,255,255,0.26)]">
+                    <div className="mt-1.5 inline-flex max-w-full items-center rounded-md border border-border/45 bg-muted/[0.14] px-2 py-0.5 font-mono text-[11px] text-muted-foreground/85 transition-colors duration-200 group-hover:border-[#aad9f2]/50 group-hover:bg-[rgba(209,255,255,0.26)]">
                       <span className="truncate">{p.key}</span>
                     </div>
                     <div className="mt-1.5 min-h-[2.8rem] text-[12px] leading-5 text-muted-foreground/84 line-clamp-3">
@@ -469,7 +469,7 @@ export function GovernanceProfilesPage() {
                 </div>
 
                 <div className="mt-3 flex items-center justify-between border-t border-border/40 pt-2.5">
-                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/80">
+                  <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/80">
                     <span
                       className={cn(
                         "h-1.5 w-1.5 rounded-full",
@@ -479,7 +479,7 @@ export function GovernanceProfilesPage() {
                     />
                     <span>{p.is_system ? '系统基线模板' : '团队自定义模板'}</span>
                   </div>
-                  <div className="text-[10px] text-muted-foreground/70">
+                  <div className="text-[11px] text-muted-foreground/70">
                     {p.is_system ? '支持克隆为新模板' : '支持编辑与导出'}
                   </div>
                 </div>

@@ -262,7 +262,7 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
           type="button"
           size="sm"
           variant="ghost"
-          className="h-6 px-2 text-[10px] text-muted-foreground"
+          className="h-6 px-2 text-[11px] text-muted-foreground"
           onClick={() => detachPromise(refresh())}
           disabled={loading || saving}
           aria-label={t('chunkPresetPanel.refreshAria')}
@@ -301,7 +301,7 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
           <Button
             type="button"
             size="sm"
-            className="h-7 px-2.5 text-[10px]"
+            className="h-7 px-2.5 text-[11px]"
             onClick={() => detachPromise(onSave())}
             disabled={saving}
           >
@@ -312,7 +312,7 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
             type="button"
             size="sm"
             variant="outline"
-            className="h-7 px-2.5 text-[10px]"
+            className="h-7 px-2.5 text-[11px]"
             onClick={() => {
               setSaveAsName(selectedPreset?.name ? `${selectedPreset.name} ${t('chunkPresetPanel.copySuffix')}` : '')
               setSaveAsDescription(selectedPreset?.description || '')
@@ -326,7 +326,7 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
             type="button"
             size="sm"
             variant="outline"
-            className="h-7 px-2.5 text-[10px]"
+            className="h-7 px-2.5 text-[11px]"
             disabled={saving}
             onClick={() => {
               const payload = buildPayload()
@@ -361,7 +361,7 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
             type="button"
             size="sm"
             variant="outline"
-            className="h-7 px-2.5 text-[10px]"
+            className="h-7 px-2.5 text-[11px]"
             disabled={saving}
             onClick={() => importRef.current?.click()}
           >

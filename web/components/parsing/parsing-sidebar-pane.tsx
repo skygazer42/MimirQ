@@ -145,7 +145,7 @@ export function ParsingSidebarPane({
               variant="ghost"
               size="sm"
               onClick={onParseAllPending}
-              className="mr-0.5 h-6 gap-1 rounded-md px-1.5 text-[10px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground dark:text-muted-foreground dark:hover:bg-muted dark:hover:text-foreground"
+              className="mr-0.5 h-6 gap-1 rounded-md px-1.5 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground dark:text-muted-foreground dark:hover:bg-muted dark:hover:text-foreground"
             >
               <Play className="h-3 w-3" />
               {t('sidebar.parse')}

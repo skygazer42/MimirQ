@@ -86,7 +86,7 @@ export function ParsingLibraryPreviewPane({
                 <span className="min-w-0 truncate">{file.filename}</span>
               </span>
               <span
-                className="inline-flex items-center gap-1 rounded-full bg-muted/60 px-2 py-0.5 text-[10px] text-muted-foreground dark:bg-muted/60 dark:text-muted-foreground"
+                className="inline-flex items-center gap-1 rounded-full bg-muted/60 px-2 py-0.5 text-[11px] text-muted-foreground dark:bg-muted/60 dark:text-muted-foreground"
                 title={folderPathLabel}
               >
                 <FolderOpen className="h-3 w-3" />
@@ -94,7 +94,7 @@ export function ParsingLibraryPreviewPane({
               </span>
               {statusBadge ? (
                 <span
-                  className={cn('rounded-full border px-2 py-0.5 text-[10px] font-medium', statusBadge.cls)}
+                  className={cn('rounded-full border px-2 py-0.5 text-[11px] font-medium', statusBadge.cls)}
                   title={file.status}
                 >
                   {statusBadge.label}

@@ -248,7 +248,7 @@ export function ItemDetailPanel({
               <div className="mb-1 text-xs font-medium text-muted-foreground">Tags</div>
               <div className="flex flex-wrap gap-2">
                 {selectedItem.tags.map((tag) => (
-                  <Badge key={tag} variant="outline" className="font-mono text-[10px]">
+                  <Badge key={tag} variant="outline" className="font-mono text-[11px]">
                     {tag}
                   </Badge>
                 ))}

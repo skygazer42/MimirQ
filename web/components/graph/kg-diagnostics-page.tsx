@@ -83,7 +83,7 @@ function DiagnosticsInlineStat({
 }>) {
   return (
     <div className="flex items-center gap-2 rounded-full border border-border/70 bg-card/90 px-2.5 py-1">
-      <span className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">{label}</span>
+      <span className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{label}</span>
       <span
         className={cn(
           'font-mono text-[11px] tabular-nums',
@@ -240,13 +240,13 @@ function DiagnosticsToggleCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <div className={cn('flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.12em]', toneClasses.badge)}>
+              <div className={cn('flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.12em]', toneClasses.badge)}>
                 <span className={cn('h-1.5 w-1.5 rounded-full', toneClasses.dot)} />
                 <span>{badge}</span>
               </div>
               <div className="mt-1 text-[13px] font-semibold leading-4 text-foreground">{title}</div>
             </div>
-            <span className="inline-flex shrink-0 items-center rounded-full border border-border/70 bg-card/90 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+            <span className="inline-flex shrink-0 items-center rounded-full border border-border/70 bg-card/90 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
               {stateLabel}
             </span>
           </div>

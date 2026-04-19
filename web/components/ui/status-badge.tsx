@@ -16,39 +16,39 @@ function getStatusMeta(
   t: ReturnType<typeof useTranslations<'CommonUi'>>
 ): Record<
   StatusBadgeStatus,
-  { label: string; icon: LucideIcon; className: string; spin?: boolean }
+  { label: string; icon: LucideIcon; dotColor: string; spin?: boolean }
 > {
   return {
     pending: {
       label: t('statusBadge.pending'),
       icon: Clock,
-      className: "bg-info/10 text-info border-info/25",
+      dotColor: "bg-info",
     },
     processing: {
       label: t('statusBadge.processing'),
       icon: Loader2,
-      className: "bg-warning/10 text-warning border-warning/20",
+      dotColor: "bg-warning",
       spin: true,
     },
     completed: {
       label: t('statusBadge.completed'),
       icon: CheckCircle2,
-      className: "bg-success/10 text-success border-success/25",
+      dotColor: "bg-success",
     },
     failed: {
       label: t('statusBadge.failed'),
       icon: AlertCircle,
-      className: "bg-destructive/10 text-destructive border-destructive/20",
+      dotColor: "bg-destructive",
     },
     quarantined: {
       label: t('statusBadge.quarantined'),
       icon: AlertTriangle,
-      className: "bg-warning/10 text-warning border-warning/25",
+      dotColor: "bg-warning",
     },
     cancelled: {
       label: t('statusBadge.cancelled'),
       icon: Ban,
-      className: "bg-muted/60 text-muted-foreground border-border/60",
+      dotColor: "bg-muted-foreground",
     },
   }
 }
@@ -72,21 +72,13 @@ export function StatusBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border tracking-[-0.01em]",
-        dense ? "h-5 px-2 text-[10px] font-semibold" : "px-2.5 py-1 text-xs font-medium",
-        meta.className,
-        status === "processing" && "animate-pulse-subtle motion-reduce:animate-none",
+        "inline-flex items-center gap-1.5 rounded-md bg-foreground/[0.04] tracking-[-0.01em]",
+        dense ? "h-5 px-2 text-[11px] font-semibold" : "px-2.5 py-1 text-xs font-medium",
+        "text-foreground",
         className
       )}
     >
-      {showIcon ? (
-        <Icon
-          className={cn(
-            dense ? "h-3.5 w-3.5" : "h-4 w-4",
-            meta.spin && "animate-spin motion-reduce:animate-none"
-          )}
-        />
-      ) : null}
+      <span className={cn("size-1.5 rounded-full shrink-0", meta.dotColor, meta.spin && "animate-pulse motion-reduce:animate-none")} />
       <span className="leading-none">{label ?? meta.label}</span>
     </span>
   )

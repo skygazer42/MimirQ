@@ -283,7 +283,7 @@ export function TaskCenter() {
           <Settings2 className="h-6 w-6 text-primary transition-transform duration-200 motion-reduce:transition-none group-hover:rotate-90" />
           <span
             className={cn(
-              "absolute -top-2 -right-2 inline-flex min-w-5 h-5 items-center justify-center rounded-full text-[10px] px-1 tabular-nums",
+              "absolute -top-2 -right-2 inline-flex min-w-5 h-5 items-center justify-center rounded-full text-[11px] px-1 tabular-nums",
               totalFailed > 0 && totalActive === 0
                 ? "bg-destructive text-destructive-foreground"
                 : "bg-primary text-primary-foreground"

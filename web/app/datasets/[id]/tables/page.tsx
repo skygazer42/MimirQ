@@ -222,7 +222,7 @@ export default function DatasetTablesPage() {
           <Panel className="lg:col-span-1 p-4">
             <div className="flex items-center justify-between gap-3">
               <div className="font-semibold">表格列表</div>
-              <Badge variant="soft" className="font-mono text-[10px]">
+              <Badge variant="soft" className="font-mono text-[11px]">
                 {items.length} tables
               </Badge>
             </div>
@@ -245,7 +245,7 @@ export default function DatasetTablesPage() {
                     <div className="flex items-center justify-between gap-2">
                       <div className="font-mono text-xs truncate">{t.table_id}</div>
                       {t.sheet_name ? (
-                        <Badge variant="outline" className="font-mono text-[10px]">
+                        <Badge variant="outline" className="font-mono text-[11px]">
                           {t.sheet_name}
                         </Badge>
                       ) : null}
@@ -314,7 +314,7 @@ export default function DatasetTablesPage() {
                     <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
                       <span>cols:{(queryRes.columns || []).length}</span>
                       <span>rows:{(queryRes.rows || []).length}</span>
-                      {queryRes.truncated ? <Badge variant="soft" className="font-mono text-[10px]">truncated</Badge> : null}
+                      {queryRes.truncated ? <Badge variant="soft" className="font-mono text-[11px]">truncated</Badge> : null}
                     </div>
                     <div className="mt-2 overflow-auto">
                       <table aria-label="数据表查询结果" className="min-w-full text-xs">
@@ -395,7 +395,7 @@ export default function DatasetTablesPage() {
                     <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
                       <span>cols:{(semFilterRes.columns || []).length}</span>
                       <span>rows:{(semFilterRes.rows || []).length}</span>
-                      {semFilterRes.truncated ? <Badge variant="soft" className="font-mono text-[10px]">truncated</Badge> : null}
+                      {semFilterRes.truncated ? <Badge variant="soft" className="font-mono text-[11px]">truncated</Badge> : null}
                     </div>
                     <div className="mt-2 overflow-auto">
                       <table aria-label="数据表问答引用结果" className="min-w-full text-xs">

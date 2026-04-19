@@ -199,7 +199,7 @@ export function QuerysetHealthTab({ embedded = false }: Readonly<{ embedded?: bo
           {latestFlags.length ? (
             <div className="mt-3 flex flex-wrap gap-2">
               {latestFlags.slice(0, 12).map((f: any) => (
-                <span key={String(f)} className="text-[10px] px-2 py-0.5 rounded-full bg-destructive/10 text-destructive border border-destructive/20">
+                <span key={String(f)} className="text-[11px] px-2 py-0.5 rounded-full bg-destructive/10 text-destructive border border-destructive/20">
                   {String(f)}
                 </span>
               ))}

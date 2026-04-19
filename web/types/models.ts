@@ -45,335 +45,456 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
   {
     id: 'openai',
     name: 'OpenAI',
-    description: 'GPT-4, GPT-3.5 系列模型',
+    description: 'GPT-5.4 系列旗舰模型',
     icon: 'openai',
     color: 'emerald',
     category: 'model',
     isConfigured: false,
     models: [
       {
-        id: 'gpt-4-turbo-preview',
-        name: 'gpt-4-turbo-preview',
-        displayName: 'GPT-4 Turbo',
+        id: 'gpt-5.4',
+        name: 'gpt-5.4',
+        displayName: 'GPT-5.4',
         type: 'chat',
         contextWindow: 128000,
-        maxTokens: 4096,
-        pricing: { input: 10, output: 30 }
+        maxTokens: 32768,
       },
       {
-        id: 'gpt-4',
-        name: 'gpt-4',
-        displayName: 'GPT-4',
+        id: 'gpt-5.4-thinking',
+        name: 'gpt-5.4-thinking',
+        displayName: 'GPT-5.4 Thinking',
         type: 'chat',
-        contextWindow: 8192,
-        pricing: { input: 30, output: 60 }
+        contextWindow: 128000,
+        maxTokens: 32768,
       },
       {
-        id: 'gpt-3.5-turbo',
-        name: 'gpt-3.5-turbo',
-        displayName: 'GPT-3.5 Turbo',
+        id: 'gpt-5.4-pro',
+        name: 'gpt-5.4-pro',
+        displayName: 'GPT-5.4 Pro',
         type: 'chat',
-        contextWindow: 16385,
-        pricing: { input: 0.5, output: 1.5 }
+        contextWindow: 256000,
+        maxTokens: 65536,
+      },
+      {
+        id: 'gpt-5.4-mini',
+        name: 'gpt-5.4-mini',
+        displayName: 'GPT-5.4 mini',
+        type: 'chat',
+        contextWindow: 128000,
+        maxTokens: 16384,
+      },
+      {
+        id: 'gpt-5.4-nano',
+        name: 'gpt-5.4-nano',
+        displayName: 'GPT-5.4 nano',
+        type: 'chat',
+        contextWindow: 64000,
+        maxTokens: 8192,
+      },
+      {
+        id: 'gpt-5.3-instant',
+        name: 'gpt-5.3-instant',
+        displayName: 'GPT-5.3 Instant',
+        type: 'chat',
+        contextWindow: 64000,
+        maxTokens: 8192,
       }
     ]
   },
   {
     id: 'anthropic',
     name: 'Anthropic',
-    description: 'Claude 3 系列模型',
+    description: 'Claude 4 系列模型',
     icon: 'anthropic',
     color: 'orange',
     category: 'model',
     isConfigured: false,
     models: [
       {
-        id: 'claude-3-opus',
-        name: 'claude-3-opus-20240229',
-        displayName: 'Claude 3 Opus',
+        id: 'claude-opus-4.6',
+        name: 'claude-opus-4.6',
+        displayName: 'Claude Opus 4.6',
         type: 'chat',
         contextWindow: 200000,
-        pricing: { input: 15, output: 75 }
       },
       {
-        id: 'claude-3-sonnet',
-        name: 'claude-3-sonnet-20240229',
-        displayName: 'Claude 3 Sonnet',
+        id: 'claude-sonnet-4.6',
+        name: 'claude-sonnet-4.6',
+        displayName: 'Claude Sonnet 4.6',
         type: 'chat',
         contextWindow: 200000,
-        pricing: { input: 3, output: 15 }
       },
       {
-        id: 'claude-3-haiku',
-        name: 'claude-3-haiku-20240307',
-        displayName: 'Claude 3 Haiku',
+        id: 'claude-haiku-4.5',
+        name: 'claude-haiku-4.5',
+        displayName: 'Claude Haiku 4.5',
         type: 'chat',
         contextWindow: 200000,
-        pricing: { input: 0.25, output: 1.25 }
       }
     ]
   },
   {
     id: 'deepseek',
     name: 'DeepSeek',
-    description: '高性价比的中文大模型',
+    description: 'DeepSeek-V3 系列模型',
     icon: 'deepseek',
     color: 'blue',
     category: 'model',
     isConfigured: false,
     models: [
       {
-        id: 'deepseek-chat',
-        name: 'deepseek-chat',
-        displayName: 'DeepSeek Chat',
+        id: 'deepseek-v3.2',
+        name: 'deepseek-v3.2',
+        displayName: 'DeepSeek-V3.2',
         type: 'chat',
-        contextWindow: 32768,
-        pricing: { input: 1, output: 2 }
+        contextWindow: 128000,
       },
       {
-        id: 'deepseek-coder',
-        name: 'deepseek-coder',
-        displayName: 'DeepSeek Coder',
+        id: 'deepseek-v3.2-speciale',
+        name: 'deepseek-v3.2-speciale',
+        displayName: 'DeepSeek-V3.2-Speciale',
         type: 'chat',
-        contextWindow: 16384,
-        pricing: { input: 1, output: 2 }
+        contextWindow: 128000,
+      },
+      {
+        id: 'deepseek-r1-r2',
+        name: 'deepseek-r1-r2',
+        displayName: 'DeepSeek-R1/R2',
+        type: 'chat',
+        contextWindow: 128000,
+      },
+      {
+        id: 'deepseek-coder-v3',
+        name: 'deepseek-coder-v3',
+        displayName: 'DeepSeek-Coder-V3',
+        type: 'chat',
+        contextWindow: 128000,
       }
     ]
   },
   {
     id: 'zhipu',
     name: '智谱 AI',
-    description: 'GLM-4 系列模型',
+    description: 'GLM-5 系列模型',
     icon: 'zhipu',
     color: 'purple',
     category: 'model',
     isConfigured: false,
     models: [
       {
-        id: 'glm-4',
-        name: 'glm-4',
-        displayName: 'GLM-4',
+        id: 'glm-5.1',
+        name: 'glm-5.1',
+        displayName: 'GLM-5.1',
         type: 'chat',
         contextWindow: 128000,
-        pricing: { input: 10, output: 10 }
       },
       {
-        id: 'glm-4-air',
-        name: 'glm-4-air',
-        displayName: 'GLM-4 Air',
+        id: 'glm-5',
+        name: 'glm-5',
+        displayName: 'GLM-5',
         type: 'chat',
         contextWindow: 128000,
-        pricing: { input: 1, output: 1 }
+      },
+      {
+        id: 'glm-5-turbo',
+        name: 'glm-5-turbo',
+        displayName: 'GLM-5-Turbo',
+        type: 'chat',
+        contextWindow: 128000,
+      },
+      {
+        id: 'glm-5v-turbo',
+        name: 'glm-5v-turbo',
+        displayName: 'GLM-5V-Turbo',
+        type: 'image',
+        contextWindow: 128000,
+      },
+      {
+        id: 'glm-4.7',
+        name: 'glm-4.7',
+        displayName: 'GLM-4.7',
+        type: 'chat',
+        contextWindow: 128000,
       }
     ]
   },
   {
     id: 'qwen',
     name: '通义千问',
-    description: '阿里云大模型服务',
+    description: 'Qwen3 系列模型',
     icon: 'qwen',
     color: 'sky',
     category: 'model',
     isConfigured: false,
     models: [
       {
-        id: 'qwen-turbo',
-        name: 'qwen-turbo',
-        displayName: 'Qwen Turbo',
+        id: 'qwen3.6-plus',
+        name: 'qwen3.6-plus',
+        displayName: 'Qwen3.6-Plus',
         type: 'chat',
-        contextWindow: 8192,
-        pricing: { input: 2, output: 6 }
+        contextWindow: 128000,
       },
       {
-        id: 'qwen-plus',
-        name: 'qwen-plus',
-        displayName: 'Qwen Plus',
+        id: 'qwen3-max',
+        name: 'qwen3-max',
+        displayName: 'Qwen3-Max',
         type: 'chat',
-        contextWindow: 32768,
-        pricing: { input: 4, output: 12 }
+        contextWindow: 128000,
       },
       {
-        id: 'qwen-max',
-        name: 'qwen-max',
-        displayName: 'Qwen Max',
+        id: 'qwen3.5-flash',
+        name: 'qwen3.5-flash',
+        displayName: 'Qwen3.5-Flash',
         type: 'chat',
-        contextWindow: 32768,
-        pricing: { input: 40, output: 120 }
+        contextWindow: 64000,
+      },
+      {
+        id: 'qwen3-omni',
+        name: 'qwen3-omni',
+        displayName: 'Qwen3-Omni',
+        type: 'image',
+        contextWindow: 128000,
+      },
+      {
+        id: 'qwen3-coder',
+        name: 'qwen3-coder',
+        displayName: 'Qwen3-Coder',
+        type: 'chat',
+        contextWindow: 128000,
       }
     ]
   },
   {
     id: 'moonshot',
     name: 'Moonshot AI',
-    description: 'Kimi 长文本大模型',
+    description: 'Kimi K2 系列模型',
     icon: 'moonshot',
     color: 'indigo',
     category: 'model',
     isConfigured: false,
     models: [
       {
-        id: 'moonshot-v1-8k',
-        name: 'moonshot-v1-8k',
-        displayName: 'Moonshot 8K',
+        id: 'kimi-k2.5',
+        name: 'kimi-k2.5',
+        displayName: 'Kimi K2.5',
         type: 'chat',
-        contextWindow: 8192,
-        pricing: { input: 12, output: 12 }
+        contextWindow: 200000,
       },
       {
-        id: 'moonshot-v1-32k',
-        name: 'moonshot-v1-32k',
-        displayName: 'Moonshot 32K',
+        id: 'kimi-k2',
+        name: 'kimi-k2',
+        displayName: 'Kimi K2',
         type: 'chat',
-        contextWindow: 32768,
-        pricing: { input: 24, output: 24 }
-      },
-      {
-        id: 'moonshot-v1-128k',
-        name: 'moonshot-v1-128k',
-        displayName: 'Moonshot 128K',
-        type: 'chat',
-        contextWindow: 131072,
-        pricing: { input: 60, output: 60 }
+        contextWindow: 200000,
       }
     ]
   },
   {
     id: 'ollama',
     name: 'Ollama',
-    description: '本地部署的开源模型',
+    description: '本地开源模型与量化模型',
     icon: 'ollama',
     color: 'gray',
     category: 'model',
     isConfigured: false,
     models: [
       {
-        id: 'llama2',
-        name: 'llama2',
-        displayName: 'Llama 2',
+        id: 'glm-5.1-local',
+        name: 'glm-5.1',
+        displayName: 'GLM-5.1',
         type: 'chat',
-        contextWindow: 4096
+        contextWindow: 128000,
       },
       {
-        id: 'mistral',
-        name: 'mistral',
-        displayName: 'Mistral',
+        id: 'kimi-k2.5-local',
+        name: 'kimi-k2.5',
+        displayName: 'Kimi K2.5',
         type: 'chat',
-        contextWindow: 8192
+        contextWindow: 200000,
       },
       {
-        id: 'qwen',
-        name: 'qwen:14b',
-        displayName: 'Qwen 14B',
+        id: 'deepseek-v3.2-local',
+        name: 'deepseek-v3.2',
+        displayName: 'DeepSeek-V3.2',
         type: 'chat',
-        contextWindow: 8192
+        contextWindow: 128000,
+      },
+      {
+        id: 'llama-4-maverick-local',
+        name: 'llama-4-maverick',
+        displayName: 'Llama 4 Maverick',
+        type: 'chat',
+        contextWindow: 128000,
+      },
+      {
+        id: 'qwen3-local',
+        name: 'qwen3',
+        displayName: 'Qwen3',
+        type: 'chat',
+        contextWindow: 128000,
+      },
+      {
+        id: 'mistral-latest-local',
+        name: 'mistral-latest',
+        displayName: 'Mistral Latest',
+        type: 'chat',
+        contextWindow: 128000,
       }
     ]
   },
   {
     id: 'ark',
     name: '火山引擎',
-    description: '字节跳动云端大模型服务',
+    description: 'Doubao-Seed 系列模型',
     icon: 'ark',
     color: 'orange',
     category: 'model',
     isConfigured: false,
     models: [
       {
-        id: 'doubao-pro',
-        name: 'doubao-pro-32k',
-        displayName: 'Doubao Pro 32K',
+        id: 'doubao-seed-2.0-pro',
+        name: 'doubao-seed-2.0-pro',
+        displayName: 'Doubao-Seed-2.0 Pro',
         type: 'chat',
-        contextWindow: 32768,
-        pricing: { input: 0.8, output: 2 }
+        contextWindow: 128000,
       },
       {
-        id: 'doubao-lite',
-        name: 'doubao-lite-32k',
-        displayName: 'Doubao Lite 32K',
+        id: 'doubao-seed-2.0-lite',
+        name: 'doubao-seed-2.0-lite',
+        displayName: 'Doubao-Seed-2.0 Lite',
         type: 'chat',
-        contextWindow: 32768,
-        pricing: { input: 0.3, output: 0.6 }
+        contextWindow: 128000,
+      },
+      {
+        id: 'doubao-seed-2.0-mini',
+        name: 'doubao-seed-2.0-mini',
+        displayName: 'Doubao-Seed-2.0 Mini',
+        type: 'chat',
+        contextWindow: 64000,
+      },
+      {
+        id: 'doubao-seedance-2.0',
+        name: 'doubao-seedance-2.0',
+        displayName: 'Doubao-Seedance-2.0',
+        type: 'image',
+        contextWindow: 64000,
+      },
+      {
+        id: 'seedream-5.0',
+        name: 'seedream-5.0',
+        displayName: 'Seedream-5.0',
+        type: 'image',
+        contextWindow: 64000,
       }
     ]
   },
   {
     id: 'lingyiwanwu',
     name: '零一万物',
-    description: 'Yi 系列大模型',
+    description: 'Yi 系列模型',
     icon: 'lingyiwanwu',
     color: 'blue',
     category: 'model',
     isConfigured: false,
     models: [
       {
-        id: 'yi-large',
-        name: 'yi-large',
-        displayName: 'Yi Large',
+        id: 'yi-lightning',
+        name: 'yi-lightning',
+        displayName: 'Yi-Lightning',
         type: 'chat',
-        contextWindow: 32768,
-        pricing: { input: 20, output: 20 }
+        contextWindow: 128000,
       },
       {
-        id: 'yi-medium',
-        name: 'yi-medium',
-        displayName: 'Yi Medium',
+        id: 'yi-large',
+        name: 'yi-large',
+        displayName: 'Yi-Large',
         type: 'chat',
-        contextWindow: 16384,
-        pricing: { input: 2.5, output: 2.5 }
+        contextWindow: 128000,
       }
     ]
   },
   {
     id: 'qianfan',
     name: '百度千帆',
-    description: '文心一言系列模型',
+    description: 'ERNIE 5 系列模型',
     icon: 'qianfan',
     color: 'blue',
     category: 'model',
     isConfigured: false,
     models: [
       {
-        id: 'ernie-4.0',
-        name: 'ernie-4.0-8k',
-        displayName: 'ERNIE 4.0',
+        id: 'ernie-5.0',
+        name: 'ernie-5.0',
+        displayName: 'ERNIE 5.0',
         type: 'chat',
-        contextWindow: 8192,
-        pricing: { input: 30, output: 60 }
+        contextWindow: 128000,
       },
       {
-        id: 'ernie-3.5',
-        name: 'ernie-3.5-8k',
-        displayName: 'ERNIE 3.5',
+        id: 'ernie-4.5',
+        name: 'ernie-4.5',
+        displayName: 'ERNIE 4.5',
         type: 'chat',
-        contextWindow: 8192,
-        pricing: { input: 4, output: 8 }
+        contextWindow: 128000,
+      },
+      {
+        id: 'ernie-4.5-vl',
+        name: 'ernie-4.5-vl',
+        displayName: 'ERNIE 4.5-VL',
+        type: 'image',
+        contextWindow: 128000,
+      },
+      {
+        id: 'ernie-4.5-turbo',
+        name: 'ernie-4.5-turbo',
+        displayName: 'ERNIE 4.5 Turbo',
+        type: 'chat',
+        contextWindow: 128000,
       }
     ]
   },
   {
     id: 'siliconflow',
     name: 'SiliconFlow',
-    description: '高性价比模型聚合平台',
+    description: '高性价比聚合平台',
     icon: 'siliconflow',
     color: 'purple',
     category: 'model',
     isConfigured: false,
     models: [
       {
-        id: 'qwen2.5-72b',
-        name: 'Qwen/Qwen2.5-72B-Instruct',
-        displayName: 'Qwen2.5 72B',
+        id: 'glm-5.1-sf',
+        name: 'glm-5.1',
+        displayName: 'GLM-5.1',
         type: 'chat',
-        contextWindow: 32768,
-        pricing: { input: 4, output: 4 }
+        contextWindow: 128000,
       },
       {
-        id: 'deepseek-v2.5',
-        name: 'deepseek-ai/DeepSeek-V2.5',
-        displayName: 'DeepSeek V2.5',
+        id: 'kimi-k2.5-sf',
+        name: 'kimi-k2.5',
+        displayName: 'Kimi K2.5',
         type: 'chat',
-        contextWindow: 32768,
-        pricing: { input: 1.33, output: 1.33 }
+        contextWindow: 200000,
+      },
+      {
+        id: 'deepseek-v3.2-sf',
+        name: 'deepseek-v3.2',
+        displayName: 'DeepSeek-V3.2',
+        type: 'chat',
+        contextWindow: 128000,
+      },
+      {
+        id: 'qwen3-max-sf',
+        name: 'qwen3-max',
+        displayName: 'Qwen3-Max',
+        type: 'chat',
+        contextWindow: 128000,
+      },
+      {
+        id: 'minimax-m2.5-sf',
+        name: 'minimax-m2.5',
+        displayName: 'MiniMax-M2.5',
+        type: 'chat',
+        contextWindow: 128000,
       }
     ]
   },
@@ -394,11 +515,39 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         contextWindow: 128000
       },
       {
-        id: 'claude-3.5-sonnet',
-        name: 'anthropic/claude-3.5-sonnet',
-        displayName: 'Claude 3.5 Sonnet',
+        id: 'gpt-5.4-or',
+        name: 'openai/gpt-5.4',
+        displayName: 'GPT-5.4',
+        type: 'chat',
+        contextWindow: 128000
+      },
+      {
+        id: 'claude-opus-4.6-or',
+        name: 'anthropic/claude-opus-4.6',
+        displayName: 'Claude Opus 4.6',
         type: 'chat',
         contextWindow: 200000
+      },
+      {
+        id: 'glm-5.1-or',
+        name: 'zhipu/glm-5.1',
+        displayName: 'GLM-5.1',
+        type: 'chat',
+        contextWindow: 128000
+      },
+      {
+        id: 'kimi-k2.5-or',
+        name: 'moonshot/kimi-k2.5',
+        displayName: 'Kimi K2.5',
+        type: 'chat',
+        contextWindow: 200000
+      },
+      {
+        id: 'qwen3-max-or',
+        name: 'qwen/qwen3-max',
+        displayName: 'Qwen3-Max',
+        type: 'chat',
+        contextWindow: 128000
       }
     ]
   },
@@ -412,20 +561,46 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
     isConfigured: false,
     models: [
       {
-        id: 'llama-3.1-70b',
-        name: 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo',
-        displayName: 'Llama 3.1 70B',
+        id: 'llama-4-maverick',
+        name: 'meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8',
+        displayName: 'Llama 4 Maverick',
         type: 'chat',
         contextWindow: 131072,
-        pricing: { input: 0.88, output: 0.88 }
       },
       {
-        id: 'mixtral-8x7b',
-        name: 'mistralai/Mixtral-8x7B-Instruct-v0.1',
-        displayName: 'Mixtral 8x7B',
+        id: 'llama-4-scout',
+        name: 'meta-llama/Llama-4-Scout-17B-16E-Instruct',
+        displayName: 'Llama 4 Scout',
         type: 'chat',
-        contextWindow: 32768,
-        pricing: { input: 0.6, output: 0.6 }
+        contextWindow: 131072,
+      },
+      {
+        id: 'glm-5.1-together',
+        name: 'zai-org/GLM-5.1',
+        displayName: 'GLM-5.1',
+        type: 'chat',
+        contextWindow: 128000,
+      },
+      {
+        id: 'kimi-k2.5-together',
+        name: 'moonshotai/Kimi-K2.5-Instruct',
+        displayName: 'Kimi K2.5',
+        type: 'chat',
+        contextWindow: 200000,
+      },
+      {
+        id: 'mixtral-latest',
+        name: 'mistralai/Mixtral-8x22B-Instruct-v0.1',
+        displayName: 'Mixtral Latest',
+        type: 'chat',
+        contextWindow: 65536,
+      },
+      {
+        id: 'nemotron-latest',
+        name: 'nvidia/Llama-3.1-Nemotron-70B-Instruct-HF',
+        displayName: 'Nemotron Latest',
+        type: 'chat',
+        contextWindow: 131072,
       }
     ]
   },

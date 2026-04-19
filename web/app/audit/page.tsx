@@ -334,8 +334,8 @@ export default function AuditLogsPage() {
                           </div>
                           <div className="mt-1 flex flex-wrap items-center gap-2">
                             <span className="text-[13px] font-semibold text-foreground">{it.action}</span>
-                            {resource ? (<span className={cn(systemPageTokens.monoMeta, 'text-[10px]')}>{resource}</span>) : null}
-                            {it.request_id ? (<span className={cn(systemPageTokens.monoMeta, 'text-[10px]')}>请求: {shorten(it.request_id)}</span>) : null}
+                            {resource ? (<span className={cn(systemPageTokens.monoMeta, 'text-[11px]')}>{resource}</span>) : null}
+                            {it.request_id ? (<span className={cn(systemPageTokens.monoMeta, 'text-[11px]')}>请求: {shorten(it.request_id)}</span>) : null}
                           </div>
                         </button>
                         <div className="flex items-center gap-1.5">

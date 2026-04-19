@@ -124,7 +124,7 @@ export function getFileIcon(filename: string, className?: string) {
   }
 
   return (
-    <div className={cn("relative flex items-center justify-center transition-transform motion-safe:hover:scale-105", className)}>
+    <div className={cn("relative flex items-center justify-center", className)}>
       {/* Paper Container */}
       <div className="relative w-9 h-11 bg-card rounded-sm shadow-soft/40 border border-border/60 overflow-hidden flex flex-col">
 
@@ -138,7 +138,7 @@ export function getFileIcon(filename: string, className?: string) {
         <div className="flex-1 flex items-center justify-center bg-background/40">
           {(() => {
     if (['W', 'X', 'P'].includes(label)) {
-        return (<span className={cn("font-serif font-black text-lg leading-none", textTone[tone])}>
+        return (<span className={cn("font-serif font-semibold text-lg leading-none", textTone[tone])}>
               {label}
             </span>);
     }

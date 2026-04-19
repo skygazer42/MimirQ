@@ -201,7 +201,7 @@ export function CreateItemDialog({
                 <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
                   <span className="font-mono">needles:</span>
                   {expectedNeedles.slice(0, 10).map((needle) => (
-                    <Badge key={`needle:${needle}`} variant="secondary" className="text-[10px] font-mono">
+                    <Badge key={`needle:${needle}`} variant="secondary" className="text-[11px] font-mono">
                       {needle}
                     </Badge>
                   ))}
@@ -245,16 +245,16 @@ export function CreateItemDialog({
                                   </div>
                                   <div className="flex items-center gap-2">
                                     {assistScore > 0 ? (
-                                      <Badge variant="secondary" className="font-mono text-[10px] tabular-nums">
+                                      <Badge variant="secondary" className="font-mono text-[11px] tabular-nums">
                                         hit {assistScore}
                                       </Badge>
                                     ) : null}
                                     {chunkId ? (
-                                      <Badge variant="outline" className="font-mono text-[10px]">
+                                      <Badge variant="outline" className="font-mono text-[11px]">
                                         {chunkId.slice(0, 8)}
                                       </Badge>
                                     ) : (
-                                      <Badge variant="destructive" className="font-mono text-[10px]">
+                                      <Badge variant="destructive" className="font-mono text-[11px]">
                                         missing chunk_id
                                       </Badge>
                                     )}
@@ -267,7 +267,7 @@ export function CreateItemDialog({
                                       <Badge
                                         key={`hit:${chunkId || String(citation.document_id)}:${hit}`}
                                         variant="outline"
-                                        className="text-[10px] font-mono"
+                                        className="text-[11px] font-mono"
                                       >
                                         {hit}
                                       </Badge>
@@ -347,11 +347,11 @@ export function CreateItemDialog({
                                     </div>
                                   </div>
                                   {chunkId ? (
-                                    <Badge variant="outline" className="font-mono text-[10px]">
+                                    <Badge variant="outline" className="font-mono text-[11px]">
                                       {chunkId.slice(0, 8)}
                                     </Badge>
                                   ) : (
-                                    <Badge variant="destructive" className="font-mono text-[10px]">
+                                    <Badge variant="destructive" className="font-mono text-[11px]">
                                       missing chunk_id
                                     </Badge>
                                   )}

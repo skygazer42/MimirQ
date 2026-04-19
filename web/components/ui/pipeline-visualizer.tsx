@@ -70,7 +70,7 @@ export function PipelineVisualizer({ progress, stage, className }: Readonly<Pipe
                     </div>
                     
                     <span className={cn(
-                        "absolute top-10 text-[10px] font-medium whitespace-nowrap transition-colors duration-200 motion-reduce:transition-none",
+                        "absolute top-10 text-[11px] font-medium whitespace-nowrap transition-colors duration-200 motion-reduce:transition-none",
                         isActive ? "text-primary" : "text-muted-foreground"
                     )}>
                         {s.label}

@@ -736,10 +736,10 @@ export function GraphCanvas({
                   <>
                     <section aria-labelledby={`${semanticPanelId}-nodes`}>
                       <div className="flex items-center justify-between gap-2">
-                        <h3 id={`${semanticPanelId}-nodes`} className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                        <h3 id={`${semanticPanelId}-nodes`} className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                           节点
                         </h3>
-                        <div className="inline-flex items-center gap-1 rounded-full border border-border/65 bg-card/55 px-2 py-0.5 text-[10px] text-muted-foreground">
+                        <div className="inline-flex items-center gap-1 rounded-full border border-border/65 bg-card/55 px-2 py-0.5 text-[11px] text-muted-foreground">
                           <Rows3 className="h-3 w-3" />
                           {semanticNodeCount}
                         </div>
@@ -793,7 +793,7 @@ export function GraphCanvas({
                                     <span className="mt-1 h-2.5 w-2.5 rounded-full" style={{ backgroundColor: tone }} />
                                     <div className="space-y-1">
                                       <div className="font-semibold leading-4 text-foreground">{node.label}</div>
-                                      <div className="text-[10px] leading-4 text-muted-foreground">
+                                      <div className="text-[11px] leading-4 text-muted-foreground">
                                         ID {node.id} · {node.kind} · {node.type}
                                       </div>
                                     </div>
@@ -807,10 +807,10 @@ export function GraphCanvas({
                     </section>
                     <section aria-labelledby={`${semanticPanelId}-links`}>
                       <div className="flex items-center justify-between gap-2">
-                        <h3 id={`${semanticPanelId}-links`} className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                        <h3 id={`${semanticPanelId}-links`} className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
                           关系
                         </h3>
-                        <div className="inline-flex items-center gap-1 rounded-full border border-border/65 bg-card/55 px-2 py-0.5 text-[10px] text-muted-foreground">
+                        <div className="inline-flex items-center gap-1 rounded-full border border-border/65 bg-card/55 px-2 py-0.5 text-[11px] text-muted-foreground">
                           {semanticLinkCount}
                         </div>
                       </div>
@@ -818,7 +818,7 @@ export function GraphCanvas({
                         {semanticRelationSummary.map((item) => (
                           <span
                             key={item.relation}
-                            className="inline-flex items-center gap-1 rounded-full border border-border/65 bg-card/58 px-2 py-1 text-[10px] text-slate-600 shadow-[0_8px_20px_-18px_rgba(15,23,42,0.35)]"
+                            className="inline-flex items-center gap-1 rounded-full border border-border/65 bg-card/58 px-2 py-1 text-[11px] text-slate-600 shadow-[0_8px_20px_-18px_rgba(15,23,42,0.35)]"
                           >
                             <span className="h-1.5 w-1.5 rounded-full bg-slate-400/80" />
                             {item.relation}
@@ -826,7 +826,7 @@ export function GraphCanvas({
                           </span>
                         ))}
                         {isSemanticListTruncated ? (
-                          <span className="inline-flex items-center rounded-full border border-dashed border-border/70 bg-card/42 px-2 py-1 text-[10px] text-muted-foreground">
+                          <span className="inline-flex items-center rounded-full border border-dashed border-border/70 bg-card/42 px-2 py-1 text-[11px] text-muted-foreground">
                             仅显示前 {SEMANTIC_LIST_ITEM_LIMIT} 项
                           </span>
                         ) : null}

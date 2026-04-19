@@ -247,7 +247,7 @@ export function IngestionPreviewDetailsDialog({
                                   <div className="flex items-center gap-1.5">
                                     <span
                                       className={cn(
-                                        'text-[10px] px-1.5 py-0.5 rounded border',
+                                        'text-[11px] px-1.5 py-0.5 rounded border',
                                         applied ? 'bg-success/10 text-success border-success/25' : 'bg-muted text-muted-foreground border-border/60'
                                       )}
                                     >
@@ -257,7 +257,7 @@ export function IngestionPreviewDetailsDialog({
                                     </span>
                                     <span
                                       className={cn(
-                                        'text-[10px] px-1.5 py-0.5 rounded border',
+                                        'text-[11px] px-1.5 py-0.5 rounded border',
                                         changed ? 'bg-warning/10 text-warning border-warning/25' : 'bg-muted text-muted-foreground border-border/60'
                                       )}
                                     >
@@ -268,7 +268,7 @@ export function IngestionPreviewDetailsDialog({
                                   </div>
                                 </div>
                                 {step.note ? (
-                                  <div className="mt-1 text-[10px] text-muted-foreground">{toShortNote(step.note)}</div>
+                                  <div className="mt-1 text-[11px] text-muted-foreground">{toShortNote(step.note)}</div>
                                 ) : null}
                               </div>
                             )
@@ -385,7 +385,7 @@ export function IngestionPreviewDetailsDialog({
                           <span className="font-mono">{cleanSummary.secretsTotal}</span>
                         </div>
                       ) : null}
-                      <div className="text-[10px] text-muted-foreground mt-1">
+                      <div className="text-[11px] text-muted-foreground mt-1">
                         {t("ingestionPreview.clean.alerts.maskingHint")}
                       </div>
                     </div>
@@ -525,7 +525,7 @@ export function IngestionPreviewDetailsDialog({
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">
-                                <span className={cn('text-[10px] px-2 py-0.5 rounded-full border font-medium', badgeCls)}>
+                                <span className={cn('text-[11px] px-2 py-0.5 rounded-full border font-medium', badgeCls)}>
                                   {severity}
                                 </span>
                                 <span className="text-[11px] font-mono text-muted-foreground">{code}</span>
@@ -558,7 +558,7 @@ export function IngestionPreviewDetailsDialog({
 
                           {samples.length ? (
                             <div className="mt-2">
-                              <div className="text-[10px] text-muted-foreground">{t("ingestionPreview.issues.labels.samples")}</div>
+                              <div className="text-[11px] text-muted-foreground">{t("ingestionPreview.issues.labels.samples")}</div>
                               <div className="mt-1 space-y-1">
                                 {samples.slice(0, 4).map((s: string) => (
                                   <div

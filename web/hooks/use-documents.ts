@@ -13,6 +13,7 @@ import { useDocumentActions } from './use-document-actions'
 import { useDocumentList } from './use-document-list'
 import { useDocumentPolling } from './use-document-polling'
 import { useDocumentUpload } from './use-document-upload'
+import type { DocumentListParams } from './use-document-shared'
 
 export type { DocumentListParams } from './use-document-shared'
 export {
@@ -26,13 +27,13 @@ export {
   replacePolledDocument,
 } from './use-document-shared'
 
-export function useDocuments() {
+export function useDocuments(initialParams?: DocumentListParams) {
   const [actionError, setActionError] = useState<string | null>(null)
   const { parserBackend } = useParserBackendPreference()
   const { chunkStrategy } = useChunkStrategyPreference()
   const { enabled: pipelineOverridesEnabled, options: pipelineOptions } = usePipelineOptions()
 
-  const listState = useDocumentList({ setActionError })
+  const listState = useDocumentList({ setActionError, initialParams })
   const polling = useDocumentPolling({
     updateCachedDocuments: listState.updateCachedDocuments,
   })

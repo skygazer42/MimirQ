@@ -16,6 +16,8 @@ describe('common UI copy source', () => {
     expect(src).toContain('t("modeToggle.light")')
     expect(src).toContain('t("modeToggle.dark")')
     expect(src).toContain('t("modeToggle.system")')
+    expect(src).toContain('hover:bg-[#CAF0F8]/55')
+    expect(src).toContain('data-[highlighted]:bg-[#CAF0F8]/55')
   })
 
   it('moves breadcrumb route labels and aria copy into next-intl lookups', () => {

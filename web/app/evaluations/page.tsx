@@ -659,21 +659,21 @@ function EvaluationsPageContent() {
                 <div className="shrink-0 border-b border-slate-200/80">
                   <div className="grid gap-px bg-border/70 sm:grid-cols-4">
                     <div className="bg-primary/[0.08] px-2.5 py-2">
-                      <div className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-sky-700"><MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />当前对话</div>
+                      <div className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.12em] text-sky-700"><MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />当前对话</div>
                       <div className="mt-1 truncate text-[13px] font-semibold text-foreground">
                         {selectedConversation?.title || (selectedConversationId ? '对话 ' + selectedConversationId.slice(0, 8) + '…' : '未选择')}
                       </div>
                     </div>
                     <div className="bg-muted/35 px-2.5 py-2">
-                      <div className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-slate-700"><ListChecks className="h-3.5 w-3.5" aria-hidden="true" />样本数</div>
+                      <div className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.12em] text-slate-700"><ListChecks className="h-3.5 w-3.5" aria-hidden="true" />样本数</div>
                       <div className="mt-1 text-base font-semibold tabular-nums text-foreground">{formatCompactCount(summary.items)}</div>
                     </div>
                     <div className="bg-primary/[0.08] px-2.5 py-2">
-                      <div className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-sky-700"><BarChart3 className="h-3.5 w-3.5" aria-hidden="true" />令牌开销</div>
+                      <div className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.12em] text-sky-700"><BarChart3 className="h-3.5 w-3.5" aria-hidden="true" />令牌开销</div>
                       <div className="mt-1 text-base font-semibold tabular-nums text-foreground">{formatCompactCount(summary.total_tokens)}</div>
                     </div>
                     <div className="bg-muted/35 px-2.5 py-2">
-                      <div className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-slate-700"><Sparkles className="h-3.5 w-3.5" aria-hidden="true" />LLM 成本</div>
+                      <div className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.12em] text-slate-700"><Sparkles className="h-3.5 w-3.5" aria-hidden="true" />LLM 成本</div>
                       <div className="mt-1 text-base font-semibold tabular-nums text-foreground">{formatCurrency(summary.total_cost)}</div>
                     </div>
                   </div>
@@ -695,7 +695,7 @@ function EvaluationsPageContent() {
                       <div className="mt-3 grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
                         {displayMetrics.map((metric) => (
                           <div key={metric.key} className="rounded-lg border border-slate-200/80 bg-slate-50/55 px-2 py-1.5">
-                            <div className="text-[10px] uppercase tracking-[0.1em] text-muted-foreground">{metricLabel(metric.key)}</div>
+                            <div className="text-[11px] uppercase tracking-[0.1em] text-muted-foreground">{metricLabel(metric.key)}</div>
                             <div className="mt-1 text-[15px] font-semibold tabular-nums text-foreground">{metric.value.toFixed(3)}</div>
                           </div>
                         ))}

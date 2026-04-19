@@ -1,9 +1,19 @@
 'use client'
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, FolderOpen, FolderPlus, FolderTree, Loader2, Plus, RefreshCw } from 'lucide-react'
+import { ChevronDown, ChevronRight, FolderOpen, FolderPlus, FolderTree, Loader2, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
@@ -101,6 +111,7 @@ export function DatasetCategoryTreeView({
             type="button"
             className="focus-ring min-w-0 flex-1 rounded-md px-1 py-0.5 text-left"
             onClick={() => onSelect(node.id)}
+            title={node.name}
           >
             <span className="flex min-w-0 items-center justify-between gap-2">
               <span className="flex min-w-0 items-center gap-2">
@@ -112,11 +123,11 @@ export function DatasetCategoryTreeView({
                 >
                   <FolderOpen className="h-3.5 w-3.5" />
                 </span>
-                <span className="truncate">{node.name}</span>
+                <span className="truncate" title={node.name}>{node.name}</span>
               </span>
               <span
                 className={cn(
-                  'rounded-full border px-1.5 py-0.5 tabular-nums text-[10px] shadow-sm',
+                  'rounded-full border px-1.5 py-0.5 tabular-nums text-[11px] shadow-sm',
                   isSelected ? 'border-primary/15 bg-background/85 text-primary' : 'border-border/60 bg-background/85 text-muted-foreground'
                 )}
               >
@@ -156,7 +167,7 @@ export function DatasetCategoryTreeView({
           >
             <FolderTree className="h-3.5 w-3.5" />
           </span>
-          <span className="truncate">全部分类</span>
+          <span className="truncate" title="全部分类">全部分类</span>
         </span>
       </button>
       {items.map(renderNode)}
@@ -176,6 +187,8 @@ export function DatasetCategoryTree({ selectedId, onSelect, className }: Readonl
   const [createOpen, setCreateOpen] = useState(false)
   const [categoryName, setCategoryName] = useState('')
   const [creating, setCreating] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -238,6 +251,23 @@ export function DatasetCategoryTree({ selectedId, onSelect, className }: Readonl
     }
   }
 
+  const handleDelete = async () => {
+    if (!selectedId || deleting) return
+
+    setDeleting(true)
+    try {
+      await datasetCategoryApi.delete(selectedId)
+      toast.success('已删除分类')
+      setDeleteOpen(false)
+      onSelect(null)
+      await load()
+    } catch (e: any) {
+      toast.error(formatApiError(e, '删除分类失败'))
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   return (
     <div className={cn('space-y-2.5', className)}>
       <div className="flex items-start justify-between gap-2">
@@ -246,7 +276,7 @@ export function DatasetCategoryTree({ selectedId, onSelect, className }: Readonl
             <FolderTree className="h-3.5 w-3.5 text-primary" />
             <span>目录</span>
           </div>
-          <div className="truncate text-[11px] text-muted-foreground">
+          <div className="truncate text-[11px] text-muted-foreground" title={selectedNodeName || '全部分类'}>
             {selectedNodeName ? `当前：${selectedNodeName}` : '分类导航'}
           </div>
         </div>
@@ -309,12 +339,13 @@ export function DatasetCategoryTree({ selectedId, onSelect, className }: Readonl
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 w-8 rounded-full p-0 text-muted-foreground"
-            onClick={() => detachPromise(load())}
-            disabled={loading}
-            aria-label="刷新分类树"
+            className="h-8 w-8 rounded-full p-0 text-destructive/60 hover:text-destructive hover:bg-destructive/10"
+            onClick={() => setDeleteOpen(true)}
+            disabled={!selectedId || deleting}
+            aria-label="删除分类"
+            title={selectedId ? '删除当前分类' : '请选择分类后删除'}
           >
-            {loading ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-4 w-4" />}
+            {deleting ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Trash2 className="h-4 w-4" />}
           </Button>
         </div>
       </div>
@@ -333,6 +364,29 @@ export function DatasetCategoryTree({ selectedId, onSelect, className }: Readonl
           </div>
         )}
       </div>
+
+      <AlertDialog
+        open={deleteOpen}
+        onOpenChange={(open) => {
+          if (!deleting) setDeleteOpen(open)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除分类？</AlertDialogTitle>
+            <AlertDialogDescription>
+              {selectedNodeName ? `将删除分类“${selectedNodeName}”。` : '将删除当前分类。'}
+              {' '}如果该分类下仍有子分类，后端会拒绝删除。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} disabled={deleting}>
+              {deleting ? '删除中…' : '删除'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

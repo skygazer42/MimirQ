@@ -29,7 +29,7 @@ export function CompactStatChip({
         className
       )}
     >
-      <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{label}</span>
+      <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{label}</span>
       <span
         className={cn(
           'text-[11px] font-semibold',

@@ -28,7 +28,7 @@ export function PageBody({
     <section
       data-page-scroll-container="true"
       className={cn(
-        "flex-1 min-h-0 overflow-y-auto overscroll-contain pb-8 no-scrollbar scroll-fade-bottom",
+        "flex-1 min-h-0 overflow-y-auto overscroll-contain pt-4 pb-8 no-scrollbar scroll-fade-bottom",
         gutterClass,
         className
       )}

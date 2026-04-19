@@ -184,7 +184,7 @@ export function HardcaseCandidatesDialog({
                         const feedbackId = String(feedbackIdRaw)
                         feedbackIdNodes.push(
                           <div key={feedbackId} className="inline-flex items-center gap-1.5">
-                            <Badge variant="outline" className="font-mono text-[10px]">
+                            <Badge variant="outline" className="font-mono text-[11px]">
                               {feedbackId.slice(0, 8)}
                             </Badge>
                             <Button
@@ -218,7 +218,7 @@ export function HardcaseCandidatesDialog({
                         const requestId = String(requestIdRaw)
                         requestIdNodes.push(
                           <div key={requestId} className="inline-flex items-center gap-1.5">
-                            <Badge variant="secondary" className="font-mono text-[10px]">
+                            <Badge variant="secondary" className="font-mono text-[11px]">
                               {requestId.slice(0, 10)}
                             </Badge>
                             <Button

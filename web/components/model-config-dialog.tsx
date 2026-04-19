@@ -101,7 +101,7 @@ export function ModelConfigDialog({
       ollama: 'http://localhost:11434/v1',
       ark: 'https://ark.cn-beijing.volces.com/api/v3',
       lingyiwanwu: 'https://api.lingyiwanwu.com/v1',
-      qianfan: 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop',
+      qianfan: 'https://qianfan.baidubce.com/v2',
       siliconflow: 'https://api.siliconflow.cn/v1',
       openrouter: 'https://openrouter.ai/api/v1',
       together: 'https://api.together.xyz/v1',

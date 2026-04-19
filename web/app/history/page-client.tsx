@@ -6,6 +6,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, Suspense, useCallback, useDeferredValue, useMemo } from 'react'
 import { useLocale, useTranslations } from 'next-intl'
 import { useSearchParams } from 'next/navigation'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   MessageSquare,
   Trash2,
@@ -15,7 +16,11 @@ import {
   History,
   X,
   Plus,
-  Route
+  Route,
+  Search,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Bot
 } from 'lucide-react'
 import { AppFrame } from '@/components/app-frame'
 import { ChatMessageItem } from '@/components/chat/message-item'
@@ -27,7 +32,7 @@ import { SearchInput } from '@/components/ui/search-input'
 import { EmptyState } from '@/components/ui/empty-state'
 import { PageLoading } from '@/components/ui/page-loading'
 import { PageScaffold } from '@/components/ui/page-scaffold'
-import { useRouter } from '@/i18n/navigation'
+import { Link, useRouter } from '@/i18n/navigation'
 import { chatApi } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
@@ -102,6 +107,7 @@ function HistoryPageContent({
   const conversationId = searchParams.get('id') || initialConversationId || null
 
   const [conversations, setConversations] = useState<Conversation[]>(initialConversations)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(initialSelectedConversation)
   const [messages, setMessages] = useState<Message[]>(initialMessages)
   const [isLoadingList, setIsLoadingList] = useState(!initialConversationsLoaded)
@@ -115,7 +121,15 @@ function HistoryPageContent({
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const pendingPrependScrollRef = useRef<{ top: number; height: number } | null>(null)
+  const selectionRequestSeqRef = useRef(0)
+  const selectedConversationIdRef = useRef<string | null>(initialSelectedConversation?.id ?? null)
+  const messagesLengthRef = useRef(initialMessages.length)
   const deferredSearchQuery = useDeferredValue(searchQuery)
+
+  useEffect(() => {
+    selectedConversationIdRef.current = selectedConversation?.id ?? null
+    messagesLengthRef.current = messages.length
+  }, [selectedConversation?.id, messages.length])
 
   // define handlers first to avoid ReferenceError
   const loadConversations = useCallback(async () => {
@@ -132,8 +146,12 @@ function HistoryPageContent({
   }, [t])
 
   const handleSelectConversation = useCallback(async (conversation: Conversation) => {
-    if (selectedConversation?.id === conversation.id && messages.length > 0) return
+    if (selectedConversationIdRef.current === conversation.id && messagesLengthRef.current > 0) return
 
+    const requestSeq = selectionRequestSeqRef.current + 1
+    selectionRequestSeqRef.current = requestSeq
+    selectedConversationIdRef.current = conversation.id
+    messagesLengthRef.current = 0
     setSelectedConversation(conversation)
     setMessages([])
     setHasMoreMessages(false)
@@ -144,20 +162,38 @@ function HistoryPageContent({
 
     try {
       const result = await chatApi.getMessages(conversation.id, { limit: DEFAULT_VISIBLE_MESSAGES })
-      setMessages(result.messages || [])
+      if (requestSeq !== selectionRequestSeqRef.current) return
+      const newMessages = result.messages || []
+      messagesLengthRef.current = newMessages.length
+      setMessages(newMessages)
       setHasMoreMessages(Boolean(result.has_more))
+
+      // 实时同步元数据：如果返回的消息中有最新的，更新选中对话的状态
+      if (newMessages.length > 0) {
+        const lastMsg = newMessages[newMessages.length - 1]
+        setSelectedConversation({
+          ...conversation,
+          message_count: conversation.message_count,
+          updated_at: lastMsg.created_at || conversation.updated_at,
+          last_message: buildConversationPreview(lastMsg.content) || conversation.last_message,
+        })
+      }
+
       globalThis.window.requestAnimationFrame(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'auto' })
       })
     } catch (error) {
+      if (requestSeq !== selectionRequestSeqRef.current) return
+      messagesLengthRef.current = 0
       console.error('Failed to load messages:', error)
       toast.error(formatApiError(error, t('loadConversationMessagesFailed')))
       setMessages([])
       setHasMoreMessages(false)
     } finally {
+      if (requestSeq !== selectionRequestSeqRef.current) return
       setIsLoadingMessages(false)
     }
-  }, [router, selectedConversation?.id, messages.length, t])
+  }, [router, t])
 
   // 加载对话列表
   useEffect(() => {
@@ -169,11 +205,11 @@ function HistoryPageContent({
   useEffect(() => {
     if (conversationId && conversations.length > 0) {
       const conv = conversations.find((c) => c.id === conversationId)
-      if (conv && selectedConversation?.id !== conv.id) {
+      if (conv && selectedConversationIdRef.current !== conv.id) {
         handleSelectConversation(conv)
       }
     }
-  }, [conversationId, conversations, handleSelectConversation, selectedConversation?.id])
+  }, [conversationId, conversations, handleSelectConversation])
 
   // Preserve scroll position when prepending older messages.
   useLayoutEffect(() => {
@@ -246,7 +282,6 @@ function HistoryPageContent({
   )
   const groupOrder = [
     groupLabels.today,
-    groupLabels.yesterday,
     groupLabels.last7Days,
     groupLabels.last30Days,
     groupLabels.earlier,
@@ -294,75 +329,68 @@ function HistoryPageContent({
     <AppFrame rightPanel={<DocumentViewerPanel />} withDocumentViewerPadding mainClassName="overflow-hidden">
       <PageScaffold
         title={t('pageTitle')}
-        description={t('pageDescription')}
         icon={History}
-        iconColor="text-sky-600 dark:text-sky-400"
+        showHeader={false}
         size="full"
-        bodyClassName="px-0 pb-0 overflow-hidden"
-        bodyContainerClassName="h-full"
-        actions={
-          <Button
-            variant="default"
-            size="sm"
-            className="gap-2 rounded-full"
-            onClick={() => router.push('/', { scroll: false })}
-          >
-            <Plus className="h-4 w-4" />
-            {t('newConversation')}
-          </Button>
-        }
+        bodyClassName="p-0 overflow-hidden"
+        bodyContainerClassName="h-full max-w-none"
       >
-        <div className="h-full p-3 md:p-4">
-          <section className="relative flex h-full min-h-0 overflow-hidden rounded-[2rem] border border-border/70 bg-background shadow-soft">
+        <div className="h-full overflow-hidden">
+          <section className="relative flex h-full min-h-0 overflow-hidden bg-background">
             <div
               aria-hidden="true"
               className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-primary/[0.04]"
             />
 
             {/* 侧边栏 - 对话列表 */}
-            <aside className="relative z-10 flex w-[19.5rem] shrink-0 flex-col border-r border-border/70 bg-card/90 backdrop-blur xl:w-[20.75rem]">
-              {/* 头部 */}
-              <div className="border-b border-border/70 p-4">
-                <div className="rounded-[1.5rem] border border-border/70 bg-background/80 p-3 shadow-sm">
-                  <div className="flex items-start gap-3">
-                    <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 text-primary shadow-sm">
-                      <History className="h-4 w-4" />
+            <motion.aside 
+              initial={false}
+              animate={{ 
+                width: isSidebarCollapsed ? 0 : (globalThis.window?.innerWidth >= 1280 ? '20.75rem' : '19.5rem'),
+                opacity: isSidebarCollapsed ? 0 : 1,
+                borderRightWidth: isSidebarCollapsed ? 0 : 1
+              }}
+              transition={{ type: 'spring', stiffness: 300, damping: 30, mass: 0.8 }}
+              className={cn(
+                "relative z-10 flex shrink-0 flex-col border-r border-border/60 bg-muted/30 overflow-hidden"
+              )}
+            >
+              {/* 头部 - 已扁平化 */}
+              <div className="sticky top-0 z-20 border-b border-border/50 px-2 pt-2 pb-1.5 space-y-1 min-w-[19.5rem] backdrop-blur-md bg-background/80">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/10">
+                      <History className="size-4" />
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <h2 className="truncate text-sm font-semibold text-foreground">{t('pageTitle')}</h2>
-                          <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
-                            {t('pageDescription')}
-                          </p>
-                        </div>
-                        <div
-                          aria-label={`${t('pageTitle')}: ${filteredConversations.length}`}
-                          className="rounded-2xl border border-border/60 bg-card/80 px-2.5 py-2 text-right shadow-sm"
-                        >
-                          <div className="text-sm font-semibold tabular-nums text-foreground">
-                            {filteredConversations.length}
-                          </div>
-                          <div className="text-[10px] font-medium tabular-nums text-muted-foreground">
-                            {conversations.length}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                    <h2 className="text-sm font-semibold text-foreground tracking-tight uppercase">历史记录</h2>
                   </div>
-                  <div className="mt-3 rounded-xl border border-border/60 bg-background/80 p-1.5 shadow-sm">
-                    <SearchInput
-                      value={searchQuery}
-                      onValueChange={setSearchQuery}
-                      placeholder={t('searchPlaceholder')}
-                      inputClassName="h-10 rounded-lg border-0 bg-transparent shadow-none"
-                    />
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 rounded-full hover:bg-muted text-muted-foreground"
+                      onClick={() => setIsSidebarCollapsed(true)}
+                      aria-label="收起侧边栏"
+                      title="收起侧边栏"
+                    >
+                      <PanelLeftClose className="size-4" />
+                    </Button>
                   </div>
+                </div>
+                
+                <div className="relative group">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground/50 group-focus-within:text-primary transition-colors" />
+                  <input
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder={t('searchPlaceholder')}
+                    className="w-full h-9 pl-8 pr-3 rounded-xl border border-border/60 bg-background/60 backdrop-blur-sm text-xs font-medium outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary/40 focus:bg-background transition-all"
+                  />
                 </div>
               </div>
 
               {/* 对话列表 */}
-              <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar px-3 py-3">
+              <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar px-0 py-0.5">
                 {(() => {
     if (isLoadingList) {
         return (<div className="flex items-center justify-center py-8">
@@ -370,7 +398,7 @@ function HistoryPageContent({
                     </div>);
     }
     else if (filteredConversations.length === 0) {
-            return (<div className="rounded-[1.5rem] border border-dashed border-border/70 bg-background/70 px-5 py-10 text-center text-sm text-muted-foreground shadow-sm">
+            return (<div className="rounded-3xl border border-dashed border-border/70 bg-background/70 px-5 py-10 text-center text-sm text-muted-foreground shadow-sm">
                       <MessageSquare className="mx-auto mb-3 h-8 w-8 opacity-20"/>
                       <p>{searchQuery ? t('noMatchedConversation') : t('noConversationRecords')}</p>
                       {searchQuery ? null : (<p className="mt-2 text-[11px] leading-relaxed text-muted-foreground/80">{t('startConversationHint')}</p>)}
@@ -382,91 +410,142 @@ function HistoryPageContent({
                 if (!convs || convs.length === 0)
                     return null;
                 const groupTone = getConversationGroupTone(group, groupLabels);
-                return (<div key={group} className="pb-2 last:pb-0">
-                          <div className="sticky top-0 z-10 px-2 pb-2 pt-1 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/85">
+                return (<div key={group} className="pb-0.5 last:pb-0">
+                          <div className="sticky top-0 z-10 px-0 pb-0 pt-0 bg-transparent">
                             <div className="flex items-center gap-2">
                               <div className={cn("h-px flex-1", groupTone.lineClass)} />
-                              <div className={cn("inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] shadow-sm", groupTone.chipClass)}>
+                              <div className={cn("inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] shadow-sm", groupTone.chipClass)}>
                                 <span>{group}</span>
-                                <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-semibold", groupTone.countClass)}>
+                                <span className={cn("rounded-full px-1.5 py-0.5 text-[11px] font-semibold", groupTone.countClass)}>
                                   {convs.length}
                                 </span>
                               </div>
                               <div className={cn("h-px flex-1", groupTone.lineClass)} />
                             </div>
                           </div>
-                          <div className="space-y-2 px-1 pb-2">
+                          <div className="space-y-0 px-0 pb-0">
                             {convs.map((conversation) => (<ConversationItem key={conversation.id} conversation={conversation} isSelected={selectedConversation?.id === conversation.id} onSelect={() => handleSelectConversation(conversation)} onDelete={() => setShowDeleteConfirm(conversation.id)} showDeleteConfirm={showDeleteConfirm === conversation.id} onConfirmDelete={() => handleDeleteConversation(conversation.id)} onCancelDelete={() => setShowDeleteConfirm(null)}/>))}
                           </div>
                         </div>);
             }));
         }
-})()}
-              </div>
-            </aside>
-
+        })()}
+        </div>
+        </motion.aside>
             {/* 主区域 - 对话详情 */}
-            <div className="relative flex min-w-0 flex-1 flex-col bg-background/65">
+            <motion.div 
+              layout
+              className={cn(
+                "relative flex min-w-0 flex-1 flex-col transition-colors duration-500",
+                isSidebarCollapsed ? "bg-background/40" : "bg-background/65"
+              )}
+            >
+              {/* 悬浮侧边栏展开按钮 - 仅在收起时显示，且固定在边缘 */}
+              <AnimatePresence>
+                {isSidebarCollapsed && (
+                  <motion.div
+                    initial={{ x: -20, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: -20, opacity: 0 }}
+                    transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                    className="absolute left-4 top-3.5 z-30"
+                  >
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-10 rounded-2xl bg-background/80 backdrop-blur-md border border-border/40 hover:bg-muted text-muted-foreground shadow-soft transition-all active:scale-95"
+                      onClick={() => setIsSidebarCollapsed(false)}
+                      aria-label="展开侧边栏"
+                      title="展开侧边栏"
+                    >
+                      <PanelLeftOpen className="size-5" />
+                    </Button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               {selectedConversation ? (
                 <>
-                  {/* 对话头部 */}
-                  <div className="border-b border-border/70 bg-background/85 px-4 py-4 backdrop-blur xl:px-6">
-                    <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-                      <div className="min-w-0 flex items-start gap-4">
-                        <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-primary/20 bg-primary text-primary-foreground shadow-sm">
-                          <MessageSquare className="h-5 w-5" />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h2 className="truncate text-base font-semibold text-foreground md:text-lg">
-                              {selectedConversation.title || t('untitledConversation')}
+                  {/* 对话头部 - 极简重构版 */}
+                  <div className="border-b border-border/40 bg-background/80 backdrop-blur sticky top-0 z-20 shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+                    <motion.div 
+                      layout
+                      className={cn(
+                        "mx-auto px-4 py-3 md:px-6 xl:px-8 transition-all duration-500",
+                        isSidebarCollapsed ? "max-w-6xl" : "max-w-5xl"
+                      )}
+                    >
+                      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                        <div className="min-w-0 flex items-center gap-3">
+                          {!isSidebarCollapsed && (
+                            <>
+                              <div className="size-10 shrink-0 rounded-2xl bg-primary/5 border border-primary/10 flex items-center justify-center text-primary shadow-[0_2px_8px_-3px_rgba(var(--primary),0.08)]">
+                                <MessageSquare className="size-5" />
+                              </div>
+                              <div className="w-px h-6 bg-border/40 mx-1 hidden md:block" />
+                            </>
+                          )}
+                          
+                          {/* 如果收起，留出悬浮按钮的位移空间 */}
+                          <div className={cn(
+                            "min-w-0 flex flex-col justify-center transition-all duration-500",
+                            isSidebarCollapsed ? "ml-12" : "ml-0"
+                          )}>
+                            <h2 className="truncate text-base font-semibold text-foreground tracking-tight leading-tight md:text-lg">
+                              {selectedConversation.title || t("untitledConversation")}
                             </h2>
-                            <span className="rounded-full border border-primary/15 bg-primary/10 px-2.5 py-1 text-[10px] font-medium text-primary shadow-sm">
-                              {t('messageCount', { count: selectedConversation.message_count })}
-                            </span>
-                          </div>
-                          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                            <span className="rounded-full border border-border/60 bg-background/90 px-2.5 py-1 tabular-nums shadow-sm">
-                              {formatDate(selectedConversation.created_at, locale)}
-                            </span>
+                            <div className="flex items-center gap-1 mt-0.5 tabular-nums">
+                              <span className="inline-flex items-center rounded-md bg-muted/30 px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground/50 border border-border/10">
+                                {t("messageCount", { count: selectedConversation.message_count })}
+                              </span>
+                              <span className="text-muted-foreground/20 text-[11px] leading-none px-0.5">•</span>
+                              <span className="inline-flex items-center gap-1 rounded-md bg-muted/30 px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground/50 border border-border/10">
+                                {formatDate(selectedConversation.created_at, locale)}
+                              </span>
+                            </div>
                           </div>
                         </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleEvaluateConversation}
+                            aria-label="进行对话分析评测"
+                            className="h-8 gap-1.5 rounded-lg text-[11px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-all"
+                          >
+                            <BarChart3 className="size-3.5" />
+                            分析评测
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setIsTraceOpen(true)}
+                            aria-label="查看数据追踪"
+                            className="h-8 gap-1.5 rounded-lg text-[11px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-all"
+                          >
+                            <Route className="size-3.5" />
+                            数据追踪
+                          </Button>
+                          <div className="w-px h-3 bg-border/60 mx-1 hidden sm:block" />
+                          <Button
+                            variant="default"
+                            size="sm"
+                            onClick={handleContinueChat}
+                            aria-label="继续当前对话"
+                            className="h-8 gap-1.5 rounded-lg px-3.5 text-[11px] font-semibold shadow-sm"
+                          >
+                            <Send className="size-3.5" />
+                            继续对话
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleEvaluateConversation}
-                          className="gap-2 rounded-full border-border/70 bg-background/80 hover:bg-background"
-                        >
-                          <BarChart3 className="h-3.5 w-3.5" />
-                          {t('evaluateConversation')}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setIsTraceOpen(true)}
-                          className="gap-2 rounded-full border-border/70 bg-background/80 hover:bg-background"
-                        >
-                          <Route className="h-3.5 w-3.5" />
-                          {t('ragTrace')}
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={handleContinueChat}
-                          className="gap-2 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
-                        >
-                          <Send className="h-3.5 w-3.5" />
-                          {t('continueConversation')}
-                        </Button>
-                      </div>
-                    </div>
+                    </motion.div>
                   </div>
 
                   {/* 消息列表 */}
                   <div
                     ref={messagesContainerRef}
-                    className="flex-1 overflow-y-auto overscroll-contain no-scrollbar bg-muted/[0.12] px-4 py-5 md:px-6 md:py-6 xl:px-8"
+                    className="flex-1 overflow-y-auto overscroll-contain no-scrollbar bg-muted/[0.12] px-4 pt-0 pb-6 md:px-6 md:pb-8 xl:px-8"
                   >
                     {(() => {
     if (isLoadingMessages) {
@@ -476,37 +555,53 @@ function HistoryPageContent({
     }
     else if (messages.length === 0) {
             return (<div className="flex h-full items-center justify-center">
-                          <div className="rounded-[1.75rem] border border-dashed border-border/70 bg-background/80 px-8 py-12 text-center text-muted-foreground shadow-sm">
+                          <div className="rounded-3xl border border-dashed border-border/70 bg-background/80 px-8 py-12 text-center text-muted-foreground shadow-sm">
                             <MessageSquare className="mx-auto mb-4 h-12 w-12 opacity-10"/>
                             <p>{t('noMessageRecords')}</p>
                           </div>
                         </div>);
         }
-        else {
-            return (<div className="mx-auto w-full max-w-6xl space-y-6">
-                          {hasMoreMessages ? (<div className="flex justify-center">
-                              <Button variant="outline" size="sm" onClick={loadOlderMessages} disabled={isLoadingOlder} className="rounded-full border-border/70 bg-background/85 text-xs hover:bg-background">
+                        else {
+            return (<AnimatePresence mode="wait">
+                        <motion.div 
+                          layout
+                          key={selectedConversation.id}
+                          initial="hidden"
+                          animate="visible"
+                          variants={{
+                            hidden: { opacity: 0 },
+                            visible: { 
+                              opacity: 1,
+                              transition: {
+                                staggerChildren: 0.05
+                              }
+                            }
+                          }}
+                          className={cn(
+                            "mx-auto w-full space-y-6 pt-4 transition-all duration-500",
+                            isSidebarCollapsed ? "max-w-6xl" : "max-w-5xl"
+                          )}
+                        >
+                          {hasMoreMessages ? (<div className="flex justify-center mb-4">
+                              <Button variant="ghost" size="sm" onClick={loadOlderMessages} disabled={isLoadingOlder} className="rounded-full text-[11px] font-bold uppercase tracking-widest text-muted-foreground/60 hover:text-foreground">
                                 {isLoadingOlder ? t('loading') : t('loadOlderMessages')}
                               </Button>
                             </div>) : null}
-                          {groupedMessages.map((group) => (<section key={group.key} className="relative overflow-hidden rounded-[1.9rem] border border-border/70 bg-card/55 p-4 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/45 md:p-5">
-                              <div aria-hidden="true" className="absolute inset-x-8 top-0 h-px bg-primary/35 opacity-70" />
-                              <div className="mb-5 flex items-center gap-3">
-                                <div className="h-px flex-1 bg-border/60" />
-                                <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/90 px-3 py-1.5 text-[11px] font-semibold text-foreground shadow-sm">
-                                  <span className="h-2 w-2 rounded-full bg-primary/80" />
-                                  <span>{group.label}</span>
-                                  <span className="text-muted-foreground">·</span>
-                                  <span className="text-muted-foreground">{t('messageCount', { count: group.messages.length })}</span>
+                          {groupedMessages.map((group) => (<div key={group.key} className="space-y-6">
+                              <div className="flex items-center gap-6 py-1">
+                                <div className="h-px flex-1 bg-border/30" />
+                                <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/20 whitespace-nowrap">
+                                  {group.label}
                                 </div>
-                                <div className="h-px flex-1 bg-border/60" />
+                                <div className="h-px flex-1 bg-border/30" />
                               </div>
-                              <div className="space-y-4">
-                                {group.messages.map((message, index) => (<HistoryMessageEntry key={message.id} message={message} locale={locale} isLast={index === group.messages.length - 1}/>))}
+                              <div className="space-y-6">
+                                {group.messages.map((message) => (<HistoryMessageEntry key={message.id} message={message} locale={locale} />))}
                               </div>
-                            </section>))}
+                            </div>))}
                           <div ref={messagesEndRef} className="h-4"/>
-                        </div>);
+                        </motion.div>
+                      </AnimatePresence>);
         }
 })()}
                   </div>
@@ -523,29 +618,39 @@ function HistoryPageContent({
                         {t('noConversationSelectedDescription').split('\n')[1]}
                       </>
                     }
-                    className="min-h-full rounded-[2rem] border border-border/70 bg-background/85 px-8 py-10 text-left shadow-soft"
+                    className="min-h-full rounded-3xl border border-border/70 bg-background/85 px-8 py-10 text-left shadow-soft"
                   >
                     <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        type="button"
-                        onClick={() => router.push('/', { scroll: false })}
-                        className="rounded-full"
-                      >
-                        {t('startNewConversation')}
+                      <Button asChild className="rounded-full">
+                        <Link href="/">{t('startNewConversation')}</Link>
                       </Button>
-                      <div className="inline-flex items-center gap-2 rounded-full border border-warning/20 bg-warning/10 px-3 py-2 text-xs font-medium text-warning shadow-sm">
-                        <BarChart3 className="h-3.5 w-3.5" />
-                        {t('evaluateConversation')}
-                      </div>
-                      <div className="inline-flex items-center gap-2 rounded-full border border-info/20 bg-info/10 px-3 py-2 text-xs font-medium text-info shadow-sm">
-                        <Route className="h-3.5 w-3.5" />
-                        {t('ragTrace')}
-                      </div>
+                      <Button
+                        asChild
+                        variant="outline"
+                        size="sm"
+                        className="h-auto rounded-full border-warning/20 bg-warning/10 px-3 py-2 text-xs font-medium text-warning shadow-sm hover:bg-warning/15 hover:text-warning"
+                      >
+                        <Link href="/evaluations">
+                          <BarChart3 className="h-3.5 w-3.5" />
+                          {t('evaluateConversation')}
+                        </Link>
+                      </Button>
+                      <Button
+                        asChild
+                        variant="outline"
+                        size="sm"
+                        className="h-auto rounded-full border-info/20 bg-info/10 px-3 py-2 text-xs font-medium text-info shadow-sm hover:bg-info/15 hover:text-info"
+                      >
+                        <Link href="/observability">
+                          <Route className="h-3.5 w-3.5" />
+                          {t('ragTrace')}
+                        </Link>
+                      </Button>
                     </div>
                   </EmptyState>
                 </div>
               )}
-            </div>
+            </motion.div>
           </section>
         </div>
         <RagTraceDialog
@@ -581,86 +686,80 @@ function ConversationItem({
   const t = useTranslations('History')
 
   return (
-    <div
-      className={cn(
-        'group relative overflow-hidden rounded-2xl border transition-all duration-200',
-        isSelected
-          ? 'border-sky-200/80 bg-sky-50/35 shadow-sm shadow-sky-100/50 dark:border-sky-800/70 dark:bg-sky-950/16 dark:shadow-none'
-          : 'border-sky-200/55 bg-background/90 shadow-sm shadow-sky-100/25 hover:border-sky-200/85 hover:bg-sky-50/20 hover:shadow-sm hover:shadow-sky-100/35 dark:border-sky-900/55 dark:bg-background/70 dark:shadow-none dark:hover:border-sky-800/70 dark:hover:bg-sky-950/8'
-      )}
-    >
-      {isSelected ? <div aria-hidden="true" className="absolute left-0 top-3 bottom-3 w-1 rounded-r-full bg-primary/75" /> : null}
-      <div
-        aria-hidden="true"
+    <div className="relative group px-0 antialiased">
+      <motion.button
+        type="button"
+        onClick={onSelect}
+        whileHover={{ scale: 1.01, y: -0.5 }}
+        whileTap={{ scale: 0.99 }}
         className={cn(
-          'absolute inset-x-4 top-0 h-px opacity-0 transition-opacity duration-200',
-          isSelected ? 'bg-sky-300/55 opacity-100' : 'bg-sky-200/65 opacity-100 dark:bg-sky-900/70'
+          'w-full flex flex-col gap-0.5 px-3 py-2 text-left transition-all duration-200 rounded-xl relative overflow-hidden border border-transparent focus-visible:outline-none focus-visible:ring-0',
+          isSelected 
+            ? 'bg-primary/10 text-primary border-primary/10 shadow-[0_2px_12px_-3px_rgba(var(--primary),0.1)]' 
+            : 'bg-transparent text-foreground/80 hover:bg-muted/60 hover:text-foreground'
         )}
-      />
-      <div className="flex items-start justify-between gap-2">
-        <button
-          type="button"
-          onClick={onSelect}
-          aria-label={`${t('selectConversation')}: ${conversation.title || t('untitledConversation')}`}
-          className="min-w-0 flex-1 cursor-pointer px-2.5 py-2.5 text-left focus-ring"
-        >
-          <h3
-            className={cn(
-              'truncate text-[13.5px] font-semibold',
-              isSelected ? 'text-primary' : 'text-foreground'
-            )}
-          >
+      >
+        {/* 选中时的左侧指示条 */}
+        {isSelected && (
+          <motion.div 
+            layoutId="active-indicator"
+            className="absolute left-0 top-3 bottom-3 w-1 bg-primary rounded-r-full shadow-[0_0_8px_rgba(var(--primary),0.3)]" 
+          />
+        )}
+
+        <div className="flex items-start justify-between gap-3">
+          <span className={cn(
+            'flex-1 truncate text-[13.5px] font-medium leading-snug tracking-normal',
+            isSelected ? 'text-primary' : 'text-foreground/90'
+          )}>
             {conversation.title || t('untitledConversation')}
-          </h3>
-          <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground/80">
+          </span>
+          <span className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/30 pt-1.5 tabular-nums group-hover:text-muted-foreground/50 transition-colors shrink-0">
+            {formatRelativeTime(conversation.last_message_at || conversation.updated_at, locale, t('justNow'))}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground/40 tabular-nums">
+          <span className="shrink-0">{t('messageCount', { count: conversation.message_count })}</span>
+          <span className="text-muted-foreground/20">/</span>
+          <p className="truncate flex-1 font-normal tracking-normal text-muted-foreground/50 lowercase">
             {conversation.last_message || t('noMessage')}
           </p>
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            <span
-              className={cn(
-                'rounded-full border px-2 py-1 text-[10px] font-medium tabular-nums shadow-sm',
-                isSelected
-                  ? 'border-sky-200/65 bg-background/90 text-sky-700 dark:border-sky-800/60 dark:text-sky-300'
-                  : 'border-sky-200/55 bg-background/90 text-muted-foreground dark:border-sky-900/55'
-              )}
-            >
-              {formatRelativeTime(conversation.updated_at, locale, t('justNow'))}
-            </span>
-            <span className="rounded-full border border-sky-200/55 bg-background/90 px-2 py-1 text-[10px] font-medium text-muted-foreground shadow-sm dark:border-sky-900/55">
-              {t('messageCount', { count: conversation.message_count })}
-            </span>
-          </div>
-        </button>
-
-        {/* 删除按钮 */}
-        <div className="flex flex-shrink-0 items-center py-2.5 pr-2.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-          {showDeleteConfirm ? (
-            <div className="flex items-center gap-1">
-              <IconButton
-                label={t('confirmDeleteConversation')}
-                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                onClick={onConfirmDelete}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </IconButton>
-              <IconButton
-                label={t('cancelDelete')}
-                className="text-muted-foreground hover:bg-muted"
-                onClick={onCancelDelete}
-              >
-                <X className="h-3.5 w-3.5" />
-              </IconButton>
-            </div>
-          ) : (
-            <IconButton
-              onClick={onDelete}
-              label={t('deleteConversation')}
-              className="hover:bg-muted hover:text-destructive"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </IconButton>
-          )}
         </div>
+      </motion.button>
+
+      <div className={cn(
+        "absolute right-3 top-1/2 -translate-y-1/2 transition-all duration-200 flex items-center",
+        showDeleteConfirm ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+      )}>
+        {showDeleteConfirm ? (
+          <div className="flex items-center gap-1.5 animate-fade-in-up">
+            <IconButton
+              label={t('confirmDeleteConversation')}
+              variant="ghost"
+              className="size-8 text-destructive hover:bg-destructive/10 active:bg-destructive/20 rounded-full transition-all border border-transparent hover:border-destructive/10"
+              onClick={(e) => { e.stopPropagation(); onConfirmDelete() }}
+            >
+              <Trash2 className="size-4" />
+            </IconButton>
+            <IconButton
+              label={t('cancelDelete')}
+              variant="ghost"
+              className="size-8 text-muted-foreground/40 hover:text-foreground hover:bg-muted/80 active:bg-muted rounded-full transition-all"
+              onClick={(e) => { e.stopPropagation(); onCancelDelete() }}
+            >
+              <X className="size-4" />
+            </IconButton>
+          </div>
+        ) : (
+          <IconButton
+            label={t('deleteConversation')}
+            variant="ghost"
+            className="size-8 text-muted-foreground/30 hover:text-destructive hover:bg-destructive/10 active:bg-destructive/20 rounded-full transition-all"
+            onClick={(e) => { e.stopPropagation(); onDelete() }}
+          >
+            <Trash2 className="size-4" />
+          </IconButton>
+        )}
       </div>
     </div>
   )
@@ -669,70 +768,30 @@ function ConversationItem({
 function HistoryMessageEntry({
   message,
   locale,
-  isLast,
 }: Readonly<{
   message: Message
   locale: string
-  isLast: boolean
 }>) {
-  const t = useTranslations('History')
   const isUser = message.role === 'user'
 
   return (
-    <div className="space-y-3">
-      <div className="group/entry grid gap-3 md:grid-cols-[6rem_minmax(0,1fr)] md:gap-5">
-        <div className="hidden md:flex flex-col items-end pt-4">
-          <div
-            className={cn(
-              'inline-flex min-w-[4.75rem] items-center justify-center rounded-full border px-2.5 py-1 text-[11px] font-medium tabular-nums shadow-sm',
-              isUser
-                ? 'border-primary/15 bg-primary/10 text-primary'
-                : 'border-border/60 bg-background/90 text-muted-foreground'
-            )}
-          >
-            {formatMessageTime(message.created_at, locale)}
-          </div>
-          <div className="mt-3 flex flex-1 items-start justify-end pr-1">
-            <div className="flex h-full flex-col items-center">
-              <span
-                className={cn(
-                  'size-3 rounded-full border-2 shadow-sm',
-                  isUser
-                    ? 'border-primary/15 bg-primary'
-                    : 'border-sky-100 bg-sky-500 dark:border-sky-950'
-                )}
-              />
-              {!isLast ? (
-                <span className="mt-2 w-px flex-1 bg-border/70" />
-              ) : null}
-            </div>
-          </div>
-        </div>
-
-        <div className="relative overflow-hidden rounded-[1.75rem] border border-border/70 bg-background/90 p-2 shadow-sm transition-all duration-200 group-hover/entry:border-primary/20 group-hover/entry:shadow-md">
-          <div aria-hidden="true" className="absolute inset-x-6 top-0 h-px bg-primary/35 opacity-75" />
-          <div className="mb-2 flex items-center justify-between gap-2 px-4 pt-3 md:hidden">
-            <HistoryMessageRoleBadge role={message.role} />
-            <span className="text-[11px] font-medium tabular-nums text-muted-foreground">
-              {formatMessageTime(message.created_at, locale)}
-            </span>
-          </div>
-          <div className="hidden px-4 pb-1 pt-3 md:flex">
-            <HistoryMessageRoleBadge role={message.role} />
-          </div>
-          <ChatMessageItem message={message} />
-          <div className="px-4 pb-2 pt-1 text-[11px] text-muted-foreground/80 md:hidden">
-            {isUser ? t('speakerQuestion') : t('speakerAnswer')}
-          </div>
-        </div>
+    <motion.div 
+      initial={{ opacity: 0, y: 15 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-20px" }}
+      transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+      className={cn(
+        "w-full py-4 transition-all duration-300",
+        isUser ? "flex justify-end" : "flex justify-start"
+      )}
+    >
+      <div className={cn(
+        "w-full max-w-4xl",
+        isUser ? "flex justify-end" : "flex justify-start"
+      )}>
+        <ChatMessageItem message={message} variant="minimal" />
       </div>
-      {!isLast ? (
-        <div
-          aria-hidden="true"
-          className="h-px bg-border/70 opacity-80 md:ml-[7.25rem]"
-        />
-      ) : null}
-    </div>
+    </motion.div>
   )
 }
 
@@ -771,40 +830,40 @@ function getConversationGroupTone(
 ) {
   if (group === labels.today) {
     return {
-      chipClass: 'border-[#B6D7A8]/90 bg-[#F2F8ED] text-[#5E7E4D] dark:border-[#5E7E4D]/50 dark:bg-[#20311A]/70 dark:text-[#C8E0BA]',
-      countClass: 'bg-[#DDECCF] text-[#4F6B41] dark:bg-[#2B4421] dark:text-[#D3E7C7]',
-      lineClass: 'bg-[#B6D7A8]/75 dark:bg-[#5E7E4D]/70',
+      chipClass: 'border-[#B6D7A8]/90 bg-[#F2F8ED] text-[#5E7E4D] dark:border-[#5E7E4D]/30 dark:bg-[#5E7E4D]/10 dark:text-[#A8C895]',
+      countClass: 'bg-[#DDECCF] text-[#4F6B41] dark:bg-[#5E7E4D]/20 dark:text-[#A8C895]',
+      lineClass: 'bg-[#B6D7A8]/75 dark:bg-[#5E7E4D]/20',
     }
   }
 
   if (group === labels.yesterday) {
     return {
-      chipClass: 'border-[#B0D2EF]/90 bg-[#EEF6FC] text-[#4F7090] dark:border-[#4F7090]/55 dark:bg-[#182635]/80 dark:text-[#C6DDEF]',
-      countClass: 'bg-[#D9EAF8] text-[#476786] dark:bg-[#21364A] dark:text-[#D3E6F5]',
-      lineClass: 'bg-[#B0D2EF]/75 dark:bg-[#4F7090]/70',
+      chipClass: 'border-[#B0D2EF]/90 bg-[#EEF6FC] text-[#4F7090] dark:border-[#4F7090]/30 dark:bg-[#4F7090]/10 dark:text-[#9FBDE0]',
+      countClass: 'bg-[#D9EAF8] text-[#476786] dark:bg-[#4F7090]/20 dark:text-[#9FBDE0]',
+      lineClass: 'bg-[#B0D2EF]/75 dark:bg-[#4F7090]/20',
     }
   }
 
   if (group === labels.last7Days) {
     return {
-      chipClass: 'border-[#FFBEBA]/90 bg-[#FFF1F0] text-[#A86762] dark:border-[#A86762]/55 dark:bg-[#341C1A]/80 dark:text-[#FFD0CC]',
-      countClass: 'bg-[#FFDCD8] text-[#955A56] dark:bg-[#472625] dark:text-[#FFDAD6]',
-      lineClass: 'bg-[#FFBEBA]/75 dark:bg-[#A86762]/70',
+      chipClass: 'border-[#FFBEBA]/90 bg-[#FFF1F0] text-[#A86762] dark:border-[#A86762]/30 dark:bg-[#A86762]/10 dark:text-[#E0A7A3]',
+      countClass: 'bg-[#FFDCD8] text-[#955A56] dark:bg-[#A86762]/20 dark:text-[#E0A7A3]',
+      lineClass: 'bg-[#FFBEBA]/75 dark:bg-[#A86762]/20',
     }
   }
 
   if (group === labels.last30Days) {
     return {
-      chipClass: 'border-[#F4D8A6]/90 bg-[#FFF7E9] text-[#8A6A31] dark:border-[#8A6A31]/55 dark:bg-[#352813]/80 dark:text-[#F8E1B7]',
-      countClass: 'bg-[#FCE9C3] text-[#785B28] dark:bg-[#49371A] dark:text-[#F6E1BC]',
-      lineClass: 'bg-[#F4D8A6]/75 dark:bg-[#8A6A31]/70',
+      chipClass: 'border-[#F4D8A6]/90 bg-[#FFF7E9] text-[#8A6A31] dark:border-[#8A6A31]/30 dark:bg-[#8A6A31]/10 dark:text-[#D4B581]',
+      countClass: 'bg-[#FCE9C3] text-[#785B28] dark:bg-[#8A6A31]/20 dark:text-[#D4B581]',
+      lineClass: 'bg-[#F4D8A6]/75 dark:bg-[#8A6A31]/20',
     }
   }
 
   return {
-    chipClass: 'border-border/60 bg-muted/60 text-muted-foreground',
-    countClass: 'bg-muted text-muted-foreground',
-    lineClass: 'bg-border',
+    chipClass: 'border-border/60 bg-muted/60 text-muted-foreground dark:bg-muted/10 dark:border-border/20',
+    countClass: 'bg-muted text-muted-foreground dark:bg-muted/20',
+    lineClass: 'bg-border dark:bg-border/20',
   }
 }
 
@@ -822,22 +881,19 @@ function groupConversationsByDate(
   const groups: Record<string, Conversation[]> = {}
   const now = new Date()
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const yesterday = new Date(today)
-  yesterday.setDate(yesterday.getDate() - 1)
   const lastWeek = new Date(today)
   lastWeek.setDate(lastWeek.getDate() - 7)
   const lastMonth = new Date(today)
-  lastMonth.setMonth(lastMonth.getMonth() - 1)
+  lastMonth.setDate(lastMonth.getDate() - 30)
 
   conversations.forEach((conv) => {
-    const date = new Date(conv.updated_at)
+    const activityDate = conv.last_message_at || conv.created_at || conv.updated_at
+    const date = new Date(activityDate)
     const convDate = new Date(date.getFullYear(), date.getMonth(), date.getDate())
 
     let group: string
     if (convDate.getTime() === today.getTime()) {
       group = labels.today
-    } else if (convDate.getTime() === yesterday.getTime()) {
-      group = labels.yesterday
     } else if (convDate.getTime() >= lastWeek.getTime()) {
       group = labels.last7Days
     } else if (convDate.getTime() >= lastMonth.getTime()) {
@@ -948,4 +1004,10 @@ function formatDate(dateString: string, locale: string) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(dateString))
+}
+
+function buildConversationPreview(content: string | null | undefined, maxChars = 100) {
+  const text = String(content || '').trim()
+  if (!text) return ''
+  return text.length > maxChars ? `${text.slice(0, maxChars)}...` : text
 }

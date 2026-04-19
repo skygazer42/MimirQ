@@ -55,7 +55,7 @@ export function GraphExplainabilityPanel({
             >
               <div className={cn('absolute -left-[5px] top-0 w-2 h-2 rounded-full transition-colors', dotClass)} />
               <p className="text-xs font-semibold text-foreground mb-0.5">{node?.label || step.node}</p>
-              <p className="text-[10px] text-muted-foreground leading-snug">{step.reason}</p>
+              <p className="text-[11px] text-muted-foreground leading-snug">{step.reason}</p>
             </div>
           )
         })}

@@ -48,7 +48,7 @@ export function ChunkStrategySelect({
           {label}
         </span>
         {currentOption.badge && (
-          <span className="px-1.5 py-0.5 text-[10px] bg-primary/10 text-primary rounded border border-primary/20 font-semibold">
+          <span className="px-1.5 py-0.5 text-[11px] bg-primary/10 text-primary rounded border border-primary/20 font-semibold">
             {currentOption.badge}
           </span>
         )}

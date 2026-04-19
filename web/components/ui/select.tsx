@@ -20,7 +20,7 @@ const SelectTrigger = React.forwardRef<
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      "group flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm ring-offset-background transition-[border-color,background-color,box-shadow,transform] duration-180 ease-out placeholder:text-muted-foreground/70 hover:border-border/75 hover:bg-background/96 focus:outline-none focus-visible:border-primary/45 focus-visible:ring-1 focus-visible:ring-primary/15 focus-visible:shadow-none data-[state=open]:border-primary/40 data-[state=open]:bg-background data-[state=open]:shadow-[0_1px_0_hsl(var(--primary)/0.06)] disabled:cursor-not-allowed disabled:opacity-50 sm:h-9 [&>span]:line-clamp-1",
+      "group flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm ring-offset-background transition-[border-color,background-color,box-shadow,transform] duration-180 ease-out placeholder:text-muted-foreground/50 hover:border-border/75 hover:bg-background/96 focus:outline-none focus-visible:border-primary/45 focus-visible:ring-1 focus-visible:ring-primary/15 focus-visible:shadow-none data-[state=open]:border-primary/40 data-[state=open]:bg-background data-[state=open]:shadow-[0_1px_0_hsl(var(--primary)/0.06)] disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1",
       className
     )}
     {...props}
@@ -119,7 +119,7 @@ const SelectItem = React.forwardRef<
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      "relative flex w-full cursor-pointer select-none items-center rounded-md py-1.5 pl-8 pr-2 text-sm outline-none transition-colors duration-150 focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      "relative flex w-full cursor-pointer select-none items-center rounded-md py-1.5 pl-8 pr-2 text-sm outline-none transition-colors duration-150 focus:bg-foreground/5 focus:text-foreground data-[highlighted]:bg-foreground/5 data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
       className
     )}
     {...props}

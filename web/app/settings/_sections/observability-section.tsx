@@ -27,7 +27,7 @@ export function ObservabilitySection({
           <Eye className="h-4 w-4 text-primary" />
           观测与调试
         </h2>
-        <div className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+        <div className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
           <span>保存后通常可立即生效</span>
         </div>
       </div>

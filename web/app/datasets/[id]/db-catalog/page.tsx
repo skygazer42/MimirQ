@@ -588,7 +588,7 @@ export default function DatasetDbCatalogPage() {
                                 {t.comment || '—'}
                               </div>
                             </div>
-                            <Badge variant="outline" className="font-mono text-[10px]">
+                            <Badge variant="outline" className="font-mono text-[11px]">
                               {t.engine}
                             </Badge>
                           </div>

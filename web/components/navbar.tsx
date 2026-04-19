@@ -490,14 +490,14 @@ export function Navbar({
         className={cn(
           'peer flex-shrink-0 border-r border-sidebar-border/80 bg-sidebar/85 text-sidebar-foreground backdrop-blur-xl supports-[backdrop-filter]:bg-sidebar/72 flex flex-col transition-transform duration-200 ease-out z-50',
           'fixed inset-y-0 left-0 md:relative', // Mobile: fixed, Desktop: relative
-          isSidebarOpen ? 'w-[260px] translate-x-0' : 'w-[260px] -translate-x-full md:w-0 md:translate-x-0 md:overflow-hidden'
+          isSidebarOpen ? 'w-[240px] translate-x-0' : 'w-[240px] -translate-x-full md:w-0 md:translate-x-0 md:overflow-hidden'
         )}
       >
         {/* Logo 区域 */}
         <div className="h-14 px-5 border-b border-sidebar-border/50 flex items-center gap-3">
           <Link href="/" className="flex items-center gap-3 group rounded-xl focus-ring">
-            <div className="size-8 rounded-xl bg-primary text-primary-foreground flex items-center justify-center shadow-sm border border-primary/20 transition-colors duration-200 group-hover:border-primary/30">
-              <span className="text-primary-foreground font-bold text-lg">M</span>
+            <div className="size-8 rounded-lg bg-foreground text-background flex items-center justify-center">
+              <span className="font-bold text-lg">M</span>
             </div>
             <div className="flex flex-col">
               <span className="font-semibold text-foreground leading-none">MimirQ</span>
@@ -513,7 +513,7 @@ export function Navbar({
             className={cn(
               "w-full justify-start gap-2 h-11 rounded-2xl font-semibold transition-colors duration-200",
               "bg-card border border-border shadow-sm text-foreground",
-              "hover:bg-accent hover:border-border",
+              "hover:bg-[#CAF0F8]/55 hover:border-[#CAF0F8]/70",
               "active:bg-accent/80"
             )}
             onClick={() => {
@@ -529,7 +529,7 @@ export function Navbar({
         <div className="px-4 pb-2">
           <button
             type="button"
-            className="group flex w-full items-center justify-between gap-3 rounded-2xl border border-dashed border-border/70 bg-background/70 px-3 py-3 text-left transition-colors duration-200 hover:border-primary/40 hover:bg-accent/60 focus-ring"
+            className="group flex w-full items-center justify-between gap-3 rounded-2xl border border-dashed border-border/70 bg-background/70 px-3 py-3 text-left transition-colors duration-200 hover:border-[#CAF0F8]/70 hover:bg-[#CAF0F8]/55 focus-ring"
             onClick={() => {
               setCommandMenuOpen(true)
               closeSidebarOnMobile()
@@ -541,7 +541,7 @@ export function Navbar({
             title={t('command.triggerLabel')}
           >
             <div className="flex min-w-0 items-center gap-3">
-              <div className="flex size-9 items-center justify-center rounded-xl bg-muted text-muted-foreground transition-colors duration-200 group-hover:bg-primary/10 group-hover:text-primary">
+              <div className="flex size-9 items-center justify-center rounded-xl bg-muted text-muted-foreground transition-colors duration-200 group-hover:bg-[#CAF0F8]/65 group-hover:text-foreground">
                 <Search className="size-4" />
               </div>
               <div className="min-w-0">
@@ -549,14 +549,14 @@ export function Navbar({
                 <p className="text-[11px] text-muted-foreground">{t('command.triggerHint')}</p>
               </div>
             </div>
-            <span className="rounded-md border border-border/50 bg-muted/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground shadow-subtle">⌘K</span>
+            <span className="rounded-md border border-border/50 bg-muted/40 px-2 py-0.5 text-[11px] font-medium text-muted-foreground shadow-subtle">⌘K</span>
           </button>
         </div>
 
         {/* 导航菜单 */}
         {/* Allow internal scroll so items are never clipped on short viewports. */}
         <div className="flex-1 min-h-0 px-3 py-2 overflow-y-auto overscroll-contain no-scrollbar">
-          <div className="space-y-3">
+          <div className="space-y-4">
             {menuSections.map((section, index) => {
               const isOpen = openSections[section.id] ?? false
               const hasActiveItem = sectionHasActiveRoute(activeHref, section.items)
@@ -571,20 +571,16 @@ export function Navbar({
                     type="button"
                     className={cn(
                       'flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left transition-colors duration-200 focus-ring',
-                      hasActiveItem ? 'text-foreground' : 'text-muted-foreground hover:bg-muted/30 hover:text-foreground'
+                      hasActiveItem ? 'text-foreground' : 'text-muted-foreground/70 hover:bg-foreground/[0.04] hover:text-foreground'
                     )}
                     onClick={() => toggleSection(section.id)}
                     aria-expanded={isOpen}
                     aria-controls={`sidebar-section-${section.id}`}
                   >
                     <div className="min-w-0">
-                      <p className="text-[11px] font-medium uppercase tracking-[0.18em]">{t(section.titleKey)}</p>
-                      <p className="text-[10px] text-muted-foreground">{t('sections.entryCount', { count: section.items.length })}</p>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground/50">{t(section.titleKey)}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      {hasActiveItem ? (
-                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">{t('sections.current')}</span>
-                      ) : null}
                       <ToggleIcon className="size-4 shrink-0" />
                     </div>
                   </button>
@@ -613,14 +609,14 @@ export function Navbar({
                                   'relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors duration-200 group focus-ring',
                                   'before:pointer-events-none before:absolute before:left-1 before:top-2 before:bottom-2 before:w-[2.5px] before:rounded-full before:bg-transparent',
                                   isActive
-                                    ? 'bg-primary/8 text-foreground font-medium before:bg-primary/80'
-                                    : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                                    ? 'text-foreground font-medium before:bg-foreground/80'
+                                    : 'text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground'
                                 )}
                               >
                                 <Icon
                                   className={cn(
                                     'size-4 transition-colors',
-                                    isActive ? 'text-primary' : 'text-muted-foreground/70 group-hover:text-foreground'
+                                    isActive ? 'text-foreground' : 'text-muted-foreground/70 group-hover:text-foreground'
                                   )}
                                 />
                                 <span className="text-sm">{t(item.labelKey)}</span>
@@ -644,7 +640,7 @@ export function Navbar({
               type="button"
               aria-label={isAuthenticated ? t('user.openSettings') : t('auth.goToLogin')}
               title={isAuthenticated ? t('user.openSettings') : t('auth.goToLogin')}
-              className="flex-1 flex items-center gap-3 p-2 rounded-xl hover:bg-accent transition-colors duration-200 border border-transparent hover:border-border group text-left focus-ring"
+              className="flex-1 flex items-center gap-3 p-2 rounded-xl hover:bg-[#CAF0F8]/55 transition-colors duration-200 border border-transparent hover:border-[#CAF0F8]/70 group text-left focus-ring"
               onClick={() => {
                 if (isAuthenticated) {
                   router.push('/settings')
@@ -655,8 +651,8 @@ export function Navbar({
               }}
             >
               <div className="relative w-10 h-10 flex-shrink-0">
-                <div className="absolute inset-0 rounded-xl border border-border bg-muted/50 shadow-sm group-hover:border-primary/30 transition-colors duration-200" />
-                <div className="absolute inset-0 flex items-center justify-center text-muted-foreground group-hover:text-primary transition-colors">
+                <div className="absolute inset-0 rounded-xl border border-border bg-muted/50 shadow-sm group-hover:border-[#CAF0F8]/70 group-hover:bg-[#CAF0F8]/45 transition-colors duration-200" />
+                <div className="absolute inset-0 flex items-center justify-center text-muted-foreground group-hover:text-foreground transition-colors">
                   <User className="size-5" />
                 </div>
                 {isAuthenticated && (
@@ -676,7 +672,7 @@ export function Navbar({
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-8 rounded-lg hover:bg-accent hover:text-destructive transition-colors duration-200"
+                className="size-8 rounded-lg hover:bg-[#CAF0F8]/55 hover:text-destructive transition-colors duration-200"
                 onClick={() => {
                   if (isAuthenticated) {
                     logout()
@@ -798,10 +794,10 @@ export function Navbar({
                                 <span className="font-medium text-foreground">{row.key}</span>
                                 <span className={cn("font-medium", st.className)}>{st.label}</span>
                               </div>
-                              {row.note ? <div className="text-[10px] text-muted-foreground">{row.note}</div> : null}
+                              {row.note ? <div className="text-[11px] text-muted-foreground">{row.note}</div> : null}
                               {errText ? (
                                 <div
-                                  className="text-[10px] text-muted-foreground max-w-[260px] truncate"
+                                  className="text-[11px] text-muted-foreground max-w-[260px] truncate"
                                   title={errText}
                                 >
                                   {errText}
@@ -841,7 +837,7 @@ export function Navbar({
           title={t('toolbar.collapse')}
           className={cn(
             'fixed z-50 border border-border bg-background/92 text-muted-foreground shadow-soft backdrop-blur transition-colors duration-200 ease-out hover:bg-muted',
-            'bottom-4 left-[260px] size-11 rounded-xl opacity-0 pointer-events-none hover:text-primary supports-[padding:env(safe-area-inset-bottom)]:bottom-[calc(env(safe-area-inset-bottom)+1rem)] md:peer-hover:opacity-100 md:peer-hover:pointer-events-auto md:peer-focus-within:opacity-100 md:peer-focus-within:pointer-events-auto md:hover:opacity-100 md:hover:pointer-events-auto md:focus-visible:opacity-100 md:focus-visible:pointer-events-auto sm:size-10'
+            'bottom-4 left-[240px] size-11 rounded-xl opacity-0 pointer-events-none hover:text-primary supports-[padding:env(safe-area-inset-bottom)]:bottom-[calc(env(safe-area-inset-bottom)+1rem)] md:peer-hover:opacity-100 md:peer-hover:pointer-events-auto md:peer-focus-within:opacity-100 md:peer-focus-within:pointer-events-auto md:hover:opacity-100 md:hover:pointer-events-auto md:focus-visible:opacity-100 md:focus-visible:pointer-events-auto sm:size-10'
           )}
           onPointerDown={handleSidebarTogglePointerDown}
           onKeyDown={handleSidebarToggleKeyDown}

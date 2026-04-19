@@ -29,7 +29,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
           <div>
             <div className="mb-1.5 flex items-center justify-between">
               <div className={cn(systemPageTokens.microLabel, 'text-foreground/80')}>召回 Top K</div>
-              <span className="rounded bg-muted px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
+              <span className="rounded bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
                 {rag.retrieval_top_k}
               </span>
             </div>
@@ -49,7 +49,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
           <div>
             <div className="mb-1.5 flex items-center justify-between">
               <div className={cn(systemPageTokens.microLabel, 'text-foreground/80')}>相似度阈值</div>
-              <span className="rounded bg-muted px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
+              <span className="rounded bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
                 {rag.similarity_threshold.toFixed(1)}
               </span>
             </div>
@@ -122,7 +122,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
           <div>
             <div className="mb-1.5 flex items-center justify-between">
               <div className={cn(systemPageTokens.microLabel, 'text-foreground/80')}>分块大小</div>
-              <span className="rounded bg-muted px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
+              <span className="rounded bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
                 {rag.chunk_size}
               </span>
             </div>
@@ -141,7 +141,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
           <div>
             <div className="mb-1.5 flex items-center justify-between">
               <div className={cn(systemPageTokens.microLabel, 'text-foreground/80')}>分块重叠</div>
-              <span className="rounded bg-muted px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
+              <span className="rounded bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
                 {rag.chunk_overlap}
               </span>
             </div>
@@ -164,7 +164,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
           <div>
             <div className="mb-1.5 flex items-center justify-between">
               <div className={cn(systemPageTokens.microLabel, 'text-foreground/80')}>最小分块长度</div>
-              <span className="rounded bg-muted px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
+              <span className="rounded bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
                 {rag.chunk_min_chars}
               </span>
             </div>

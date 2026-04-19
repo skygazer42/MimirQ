@@ -115,7 +115,7 @@ export function SystemStatusSection({
                 key={key}
                 title={info.message}
                 className={cn(
-                  'rounded-full border px-2 py-0.5 text-[10px] font-mono',
+                  'rounded-full border px-2 py-0.5 text-[11px] font-mono',
                   info.available
                     ? 'border-success/20 bg-success/10 text-success'
                     : 'border-border bg-muted text-muted-foreground'

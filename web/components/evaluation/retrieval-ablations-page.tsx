@@ -192,7 +192,7 @@ function AblationInlineStat({
 
   return (
     <div className={cn('inline-flex items-center gap-1.5 rounded-md border px-2 py-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]', toneClasses.surface)}>
-      <span className={cn('text-[10px] tracking-[0.08em]', toneClasses.label)}>{label}</span>
+      <span className={cn('text-[11px] tracking-[0.08em]', toneClasses.label)}>{label}</span>
       <span className={cn('font-mono text-[11px] tabular-nums', toneClasses.value)}>{value}</span>
     </div>
   )
@@ -859,7 +859,7 @@ export function RetrievalAblationsPage() {
                   <div className="min-w-0">
                     <div className="text-[11px] font-medium tracking-[0.08em] text-foreground/80">Leaderboard</div>
                     <div className="truncate text-sm font-semibold text-foreground">实验排行榜</div>
-                    <div className="mt-0.5 inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-slate-50/80 px-2 py-0.5 text-[10px] text-muted-foreground">
+                    <div className="mt-0.5 inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-slate-50/80 px-2 py-0.5 text-[11px] text-muted-foreground">
                       <span>可对比运行</span>
                       <span className="font-mono tabular-nums text-[11px] font-medium text-foreground">{runsByDataset.length}</span>
                     </div>
@@ -909,12 +909,12 @@ export function RetrievalAblationsPage() {
                     </div>
 
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] tracking-[0.08em] text-muted-foreground">点击行写入</span>
+                      <span className="text-[11px] tracking-[0.08em] text-muted-foreground">点击行写入</span>
                       <div className="inline-flex rounded-lg border border-border/70 bg-card p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
                         <button
                           type="button"
                           className={cn(
-                            'h-7 rounded-md px-2.5 text-[10px] font-medium',
+                            'h-7 rounded-md px-2.5 text-[11px] font-medium',
                             leaderboardAssignRole === 'base' ? 'bg-foreground text-background shadow-sm' : 'text-muted-foreground hover:bg-slate-100'
                           )}
                           onClick={() => setLeaderboardAssignRole('base')}
@@ -924,7 +924,7 @@ export function RetrievalAblationsPage() {
                         <button
                           type="button"
                           className={cn(
-                            'h-7 rounded-md px-2.5 text-[10px] font-medium',
+                            'h-7 rounded-md px-2.5 text-[11px] font-medium',
                             leaderboardAssignRole === 'target' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-slate-100'
                           )}
                           onClick={() => setLeaderboardAssignRole('target')}
@@ -967,7 +967,7 @@ export function RetrievalAblationsPage() {
                             <div className="mt-1.5 text-[13px] font-semibold tabular-nums text-foreground">
                               {formatMetric(metricValue)}
                             </div>
-                            <div className="mt-1 font-mono text-[10px] leading-4 text-muted-foreground">
+                            <div className="mt-1 font-mono text-[11px] leading-4 text-muted-foreground">
                               {String(row.retrieval_config_hash || 'no-config-hash')}
                             </div>
                           </div>
@@ -1117,15 +1117,15 @@ export function RetrievalAblationsPage() {
                         <div className="overflow-hidden border border-border/70">
                           <div className="grid border-b border-border/70 sm:grid-cols-3">
                             <div className="bg-card px-3 py-2.5 sm:border-r sm:border-border/70">
-                              <div className="text-[10px] tracking-[0.08em] text-muted-foreground">Base Score</div>
+                              <div className="text-[11px] tracking-[0.08em] text-muted-foreground">Base Score</div>
                               <div className="mt-1 font-mono text-[13px] font-semibold text-foreground">{diffScoreFmt.base}</div>
                             </div>
                             <div className="bg-card px-3 py-2.5 sm:border-r sm:border-border/70">
-                              <div className="text-[10px] tracking-[0.08em] text-muted-foreground">Target Score</div>
+                              <div className="text-[11px] tracking-[0.08em] text-muted-foreground">Target Score</div>
                               <div className="mt-1 font-mono text-[13px] font-semibold text-foreground">{diffScoreFmt.target}</div>
                             </div>
                             <div className="bg-card px-3 py-2.5">
-                              <div className="text-[10px] tracking-[0.08em] text-muted-foreground">Delta</div>
+                              <div className="text-[11px] tracking-[0.08em] text-muted-foreground">Delta</div>
                               <div className={cn(
                                 'mt-1 font-mono text-[13px] font-semibold',
                                 diffDelta !== null && diffDelta > 0 ? 'text-emerald-600' : diffDelta !== null && diffDelta < 0 ? 'text-rose-600' : 'text-foreground'
@@ -1135,7 +1135,7 @@ export function RetrievalAblationsPage() {
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-[minmax(120px,1fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)] border-b border-border/70 bg-card px-3 py-2 text-[10px] tracking-[0.08em] text-muted-foreground">
+                          <div className="grid grid-cols-[minmax(120px,1fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)] border-b border-border/70 bg-card px-3 py-2 text-[11px] tracking-[0.08em] text-muted-foreground">
                             <div>Metric</div>
                             <div className="text-right">Before</div>
                             <div className="text-right">After</div>
@@ -1171,7 +1171,7 @@ export function RetrievalAblationsPage() {
                       <div className="px-5 py-10 text-center text-[12px] text-muted-foreground">生成 diff 后可查看参数差异。</div>
                     ) : (
                       <div className="mx-5 my-3 overflow-hidden border border-border/70">
-                        <div className="grid grid-cols-[minmax(140px,180px)_minmax(0,1fr)_minmax(0,1fr)] border-b border-border/70 bg-card px-3 py-2 text-[10px] tracking-[0.08em] text-muted-foreground">
+                        <div className="grid grid-cols-[minmax(140px,180px)_minmax(0,1fr)_minmax(0,1fr)] border-b border-border/70 bg-card px-3 py-2 text-[11px] tracking-[0.08em] text-muted-foreground">
                           <div>参数</div>
                           <div>Base</div>
                           <div>Target</div>

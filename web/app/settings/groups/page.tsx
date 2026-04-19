@@ -235,7 +235,7 @@ export default function SettingsGroupsPage() {
                   <Users className="size-5" />
                   组列表
                 </span>
-                <Badge variant="outline" className="font-mono text-[10px]">
+                <Badge variant="outline" className="font-mono text-[11px]">
                   {filtered.length} 条
                 </Badge>
               </div>

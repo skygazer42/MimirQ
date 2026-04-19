@@ -289,10 +289,10 @@ function DocumentCard({
           </div>
 
           <div className="flex items-center gap-2 mt-1.5">
-            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground/70">
+            <span className="text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground/70">
               {formatFileSize(document.file_size)}
             </span>
-            <span className="text-[10px] text-muted-foreground/60">
+            <span className="text-[11px] text-muted-foreground/60">
               {formatDate(document.created_at)}
             </span>
           </div>
@@ -302,10 +302,10 @@ function DocumentCard({
             <div className="mt-3">
               <PipelineVisualizer progress={document.processing_progress} className="py-2 scale-90 origin-left w-[110%]" />
               <div className="flex justify-between items-center mt-6">
-                <p className="text-[10px] text-muted-foreground">
+                <p className="text-[11px] text-muted-foreground">
                   {document.current_stage || '处理中'}
                 </p>
-                <span className="text-[10px] font-mono text-primary/80">
+                <span className="text-[11px] font-mono text-primary/80">
                   {document.processing_progress}%
                 </span>
               </div>
@@ -315,11 +315,11 @@ function DocumentCard({
 	          {/* 属性标签 */}
 	          {document.status === 'completed' && isActive && (
 	            <div className="mt-2 flex flex-wrap gap-1 motion-safe:animate-fade-in">
-	              <span className="text-[10px] px-1.5 py-0.5 bg-secondary/80 rounded text-muted-foreground">
+	              <span className="text-[11px] px-1.5 py-0.5 bg-secondary/80 rounded text-muted-foreground">
 	                {document.chunk_count} 片段
 	              </span>
               {parserLabel && (
-                <span className="text-[10px] px-1.5 py-0.5 bg-secondary/80 rounded text-muted-foreground">
+                <span className="text-[11px] px-1.5 py-0.5 bg-secondary/80 rounded text-muted-foreground">
                   {parserLabel}
                 </span>
               )}
@@ -330,7 +330,7 @@ function DocumentCard({
           {(document.status === 'failed' || document.status === 'quarantined') && (
             <p
               className={cn(
-                'text-[10px] mt-1 font-medium px-1.5 py-0.5 rounded inline-block',
+                'text-[11px] mt-1 font-medium px-1.5 py-0.5 rounded inline-block',
                 document.status === 'quarantined'
                   ? 'text-warning bg-warning/10 border border-warning/25'
                   : 'text-destructive bg-destructive/5'

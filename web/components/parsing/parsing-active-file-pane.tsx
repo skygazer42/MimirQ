@@ -638,7 +638,7 @@ export function ParsingActiveFilePane({
                 <div className="flex items-center gap-2">
                   <span
                     className={cn(
-                      'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]',
+                      'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.12em]',
                       getQualityBadgeClass(qualityGrade)
                     )}
                     title="解析质量门禁（best-effort）"
@@ -650,7 +650,7 @@ export function ParsingActiveFilePane({
                   </div>
                 </div>
                 {qualityEvidenceSummary ? (
-                  <div className="font-mono text-[10px] text-muted-foreground/90">{qualityEvidenceSummary}</div>
+                  <div className="font-mono text-[11px] text-muted-foreground/90">{qualityEvidenceSummary}</div>
                 ) : null}
               </div>
             ) : null}
@@ -661,13 +661,13 @@ export function ParsingActiveFilePane({
                   activeQualityGate ? 'mt-2 border-t border-border/50 pt-2' : 'mt-2'
                 )}
               >
-                <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/75">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/75">
                   结构元素
                 </span>
                 {activeElementSummaryItems.map((item) => (
                   <span
                     key={item.kind}
-                    className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/88 px-2 py-0.5 text-[10px] text-muted-foreground"
+                    className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/88 px-2 py-0.5 text-[11px] text-muted-foreground"
                   >
                     <span>{item.label}</span>
                     <span className="font-mono font-semibold text-foreground">{item.count}</span>
@@ -685,7 +685,7 @@ export function ParsingActiveFilePane({
                 {activeElementHighlightItems.map((item) => (
                   <div
                     key={item.key}
-                    className="inline-flex max-w-full items-center gap-2 rounded-lg border border-border/60 bg-background/90 px-2.5 py-1 text-[10px] text-muted-foreground"
+                    className="inline-flex max-w-full items-center gap-2 rounded-lg border border-border/60 bg-background/90 px-2.5 py-1 text-[11px] text-muted-foreground"
                   >
                     <span className="font-semibold uppercase tracking-[0.1em] text-foreground/78">{item.label}</span>
                     <span className="max-w-[280px] truncate font-medium text-foreground">{item.value}</span>
@@ -696,8 +696,8 @@ export function ParsingActiveFilePane({
             ) : null}
             {selectedExtractEvidence ? (
               <div className="mt-2 border-t border-border/50 pt-2">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/75">证据定位</div>
-                <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-lg border border-border/60 bg-background/92 px-2.5 py-1.5 text-[10px] text-muted-foreground">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/75">证据定位</div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-lg border border-border/60 bg-background/92 px-2.5 py-1.5 text-[11px] text-muted-foreground">
                   <span className="font-semibold text-foreground/80">{selectedExtractEvidence.fieldName}</span>
                   <span>{selectedExtractElement?.kind || selectedExtractEvidence.evidence.kind || 'unknown'}</span>
                   {selectedExtractEvidence.evidence.visual_kind ? <span>{selectedExtractEvidence.evidence.visual_kind}</span> : null}
@@ -728,7 +728,7 @@ export function ParsingActiveFilePane({
             <span className="max-w-[260px] truncate text-[13px] font-semibold text-foreground dark:text-foreground">
               {activeFile.file.name}
             </span>
-            <span className="rounded-md bg-muted/70 px-2 py-0.5 text-[10px] font-medium text-muted-foreground dark:bg-muted dark:text-muted-foreground">
+            <span className="rounded-md bg-muted/70 px-2 py-0.5 text-[11px] font-medium text-muted-foreground dark:bg-muted dark:text-muted-foreground">
               {activeFile.parserLabel}
             </span>
             {activeFile.runs && activeFile.runs.length > 1 ? (
@@ -745,7 +745,7 @@ export function ParsingActiveFilePane({
               </select>
             ) : null}
             {isEditing ? (
-              <span className="flex items-center gap-1 rounded-md bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">
+              <span className="flex items-center gap-1 rounded-md bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">
                 <Edit3 className="h-3 w-3" />
                 编辑中
               </span>
@@ -1048,7 +1048,7 @@ export function ParsingActiveFilePane({
                                 return (
                                   <span
                                     key={kind}
-                                    className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/85 px-2 py-1 text-[10px] font-medium text-muted-foreground"
+                                    className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/85 px-2 py-1 text-[11px] font-medium text-muted-foreground"
                                   >
                                     <span className={cn('h-1.5 w-1.5 rounded-full', meta.dotClassName)} />
                                     {meta.shortLabel}
@@ -1088,7 +1088,7 @@ export function ParsingActiveFilePane({
                                   左侧显示原页框选，右侧按定位片段连续审阅
                                 </div>
                               </div>
-                              <div className="font-mono text-[10px] text-muted-foreground">
+                              <div className="font-mono text-[11px] text-muted-foreground">
                                 {layoutEntries.length} segments
                               </div>
                             </div>
@@ -1115,25 +1115,25 @@ export function ParsingActiveFilePane({
                                       <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
                                         <span
                                           className={cn(
-                                            'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium',
+                                            'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium',
                                             layoutMeta.chipClassName
                                           )}
                                         >
                                           {layoutMeta.label}
                                         </span>
-                                        <span className="font-mono text-[10px] text-muted-foreground">
+                                        <span className="font-mono text-[11px] text-muted-foreground">
                                           片段 {index + 1}
                                         </span>
                                         {Number.isFinite(entry.pageIndex) ? (
-                                          <span className="font-mono text-[10px] text-muted-foreground">
+                                          <span className="font-mono text-[11px] text-muted-foreground">
                                             页 {Number(entry.pageIndex) + 1}
                                           </span>
                                         ) : null}
-                                        <span className="font-mono text-[10px] text-muted-foreground">
+                                        <span className="font-mono text-[11px] text-muted-foreground">
                                           {entry.charCount} 字
                                         </span>
                                         {entry.lineCount > 1 ? (
-                                          <span className="font-mono text-[10px] text-muted-foreground">
+                                          <span className="font-mono text-[11px] text-muted-foreground">
                                             {entry.lineCount} 行
                                           </span>
                                         ) : null}

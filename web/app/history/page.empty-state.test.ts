@@ -8,6 +8,12 @@ describe('history page empty state', () => {
     const messages = fs.readFileSync(path.resolve(__dirname, '../../i18n/messages/zh-CN.ts'), 'utf8')
 
     expect(src).toContain("t('startNewConversation')")
+    expect(src).toContain("t('evaluateConversation')")
+    expect(src).toContain("t('ragTrace')")
+    expect(src).toContain('<Link href="/evaluations">')
+    expect(src).toContain('<Link href="/observability">')
     expect(messages).toContain("startNewConversation: '发起新对话'")
+    expect(messages).toContain("evaluateConversation: 'RAGAS 评测'")
+    expect(messages).toContain("ragTrace: 'RAG Trace'")
   })
 })

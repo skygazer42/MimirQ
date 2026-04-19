@@ -366,14 +366,14 @@ export function OriginalPreview() {
           <FileText className="w-4 h-4 text-muted-foreground" />
           {previewMode === 'pdf' ? t('originalPreview.titlePdf') : t('originalPreview.title')}
           {previewMode === 'pdf' ? (
-            <span className="hidden xl:inline text-[10px] font-normal text-muted-foreground/75">
+            <span className="hidden xl:inline text-[11px] font-normal text-muted-foreground/75">
               {t('originalPreview.hints.pdfMode')}
             </span>
           ) : null}
         </span>
         <div className="flex items-center gap-2">
           {previewData && (
-            <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-muted-foreground">
               {activeChunkMeta ? (
                 <span className="inline-flex h-5 items-center rounded-md border border-primary/20 bg-primary/10 px-1.5 text-primary">
                   {activeChunkMeta.label}
@@ -613,7 +613,7 @@ export function OriginalPreview() {
                   {t('originalPreview.empty.fallbackHint')}
                 </p>
 
-                {localError ? (<p className="text-[10px] text-destructive bg-destructive/10 border border-destructive/25 px-2 py-1 rounded-lg">
+                {localError ? (<p className="text-[11px] text-destructive bg-destructive/10 border border-destructive/25 px-2 py-1 rounded-lg">
                     {localError}
                   </p>) : null}
 
@@ -634,7 +634,7 @@ export function OriginalPreview() {
                     {localLoading
                       ? t('originalPreview.empty.readLocalLoading')
                       : t('originalPreview.empty.readLocal')}
-                  </Button>) : (<p className="text-[10px] text-muted-foreground">{t('originalPreview.empty.unsupportedFile')}</p>)}
+                  </Button>) : (<p className="text-[11px] text-muted-foreground">{t('originalPreview.empty.unsupportedFile')}</p>)}
               </div>));
     }
     else if (isLoading) {

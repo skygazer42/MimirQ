@@ -81,50 +81,63 @@ export function DatasetFolderTreeView({
     const hasChildren = children.length > 0
     const isExpanded = hasChildren && expandedPaths.has(node.path)
     const isSelected = (selectedPath || '') === node.path
+    const depth = Math.max(0, node.depth - 1)
 
     const Icon = isExpanded ? FolderOpen : Folder
     const Chevron = isExpanded ? ChevronDown : ChevronRight
 
     return (
-      <div key={node.path} className="select-none">
+      <div key={node.path} className="select-none relative">
         <div
           className={cn(
-            'w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors',
-            isSelected ? 'bg-primary/10 text-primary' : 'hover:bg-muted/40'
+            'w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-all duration-200 group/node',
+            isSelected ? 'bg-primary/10 text-primary shadow-[inset_0_0_12px_-6px_rgba(var(--primary),0.3)]' : 'hover:bg-muted/40'
           )}
-          style={{ paddingLeft: 8 + Math.max(0, node.depth - 1) * 12 }}
+          style={{ paddingLeft: 8 + depth * 12 }}
         >
           {hasChildren ? (
             <button
               type="button"
-              className="p-0.5 rounded hover:bg-muted/50 focus-ring"
+              className="p-0.5 rounded hover:bg-muted/50 focus-ring z-10"
               aria-label={isExpanded ? labels.collapse : labels.expand}
               onClick={(e) => {
                 e.stopPropagation()
                 toggle(node.path)
               }}
             >
-              <Chevron className="h-4 w-4 text-muted-foreground" />
+              <Chevron className="h-3.5 w-3.5 text-muted-foreground/50 group-hover/node:text-primary transition-colors" />
             </button>
           ) : (
-            <span className="h-4 w-4" />
+            <span className="h-3.5 w-3.5" />
           )}
 
           <button
             type="button"
             onClick={() => onSelect(node.path || null)}
-            className="min-w-0 flex-1 flex items-center justify-between gap-2 text-left focus-ring rounded-md px-1 py-0.5"
+            className="min-w-0 flex-1 flex items-center justify-between gap-2 text-left focus-ring rounded-md py-0.5"
           >
             <span className="min-w-0 flex items-center gap-2">
-              <Icon className="h-4 w-4 text-muted-foreground" />
-              <span className="truncate">{node.name || node.path || labels.unnamed}</span>
+              <Icon className={cn("h-4 w-4 transition-colors", isSelected ? "text-primary" : "text-muted-foreground/60")} />
+              <span className={cn("truncate tracking-tight transition-colors", isSelected ? "font-bold" : "font-medium")}>
+                {node.name || node.path || labels.unnamed}
+              </span>
             </span>
-            <span className="tabular-nums text-xs text-muted-foreground">{node.documents}</span>
+            <span className={cn(
+              "font-mono text-[11px] transition-all tabular-nums",
+              isSelected ? "font-semibold" : "text-muted-foreground/30 font-bold"
+            )}>
+              {node.documents}
+            </span>
           </button>
         </div>
 
         {hasChildren && isExpanded ? (
-          <div className="mt-0.5">
+          <div className="mt-0.5 relative">
+            {/* Vertical Guide Line */}
+            <div 
+              className="absolute left-[15px] top-0 bottom-2 w-px bg-border/20 pointer-events-none" 
+              style={{ left: 15 + depth * 12 }}
+            />
             {children.map(renderNode)}
           </div>
         ) : null}

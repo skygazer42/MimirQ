@@ -5,7 +5,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffect } from 'react'
 import { useTranslations } from 'next-intl'
-import { Send, StopCircle, Sparkles, Database, Wand2, Settings2, Bot, Mic, ArrowDown, type LucideIcon } from 'lucide-react'
+import { Send, StopCircle, Sparkles, Database, Wand2, Settings2, Bot, Mic, ArrowDown, Zap, Layers, ShieldCheck, type LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { useChat } from '@/hooks/use-chat'
 import type { Dataset } from '@/types'
@@ -602,7 +602,7 @@ export function ChatArea({
         <div
           className={cn(
             'mx-auto flex min-h-full w-full flex-col py-8 md:py-10',
-            isWelcomeState ? 'max-w-6xl' : 'max-w-4xl'
+            isWelcomeState ? 'max-w-6xl' : 'max-w-[44rem]'
           )}
         >
           {isWelcomeState && (
@@ -664,7 +664,7 @@ export function ChatArea({
       </div>
 
       {!isNearBottom && (messages.length > 0 || Boolean(currentResponse)) && (
-        <div className="absolute right-6 bottom-24 z-20">
+        <div className="absolute right-6 bottom-24 z-20 animate-scale-fade-in">
           <Button
             type="button"
             size="sm"
@@ -684,11 +684,11 @@ export function ChatArea({
         <div
           className={cn(
             'mx-auto w-full space-y-4',
-            isWelcomeState ? 'max-w-6xl' : 'max-w-4xl'
+            isWelcomeState ? 'max-w-6xl' : 'max-w-[44rem]'
           )}
         >
 
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1.5rem] border border-border/60 bg-background/80 px-3 py-2 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/70">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-border/60 bg-background/80 px-3 py-2 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/70">
             <div className="flex min-w-0 items-center gap-2">
               <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm">
                 <Sparkles className="size-3.5 text-primary" />
@@ -726,7 +726,7 @@ export function ChatArea({
                           onClick={() => setPromptTemplateId(t.id)}
                         >
                           <span>{t.name}</span>
-                          {t.description ? <span className="text-[10px] text-muted-foreground/70 truncate">{t.description}</span> : null}
+                          {t.description ? <span className="text-[11px] text-muted-foreground/70 truncate">{t.description}</span> : null}
                         </button>
                       ))}
                     </div>
@@ -772,7 +772,7 @@ export function ChatArea({
                         >
                           <span className="truncate">{dataset.name}</span>
                           {dataset.description ? (
-                            <span className="truncate text-[10px] text-muted-foreground/70">{dataset.description}</span>
+                            <span className="truncate text-[11px] text-muted-foreground/70">{dataset.description}</span>
                           ) : null}
                         </button>
                       ))
@@ -801,7 +801,7 @@ export function ChatArea({
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <h4 className="font-medium text-sm">{t('retrievalSettings')}</h4>
-                      <span className="text-[10px] text-muted-foreground">{t('adjustRetrievalParameters')}</span>
+                      <span className="text-[11px] text-muted-foreground">{t('adjustRetrievalParameters')}</span>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -973,7 +973,7 @@ export function ChatArea({
         </div>
 
 	          <div className={cn(
-	            "relative group rounded-[2rem] glass border-border/60 transition-colors transition-shadow duration-200 motion-reduce:transition-none",
+	            "relative group rounded-xl bg-card border border-border/30 transition-colors duration-150",
 	            "shadow-soft hover:shadow-strong",
 	            "focus-within:ring-0 focus-within:border-primary/50 focus-within:shadow-[0_0_0_3px_hsl(var(--primary)/0.06)]"
 	          )}>
@@ -989,7 +989,7 @@ export function ChatArea({
               onKeyUp={handleKeyUp}
 	              placeholder={t('composerPlaceholder')}
 	              autoFocus
-	              className="w-full px-6 pt-4 pb-14 pr-20 resize-none outline-none rounded-[2rem] max-h-[200px] bg-transparent text-sm leading-relaxed placeholder:text-muted-foreground/40 no-scrollbar text-foreground font-medium"
+	              className="w-full px-6 pt-4 pb-14 pr-20 resize-none outline-none rounded-xl max-h-[200px] bg-transparent text-sm leading-relaxed placeholder:text-muted-foreground/40 no-scrollbar text-foreground"
 	              rows={1}
 	            />
 
@@ -1028,7 +1028,7 @@ export function ChatArea({
 	                    className={cn(
                       "rounded-full size-9 shadow-sm transition-colors transition-shadow transition-transform duration-200 motion-reduce:transition-none",
                       inputValue.trim() && hasChatScope
-                        ? "bg-primary text-primary-foreground hover:bg-primary/90 motion-safe:hover:scale-105 hover:shadow-md"
+                        ? "bg-foreground text-background hover:bg-foreground/90"
                         : "bg-muted/50 text-muted-foreground/50 cursor-not-allowed"
                     )}
                     title={hasChatScope ? t('send') : (datasetsLoading ? t('datasetScopeLoading') : t('datasetScopeRequired'))}
@@ -1079,7 +1079,6 @@ export function ChatArea({
 
 function WelcomeScreen({
   onSelectPrompt,
-  onOpenKnowledge,
   promptTemplateCount,
   stats,
 }: Readonly<{
@@ -1101,6 +1100,7 @@ function WelcomeScreen({
     if (hour < 18) return t('greetings.afternoon')
     return t('greetings.evening')
   })()
+
   const quickStartPrompts = useMemo(
     () => [
       {
@@ -1127,111 +1127,84 @@ function WelcomeScreen({
     [t]
   )
 
-  const datasetCount = Number(stats.datasets || 0)
   const documentCount = Number(stats.documents || 0)
-  const hasKnowledge = !stats.loading && documentCount > 0
+  const datasetCount = Number(stats.datasets || 0)
 
   return (
-    <div className="relative z-10 w-full px-1 py-4 md:px-2">
-      <div className="relative overflow-hidden rounded-[2.5rem] border border-border/60 bg-background/85 p-4 shadow-soft backdrop-blur supports-[backdrop-filter]:bg-background/72 md:p-6 xl:p-7">
-        <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
-          <div className="absolute -left-16 top-0 h-56 w-56 rounded-full bg-primary/[0.04] blur-3xl" />
-          <div className="absolute -right-10 bottom-[-15%] h-64 w-64 rounded-full bg-accent/[0.04] blur-3xl" />
-          <div className="absolute inset-x-12 top-[44%] h-px bg-border/70 opacity-80 xl:hidden" />
+    <div className="flex flex-col items-center justify-center min-h-full px-4 py-12 md:px-8 max-w-5xl mx-auto space-y-12">
+      {/* Centered Brand Area */}
+      <div className="flex flex-col items-center text-center space-y-6 animate-fade-in-up">
+        <div className="flex size-16 items-center justify-center rounded-2xl bg-foreground text-background shadow-strong">
+          <span className="text-3xl font-bold tracking-tighter">M</span>
+        </div>
+        <div className="space-y-3">
+          <h2 className="text-4xl md:text-5xl font-bold tracking-tight text-foreground">
+            {greeting}，<span className="text-primary">{t('explorer')}</span>
+          </h2>
+          <p className="max-w-2xl text-pretty text-base md:text-lg font-medium text-muted-foreground/80 leading-relaxed">
+            {t('welcomeLead')}
+          </p>
+        </div>
+      </div>
+
+      {/* Quick Start Grid */}
+      <div className="w-full space-y-6 animate-fade-in-up [animation-delay:150ms]">
+        <div className="flex items-center justify-between px-2">
+          <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground/60 flex items-center gap-2">
+            <Zap className="size-3.5 text-primary" />
+            {t('quickStart.title')}
+          </h3>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground font-medium">
+             <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-border/60 bg-muted/30">
+               <Database className="size-3" />
+               {documentCount} 份文档
+             </span>
+             <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-border/60 bg-muted/30">
+               <Layers className="size-3" />
+               {datasetCount} 个知识库
+             </span>
+          </div>
         </div>
 
-        <div className="relative grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.95fr)] xl:items-stretch">
-          <div className="space-y-4">
-            <section className="rounded-[2rem] border border-border/50 bg-card/80 p-5 shadow-sm md:p-6">
-              <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-                <div className="space-y-4 text-left">
-                  <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/85 px-3 py-1 text-[11px] font-medium tracking-[0.14em] text-muted-foreground shadow-sm">
-                    <Sparkles className="size-3.5 text-primary" aria-hidden="true" />
-                    <span>{t('quickStart.title')}</span>
-                  </div>
-                  <div className="space-y-3">
-                    <h2 className="text-balance text-3xl font-semibold leading-tight text-foreground md:text-4xl xl:text-[2.85rem]">
-                      {greeting}，<span className="text-primary">{t('explorer')}</span>
-                    </h2>
-                    <p className="max-w-2xl text-pretty text-sm leading-7 text-muted-foreground/90 md:text-base">
-                      {t('welcomeLead')}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex size-20 shrink-0 items-center justify-center rounded-[1.75rem] border border-primary/15 bg-primary/10 text-primary shadow-inner md:size-24">
-                  <Bot className="h-10 w-10 md:h-12 md:w-12" aria-hidden="true" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {quickStartPrompts.map((item) => (
+            <button
+              key={item.title}
+              onClick={() => onSelectPrompt(item.prompt)}
+              className="flex items-start gap-4 p-5 text-left rounded-3xl border border-border/60 bg-card hover:border-primary/40 hover:bg-muted/30 transition-all duration-200 group shadow-subtle hover:shadow-soft"
+            >
+              <div className="size-10 flex items-center justify-center rounded-2xl bg-muted group-hover:bg-primary/10 group-hover:text-primary transition-colors shrink-0">
+                <item.icon className="size-5" />
+              </div>
+              <div className="min-w-0 pt-0.5">
+                <div className="text-[15px] font-bold text-foreground leading-tight">{item.title}</div>
+                <div className="mt-1.5 text-xs text-muted-foreground line-clamp-2 leading-relaxed font-medium">
+                  {item.prompt}
                 </div>
               </div>
-            </section>
+            </button>
+          ))}
+        </div>
+      </div>
 
-            <section className="rounded-[2rem] border border-border/60 bg-background/78 p-5 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/72 md:p-6">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div className="text-left">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/80">
-                    {t('quickStart.title')}
-                  </div>
-                  <div className="mt-1 text-sm leading-6 text-muted-foreground">
-                    {t('quickStart.description')}
-                  </div>
-                </div>
-                <div className="inline-flex items-center gap-2 self-start rounded-full border border-border/60 bg-card px-3 py-1 text-[11px] font-medium tracking-[0.08em] text-muted-foreground shadow-sm">
-                  <span className="font-mono text-foreground/80">/</span>
-                  <span>{t('quickStart.slashCommands')}</span>
-                </div>
-              </div>
-
-              <div className="mt-4 grid gap-3 md:auto-rows-fr md:grid-cols-2">
-                {quickStartPrompts.map((item) => (
-                  <QuickStartChip
-                    key={item.title}
-                    icon={item.icon}
-                    title={item.title}
-                    prompt={item.prompt}
-                    onSelect={onSelectPrompt}
-                  />
-                ))}
-              </div>
-            </section>
+      {/* Footer Meta Tips */}
+      <div className="w-full pt-4 border-t border-border/40 grid grid-cols-1 md:grid-cols-2 gap-8 text-muted-foreground/70 animate-fade-in-up [animation-delay:300ms]">
+        <div className="flex gap-3">
+          <div className="size-8 flex items-center justify-center rounded-lg bg-muted shrink-0">
+            <Wand2 className="size-4" />
           </div>
-
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-            <WelcomeStatusCard
-              icon={Database}
-              title={
-                stats.loading
-                  ? t('knowledgeStatus.loadingTitle')
-                  : hasKnowledge
-                    ? t('knowledgeStatus.readyTitle', { count: documentCount })
-                    : t('knowledgeStatus.emptyTitle')
-              }
-              desc={
-                stats.loading
-                  ? t('knowledgeStatus.loadingDescription')
-                  : hasKnowledge
-                    ? t('knowledgeStatus.readyDescription', { count: datasetCount })
-                    : t('knowledgeStatus.emptyDescription')
-              }
-              badge={!stats.loading && hasKnowledge ? String(documentCount) : undefined}
-              actionLabel={stats.loading ? undefined : t('knowledgeStatus.actionLabel')}
-              onAction={stats.loading ? undefined : onOpenKnowledge}
-              tone={hasKnowledge ? 'primary' : 'neutral'}
-            />
-            <WelcomeStatusCard
-              icon={Wand2}
-              title={promptTemplateCount > 0 ? t('promptTemplatesAvailable', { count: promptTemplateCount }) : t('startFromDefaultTemplate')}
-              desc={
-                promptTemplateCount > 0
-                  ? t('promptTemplatesAvailableDescription')
-                  : t('noPromptTemplateDescription')
-              }
-              badge={promptTemplateCount > 0 ? String(promptTemplateCount) : undefined}
-            />
-            <WelcomeStatusCard
-              icon={Sparkles}
-              title={t('firstUseAdviceTitle')}
-              desc={t('firstUseAdviceDescription')}
-            />
+          <div className="text-xs font-medium">
+            <span className="text-foreground/80 font-bold block mb-1">{promptTemplateCount} 个模板可用</span>
+            {t('promptTemplatesAvailableDescription')}
+          </div>
+        </div>
+        <div className="flex gap-3">
+          <div className="size-8 flex items-center justify-center rounded-lg bg-muted shrink-0">
+            <ShieldCheck className="size-4" />
+          </div>
+          <div className="text-xs font-medium">
+            <span className="text-foreground/80 font-bold block mb-1">{t('firstUseAdviceTitle')}</span>
+            {t('firstUseAdviceDescription')}
           </div>
         </div>
       </div>
@@ -1254,7 +1227,7 @@ function QuickStartChip({
     <button
       type="button"
       onClick={() => onSelect(prompt)}
-      className="group relative h-full overflow-hidden rounded-[1.75rem] border border-border/60 bg-card/90 p-5 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:bg-card hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+      className="group relative h-full overflow-hidden rounded-3xl border border-border/60 bg-card/90 p-5 text-left shadow-sm transition-all duration-200 hover:border-primary/40 hover:bg-card hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
     >
       <div aria-hidden="true" className="absolute inset-x-0 top-0 h-px bg-primary/30 opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
       <div className="flex items-start gap-3">
@@ -1294,7 +1267,7 @@ function WelcomeStatusCard({
   return (
     <div
       className={cn(
-        'relative h-full overflow-hidden rounded-[1.75rem] border p-5 text-left shadow-soft md:p-6',
+        'relative h-full overflow-hidden rounded-3xl border p-5 text-left shadow-soft md:p-6',
         isPrimary ? 'border-primary/20 bg-primary/[0.07]' : 'border-border/60 bg-card/90'
       )}
     >

@@ -6,7 +6,6 @@ import { Hash, Loader2, RefreshCw, Search, Wand2 } from 'lucide-react'
 
 import { useRouter } from '@/i18n/navigation'
 import { PageScaffold } from '@/components/ui/page-scaffold'
-import { Panel } from '@/components/ui/panel'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -202,8 +201,9 @@ export function GovernanceCommonLinesPage() {
       iconColor="text-success"
       description="跨文档识别页眉、页脚、导航和免责声明等重复样板行，可一键写入自定义治理配置。"
       size="full"
-      headerClassName="mx-auto max-w-[1320px]"
-      bodyContainerClassName="mx-auto max-w-[1320px]"
+      density="system-dense"
+      headerClassName="max-w-none"
+      bodyContainerClassName="max-w-none"
       actions={
         <div className="flex items-center gap-2">
           <Button
@@ -232,9 +232,18 @@ export function GovernanceCommonLinesPage() {
         </div>
       }
     >
-      <div className="space-y-3">
-        <Panel padding="md" className="rounded-xl border-border/55 shadow-none hover:shadow-none">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-0 xl:grid-cols-[320px_minmax(0,1fr)] xl:divide-x xl:divide-border/60">
+        <aside className="min-w-0 xl:sticky xl:top-3 xl:self-start xl:pr-5">
+          <div className="border-b border-border/55 pb-4">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/80">
+              识别范围
+            </div>
+            <div className="mt-1.5 text-[12px] leading-5 text-muted-foreground/78">
+              优先扫描治理前原始解析结果中的重复行，适合发现页眉、页脚、导航和免责声明。
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 py-4">
             <div className="min-w-0 space-y-2">
               <Label>数据集</Label>
               <Select value={datasetId || ''} onValueChange={(v) => setDatasetId(v)}>
@@ -330,18 +339,20 @@ export function GovernanceCommonLinesPage() {
               />
             </div>
 
-            <div className="min-w-0 xl:pt-[1.65rem]">
-              <label className="flex items-start gap-2 text-[13px] leading-5 text-foreground/76">
-                <Checkbox checked={useOriginal} onCheckedChange={(v) => setUseOriginal(Boolean(v))} />
-                <span>优先基于治理前的原始解析结果进行识别</span>
-              </label>
-            </div>
           </div>
-        </Panel>
 
-        {resp ? (
-          <Panel padding="md" className="rounded-xl border-border/55 shadow-none hover:shadow-none">
-            <div className="flex flex-col gap-1.5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="border-t border-border/50 pt-3">
+            <label className="flex items-start gap-2 text-[13px] leading-5 text-foreground/76">
+              <Checkbox checked={useOriginal} onCheckedChange={(v) => setUseOriginal(Boolean(v))} />
+              <span>优先基于治理前的原始解析结果进行识别</span>
+            </label>
+          </div>
+        </aside>
+
+        <section className="min-w-0 pt-4 xl:pt-0 xl:pl-5">
+          {resp ? (
+            <div className="min-w-0">
+              <div className="flex flex-col gap-2 border-b border-border/55 pb-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
                 <div className="text-[13px] font-semibold text-foreground">候选结果</div>
                 <div className="text-[11px] text-muted-foreground/78">
@@ -352,11 +363,11 @@ export function GovernanceCommonLinesPage() {
                   <span className="font-mono tabular-nums text-foreground/88">{resp.total_documents}</span> 文档
                 </div>
               </div>
-              <div className="flex items-center gap-1.5 rounded-lg border border-border/50 bg-muted/[0.14] p-1">
+              <div className="flex items-center gap-1.5">
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 rounded-md px-2.5 text-[11px] text-muted-foreground shadow-none hover:bg-background/90 hover:text-foreground"
+                  className="h-7 rounded-md px-2.5 text-[11px] text-muted-foreground shadow-none hover:bg-muted/55 hover:text-foreground"
                   onClick={() => toggleAll(true)}
                 >
                   全选
@@ -364,7 +375,7 @@ export function GovernanceCommonLinesPage() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 rounded-md px-2.5 text-[11px] text-muted-foreground shadow-none hover:bg-background/90 hover:text-foreground"
+                  className="h-7 rounded-md px-2.5 text-[11px] text-muted-foreground shadow-none hover:bg-muted/55 hover:text-foreground"
                   onClick={() => toggleAll(false)}
                 >
                   全不选
@@ -383,11 +394,11 @@ export function GovernanceCommonLinesPage() {
                   写入治理配置（{selectedCandidates.length}）
                 </Button>
               </div>
-            </div>
+              </div>
 
-            {candidates.length ? (
-              <div className="mt-4 overflow-x-auto">
-                <div className="min-w-[640px] overflow-hidden rounded-lg border border-border/55 bg-background/55">
+              {candidates.length ? (
+                <div className="mt-3 overflow-x-auto">
+                  <div className="min-w-[640px] border-y border-border/55">
                   <div className="grid grid-cols-[30px_minmax(0,1fr)_76px_76px] items-center gap-2 border-b border-border/50 bg-muted/[0.16] px-2.5 py-2 text-[11px] font-medium tracking-[0.01em] text-muted-foreground/76">
                     <div>选择</div>
                     <div>样板行预览</div>
@@ -402,10 +413,10 @@ export function GovernanceCommonLinesPage() {
                         <div
                           key={sig}
                           className={cn(
-                            'grid grid-cols-[30px_minmax(0,1fr)_76px_76px] items-start gap-2 px-2.5 py-2 transition-colors',
-                            checked ? 'bg-primary/[0.06]' : 'bg-transparent hover:bg-muted/[0.14]'
-                          )}
-                        >
+                              'grid grid-cols-[30px_minmax(0,1fr)_76px_76px] items-start gap-2 px-2.5 py-2.5 transition-colors',
+                              checked ? 'bg-primary/[0.06]' : 'bg-transparent hover:bg-muted/[0.12]'
+                            )}
+                          >
                           <div className="pt-0.5">
                             <Checkbox
                               checked={checked}
@@ -420,7 +431,7 @@ export function GovernanceCommonLinesPage() {
                               {c.sample || c.signature}
                             </div>
                             <div
-                              className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground/66"
+                              className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground/66"
                               title={c.signature}
                             >
                               {c.signature}
@@ -437,32 +448,31 @@ export function GovernanceCommonLinesPage() {
                     })}
                   </div>
                 </div>
-              </div>
-            ) : (
-              <div className="mt-4 flex min-h-[300px] flex-col items-center justify-center text-center">
-                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-muted/28 text-muted-foreground">
-                  <Search className="h-7 w-7" />
                 </div>
-                <div className="text-sm font-medium text-foreground/80">没有发现候选样板行</div>
-                <div className="mt-2 max-w-lg text-[13px] leading-6 text-muted-foreground">
-                  可尝试降低最小命中比例、减少最少命中文档数，或增加扫描文档数。
+              ) : (
+                <div className="mt-4 flex min-h-[200px] flex-col items-center justify-center border border-dashed border-border/60 bg-muted/[0.08] text-center">
+                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted/35 text-muted-foreground">
+                    <Search className="h-6 w-6" />
+                  </div>
+                  <div className="text-sm font-medium text-foreground/80">没有发现候选样板行</div>
+                  <div className="mt-2 max-w-lg text-[13px] leading-6 text-muted-foreground">
+                    可尝试降低最小命中比例、减少最少命中文档数，或增加扫描文档数。
+                  </div>
                 </div>
-              </div>
-            )}
-          </Panel>
-        ) : (
-          <Panel padding="md" className="rounded-xl border-border/55 shadow-none hover:shadow-none">
-            <div className="flex min-h-[320px] flex-col items-center justify-center text-center">
-              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/28 text-muted-foreground">
-                <Search className="h-8 w-8" />
+              )}
+            </div>
+          ) : (
+            <div className="flex min-h-[220px] flex-col items-center justify-center border border-dashed border-border/60 bg-muted/[0.08] text-center">
+              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-muted/35 text-muted-foreground">
+                <Search className="h-7 w-7" />
               </div>
               <div className="text-sm font-medium text-foreground/80">尚未生成候选结果</div>
               <div className="mt-2 max-w-lg text-[13px] leading-6 text-muted-foreground">
                 点击右上角“扫描”开始生成候选行，再勾选需要写入治理配置的规则。
               </div>
             </div>
-          </Panel>
-        )}
+          )}
+        </section>
       </div>
     </PageScaffold>
   )

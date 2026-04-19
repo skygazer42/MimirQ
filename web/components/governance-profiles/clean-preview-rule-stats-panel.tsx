@@ -39,7 +39,7 @@ export function CleanPreviewRuleStatsPanel({
             >
               <div className="min-w-0">
                 <div className="text-[11px] font-mono text-foreground break-all">{it.pattern}</div>
-                <div className="mt-1 text-[10px] text-muted-foreground font-mono">
+                <div className="mt-1 text-[11px] text-muted-foreground font-mono">
                   {it.source ? `source: ${it.source === 'pack' ? `pack:${it.pack || 'unknown'}` : it.source} · ` : ''}
                   flags: {Number(it.flags) || 0}
                   {typeof it.repl === 'string' && it.repl ? ` · repl: ${it.repl}` : ''}

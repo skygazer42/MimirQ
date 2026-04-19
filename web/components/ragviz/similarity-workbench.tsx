@@ -1950,7 +1950,7 @@ function NumberField({
     <label className="space-y-1.5 block">
       <div className="flex items-center justify-between gap-2">
         <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-foreground/72">{label}</div>
-        <div className="text-[10px] text-muted-foreground">
+        <div className="text-[11px] text-muted-foreground">
           {min}-{max}
         </div>
       </div>

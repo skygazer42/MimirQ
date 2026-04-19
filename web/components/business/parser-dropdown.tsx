@@ -143,12 +143,12 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
               {selectedOption.label}
             </span>
             {selectedOption.badge && (
-              <span className="text-[10px] font-medium px-1.5 py-0.5 bg-sky-100 text-sky-600 dark:bg-sky-500/20 dark:text-sky-300 rounded">
+              <span className="text-[11px] font-medium px-1.5 py-0.5 bg-sky-100 text-sky-600 dark:bg-sky-500/20 dark:text-sky-300 rounded">
                 {selectedOption.badge}
               </span>
             )}
             {selectedOption.value === 'paddle_vl' && paddleVlVersionBadge ? (
-              <span className="text-[10px] font-medium px-1.5 py-0.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300 rounded">
+              <span className="text-[11px] font-medium px-1.5 py-0.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300 rounded">
                 {paddleVlVersionBadge}
               </span>
             ) : null}
@@ -250,7 +250,7 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
                       {option.badge && (
                         <span
                           className={cn(
-                            'text-[10px] font-medium px-1.5 py-0.5 rounded',
+                            'text-[11px] font-medium px-1.5 py-0.5 rounded',
                             isSelected
                               ? 'bg-sky-100 text-sky-600 dark:bg-sky-500/20 dark:text-sky-300'
                               : 'bg-muted text-muted-foreground'
@@ -262,7 +262,7 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
                       {option.value === 'paddle_vl' && availability === true && paddleVlVersionBadge ? (
                         <span
                           className={cn(
-                            'text-[10px] font-medium px-1.5 py-0.5 rounded',
+                            'text-[11px] font-medium px-1.5 py-0.5 rounded',
                             isSelected
                               ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
                               : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
@@ -275,7 +275,7 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
                     <p className="text-xs text-muted-foreground truncate">{option.description}</p>
                   </div>
                   {isDisabled && (
-                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground flex-shrink-0">
+                    <span className="text-[11px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground flex-shrink-0">
                       未启用
                     </span>
                   )}

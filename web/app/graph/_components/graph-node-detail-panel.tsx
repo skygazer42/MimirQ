@@ -192,14 +192,14 @@ function GraphNodeKgDetail({
     const eventDetail = kgNodeDetail as KGEventDetailResponse
     return (
       <div className="rounded-lg border border-[#d3efdf]/75 bg-[rgba(223,255,236,0.52)] p-2.5">
-        <div className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-emerald-800/70">Entities</div>
+        <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-emerald-800/70">Entities</div>
         <div className="space-y-1.5">
           {eventDetail.entities?.slice(0, 12)?.map((row) => (
             <div key={row.entity.id} className="flex items-center justify-between gap-2 text-[11px]">
               <span className="truncate text-foreground" title={row.entity.name}>
                 {row.entity.name || row.entity.id}
               </span>
-              <span className="rounded-md bg-background/70 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+              <span className="rounded-md bg-background/70 px-1.5 py-0.5 text-[11px] text-muted-foreground">
                 {row.role || row.entity.type}
               </span>
             </div>
@@ -214,7 +214,7 @@ function GraphNodeKgDetail({
   return (
     <div className="space-y-2.5">
       <div className="rounded-lg border border-[#c8edf1]/75 bg-[rgba(204,254,255,0.46)] p-2.5">
-        <div className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-info/70">Recent Events</div>
+        <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-info/70">Recent Events</div>
         <div className="space-y-1.5">
           {entityDetail.events?.slice(0, 6)?.map((ev) => (
             <div key={ev.id} className="truncate text-[11px] text-foreground" title={ev.title}>
@@ -225,14 +225,14 @@ function GraphNodeKgDetail({
       </div>
 
       <div className="rounded-lg border border-[#d3efdf]/75 bg-[rgba(223,255,236,0.52)] p-2.5">
-        <div className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-emerald-800/70">Top Neighbors</div>
+        <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-emerald-800/70">Top Neighbors</div>
         <div className="space-y-1.5">
           {entityDetail.neighbors?.slice(0, 8)?.map((neighbor) => (
             <div key={neighbor.entity_id} className="flex items-center justify-between gap-2 text-[11px]">
               <span className="truncate text-foreground" title={neighbor.name}>
                 {neighbor.name || neighbor.entity_id}
               </span>
-              <span className="rounded-md bg-background/70 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+              <span className="rounded-md bg-background/70 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
                 {neighbor.count}
               </span>
             </div>
@@ -241,7 +241,7 @@ function GraphNodeKgDetail({
       </div>
 
       <div className="rounded-lg border border-[#efe5c9]/80 bg-[rgba(255,244,214,0.56)] p-2.5">
-        <div className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-amber-800/75">Aliases</div>
+        <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-amber-800/75">Aliases</div>
         {entityAliasesLoading ? (
           <div className="text-[11px] text-muted-foreground">Loading...</div>
         ) : entityAliases.length === 0 ? (
@@ -249,7 +249,7 @@ function GraphNodeKgDetail({
         ) : (
           <div className="flex flex-wrap gap-1.5">
             {entityAliases.slice(0, 12).map((alias) => (
-              <div key={alias.id} className="inline-flex items-center gap-1 rounded-full border border-border/65 bg-background/72 px-2 py-0.5 text-[10px]">
+              <div key={alias.id} className="inline-flex items-center gap-1 rounded-full border border-border/65 bg-background/72 px-2 py-0.5 text-[11px]">
                 <span className="max-w-[150px] truncate" title={alias.alias}>
                   {alias.alias}
                 </span>
@@ -286,7 +286,7 @@ function GraphNodeKgDetail({
       </div>
 
       <div className="rounded-lg border border-[#d9defd]/78 bg-[rgba(238,240,255,0.6)] p-2.5">
-        <div className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-indigo-800/70">Suggestions</div>
+        <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-indigo-800/70">Suggestions</div>
         {aliasSuggestionsLoading ? (
           <div className="text-[11px] text-muted-foreground">Loading...</div>
         ) : aliasSuggestions.length === 0 ? (
@@ -302,7 +302,7 @@ function GraphNodeKgDetail({
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="h-6.5 border-[#d9defd]/80 bg-background/72 px-2 text-[10px] shadow-none hover:bg-background"
+                  className="h-6.5 border-[#d9defd]/80 bg-background/72 px-2 text-[11px] shadow-none hover:bg-background"
                   onClick={() => onMergeAliasSuggestion(suggestion)}
                 >
                   合并
@@ -366,7 +366,7 @@ export function GraphNodeDetailPanel({
     : []
 
   const quickActionBaseClass =
-    'h-8 w-full rounded-lg px-2 text-[10px] text-slate-700 shadow-none hover:text-slate-900'
+    'h-8 w-full rounded-lg px-2 text-[11px] text-slate-700 shadow-none hover:text-slate-900'
   const panelRef = useRef<HTMLDivElement>(null)
   const dragStateRef = useRef<{
     pointerId: number
@@ -566,7 +566,7 @@ export function GraphNodeDetailPanel({
                     <span
                       key={`${badge.label}:${badge.value}`}
                       className={cn(
-                        'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium tracking-[0.02em]',
+                        'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium tracking-[0.02em]',
                         badge.className
                       )}
                     >
@@ -632,7 +632,7 @@ export function GraphNodeDetailPanel({
               <Button
                 variant="outline"
                 onClick={onDeleteNode}
-                className="h-8 w-full rounded-lg border-destructive/20 bg-destructive/5 px-2 text-[10px] text-destructive shadow-none hover:border-destructive/35 hover:bg-destructive/10 hover:text-destructive"
+                className="h-8 w-full rounded-lg border-destructive/20 bg-destructive/5 px-2 text-[11px] text-destructive shadow-none hover:border-destructive/35 hover:bg-destructive/10 hover:text-destructive"
               >
                 <Trash2 className="w-3.5 h-3.5 mr-1" />
                 删除
@@ -654,7 +654,7 @@ export function GraphNodeDetailPanel({
                 <Button
                   variant="outline"
                   onClick={onOpenMerge}
-                  className="h-7.5 w-full justify-start rounded-lg border-[#efe5c9]/75 bg-[rgba(255,244,214,0.64)] px-2.5 text-[10px] text-slate-700 shadow-none hover:bg-[rgba(255,244,214,0.9)] hover:text-slate-900"
+                  className="h-7.5 w-full justify-start rounded-lg border-[#efe5c9]/75 bg-[rgba(255,244,214,0.64)] px-2.5 text-[11px] text-slate-700 shadow-none hover:bg-[rgba(255,244,214,0.9)] hover:text-slate-900"
                 >
                   <BoxSelect className="w-3 h-3 mr-1.5" />
                   合并
@@ -662,7 +662,7 @@ export function GraphNodeDetailPanel({
                 <Button
                   variant="outline"
                   onClick={onOpenSplit}
-                  className="h-7.5 w-full justify-start rounded-lg border-[#d9defd]/75 bg-[rgba(238,240,255,0.7)] px-2.5 text-[10px] text-slate-700 shadow-none hover:bg-[rgba(238,240,255,0.94)] hover:text-slate-900"
+                  className="h-7.5 w-full justify-start rounded-lg border-[#d9defd]/75 bg-[rgba(238,240,255,0.7)] px-2.5 text-[11px] text-slate-700 shadow-none hover:bg-[rgba(238,240,255,0.94)] hover:text-slate-900"
                 >
                   <Box className="w-3 h-3 mr-1.5" />
                   拆分
@@ -675,7 +675,7 @@ export function GraphNodeDetailPanel({
                 variant="outline"
                 onClick={onUndoLastResolution}
                 disabled={undoSubmitting}
-                className="h-7.5 w-full justify-start rounded-lg border-primary/20 bg-primary/5 px-2.5 text-[10px] text-primary shadow-none hover:bg-primary/10 hover:text-primary"
+                className="h-7.5 w-full justify-start rounded-lg border-primary/20 bg-primary/5 px-2.5 text-[11px] text-primary shadow-none hover:bg-primary/10 hover:text-primary"
               >
                 <RefreshCw className="w-3 h-3 mr-1.5" />
                 {undoSubmitting ? '撤销中…' : '撤销上次变更'}
@@ -683,7 +683,7 @@ export function GraphNodeDetailPanel({
             ) : null}
 
             <div className="space-y-2">
-              <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                 <Info className="w-3 h-3 text-indigo-700/75" />
                 属性详情
               </div>
@@ -696,7 +696,7 @@ export function GraphNodeDetailPanel({
                       DETAIL_TONE_CLASSES[index % DETAIL_TONE_CLASSES.length]
                     )}
                   >
-                    <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.06em] text-slate-700/78 capitalize">
+                    <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.06em] text-slate-700/78 capitalize">
                       {key}
                     </div>
                     <div className="min-w-0 break-words text-[11px] leading-4.5 text-foreground/88">
@@ -713,7 +713,7 @@ export function GraphNodeDetailPanel({
                       DETAIL_TONE_CLASSES[0]
                     )}
                   >
-                    <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.08em] text-info/70">
+                    <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.08em] text-info/70">
                       文档来源
                     </div>
                     <div className="text-[11px] leading-4.5 text-info underline underline-offset-4">
@@ -732,11 +732,11 @@ export function GraphNodeDetailPanel({
                   onClick={() => setIsKgDetailExpanded((value) => !value)}
                   className="flex w-full items-center justify-between rounded-xl border border-[#d9defd]/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(241,245,255,0.82))] px-3 py-2 text-left transition-colors hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.9),rgba(236,242,255,0.92))] focus-ring"
                 >
-                  <span className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  <span className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                     <Layers className="w-3 h-3 text-amber-700/80" />
                     KG Detail
                   </span>
-                  <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-600">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-600">
                     {isKgDetailExpanded ? '收起' : '展开'}
                     <ChevronDown className={cn('h-3.5 w-3.5 transition-transform duration-200', isKgDetailExpanded ? 'rotate-180' : null)} />
                   </span>

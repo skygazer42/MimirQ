@@ -994,7 +994,7 @@ function TraceCitationDiffList({
         <Badge
           variant="soft"
           className={cn(
-            'text-[10px]',
+            'text-[11px]',
             tone === 'added' ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : undefined,
             tone === 'removed' ? 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300' : undefined
           )}
@@ -1062,7 +1062,7 @@ function TraceCitationScoreShiftList({
     <div className="rounded-2xl border border-border/60 bg-card/40 p-3">
       <div className="flex items-center justify-between gap-2">
         <div className="text-sm font-semibold text-foreground">{t("panel.evidenceDrift.scoreShiftTitle")}</div>
-        <Badge variant="soft" className="text-[10px]">
+        <Badge variant="soft" className="text-[11px]">
           {items.length}
         </Badge>
       </div>
@@ -1534,7 +1534,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="text-xs font-medium text-foreground">{formatTs(t.ts_ms)}</div>
-                    <Badge variant="soft" className="text-[10px]">
+                    <Badge variant="soft" className="text-[11px]">
                       {mode}
                     </Badge>
                   </div>
@@ -1558,22 +1558,22 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
             <Panel variant="glass" className="flex flex-col gap-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="soft" className="text-[10px]">
+                  <Badge variant="soft" className="text-[11px]">
                     request: {selected.request_id || '—'}
                   </Badge>
-                  <Badge variant="soft" className="text-[10px]">
+                  <Badge variant="soft" className="text-[11px]">
                     mode: {selected?.retrieval?.mode || '—'}
                   </Badge>
                   {retrievalConfigHash ? (
                     <Badge
                       variant="soft"
-                      className="text-[10px] font-mono"
+                      className="text-[11px] font-mono"
                       title={retrievalConfigHash}
                     >
                       cfg: {shortHash(retrievalConfigHash)}
                     </Badge>
                   ) : null}
-                  <Badge variant="soft" className="text-[10px]">
+                  <Badge variant="soft" className="text-[11px]">
                     citations: {selected.citations_count}
                   </Badge>
                 </div>
@@ -1655,7 +1655,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                                 >
                                   <div className="flex items-center gap-2 text-xs font-medium text-foreground">
                                     <span className="font-mono">{shortHash(candidate.requestId, { head: 10, tail: 6 })}</span>
-                                    <Badge variant="soft" className="text-[10px]">
+                                    <Badge variant="soft" className="text-[11px]">
                                       {candidate.sameRetrievalConfig === false
                                         ? 'cfg changed'
                                         : candidate.sameRetrievalConfig === true
@@ -1726,7 +1726,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                                 {t("panel.evidenceDrift.description")}
                               </div>
                             </div>
-                            <Badge variant="soft" className="text-[10px]">
+                            <Badge variant="soft" className="text-[11px]">
                               A {requestId || '—'} vs B {selectedDiffComparisonTrace.request_id || '—'}
                             </Badge>
                           </div>
@@ -1874,7 +1874,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                   <div className="mt-1 text-xs text-muted-foreground">{t("panel.timeline.description")}</div>
                 </div>
                 {selectedPipelineSection && selectedPipelineSectionIndex >= 0 ? (
-                  <Badge variant="soft" className="text-[10px]">
+                  <Badge variant="soft" className="text-[11px]">
                     stage {selectedPipelineSectionIndex + 1}/{pipelineInspectorSections.length}
                   </Badge>
                 ) : null}
@@ -1991,7 +1991,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                           <div className="mt-1 text-xs text-muted-foreground">{t("panel.channels.focusDescription")}</div>
                         </div>
                         {activeChannelSummary ? (
-                          <Badge variant="soft" className="text-[10px]">
+                          <Badge variant="soft" className="text-[11px]">
                             {activeChannelSummary.matchCount}/{selected.citations.length} hits · focus=
                             {getRagTraceCitationChannelLabel(selectedCitationChannel, t)}
                           </Badge>
@@ -2030,37 +2030,37 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
 
                     <div className="flex flex-wrap items-center gap-2">
                       {channels.retrieval_mode ? (
-                        <Badge variant="soft" className="text-[10px]">
+                        <Badge variant="soft" className="text-[11px]">
                           mode={String(channels.retrieval_mode)}
                         </Badge>
                       ) : null}
                       {channels.fusion_strategy ? (
-                        <Badge variant="soft" className="text-[10px]">
+                        <Badge variant="soft" className="text-[11px]">
                           fusion={String(channels.fusion_strategy)}
                         </Badge>
                       ) : null}
                       {channels.vector_backend ? (
-                        <Badge variant="soft" className="text-[10px]">
+                        <Badge variant="soft" className="text-[11px]">
                           vec={String(channels.vector_backend)}
                         </Badge>
                       ) : null}
                       {typeof channels.rrf_k === 'number' ? (
-                        <Badge variant="soft" className="text-[10px]">
+                        <Badge variant="soft" className="text-[11px]">
                           rrf_k={channels.rrf_k}
                         </Badge>
                       ) : null}
                       {channels?.timing?.vector_ms == null ? null : (
-                        <Badge variant="soft" className="text-[10px]">
+                        <Badge variant="soft" className="text-[11px]">
                           vector_ms={channels.timing.vector_ms}
                         </Badge>
                       )}
                       {channels?.timing?.bm25_ms == null ? null : (
-                        <Badge variant="soft" className="text-[10px]">
+                        <Badge variant="soft" className="text-[11px]">
                           bm25_ms={channels.timing.bm25_ms}
                         </Badge>
                       )}
                       {channels?.timing?.fusion_ms == null ? null : (
-                        <Badge variant="soft" className="text-[10px]">
+                        <Badge variant="soft" className="text-[11px]">
                           fusion_ms={channels.timing.fusion_ms}
                         </Badge>
                       )}
@@ -2069,47 +2069,47 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                     {hierarchyRecall ? (
                       <div className="flex flex-wrap items-center gap-2">
                         {hierarchyRecall.enabled == null ? null : (
-                          <Badge variant="soft" className="text-[10px]">
+                          <Badge variant="soft" className="text-[11px]">
                             hierarchy={hierarchyRecall.enabled ? 'on' : 'off'}
                           </Badge>
                         )}
                         {hierarchyRecall.family_collapse == null ? null : (
-                          <Badge variant="soft" className="text-[10px]">
+                          <Badge variant="soft" className="text-[11px]">
                             family_collapse={String(Boolean(hierarchyRecall.family_collapse))}
                           </Badge>
                         )}
                         {hierarchyRecall.family_aggregation ? (
-                          <Badge variant="soft" className="text-[10px]">
+                          <Badge variant="soft" className="text-[11px]">
                             family_aggregation={String(hierarchyRecall.family_aggregation)}
                           </Badge>
                         ) : null}
                         {hierarchyRecall.tree_dedup == null ? null : (
-                          <Badge variant="soft" className="text-[10px]">
+                          <Badge variant="soft" className="text-[11px]">
                             tree_dedup={String(Boolean(hierarchyRecall.tree_dedup))}
                           </Badge>
                         )}
                         {hierarchyRecall.overfetch_factor == null ? null : (
-                          <Badge variant="soft" className="text-[10px]">
+                          <Badge variant="soft" className="text-[11px]">
                             overfetch_factor={String(hierarchyRecall.overfetch_factor)}
                           </Badge>
                         )}
                         {hierarchyRecall.parent_depth == null ? null : (
-                          <Badge variant="soft" className="text-[10px]">
+                          <Badge variant="soft" className="text-[11px]">
                             parent_depth={String(hierarchyRecall.parent_depth)}
                           </Badge>
                         )}
                         {hierarchyRecall.sibling_window == null ? null : (
-                          <Badge variant="soft" className="text-[10px]">
+                          <Badge variant="soft" className="text-[11px]">
                             sibling_window={String(hierarchyRecall.sibling_window)}
                           </Badge>
                         )}
                         {hierarchyRecall.context_expansion_used == null ? null : (
-                          <Badge variant="soft" className="text-[10px]">
+                          <Badge variant="soft" className="text-[11px]">
                             context_expansion_used={String(Boolean(hierarchyRecall.context_expansion_used))}
                           </Badge>
                         )}
                         {hierarchyRecall.context_expansion_error ? (
-                          <Badge variant="soft" className="text-[10px]">
+                          <Badge variant="soft" className="text-[11px]">
                             context_expansion_error={String(hierarchyRecall.context_expansion_error)}
                           </Badge>
                         ) : null}
@@ -2119,12 +2119,12 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                     {(rerankSkipReason || rerankError) ? (
                       <div className="flex flex-wrap items-center gap-2">
                         {rerankSkipReason ? (
-                          <Badge variant="soft" className="text-[10px]">
+                          <Badge variant="soft" className="text-[11px]">
                             skip_reason={rerankSkipReason}
                           </Badge>
                         ) : null}
                         {rerankError ? (
-                          <Badge variant="soft" className="text-[10px]">
+                          <Badge variant="soft" className="text-[11px]">
                             rerank_error={rerankError}
                           </Badge>
                         ) : null}
@@ -2210,17 +2210,17 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                                 >
                                   <div className="min-w-0 space-y-1">
                                     <div className="flex flex-wrap items-center gap-2">
-                                      <Badge variant="soft" className="text-[10px]">
+                                      <Badge variant="soft" className="text-[11px]">
                                         #{row.rank}
                                       </Badge>
-                                      <Badge variant="soft" className="text-[10px]">
+                                      <Badge variant="soft" className="text-[11px]">
                                         Δ {deltaLabel}
                                       </Badge>
-                                      <Badge variant="soft" className="text-[10px]">
+                                      <Badge variant="soft" className="text-[11px]">
                                         score={row.compositeScore.toFixed(3)}
                                       </Badge>
                                       {row.dominantChannelLabel ? (
-                                        <Badge variant="soft" className="text-[10px]">
+                                        <Badge variant="soft" className="text-[11px]">
                                           dominant={row.dominantChannelLabel}
                                         </Badge>
                                       ) : null}
@@ -2300,7 +2300,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="soft" className="text-[10px]">
+                  <Badge variant="soft" className="text-[11px]">
                     focus={getRagTraceCitationChannelLabel(selectedCitationChannel, t)}
                   </Badge>
                    {lastOpenedTraceCitationTarget ? (
@@ -2345,76 +2345,76 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                       >
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
-                            <Badge variant="soft" className="text-[10px]">
+                            <Badge variant="soft" className="text-[11px]">
                               {c.hit_type || 'hit'}
                             </Badge>
                             {role ? (
-                              <Badge variant="soft" className="text-[10px]">
+                              <Badge variant="soft" className="text-[11px]">
                                 role={role}
                               </Badge>
                             ) : null}
                             {neighborOf ? (
-                              <Badge variant="soft" className="text-[10px]" title={neighborOf}>
+                              <Badge variant="soft" className="text-[11px]" title={neighborOf}>
                                 neighbor_of={shortHash(neighborOf, { head: 10, tail: 6 })}
                               </Badge>
                             ) : null}
                             {score == null ? null : (
-                              <Badge variant="soft" className="text-[10px]">
+                              <Badge variant="soft" className="text-[11px]">
                                 score={score.toFixed(3)}
                               </Badge>
                             )}
                             {focusedChannelScore != null && selectedCitationChannel !== 'all' ? (
-                              <Badge variant="soft" className="text-[10px] border-sky-500/20 bg-sky-500/10">
+                              <Badge variant="soft" className="text-[11px] border-sky-500/20 bg-sky-500/10">
                                 {getRagTraceCitationChannelLabel(selectedCitationChannel, t)}={focusedChannelScore.toFixed(3)}
                               </Badge>
                             ) : null}
                             {rerankScore ? (
-                              <Badge variant="soft" className="text-[10px]">
+                              <Badge variant="soft" className="text-[11px]">
                                 rerank={rerankScore}
                               </Badge>
                             ) : null}
                             {retrievalScore ? (
-                              <Badge variant="soft" className="text-[10px]">
+                              <Badge variant="soft" className="text-[11px]">
                                 retrieval={retrievalScore}
                               </Badge>
                             ) : null}
                             {relScore ? (
-                              <Badge variant="soft" className="text-[10px]">
+                              <Badge variant="soft" className="text-[11px]">
                                 rel={relScore}
                               </Badge>
                             ) : null}
                             {vectorScore ? (
-                              <Badge variant="soft" className="text-[10px]">
+                              <Badge variant="soft" className="text-[11px]">
                                 v={vectorScore}
                               </Badge>
                             ) : null}
                             {bm25Score ? (
-                              <Badge variant="soft" className="text-[10px]">
+                              <Badge variant="soft" className="text-[11px]">
                                 bm25={bm25Score}
                               </Badge>
                             ) : null}
                             {lexicalScore ? (
-                              <Badge variant="soft" className="text-[10px]">
+                              <Badge variant="soft" className="text-[11px]">
                                 lex={lexicalScore}
                               </Badge>
                             ) : null}
                             {sparseScore ? (
-                              <Badge variant="soft" className="text-[10px]">
+                              <Badge variant="soft" className="text-[11px]">
                                 sparse={sparseScore}
                               </Badge>
                             ) : null}
                             {colbertScore ? (
-                              <Badge variant="soft" className="text-[10px]">
+                              <Badge variant="soft" className="text-[11px]">
                                 colbert={colbertScore}
                               </Badge>
                             ) : null}
                             {page ? (
-                              <Badge variant="soft" className="text-[10px]">
+                              <Badge variant="soft" className="text-[11px]">
                                 {page}
                               </Badge>
                             ) : null}
                             {c.has_image ? (
-                              <Badge variant="soft" className="text-[10px]">
+                              <Badge variant="soft" className="text-[11px]">
                                 image
                               </Badge>
                             ) : null}

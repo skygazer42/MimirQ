@@ -24,6 +24,26 @@ const config = {
         sans: ["var(--font-sans)", ...defaultTheme.fontFamily.sans],
         mono: ["var(--font-mono)", ...defaultTheme.fontFamily.mono],
       },
+      fontSize: {
+        /* Typographic scale (8 steps, 1.2 ratio) — use these instead of arbitrary [10px]/[11px] */
+        'micro': ['0.6875rem', { lineHeight: '1rem', letterSpacing: '0.01em' }],   /* 11px */
+        'caption': ['0.75rem', { lineHeight: '1.125rem' }],                         /* 12px */
+        'compact': ['0.8125rem', { lineHeight: '1.25rem' }],                        /* 13px */
+        'body': ['0.875rem', { lineHeight: '1.375rem' }],                           /* 14px */
+        'base-plus': ['1rem', { lineHeight: '1.5rem' }],                            /* 16px */
+        'title-sm': ['1.125rem', { lineHeight: '1.5rem', letterSpacing: '-0.01em' }],/* 18px */
+        'title': ['1.375rem', { lineHeight: '1.75rem', letterSpacing: '-0.015em' }],/* 22px */
+        'display': ['1.75rem', { lineHeight: '2.125rem', letterSpacing: '-0.02em' }],/* 28px */
+
+        /* Legacy alias kept for backward compat — prefer semantic names above */
+        detail: ['0.6875rem', { lineHeight: '1rem' }],
+      },
+      spacing: {
+        'page-x': 'var(--space-page-x)',
+        'section-y': 'var(--space-section-y)',
+        'group': 'var(--space-group)',
+        'element': 'var(--space-element)',
+      },
       zIndex: {
         // Fixed scale additions (avoid arbitrary `z-[...]`).
         60: "60",
@@ -50,6 +70,16 @@ const config = {
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
+          50: "hsl(var(--primary-50))",
+          100: "hsl(var(--primary-100))",
+          200: "hsl(var(--primary-200))",
+          300: "hsl(var(--primary-300))",
+          400: "hsl(var(--primary-400))",
+          500: "hsl(var(--primary-500))",
+          600: "hsl(var(--primary-600))",
+          700: "hsl(var(--primary-700))",
+          800: "hsl(var(--primary-800))",
+          900: "hsl(var(--primary-900))",
         },
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
@@ -102,6 +132,14 @@ const config = {
         card: {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
+        },
+        surface: {
+          0: "hsl(var(--surface-0))",
+          1: "hsl(var(--surface-1))",
+          2: "hsl(var(--surface-2))",
+          3: "hsl(var(--surface-3))",
+          4: "hsl(var(--surface-4))",
+          5: "hsl(var(--surface-5))",
         },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",

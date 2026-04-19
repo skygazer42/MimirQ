@@ -45,7 +45,7 @@ export function ModelProviderCard({ provider, onConfigure }: Readonly<ModelProvi
 
         <Badge
           variant={provider.isConfigured ? 'success' : 'soft'}
-          className="gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold leading-4"
+          className="gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold leading-4"
         >
           {provider.isConfigured ? (
             <>
@@ -66,13 +66,13 @@ export function ModelProviderCard({ provider, onConfigure }: Readonly<ModelProvi
         {provider.models.slice(0, 3).map((model) => (
           <span
             key={model.id}
-            className="inline-flex items-center rounded-md border border-border/60 bg-muted/35 px-1.5 py-0.5 text-[10px] leading-4 text-muted-foreground"
+            className="inline-flex items-center rounded-md border border-border/60 bg-muted/35 px-1.5 py-0.5 text-[11px] leading-4 text-muted-foreground"
           >
             {model.displayName}
           </span>
         ))}
         {provider.models.length > 3 && (
-          <span className="inline-flex items-center rounded-md border border-border/60 bg-muted/35 px-1.5 py-0.5 text-[10px] leading-4 text-muted-foreground/70">
+          <span className="inline-flex items-center rounded-md border border-border/60 bg-muted/35 px-1.5 py-0.5 text-[11px] leading-4 text-muted-foreground/70">
             +{provider.models.length - 3}
           </span>
         )}

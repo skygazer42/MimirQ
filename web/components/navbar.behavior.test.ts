@@ -170,8 +170,9 @@ describe('Navbar behavior', () => {
       (node) => node.textContent?.includes('items.ragVisualization')
     )
 
-    expect(knowledgeSection?.textContent).not.toContain('sections.current')
-    expect(analysisSection?.textContent).toContain('sections.current')
+    // After V3: "current" badge removed; verify active section is identified by expanded state
+    const analysisToggle = view.container.querySelector('button[aria-controls="sidebar-section-analysis"]') as HTMLButtonElement
+    expect(analysisToggle?.getAttribute('aria-expanded')).toBe('true')
     expect(knowledgeBaseLink?.getAttribute('aria-current')).toBeNull()
     expect(ragVisualizationLink?.getAttribute('aria-current')).toBe('page')
 
@@ -204,10 +205,9 @@ describe('Navbar behavior', () => {
     ) as HTMLButtonElement
     const analysisSection = secondView.container.querySelector('#sidebar-section-analysis')
 
-    expect(coreSection?.className).toContain('grid-rows-[0fr]')
-    expect(knowledgeSection?.className).toContain('grid-rows-[0fr]')
-    expect(analysisToggle.textContent).toContain('sections.current')
-    expect(analysisSection?.className).toContain('grid-rows-[1fr]')
+    // After V3: verify analysis section auto-opens for active route
+    expect(analysisToggle.getAttribute('aria-expanded')).toBe('true')
+    expect(analysisSection?.getAttribute('class')).toContain('grid-rows-[1fr]')
 
     secondView.unmount()
   })

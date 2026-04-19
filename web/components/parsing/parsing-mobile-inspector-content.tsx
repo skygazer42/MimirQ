@@ -149,7 +149,7 @@ export function ParsingMobileInspectorContent({
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span
                             className={cn(
-                              'inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium',
+                              'inline-flex items-center rounded-full border px-1.5 py-0.5 text-[11px] font-medium',
                               layoutMeta.chipClassName
                             )}
                           >
@@ -196,7 +196,7 @@ export function ParsingMobileInspectorContent({
                           <div className="flex flex-wrap items-center gap-1.5">
                             <div className="truncate font-medium text-foreground/85">{String(element.kind || 'paragraph')}</div>
                             {element.visual_kind ? (
-                              <span className="inline-flex items-center rounded-full border border-border/60 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                              <span className="inline-flex items-center rounded-full border border-border/60 px-1.5 py-0.5 text-[11px] text-muted-foreground">
                                 {element.visual_kind}
                               </span>
                             ) : null}

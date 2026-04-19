@@ -55,7 +55,7 @@ export function KnowledgeInspector({
                   {fileType ? (
                     <span
                       className={cn(
-                        'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase',
+                        'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase',
                         fileType.bg,
                         fileType.border,
                         fileType.color
@@ -74,17 +74,17 @@ export function KnowledgeInspector({
 
           <div className="grid grid-cols-2 gap-2.5 text-[11px] text-muted-foreground">
             <div className="rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
-              <div className="text-[10px] uppercase text-muted-foreground/70">Size</div>
+              <div className="text-[11px] uppercase text-muted-foreground/70">Size</div>
               <div className="font-mono tabular-nums text-foreground">{formatFileSize(Number(selected.file_size || 0))}</div>
             </div>
             <div className="rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
-              <div className="text-[10px] uppercase text-muted-foreground/70">Created</div>
+              <div className="text-[11px] uppercase text-muted-foreground/70">Created</div>
               <div className="font-mono tabular-nums text-foreground">{formatDate(selected.created_at)}</div>
             </div>
 
             {selected.dataset_id ? (
               <div className="col-span-2 rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
-                <div className="text-[10px] uppercase text-muted-foreground/70">Dataset</div>
+                <div className="text-[11px] uppercase text-muted-foreground/70">Dataset</div>
                 <div className="break-all font-mono text-foreground">{selected.dataset_id}</div>
               </div>
             ) : null}
@@ -92,9 +92,9 @@ export function KnowledgeInspector({
             {sourcePath ? (
               <div className="col-span-2 rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="text-[10px] uppercase text-muted-foreground/70">Source</div>
+                  <div className="text-[11px] uppercase text-muted-foreground/70">Source</div>
                   {folderPath ? (
-                    <div className="max-w-[160px] truncate text-[10px] text-muted-foreground/70" title={folderPath}>
+                    <div className="max-w-[160px] truncate text-[11px] text-muted-foreground/70" title={folderPath}>
                       {folderPath}
                     </div>
                   ) : null}

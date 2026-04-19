@@ -41,7 +41,7 @@ export function ModelProvidersSection({
           <Server className="h-4 w-4 text-primary" />
           模型服务商
         </h2>
-        <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[10px] font-semibold text-primary">
+        <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary">
           <Lightbulb className="h-3.5 w-3.5" />
           <span>点击卡片配置 API 密钥（API Key）</span>
         </div>

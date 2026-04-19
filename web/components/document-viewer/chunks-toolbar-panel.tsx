@@ -68,7 +68,7 @@ export function ChunksToolbarPanel({
   onDeleteChunk,
 }: Readonly<ChunksToolbarPanelProps>) {
   return (
-    <div className="border-b border-border bg-background/60 p-4 backdrop-blur-sm">
+    <div className="border-b border-border bg-background p-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <input
           ref={chunkSearchRef}

@@ -2,9 +2,9 @@ export const systemPageTokens = {
   heading: 'text-[13px] font-semibold tracking-[-0.01em] text-foreground',
   body: 'text-[12px] leading-[1.45] text-muted-foreground',
   subtle: 'text-[11px] leading-4 text-muted-foreground/80',
-  microLabel: 'text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground',
+  microLabel: 'text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground',
   monoMeta: 'font-mono text-[11px] leading-4 text-muted-foreground',
-  tableHead: 'text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground',
+  tableHead: 'text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground',
 } as const
 
 export const systemDenseControls = {

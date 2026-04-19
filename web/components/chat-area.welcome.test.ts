@@ -25,7 +25,7 @@ describe('chat-area welcome screen', () => {
   it('keeps the welcome state on a wider workbench layout instead of a narrow centered column', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'chat-area.tsx'), 'utf8')
 
-    expect(src).toContain("isWelcomeState ? 'max-w-6xl' : 'max-w-4xl'")
+    expect(src).toContain("isWelcomeState ? 'max-w-6xl' : 'max-w-[44rem]'")
     expect(src).toContain('xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.95fr)]')
     expect(src).toContain('md:auto-rows-fr md:grid-cols-2')
   })

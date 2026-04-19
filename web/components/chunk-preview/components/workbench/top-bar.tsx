@@ -219,7 +219,7 @@ export function TopBar() {
   const summaryChipClass =
     'inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-background/75 px-2.5 py-1 text-[11px] leading-none text-muted-foreground'
   const stateChipClass =
-    'inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] font-medium leading-none'
+    'inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px] font-medium leading-none'
 
   const buildConfig = () => ({
     dataset_id: datasetId || undefined,
@@ -346,11 +346,11 @@ export function TopBar() {
           >
             {currentFileItem?.displayName || currentFile.name}
           </span>
-          <span className="inline-flex min-w-[2rem] items-center justify-center rounded-md bg-primary/12 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+          <span className="inline-flex min-w-[2rem] items-center justify-center rounded-md bg-primary/12 px-1.5 py-0.5 text-[11px] font-semibold text-primary">
             #{currentFileIndex + 1}
           </span>
           {currentFileItem?.originalFileType ? (
-            <span className="inline-flex items-center rounded-md border border-border/60 bg-muted/45 px-1.5 py-0.5 text-[10px] font-mono font-medium text-muted-foreground">
+            <span className="inline-flex items-center rounded-md border border-border/60 bg-muted/45 px-1.5 py-0.5 text-[11px] font-mono font-medium text-muted-foreground">
               {String(currentFileItem.originalFileType).toUpperCase()}
             </span>
           ) : null}
@@ -369,7 +369,7 @@ export function TopBar() {
               <>
                 <span className="h-3 w-px bg-border/80" />
                 <span
-                  className="inline-flex items-center rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary/90"
+                  className="inline-flex items-center rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary/90"
                   title={t('topBar.status.autoSelectedStrategyTitle', {
                     strategy: previewData.auto_selected_strategy,
                   })}

@@ -74,7 +74,7 @@ export function GraphFiltersPopover({
           <SlidersHorizontal className="w-4 h-4 mr-2" />
           筛选
           {activeGraphFilterCount > 0 ? (
-            <Badge variant="soft" className="ml-2 px-2 py-0.5 text-[10px]">
+            <Badge variant="soft" className="ml-2 px-2 py-0.5 text-[11px]">
               {activeGraphFilterCount}
             </Badge>
           ) : null}

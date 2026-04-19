@@ -72,7 +72,7 @@ export function StepIndicator({
                   {step.label}
                 </span>
                 {step.description && (
-                  <span className="text-[10px] text-muted-foreground/70 mt-0.5">
+                  <span className="text-[11px] text-muted-foreground/70 mt-0.5">
                     {step.description}
                   </span>
                 )}

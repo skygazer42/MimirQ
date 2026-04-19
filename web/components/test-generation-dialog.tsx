@@ -554,7 +554,7 @@ export function TestGenerationDialog({
                               </div>
                             )}
                             {questionType && (
-                              <span className="inline-block mt-2 px-2 py-0.5 rounded-full bg-info/10 text-[10px] text-info">
+                              <span className="inline-block mt-2 px-2 py-0.5 rounded-full bg-info/10 text-[11px] text-info">
                                 {questionType}
                               </span>
                             )}

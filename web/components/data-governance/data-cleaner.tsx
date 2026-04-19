@@ -452,7 +452,7 @@ export function DataCleaner({
                     <div key={issue.code} className="text-xs text-foreground/80">
                       <span
                         className={cn(
-                          'mr-2 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium',
+                          'mr-2 inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium',
                           getSeverityBadgeClass(issue.severity)
                         )}
                       >
