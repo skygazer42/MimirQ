@@ -7,6 +7,7 @@ describe('root layout source', () => {
   it('keeps the global shell lean while mounting the web vitals reporter', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'layout.tsx'), 'utf8')
 
+    expect(src).not.toContain("next/font/google")
     expect(src).toContain("import { connection } from 'next/server'")
     expect(src).toContain("import { getLocale, getMessages } from 'next-intl/server'")
     expect(src).toContain("import { NextIntlClientProvider } from 'next-intl'")
