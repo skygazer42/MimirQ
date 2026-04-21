@@ -106,9 +106,11 @@ documentApi.uploadBatch(files, opts)
 取自 `realChartData` 末 5 行,bucket 间距由 `ts[1] - ts[0]` 推导。
 
 **MB/s 计算(诚实近似)**:
-- 后端 timeseries 不带 bytes 维度。前端用 `documents.filter(d => d.status === 'completed')` 取最新 N 条 `file_size`,与对应 `processed_at` (若可用) 或 fallback 用 timeseries 时间窗近似,得 MB/s
-- chip 文案明确标 "近 ~5 min 均值",避免误导
-- 若 `processed_at` 字段不存在,只能用全窗口平均(粒度低),需在文案上更模糊化为"窗口均值"
+- `DocumentDetail.processed_at?: string | null` 已确认存在(OpenAPI schema)
+- 算法:`documents.filter(d => d.status === 'completed' && d.processed_at && d.file_size).filter(d => now - processed_at <= 5min).reduce(sum file_size) / 5min`
+- 即 "近 5 分钟内完成的文档,字节数总和 ÷ 300 秒"
+- chip 文案标 "近 5 min 均值"
+- 当窗口内无完成项时显示 `--`,不报错
 
 **Empty 行为**:无 timeseries 数据时显示 `--`,不报错。
 
@@ -203,6 +205,17 @@ const STAGE_TOOLTIPS: Record<typeof STAGE_KEYS[number], string> = {
   缺失 → 弹 Dialog 让用户选 dataset(SelectInput 拉 datasetApi.list)+ parser_backend(默认 localStorage 偏好)
 ```
 
+**零 dataset 边界**:若 `datasetApi.list` 返回 0 条,Dialog 显示空态:"尚无数据集,请先 [前往新建](/knowledge/datasets)",隐藏提交按钮,文件列表暂存不丢失(`pendingDropFiles` state)。
+
+**统一上传接口**:`drop-zone.tsx` 导出一个 imperative API:
+```ts
+export type DropZoneHandle = {
+  triggerFilePicker: () => void    // 打开隐藏 <input type="file" multiple>
+  uploadFiles: (files: File[]) => Promise<void>  // 共享 upload 流水线
+}
+```
+通过 `React.forwardRef` 让父级 `page-client.tsx` 持有 ref,`empty-state.tsx` 的 "上传首个文档" 按钮 onClick 调父级 handler 再转发到 `dropZoneRef.current.triggerFilePicker()`。**全部上传流量走同一函数**,避免分支实现不一致。
+
 **进度反馈**:上传后 `queryClient.invalidateQueries(['ingestion-documents'])` 触发新数据,任务自动进入列表。Per-file 失败 toast,末尾汇总。
 
 ### 4.7 #13 Skeleton Loading
@@ -228,10 +241,12 @@ const STAGE_TOOLTIPS: Record<typeof STAGE_KEYS[number], string> = {
 🗂 (大图 icon)
 "还没有任何入库任务"
 三个 CTA 横排:
-  [上传首个文档]   → 触发 drop-zone 文件选择 (input[type=file] 隐藏)
+  [上传首个文档]   → 调用 dropZoneRef.current.triggerFilePicker()(见 §4.6)
   [查看示例样本]   → 跳转 /docs/samples 或 trigger 内置示例
   [查看上手文档]   → 跳转 /docs/ingestion
 ```
+
+`dropZoneRef` 由 `page-client.tsx` 持有并下发给 `empty-state.tsx` 作为 prop(如 `onUploadClick: () => void`),`empty-state` 不直接引用 ref。
 
 ## 5. 状态管理实现细节
 
