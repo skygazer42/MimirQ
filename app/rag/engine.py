@@ -843,6 +843,13 @@ Requirements:
             "score": 0.0,
             "matched_rules": [],
         }
+        retrieval_rail_enabled = bool(getattr(settings, "RAG_RETRIEVAL_RAIL_ENABLED", False))
+        retrieval_rail_meta: dict[str, Any] = {
+            "enabled": bool(retrieval_rail_enabled),
+            "used": False,
+            "blocked_docs": 0,
+            "masked_docs": 0,
+        }
         output_guard_enabled = bool(getattr(settings, "OUTPUT_GUARD_ENABLED", False))
         output_guard_result: dict[str, Any] = {
             "enabled": bool(output_guard_enabled),
@@ -2194,6 +2201,33 @@ Requirements:
                     temporal_intent_meta = {"detected": False, "reason_codes": [], "error": str(exc)[:200]}
                     temporal_recency_meta = {"enabled": True, "used": False, "reason": "exception"}
 
+            if retrieval_rail_enabled and docs:
+                try:
+                    from app.rag.safety.retrieval_rail import apply_retrieval_rail
+
+                    rail_result = apply_retrieval_rail(
+                        docs,
+                        mask_pii=bool(getattr(settings, "RAG_RETRIEVAL_RAIL_MASK_PII", False)),
+                        pii_mask=str(getattr(settings, "RAG_RETRIEVAL_RAIL_PII_MASK", "[REDACTED]") or "[REDACTED]"),
+                    )
+                    docs = list(rail_result.get("docs") or [])
+                    meta = dict(rail_result.get("meta") or {})
+                    retrieval_rail_meta = {
+                        "enabled": True,
+                        "used": bool(meta.get("used")),
+                        "blocked_docs": int(meta.get("blocked_docs") or 0),
+                        "masked_docs": int(meta.get("masked_docs") or 0),
+                    }
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Retrieval rail failed open: %s", str(exc)[:160])
+                    retrieval_rail_meta = {
+                        "enabled": True,
+                        "used": False,
+                        "blocked_docs": 0,
+                        "masked_docs": 0,
+                        "error": str(exc)[:160],
+                    }
+
             yield {
                 "type": "event",
                 "data": {
@@ -2505,6 +2539,40 @@ Requirements:
                         merged_retry_docs.append(doc)
                     docs = merged_retry_docs[: max(0, int(top_k or 0))] if merged_retry_docs else []
 
+                retrieval_rail_enabled = bool(getattr(settings, "RAG_RETRIEVAL_RAIL_ENABLED", False))
+                retrieval_rail_meta: dict[str, Any] = {
+                    "enabled": bool(retrieval_rail_enabled),
+                    "used": False,
+                    "blocked_docs": 0,
+                    "masked_docs": 0,
+                }
+                if retrieval_rail_enabled and docs:
+                    try:
+                        from app.rag.safety.retrieval_rail import apply_retrieval_rail
+
+                        rail_result = apply_retrieval_rail(
+                            docs,
+                            mask_pii=bool(getattr(settings, "RAG_RETRIEVAL_RAIL_MASK_PII", False)),
+                            pii_mask=str(getattr(settings, "RAG_RETRIEVAL_RAIL_PII_MASK", "[REDACTED]") or "[REDACTED]"),
+                        )
+                        docs = list(rail_result.get("docs") or [])
+                        meta = dict(rail_result.get("meta") or {})
+                        retrieval_rail_meta = {
+                            "enabled": True,
+                            "used": bool(meta.get("used")),
+                            "blocked_docs": int(meta.get("blocked_docs") or 0),
+                            "masked_docs": int(meta.get("masked_docs") or 0),
+                        }
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("Retrieval rail failed open: %s", str(exc)[:160])
+                        retrieval_rail_meta = {
+                            "enabled": True,
+                            "used": False,
+                            "blocked_docs": 0,
+                            "masked_docs": 0,
+                            "error": str(exc)[:160],
+                        }
+
                 citations = build_citations_from_docs(
                     docs,
                     retrieval_elapsed_sec=retrieval_elapsed,
@@ -2702,6 +2770,7 @@ Requirements:
                             "model_route": model_route,
                             "top_k": top_k,
                             "docs_returned": len(docs),
+                            "retrieval_rail": dict(retrieval_rail_meta),
                             "alias_enabled": bool(alias_enabled),
                             "alias_used": bool(alias_used),
                             "alias_count": len(alias_queries),
@@ -3900,6 +3969,7 @@ Requirements:
                         "llm_provider_anthropic_compatible": bool(llm_invocation_meta.get("provider_anthropic_compatible")),
                         "top_k": top_k,
                         "docs_returned": len(docs),
+                        "retrieval_rail": dict(retrieval_rail_meta),
                         "kg_chunks_injected": int(kg_chunks_injected or 0),
                         "recall_bucket": recall_bucket,
                         "temporal_intent_enabled": bool(temporal_intent_enabled),
