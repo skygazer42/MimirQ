@@ -122,7 +122,7 @@
 - [x] Step 2: Run `pytest -q tests/test_eval_dataset_schema.py tests/test_eval_dataset_validator.py` and confirm red.
 - [x] Step 3: Implement schema definitions and the minimal dataset validator.
 - [x] Step 4: Re-run `pytest -q tests/test_eval_dataset_schema.py tests/test_eval_dataset_validator.py` until green.
-- [ ] Step 5: Commit the task.
+- [x] Step 5: Commit the task.
 
 ### Task A2: Stage 1 File Layout And Dataset Manifest
 
@@ -152,7 +152,7 @@
 - [x] Step 2: Run `pytest -q tests/test_eval_stage1_manifest.py` and confirm red.
 - [x] Step 3: Create the Stage 1 dataset layout, manifest, schema, and seed bootstrap file.
 - [x] Step 4: Re-run `pytest -q tests/test_eval_stage1_manifest.py` until green.
-- [ ] Step 5: Commit the task.
+- [x] Step 5: Commit the task.
 
 ### Task A3: Unified Result Schema And Artifact Layout
 
@@ -189,7 +189,7 @@
 - [x] Step 2: Run `pytest -q tests/test_eval_result_schema.py tests/test_eval_result_artifacts.py` and confirm red.
 - [x] Step 3: Implement the result schema and artifact layout helpers.
 - [x] Step 4: Re-run `pytest -q tests/test_eval_result_schema.py tests/test_eval_result_artifacts.py` until green.
-- [ ] Step 5: Commit the task.
+- [x] Step 5: Commit the task.
 
 ### Task A4: Deterministic Answer Evaluators
 
