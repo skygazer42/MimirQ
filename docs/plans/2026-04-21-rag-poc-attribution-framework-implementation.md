@@ -100,10 +100,10 @@
   - `has_feedback`
   - `request_id`-first linkage metadata
 
-- [ ] Step 1: Write failing tests for `build_poc_interaction_row(...)` and dataset-row aggregation.
-- [ ] Step 2: Run `pytest -q tests/test_poc_runner_telemetry.py` and confirm the module/function is missing or wrong.
-- [ ] Step 3: Implement the minimum normalization module and schema constants.
-- [ ] Step 4: Re-run `pytest -q tests/test_poc_runner_telemetry.py` until green.
+- [x] Step 1: Write failing tests for `build_poc_interaction_row(...)` and dataset-row aggregation.
+- [x] Step 2: Run `pytest -q tests/test_poc_runner_telemetry.py` and confirm the module/function is missing or wrong.
+- [x] Step 3: Implement the minimum normalization module and schema constants.
+- [x] Step 4: Re-run `pytest -q tests/test_poc_runner_telemetry.py` until green.
 - [ ] Step 5: Commit the task.
 
 ### Task A2: Dataset Analysis Source Builder
@@ -124,10 +124,10 @@
   - feedback interactions
   - attributable negative-feedback interactions
 
-- [ ] Step 1: Write failing tests for `request_id` primary linking and conservative fallback linking.
-- [ ] Step 2: Run `pytest -q tests/test_poc_runner_source_builder.py` and confirm red.
-- [ ] Step 3: Implement the merge logic with conservative conflict handling.
-- [ ] Step 4: Re-run `pytest -q tests/test_poc_runner_source_builder.py` until green.
+- [x] Step 1: Write failing tests for `request_id` primary linking and conservative fallback linking.
+- [x] Step 2: Run `pytest -q tests/test_poc_runner_source_builder.py` and confirm red.
+- [x] Step 3: Implement the merge logic with conservative conflict handling.
+- [x] Step 4: Re-run `pytest -q tests/test_poc_runner_source_builder.py` until green.
 - [ ] Step 5: Commit the task.
 
 ### Task A3: Rules/Heuristics Attribution Classifier
@@ -148,10 +148,10 @@
 - Top example ordering:
   - mixed weighting of confidence + recentness
 
-- [ ] Step 1: Write failing tests for negative-only classification, manual review candidates, and mixed example ordering.
-- [ ] Step 2: Run `pytest -q tests/test_poc_runner_attribution_classifier.py` and confirm red.
-- [ ] Step 3: Implement the pluggable interface plus the default heuristic classifier.
-- [ ] Step 4: Re-run `pytest -q tests/test_poc_runner_attribution_classifier.py` until green.
+- [x] Step 1: Write failing tests for negative-only classification, manual review candidates, and mixed example ordering.
+- [x] Step 2: Run `pytest -q tests/test_poc_runner_attribution_classifier.py` and confirm red.
+- [x] Step 3: Implement the pluggable interface plus the default heuristic classifier.
+- [x] Step 4: Re-run `pytest -q tests/test_poc_runner_attribution_classifier.py` until green.
 - [ ] Step 5: Commit the task.
 
 ### Task A4: Configurable Out-Of-Scope Verifier
@@ -172,10 +172,10 @@
   - `out_of_scope`
 - This module remains analysis-only in Batch A.
 
-- [ ] Step 1: Write failing tests for all three stages, cropped execution, and verdict rules.
-- [ ] Step 2: Run `pytest -q tests/test_poc_runner_out_of_scope_verifier.py` and confirm red.
-- [ ] Step 3: Implement the verifier with injectable search/generation hooks.
-- [ ] Step 4: Re-run `pytest -q tests/test_poc_runner_out_of_scope_verifier.py` until green.
+- [x] Step 1: Write failing tests for all three stages, cropped execution, and verdict rules.
+- [x] Step 2: Run `pytest -q tests/test_poc_runner_out_of_scope_verifier.py` and confirm red.
+- [x] Step 3: Implement the verifier with injectable search/generation hooks.
+- [x] Step 4: Re-run `pytest -q tests/test_poc_runner_out_of_scope_verifier.py` until green.
 - [ ] Step 5: Commit the task.
 
 ### Task A5: Query Pattern Miner
@@ -192,10 +192,10 @@
   - document/file heat candidates
 - Emit glossary candidate suggestions, but do not auto-write them anywhere.
 
-- [ ] Step 1: Write failing tests for abbreviation detection, multi-intent detection, and glossary candidate output.
-- [ ] Step 2: Run `pytest -q tests/test_poc_runner_query_pattern_miner.py` and confirm red.
-- [ ] Step 3: Implement the lightweight miner.
-- [ ] Step 4: Re-run `pytest -q tests/test_poc_runner_query_pattern_miner.py` until green.
+- [x] Step 1: Write failing tests for abbreviation detection, multi-intent detection, and glossary candidate output.
+- [x] Step 2: Run `pytest -q tests/test_poc_runner_query_pattern_miner.py` and confirm red.
+- [x] Step 3: Implement the lightweight miner.
+- [x] Step 4: Re-run `pytest -q tests/test_poc_runner_query_pattern_miner.py` until green.
 - [ ] Step 5: Commit the task.
 
 ### Task A6: Industry Rules Bootstrap (Glossary Version)
@@ -217,10 +217,10 @@
 - No `industry_rules` API yet
 - No deep main-orchestrator wiring yet
 
-- [ ] Step 1: Write failing tests for loading the sample ruleset and glossary expansion behavior.
-- [ ] Step 2: Run `pytest -q tests/test_industry_rules_bootstrap.py` and confirm red.
-- [ ] Step 3: Implement the glossary-first bootstrap module.
-- [ ] Step 4: Re-run `pytest -q tests/test_industry_rules_bootstrap.py` until green.
+- [x] Step 1: Write failing tests for loading the sample ruleset and glossary expansion behavior.
+- [x] Step 2: Run `pytest -q tests/test_industry_rules_bootstrap.py` and confirm red.
+- [x] Step 3: Implement the glossary-first bootstrap module.
+- [x] Step 4: Re-run `pytest -q tests/test_industry_rules_bootstrap.py` until green.
 - [ ] Step 5: Commit the task.
 
 ### Task A7: Core Metrics And Aggregation Summary
@@ -240,10 +240,10 @@
 - Metrics must be dataset-scoped and filter-aware.
 - Metrics must preserve definitions for `all_interactions`, `feedback_interactions`, and `attributable_feedback_interactions`.
 
-- [ ] Step 1: Write failing tests for all five core metrics plus feedback coverage.
-- [ ] Step 2: Run `pytest -q tests/test_poc_runner_metrics.py` and confirm red.
-- [ ] Step 3: Implement the metrics helper.
-- [ ] Step 4: Re-run `pytest -q tests/test_poc_runner_metrics.py` until green.
+- [x] Step 1: Write failing tests for all five core metrics plus feedback coverage.
+- [x] Step 2: Run `pytest -q tests/test_poc_runner_metrics.py` and confirm red.
+- [x] Step 3: Implement the metrics helper.
+- [x] Step 4: Re-run `pytest -q tests/test_poc_runner_metrics.py` until green.
 - [ ] Step 5: Commit the task.
 
 ### Task A8: Dataset-Scoped Analysis Data APIs
@@ -268,10 +268,10 @@
   - sample/detail endpoints support `limit`
   - every response includes `meta` with filters, scope, generated time, schema, and definitions
 
-- [ ] Step 1: Write failing API tests for dataset scoping, minimal filters, and `meta`.
-- [ ] Step 2: Run `pytest -q tests/test_dataset_analysis_api.py` and confirm red.
-- [ ] Step 3: Implement the dataset-scoped data APIs.
-- [ ] Step 4: Re-run `pytest -q tests/test_dataset_analysis_api.py` until green.
+- [x] Step 1: Write failing API tests for dataset scoping, minimal filters, and `meta`.
+- [x] Step 2: Run `pytest -q tests/test_dataset_analysis_api.py` and confirm red.
+- [x] Step 3: Implement the dataset-scoped data APIs.
+- [x] Step 4: Re-run `pytest -q tests/test_dataset_analysis_api.py` until green.
 - [ ] Step 5: Commit the task.
 
 ### Task A9: JSON And JSONL Export APIs
@@ -286,15 +286,15 @@
   - JSONL normalized rows / candidate details
 - Must preserve `meta` and filter summary.
 
-- [ ] Step 1: Write failing export API tests for JSON and JSONL outputs.
-- [ ] Step 2: Run `pytest -q tests/test_dataset_analysis_export_api.py` and confirm red.
-- [ ] Step 3: Implement synchronous JSON/JSONL export endpoints.
-- [ ] Step 4: Re-run `pytest -q tests/test_dataset_analysis_export_api.py` until green.
+- [x] Step 1: Write failing export API tests for JSON and JSONL outputs.
+- [x] Step 2: Run `pytest -q tests/test_dataset_analysis_export_api.py` and confirm red.
+- [x] Step 3: Implement synchronous JSON/JSONL export endpoints.
+- [x] Step 4: Re-run `pytest -q tests/test_dataset_analysis_export_api.py` until green.
 - [ ] Step 5: Commit the task.
 
 ### Batch A Verification Gate
 
-- [ ] Run the complete Batch A targeted suite.
+- [x] Run the complete Batch A targeted suite.
 
   ```bash
   pytest -q \
@@ -309,13 +309,13 @@
     tests/test_dataset_analysis_export_api.py
   ```
 
-- [ ] Run a focused router/import smoke test if new API modules were registered.
+- [x] Run a focused router/import smoke test if new API modules were registered.
 
   ```bash
   pytest -q tests/test_api_v1_lazy_router_import.py
   ```
 
-- [ ] Update `docs/plans/2026-04-21-backend-plan-execution-roadmap.md` for the first source MD after Batch A is verified.
+- [x] Update `docs/plans/2026-04-21-backend-plan-execution-roadmap.md` for the first source MD after Batch A is verified.
 
 ## Batch B: Reports, Heatmaps, And PNG Export
 
@@ -473,7 +473,7 @@
 
 ## Final Completion Checks For This MD
 
-- [ ] Batch A is complete and verified
+- [x] Batch A is complete and verified
 - [ ] Batch B is complete and verified
 - [ ] The master backend roadmap is updated
 - [ ] The first source MD is marked complete in the roadmap

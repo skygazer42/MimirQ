@@ -24,13 +24,14 @@
 
 ### 1. `rag-poc-attribution-framework-2026-q2.md`
 
-- [ ] Audit current `app/rag/evaluation/` and confirm missing `poc_runner` modules
-- [ ] Implement `app/rag/evaluation/poc_runner/attribution_classifier.py`
-- [ ] Implement `app/rag/evaluation/poc_runner/out_of_scope_verifier.py`
-- [ ] Implement `app/rag/evaluation/poc_runner/query_pattern_miner.py`
-- [ ] Decide whether `app/rag/industry_rules/` needs a bootstrap slice now or should wait for a later batch
-- [ ] Add targeted tests for the implemented `poc_runner` modules
-- [ ] Run targeted pytest verification for the completed slice
+- [x] Audit current `app/rag/evaluation/` and confirm missing `poc_runner` modules
+- [x] Implement `app/rag/evaluation/poc_runner/attribution_classifier.py`
+- [x] Implement `app/rag/evaluation/poc_runner/out_of_scope_verifier.py`
+- [x] Implement `app/rag/evaluation/poc_runner/query_pattern_miner.py`
+- [x] Decide whether `app/rag/industry_rules/` needs a bootstrap slice now or should wait for a later batch
+- [x] Add targeted tests for the implemented `poc_runner` modules
+- [x] Run targeted pytest verification for the completed slice
+- [ ] Complete Batch B for reports, heatmaps, HTML, and PNG export from the per-MD plan
 
 ### 2. `rag-eval-dataset-deep-dive-2026-q2.md`
 
