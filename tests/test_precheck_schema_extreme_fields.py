@@ -11,6 +11,8 @@ def test_precheck_summary_schema_includes_extreme_fields() -> None:
     assert "file_type_stats" in fields
     assert "language_mix" in fields
     assert "directory_stats" in fields
+    assert "primary_tag_counts" in fields
+    assert "processing_path_counts" in fields
 
 
 def test_precheck_file_schema_includes_language_fields() -> None:
@@ -19,3 +21,6 @@ def test_precheck_file_schema_includes_language_fields() -> None:
     fields = DatasetPrecheckFileOut.model_fields
     assert "language" in fields
     assert "language_confidence" in fields
+    assert "primary_tag" in fields
+    assert "processing_paths" in fields
+    assert "parse_failure_kind" in fields
