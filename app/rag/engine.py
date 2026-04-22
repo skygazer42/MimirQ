@@ -843,6 +843,13 @@ Requirements:
             "score": 0.0,
             "matched_rules": [],
         }
+        output_guard_enabled = bool(getattr(settings, "OUTPUT_GUARD_ENABLED", False))
+        output_guard_result: dict[str, Any] = {
+            "enabled": bool(output_guard_enabled),
+            "action": "allow",
+            "score": 0.0,
+            "matched_rules": [],
+        }
 
         if bool(getattr(settings, "INPUT_GUARD_ENABLED", False)):
             try:
@@ -3251,7 +3258,7 @@ Requirements:
             question_for_model = redact_text(question) if pii_on else question
 
             pending = ""
-            buffered_parts: list[str] | None = [] if claim_check_applied else None
+            buffered_parts: list[str] | None = [] if (claim_check_applied or output_guard_enabled) else None
             generation_inputs = {
                 "context": context_for_model,
                 "history": history_for_model,
@@ -3493,6 +3500,34 @@ Requirements:
 
                     full_response = json.dumps(scrubbed, ensure_ascii=False, separators=(",", ":"))
 
+            if output_guard_enabled:
+                try:
+                    from app.rag.safety import get_output_guard
+
+                    guard = get_output_guard()
+                    guard_result = await guard.check(full_response)
+                    output_guard_result = {
+                        "enabled": True,
+                        "action": str(guard_result.action or "allow"),
+                        "score": float(guard_result.score or 0.0),
+                        "matched_rules": list(guard_result.matched_rules or []),
+                    }
+                    if guard_result.action == "block":
+                        blocked_message = "Response withheld by safety filter."
+                        if structured_output:
+                            full_response = json.dumps({"answer": blocked_message, "citations": []}, ensure_ascii=False)
+                        else:
+                            full_response = blocked_message
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Output guard failed open: %s", str(exc)[:160])
+                    output_guard_result = {
+                        "enabled": True,
+                        "action": "allow",
+                        "score": 0.0,
+                        "matched_rules": [],
+                        "error": str(exc)[:160],
+                    }
+
             claim_evidence: list[dict[str, Any]] = []
             if not structured_output:
                 try:
@@ -3670,7 +3705,7 @@ Requirements:
                     if not claim_check_applied:
                         yield {"type": "token", "data": {"content": suffix_md_safe}}
 
-            if claim_check_applied:
+            if claim_check_applied or output_guard_enabled:
                 yield {"type": "token", "data": {"content": full_response}}
 
             # ---- Wave22-T095: Cost attribution (per request) ----
@@ -4023,6 +4058,7 @@ Requirements:
                         "structured_parse_error": structured_parse_meta.get("error"),
                         "structured_type": type(structured_data).__name__ if structured_data is not None else None,
                         "structured_preset": structured_preset,
+                        "output_guard": dict(output_guard_result),
                         "prompt_template_id": str(selected_prompt_template_id) if selected_prompt_template_id else None,
                         "prompt_template_key": selected_prompt_template_key,
                         "prompt_ab_experiment_key": selected_prompt_ab_experiment_key,
