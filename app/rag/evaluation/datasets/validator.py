@@ -6,7 +6,7 @@ from typing import Any
 from app.rag.evaluation.datasets.schema import EVAL_DATASET_SCHEMA_V1, normalize_eval_dataset_sample
 
 _QUERY_TYPES = {"factual", "multi_hop", "structured", "unanswerable"}
-_SOURCE_TYPES = {"real_log", "manual_seed", "adversarial"}
+_SOURCE_TYPES = {"real_log", "manual_seed", "adversarial", "synthetic"}
 _ROUTES = {"retrieval", "kg", "hybrid", "agentic"}
 _ANNOTATION_STATUS = {"todo", "labeled", "reviewed"}
 _REVIEW_STATUS = {"pending", "reviewed", "approved"}

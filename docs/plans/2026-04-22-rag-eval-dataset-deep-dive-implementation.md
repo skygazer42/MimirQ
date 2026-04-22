@@ -395,10 +395,10 @@
 - Extend: dataset schema files from Batch A
 - Test: `tests/test_eval_synthetic_schema.py`
 
-- [ ] Step 1: Write failing tests for Stage 2 synthetic schema extensions.
-- [ ] Step 2: Run `pytest -q tests/test_eval_synthetic_schema.py` and confirm red.
-- [ ] Step 3: Implement synthetic-specific schema fields and manifest handling.
-- [ ] Step 4: Re-run `pytest -q tests/test_eval_synthetic_schema.py` until green.
+- [x] Step 1: Write failing tests for Stage 2 synthetic schema extensions.
+- [x] Step 2: Run `pytest -q tests/test_eval_synthetic_schema.py` and confirm red.
+- [x] Step 3: Implement synthetic-specific schema fields and manifest handling.
+- [x] Step 4: Re-run `pytest -q tests/test_eval_synthetic_schema.py` until green.
 - [ ] Step 5: Commit the task.
 
 ### Task B2: Synthetic Generation Pipeline
@@ -409,10 +409,10 @@
 - Create: `app/rag/evaluation/synthetic/pipeline.py`
 - Test: `tests/test_eval_synthetic_pipeline.py`
 
-- [ ] Step 1: Write failing tests for synthetic generation pipeline contracts.
-- [ ] Step 2: Run `pytest -q tests/test_eval_synthetic_pipeline.py` and confirm red.
-- [ ] Step 3: Implement Stage 2 synthetic generation and filtering pipeline.
-- [ ] Step 4: Re-run `pytest -q tests/test_eval_synthetic_pipeline.py` until green.
+- [x] Step 1: Write failing tests for synthetic generation pipeline contracts.
+- [x] Step 2: Run `pytest -q tests/test_eval_synthetic_pipeline.py` and confirm red.
+- [x] Step 3: Implement Stage 2 synthetic generation and filtering pipeline.
+- [x] Step 4: Re-run `pytest -q tests/test_eval_synthetic_pipeline.py` until green.
 - [ ] Step 5: Commit the task.
 
 ### Task B3: Agentic Runner Integration
@@ -421,21 +421,21 @@
 - Extend: runner registry/framework from Batch A
 - Test: `tests/test_eval_agentic_runner.py`
 
-- [ ] Step 1: Write failing tests for agentic runner integration.
-- [ ] Step 2: Run `pytest -q tests/test_eval_agentic_runner.py` and confirm red.
-- [ ] Step 3: Implement agentic execution in the unified runner framework.
-- [ ] Step 4: Re-run `pytest -q tests/test_eval_agentic_runner.py` until green.
+- [x] Step 1: Write failing tests for agentic runner integration.
+- [x] Step 2: Run `pytest -q tests/test_eval_agentic_runner.py` and confirm red.
+- [x] Step 3: Implement agentic execution in the unified runner framework.
+- [x] Step 4: Re-run `pytest -q tests/test_eval_agentic_runner.py` until green.
 - [ ] Step 5: Commit the task.
 
 ### Batch B Verification Gate
 
-- [ ] Run the Batch B targeted suite.
-- [ ] Update the master roadmap after Batch B is verified.
+- [x] Run the Batch B targeted suite.
+- [x] Update the master roadmap after Batch B is verified.
 
 ## Completion State
 
 - [x] Batch A is complete and verified
-- [ ] Batch B is complete and verified
+- [x] Batch B is complete and verified
 
 ## Deferred Items Beyond Batch B
 

@@ -4,7 +4,7 @@ from typing import Any
 
 EVAL_DATASET_SCHEMA_V1 = "mimirq.eval.dataset.sample.v1"
 _QUERY_TYPES = {"factual", "multi_hop", "structured", "unanswerable"}
-_SOURCE_TYPES = {"real_log", "manual_seed", "adversarial"}
+_SOURCE_TYPES = {"real_log", "manual_seed", "adversarial", "synthetic"}
 _ROUTES = {"retrieval", "kg", "hybrid", "agentic"}
 _ANNOTATION_STATUS = {"todo", "labeled", "reviewed"}
 _REVIEW_STATUS = {"pending", "reviewed", "approved"}
@@ -43,6 +43,13 @@ def normalize_eval_dataset_sample(sample: dict[str, Any]) -> dict[str, Any]:
         "expected_route": expected_route,
         "annotation_status": _safe_str(payload.get("annotation_status"), max_len=64) or "todo",
         "review_status": _safe_str(payload.get("review_status"), max_len=64) or "pending",
+        "construction_method": _safe_str(payload.get("construction_method"), max_len=128),
+        "parent_sample_ids": [
+            str(item).strip()
+            for item in (payload.get("parent_sample_ids") or [])
+            if str(item or "").strip()
+        ],
+        "critique": dict(payload.get("critique") or {}),
         "notes": _safe_str(payload.get("notes")),
         "tags": [str(item).strip() for item in (payload.get("tags") or []) if str(item or "").strip()],
     }

@@ -40,7 +40,7 @@
 - [x] Add runner and fixture support for a 50-200 sample MVP batch
 - [x] Add targeted tests for the new dataset scaffold
 - [x] Run targeted pytest verification for the completed slice
-- [ ] Complete Batch B for synthetic expansion and agentic execution from the per-MD plan
+- [x] Complete Batch B for synthetic expansion and agentic execution from the per-MD plan
 
 ### 3. `rag-pre-poc-scanner-2026-q2.md`
 
