@@ -31,7 +31,7 @@
 - [x] Decide whether `app/rag/industry_rules/` needs a bootstrap slice now or should wait for a later batch
 - [x] Add targeted tests for the implemented `poc_runner` modules
 - [x] Run targeted pytest verification for the completed slice
-- [ ] Complete Batch B for reports, heatmaps, HTML, and PNG export from the per-MD plan
+- [x] Complete Batch B for reports, heatmaps, HTML, and PNG export from the per-MD plan
 
 ### 2. `rag-eval-dataset-deep-dive-2026-q2.md`
 
@@ -104,8 +104,8 @@
 
 ## Batch Completion Checklist
 
-- [ ] The active source plan was re-audited before coding
-- [ ] Only missing items were implemented
-- [ ] New behavior was covered by failing-then-passing tests
-- [ ] Targeted verification passed
-- [ ] This roadmap was updated to reflect the new status
+- [x] The active source plan was re-audited before coding
+- [x] Only missing items were implemented
+- [x] New behavior was covered by failing-then-passing tests
+- [x] Targeted verification passed
+- [x] This roadmap was updated to reflect the new status
