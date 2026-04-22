@@ -7,11 +7,23 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.database import SessionLocal
 from app.models.chat import Conversation, Message
 from app.models.feedback import MessageFeedback
 from app.rag.evaluation.poc_runner.attribution_classifier import classify_feedback_records
+from app.rag.evaluation.poc_runner.coverage_heatmap import build_document_heatmap
 from app.rag.evaluation.poc_runner.metrics import compute_feedback_metrics
 from app.rag.evaluation.poc_runner.query_pattern_miner import mine_query_patterns
+from app.rag.evaluation.poc_runner.png_tasks import (
+    complete_png_export_task,
+    create_png_export_task,
+    fail_png_export_task,
+    get_png_export_task,
+    get_png_export_task_result,
+)
+from app.rag.evaluation.poc_runner.reports.attribution_report import build_dataset_analysis_report
+from app.rag.evaluation.poc_runner.reports.html_renderer import render_dataset_analysis_html
+from app.rag.evaluation.poc_runner.reports.png_renderer import render_dataset_analysis_png
 from app.rag.evaluation.poc_runner.source_builder import build_dataset_analysis_sources
 from app.rag.evaluation.poc_runner.telemetry import build_poc_interaction_rows
 from app.services.rag_trace_service import list_rag_traces
@@ -234,6 +246,7 @@ def _build_full_bundle(
         "manual_review_candidates": attribution["manual_review_candidates"],
         "glossary_candidates": patterns["glossary_candidates"],
         "keyword_scores": patterns["keyword_scores"],
+        "coverage_heatmap": build_document_heatmap(rows),
         "rows": rows,
     }
 
@@ -359,3 +372,114 @@ def export_dataset_analysis_jsonl(
     )
     lines = [json.dumps(row, ensure_ascii=False, sort_keys=True) for row in bundle["rows"]]
     return "".join(f"{line}\n" for line in lines)
+
+
+def export_dataset_analysis_html(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    dataset_name: str,
+    from_ts: str | None = None,
+    to_ts: str | None = None,
+    feedback_polarity: str | None = None,
+    category: str | None = None,
+) -> str:
+    bundle = _build_full_bundle(
+        db=db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        dataset_name=dataset_name,
+        from_ts=from_ts,
+        to_ts=to_ts,
+        feedback_polarity=feedback_polarity,
+        category=category,
+        limit=20,
+    )
+    report = build_dataset_analysis_report(
+        dataset_id=str(dataset_id),
+        dataset_name=dataset_name,
+        filters=bundle["meta"]["filters"],
+        scope_summary=bundle["meta"]["scope_summary"],
+        metrics=bundle["metrics"],
+        counts=bundle["counts"],
+        ratios=bundle["ratios"],
+        top_examples=bundle["top_examples"],
+        manual_review_candidates=bundle["manual_review_candidates"],
+        glossary_candidates=bundle["glossary_candidates"],
+        keyword_scores=bundle["keyword_scores"],
+        coverage_heatmap=bundle["coverage_heatmap"],
+    )
+    report["meta"]["definitions"] = bundle["meta"]["definitions"]
+    return render_dataset_analysis_html(report)
+
+
+def create_dataset_analysis_png_task(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    dataset_name: str,
+    background_tasks: Any,
+    from_ts: str | None = None,
+    to_ts: str | None = None,
+    feedback_polarity: str | None = None,
+    category: str | None = None,
+) -> dict[str, Any]:
+    task = create_png_export_task(
+        dataset_id=str(dataset_id),
+        filters=_base_filters_dict(
+            dataset_id=dataset_id,
+            from_ts=from_ts,
+            to_ts=to_ts,
+            feedback_polarity=feedback_polarity,
+            category=category,
+        ),
+    )
+
+    def _run() -> None:
+        bg_db = SessionLocal()
+        try:
+            bundle = _build_full_bundle(
+                db=bg_db,
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                dataset_name=dataset_name,
+                from_ts=from_ts,
+                to_ts=to_ts,
+                feedback_polarity=feedback_polarity,
+                category=category,
+                limit=20,
+            )
+            report = build_dataset_analysis_report(
+                dataset_id=str(dataset_id),
+                dataset_name=dataset_name,
+                filters=bundle["meta"]["filters"],
+                scope_summary=bundle["meta"]["scope_summary"],
+                metrics=bundle["metrics"],
+                counts=bundle["counts"],
+                ratios=bundle["ratios"],
+                top_examples=bundle["top_examples"],
+                manual_review_candidates=bundle["manual_review_candidates"],
+                glossary_candidates=bundle["glossary_candidates"],
+                keyword_scores=bundle["keyword_scores"],
+                coverage_heatmap=bundle["coverage_heatmap"],
+            )
+            report["meta"]["definitions"] = bundle["meta"]["definitions"]
+            payload = render_dataset_analysis_png(report)
+            complete_png_export_task(task["task_id"], payload)
+        except Exception as exc:  # noqa: BLE001
+            fail_png_export_task(task["task_id"], str(exc))
+        finally:
+            bg_db.close()
+
+    background_tasks.add_task(_run)
+    return task
+
+
+def get_dataset_analysis_png_task_status(*, task_id: str) -> dict[str, Any]:
+    return get_png_export_task(task_id)
+
+
+def get_dataset_analysis_png_result(*, task_id: str) -> bytes:
+    return get_png_export_task_result(task_id)
