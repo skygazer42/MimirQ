@@ -118,10 +118,10 @@
   - evidence field structure
   - manifest consistency basics
 
-- [ ] Step 1: Write failing tests for sample schema validation and manifest consistency validation.
-- [ ] Step 2: Run `pytest -q tests/test_eval_dataset_schema.py tests/test_eval_dataset_validator.py` and confirm red.
-- [ ] Step 3: Implement schema definitions and the minimal dataset validator.
-- [ ] Step 4: Re-run `pytest -q tests/test_eval_dataset_schema.py tests/test_eval_dataset_validator.py` until green.
+- [x] Step 1: Write failing tests for sample schema validation and manifest consistency validation.
+- [x] Step 2: Run `pytest -q tests/test_eval_dataset_schema.py tests/test_eval_dataset_validator.py` and confirm red.
+- [x] Step 3: Implement schema definitions and the minimal dataset validator.
+- [x] Step 4: Re-run `pytest -q tests/test_eval_dataset_schema.py tests/test_eval_dataset_validator.py` until green.
 - [ ] Step 5: Commit the task.
 
 ### Task A2: Stage 1 File Layout And Dataset Manifest
@@ -148,10 +148,10 @@
   - `generated_at`
 - Seed dataset can be a bootstrap fixture set in-repo for tests and runner wiring.
 
-- [ ] Step 1: Write failing tests for manifest shape and count consistency.
-- [ ] Step 2: Run `pytest -q tests/test_eval_stage1_manifest.py` and confirm red.
-- [ ] Step 3: Create the Stage 1 dataset layout, manifest, schema, and seed bootstrap file.
-- [ ] Step 4: Re-run `pytest -q tests/test_eval_stage1_manifest.py` until green.
+- [x] Step 1: Write failing tests for manifest shape and count consistency.
+- [x] Step 2: Run `pytest -q tests/test_eval_stage1_manifest.py` and confirm red.
+- [x] Step 3: Create the Stage 1 dataset layout, manifest, schema, and seed bootstrap file.
+- [x] Step 4: Re-run `pytest -q tests/test_eval_stage1_manifest.py` until green.
 - [ ] Step 5: Commit the task.
 
 ### Task A3: Unified Result Schema And Artifact Layout
@@ -185,10 +185,10 @@
   - `summary.json`
   - `run_meta.json`
 
-- [ ] Step 1: Write failing tests for unified result schema and artifact-path generation.
-- [ ] Step 2: Run `pytest -q tests/test_eval_result_schema.py tests/test_eval_result_artifacts.py` and confirm red.
-- [ ] Step 3: Implement the result schema and artifact layout helpers.
-- [ ] Step 4: Re-run `pytest -q tests/test_eval_result_schema.py tests/test_eval_result_artifacts.py` until green.
+- [x] Step 1: Write failing tests for unified result schema and artifact-path generation.
+- [x] Step 2: Run `pytest -q tests/test_eval_result_schema.py tests/test_eval_result_artifacts.py` and confirm red.
+- [x] Step 3: Implement the result schema and artifact layout helpers.
+- [x] Step 4: Re-run `pytest -q tests/test_eval_result_schema.py tests/test_eval_result_artifacts.py` until green.
 - [ ] Step 5: Commit the task.
 
 ### Task A4: Deterministic Answer Evaluators
@@ -207,10 +207,10 @@
   - obvious hallucination / unsupported-answer heuristic
 - Outputs must fit the unified evaluator result structure.
 
-- [ ] Step 1: Write failing tests for deterministic answer metrics.
-- [ ] Step 2: Run `pytest -q tests/test_eval_answer_det_metrics.py` and confirm red.
-- [ ] Step 3: Implement the deterministic answer evaluator layer.
-- [ ] Step 4: Re-run `pytest -q tests/test_eval_answer_det_metrics.py` until green.
+- [x] Step 1: Write failing tests for deterministic answer metrics.
+- [x] Step 2: Run `pytest -q tests/test_eval_answer_det_metrics.py` and confirm red.
+- [x] Step 3: Implement the deterministic answer evaluator layer.
+- [x] Step 4: Re-run `pytest -q tests/test_eval_answer_det_metrics.py` until green.
 - [ ] Step 5: Commit the task.
 
 ### Task A5: RAGAS Evaluator Adapter
@@ -226,10 +226,10 @@
 - Must map results into the unified evaluator schema.
 - Must coexist with deterministic answer evaluators in the same result payload.
 
-- [ ] Step 1: Write failing tests for the RAGAS adapter contract.
-- [ ] Step 2: Run `pytest -q tests/test_eval_ragas_adapter.py` and confirm red.
-- [ ] Step 3: Implement the adapter over existing `RAGAS`.
-- [ ] Step 4: Re-run `pytest -q tests/test_eval_ragas_adapter.py` until green.
+- [x] Step 1: Write failing tests for the RAGAS adapter contract.
+- [x] Step 2: Run `pytest -q tests/test_eval_ragas_adapter.py` and confirm red.
+- [x] Step 3: Implement the adapter over existing `RAGAS`.
+- [x] Step 4: Re-run `pytest -q tests/test_eval_ragas_adapter.py` until green.
 - [ ] Step 5: Commit the task.
 
 ### Task A6: Retrieval/Evidence Metrics
@@ -247,10 +247,10 @@
 - Use `gold_chunk_ids` / evidence references when available.
 - Output in the unified result schema.
 
-- [ ] Step 1: Write failing tests for recall and citation coverage metrics.
-- [ ] Step 2: Run `pytest -q tests/test_eval_retrieval_metrics.py` and confirm red.
-- [ ] Step 3: Implement the retrieval/evidence metric helpers.
-- [ ] Step 4: Re-run `pytest -q tests/test_eval_retrieval_metrics.py` until green.
+- [x] Step 1: Write failing tests for recall and citation coverage metrics.
+- [x] Step 2: Run `pytest -q tests/test_eval_retrieval_metrics.py` and confirm red.
+- [x] Step 3: Implement the retrieval/evidence metric helpers.
+- [x] Step 4: Re-run `pytest -q tests/test_eval_retrieval_metrics.py` until green.
 - [ ] Step 5: Commit the task.
 
 ### Task A7: Route Comparison Metrics
@@ -271,10 +271,10 @@
 - `net_gain_over_best_single`
   - minimal first-version hybrid uplift metric
 
-- [ ] Step 1: Write failing tests for routing accuracy, conflict rate, and net gain.
-- [ ] Step 2: Run `pytest -q tests/test_eval_routing_metrics.py tests/test_eval_fusion_metrics.py` and confirm red.
-- [ ] Step 3: Implement the route comparison metrics.
-- [ ] Step 4: Re-run `pytest -q tests/test_eval_routing_metrics.py tests/test_eval_fusion_metrics.py` until green.
+- [x] Step 1: Write failing tests for routing accuracy, conflict rate, and net gain.
+- [x] Step 2: Run `pytest -q tests/test_eval_routing_metrics.py tests/test_eval_fusion_metrics.py` and confirm red.
+- [x] Step 3: Implement the route comparison metrics.
+- [x] Step 4: Re-run `pytest -q tests/test_eval_routing_metrics.py tests/test_eval_fusion_metrics.py` until green.
 - [ ] Step 5: Commit the task.
 
 ### Task A8: Unified Runner Framework
@@ -300,10 +300,10 @@
 - `agentic` reserved in registry/result contracts, but not executed yet.
 - Persist route config snapshots in run metadata/results.
 
-- [ ] Step 1: Write failing tests for runner registry behavior and unified result shape.
-- [ ] Step 2: Run `pytest -q tests/test_eval_runner_registry.py tests/test_eval_runner_result_shape.py` and confirm red.
-- [ ] Step 3: Implement the unified runner framework and route adapters.
-- [ ] Step 4: Re-run `pytest -q tests/test_eval_runner_registry.py tests/test_eval_runner_result_shape.py` until green.
+- [x] Step 1: Write failing tests for runner registry behavior and unified result shape.
+- [x] Step 2: Run `pytest -q tests/test_eval_runner_registry.py tests/test_eval_runner_result_shape.py` and confirm red.
+- [x] Step 3: Implement the unified runner framework and route adapters.
+- [x] Step 4: Re-run `pytest -q tests/test_eval_runner_registry.py tests/test_eval_runner_result_shape.py` until green.
 - [ ] Step 5: Commit the task.
 
 ### Task A9: Stage 1 Minimal Batch Runner
@@ -327,10 +327,10 @@
   - run metadata artifact
 - Persist evaluator list and route config snapshots.
 
-- [ ] Step 1: Write failing tests for stage1 batch execution and artifact creation.
-- [ ] Step 2: Run `pytest -q tests/test_eval_stage1_batch_runner.py` and confirm red.
-- [ ] Step 3: Implement the Stage 1 minimal batch runner.
-- [ ] Step 4: Re-run `pytest -q tests/test_eval_stage1_batch_runner.py` until green.
+- [x] Step 1: Write failing tests for stage1 batch execution and artifact creation.
+- [x] Step 2: Run `pytest -q tests/test_eval_stage1_batch_runner.py` and confirm red.
+- [x] Step 3: Implement the Stage 1 minimal batch runner.
+- [x] Step 4: Re-run `pytest -q tests/test_eval_stage1_batch_runner.py` until green.
 - [ ] Step 5: Commit the task.
 
 ### Task A10: Summary And Slice Aggregation
@@ -357,15 +357,15 @@
   - cost
   - refusal handling stats
 
-- [ ] Step 1: Write failing tests for Stage 1 summary aggregation and slicing.
-- [ ] Step 2: Run `pytest -q tests/test_eval_stage1_summary.py` and confirm red.
-- [ ] Step 3: Implement the summary/slicing layer.
-- [ ] Step 4: Re-run `pytest -q tests/test_eval_stage1_summary.py` until green.
+- [x] Step 1: Write failing tests for Stage 1 summary aggregation and slicing.
+- [x] Step 2: Run `pytest -q tests/test_eval_stage1_summary.py` and confirm red.
+- [x] Step 3: Implement the summary/slicing layer.
+- [x] Step 4: Re-run `pytest -q tests/test_eval_stage1_summary.py` until green.
 - [ ] Step 5: Commit the task.
 
 ### Batch A Verification Gate
 
-- [ ] Run the complete Batch A targeted suite.
+- [x] Run the complete Batch A targeted suite.
 
   ```bash
   pytest -q \
@@ -385,7 +385,7 @@
     tests/test_eval_stage1_summary.py
   ```
 
-- [ ] Update `docs/plans/2026-04-21-backend-plan-execution-roadmap.md` after Batch A is verified.
+- [x] Update `docs/plans/2026-04-21-backend-plan-execution-roadmap.md` after Batch A is verified.
 
 ## Batch B: Stage 2 Synthetic Expansion
 
@@ -432,6 +432,11 @@
 - [ ] Run the Batch B targeted suite.
 - [ ] Update the master roadmap after Batch B is verified.
 
+## Completion State
+
+- [x] Batch A is complete and verified
+- [ ] Batch B is complete and verified
+
 ## Deferred Items Beyond Batch B
 
 - Full shadow evaluation pipeline
@@ -439,4 +444,3 @@
 - Large-scale adversarial mining
 - Dashboard-first evaluation platform
 - Multi-user labeling platform
-

@@ -35,11 +35,12 @@
 
 ### 2. `rag-eval-dataset-deep-dive-2026-q2.md`
 
-- [ ] Audit existing evaluation dataset builders and reuse current scaffolding where possible
-- [ ] Implement Stage 1 minimal evaluation dataset scaffold under `app/rag/evaluation/`
-- [ ] Add runner and fixture support for a 50-200 sample MVP batch
-- [ ] Add targeted tests for the new dataset scaffold
-- [ ] Run targeted pytest verification for the completed slice
+- [x] Audit existing evaluation dataset builders and reuse current scaffolding where possible
+- [x] Implement Stage 1 minimal evaluation dataset scaffold under `app/rag/evaluation/`
+- [x] Add runner and fixture support for a 50-200 sample MVP batch
+- [x] Add targeted tests for the new dataset scaffold
+- [x] Run targeted pytest verification for the completed slice
+- [ ] Complete Batch B for synthetic expansion and agentic execution from the per-MD plan
 
 ### 3. `rag-pre-poc-scanner-2026-q2.md`
 

@@ -1,0 +1,6 @@
+{
+  "schema_version": "mimirq.eval.dataset.sample.v1",
+  "query_types": ["factual", "multi_hop", "structured", "unanswerable"],
+  "source_types": ["real_log", "manual_seed", "adversarial"],
+  "routes": ["retrieval", "kg", "hybrid", "agentic"]
+}
