@@ -79,12 +79,12 @@
 
 ## Shared Rules For Every Task
 
-- [ ] Follow TDD: write the test first, confirm it fails, then implement the minimum code.
-- [ ] Keep dataset schemas and result schemas versioned and explicit.
-- [ ] Prefer file artifacts over database-first evaluation infrastructure in Batch A.
-- [ ] Distinguish clearly between sample metadata, runner results, and run metadata.
-- [ ] Update this file from `[ ]` to `[x]` as each task is verified complete.
-- [ ] Do not start Batch B until Batch A is verified.
+- [x] Follow TDD: write the test first, confirm it fails, then implement the minimum code.
+- [x] Keep dataset schemas and result schemas versioned and explicit.
+- [x] Prefer file artifacts over database-first evaluation infrastructure in Batch A.
+- [x] Distinguish clearly between sample metadata, runner results, and run metadata.
+- [x] Update this file from `[ ]` to `[x]` as each task is verified complete.
+- [x] Do not start Batch B until Batch A is verified.
 
 ## Batch A: Stage 1 Seed Dataset + Minimal Runner
 
@@ -211,7 +211,7 @@
 - [x] Step 2: Run `pytest -q tests/test_eval_answer_det_metrics.py` and confirm red.
 - [x] Step 3: Implement the deterministic answer evaluator layer.
 - [x] Step 4: Re-run `pytest -q tests/test_eval_answer_det_metrics.py` until green.
-- [ ] Step 5: Commit the task.
+- [x] Step 5: Commit the task.
 
 ### Task A5: RAGAS Evaluator Adapter
 
@@ -230,7 +230,7 @@
 - [x] Step 2: Run `pytest -q tests/test_eval_ragas_adapter.py` and confirm red.
 - [x] Step 3: Implement the adapter over existing `RAGAS`.
 - [x] Step 4: Re-run `pytest -q tests/test_eval_ragas_adapter.py` until green.
-- [ ] Step 5: Commit the task.
+- [x] Step 5: Commit the task.
 
 ### Task A6: Retrieval/Evidence Metrics
 
@@ -251,7 +251,7 @@
 - [x] Step 2: Run `pytest -q tests/test_eval_retrieval_metrics.py` and confirm red.
 - [x] Step 3: Implement the retrieval/evidence metric helpers.
 - [x] Step 4: Re-run `pytest -q tests/test_eval_retrieval_metrics.py` until green.
-- [ ] Step 5: Commit the task.
+- [x] Step 5: Commit the task.
 
 ### Task A7: Route Comparison Metrics
 
@@ -275,7 +275,7 @@
 - [x] Step 2: Run `pytest -q tests/test_eval_routing_metrics.py tests/test_eval_fusion_metrics.py` and confirm red.
 - [x] Step 3: Implement the route comparison metrics.
 - [x] Step 4: Re-run `pytest -q tests/test_eval_routing_metrics.py tests/test_eval_fusion_metrics.py` until green.
-- [ ] Step 5: Commit the task.
+- [x] Step 5: Commit the task.
 
 ### Task A8: Unified Runner Framework
 
@@ -304,7 +304,7 @@
 - [x] Step 2: Run `pytest -q tests/test_eval_runner_registry.py tests/test_eval_runner_result_shape.py` and confirm red.
 - [x] Step 3: Implement the unified runner framework and route adapters.
 - [x] Step 4: Re-run `pytest -q tests/test_eval_runner_registry.py tests/test_eval_runner_result_shape.py` until green.
-- [ ] Step 5: Commit the task.
+- [x] Step 5: Commit the task.
 
 ### Task A9: Stage 1 Minimal Batch Runner
 
@@ -331,7 +331,7 @@
 - [x] Step 2: Run `pytest -q tests/test_eval_stage1_batch_runner.py` and confirm red.
 - [x] Step 3: Implement the Stage 1 minimal batch runner.
 - [x] Step 4: Re-run `pytest -q tests/test_eval_stage1_batch_runner.py` until green.
-- [ ] Step 5: Commit the task.
+- [x] Step 5: Commit the task.
 
 ### Task A10: Summary And Slice Aggregation
 
@@ -361,7 +361,7 @@
 - [x] Step 2: Run `pytest -q tests/test_eval_stage1_summary.py` and confirm red.
 - [x] Step 3: Implement the summary/slicing layer.
 - [x] Step 4: Re-run `pytest -q tests/test_eval_stage1_summary.py` until green.
-- [ ] Step 5: Commit the task.
+- [x] Step 5: Commit the task.
 
 ### Batch A Verification Gate
 
@@ -399,7 +399,7 @@
 - [x] Step 2: Run `pytest -q tests/test_eval_synthetic_schema.py` and confirm red.
 - [x] Step 3: Implement synthetic-specific schema fields and manifest handling.
 - [x] Step 4: Re-run `pytest -q tests/test_eval_synthetic_schema.py` until green.
-- [ ] Step 5: Commit the task.
+- [x] Step 5: Commit the task.
 
 ### Task B2: Synthetic Generation Pipeline
 
@@ -413,7 +413,7 @@
 - [x] Step 2: Run `pytest -q tests/test_eval_synthetic_pipeline.py` and confirm red.
 - [x] Step 3: Implement Stage 2 synthetic generation and filtering pipeline.
 - [x] Step 4: Re-run `pytest -q tests/test_eval_synthetic_pipeline.py` until green.
-- [ ] Step 5: Commit the task.
+- [x] Step 5: Commit the task.
 
 ### Task B3: Agentic Runner Integration
 
@@ -425,7 +425,7 @@
 - [x] Step 2: Run `pytest -q tests/test_eval_agentic_runner.py` and confirm red.
 - [x] Step 3: Implement agentic execution in the unified runner framework.
 - [x] Step 4: Re-run `pytest -q tests/test_eval_agentic_runner.py` until green.
-- [ ] Step 5: Commit the task.
+- [x] Step 5: Commit the task.
 
 ### Batch B Verification Gate
 

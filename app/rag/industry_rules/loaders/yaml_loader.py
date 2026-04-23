@@ -18,6 +18,24 @@ def _load_yaml(path: Path) -> Any:
     return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
 
+def list_rulesets() -> list[str]:
+    root = _ruleset_root()
+    if not root.exists():
+        return []
+    return sorted(
+        entry.name
+        for entry in root.iterdir()
+        if entry.is_dir() and str(entry.name or "").strip()
+    )
+
+
+def ruleset_exists(name: str) -> bool:
+    candidate = str(name or "").strip()
+    if not candidate:
+        return False
+    return (_ruleset_root() / candidate).is_dir()
+
+
 def load_ruleset(name: str) -> IndustryRuleset:
     base = _ruleset_root() / str(name or "").strip()
     glossary = _load_yaml(base / "glossary.yaml")
