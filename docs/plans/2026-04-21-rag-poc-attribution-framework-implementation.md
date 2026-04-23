@@ -66,12 +66,12 @@
 
 ## Shared Rules For Every Task
 
-- [ ] Follow TDD: write the test first, confirm it fails, then implement the minimum code.
-- [ ] Keep the analysis core pure/injectable before wiring APIs.
-- [ ] Reuse existing trace/feedback fields; do not invent parallel storage unless a task explicitly requires a cache or task result row.
-- [ ] Keep schemas bounded, deterministic, and explicit.
-- [ ] Update this file from `[ ]` to `[x]` as each task is verified complete.
-- [ ] After finishing Batch A, stop and review before starting Batch B.
+- [x] Follow TDD: write the test first, confirm it fails, then implement the minimum code.
+- [x] Keep the analysis core pure/injectable before wiring APIs.
+- [x] Reuse existing trace/feedback fields; do not invent parallel storage unless a task explicitly requires a cache or task result row.
+- [x] Keep schemas bounded, deterministic, and explicit.
+- [x] Update this file from `[ ]` to `[x]` as each task is verified complete.
+- [x] After finishing Batch A, stop and review before starting Batch B.
 
 ## Batch A: Core Analysis Capabilities
 
@@ -477,13 +477,13 @@
 - [x] Batch B is complete and verified
 - [x] The master backend roadmap is updated
 - [x] The first source MD is marked complete in the roadmap
-- [ ] Remaining deferred items are explicitly listed for future MDs/batches
+- [x] Remaining deferred items are explicitly listed for future MDs/batches
 
 ## Deferred Items From This MD
 
 - [ ] LLM attribution classifier
 - [ ] `out_of_scope` control of the live answering path
-- [ ] `industry_rules` management API
+- [x] `industry_rules` management API
 - [ ] automatic glossary write-back
 - [ ] UMAP scatter support
 - [ ] any global/tenant-wide analysis dashboards beyond dataset scope

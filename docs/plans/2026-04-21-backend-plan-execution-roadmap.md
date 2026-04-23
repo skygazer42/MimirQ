@@ -12,13 +12,13 @@
 
 ## Global Rules
 
-- [ ] Always work in `/data/temp34/MimirQ/.worktrees/feat-backend` on branch `feat/backend`
-- [ ] Only one source plan may be active at a time
-- [ ] Before coding any source plan, audit what is already implemented and skip completed items
-- [ ] Start from the smallest missing P0 slice, not the largest architectural item
-- [ ] Use TDD for every new behavior: write failing test, confirm red, implement minimum code, confirm green
-- [ ] After each verified batch, update this file from `[ ]` to `[x]` for completed items
-- [ ] Do not start the next source plan until the current plan slice is implemented and verified
+- [x] Always work in `/data/temp34/MimirQ/.worktrees/feat-backend` on branch `feat/backend`
+- [x] Only one source plan may be active at a time
+- [x] Before coding any source plan, audit what is already implemented and skip completed items
+- [x] Start from the smallest missing P0 slice, not the largest architectural item
+- [x] Use TDD for every new behavior: write failing test, confirm red, implement minimum code, confirm green
+- [x] After each verified batch, update this file from `[ ]` to `[x]` for completed items
+- [x] Do not start the next source plan until the current plan slice is implemented and verified
 
 ## Execution Order
 
@@ -100,8 +100,8 @@
 
 ## Reference-Only Plans
 
-- [ ] `rag-capability-gap-2026-q2.md` is used as a gap index, not an execution lane
-- [ ] `rag-deep-research-2026-q2.md` is used as a strategic overview, not an execution lane
+- [x] `rag-capability-gap-2026-q2.md` is used as a gap index, not an execution lane
+- [x] `rag-deep-research-2026-q2.md` is used as a strategic overview, not an execution lane
 
 ## Batch Completion Checklist
 
