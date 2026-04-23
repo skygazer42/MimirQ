@@ -31,6 +31,7 @@ from app.models.evidence import EvidenceItem, EvidenceSuite
 from app.models.feedback import MessageFeedback
 from app.services.audit_log_service import audit_log_event
 from app.services.dataset_service import DatasetService
+from app.services.feedback_service import FeedbackService
 from app.services.rag_trace_service import list_rag_traces
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -188,82 +189,19 @@ async def upsert_message_feedback(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Submit feedback for an assistant message (idempotent: resubmit will update)."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
-
-    msg = (
-        db.query(Message)
-        .filter(Message.id == request.message_id, Message.tenant_id == tenant_id)
-        .first()
-    )
-    if not msg:
-        raise HTTPException(status_code=404, detail="Message not found")
-    if (msg.role or "").lower() != "assistant":
-        raise HTTPException(status_code=400, detail="Only assistant messages can be rated")
-
-    conv = (
-        db.query(Conversation)
-        .filter(Conversation.id == msg.conversation_id, Conversation.tenant_id == tenant_id)
-        .first()
-    )
-    meta = msg.message_metadata if isinstance(getattr(msg, "message_metadata", None), dict) else {}
-    request_id = str(meta.get("request_id") or "").strip() if isinstance(meta, dict) else ""
-    dataset_id: UUID | None = None
-    raw_ds = meta.get("dataset_id") if isinstance(meta, dict) else None
-    if isinstance(raw_ds, str) and raw_ds.strip():
-        try:
-            dataset_id = UUID(raw_ds.strip())
-        except Exception:
-            dataset_id = None
-    if dataset_id is None and conv is not None:
-        dataset_id = getattr(conv, "dataset_id", None)
-    trace_payload = None
-    if conv is not None and request_id:
-        trace_payload = _find_trace_by_request_id(
-            tenant_id=tenant_id,
-            conversation_id=conv.id,
-            request_id=request_id,
-        )
-    extra_payload = _augment_feedback_extra_with_snapshots(
-        extra=request.extra if isinstance(request.extra, dict) else {},
-        trace_payload=trace_payload,
-        request_id=request_id,
-        dataset_id=dataset_id,
-    )
-
-    row = (
-        db.query(MessageFeedback)
-        .filter(
-            MessageFeedback.tenant_id == tenant_id,
-            MessageFeedback.message_id == msg.id,
-            MessageFeedback.account_id == account_id,
-        )
-        .first()
-    )
-    if row:
-        row.rating = request.rating
-        row.reason = request.reason
-        row.tags = request.tags
-        row.expected_answer = request.expected_answer
-        row.extra = extra_payload
-        db.commit()
-        db.refresh(row)
-        return row
-
-    row = MessageFeedback(
+    return FeedbackService.upsert_message_feedback(
+        db=db,
         tenant_id=tenant_id,
-        conversation_id=msg.conversation_id,
-        message_id=msg.id,
         account_id=account_id,
+        message_id=request.message_id,
         rating=request.rating,
         reason=request.reason,
         tags=request.tags,
         expected_answer=request.expected_answer,
-        extra=extra_payload,
+        extra=request.extra if isinstance(request.extra, dict) else {},
+        ensure_member_fn=DatasetService.ensure_member,
+        list_rag_traces_fn=list_rag_traces,
     )
-    db.add(row)
-    db.commit()
-    db.refresh(row)
-    return row
 
 
 @router.get("/messages", response_model=MessageFeedbackList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -280,26 +218,18 @@ async def list_message_feedback(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Query feedback list (returns all items in current tenant by default)."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
-
-    query = db.query(MessageFeedback).filter(MessageFeedback.tenant_id == tenant_id)
-    if conversation_id:
-        query = query.filter(MessageFeedback.conversation_id == conversation_id)
-    if message_id:
-        query = query.filter(MessageFeedback.message_id == message_id)
-    if min_rating is not None:
-        query = query.filter(MessageFeedback.rating >= int(min_rating))
-    if max_rating is not None:
-        query = query.filter(MessageFeedback.rating <= int(max_rating))
-
-    total = query.count()
-    rows = (
-        query.order_by(MessageFeedback.updated_at.desc())
-        .offset(skip)
-        .limit(limit)
-        .all()
+    return FeedbackService.list_message_feedback(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        conversation_id=conversation_id,
+        message_id=message_id,
+        min_rating=min_rating,
+        max_rating=max_rating,
+        skip=skip,
+        limit=limit,
+        ensure_member_fn=DatasetService.ensure_member,
     )
-    return {"total": total, "items": rows}
 
 
 @router.get("/messages/enriched", response_model=MessageFeedbackEnrichedList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -316,51 +246,18 @@ async def list_message_feedback_enriched(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Feedback list with joined message content + conversation title (for triage dashboards)."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
-
-    query = (
-        db.query(
-            MessageFeedback,
-            Message.content,
-            Message.created_at,
-            Conversation.title,
-        )
-        .join(Message, Message.id == MessageFeedback.message_id)
-        .join(Conversation, Conversation.id == MessageFeedback.conversation_id)
-        .filter(
-            MessageFeedback.tenant_id == tenant_id,
-            Message.tenant_id == tenant_id,
-            Conversation.tenant_id == tenant_id,
-        )
+    return FeedbackService.list_message_feedback_enriched(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        conversation_id=conversation_id,
+        message_id=message_id,
+        min_rating=min_rating,
+        max_rating=max_rating,
+        skip=skip,
+        limit=limit,
+        ensure_member_fn=DatasetService.ensure_member,
     )
-
-    if conversation_id:
-        query = query.filter(MessageFeedback.conversation_id == conversation_id)
-    if message_id:
-        query = query.filter(MessageFeedback.message_id == message_id)
-    if min_rating is not None:
-        query = query.filter(MessageFeedback.rating >= int(min_rating))
-    if max_rating is not None:
-        query = query.filter(MessageFeedback.rating <= int(max_rating))
-
-    total = query.count()
-    rows = (
-        query.order_by(MessageFeedback.updated_at.desc())
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
-
-    items = []
-    for fb, msg_content, msg_created_at, conv_title in rows:
-        # Attach non-persisted attrs for Pydantic serialization.
-        fb.conversation_title = conv_title
-        content = (msg_content or "").strip()
-        fb.message_content = content[:4000] if content else None
-        fb.message_created_at = msg_created_at
-        items.append(fb)
-
-    return {"total": total, "items": items}
 
 
 @router.post("/messages/{feedback_id}/to-regression-case", response_model=RagasRegressionCaseOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)

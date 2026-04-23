@@ -44,59 +44,59 @@
 
 ### 3. `rag-pre-poc-scanner-2026-q2.md`
 
-- [ ] Audit whether current ingestion and analytics endpoints already cover any scanner signals
-- [ ] Implement the smallest backend scanner slice that produces actionable pre-POC findings
-- [ ] Add tests for scanner summary output and false-positive-safe behavior
-- [ ] Run targeted pytest verification for the completed slice
+- [x] Audit whether current ingestion and analytics endpoints already cover any scanner signals
+- [x] Implement the smallest backend scanner slice that produces actionable pre-POC findings
+- [x] Add tests for scanner summary output and false-positive-safe behavior
+- [x] Run targeted pytest verification for the completed slice
 
 ### 4. `rag-context-expansion-rerank-2026-q2.md`
 
-- [ ] Audit current neighbor expansion, rerank, and retrieval stitching behavior
-- [ ] Implement the smallest missing P0 retrieval expansion improvement
-- [ ] Add tests for retrieval expansion and rerank interaction
-- [ ] Run targeted pytest verification for the completed slice
+- [x] Audit current neighbor expansion, rerank, and retrieval stitching behavior
+- [x] Implement the smallest missing P0 retrieval expansion improvement
+- [x] Add tests for retrieval expansion and rerank interaction
+- [x] Run targeted pytest verification for the completed slice
 
 ### 5. `rag-poc-to-mvp-delivery-2026-q2.md`
 
-- [ ] Audit whether metadata enrichment, sibling expansion, and feedback infrastructure already exist
-- [ ] Implement the smallest missing P0 lane with the fewest external dependencies
-- [ ] Add tests for the selected MVP delivery slice
-- [ ] Run targeted pytest verification for the completed slice
+- [x] Audit whether metadata enrichment, sibling expansion, and feedback infrastructure already exist
+- [x] Implement the smallest missing P0 lane with the fewest external dependencies
+- [x] Add tests for the selected MVP delivery slice
+- [x] Run targeted pytest verification for the completed slice
 
 ### 6. `rag-agentic-reasoning-deep-dive-2026-q2.md`
 
-- [ ] Audit current `app/rag/workflows/`, `app/rag/tools/`, and routing support
-- [ ] Implement the smallest missing P0 agentic slice with minimal external dependency risk
-- [ ] Add tests for the selected workflow or tool slice
-- [ ] Run targeted pytest verification for the completed slice
+- [x] Audit current `app/rag/workflows/`, `app/rag/tools/`, and routing support
+- [x] Implement the smallest missing P0 agentic slice with minimal external dependency risk
+- [x] Add tests for the selected workflow or tool slice
+- [x] Run targeted pytest verification for the completed slice
 
 ### 7. `rag-kg-deep-research-2026-q2.md`
 
-- [ ] Audit current `app/rag/kg/search/` capabilities and skip anything already present
-- [ ] Implement one missing P0 KG search slice
-- [ ] Add tests for the selected KG search slice
-- [ ] Run targeted pytest verification for the completed slice
+- [x] Audit current `app/rag/kg/search/` capabilities and skip anything already present
+- [x] Implement one missing P0 KG search slice
+- [x] Add tests for the selected KG search slice
+- [x] Run targeted pytest verification for the completed slice
 
 ### 8. `rag-parsing-chunking-deep-dive-2026-q2.md`
 
-- [ ] Audit parser benchmark, chunking benchmark, and semantic chunk floor support
-- [ ] Implement one benchmark or chunking P0 slice only
-- [ ] Add tests for the selected parsing or chunking slice
-- [ ] Run targeted pytest verification for the completed slice
+- [x] Audit parser benchmark, chunking benchmark, and semantic chunk floor support
+- [x] Implement one benchmark or chunking P0 slice only
+- [x] Add tests for the selected parsing or chunking slice
+- [x] Run targeted pytest verification for the completed slice
 
 ### 9. `rag-ibm-champion-blueprint-2026-q2.md`
 
-- [ ] Audit prompt management, structured output, and rerank weighting support
-- [ ] Implement one missing P0 blueprint slice
-- [ ] Add tests for the selected blueprint slice
-- [ ] Run targeted pytest verification for the completed slice
+- [x] Audit prompt management, structured output, and rerank weighting support
+- [x] Implement one missing P0 blueprint slice
+- [x] Add tests for the selected blueprint slice
+- [x] Run targeted pytest verification for the completed slice
 
 ### 10. `rag-safety-compliance-deep-dive-2026-q2.md`
 
-- [ ] Audit current `app/rag/safety/`, output guard, and audit coverage
-- [ ] Implement one missing P0 safety slice
-- [ ] Add tests for the selected safety slice
-- [ ] Run targeted pytest verification for the completed slice
+- [x] Audit current `app/rag/safety/`, output guard, and audit coverage
+- [x] Implement one missing P0 safety slice
+- [x] Add tests for the selected safety slice
+- [x] Run targeted pytest verification for the completed slice
 
 ## Reference-Only Plans
 
