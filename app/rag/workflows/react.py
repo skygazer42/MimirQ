@@ -15,6 +15,7 @@ from typing import Any
 
 from app.rag.middleware import ToolMiddlewareChain
 from app.rag.tools.hierarchical_retrieval_tools import chunk_read, keyword_search, semantic_search
+from app.rag.tools.web_search import web_search
 from app.rag.workflows.base import (
     BaseWorkflow,
     WorkflowMode,
@@ -125,6 +126,35 @@ class ReActWorkflow(BaseWorkflow):
         self.add_tool("keyword_search", _keyword, "Keyword-first retrieval for exact terms, IDs, and entity names.")
         self.add_tool("semantic_search", _semantic, "Semantic retrieval for natural language questions over the dataset.")
         self.add_tool("chunk_read", _chunk, "Read the full document/chunk content for a selected document id.")
+        return self
+
+    def register_web_search_tool(
+        self,
+        *,
+        provider_order: list[str] | tuple[str, ...] | None = None,
+        max_results: int = 5,
+        site_filter: list[str] | None = None,
+        freshness: str | None = None,
+        lang: str | None = None,
+        region: str | None = None,
+    ) -> "ReActWorkflow":
+        async def _web_search(input_text: str) -> str:
+            result = await web_search(
+                str(input_text or ""),
+                provider_order=list(provider_order) if provider_order is not None else None,
+                max_results=max_results,
+                site_filter=site_filter,
+                freshness=freshness,
+                lang=lang,
+                region=region,
+            )
+            return str(result)
+
+        self.add_tool(
+            "web_search",
+            _web_search,
+            "Search the public web with provider fallback for recent or out-of-corpus information.",
+        )
         return self
 
     def _get_tools_prompt(self) -> str:
