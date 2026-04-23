@@ -79,6 +79,52 @@ def heuristic_classify_feedback_record(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _build_llm_prompt(row: dict[str, Any]) -> str:
+    filenames = ", ".join(str(name or "").strip() for name in (row.get("final_context_filenames") or []) if str(name or "").strip())
+    return (
+        "Classify the root cause of this negative feedback into one of: "
+        "retrieval_miss, generation_error, out_of_scope.\n"
+        "Return a JSON object with keys: category, confidence, rationale.\n\n"
+        f"User question:\n{_safe_str(row.get('original_query')) or ''}\n\n"
+        f"System answer:\n{_safe_str(row.get('llm_response')) or ''}\n\n"
+        f"User feedback:\n{_safe_str(row.get('feedback_comment')) or ''}\n\n"
+        f"Retrieved documents:\n{filenames or '(none)'}\n"
+    )
+
+
+def build_llm_attribution_classifier(
+    llm_callable: Callable[[str], dict[str, Any]],
+    *,
+    fallback_classifier: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+) -> Callable[[dict[str, Any]], dict[str, Any]]:
+    fallback = fallback_classifier or heuristic_classify_feedback_record
+
+    def _classifier(row: dict[str, Any]) -> dict[str, Any]:
+        prompt = _build_llm_prompt(row)
+        try:
+            raw = dict(llm_callable(prompt) or {})
+        except Exception:
+            return dict(fallback(row) or {})
+
+        category = _safe_str(raw.get("category"), max_len=40) or ""
+        try:
+            confidence = round(float(raw.get("confidence") or 0.0), 4)
+        except Exception:
+            confidence = 0.0
+        rationale = _safe_str(raw.get("rationale"), max_len=255) or "llm_unspecified"
+
+        if category not in _CATEGORIES or confidence <= 0.0:
+            return dict(fallback(row) or {})
+
+        return {
+            "category": category,
+            "confidence": confidence,
+            "rationale": rationale,
+        }
+
+    return _classifier
+
+
 def _top_example_sort_key(example: dict[str, Any]) -> tuple[float, float, str]:
     confidence = float(example.get("confidence") or 0.0)
     created_at = _coerce_datetime(example.get("created_at"))

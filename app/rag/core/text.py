@@ -906,6 +906,12 @@ def build_abstain_followup(
             "question": "No sufficient evidence was retrieved. Please refine the question or provide more relevant documents.",
             "options": [],
         }
+    if r == "out_of_scope":
+        return {
+            "type": "refine_query",
+            "question": "This question appears to be outside the current knowledge base. Please add relevant materials or narrow the scope.",
+            "options": [],
+        }
 
     # Default: show related docs (if any) and ask user to narrow scope.
     return {
@@ -913,6 +919,12 @@ def build_abstain_followup(
         "question": "I found related materials but not enough to answer confidently. Which document should I focus on?",
         "options": options,
     }
+
+
+def build_abstain_answer_message(reason: str | None) -> str:
+    if str(reason or "").strip() == "out_of_scope":
+        return "This question appears to be outside the current knowledge base."
+    return "Unable to answer this question based on the available materials."
 
 
 def derive_followup_questions(
