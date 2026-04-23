@@ -65,6 +65,11 @@ from app.rag.core.vision_reader import (
 )
 from app.rag.kg.pipeline import kg_search
 from app.rag.llm.langchain_chat import build_chat_model_from_config
+from app.rag.llm.structured_output import (
+    build_structured_abstain_payload,
+    build_structured_output_instructions,
+    parse_and_repair_structured_output,
+)
 from app.rag.policy.intent_router import route_retrieval_preset
 from app.rag.policy.query_expansion import build_clause_fastlane_queries
 from app.rag.query_expansion import generate_alias_queries
@@ -251,27 +256,8 @@ class RAGEngine:
 [Answer]"""
         )
 
-        # Structured output presets (extensible).
-        self.structured_presets: dict[str, str] = {
-            "faq": (
-                "Output JSON only, structure: "
-                '{"answer": "string", "citations": [{"document_id": "...", "chunk_id": "..."}],'
-                '"qa_pairs": [{"question": "string", "answer": "string"}]}'
-                " No extra text."
-            ),
-            "summary": (
-                "Output JSON only, structure: "
-                '{"answer": "string", "citations": [{"document_id": "...", "chunk_id": "..."}],'
-                '"bullets": ["point 1", "point 2"], "summary": "concise summary"}'
-                " No extra text."
-            ),
-            "action_items": (
-                "Output JSON only, structure: "
-                '{"answer": "string", "citations": [{"document_id": "...", "chunk_id": "..."}],'
-                '"actions": [{"item": "action", "owner": "responsible person", "due": "deadline"}]}'
-                " No extra text."
-            ),
-        }
+        # Structured output instructions are centralized in app.rag.llm.structured_output.
+        self.structured_presets: dict[str, str] = {}
 
         # Query Rewrite: rewrite follow-ups into standalone retrievable queries (optional).
         self.rewrite_prompt = ChatPromptTemplate.from_template(
@@ -986,15 +972,7 @@ Requirements:
 
             format_instructions = ""
             if structured_output:
-                preset_key = (structured_preset or "").lower()
-                format_instructions = self.structured_presets.get(
-                    preset_key,
-                    (
-                        "Please return JSON only, structure: "
-                        '{"answer": "string", "citations": [{"document_id": "...", "chunk_id": "...", "page_number": null, "relevance_score": 0.0}]} '
-                        "No extra text."
-                    ),
-                )
+                format_instructions = build_structured_output_instructions(structured_preset)
 
             yield {
                     "type": "route",
@@ -2651,7 +2629,6 @@ Requirements:
                 full_response = abstain_message
 
                 if structured_output:
-                    preset_key = (structured_preset or "").lower()
                     structured_citations: list[dict[str, Any]] = []
                     for c in citations[: max(0, int(top_k or 0))] if citations else []:
                         structured_citations.append(
@@ -2662,14 +2639,11 @@ Requirements:
                                 "relevance_score": c.get("relevance_score"),
                             }
                         )
-                    payload: dict[str, Any] = {"answer": abstain_message, "citations": structured_citations}
-                    if preset_key == "faq":
-                        payload["qa_pairs"] = []
-                    elif preset_key == "summary":
-                        payload["bullets"] = []
-                        payload["summary"] = ""
-                    elif preset_key == "action_items":
-                        payload["actions"] = []
+                    payload = build_structured_abstain_payload(
+                        preset=structured_preset,
+                        answer=abstain_message,
+                        citations=structured_citations,
+                    )
                     structured_data = payload
                     structured_parse_meta = {"ok": True, "method": "abstain", "error": None}
                     full_response = json.dumps(payload, ensure_ascii=False)
@@ -3523,20 +3497,22 @@ Requirements:
                     full_response = cleaned
                 elif claim_check_mode == "structured":
                     # Keep JSON parseable: only scrub natural-language string fields.
-                    parsed, _meta = parse_json_from_text(full_response, expected="object")
-                    if not isinstance(parsed, dict):
-                        # Fail-safe: always return valid JSON when structured_output=true.
-                        structured_citations: list[dict[str, Any]] = []
-                        for c in citations[: max(0, int(top_k or 0))] if citations else []:
-                            structured_citations.append(
-                                {
-                                    "document_id": c.get("document_id"),
-                                    "chunk_id": c.get("chunk_id"),
-                                    "page_number": c.get("page_number"),
-                                    "relevance_score": c.get("relevance_score"),
-                                }
-                            )
-                        parsed = {"answer": _UNABLE_TO_ANSWER_MESSAGE, "citations": structured_citations}
+                    structured_citations: list[dict[str, Any]] = []
+                    for c in citations[: max(0, int(top_k or 0))] if citations else []:
+                        structured_citations.append(
+                            {
+                                "document_id": c.get("document_id"),
+                                "chunk_id": c.get("chunk_id"),
+                                "page_number": c.get("page_number"),
+                                "relevance_score": c.get("relevance_score"),
+                            }
+                        )
+                    parsed, _meta = parse_and_repair_structured_output(
+                        full_response,
+                        preset=structured_preset,
+                        fallback_answer=_UNABLE_TO_ANSWER_MESSAGE,
+                        fallback_citations=structured_citations,
+                    )
 
                     scrubbed, scrub_meta = scrub_structured_output_visible_evidence_only(
                         parsed,
@@ -3911,7 +3887,22 @@ Requirements:
             structured_data = None
             structured_parse_meta = {"ok": False, "method": None, "error": None}
             if structured_output:
-                structured_data, structured_parse_meta = parse_json_from_text(full_response, expected="object")
+                structured_citations: list[dict[str, Any]] = []
+                for c in citations[: max(0, int(top_k or 0))] if citations else []:
+                    structured_citations.append(
+                        {
+                            "document_id": c.get("document_id"),
+                            "chunk_id": c.get("chunk_id"),
+                            "page_number": c.get("page_number"),
+                            "relevance_score": c.get("relevance_score"),
+                        }
+                    )
+                structured_data, structured_parse_meta = parse_and_repair_structured_output(
+                    full_response,
+                    preset=structured_preset,
+                    fallback_answer=_UNABLE_TO_ANSWER_MESSAGE,
+                    fallback_citations=structured_citations,
+                )
             done_payload = {
                 "type": "done",
                 "data": {
