@@ -3,14 +3,19 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-describe('ingestion monitor task cards', () => {
-  it('shows the prominent progress block only for active tasks and keeps actions out of the metadata row', () => {
+describe('ingestion precheck sample rail', () => {
+  it('uses a precheck sample rail with searchable representative samples and demo fallback data', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'page-client.tsx'), 'utf8')
 
-    expect(src).toContain("const isActiveStatus = doc.status === 'processing' || doc.status === 'pending'")
-    expect(src).toContain('isActiveStatus && doc.current_stage')
-    expect(src).toContain('absolute right-5 top-4 z-20')
-    expect(src).toContain('border-sky-200/60 bg-sky-50/80')
-    expect(src).not.toContain('<span>Progress</span>')
+    expect(src).toContain('预检抽样')
+    expect(src).toContain('代表样本')
+    expect(src).toContain('SearchInput')
+    expect(src).toContain('所有状态')
+    expect(src).toContain("setDemoDocuments(buildDemoDocuments(documents))")
+    expect(src).toContain("import { buildDemoDocuments } from './demo-documents'")
+    expect(src).toContain('虚拟样本仅用于预检演示')
+    expect(src).toContain('StatusBadge')
+    expect(src).not.toContain('hoveredDocumentId')
+    expect(src).not.toContain('swipedDocumentId')
   })
 })
