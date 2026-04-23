@@ -51,6 +51,11 @@ from app.rag.core.text import (
     verify_claim_with_fallback,
 )
 from app.rag.engine import get_rag_engine
+from app.rag.llm.structured_output import (
+    build_structured_abstain_payload,
+    build_structured_output_instructions,
+    parse_and_repair_structured_output,
+)
 from app.rag.store.factory import get_langgraph_store
 from app.services.prompt_resolver import resolve_prompt_template
 
@@ -382,7 +387,6 @@ def _generate_node(state: RAGState) -> RAGState:
         abstain_message = _UNABLE_TO_ANSWER_MESSAGE
         answer = abstain_message
         if bool(state.get("structured_output")):
-            preset_key = (state.get("structured_preset") or "").lower()
             citations = state.get("citations") or []
             top_k = int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K or 5)
             structured_citations: list[dict[str, Any]] = []
@@ -395,14 +399,11 @@ def _generate_node(state: RAGState) -> RAGState:
                         "relevance_score": c.get("relevance_score"),
                     }
                 )
-            payload: dict[str, Any] = {"answer": abstain_message, "citations": structured_citations}
-            if preset_key == "faq":
-                payload["qa_pairs"] = []
-            elif preset_key == "summary":
-                payload["bullets"] = []
-                payload["summary"] = ""
-            elif preset_key == "action_items":
-                payload["actions"] = []
+            payload = build_structured_abstain_payload(
+                preset=state.get("structured_preset"),
+                answer=abstain_message,
+                citations=structured_citations,
+            )
             answer = json.dumps(payload, ensure_ascii=False)
 
         metrics = dict(state.get("metrics") or {})
@@ -597,20 +598,22 @@ def _generate_node(state: RAGState) -> RAGState:
                 cleaned = _UNABLE_TO_ANSWER_MESSAGE
             answer = cleaned
         elif claim_check_mode == "structured":
-            parsed, _meta = parse_json_from_text(str(answer or ""), expected="object")
-            if not isinstance(parsed, dict):
-                # Fail-safe: always return valid JSON when structured_output=true.
-                structured_citations: list[dict[str, Any]] = []
-                for c in (state.get("citations") or [])[: max(0, int(state.get("top_k") or 0))]:
-                    structured_citations.append(
-                        {
-                            "document_id": c.get("document_id"),
-                            "chunk_id": c.get("chunk_id"),
-                            "page_number": c.get("page_number"),
-                            "relevance_score": c.get("relevance_score"),
-                        }
-                    )
-                parsed = {"answer": _UNABLE_TO_ANSWER_MESSAGE, "citations": structured_citations}
+            structured_citations: list[dict[str, Any]] = []
+            for c in (state.get("citations") or [])[: max(0, int(state.get("top_k") or 0))]:
+                structured_citations.append(
+                    {
+                        "document_id": c.get("document_id"),
+                        "chunk_id": c.get("chunk_id"),
+                        "page_number": c.get("page_number"),
+                        "relevance_score": c.get("relevance_score"),
+                    }
+                )
+            parsed, _meta = parse_and_repair_structured_output(
+                str(answer or ""),
+                preset=state.get("structured_preset"),
+                fallback_answer=_UNABLE_TO_ANSWER_MESSAGE,
+                fallback_citations=structured_citations,
+            )
 
             scrubbed, scrub_meta = scrub_structured_output_visible_evidence_only(
                 parsed,
@@ -1436,14 +1439,7 @@ def build_rag_state(
     preset_key = (structured_preset or "").lower()
     format_instructions = ""
     if structured_output:
-        format_instructions = engine.structured_presets.get(
-            preset_key,
-            (
-                "Please return JSON only, structure: "
-                '{"answer": "string", "citations": [{"document_id": "...", "chunk_id": "...", "page_number": null, "relevance_score": 0.0}]}'
-                " Do not output extra text."
-            ),
-        )
+        format_instructions = build_structured_output_instructions(structured_preset)
 
     prompt_template_content = None
     selected_prompt_template_id = None
