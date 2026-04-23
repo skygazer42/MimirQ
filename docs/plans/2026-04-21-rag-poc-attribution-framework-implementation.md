@@ -485,5 +485,5 @@
 - [ ] `out_of_scope` control of the live answering path
 - [x] `industry_rules` management API
 - [x] automatic glossary write-back
-- [ ] UMAP scatter support
+- [x] UMAP scatter support
 - [ ] any global/tenant-wide analysis dashboards beyond dataset scope

@@ -21,6 +21,13 @@ def test_render_dataset_analysis_png_returns_png_bytes_for_full_report() -> None
             "counts": {"retrieval_miss": 2, "generation_error": 1, "out_of_scope": 1},
             "top_examples": {"retrieval_miss": [{"interaction_id": "req-1", "original_query": "485 怎么配置？"}]},
             "manual_review_candidates": [{"interaction_id": "req-2"}],
+            "umap_scatter": {
+                "schema": "mimirq.dataset_analysis.umap_scatter.v1",
+                "points": [
+                    {"label": "manual-a.pdf", "kind": "document", "group": "document", "x": 0.1, "y": 0.2},
+                    {"label": "req-1", "kind": "query", "group": "out_of_scope_candidate", "x": 0.8, "y": 0.7},
+                ],
+            },
             "coverage_heatmap": {
                 "rows": [{"filename": "manual-a.pdf", "retrieval_hit_count": 3, "negative_feedback_count": 2}],
             },

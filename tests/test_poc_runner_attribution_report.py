@@ -17,10 +17,12 @@ def test_build_dataset_analysis_report_combines_metrics_examples_and_heatmap() -
         glossary_candidates=[{"token": "485"}],
         keyword_scores=[{"token": "485", "score": 3.0}],
         coverage_heatmap={"rows": [{"filename": "manual-a.pdf", "retrieval_hit_count": 3, "negative_feedback_count": 2}]},
+        umap_scatter={"schema": "mimirq.dataset_analysis.umap_scatter.v1", "points": [{"x": 0.0, "y": 1.0}]},
     )
 
     assert report["meta"]["dataset_id"] == "ds-1"
     assert report["meta"]["dataset_name"] == "Dataset One"
     assert report["metrics"]["raw_positive_rate"] == 0.7
     assert report["coverage_heatmap"]["rows"][0]["filename"] == "manual-a.pdf"
+    assert report["umap_scatter"]["schema"] == "mimirq.dataset_analysis.umap_scatter.v1"
     assert report["top_examples"]["retrieval_miss"][0]["interaction_id"] == "req-1"
