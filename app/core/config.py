@@ -1419,6 +1419,7 @@ class Settings(BaseSettings):
     RAG_CRAG_STREAMING_MIN_CITATIONS: int = 1
     RAG_CRAG_STREAMING_MIN_TOP_SCORE: float = 0.35
     RAG_SELF_RAG_ENABLED: bool = False
+    RAG_CRITIC_ENABLED: bool = False
     RAG_MULTI_AGENT_ENABLED: bool = False
     RAG_MULTI_AGENT_MAX_SUB_AGENTS: int = 4
     RAG_AGENTIC_REFLECT_TOP_CITATIONS_MIN: int = 1
@@ -1483,6 +1484,7 @@ class Settings(BaseSettings):
     # Parsing fallback (PDF only): retry with a different backend when output quality is low.
     PARSE_FALLBACK_ENABLED: bool = False
     PARSE_FALLBACK_MIN_CONTENT_CHARS: int = 120
+    PARSE_FALLBACK_MIN_PARSE_SCORE: float = 0.55
     PARSE_FALLBACK_MAX_RETRIES: int = 1
     # Cross-page structure restoration.
     CROSS_PAGE_MERGE_ENABLED: bool = False

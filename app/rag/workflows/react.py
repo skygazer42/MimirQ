@@ -9,12 +9,14 @@ Pattern: Think -> Act -> Observe -> Think -> ... -> Answer
 
 
 import asyncio
+import json
 import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from app.rag.middleware import ToolMiddlewareChain
 from app.rag.tools.hierarchical_retrieval_tools import chunk_read, keyword_search, semantic_search
+from app.rag.tools.retrieval_config_tool import configure_retrieval
 from app.rag.tools.web_search import web_search
 from app.rag.workflows.base import (
     BaseWorkflow,
@@ -126,6 +128,39 @@ class ReActWorkflow(BaseWorkflow):
         self.add_tool("keyword_search", _keyword, "Keyword-first retrieval for exact terms, IDs, and entity names.")
         self.add_tool("semantic_search", _semantic, "Semantic retrieval for natural language questions over the dataset.")
         self.add_tool("chunk_read", _chunk, "Read the full document/chunk content for a selected document id.")
+        return self
+
+    def register_retrieval_config_tool(self) -> "ReActWorkflow":
+        async def _configure(input_text: str) -> str:
+            payload: dict[str, Any] = {}
+            raw = str(input_text or "").strip()
+            if raw:
+                try:
+                    parsed = json.loads(raw)
+                    if isinstance(parsed, dict):
+                        payload = dict(parsed)
+                except Exception:
+                    payload = {}
+                    for part in raw.replace(",", " ").split():
+                        if "=" not in part:
+                            continue
+                        key, value = part.split("=", 1)
+                        payload[str(key).strip()] = str(value).strip()
+
+            result = configure_retrieval(
+                top_k=payload.get("top_k", 20),
+                reranker_top_n=payload.get("reranker_top_n", payload.get("rerank_n", 20)),
+                retrieval_profile=payload.get("retrieval_profile"),
+                retrieval_mode=payload.get("retrieval_mode"),
+                score_threshold=payload.get("score_threshold", 0.0),
+            )
+            return str(result)
+
+        self.add_tool(
+            "configure_retrieval",
+            _configure,
+            "Adjust retrieval knobs such as top_k, reranker_top_n, retrieval_profile, and retrieval_mode.",
+        )
         return self
 
     def register_web_search_tool(

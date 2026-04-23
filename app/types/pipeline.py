@@ -64,6 +64,7 @@ class PipelineOptions:
     governance_common_lines_min_ratio: float | None = None
     parse_fallback_enabled: bool | None = None
     parse_fallback_min_content_chars: int | None = None
+    parse_fallback_min_parse_score: float | None = None
     parse_fallback_max_retries: int | None = None
     cross_page_merge_enabled: bool | None = None
     cross_page_merge_max_page_gap: int | None = None
@@ -166,6 +167,7 @@ class PipelineEffective:
     governance_common_lines_min_ratio: float
     parse_fallback_enabled: bool
     parse_fallback_min_content_chars: int
+    parse_fallback_min_parse_score: float
     parse_fallback_max_retries: int
     cross_page_merge_enabled: bool
     cross_page_merge_max_page_gap: int

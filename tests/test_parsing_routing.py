@@ -1,7 +1,7 @@
 import pytest
 
 from app.core.config import settings
-from app.parsing.routing import choose_pdf_backend
+from app.parsing.routing import choose_pdf_backend, should_attempt_pdf_fallback
 
 
 def _set_flags(monkeypatch: pytest.MonkeyPatch, **kwargs):
@@ -208,3 +208,42 @@ def test_choose_pdf_backend_scanned_prefers_deepdoc_over_magicpdf(monkeypatch: p
     monkeypatch.setattr(shutil, "which", lambda _cmd: "/usr/bin/magic-pdf")
     quality = {"score": 0.2, "is_scanned": True}
     assert choose_pdf_backend(quality, None) == "deepdoc"
+
+
+def test_should_attempt_pdf_fallback_when_parse_score_is_below_threshold() -> None:
+    assert (
+        should_attempt_pdf_fallback(
+            grade="warn",
+            parse_score=0.42,
+            content_chars=500,
+            min_content_chars=120,
+            min_parse_score=0.6,
+        )
+        is True
+    )
+
+
+def test_should_attempt_pdf_fallback_when_content_is_too_short_even_with_ok_score() -> None:
+    assert (
+        should_attempt_pdf_fallback(
+            grade="pass",
+            parse_score=0.9,
+            content_chars=80,
+            min_content_chars=120,
+            min_parse_score=0.6,
+        )
+        is True
+    )
+
+
+def test_should_not_attempt_pdf_fallback_when_quality_is_good() -> None:
+    assert (
+        should_attempt_pdf_fallback(
+            grade="pass",
+            parse_score=0.91,
+            content_chars=500,
+            min_content_chars=120,
+            min_parse_score=0.6,
+        )
+        is False
+    )

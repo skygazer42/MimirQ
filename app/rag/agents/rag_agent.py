@@ -19,6 +19,7 @@ from app.rag.pipelines.langgraph import _build_context, _build_history_text, bui
 from app.rag.retrieval.decomposition_chain import build_chained_query, summarize_chain_step
 from app.rag.retrieval.orchestrator import run_retrieval
 from app.rag.workflows.crag_streaming import run_crag_streaming
+from app.rag.workflows.critic import run_critic_review
 from app.rag.workflows.self_rag import run_self_rag_reflection
 
 if TYPE_CHECKING:
@@ -400,6 +401,7 @@ class AgenticRAGRunner:
         crag_provider: str | None = None
         crag_web_results = 0
         self_rag_reflection: dict[str, Any] | None = None
+        critic_review: dict[str, Any] | None = None
 
         tool_invocations = self._plan_tool_invocations(
             question=question,
@@ -549,7 +551,8 @@ class AgenticRAGRunner:
             if structured_output:
                 structured_data, _meta = parse_json_from_text(full_response, expected="object")
 
-            if bool(getattr(settings, "RAG_SELF_RAG_ENABLED", False)):
+            evidence_text = ""
+            if bool(getattr(settings, "RAG_SELF_RAG_ENABLED", False)) or bool(getattr(settings, "RAG_CRITIC_ENABLED", False)):
                 evidence_text = "\n".join(
                     [
                         str(getattr(doc, "page_content", "") or "").strip()
@@ -569,6 +572,21 @@ class AgenticRAGRunner:
                         "step": "self_reflect",
                         "verdict": self_rag_reflection.get("verdict"),
                         "need_retrieval": self_rag_reflection.get("need_retrieval"),
+                    },
+                }
+            if bool(getattr(settings, "RAG_CRITIC_ENABLED", False)):
+                critic_review = run_critic_review(
+                    question=question,
+                    answer=full_response,
+                    evidence_text=evidence_text,
+                    citations=citations,
+                )
+                yield {
+                    "type": "agentic_step",
+                    "data": {
+                        "step": "critic_review",
+                        "verdict": critic_review.get("verdict"),
+                        "citation_missing": critic_review.get("citation_missing"),
                     },
                 }
 
@@ -597,6 +615,21 @@ class AgenticRAGRunner:
             "agentic_self_rag_need_retrieval": (
                 bool((self_rag_reflection or {}).get("need_retrieval")) if self_rag_reflection is not None else None
             ),
+            "agentic_critic_used": bool(critic_review is not None),
+            "agentic_critic_verdict": (critic_review or {}).get("verdict") if critic_review else None,
+            "agentic_critic_citation_missing": (
+                bool((critic_review or {}).get("citation_missing")) if critic_review is not None else None
+            ),
+            "agentic_critic_supported_claims": (
+                int((critic_review or {}).get("supported_claims") or 0) if critic_review is not None else None
+            ),
+            "agentic_critic_total_claims": (
+                int((critic_review or {}).get("total_claims") or 0) if critic_review is not None else None
+            ),
+            "agentic_critic_style_issue_count": (
+                len((critic_review or {}).get("style_issues") or []) if critic_review is not None else None
+            ),
+            "agentic_critic_reason_codes": list((critic_review or {}).get("reason_codes") or []) if critic_review else [],
         }
 
         yield {
