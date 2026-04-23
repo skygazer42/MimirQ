@@ -10,6 +10,15 @@ from __future__ import annotations
 
 import logging
 
+import langchain
+
+if not hasattr(langchain, "debug"):
+    setattr(langchain, "debug", False)
+if not hasattr(langchain, "verbose"):
+    setattr(langchain, "verbose", False)
+if not hasattr(langchain, "llm_cache"):
+    setattr(langchain, "llm_cache", None)
+
 from app.rag.agents.multi_agent import MultiAgentPlanStep, MultiAgentRAGRunner, get_multi_agent_runner
 from app.rag.agents.rag_agent import AgenticPlanStep, AgenticRAGRunner, get_agentic_runner
 
