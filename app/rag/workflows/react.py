@@ -14,6 +14,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from app.rag.middleware import ToolMiddlewareChain
+from app.rag.tools.hierarchical_retrieval_tools import chunk_read, keyword_search, semantic_search
 from app.rag.workflows.base import (
     BaseWorkflow,
     WorkflowMode,
@@ -101,6 +102,29 @@ class ReActWorkflow(BaseWorkflow):
     def set_llm(self, llm: Any) -> "ReActWorkflow":
         """Set the language model."""
         self._llm = llm
+        return self
+
+    def register_hierarchical_retrieval_tools(
+        self,
+        *,
+        dataset_id: str,
+        account_id: str | None = None,
+    ) -> "ReActWorkflow":
+        async def _keyword(input_text: str) -> str:
+            result = await keyword_search(str(input_text or ""), dataset_id=dataset_id)
+            return str(result)
+
+        async def _semantic(input_text: str) -> str:
+            result = await semantic_search(str(input_text or ""), dataset_id=dataset_id)
+            return str(result)
+
+        async def _chunk(input_text: str) -> str:
+            result = await chunk_read(document_id=str(input_text or ""), dataset_id=dataset_id, account_id=account_id)
+            return str(result)
+
+        self.add_tool("keyword_search", _keyword, "Keyword-first retrieval for exact terms, IDs, and entity names.")
+        self.add_tool("semantic_search", _semantic, "Semantic retrieval for natural language questions over the dataset.")
+        self.add_tool("chunk_read", _chunk, "Read the full document/chunk content for a selected document id.")
         return self
 
     def _get_tools_prompt(self) -> str:
