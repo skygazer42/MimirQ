@@ -37,6 +37,7 @@ from app.rag.preprocessing.stopwords import STOPWORDS
 from app.rag.preprocessing.tokenization import tokenize_for_bm25
 from app.rag.reranker.factory import get_reranker
 from app.rag.reranker.types import RerankCandidate
+from app.rag.retrieval.sibling_expand import expand_document_siblings, select_document_expansion_mode
 from app.rag.retrieval.sparse import SparseVector
 from app.rag.retrieval_candidate_cache import (
     build_retrieval_candidate_cache_key,
@@ -3817,10 +3818,16 @@ class HybridRetriever(BaseRetriever):
             return results
 
         window = max(0, int(getattr(settings, "RAG_CONTEXT_NEIGHBOR_WINDOW", 0) or 0))
-        if window <= 0:
+        sibling_enabled = bool(getattr(settings, "RAG_CONTEXT_SIBLING_EXPAND_ENABLED", False))
+        short_doc_max_chunks = max(0, int(getattr(settings, "RAG_CONTEXT_SIBLING_SHORT_DOC_MAX_CHUNKS", 0) or 0))
+        if window <= 0 and not (sibling_enabled and short_doc_max_chunks > 0):
             return results
 
         max_added = max(0, int(getattr(settings, "RAG_CONTEXT_NEIGHBOR_MAX_ADDED", 0) or 0))
+        sibling_max_added = max(
+            0,
+            int(getattr(settings, "RAG_CONTEXT_SIBLING_MAX_ADDED", max_added or 0) or (max_added or 0)),
+        )
         tenant_filter = self.tenant_id
 
         # Version-aware neighbor fetch:
@@ -3849,8 +3856,14 @@ class HybridRetriever(BaseRetriever):
                 desired_pipeline_by_doc.setdefault(str(doc_uuid), pipeline_key)
             anchors.append((r, doc_uuid, idx, pipeline_key))
 
+        document_chunks_by_doc: dict[str, list[DocumentChunk]] = {}
+        short_doc_ids: set[str] = set()
+        doc_ids_for_sibling = {doc_uuid for _, doc_uuid, _, _ in anchors if doc_uuid is not None}
+
         needed_pairs: set[tuple[UUID, int]] = set()
         for _, doc_uuid, idx, _pk in anchors:
+            if doc_uuid is not None and str(doc_uuid) in short_doc_ids:
+                continue
             if doc_uuid is None or idx is None:
                 continue
             for delta in range(-window, window + 1):
@@ -3867,6 +3880,33 @@ class HybridRetriever(BaseRetriever):
         neighbors_by_pair: dict[tuple[str, int], DocumentChunk] = {}
         db = SessionLocal()
         try:
+            if sibling_enabled and short_doc_max_chunks > 0 and doc_ids_for_sibling:
+                q_all = db.query(DocumentChunk).filter(DocumentChunk.document_id.in_(list(doc_ids_for_sibling)))
+                if tenant_filter:
+                    q_all = q_all.filter(DocumentChunk.tenant_id == tenant_filter)
+                for ck in q_all.all():
+                    doc_key = str(ck.document_id)
+                    desired = desired_pipeline_by_doc.get(doc_key)
+                    if desired:
+                        stored_meta = dict(getattr(ck, "doc_metadata", None) or {})
+                        ck_key = str(stored_meta.get("doc_pipeline_key") or "").strip()
+                        if not ck_key:
+                            ph = str(stored_meta.get("pipeline_hash") or "").strip()
+                            if ph:
+                                ck_key = f"{ck.document_id}:{ph}"
+                        if not ck_key or ck_key != desired:
+                            continue
+                    document_chunks_by_doc.setdefault(doc_key, []).append(ck)
+                short_doc_ids = {
+                    doc_key
+                    for doc_key, rows in document_chunks_by_doc.items()
+                    if select_document_expansion_mode(
+                        total_chunks=len(rows),
+                        short_doc_max_chunks=short_doc_max_chunks,
+                    )
+                    == "sibling"
+                }
+
             q = db.query(DocumentChunk).filter(
                 tuple_(DocumentChunk.document_id, DocumentChunk.chunk_index).in_(list(needed_pairs))
             )
@@ -3894,21 +3934,43 @@ class HybridRetriever(BaseRetriever):
                 pass
 
         seen: set[str] = set()
+        original_results_by_chunk_id: dict[str, dict[str, Any]] = {}
         for r in results:
             cid = r.get("chunk_id") or (r.get("metadata") or {}).get("chunk_id")
             if cid:
                 seen.add(str(cid))
+                original_results_by_chunk_id[str(cid)] = r
 
         expanded: list[dict[str, Any]] = []
         added_neighbors = 0
+        processed_short_docs: set[str] = set()
         for r, doc_uuid, idx, _pk in anchors:
             meta = r.get("metadata") or {}
             anchor_cid = str(r.get("chunk_id") or meta.get("chunk_id") or "")
             anchor_header_path = str(meta.get("header_path") or meta.get("header_context") or "").strip() or None
+            doc_key = str(doc_uuid) if doc_uuid is not None else ""
+
+            if doc_key and doc_key in short_doc_ids:
+                if doc_key in processed_short_docs:
+                    continue
+                for item in expand_document_siblings(
+                    results=[r],
+                    document_chunks_by_doc=document_chunks_by_doc,
+                    short_doc_ids={doc_key},
+                    max_added=sibling_max_added,
+                    original_results_by_chunk_id=original_results_by_chunk_id,
+                ):
+                    cid = str(item.get("chunk_id") or ((item.get("metadata") or {}).get("chunk_id")) or "").strip()
+                    if cid in seen:
+                        expanded.append(item)
+                        continue
+                    seen.add(cid)
+                    expanded.append(item)
+                processed_short_docs.add(doc_key)
+                continue
 
             # Build a [prev..anchor..next] group in document order.
             if doc_uuid is not None and idx is not None:
-                doc_key = str(doc_uuid)
                 for gi in range(idx - window, idx + window + 1):
                     if gi < 0:
                         continue

@@ -1042,6 +1042,12 @@ class Settings(BaseSettings):
     RAG_CONTEXT_NEIGHBOR_WINDOW: int = 0
     # Max number of neighbor chunks to add in total (0 disables the cap).
     RAG_CONTEXT_NEIGHBOR_MAX_ADDED: int = 20
+    # Optional: expand all chunks from short documents around a strong anchor hit.
+    RAG_CONTEXT_SIBLING_EXPAND_ENABLED: bool = False
+    # Route to sibling expansion when the active pipeline version has at most this many chunks.
+    RAG_CONTEXT_SIBLING_SHORT_DOC_MAX_CHUNKS: int = 8
+    # Max number of sibling chunks to add in total (0 disables the cap).
+    RAG_CONTEXT_SIBLING_MAX_ADDED: int = 40
     # Optional: reorder returned context chunks to improve continuity by stitching contiguous
     # (document_id, chunk_index) sequences together. Default off to preserve legacy ordering.
     RAG_CONTEXT_STITCHING_ENABLED: bool = False
