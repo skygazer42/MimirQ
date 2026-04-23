@@ -13,11 +13,12 @@ from app.services.dataset_analysis_service import (
     build_dataset_analysis_examples,
     build_dataset_analysis_summary,
     create_dataset_analysis_png_task,
-    export_dataset_analysis_json,
     export_dataset_analysis_html,
+    export_dataset_analysis_json,
     export_dataset_analysis_jsonl,
     get_dataset_analysis_png_result,
     get_dataset_analysis_png_task_status,
+    writeback_dataset_analysis_glossary_candidates,
 )
 from app.services.dataset_service import DatasetService
 
@@ -164,6 +165,36 @@ def export_dataset_analysis_html_endpoint(
         category=category,
     )
     return Response(content=payload, media_type="text/html")
+
+
+@router.post("/{dataset_id}/analysis/glossary-writeback", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+def writeback_dataset_analysis_glossary_endpoint(
+    dataset_id: UUID,
+    ruleset: Annotated[str, Query(min_length=1)] ,
+    from_ts: Annotated[str | None, Query()] = None,
+    to_ts: Annotated[str | None, Query()] = None,
+    feedback_polarity: Annotated[str | None, Query()] = None,
+    category: Annotated[str | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 20,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    return writeback_dataset_analysis_glossary_candidates(
+        db=db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        dataset_name=str(getattr(dataset, "name", "") or ""),
+        ruleset_name=ruleset,
+        from_ts=from_ts,
+        to_ts=to_ts,
+        feedback_polarity=feedback_polarity,
+        category=category,
+        limit=limit,
+    )
 
 
 @router.post("/{dataset_id}/analysis/export.png", status_code=202, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)

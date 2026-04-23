@@ -13,7 +13,6 @@ from app.models.feedback import MessageFeedback
 from app.rag.evaluation.poc_runner.attribution_classifier import classify_feedback_records
 from app.rag.evaluation.poc_runner.coverage_heatmap import build_document_heatmap
 from app.rag.evaluation.poc_runner.metrics import compute_feedback_metrics
-from app.rag.evaluation.poc_runner.query_pattern_miner import mine_query_patterns
 from app.rag.evaluation.poc_runner.png_tasks import (
     complete_png_export_task,
     create_png_export_task,
@@ -21,16 +20,19 @@ from app.rag.evaluation.poc_runner.png_tasks import (
     get_png_export_task,
     get_png_export_task_result,
 )
+from app.rag.evaluation.poc_runner.query_pattern_miner import mine_query_patterns
 from app.rag.evaluation.poc_runner.reports.attribution_report import build_dataset_analysis_report
 from app.rag.evaluation.poc_runner.reports.html_renderer import render_dataset_analysis_html
 from app.rag.evaluation.poc_runner.reports.png_renderer import render_dataset_analysis_png
 from app.rag.evaluation.poc_runner.source_builder import build_dataset_analysis_sources
 from app.rag.evaluation.poc_runner.telemetry import build_poc_interaction_rows
+from app.rag.industry_rules.loaders import write_glossary_candidates
 from app.services.rag_trace_service import list_rag_traces
 
 _SUMMARY_SCHEMA = "mimirq.dataset_analysis.summary.v1"
 _EXAMPLES_SCHEMA = "mimirq.dataset_analysis.examples.v1"
 _EXPORT_SCHEMA = "mimirq.dataset_analysis.export.v1"
+_GLOSSARY_WRITEBACK_SCHEMA = "mimirq.dataset_analysis.glossary_writeback.v1"
 
 
 def _iso_now() -> str:
@@ -412,6 +414,47 @@ def export_dataset_analysis_html(
     )
     report["meta"]["definitions"] = bundle["meta"]["definitions"]
     return render_dataset_analysis_html(report)
+
+
+def writeback_dataset_analysis_glossary_candidates(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    dataset_name: str,
+    ruleset_name: str,
+    from_ts: str | None = None,
+    to_ts: str | None = None,
+    feedback_polarity: str | None = None,
+    category: str | None = None,
+    limit: int = 20,
+) -> dict[str, Any]:
+    bundle = _build_full_bundle(
+        db=db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        dataset_name=dataset_name,
+        from_ts=from_ts,
+        to_ts=to_ts,
+        feedback_polarity=feedback_polarity,
+        category=category,
+        limit=limit,
+    )
+    selected_candidates = list(bundle["glossary_candidates"])[: max(1, int(limit or 1))]
+    result = write_glossary_candidates(ruleset_name, selected_candidates)
+    return {
+        "schema": _GLOSSARY_WRITEBACK_SCHEMA,
+        "dataset_id": str(dataset_id),
+        "dataset_name": dataset_name,
+        "ruleset": str(ruleset_name or "").strip(),
+        "filters": bundle["meta"]["filters"],
+        "candidate_count": int(result["candidate_count"]),
+        "added_count": int(result["added_count"]),
+        "skipped_count": int(result["skipped_count"]),
+        "added_tokens": list(result["added_tokens"]),
+        "skipped_tokens": list(result["skipped_tokens"]),
+        "generated_path": result["generated_path"],
+    }
 
 
 def create_dataset_analysis_png_task(
