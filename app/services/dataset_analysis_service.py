@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
 from app.models.chat import Conversation, Message
+from app.models.dataset import Dataset
 from app.models.feedback import MessageFeedback
 from app.rag.evaluation.poc_runner.attribution_classifier import classify_feedback_records
 from app.rag.evaluation.poc_runner.coverage_heatmap import build_document_heatmap
@@ -28,12 +29,14 @@ from app.rag.evaluation.poc_runner.reports.umap_scatter import build_umap_scatte
 from app.rag.evaluation.poc_runner.source_builder import build_dataset_analysis_sources
 from app.rag.evaluation.poc_runner.telemetry import build_poc_interaction_rows
 from app.rag.industry_rules.loaders import write_glossary_candidates
+from app.services.dataset_service import DatasetService
 from app.services.rag_trace_service import list_rag_traces
 
 _SUMMARY_SCHEMA = "mimirq.dataset_analysis.summary.v1"
 _EXAMPLES_SCHEMA = "mimirq.dataset_analysis.examples.v1"
 _EXPORT_SCHEMA = "mimirq.dataset_analysis.export.v1"
 _GLOSSARY_WRITEBACK_SCHEMA = "mimirq.dataset_analysis.glossary_writeback.v1"
+_DASHBOARD_SCHEMA = "mimirq.dataset_analysis.dashboard.v1"
 
 
 def _iso_now() -> str:
@@ -323,6 +326,87 @@ def build_dataset_analysis_examples(
         "top_examples": top_examples,
         "manual_review_candidates": manual_review,
         "glossary_candidates": bundle["glossary_candidates"][: max(1, int(limit or 1))],
+    }
+
+
+def build_tenant_dataset_analysis_dashboard(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    from_ts: str | None = None,
+    to_ts: str | None = None,
+    feedback_polarity: str | None = None,
+    limit: int = 20,
+) -> dict[str, Any]:
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    rows = (
+        db.query(Dataset)
+        .filter(Dataset.tenant_id == tenant_id)
+        .order_by(Dataset.name.asc())
+        .all()
+    )
+
+    cards: list[dict[str, Any]] = []
+    summary = {
+        "all_interactions": 0,
+        "feedback_interactions": 0,
+        "attributable_feedback_interactions": 0,
+        "retrieval_miss": 0,
+        "generation_error": 0,
+        "out_of_scope": 0,
+    }
+
+    for dataset in rows:
+        if not DatasetService.check_dataset_permission(db, dataset, account_id):
+            continue
+        payload = build_dataset_analysis_summary(
+            db=db,
+            tenant_id=tenant_id,
+            dataset_id=dataset.id,
+            dataset_name=str(getattr(dataset, "name", "") or ""),
+            from_ts=from_ts,
+            to_ts=to_ts,
+            feedback_polarity=feedback_polarity,
+            category=None,
+        )
+        meta = dict(payload.get("meta") or {})
+        scope_summary = dict(meta.get("scope_summary") or {})
+        counts = dict(payload.get("counts") or {})
+        metrics = dict(payload.get("metrics") or {})
+
+        summary["all_interactions"] += int(scope_summary.get("all_interactions") or 0)
+        summary["feedback_interactions"] += int(scope_summary.get("feedback_interactions") or 0)
+        summary["attributable_feedback_interactions"] += int(scope_summary.get("attributable_feedback_interactions") or 0)
+        summary["retrieval_miss"] += int(counts.get("retrieval_miss") or 0)
+        summary["generation_error"] += int(counts.get("generation_error") or 0)
+        summary["out_of_scope"] += int(counts.get("out_of_scope") or 0)
+
+        cards.append(
+            {
+                "dataset_id": str(dataset.id),
+                "dataset_name": str(getattr(dataset, "name", "") or ""),
+                "scope_summary": scope_summary,
+                "metrics": metrics,
+                "counts": counts,
+                "ratios": dict(payload.get("ratios") or {}),
+            }
+        )
+        if len(cards) >= max(1, int(limit or 1)):
+            break
+
+    return {
+        "schema": _DASHBOARD_SCHEMA,
+        "tenant_id": str(tenant_id),
+        "dataset_count": int(len(cards)),
+        "summary": summary,
+        "datasets": cards,
+        "filters": {
+            "from_ts": from_ts,
+            "to_ts": to_ts,
+            "feedback_polarity": feedback_polarity,
+            "limit": int(limit or 0),
+        },
     }
 
 

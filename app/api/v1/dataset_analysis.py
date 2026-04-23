@@ -12,6 +12,7 @@ from app.core.database import get_db
 from app.services.dataset_analysis_service import (
     build_dataset_analysis_examples,
     build_dataset_analysis_summary,
+    build_tenant_dataset_analysis_dashboard,
     create_dataset_analysis_png_task,
     export_dataset_analysis_html,
     export_dataset_analysis_json,
@@ -31,6 +32,29 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 }
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+
+
+@router.get("/analysis/dashboard", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+def get_tenant_dataset_analysis_dashboard(
+    from_ts: Annotated[str | None, Query()] = None,
+    to_ts: Annotated[str | None, Query()] = None,
+    feedback_polarity: Annotated[str | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 20,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    return build_tenant_dataset_analysis_dashboard(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        from_ts=from_ts,
+        to_ts=to_ts,
+        feedback_polarity=feedback_polarity,
+        limit=limit,
+    )
 
 
 @router.get("/{dataset_id}/analysis/summary", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)

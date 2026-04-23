@@ -481,9 +481,9 @@
 
 ## Deferred Items From This MD
 
-- [ ] LLM attribution classifier
-- [ ] `out_of_scope` control of the live answering path
+- [x] LLM attribution classifier
+- [x] `out_of_scope` control of the live answering path
 - [x] `industry_rules` management API
 - [x] automatic glossary write-back
 - [x] UMAP scatter support
-- [ ] any global/tenant-wide analysis dashboards beyond dataset scope
+- [x] any global/tenant-wide analysis dashboards beyond dataset scope

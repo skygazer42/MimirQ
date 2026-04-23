@@ -46,6 +46,7 @@ from app.rag.core.temporal import (
     fetch_document_updated_ts,
 )
 from app.rag.core.text import (
+    build_abstain_answer_message,
     build_abstain_followup,
     derive_followup_questions,
     extract_evidence_text,
@@ -71,6 +72,10 @@ from app.rag.llm.structured_output import (
     parse_and_repair_structured_output,
 )
 from app.rag.policy.intent_router import route_retrieval_preset
+from app.rag.policy.out_of_scope_live_gate import (
+    maybe_apply_out_of_scope_live_guard,
+    run_default_out_of_scope_live_guard,
+)
 from app.rag.policy.query_expansion import build_clause_fastlane_queries
 from app.rag.query_expansion import generate_alias_queries
 from app.rag.reranker.factory import describe_reranker_provider
@@ -2284,19 +2289,40 @@ Requirements:
                 except Exception:
                     top_rel = 0.0
 
-            if abstain_enabled:
-                min_citations = max(0, int(settings.RAG_ABSTAIN_MIN_CITATIONS or 0))
-                min_top_rel = float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE or 0.0)
+                if abstain_enabled:
+                    min_citations = max(0, int(settings.RAG_ABSTAIN_MIN_CITATIONS or 0))
+                    min_top_rel = float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE or 0.0)
 
-                if min_citations > 0 and len(citations) < min_citations:
-                    abstain_triggered = True
-                    abstain_reason = "citations_lt_min"
-                elif min_top_rel > 0 and top_rel < min_top_rel:
-                    abstain_triggered = True
-                    abstain_reason = "top_relevance_lt_min"
+                    if min_citations > 0 and len(citations) < min_citations:
+                        abstain_triggered = True
+                        abstain_reason = "citations_lt_min"
+                    elif min_top_rel > 0 and top_rel < min_top_rel:
+                        abstain_triggered = True
+                        abstain_reason = "top_relevance_lt_min"
 
-            retrieval_info_event = self._build_retrieval_info_event(
-                attempt=corrective_attempt_count,
+                out_of_scope_guard = maybe_apply_out_of_scope_live_guard(
+                    query=query_for_retrieval,
+                    enabled=bool(getattr(settings, "RAG_OUT_OF_SCOPE_LIVE_GUARD_ENABLED", False)),
+                    candidate=bool(abstain_triggered or not citations),
+                    current_triggered=bool(abstain_triggered),
+                    current_reason=abstain_reason,
+                    tenant_id=(str(tenant_id or "").strip() or None),
+                    dataset_id=(str(dataset_id or "").strip() or None),
+                    verifier=lambda: run_default_out_of_scope_live_guard(
+                        query=query_for_retrieval,
+                        tenant_id=str(tenant_id or ""),
+                        dataset_id=str(dataset_id or ""),
+                        ruleset_name=(str(getattr(settings, "RAG_OUT_OF_SCOPE_RULESET", "") or "").strip() or None),
+                        hyde_query=hyde_text if bool(hyde_used and hyde_text) else None,
+                        vector_similarity_threshold=float(getattr(settings, "RAG_OUT_OF_SCOPE_VECTOR_THRESHOLD", 0.35) or 0.35),
+                        hyde_similarity_threshold=float(getattr(settings, "RAG_OUT_OF_SCOPE_HYDE_THRESHOLD", 0.4) or 0.4),
+                    ),
+                )
+                abstain_triggered = bool(out_of_scope_guard.get("abstain_triggered"))
+                abstain_reason = out_of_scope_guard.get("abstain_reason")
+
+                retrieval_info_event = self._build_retrieval_info_event(
+                    attempt=corrective_attempt_count,
                 query_count=len(retrieval_queries),
                 docs_count=len(docs),
                 citations_count=len(citations),
@@ -2622,7 +2648,7 @@ Requirements:
                 )
 
             if abstain_triggered:
-                abstain_message = _UNABLE_TO_ANSWER_MESSAGE
+                abstain_message = build_abstain_answer_message(abstain_reason)
 
                 structured_data = None
                 structured_parse_meta = {"ok": False, "method": None, "error": None}

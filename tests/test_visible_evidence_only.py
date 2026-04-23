@@ -398,3 +398,31 @@ def test_langgraph_strict_mode_abstain_followup(monkeypatch: pytest.MonkeyPatch)
     assert followup.get("type") == "refine_query"
     assert isinstance(followup.get("question"), str) and followup.get("question")
     assert followup.get("options") == []
+
+
+def test_langgraph_generate_node_uses_out_of_scope_abstain_message(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.rag.engine as engine_mod
+    import app.rag.pipelines.langgraph as lg_mod
+    from app.core.config import settings
+
+    engine_mod.reset_rag_engine()
+
+    monkeypatch.setattr(settings, "LLM_API_KEY", "", raising=False)
+    monkeypatch.setattr(settings, "LLM_MOCK_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "LLM_MOCK_RESPONSE", "SHOULD_NOT_APPEAR", raising=False)
+
+    out = lg_mod._generate_node(
+        {
+            "question": "新型号 X200 怎么接线",
+            "history": [],
+            "docs": [],
+            "citations": [],
+            "abstain_triggered": True,
+            "abstain_reason": "out_of_scope",
+            "metrics": {"abstain_followup": {"type": "refine_query", "question": "outside the current knowledge base", "options": []}},
+            "structured_output": False,
+            "structured_preset": None,
+        }
+    )
+
+    assert out.get("answer") == "This question appears to be outside the current knowledge base."

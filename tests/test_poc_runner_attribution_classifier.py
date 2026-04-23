@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from app.rag.evaluation.poc_runner.attribution_classifier import classify_feedback_records
+from app.rag.evaluation.poc_runner.attribution_classifier import (
+    build_llm_attribution_classifier,
+    classify_feedback_records,
+)
 
 
 def test_classify_feedback_records_only_processes_negative_feedback_and_builds_manual_review_queue() -> None:
@@ -69,3 +72,51 @@ def test_classify_feedback_records_orders_top_examples_by_confidence_then_recent
         "new-high",
         "old-high",
     ]
+
+
+def test_build_llm_attribution_classifier_uses_llm_output_when_valid() -> None:
+    captured: dict[str, str] = {}
+
+    def _fake_llm(prompt: str) -> dict[str, object]:
+        captured["prompt"] = prompt
+        return {
+            "category": "out_of_scope",
+            "confidence": 0.91,
+            "rationale": "kb truly lacks material",
+        }
+
+    classifier = build_llm_attribution_classifier(_fake_llm)
+    result = classifier(
+        {
+            "interaction_id": "req-1",
+            "original_query": "新型号 X200 的接线方式",
+            "llm_response": "请查看知识库。",
+            "feedback_comment": "知识库里没有这个型号",
+            "final_context_filenames": ["manual-a.pdf"],
+        }
+    )
+
+    assert result["category"] == "out_of_scope"
+    assert result["confidence"] == 0.91
+    assert result["rationale"] == "kb truly lacks material"
+    assert "新型号 X200 的接线方式" in captured["prompt"]
+    assert "知识库里没有这个型号" in captured["prompt"]
+    assert "manual-a.pdf" in captured["prompt"]
+
+
+def test_build_llm_attribution_classifier_falls_back_to_heuristic_when_llm_output_is_invalid() -> None:
+    def _bad_llm(_prompt: str) -> dict[str, object]:
+        return {"category": "nonsense", "confidence": 0.2, "rationale": "bad"}
+
+    classifier = build_llm_attribution_classifier(_bad_llm)
+    result = classifier(
+        {
+            "interaction_id": "req-1",
+            "feedback_polarity": "negative",
+            "feedback_comment": "没检索到",
+            "final_context_filenames": [],
+        }
+    )
+
+    assert result["category"] == "retrieval_miss"
+    assert result["rationale"] == "missing_retrieval_evidence"

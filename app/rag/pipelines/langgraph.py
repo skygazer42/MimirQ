@@ -42,10 +42,10 @@ from app.rag.core.sentence_citations import (
     render_sentence_citations_markdown,
 )
 from app.rag.core.text import (
+    build_abstain_answer_message,
     derive_followup_questions,
     extract_evidence_text,
     extract_followup_questions_from_answer,
-    parse_json_from_text,
     scrub_structured_output_visible_evidence_only,
     split_into_claims,
     verify_claim_with_fallback,
@@ -384,7 +384,7 @@ def _generate_node(state: RAGState) -> RAGState:
         engine = get_rag_engine()
         llm, route, reason = engine._select_llm(state["question"], state.get("history"))  # type: ignore[attr-defined]
 
-        abstain_message = _UNABLE_TO_ANSWER_MESSAGE
+        abstain_message = build_abstain_answer_message(state.get("abstain_reason"))
         answer = abstain_message
         if bool(state.get("structured_output")):
             citations = state.get("citations") or []
@@ -1428,7 +1428,6 @@ def build_rag_state(
     ab_user_key = resolved.ab_user_key
     db = resolved.db
 
-    engine = get_rag_engine()
     try:
         from app.rag.policy.intent_router import normalize_intent_router_policy
 
@@ -1436,7 +1435,6 @@ def build_rag_state(
     except Exception:
         intent_router_policy = None
 
-    preset_key = (structured_preset or "").lower()
     format_instructions = ""
     if structured_output:
         format_instructions = build_structured_output_instructions(structured_preset)

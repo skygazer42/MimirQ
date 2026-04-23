@@ -1085,6 +1085,12 @@ class Settings(BaseSettings):
     # Grounding guard: abstain when evidence is weak/empty.
     RAG_ABSTAIN_ENABLED: bool = False
     RAG_ABSTAIN_MIN_CITATIONS: int = 1
+    # Optional live out-of-scope guard: only upgrades weak/no-evidence abstain paths when the
+    # verifier says the question appears outside the current knowledge base.
+    RAG_OUT_OF_SCOPE_LIVE_GUARD_ENABLED: bool = False
+    RAG_OUT_OF_SCOPE_RULESET: str = ""
+    RAG_OUT_OF_SCOPE_VECTOR_THRESHOLD: float = 0.35
+    RAG_OUT_OF_SCOPE_HYDE_THRESHOLD: float = 0.4
     RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE: float = 0.0  # 0 disables
     # Strict evidence contract: when enabled, citations without span offsets are discarded.
     RAG_EVIDENCE_REQUIRE_SPANS_ENABLED: bool = False

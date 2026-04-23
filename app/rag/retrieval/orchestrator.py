@@ -63,6 +63,10 @@ from app.rag.policy.must_recall_auto import (
     infer_expected_source_keys,
     infer_required_anchor_fields,
 )
+from app.rag.policy.out_of_scope_live_gate import (
+    maybe_apply_out_of_scope_live_guard,
+    run_default_out_of_scope_live_guard,
+)
 from app.rag.policy.query_expansion import build_clause_fastlane_queries
 from app.rag.policy.recall_obligation import build_must_recall_proof
 from app.rag.query_expansion import generate_alias_queries
@@ -4411,9 +4415,33 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             abstain_triggered = True
             abstain_reason = "must_recall_failed"
 
+    out_of_scope_guard = maybe_apply_out_of_scope_live_guard(
+        query=query_for_retrieval,
+        enabled=bool(getattr(settings, "RAG_OUT_OF_SCOPE_LIVE_GUARD_ENABLED", False)),
+        candidate=bool(abstain_triggered or not citations),
+        current_triggered=bool(abstain_triggered),
+        current_reason=abstain_reason,
+        tenant_id=(str(state.get("tenant_id") or "").strip() or None),
+        dataset_id=(str(state.get("dataset_id") or "").strip() or None),
+        verifier=lambda: run_default_out_of_scope_live_guard(
+            query=query_for_retrieval,
+            tenant_id=str(state.get("tenant_id") or ""),
+            dataset_id=str(state.get("dataset_id") or ""),
+            ruleset_name=(str(getattr(settings, "RAG_OUT_OF_SCOPE_RULESET", "") or "").strip() or None),
+            hyde_query=hyde_text if bool(hyde_used and hyde_text) else None,
+            vector_similarity_threshold=float(getattr(settings, "RAG_OUT_OF_SCOPE_VECTOR_THRESHOLD", 0.35) or 0.35),
+            hyde_similarity_threshold=float(getattr(settings, "RAG_OUT_OF_SCOPE_HYDE_THRESHOLD", 0.4) or 0.4),
+        ),
+    )
+    abstain_triggered = bool(out_of_scope_guard.get("abstain_triggered"))
+    abstain_reason = out_of_scope_guard.get("abstain_reason")
+
     metrics["abstain_enabled"] = bool(abstain_enabled)
     metrics["abstain_triggered"] = bool(abstain_triggered)
     metrics["abstain_reason"] = abstain_reason
+    metrics["out_of_scope_guard_enabled"] = bool(getattr(settings, "RAG_OUT_OF_SCOPE_LIVE_GUARD_ENABLED", False))
+    if isinstance(out_of_scope_guard.get("verdict"), dict):
+        metrics["out_of_scope_guard"] = dict(out_of_scope_guard.get("verdict") or {})
     metrics["abstain_min_citations"] = int(settings.RAG_ABSTAIN_MIN_CITATIONS or 0)
     metrics["abstain_min_top_relevance_score"] = float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE or 0.0)
     metrics["visible_evidence_only_enabled"] = bool(strict_visible)
