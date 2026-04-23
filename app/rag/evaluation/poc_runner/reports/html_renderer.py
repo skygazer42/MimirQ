@@ -7,6 +7,58 @@ from pyecharts import options as opts
 from pyecharts.charts import HeatMap
 
 
+def _render_umap_scatter(report: dict[str, Any]) -> str:
+    scatter = dict(report.get("umap_scatter") or {})
+    points = list(scatter.get("points") or [])
+    if not points:
+        return "<div id='umap-scatter'>暂无 UMAP 散点数据</div>"
+
+    width = 920.0
+    height = 420.0
+    padding = 36.0
+    xs = [float(point.get("x") or 0.0) for point in points]
+    ys = [float(point.get("y") or 0.0) for point in points]
+    min_x, max_x = min(xs), max(xs)
+    min_y, max_y = min(ys), max(ys)
+    span_x = max(max_x - min_x, 1e-6)
+    span_y = max(max_y - min_y, 1e-6)
+    color_map = {
+        "document": "#2563eb",
+        "query": "#64748b",
+        "out_of_scope_candidate": "#dc2626",
+    }
+    circles: list[str] = []
+    labels: list[str] = []
+    for point in points:
+        x = float(point.get("x") or 0.0)
+        y = float(point.get("y") or 0.0)
+        cx = padding + ((x - min_x) / span_x) * (width - padding * 2)
+        cy = padding + ((max_y - y) / span_y) * (height - padding * 2)
+        color = color_map.get(str(point.get("group") or ""), "#0f172a")
+        radius = 6 if str(point.get("kind") or "") == "document" else 5
+        circles.append(f"<circle cx='{cx:.1f}' cy='{cy:.1f}' r='{radius}' fill='{color}' fill-opacity='0.78' />")
+        if str(point.get("group") or "") == "out_of_scope_candidate":
+            labels.append(
+                f"<text x='{cx + 8:.1f}' y='{cy - 6:.1f}' font-size='11' fill='#7f1d1d'>{escape(str(point.get('label') or '')[:24])}</text>"
+            )
+
+    legend = (
+        "<div style='display:flex;gap:16px;margin-top:12px;font-size:12px'>"
+        "<span><span style='display:inline-block;width:10px;height:10px;background:#2563eb;border-radius:999px'></span> document</span>"
+        "<span><span style='display:inline-block;width:10px;height:10px;background:#64748b;border-radius:999px'></span> query</span>"
+        "<span><span style='display:inline-block;width:10px;height:10px;background:#dc2626;border-radius:999px'></span> out_of_scope_candidate</span>"
+        "</div>"
+    )
+    svg = (
+        f"<svg viewBox='0 0 {int(width)} {int(height)}' width='100%' height='{int(height)}' role='img' aria-label='umap scatter'>"
+        "<rect x='0' y='0' width='100%' height='100%' fill='#f8fafc' rx='16' />"
+        + "".join(circles)
+        + "".join(labels)
+        + "</svg>"
+    )
+    return f"<div id='umap-scatter'>{svg}{legend}</div>"
+
+
 def _render_heatmap(report: dict[str, Any]) -> str:
     heatmap = dict(report.get("coverage_heatmap") or {})
     rows = list(heatmap.get("rows") or [])
@@ -113,6 +165,10 @@ def render_dataset_analysis_html(report: dict[str, Any]) -> str:
   <div class="card">
     <h2>glossary_candidates</h2>
     <ul>{glossary_html}</ul>
+  </div>
+  <div class="card section">
+    <h2>umap_scatter</h2>
+    {_render_umap_scatter(report)}
   </div>
   <div class="card section">
     <h2>coverage_heatmap</h2>

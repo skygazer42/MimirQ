@@ -8,7 +8,7 @@ from PIL import Image, ImageDraw
 
 def render_dataset_analysis_png(report: dict[str, Any]) -> bytes:
     width = 1400
-    height = 1100
+    height = 1360
     image = Image.new("RGB", (width, height), color=(255, 255, 255))
     draw = ImageDraw.Draw(image)
 
@@ -78,6 +78,46 @@ def render_dataset_analysis_png(report: dict[str, Any]) -> bytes:
         )
         draw.text((cell_x + bar_width * 2 + 92, y), str(negative), fill=(31, 41, 55))
         y += row_height
+
+    y += 28
+    draw.text((24, y), "UMAP Scatter", fill=(17, 24, 39))
+    y += 16
+    scatter_points = list((report.get("umap_scatter") or {}).get("points") or [])
+    chart_left = 24
+    chart_top = y + 12
+    chart_width = 980
+    chart_height = 240
+    draw.rounded_rectangle(
+        (chart_left, chart_top, chart_left + chart_width, chart_top + chart_height),
+        radius=18,
+        outline=(203, 213, 225),
+        width=2,
+        fill=(248, 250, 252),
+    )
+    if scatter_points:
+        xs = [float(point.get("x") or 0.0) for point in scatter_points]
+        ys = [float(point.get("y") or 0.0) for point in scatter_points]
+        min_x, max_x = min(xs), max(xs)
+        min_y, max_y = min(ys), max(ys)
+        span_x = max(max_x - min_x, 1e-6)
+        span_y = max(max_y - min_y, 1e-6)
+        color_map = {
+            "document": (37, 99, 235),
+            "query": (100, 116, 139),
+            "out_of_scope_candidate": (220, 38, 38),
+        }
+        for point in scatter_points[:80]:
+            x = float(point.get("x") or 0.0)
+            yy = float(point.get("y") or 0.0)
+            cx = chart_left + 28 + int(((x - min_x) / span_x) * (chart_width - 56))
+            cy = chart_top + 24 + int(((max_y - yy) / span_y) * (chart_height - 48))
+            color = color_map.get(str(point.get("group") or ""), (15, 23, 42))
+            radius = 6 if str(point.get("kind") or "") == "document" else 5
+            draw.ellipse((cx - radius, cy - radius, cx + radius, cy + radius), fill=color)
+            if str(point.get("group") or "") == "out_of_scope_candidate":
+                draw.text((cx + 8, cy - 6), str(point.get("label") or "")[:20], fill=(127, 29, 29))
+    else:
+        draw.text((chart_left + 18, chart_top + 18), "No UMAP scatter data", fill=(100, 116, 139))
 
     buffer = BytesIO()
     image.save(buffer, format="PNG")

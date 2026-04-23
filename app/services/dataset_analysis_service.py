@@ -24,6 +24,7 @@ from app.rag.evaluation.poc_runner.query_pattern_miner import mine_query_pattern
 from app.rag.evaluation.poc_runner.reports.attribution_report import build_dataset_analysis_report
 from app.rag.evaluation.poc_runner.reports.html_renderer import render_dataset_analysis_html
 from app.rag.evaluation.poc_runner.reports.png_renderer import render_dataset_analysis_png
+from app.rag.evaluation.poc_runner.reports.umap_scatter import build_umap_scatter
 from app.rag.evaluation.poc_runner.source_builder import build_dataset_analysis_sources
 from app.rag.evaluation.poc_runner.telemetry import build_poc_interaction_rows
 from app.rag.industry_rules.loaders import write_glossary_candidates
@@ -249,6 +250,7 @@ def _build_full_bundle(
         "glossary_candidates": patterns["glossary_candidates"],
         "keyword_scores": patterns["keyword_scores"],
         "coverage_heatmap": build_document_heatmap(rows),
+        "umap_scatter": build_umap_scatter(rows),
         "rows": rows,
     }
 
@@ -411,6 +413,7 @@ def export_dataset_analysis_html(
         glossary_candidates=bundle["glossary_candidates"],
         keyword_scores=bundle["keyword_scores"],
         coverage_heatmap=bundle["coverage_heatmap"],
+        umap_scatter=bundle["umap_scatter"],
     )
     report["meta"]["definitions"] = bundle["meta"]["definitions"]
     return render_dataset_analysis_html(report)
@@ -507,6 +510,7 @@ def create_dataset_analysis_png_task(
                 glossary_candidates=bundle["glossary_candidates"],
                 keyword_scores=bundle["keyword_scores"],
                 coverage_heatmap=bundle["coverage_heatmap"],
+                umap_scatter=bundle["umap_scatter"],
             )
             report["meta"]["definitions"] = bundle["meta"]["definitions"]
             payload = render_dataset_analysis_png(report)

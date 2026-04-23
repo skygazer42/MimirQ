@@ -24,6 +24,7 @@ def build_dataset_analysis_report(
     glossary_candidates: list[dict[str, Any]],
     keyword_scores: list[dict[str, Any]],
     coverage_heatmap: dict[str, Any],
+    umap_scatter: dict[str, Any],
 ) -> dict[str, Any]:
     return {
         "meta": {
@@ -42,4 +43,5 @@ def build_dataset_analysis_report(
         "glossary_candidates": list(glossary_candidates or []),
         "keyword_scores": list(keyword_scores or []),
         "coverage_heatmap": dict(coverage_heatmap or {}),
+        "umap_scatter": dict(umap_scatter or {}),
     }
