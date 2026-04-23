@@ -1058,6 +1058,12 @@ class Settings(BaseSettings):
     RAG_PARENT_CHILD_AUTO_MERGE_MODE: str = "replace"
     RAG_PARENT_CHILD_AUTO_MERGE_MIN_CHILDREN: int = 2
     RAG_PARENT_CHILD_AUTO_MERGE_MAX_PARENTS: int = 20
+    WEB_SEARCH_ENABLED: bool = False
+    WEB_SEARCH_TIMEOUT_SEC: float = 8.0
+    WEB_SEARCH_MAX_RESULTS: int = 5
+    TAVILY_API_KEY: str = ""
+    SERPER_API_KEY: str = ""
+    BRAVE_SEARCH_API_KEY: str = ""
     # Optional context compression before final prompt formatting.
     RAG_CONTEXT_COMPRESSION_ENABLED: bool = False
     # Optional lightweight generation-time reordering for better reading flow.
