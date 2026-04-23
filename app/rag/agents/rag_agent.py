@@ -18,6 +18,7 @@ from app.rag.core.text import heuristic_decompose_query, parse_json_from_text
 from app.rag.pipelines.langgraph import _build_context, _build_history_text, build_rag_state
 from app.rag.retrieval.decomposition_chain import build_chained_query, summarize_chain_step
 from app.rag.retrieval.orchestrator import run_retrieval
+from app.rag.workflows.crag_streaming import run_crag_streaming
 
 if TYPE_CHECKING:
     from app.rag.engine import RAGEngine
@@ -394,6 +395,9 @@ class AgenticRAGRunner:
             "abstain_triggered": True,
             "abstain_reason": "no_rounds",
         }
+        crag_used = False
+        crag_provider: str | None = None
+        crag_web_results = 0
 
         tool_invocations = self._plan_tool_invocations(
             question=question,
@@ -466,6 +470,26 @@ class AgenticRAGRunner:
                 prior_findings.append(step_summary)
             if self._is_sufficient(result):
                 break
+            if bool(getattr(settings, "RAG_CRAG_STREAMING_ENABLED", False)):
+                crag_result = await run_crag_streaming(
+                    question=question,
+                    query_for_retrieval=retrieval_query,
+                    retrieval_result=result,
+                )
+                if bool(crag_result.get("used")) and str(crag_result.get("context_block") or "").strip():
+                    crag_used = True
+                    crag_provider = str(crag_result.get("provider") or "").strip() or None
+                    crag_web_results = int(crag_result.get("web_result_count") or 0)
+                    yield {
+                        "type": "agentic_step",
+                        "data": {
+                            "step": "web_search",
+                            "provider": crag_provider,
+                            "result_count": crag_web_results,
+                        },
+                    }
+                    tool_context_blocks.append(str(crag_result.get("context_block") or ""))
+                    break
 
         citations = build_citations_from_docs(
             collected_docs,
@@ -538,6 +562,9 @@ class AgenticRAGRunner:
             "docs_returned": int(len(collected_docs)),
             "agentic_tools_used": int(sum(1 for item in tool_metrics if item.get("success"))),
             "agentic_tool_calls": tool_metrics,
+            "agentic_crag_used": bool(crag_used),
+            "agentic_crag_provider": crag_provider,
+            "agentic_crag_web_results": int(crag_web_results),
         }
 
         yield {
