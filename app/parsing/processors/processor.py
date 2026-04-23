@@ -48,7 +48,7 @@ from app.parsing.processors.vlm_correction import apply_vlm_correction_async, sh
 from app.parsing.quality.document_quality import score_document_parse_quality
 from app.parsing.quality.reading_order import score_reading_order
 from app.parsing.quality.text_quality import score_parsed_text_quality
-from app.parsing.routing import route_pdf_backend
+from app.parsing.routing import route_pdf_backend, should_attempt_pdf_fallback
 from app.parsing.subprocess_runner import SubprocessCancelled, run_parser_subprocess
 from app.rag.chunking.factory import chunker_factory
 from app.rag.chunking.roles import classify_chunk_semantic_role
@@ -2383,11 +2383,27 @@ class DocumentProcessorService:
             ):
                 try:
                     min_chars = max(0, int(getattr(pipeline_effective, "parse_fallback_min_content_chars", 0) or 0))
+                    min_parse_score = max(
+                        0.0,
+                        float(getattr(pipeline_effective, "parse_fallback_min_parse_score", 0.0) or 0.0),
+                    )
                     max_retries = max(0, int(getattr(pipeline_effective, "parse_fallback_max_retries", 0) or 0))
-                    if min_chars > 0 and max_retries > 0:
+                    if (min_chars > 0 or min_parse_score > 0.0) and max_retries > 0:
                         joined = "\n\n".join([(d.page_content or "") for d in (parsed.documents or [])])
                         q0 = score_parsed_text_quality(joined)
-                        if int(getattr(q0, "content_chars", 0) or 0) < min_chars:
+                        q0_quality = score_document_parse_quality(
+                            pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
+                            parsed_text_quality=q0.to_dict(),
+                        )
+                        q0_score = float(q0_quality.get("score") or 0.0)
+                        q0_chars = int(getattr(q0, "content_chars", 0) or 0)
+                        if should_attempt_pdf_fallback(
+                            grade="fail" if q0_chars <= 0 else "warn",
+                            parse_score=q0_score,
+                            content_chars=q0_chars,
+                            min_content_chars=min_chars,
+                            min_parse_score=min_parse_score,
+                        ):
                             from app.parsing.utils.cli import resolve_cli_command
 
                             def _magicpdf_available() -> bool:
@@ -2466,16 +2482,29 @@ class DocumentProcessorService:
                                     continue
                                 joined_alt = "\n\n".join([(d.page_content or "") for d in (alt.documents or [])])
                                 q1 = score_parsed_text_quality(joined_alt)
+                                q1_quality = score_document_parse_quality(
+                                    pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
+                                    parsed_text_quality=q1.to_dict(),
+                                )
+                                q1_score = float(q1_quality.get("score") or 0.0)
+                                q1_chars = int(getattr(q1, "content_chars", 0) or 0)
+                                accepted = not should_attempt_pdf_fallback(
+                                    grade="warn",
+                                    parse_score=q1_score,
+                                    content_chars=q1_chars,
+                                    min_content_chars=min_chars,
+                                    min_parse_score=min_parse_score,
+                                )
                                 attempts.append(
                                     {
                                         "from": current,
                                         "to": candidate,
                                         "quality_before": q0.to_dict(),
                                         "quality_after": q1.to_dict(),
-                                        "accepted": bool(int(q1.content_chars) >= min_chars),
+                                        "accepted": bool(accepted),
                                     }
                                 )
-                                if int(q1.content_chars) >= min_chars:
+                                if accepted:
                                     parsed = alt
                                     break
 
@@ -2551,7 +2580,11 @@ class DocumentProcessorService:
             ):
                 try:
                     min_chars = max(0, int(getattr(pipeline_effective, "parse_fallback_min_content_chars", 0) or 0))
-                    if min_chars > 0:
+                    min_parse_score = max(
+                        0.0,
+                        float(getattr(pipeline_effective, "parse_fallback_min_parse_score", 0.0) or 0.0),
+                    )
+                    if min_chars > 0 or min_parse_score > 0.0:
                         joined_final = "\n\n".join([(d.page_content or "") for d in (parsed.documents or [])])
                         q_final = score_parsed_text_quality(joined_final)
                         final_chars = int(getattr(q_final, "content_chars", 0) or 0)
@@ -2575,14 +2608,26 @@ class DocumentProcessorService:
                             db.commit()
                             db.refresh(db_document)
 
-                        if final_chars < min_chars:
+                        final_quality = score_document_parse_quality(
+                            pdf_quality=(meta.get("pdf_quality") if isinstance(meta.get("pdf_quality"), dict) else None),
+                            parsed_text_quality=q_final.to_dict(),
+                            specialty_signals=specialty_signals,
+                        )
+                        final_score = float(final_quality.get("score") or 0.0)
+                        if should_attempt_pdf_fallback(
+                            grade="warn",
+                            parse_score=final_score,
+                            content_chars=final_chars,
+                            min_content_chars=min_chars,
+                            min_parse_score=min_parse_score,
+                        ):
                             quarantined = bool(getattr(pipeline_effective, "governance_quarantine_on_drop", False))
                             status = "quarantined" if quarantined else "failed"
                             reason = "quarantined_by_parse_quality" if quarantined else "dropped_by_parse_quality"
                             msg = (
                                 f"Document {'quarantined' if quarantined else 'failed'} by parse quality gate "
-                                f"(content_chars={final_chars} < min_content_chars={int(min_chars)}). "
-                                "Consider enabling OCR/backends or lowering parse_fallback_min_content_chars."
+                                f"(content_chars={final_chars}, parse_score={round(final_score, 3)}). "
+                                "Consider enabling OCR/backends or lowering parse fallback thresholds."
                             )
                             logger.warning(LOG_DOC_ID_FMT, msg, document_id)
                             meta_patch = _with_stage_durations(dict(db_document.doc_metadata or {}))

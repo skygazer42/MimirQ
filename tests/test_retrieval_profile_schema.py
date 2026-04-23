@@ -247,3 +247,26 @@ def test_dataset_rag_defaults_persists_retrieval_profile() -> None:
     dumped = d.model_dump(exclude_none=True)
 
     assert dumped.get("retrieval_profile") == "recall20"
+
+
+def test_long_context_profile_prefers_small_top_k_and_rerank_budget() -> None:
+    from app.rag.core.retrieval_profiles import apply_retrieval_profile_overrides
+
+    applied = apply_retrieval_profile_overrides(
+        profile="long_context",
+        top_k=5,
+        score_threshold=0.7,
+        retrieval_mode="keyword",
+        enable_reranker=True,
+        reranker_provider="llm",
+        reranker_top_n=20,
+        enable_weight_rerank=True,
+        retrieval_contract_mode="",
+        visible_evidence_only=False,
+    )
+
+    assert applied["retrieval_profile"] == "long_context"
+    assert applied["top_k"] == 8
+    assert applied["reranker_top_n"] == 4
+    assert applied["retrieval_mode"] == "hybrid"
+    assert applied["score_threshold"] == pytest.approx(0.0)
