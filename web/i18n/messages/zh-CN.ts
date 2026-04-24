@@ -1995,10 +1995,35 @@ const zhCNMessages = {
           description: '将当前视图整理成一条可直接发送的分析问题。',
           keywords: ['analyze', '分析', '当前视图', '总结', '诊断'],
         },
+        report: {
+          label: '下载审计报告',
+          description: '在入库盘点页中快速打开当前审计报告的 PDF 打印视图。',
+          keywords: ['report', 'pdf report', 'audit report', '下载报告', '审计报告', 'PDF', '盘点报告'],
+        },
         stats: {
           label: '查看统计与诊断',
           description: '打开用量/配额视图，快速查看 tokens、成本和系统诊断入口。',
           keywords: ['stats', 'usage', 'diagnostics', 'quota', 'token', 'cost', '统计', '诊断', '用量'],
+        },
+        retryFailed: {
+          label: '重试失败任务',
+          description: '在入库监控页中批量重试当前失败/取消任务。',
+          keywords: ['retry failed', 'retry', 'ingestion', 'failed', '重试', '失败任务', '入库监控'],
+        },
+        pauseActive: {
+          label: '暂停活动任务',
+          description: '在入库监控页中批量取消当前运行中的任务。',
+          keywords: ['pause active', 'cancel active', 'ingestion', '暂停', '取消运行任务', '活动任务'],
+        },
+        demo: {
+          label: '切换虚拟数据',
+          description: '在入库监控页里切换控制室 demo 数据，用于演示交互与可视化。',
+          keywords: ['demo', 'mock data', 'virtual data', 'ingestion', '虚拟数据', '演示', '模拟数据'],
+        },
+        precheck: {
+          label: '打开入库预检',
+          description: '进入数据集预检扫描，先做入库前摸底再决定是否真正导入。',
+          keywords: ['precheck', 'ingestion precheck', 'dataset precheck', '预检', '入库预检', '预检扫描'],
         },
         datasets: {
           label: '打开数据集',

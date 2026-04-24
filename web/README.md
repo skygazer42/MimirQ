@@ -18,8 +18,12 @@ pnpm dev
 ```
 
 Notes:
+- `pnpm dev` now binds `127.0.0.1` by default and will automatically fall forward to the next free port when `3000` is busy.
+- `pnpm dev -- --port 3001` or `PORT=3001 pnpm dev` lets you pick another port explicitly.
+- `pnpm dev:public` keeps the old `0.0.0.0` behavior for LAN/device testing.
 - `pnpm dev` uses webpack (explicit) to support custom `next.config.mjs#webpack` tweaks.
-- `pnpm dev:turbo` uses Turbopack.
+- `pnpm dev:turbo` uses Turbopack, and `pnpm dev:turbo:public` combines Turbopack with public binding.
+- `pnpm start` follows the same localhost-first behavior, and `pnpm start:public` exposes it on `0.0.0.0`.
 
 Open:
 

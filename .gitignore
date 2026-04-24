@@ -100,3 +100,5 @@ data/colbert_indexes/
 .codex/skills/.system/**
 !.codex/prompts/
 !.codex/prompts/**
+
+web/.next_3101/

@@ -13,6 +13,7 @@ import {
   Home,
   FileText,
   History,
+  RefreshCw,
   Settings,
   Sparkles,
   Workflow,
@@ -43,7 +44,12 @@ type SlashCommandId =
   | "resume"
   | "upload"
   | "analyze"
+  | "report"
   | "stats"
+  | "retryFailed"
+  | "pauseActive"
+  | "demo"
+  | "precheck"
   | "datasets"
   | "history"
   | "graph"
@@ -393,7 +399,12 @@ export function CommandMenu() {
         { id: "resume", shortcut: "/resume", icon: FileText },
         { id: "upload", shortcut: "/upload", icon: Upload },
         { id: "analyze", shortcut: "/analyze", icon: Sparkles },
+        { id: "report", shortcut: "/report", icon: FileText },
         { id: "stats", shortcut: "/stats", icon: Coins },
+        { id: "retryFailed", shortcut: "/retry-failed", icon: RefreshCw },
+        { id: "pauseActive", shortcut: "/pause-active", icon: Activity },
+        { id: "demo", shortcut: "/demo", icon: Sparkles },
+        { id: "precheck", shortcut: "/precheck", icon: Workflow },
         { id: "datasets", shortcut: "/datasets", icon: Database },
         { id: "history", shortcut: "/history", icon: History },
         { id: "graph", shortcut: "/graph", icon: Workflow },
@@ -431,6 +442,15 @@ export function CommandMenu() {
             return
           }
 
+          if (id === "report") {
+            if (pathname.startsWith("/knowledge/ingestion")) {
+              globalEventBus.emit('ingestion:download-report', undefined)
+              return
+            }
+            router.push("/knowledge/ingestion")
+            return
+          }
+
           if (id === "upload") {
             router.push("/knowledge")
             return
@@ -438,6 +458,42 @@ export function CommandMenu() {
 
           if (id === "stats") {
             router.push("/usage")
+            return
+          }
+
+          if (id === "retryFailed") {
+            if (pathname.startsWith("/knowledge/ingestion")) {
+              globalEventBus.emit('ingestion:retry-all-failed', undefined)
+              return
+            }
+            router.push("/knowledge/ingestion")
+            return
+          }
+
+          if (id === "pauseActive") {
+            if (pathname.startsWith("/knowledge/ingestion")) {
+              globalEventBus.emit('ingestion:cancel-all-active', undefined)
+              return
+            }
+            router.push("/knowledge/ingestion")
+            return
+          }
+
+          if (id === "demo") {
+            if (pathname.startsWith("/knowledge/ingestion")) {
+              globalEventBus.emit('ingestion:toggle-demo-mode', undefined)
+              return
+            }
+            router.push("/knowledge/ingestion")
+            return
+          }
+
+          if (id === "precheck") {
+            if (pathname.startsWith("/knowledge/ingestion")) {
+              globalEventBus.emit('ingestion:open-precheck', undefined)
+              return
+            }
+            router.push("/datasets")
             return
           }
 
@@ -489,7 +545,7 @@ export function CommandMenu() {
           router.push("/access-review")
         },
       })),
-    [currentViewPrompt.description, currentViewPrompt.prompt, hasResumeTarget, resumeLastDocumentContext, router, t]
+    [currentViewPrompt.description, currentViewPrompt.prompt, hasResumeTarget, pathname, resumeLastDocumentContext, router, t]
   )
 
   const viewerShortcutDocs = React.useMemo<ShortcutDocItem[]>(

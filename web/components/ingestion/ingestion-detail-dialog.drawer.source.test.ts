@@ -7,9 +7,11 @@ describe('ingestion detail dialog drawer', () => {
   it('renders ingestion details as a right-side drawer instead of a centered modal', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'ingestion-detail-dialog.tsx'), 'utf8')
 
-    expect(src).toContain('<Dialog open={open} onOpenChange={onOpenChange}>')
-    expect(src).toContain('left-auto right-0 top-0 h-dvh w-[min(560px,100vw)] max-w-[560px] translate-x-0 translate-y-0 rounded-none p-0 overflow-hidden')
-    expect(src).toContain('<DialogHeader className="sr-only">')
+    expect(src).toContain('<Sheet open={open} onOpenChange={onOpenChange}>')
+    expect(src).toContain('side="right"')
+    expect(src).toContain('h-[100dvh]')
+    expect(src).toContain('w-[min(820px,100vw)] max-w-[820px] overflow-hidden border-l border-border/60 bg-background/95 shadow-strong')
+    expect(src).toContain('<SheetHeader className="sr-only">')
     expect(src).not.toContain('max-w-3xl p-0 overflow-hidden sm:rounded-2xl')
   })
 })

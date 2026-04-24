@@ -3,6 +3,11 @@ type AppEventMap = {
   'chat:focus-message': { messageId: string; documentId?: string | null; chunkId?: string | null }
   'command-menu:set-open': { open: boolean }
   'command-menu:toggle': undefined
+  'ingestion:retry-all-failed': undefined
+  'ingestion:cancel-all-active': undefined
+  'ingestion:toggle-demo-mode': undefined
+  'ingestion:open-precheck': undefined
+  'ingestion:download-report': undefined
 }
 
 type EventHandler<EventMap extends Record<string, unknown>, K extends keyof EventMap> = (payload: EventMap[K]) => void
