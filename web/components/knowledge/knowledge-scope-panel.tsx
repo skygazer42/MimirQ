@@ -139,6 +139,14 @@ export function KnowledgeScopePanel({
   const [datasetListExpanded, setDatasetListExpanded] = useState(false)
   const selectedDatasetItem = datasetItems.find((item) => item.id === datasetScope) ?? datasetItems[0]
 
+  const statusThemes: Record<DocStatusFilter, string> = {
+    all: 'bg-primary/10 border-primary/40 text-primary shadow-[0_0_12px_-4px_rgba(var(--primary),0.3)]',
+    completed: 'bg-emerald-500/10 border-emerald-500/40 text-emerald-600 dark:text-emerald-400 shadow-[0_0_12px_-4px_rgba(16,185,129,0.3)]',
+    processing: 'bg-sky-500/10 border-sky-500/40 text-sky-600 dark:text-sky-400 shadow-[0_0_12px_-4px_rgba(14,165,233,0.3)]',
+    failed: 'bg-red-500/10 border-red-500/40 text-red-600 dark:text-red-400 shadow-[0_0_12px_-4px_rgba(239,68,68,0.3)]',
+    quarantined: 'bg-amber-500/10 border-amber-500/40 text-amber-600 dark:text-amber-400 shadow-[0_0_12px_-4px_rgba(245,158,11,0.3)]',
+  }
+
   const body = (
     <div className={cn('space-y-4', embedded && 'space-y-3 p-3.5 lg:p-4')}>
       <div className={cn(sectionClassName, sectionShellClassName)}>
@@ -196,7 +204,7 @@ export function KnowledgeScopePanel({
                         className={cn(
                           'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12px] transition-colors focus-ring',
                           isActive
-                            ? 'bg-primary/10 text-primary'
+                            ? 'bg-primary/10 text-primary shadow-inner-soft'
                             : 'text-muted-foreground hover:bg-muted/35 hover:text-foreground'
                         )}
                         aria-pressed={isActive}
@@ -230,24 +238,27 @@ export function KnowledgeScopePanel({
                 className={cn(
                   'relative overflow-hidden',
                   embedded
-                    ? 'min-h-9 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition-colors focus-ring'
-                    : 'h-9 rounded-full border px-3 text-xs font-semibold transition-colors focus-ring',
+                    ? 'min-h-9 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition-all duration-300 focus-ring'
+                    : 'h-9 rounded-full border px-3 text-xs font-semibold transition-all duration-300 focus-ring',
                   statusFilter === item.key
-                    ? 'bg-primary/10 border-primary/40 text-primary'
-                    : 'bg-background/60 border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted/30'
+                    ? (statusThemes[item.key as DocStatusFilter] || statusThemes.all)
+                    : 'bg-background/60 border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted/30 hover:border-border/80'
                 )}
                 aria-pressed={statusFilter === item.key}
               >
                 {item.showRatioBar ? (
                   <span
                     aria-hidden="true"
-                    className={cn('pointer-events-none absolute inset-x-2 bottom-1 h-[2px] rounded-full opacity-90', item.ratioClassName)}
-                    style={{ width: `calc(${Math.max(item.ratio * 100, 8)}% - 1rem)` }}
+                    className={cn('pointer-events-none absolute inset-x-2 bottom-1 h-[2px] rounded-full opacity-90 transition-all duration-500', item.ratioClassName)}
+                    style={{ width: statusFilter === item.key ? '0%' : `calc(${Math.max(item.ratio * 100, 8)}% - 1rem)` }}
                   />
                 ) : null}
                 <span className="relative z-10">
                   {item.label}
-                  <span className="ml-1 font-mono tabular-nums text-[11px] opacity-80">{item.count}</span>
+                  <span className={cn(
+                    "ml-1.5 font-mono tabular-nums text-[10px] transition-all",
+                    statusFilter === item.key ? "opacity-100 font-black" : "opacity-50"
+                  )}>{item.count}</span>
                 </span>
               </button>
             ))}

@@ -13,6 +13,7 @@ import {
   buildExecutionScatterRows,
   buildExecutionStatusRows,
   buildLatencyBoxplotRows,
+  buildSalesAuditFallbackArtifacts,
   buildSalesAuditProfile,
   buildStageTreemapRows,
   buildThroughputAreaRows,
@@ -449,5 +450,70 @@ describe('ingestion monitor helpers', () => {
 
     expect(buildEvidenceSlotTags(failedFile)).toEqual(['PARSE_FAILED'])
     expect(buildEvidenceSlotReason(failedFile)).toContain('解析失败')
+  })
+
+  it('builds fallback sales-audit artifacts from live document data', () => {
+    const artifacts = buildSalesAuditFallbackArtifacts([
+      makeDocument({
+        id: 'pdf-scan',
+        filename: 'finance_archive_v1.pdf',
+        file_type: 'pdf',
+        file_size: 28 * 1024 * 1024,
+        metadata: { audit_profile: 'scan_pdf' },
+      }),
+      makeDocument({
+        id: 'pdf-mixed',
+        filename: 'finance_archive_v2.pdf',
+        file_type: 'pdf',
+        file_size: 9 * 1024 * 1024,
+      }),
+      makeDocument({
+        id: 'sheet-heavy',
+        filename: 'ops_tracker.xlsx',
+        file_type: 'xlsx',
+        file_size: 6 * 1024 * 1024,
+      }),
+      makeDocument({
+        id: 'failed-doc',
+        filename: 'customer_contract.docx',
+        file_type: 'docx',
+        status: 'failed',
+        error_message: 'parse failed',
+      }),
+    ])
+
+    expect(artifacts.summary).toEqual(
+      expect.objectContaining({
+        total_files: 4,
+        dataset_id: 'all-datasets',
+        pdf_scan: expect.objectContaining({ scanned: 1, unknown: 1 }),
+      })
+    )
+    expect(artifacts.summary?.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: 'pdf_scanned', count: 1 }),
+        expect.objectContaining({ key: 'pdf_unknown', count: 1 }),
+        expect.objectContaining({ key: 'parse_failed', count: 1 }),
+        expect.objectContaining({ key: 'large_spreadsheet', count: 1 }),
+      ])
+    )
+    expect(artifacts.samples?.top_large_files).toHaveLength(4)
+    expect(artifacts.samples?.needs_review.parse_failed).toHaveLength(1)
+  })
+
+  it('detects near-duplicate candidates in fallback sales-audit artifacts', () => {
+    const artifacts = buildSalesAuditFallbackArtifacts([
+      makeDocument({ id: 'dup-1', filename: 'proposal_v1.pdf', file_type: 'pdf', file_size: 2 * 1024 * 1024 }),
+      makeDocument({ id: 'dup-2', filename: 'proposal_v2.pdf', file_type: 'pdf', file_size: 2.2 * 1024 * 1024 }),
+      makeDocument({ id: 'dup-3', filename: 'proposal_final.pdf', file_type: 'pdf', file_size: 2.1 * 1024 * 1024 }),
+    ])
+
+    expect(artifacts.nearDup).toEqual(
+      expect.objectContaining({
+        clusters_returned: 1,
+        pairs_returned: 2,
+      })
+    )
+    expect(artifacts.summary?.findings).toEqual(expect.arrayContaining([expect.objectContaining({ key: 'near_dup' })]))
   })
 })

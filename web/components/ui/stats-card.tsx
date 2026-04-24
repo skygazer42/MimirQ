@@ -102,50 +102,57 @@ export function StatCard({
 
   if (variant === 'minimal') {
     const Wrapper = onClick ? 'button' : 'div'
+    const statusColorStyle = isDimmed 
+      ? "bg-muted/40 text-muted-foreground/60 border-border/40" 
+      : active 
+        ? "bg-primary/10 text-primary border-primary/20 shadow-[0_0_12px_-4px_rgba(var(--primary),0.2)]" 
+        : (colorStyles[color] || colorStyles.sky) + " border-border/30"
+
     return (
       <Wrapper
         onClick={onClick}
         type={onClick ? 'button' : undefined}
         className={cn(
-          "inline-flex items-center gap-1.5 h-7 px-2 rounded-lg group/stat transition-all duration-300 text-left whitespace-nowrap",
-          onClick && "cursor-pointer hover:bg-foreground/[0.05]",
-          active && "bg-primary/[0.08] text-primary",
+          "inline-flex items-center gap-2 h-8 px-2.5 rounded-xl group/stat transition-all duration-300 text-left whitespace-nowrap border shadow-none",
+          onClick && "cursor-pointer hover:shadow-soft",
+          statusColorStyle,
           className,
         )}
       >
         <div className={cn(
-          "relative flex size-4.5 shrink-0 items-center justify-center rounded transition-all duration-500",
+          "relative flex size-5 shrink-0 items-center justify-center rounded-lg transition-all duration-500",
           isDimmed 
             ? "bg-muted/40 text-muted-foreground/70" 
             : active 
               ? "bg-primary/20 text-primary" 
               : (iconBgStyles[color] || iconBgStyles.sky)
         )}>
-          <Icon className="size-3" />
+          <Icon className="size-3.5" />
           {dot && !isDimmed && (
             <span className={cn("absolute -right-0.5 -top-0.5 inline-block size-1.5 rounded-full ring-2 ring-background", dotStyles[dot])} />
           )}
         </div>
-        <span className="text-[10px] font-bold uppercase tracking-tight text-muted-foreground/60 leading-none">
-          {label}
-        </span>
-        <div className="flex items-baseline gap-0.5">
-          <span className={cn(
-            "text-[12px] font-black font-mono tabular-nums leading-none transition-all duration-500",
-            isDimmed ? "text-foreground/70 font-bold" : (valueColorStyles[color] || valueColorStyles.sky)
-          )}>
-            {value}
+        <div className="flex flex-col">
+          <span className="text-[9px] font-black uppercase tracking-tight opacity-60 leading-none mb-0.5">
+            {label}
           </span>
-          {unit && (
+          <div className="flex items-baseline gap-1">
             <span className={cn(
-              "text-[9px] font-bold uppercase tracking-tighter transition-opacity duration-500",
-              isDimmed ? "opacity-30 text-muted-foreground" : "opacity-40 text-muted-foreground"
+              "text-[13px] font-black font-mono tabular-nums leading-none transition-all duration-500",
+              isDimmed ? "text-foreground/50 font-bold" : "text-foreground"
             )}>
-              {unit}
+              {value}
             </span>
-          )}
+            {unit && (
+              <span className={cn(
+                "text-[9px] font-bold uppercase tracking-tighter transition-opacity duration-500",
+                isDimmed ? "opacity-30" : "opacity-40"
+              )}>
+                {unit}
+              </span>
+            )}
+          </div>
         </div>
-        {subValue && <span className="text-[10px] font-medium text-muted-foreground/50">{subValue}</span>}
       </Wrapper>
     )
   }

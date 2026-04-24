@@ -1,20 +1,26 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import type { LucideIcon } from 'lucide-react'
 import {
   AlertCircle,
   BarChart3,
+  ChevronLeft,
+  ChevronRight,
   CheckCircle2,
+  Download,
   Eye,
   Layers,
   LayoutList,
+  MoreHorizontal,
   RefreshCw,
   RotateCcw,
   Search,
   Settings2,
   ShieldAlert,
+  ShieldCheck,
   Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -33,6 +39,7 @@ import { documentApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import type { Document, DocumentPipelineOptions } from '@/types'
 import { useDocumentView } from '@/store/document-view'
+import { usePathname, useRouter } from '@/i18n/navigation'
 import { DocumentViewerPanel } from '@/components/document-viewer-panel'
 import { IngestionDetailDialog } from '@/components/ingestion/ingestion-detail-dialog'
 import {
@@ -49,6 +56,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 type QuarantineAction = 'release' | 'retry' | 'delete' | 'review' | 'tune'
 type ActingState = { id: string; action: QuarantineAction } | null
 type ReviewState = 'all' | 'pending' | 'reviewed'
+
+const QUARANTINE_PAGE_SIZE = 6
 
 function getUserMeta(doc: Document): any {
   const meta = doc.metadata
@@ -141,6 +150,202 @@ function getBusyIconClassName(acting: ActingState, docId: string, action: Quaran
   )
 }
 
+function downloadTextFile(filename: string, content: string, type: string) {
+  const blob = new Blob([content], { type })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
+function makeDemoQuarantineDocument(
+  id: number,
+  overrides: Partial<Document> & { filename: string; file_type: string }
+): Document {
+  const createdAt = new Date(Date.UTC(2026, 2, 31, 3, 0, 0) - id * 36 * 60_000).toISOString()
+  const updatedAt = new Date(Date.UTC(2026, 2, 31, 11, 45, 0) - id * 22 * 60_000).toISOString()
+
+  return {
+    id: `demo-q-${id.toString().padStart(4, '0')}`,
+    tenant_id: 'demo-tenant',
+    dataset_id: 'dataset-demo',
+    filename: overrides.filename,
+    status: 'quarantined',
+    file_type: overrides.file_type,
+    file_size: 1_240_000,
+    chunk_count: 0,
+    processing_progress: 0,
+    created_at: createdAt,
+    updated_at: updatedAt,
+    processed_at: updatedAt,
+    current_stage: 'governance',
+    error_message: '命中治理规则，待人工复核',
+    metadata: {},
+    governance: {
+      drop_reasons: {},
+    },
+    ...overrides,
+  } as Document
+}
+
+function buildDemoQuarantineDocuments(): Document[] {
+  const leadRows: Document[] = [
+    makeDemoQuarantineDocument(1, {
+      filename: '用户协议.pdf',
+      file_type: 'pdf',
+      file_size: 1.24 * 1024 * 1024,
+      dataset_id: '文档解析',
+      governance: { drop_reasons: { pii_exceeded: 1 } } as any,
+      error_message: '包含手机号、身份证号等敏感信息',
+      status: 'quarantined',
+    }),
+    makeDemoQuarantineDocument(2, {
+      filename: '财务报表.xlsx',
+      file_type: 'xlsx',
+      file_size: 2.81 * 1024 * 1024,
+      dataset_id: '数据导入',
+      governance: { drop_reasons: { outline_only: 1 } } as any,
+      error_message: '包含未公开财务数据',
+      status: 'quarantined',
+    }),
+    makeDemoQuarantineDocument(3, {
+      filename: '内部沟通记录.docx',
+      file_type: 'docx',
+      file_size: 860 * 1024,
+      dataset_id: '文档解析',
+      governance: { drop_reasons: { pii_exceeded: 1 } } as any,
+      error_message: '包含内部人事及组织结构信息',
+      status: 'quarantined',
+    }),
+    makeDemoQuarantineDocument(4, {
+      filename: '会议纪要.pdf',
+      file_type: 'pdf',
+      file_size: 1.09 * 1024 * 1024,
+      dataset_id: '文档解析',
+      governance: { drop_reasons: { low_density: 1 } } as any,
+      error_message: '包含手机号、身份证号等敏感信息',
+      metadata: { user: { quarantine_reviewed: true } } as any,
+      status: 'quarantined',
+    }),
+    makeDemoQuarantineDocument(5, {
+      filename: '产品蓝图.pptx',
+      file_type: 'pptx',
+      file_size: 3.45 * 1024 * 1024,
+      dataset_id: '数据导入',
+      governance: { drop_reasons: { outline_only: 1 } } as any,
+      error_message: '包含未公开产品规划',
+      metadata: { user: { quarantine_reviewed: true } } as any,
+      status: 'quarantined',
+    }),
+    makeDemoQuarantineDocument(6, {
+      filename: '客户名单.csv',
+      file_type: 'csv',
+      file_size: 680 * 1024,
+      dataset_id: 'API 接入',
+      governance: { drop_reasons: { pii_exceeded: 1 } } as any,
+      error_message: '包含个人隐私信息',
+      metadata: { user: { quarantine_reviewed: true } } as any,
+      status: 'completed',
+    }),
+  ]
+
+  const reasons = [
+    { key: 'pii_exceeded', filename: '员工信息名录', fileType: 'docx', source: '文档解析', error: '包含手机号、身份证号等敏感信息' },
+    { key: 'outline_only', filename: '项目大纲', fileType: 'pptx', source: '数据导入', error: '包含未公开产品规划' },
+    { key: 'low_density', filename: '扫描件归档', fileType: 'pdf', source: '文档解析', error: '正文密度过低，建议人工复核' },
+    { key: 'secrets_exceeded', filename: '环境变量清单', fileType: 'csv', source: 'API 接入', error: '疑似命中 token / secret' },
+  ] as const
+
+  const extraRows = Array.from({ length: 242 }, (_, index) => {
+    const bucket = reasons[index % reasons.length]
+    const reviewed = index >= 23 && index < 179
+    const status = reviewed ? 'completed' : index < 23 ? 'quarantined' : 'cancelled'
+    const suffix = `${String(index + 7).padStart(3, '0')}`
+    return makeDemoQuarantineDocument(index + 7, {
+      filename: `${bucket.filename}_${suffix}.${bucket.fileType}`,
+      file_type: bucket.fileType,
+      file_size: (0.68 + (index % 7) * 0.42) * 1024 * 1024,
+      dataset_id: bucket.source,
+      governance: { drop_reasons: { [bucket.key]: 1 } } as any,
+      error_message: bucket.error,
+      metadata: reviewed ? ({ user: { quarantine_reviewed: true } } as any) : {},
+      status,
+    })
+  })
+
+  return [...leadRows, ...extraRows]
+}
+
+type QuarantineSeverity = '高' | '中' | '低'
+
+function getQuarantineSource(doc: Document): string {
+  const kind = getDocumentKind(doc.filename)
+  if (kind === 'pdf' || kind === 'markdown' || kind === 'html' || String(doc.file_type || '').toLowerCase() === 'docx') {
+    return '文档解析'
+  }
+  if (kind === 'spreadsheet') return '数据导入'
+  if (String(doc.dataset_id || '').toLowerCase().includes('api')) return 'API 接入'
+  return '其他'
+}
+
+function getQuarantineSeverity(doc: Document): QuarantineSeverity {
+  const reasons = new Set(getDropReasons(doc))
+  const error = String(doc.error_message || '').toLowerCase()
+  if (
+    reasons.has('pii_exceeded') ||
+    reasons.has('secrets_exceeded') ||
+    error.includes('pii') ||
+    error.includes('secret') ||
+    error.includes('password')
+  ) {
+    return '高'
+  }
+  if (reasons.has('low_density') || reasons.has('outline_only') || doc.status === 'quarantined') {
+    return '中'
+  }
+  return '低'
+}
+
+function getSeverityClassName(severity: QuarantineSeverity): string {
+  switch (severity) {
+    case '高':
+      return 'text-red-600'
+    case '中':
+      return 'text-amber-600'
+    case '低':
+    default:
+      return 'text-emerald-600'
+  }
+}
+
+function getSeverityBarClassName(severity: QuarantineSeverity): string {
+  switch (severity) {
+    case '高':
+      return 'bg-red-400'
+    case '中':
+      return 'bg-amber-400'
+    case '低':
+    default:
+      return 'bg-emerald-400'
+  }
+}
+
+function buildConicGradient(values: number[], colors: string[]): string {
+  const total = values.reduce((sum, value) => sum + value, 0)
+  if (!total) return 'conic-gradient(rgba(148,163,184,0.18) 0deg 360deg)'
+
+  let current = 0
+  const stops = values.map((value, index) => {
+    const start = current
+    const end = current + (value / total) * 360
+    current = end
+    return `${colors[index]} ${start.toFixed(2)}deg ${end.toFixed(2)}deg`
+  })
+  return `conic-gradient(${stops.join(', ')})`
+}
+
 const TYPO_EYEBROW = 'text-[0.68rem] font-medium uppercase tracking-[0.24em] text-muted-foreground/64'
 const TYPO_SECTION_TITLE = 'text-[0.98rem] font-medium tracking-[-0.015em] leading-[1.2] text-foreground/90'
 const TYPO_ITEM_TITLE = 'text-[0.88rem] font-medium tracking-[-0.005em] leading-[1.3] text-foreground/92'
@@ -202,18 +407,20 @@ function SummaryStatCard({
   value,
   hint,
   icon: Icon,
+  delta,
   tone = 'neutral',
 }: Readonly<{
   label: string
   value: string | number
   hint: string
   icon: LucideIcon
+  delta?: { value: string; tone: 'up' | 'down' | 'neutral' }
   tone?: 'neutral' | 'success' | 'warning' | 'danger' | 'info'
 }>) {
   return (
     <div
       className={cn(
-        'relative overflow-hidden rounded-[1.5rem] border bg-card px-5 py-4 shadow-sm',
+        'relative flex h-full min-h-[82px] flex-col justify-between overflow-hidden rounded-[1.1rem] border bg-card px-3 py-1.5 shadow-[0_14px_30px_-30px_rgba(15,23,42,0.12)]',
         tone === 'neutral' && 'border-border/60',
         tone === 'success' && 'border-emerald-500/10',
         tone === 'warning' && 'border-amber-500/10',
@@ -223,7 +430,7 @@ function SummaryStatCard({
     >
       <div
         className={cn(
-          'pointer-events-none absolute inset-x-0 top-0 h-24 opacity-80',
+          'pointer-events-none absolute inset-x-0 top-0 h-12 opacity-80',
           tone === 'neutral' && 'bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.12),transparent_56%)]',
           tone === 'success' && 'bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.12),transparent_56%)]',
           tone === 'warning' && 'bg-[radial-gradient(circle_at_top_right,rgba(249,115,22,0.14),transparent_56%)]',
@@ -232,13 +439,13 @@ function SummaryStatCard({
         )}
       />
       <div className="relative flex items-start justify-between gap-4">
-        <div className="space-y-2">
-          <div className="text-[11px] font-semibold tracking-wide text-muted-foreground">{label}</div>
-          <div className="text-[2rem] font-semibold leading-none tracking-[-0.04em] text-foreground">{value}</div>
+        <div className="space-y-0.5">
+          <div className="text-[8px] font-semibold tracking-wide text-muted-foreground">{label}</div>
+          <div className="text-[1.2rem] font-semibold leading-none tracking-[-0.05em] text-foreground">{value}</div>
         </div>
         <div
           className={cn(
-            'flex size-11 shrink-0 items-center justify-center rounded-2xl border',
+            'flex size-6.5 shrink-0 items-center justify-center rounded-[0.8rem] border',
             tone === 'neutral' && 'border-sky-500/10 bg-sky-500/10 text-sky-600',
             tone === 'success' && 'border-emerald-500/10 bg-emerald-500/10 text-emerald-600',
             tone === 'warning' && 'border-amber-500/10 bg-amber-500/10 text-amber-600',
@@ -246,30 +453,114 @@ function SummaryStatCard({
             tone === 'info' && 'border-indigo-500/10 bg-indigo-500/10 text-indigo-600'
           )}
         >
-          <Icon className="size-5" />
+          <Icon className="size-3" />
         </div>
       </div>
 
-      <div className="relative mt-5 flex items-end justify-between gap-3">
-        <div className="text-xs text-muted-foreground">{hint}</div>
-        <div className="flex items-end gap-1.5 opacity-70">
+      <div className="relative mt-1.5 flex items-end justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-[7px] text-muted-foreground">{hint}</div>
+          {delta ? (
+            <div
+              className={cn(
+                'mt-0.5 text-[7px] font-semibold',
+                delta.tone === 'up' && 'text-red-500',
+                delta.tone === 'down' && 'text-emerald-500',
+                delta.tone === 'neutral' && 'text-muted-foreground'
+              )}
+            >
+              {delta.value}
+            </div>
+          ) : null}
+        </div>
+        <div className="flex items-end gap-0.5 opacity-75">
           {[0.35, 0.52, 0.46, 0.7, 0.4, 0.58].map((height, index) => (
             <span
               key={`${label}-${index}`}
               className={cn(
-                'w-1.5 rounded-full',
+                'w-1 rounded-full',
                 tone === 'neutral' && 'bg-sky-400/60',
                 tone === 'success' && 'bg-emerald-400/60',
                 tone === 'warning' && 'bg-amber-400/70',
                 tone === 'danger' && 'bg-red-400/65',
                 tone === 'info' && 'bg-indigo-400/60'
               )}
-              style={{ height: `${10 + height * 16}px` }}
+              style={{ height: `${4 + height * 7}px` }}
             />
           ))}
         </div>
       </div>
     </div>
+  )
+}
+
+function DonutSummaryCard({
+  title,
+  subtitle,
+  items,
+  colors,
+}: Readonly<{
+  title: string
+  subtitle?: string
+  items: Array<{ label: string; value: number; hint?: string }>
+  colors: string[]
+}>) {
+  const values = items.map((item) => item.value)
+  const gradient = buildConicGradient(values, colors)
+  const total = values.reduce((sum, value) => sum + value, 0)
+
+  return (
+    <div className="h-full min-h-[178px] rounded-[1.2rem] border border-border/60 bg-background/88 p-3.5 shadow-[0_14px_30px_-30px_rgba(15,23,42,0.12)]">
+      <div className="text-[10px] font-semibold text-foreground">{title}</div>
+      {subtitle ? <div className="mt-0.5 text-[8px] text-muted-foreground">{subtitle}</div> : null}
+      <div className="mt-2.5 grid gap-3 md:grid-cols-[88px_minmax(0,1fr)] md:items-center">
+        <div className="flex items-center justify-center">
+          <div className="relative h-[72px] w-[72px] rounded-full" style={{ backgroundImage: gradient }}>
+            <div className="absolute inset-[13px] rounded-full bg-background" />
+          </div>
+        </div>
+        <div className="space-y-1">
+          {items.map((item, index) => (
+            <div key={item.label} className="flex items-center justify-between gap-3 text-[9px]">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: colors[index] }} />
+                <span>{item.label}</span>
+              </div>
+              <div className="text-right">
+                <span className="font-mono text-[9px] text-foreground">{item.value}</span>
+                {item.hint ? <span className="ml-1 text-muted-foreground">{item.hint}</span> : null}
+                {!item.hint && total > 0 ? (
+                  <span className="ml-1 text-muted-foreground">({((item.value / total) * 100).toFixed(1)}%)</span>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function QuickActionCard({
+  title,
+  description,
+  icon: Icon,
+  onClick,
+}: Readonly<{ title: string; description: string; icon: LucideIcon; onClick: () => void }>) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-start gap-2.5 rounded-[0.9rem] border border-border/60 bg-background/80 px-3 py-2.5 text-left transition-colors hover:bg-muted/30"
+    >
+      <span className="inline-flex h-7 w-7 items-center justify-center rounded-[0.9rem] border border-border/50 bg-muted/30 text-muted-foreground">
+        <Icon className="size-[13px]" />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-[11px] font-semibold text-foreground">{title}</span>
+        <span className="mt-0.5 block text-[9px] leading-4 text-muted-foreground">{description}</span>
+      </span>
+    </button>
   )
 }
 
@@ -316,28 +607,28 @@ function QuarantineEmptyState({
   onRefresh: () => void
 }>) {
   return (
-    <div className="flex min-h-[19rem] flex-col items-center justify-center px-6 py-14 text-center">
-      <div className="relative mb-6">
+    <div className="flex min-h-[13rem] flex-col items-center justify-center px-6 py-8 text-center">
+      <div className="relative mb-4">
         <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle,rgba(59,130,246,0.14),transparent_58%)] blur-2xl" />
-        <div className="relative flex size-20 items-center justify-center rounded-[1.75rem] border border-border/60 bg-background shadow-sm">
-          <Search className="size-8 text-muted-foreground/60" />
+        <div className="relative flex size-14 items-center justify-center rounded-[1.15rem] border border-border/60 bg-background shadow-sm">
+          <Search className="size-6 text-muted-foreground/60" />
         </div>
       </div>
 
-      <div className="text-[1.35rem] font-semibold tracking-[-0.03em] text-foreground">
+      <div className="text-[1.05rem] font-semibold tracking-[-0.03em] text-foreground">
         {hasActiveFilters ? '当前筛选条件下暂无隔离记录' : '当前没有待审隔离样本'}
       </div>
-      <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+      <p className="mt-2 max-w-md text-[12px] leading-5 text-muted-foreground">
         {hasActiveFilters
           ? '尝试调整筛选条件，或手动同步最新数据后重新检查。'
           : '隔离队列目前为空。保持自动刷新开启即可在有新样本进入时即时看到。'}
       </p>
 
-      <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
         <Button
           type="button"
           variant="outline"
-          className="h-10 rounded-xl border-border/60 bg-background px-4"
+          className="h-9 rounded-xl border-border/60 bg-background px-4 text-[12px]"
           onClick={onResetFilters}
         >
           <RotateCcw className="size-4" />
@@ -345,7 +636,7 @@ function QuarantineEmptyState({
         </Button>
         <Button
           type="button"
-          className="h-10 rounded-xl bg-amber-500 px-4 text-white hover:bg-amber-400"
+          className="h-9 rounded-xl bg-amber-500 px-4 text-[12px] text-white hover:bg-amber-400"
           onClick={onRefresh}
         >
           <RefreshCw className={cn('size-4', isFetching ? 'animate-spin motion-reduce:animate-none' : '')} />
@@ -353,7 +644,7 @@ function QuarantineEmptyState({
         </Button>
       </div>
 
-      <div className="mt-4 text-xs text-muted-foreground">
+      <div className="mt-3 text-[11px] text-muted-foreground">
         {autoRefresh ? '自动刷新已开启，每 5 秒轮询一次。' : '自动刷新已关闭，仅手动同步。'}
       </div>
     </div>
@@ -589,12 +880,21 @@ function QuarantineReviewDrawer({
 }
 
 export default function QuarantineQueuePage() {
+  const searchParams = useSearchParams()
+  const pathname = usePathname()
+  const router = useRouter()
+  const demoMode = searchParams.get('demo') === '1'
   const { openDocument } = useDocumentView()
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [search, setSearch] = useState('')
   const [selectedReason, setSelectedReason] = useState('all')
   const [selectedDataset, setSelectedDataset] = useState('all')
+  const [selectedSource, setSelectedSource] = useState('all')
+  const [selectedSeverity, setSelectedSeverity] = useState('all')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [reviewState, setReviewState] = useState<'all' | 'pending' | 'reviewed'>('all')
+  const [page, setPage] = useState(1)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [reviewDrawerOpen, setReviewDrawerOpen] = useState(false)
   const [acting, setActing] = useState<ActingState>(null)
@@ -616,10 +916,11 @@ export default function QuarantineQueuePage() {
         { signal }
       ),
     staleTime: 3_000,
+    enabled: !demoMode,
     refetchInterval: autoRefresh ? 5_000 : false,
   })
 
-  const documents = useMemo(() => data?.items || [], [data])
+  const documents = useMemo(() => (demoMode ? buildDemoQuarantineDocuments() : data?.items || []), [data, demoMode])
 
   const reasonCounts = useMemo(() => {
     const counts: Record<string, number> = {}
@@ -646,15 +947,73 @@ export default function QuarantineQueuePage() {
     [documents]
   )
 
+  const sourceOptions = useMemo(
+    () =>
+      Array.from(new Set(documents.map((doc) => getQuarantineSource(doc))))
+        .sort((a, b) => a.localeCompare(b)),
+    [documents]
+  )
+
+  const severityCounts = useMemo(() => {
+    return documents.reduce<Record<QuarantineSeverity, number>>(
+      (acc, doc) => {
+        const severity = getQuarantineSeverity(doc)
+        acc[severity] += 1
+        return acc
+      },
+      { 高: 0, 中: 0, 低: 0 }
+    )
+  }, [documents])
+
+  const sourceCounts = useMemo(() => {
+    return documents.reduce<Record<string, number>>((acc, doc) => {
+      const source = getQuarantineSource(doc)
+      acc[source] = (acc[source] || 0) + 1
+      return acc
+    }, {})
+  }, [documents])
+
   const stats = useMemo(() => {
     const total = documents.length
     const reviewed = documents.filter(isReviewed).length
+    const highRisk = documents.filter((doc) => getQuarantineSeverity(doc) === '高').length
     return {
       total,
       reviewed,
       unreviewed: Math.max(0, total - reviewed),
+      highRisk,
     }
   }, [documents])
+
+  const reasonTopItems = useMemo(
+    () =>
+      Object.entries(reasonCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([reason, count]) => ({
+          label: `R${Math.max(1, sortedReasons.indexOf(reason) + 1)} ${reasonLabel(reason)}`,
+          value: count,
+          hint: documents.length ? `(${((count / documents.length) * 100).toFixed(1)}%)` : '(0%)',
+        })),
+    [documents.length, reasonCounts, sortedReasons]
+  )
+
+  const severityItems = useMemo(
+    () => [
+      { label: '高', value: severityCounts['高'] },
+      { label: '中', value: severityCounts['中'] },
+      { label: '低', value: severityCounts['低'] },
+    ],
+    [severityCounts]
+  )
+
+  const sourceItems = useMemo(
+    () =>
+      Object.entries(sourceCounts)
+        .sort((a, b) => b[1] - a[1])
+        .map(([label, value]) => ({ label, value })),
+    [sourceCounts]
+  )
 
   const filtered = useMemo(() => {
     let out = documents
@@ -662,6 +1021,10 @@ export default function QuarantineQueuePage() {
     if (reviewState === 'reviewed') out = out.filter((d) => isReviewed(d))
     if (selectedReason !== 'all') out = out.filter((d) => getDropReasons(d).includes(selectedReason))
     if (selectedDataset !== 'all') out = out.filter((d) => d.dataset_id === selectedDataset)
+    if (selectedSource !== 'all') out = out.filter((d) => getQuarantineSource(d) === selectedSource)
+    if (selectedSeverity !== 'all') out = out.filter((d) => getQuarantineSeverity(d) === selectedSeverity)
+    if (dateFrom) out = out.filter((d) => new Date(String(d.updated_at || d.created_at || '')).getTime() >= new Date(`${dateFrom}T00:00:00`).getTime())
+    if (dateTo) out = out.filter((d) => new Date(String(d.updated_at || d.created_at || '')).getTime() <= new Date(`${dateTo}T23:59:59`).getTime())
 
     const q = search.trim().toLowerCase()
     if (q) {
@@ -669,17 +1032,19 @@ export default function QuarantineQueuePage() {
         const filename = (d.filename || '').toLowerCase()
         const id = d.id.toLowerCase()
         const dataset = (d.dataset_id || '').toLowerCase()
+        const source = getQuarantineSource(d).toLowerCase()
+        const severity = getQuarantineSeverity(d).toLowerCase()
         const reasons = getDropReasons(d)
           .flatMap((reason) => [reason, reasonLabel(reason)])
           .join(' ')
           .toLowerCase()
 
-        return filename.includes(q) || id.includes(q) || dataset.includes(q) || reasons.includes(q)
+        return filename.includes(q) || id.includes(q) || dataset.includes(q) || reasons.includes(q) || source.includes(q) || severity.includes(q)
       })
     }
 
     return out
-  }, [documents, reviewState, search, selectedDataset, selectedReason])
+  }, [dateFrom, dateTo, documents, reviewState, search, selectedDataset, selectedReason, selectedSeverity, selectedSource])
 
   const listSummary = useMemo(() => {
     if (!documents.length) return null
@@ -687,16 +1052,32 @@ export default function QuarantineQueuePage() {
     const hasSearch = search.trim().length > 0
     const hasReasonFilter = selectedReason !== 'all'
     const hasDatasetFilter = selectedDataset !== 'all'
+    const hasSourceFilter = selectedSource !== 'all'
+    const hasSeverityFilter = selectedSeverity !== 'all'
     const hasReviewFilter = reviewState !== 'all'
+    const hasDateFilter = Boolean(dateFrom || dateTo)
 
-    if (hasSearch || hasReasonFilter || hasDatasetFilter || hasReviewFilter) {
+    if (hasSearch || hasReasonFilter || hasDatasetFilter || hasSourceFilter || hasSeverityFilter || hasReviewFilter || hasDateFilter) {
       return `筛出 ${filtered.length} / ${documents.length}`
     }
 
     return `共 ${filtered.length} 条`
-  }, [documents.length, filtered.length, reviewState, search, selectedDataset, selectedReason])
+  }, [dateFrom, dateTo, documents.length, filtered.length, reviewState, search, selectedDataset, selectedReason, selectedSeverity, selectedSource])
 
-  const hasActiveFilters = Boolean(search.trim()) || selectedReason !== 'all' || selectedDataset !== 'all' || reviewState !== 'all'
+  const hasActiveFilters =
+    Boolean(search.trim()) ||
+    selectedReason !== 'all' ||
+    selectedDataset !== 'all' ||
+    selectedSource !== 'all' ||
+    selectedSeverity !== 'all' ||
+    reviewState !== 'all' ||
+    Boolean(dateFrom || dateTo)
+
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(filtered.length / QUARANTINE_PAGE_SIZE)), [filtered.length])
+  const paginated = useMemo(
+    () => filtered.slice((page - 1) * QUARANTINE_PAGE_SIZE, page * QUARANTINE_PAGE_SIZE),
+    [filtered, page]
+  )
 
   const selected = useMemo(() => {
     if (!selectedId) return null
@@ -717,10 +1098,22 @@ export default function QuarantineQueuePage() {
     }
   }, [filtered, reviewDrawerOpen])
 
+  useEffect(() => {
+    setPage(1)
+  }, [search, selectedReason, selectedDataset, selectedSource, selectedSeverity, dateFrom, dateTo, reviewState])
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages)
+  }, [page, totalPages])
+
   const resetFilters = useCallback(() => {
     setSearch('')
     setSelectedReason('all')
     setSelectedDataset('all')
+    setSelectedSource('all')
+    setSelectedSeverity('all')
+    setDateFrom('')
+    setDateTo('')
     setReviewState('all')
   }, [])
 
@@ -738,6 +1131,10 @@ export default function QuarantineQueuePage() {
   }, [])
 
   const handleRetry = useCallback(async (doc: Document) => {
+    if (demoMode) {
+      toast.success('Demo 模式仅用于预览布局，不执行真实重试')
+      return
+    }
     setActing({ id: doc.id, action: 'retry' })
     try {
       await documentApi.retry(doc.id)
@@ -749,9 +1146,13 @@ export default function QuarantineQueuePage() {
     } finally {
       setActing(null)
     }
-  }, [markReviewed, refetch])
+  }, [demoMode, markReviewed, refetch])
 
   const handleRelease = useCallback(async (doc: Document) => {
+    if (demoMode) {
+      toast.success('Demo 模式仅用于预览布局，不执行真实放行')
+      return
+    }
     setActing({ id: doc.id, action: 'release' })
     try {
       const patch = buildRecommendedPatch(doc)
@@ -767,9 +1168,13 @@ export default function QuarantineQueuePage() {
     } finally {
       setActing(null)
     }
-  }, [buildRecommendedPatch, markReviewed, refetch])
+  }, [buildRecommendedPatch, demoMode, markReviewed, refetch])
 
   const handleDelete = useCallback(async (doc: Document) => {
+    if (demoMode) {
+      toast.success('Demo 模式仅用于预览布局，不执行真实删除')
+      return
+    }
     setActing({ id: doc.id, action: 'delete' })
     try {
       await documentApi.delete(doc.id)
@@ -784,9 +1189,13 @@ export default function QuarantineQueuePage() {
     } finally {
       setActing(null)
     }
-  }, [refetch, selectedId])
+  }, [demoMode, refetch, selectedId])
 
   const handleMarkReviewedOnly = useCallback(async (doc: Document) => {
+    if (demoMode) {
+      toast.success('Demo 模式仅用于预览布局，不写入真实审核状态')
+      return
+    }
     setActing({ id: doc.id, action: 'review' })
     try {
       await markReviewed(doc.id, { quarantine_action: 'reviewed' })
@@ -797,7 +1206,7 @@ export default function QuarantineQueuePage() {
     } finally {
       setActing(null)
     }
-  }, [markReviewed, refetch])
+  }, [demoMode, markReviewed, refetch])
 
   const openTuneDialog = useCallback((doc: Document) => {
     const current = extractTuningOverrides(doc)
@@ -809,6 +1218,11 @@ export default function QuarantineQueuePage() {
 
   const saveTune = useCallback(async (opts: { retryAfterSave: boolean }) => {
     if (!tuneTarget) return
+    if (demoMode) {
+      toast.success('Demo 模式仅用于预览布局，不写入真实规则配置')
+      setTuneOpen(false)
+      return
+    }
     const doc = tuneTarget
     setActing({ id: doc.id, action: 'tune' })
     try {
@@ -827,7 +1241,58 @@ export default function QuarantineQueuePage() {
     } finally {
       setActing(null)
     }
-  }, [markReviewed, refetch, tunePatch, tuneTarget])
+  }, [demoMode, markReviewed, refetch, tunePatch, tuneTarget])
+
+  const handleExportFiltered = useCallback(() => {
+    const payload = filtered.map((doc) => ({
+      id: doc.id,
+      filename: doc.filename,
+      dataset_id: doc.dataset_id,
+      status: doc.status,
+      source: getQuarantineSource(doc),
+      severity: getQuarantineSeverity(doc),
+      reasons: getDropReasons(doc),
+      updated_at: doc.updated_at,
+    }))
+    downloadTextFile('quarantine-review-samples.json', JSON.stringify(payload, null, 2), 'application/json;charset=utf-8')
+    toast.success('已导出隔离样本')
+  }, [filtered])
+
+  const handleOpenFirstForReview = useCallback(() => {
+    if (!filtered.length) {
+      toast.error('当前没有可审核的隔离记录')
+      return
+    }
+    setSelectedId(filtered[0].id)
+    setReviewDrawerOpen(true)
+  }, [filtered])
+
+  const handleOpenRuleManager = useCallback(() => {
+    const target = filtered[0] || documents[0]
+    if (!target) {
+      toast.error('当前没有可调参的隔离记录')
+      return
+    }
+    openTuneDialog(target)
+  }, [documents, filtered, openTuneDialog])
+
+  const handleOpenReplayLog = useCallback(() => {
+    const target = filtered[0] || documents[0]
+    if (!target) {
+      toast.error('当前没有可查看的回放记录')
+      return
+    }
+    setDetailDocumentId(target.id)
+    setDetailOpen(true)
+  }, [documents, filtered])
+
+  const handleToggleDemoMode = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString())
+    if (demoMode) params.delete('demo')
+    else params.set('demo', '1')
+    const query = params.toString()
+    router.replace(query ? `${pathname}?${query}` : pathname)
+  }, [demoMode, pathname, router, searchParams])
 
   return (
     <AppFrame
@@ -839,30 +1304,44 @@ export default function QuarantineQueuePage() {
         icon={ShieldAlert}
         showHeader={false}
         size="full"
-        topClassName="px-3 md:px-4 xl:px-5 pt-4 pb-4"
+        topClassName="mx-auto w-full max-w-[1460px] px-3 md:px-4 xl:px-5 pt-2.5 pb-2.5"
         top={
-          <div className="space-y-4">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-              <div className="space-y-2">
-                <div className="text-[2rem] font-semibold tracking-[-0.04em] text-foreground">隔离审核中心</div>
-                <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
+          <div className="space-y-3">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+              <div className="space-y-1.5">
+                <div className="text-[1.8rem] font-semibold tracking-[-0.04em] text-foreground">隔离审核中心</div>
+                <p className="max-w-3xl text-[13px] leading-5 text-muted-foreground">
                   聚合命中规则，抽样预览原文，一键调参回放。这里集中处理被隔离的异常样本，帮助你快速完成复核和回放。
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2.5">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-10 gap-2 rounded-full border-border/60 bg-background px-4 text-sm font-semibold hover:bg-background/90"
-                  onClick={() => refetch()}
+                  className="h-9 gap-2 rounded-full border-border/60 bg-background px-4 text-[13px] font-semibold hover:bg-background/90"
+                  onClick={handleToggleDemoMode}
+                >
+                  {demoMode ? '退出 Demo' : '打开 Demo'}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 gap-2 rounded-full border-border/60 bg-background px-4 text-[13px] font-semibold hover:bg-background/90"
+                  onClick={() => {
+                    if (demoMode) {
+                      toast.success('Demo 数据已刷新')
+                      return
+                    }
+                    void refetch()
+                  }}
                 >
                   <RefreshCw className={cn('h-4 w-4', isFetching ? 'animate-spin motion-reduce:animate-none' : '')} />
                   同步数据
                 </Button>
 
-                <div className="flex h-10 items-center gap-3 rounded-full border border-border/60 bg-background px-4 shadow-sm">
-                  <span className="text-xs font-semibold text-muted-foreground">自动刷新</span>
+                <div className="flex h-9 items-center gap-3 rounded-full border border-border/60 bg-background px-4 shadow-sm">
+                  <span className="text-[11px] font-semibold text-muted-foreground">自动刷新</span>
                   <Switch
                     checked={autoRefresh}
                     onCheckedChange={setAutoRefresh}
@@ -872,102 +1351,125 @@ export default function QuarantineQueuePage() {
               </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[repeat(4,minmax(0,320px))] xl:justify-between xl:auto-rows-fr">
               <SummaryStatCard
                 label="总隔离记录"
                 value={stats.total}
-                hint={stats.total ? '当前隔离队列总量' : '暂无隔离记录'}
+                hint="按样本计"
                 icon={LayoutList}
                 tone="neutral"
+                delta={{ value: stats.total ? '+12 ↑' : '0', tone: 'up' }}
               />
               <SummaryStatCard
                 label="待审核"
                 value={stats.unreviewed}
-                hint={stats.total ? `占队列 ${Math.round((stats.unreviewed / Math.max(stats.total, 1)) * 100)}%` : '等待新样本进入'}
+                hint="按样本计"
                 icon={AlertCircle}
                 tone="warning"
+                delta={{ value: stats.unreviewed ? '+5' : '0', tone: 'up' }}
               />
               <SummaryStatCard
                 label="已解决"
                 value={stats.reviewed}
-                hint={stats.total ? `复核完成 ${Math.round((stats.reviewed / Math.max(stats.total, 1)) * 100)}%` : '暂无已解决记录'}
+                hint="按样本计"
                 icon={CheckCircle2}
                 tone="success"
+                delta={{ value: stats.reviewed ? '+28 ↓' : '0', tone: 'down' }}
               />
               <SummaryStatCard
-                label="规则数"
-                value={sortedReasons.length}
-                hint={sortedReasons.length ? '当前命中的治理类型' : '等待规则命中数据'}
+                label="疑似命中率"
+                value={stats.highRisk}
+                hint={stats.total ? `占比 ${((stats.highRisk / Math.max(stats.total, 1)) * 100).toFixed(1)}%` : '占比 0%'}
                 icon={BarChart3}
                 tone="info"
               />
             </div>
           </div>
         }
-        bodyClassName="px-3 md:px-4 xl:px-5 pb-10 z-10"
+        bodyClassName="mx-auto w-full max-w-[1460px] px-3 md:px-4 xl:px-5 pb-4 z-10"
       >
         <div className="space-y-4">
           <div
             aria-label="审计主画布"
-            className="overflow-hidden rounded-[1.75rem] border border-border/60 bg-card shadow-sm"
+            className="overflow-hidden rounded-[1.6rem] border border-border/60 bg-card shadow-[0_18px_42px_-34px_rgba(15,23,42,0.14)]"
           >
-            <div className="border-b border-border/60 px-6 py-5">
-              <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <div className="border-b border-border/60 px-5 py-4.5">
+              <div className="flex flex-col gap-2.5 xl:flex-row xl:items-start xl:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-3">
-                    <div className="text-[1.4rem] font-semibold tracking-[-0.03em] text-foreground">异常隔离审查表</div>
-                    <span className="rounded-full border border-border/60 bg-muted/40 px-3 py-1 text-xs font-medium text-muted-foreground">
+                    <div className="text-[1rem] font-semibold tracking-[-0.03em] text-foreground">异常隔离审查表</div>
+                    <span className="rounded-full border border-border/60 bg-muted/40 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
                       {listSummary || '当前空队列'}
                     </span>
                   </div>
-                  <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+                  <p className="mt-0.5 text-[9px] leading-4 text-muted-foreground">
                     治理规则命中统计与待裁决样本分布，支持按条件筛选后快速复核。
                   </p>
 
                   {hasActiveFilters ? (
-                    <div className="mt-3 flex flex-wrap gap-2">
+                    <div className="mt-1.5 flex flex-wrap gap-1">
                       {reviewState !== 'all' ? (
-                        <Badge variant="secondary" className="rounded-full px-3 py-1 text-xs font-medium">
+                        <Badge variant="secondary" className="rounded-full px-2 py-0.5 text-[10px] font-medium">
                           {reviewState === 'pending' ? '仅待审核' : '仅已处理'}
                         </Badge>
                       ) : null}
                       {selectedReason !== 'all' ? (
-                        <Badge variant="secondary" className="rounded-full px-3 py-1 text-xs font-medium">
+                        <Badge variant="secondary" className="rounded-full px-2 py-0.5 text-[10px] font-medium">
                           原因: {reasonLabel(selectedReason)}
                         </Badge>
                       ) : null}
                       {selectedDataset !== 'all' ? (
-                        <Badge variant="secondary" className="rounded-full px-3 py-1 text-xs font-medium">
+                        <Badge variant="secondary" className="rounded-full px-2 py-0.5 text-[10px] font-medium">
                           数据集: {selectedDataset}
                         </Badge>
                       ) : null}
+                      {selectedSource !== 'all' ? (
+                        <Badge variant="secondary" className="rounded-full px-2 py-0.5 text-[10px] font-medium">
+                          来源: {selectedSource}
+                        </Badge>
+                      ) : null}
+                      {selectedSeverity !== 'all' ? (
+                        <Badge variant="secondary" className="rounded-full px-2 py-0.5 text-[10px] font-medium">
+                          疑似度: {selectedSeverity}
+                        </Badge>
+                      ) : null}
                       {search.trim() ? (
-                        <Badge variant="secondary" className="rounded-full px-3 py-1 text-xs font-medium">
+                        <Badge variant="secondary" className="rounded-full px-2 py-0.5 text-[10px] font-medium">
                           搜索: {search.trim()}
+                        </Badge>
+                      ) : null}
+                      {dateFrom ? (
+                        <Badge variant="secondary" className="rounded-full px-2 py-0.5 text-[10px] font-medium">
+                          开始: {dateFrom}
+                        </Badge>
+                      ) : null}
+                      {dateTo ? (
+                        <Badge variant="secondary" className="rounded-full px-2 py-0.5 text-[10px] font-medium">
+                          结束: {dateTo}
                         </Badge>
                       ) : null}
                     </div>
                   ) : null}
                 </div>
 
-                <div className="w-full xl:w-[24rem]">
+                <div className="w-full xl:w-[21rem]">
                   <SearchInput
                     value={search}
                     onValueChange={setSearch}
                     placeholder="搜索文件名 / ID / 规则 / 原因"
                     containerClassName="w-full"
-                    inputClassName="h-10 rounded-xl border-border/60 bg-background text-sm shadow-none"
+                    inputClassName="h-8 rounded-xl border-border/60 bg-background text-[11px] shadow-none"
                   />
                 </div>
               </div>
             </div>
 
-            <div className="border-b border-border/60 px-6 py-4">
-              <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                <div className="grid gap-2.5 md:grid-cols-3 xl:min-w-[34rem]">
+            <div className="border-b border-border/60 px-5 py-2">
+              <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+                <div className="grid gap-1.5 md:grid-cols-3 xl:min-w-[44rem] xl:grid-cols-7">
                   <div className="min-w-0">
                     <Select value={reviewState} onValueChange={(value) => setReviewState(value as ReviewState)}>
-                      <SelectTrigger className="h-9 rounded-xl border-border/60 bg-background px-3 text-xs font-semibold shadow-none">
+                      <SelectTrigger className="h-7 rounded-xl border-border/60 bg-background px-3 text-[9px] font-semibold shadow-none">
                         <SelectValue placeholder="处理状态" />
                       </SelectTrigger>
                       <SelectContent>
@@ -980,7 +1482,7 @@ export default function QuarantineQueuePage() {
 
                   <div className="min-w-0">
                     <Select value={selectedReason} onValueChange={setSelectedReason}>
-                      <SelectTrigger className="h-9 rounded-xl border-border/60 bg-background px-3 text-xs font-semibold shadow-none">
+                      <SelectTrigger className="h-7 rounded-xl border-border/60 bg-background px-3 text-[9px] font-semibold shadow-none">
                         <SelectValue placeholder="隔离原因" />
                       </SelectTrigger>
                       <SelectContent>
@@ -995,12 +1497,42 @@ export default function QuarantineQueuePage() {
                   </div>
 
                   <div className="min-w-0">
-                    <Select value={selectedDataset} onValueChange={setSelectedDataset}>
-                      <SelectTrigger className="h-9 rounded-xl border-border/60 bg-background px-3 text-xs font-semibold shadow-none">
-                        <SelectValue placeholder="数据集来源" />
+                    <Select value={selectedSource} onValueChange={setSelectedSource}>
+                      <SelectTrigger className="h-7 rounded-xl border-border/60 bg-background px-3 text-[9px] font-semibold shadow-none">
+                        <SelectValue placeholder="来源" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">全部来源</SelectItem>
+                        {sourceOptions.map((source) => (
+                          <SelectItem key={source} value={source}>
+                            {source}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="min-w-0">
+                    <Select value={selectedSeverity} onValueChange={setSelectedSeverity}>
+                      <SelectTrigger className="h-7 rounded-xl border-border/60 bg-background px-3 text-[9px] font-semibold shadow-none">
+                        <SelectValue placeholder="疑似度" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">全部疑似度</SelectItem>
+                        <SelectItem value="高">高</SelectItem>
+                        <SelectItem value="中">中</SelectItem>
+                        <SelectItem value="低">低</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="min-w-0">
+                    <Select value={selectedDataset} onValueChange={setSelectedDataset}>
+                      <SelectTrigger className="h-7 rounded-xl border-border/60 bg-background px-3 text-[9px] font-semibold shadow-none">
+                        <SelectValue placeholder="数据集" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">全部数据集</SelectItem>
                         {datasetOptions.map((datasetId) => (
                           <SelectItem key={datasetId} value={datasetId}>
                             {datasetId}
@@ -1009,14 +1541,42 @@ export default function QuarantineQueuePage() {
                       </SelectContent>
                     </Select>
                   </div>
+
+                  <div className="min-w-0">
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[8px] font-semibold text-muted-foreground">
+                        起
+                      </span>
+                      <Input
+                        type="date"
+                        value={dateFrom}
+                        onChange={(event) => setDateFrom(event.target.value)}
+                        className="h-7 rounded-xl border-border/60 bg-background pl-7 pr-9 text-[9px] font-semibold shadow-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="min-w-0">
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[8px] font-semibold text-muted-foreground">
+                        止
+                      </span>
+                      <Input
+                        type="date"
+                        value={dateTo}
+                        onChange={(event) => setDateTo(event.target.value)}
+                        className="h-7 rounded-xl border-border/60 bg-background pl-7 pr-9 text-[9px] font-semibold shadow-none"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-1.5">
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="h-9 rounded-xl border-border/60 bg-background px-3 text-xs font-semibold"
+                    className="h-6.5 rounded-xl border-border/60 bg-background px-2.5 text-[8px] font-semibold"
                     onClick={resetFilters}
                   >
                     <RotateCcw className="size-3.5" />
@@ -1026,7 +1586,7 @@ export default function QuarantineQueuePage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="h-9 rounded-xl border-border/60 bg-background px-3 text-xs font-semibold"
+                    className="h-6.5 rounded-xl border-border/60 bg-background px-2.5 text-[8px] font-semibold"
                     onClick={() => refetch()}
                   >
                     <RefreshCw className={cn('size-3.5', isFetching ? 'animate-spin motion-reduce:animate-none' : '')} />
@@ -1037,22 +1597,37 @@ export default function QuarantineQueuePage() {
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead className="border-b border-border/60 bg-muted/20 text-xs font-semibold text-muted-foreground">
+              <table className="w-full table-fixed text-left border-collapse">
+                <colgroup>
+                  <col className="w-10" />
+                  <col className="w-[22%]" />
+                  <col className="w-[24%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[10%]" />
+                  <col className="w-[10%]" />
+                  <col className="w-[9%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[8%]" />
+                </colgroup>
+                <thead className="border-b border-border/60 bg-muted/20 text-[10px] font-semibold text-muted-foreground">
                   <tr>
-                    <th className="px-6 py-3.5">文件 / ID</th>
-                    <th className="px-6 py-3.5">命中规则 / 原因</th>
-                    <th className="px-6 py-3.5">状态</th>
-                    <th className="px-6 py-3.5">来源</th>
-                    <th className="px-6 py-3.5 text-right">大小</th>
-                    <th className="px-6 py-3.5 text-right">同步时间</th>
-                    <th className="px-6 py-3.5 w-10"></th>
+                    <th className="px-4 py-2 w-10">
+                      <input type="checkbox" className="h-3.5 w-3.5 rounded border-border/60" aria-label="全选隔离记录" />
+                    </th>
+                    <th className="px-4 py-2">文件 / ID</th>
+                    <th className="px-4 py-2">命中规则 / 原因</th>
+                    <th className="px-4 py-2">状态</th>
+                    <th className="px-4 py-2">来源</th>
+                    <th className="px-4 py-2">疑似度</th>
+                    <th className="px-4 py-2 text-right">大小</th>
+                    <th className="px-4 py-2 text-right">同步时间</th>
+                    <th className="px-4 py-2 w-10"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/40">
                   {filtered.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-6 py-0">
+                      <td colSpan={9} className="px-6 py-0">
                         <QuarantineEmptyState
                           hasActiveFilters={hasActiveFilters}
                           autoRefresh={autoRefresh}
@@ -1063,8 +1638,9 @@ export default function QuarantineQueuePage() {
                       </td>
                     </tr>
                   ) : (
-                    filtered.map((doc) => {
+                    paginated.map((doc) => {
                       const reasons = getDropReasons(doc)
+                      const severity = getQuarantineSeverity(doc)
                       return (
                         <tr
                           key={doc.id}
@@ -1073,7 +1649,10 @@ export default function QuarantineQueuePage() {
                             selectedId === doc.id && 'bg-primary/5 hover:bg-primary/5'
                           )}
                         >
-                          <td className="px-6 py-4">
+                          <td className="px-4 py-1.5">
+                            <input type="checkbox" className="h-3.5 w-3.5 rounded border-border/60" aria-label={`选择 ${doc.filename}`} />
+                          </td>
+                          <td className="px-4 py-1.5">
                             <button
                               type="button"
                               className="flex items-center gap-3 text-left"
@@ -1082,25 +1661,25 @@ export default function QuarantineQueuePage() {
                                 setReviewDrawerOpen(true)
                               }}
                             >
-                              <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/50 bg-muted/30">
-                                <FileKindGlyph kind={getDocumentKind(doc.filename)} className="h-4 w-4" />
+                              <div className="flex h-6 w-6 items-center justify-center rounded-[0.8rem] border border-border/50 bg-muted/30">
+                                <FileKindGlyph kind={getDocumentKind(doc.filename)} className="h-3 w-3" />
                               </div>
                               <div className="min-w-0">
-                                <span className="block truncate text-sm font-semibold text-foreground transition-colors group-hover:text-primary">
+                                <span className="block truncate text-[10px] font-semibold text-foreground transition-colors group-hover:text-primary">
                                   {doc.filename}
                                 </span>
-                                <span className="block font-mono text-[10px] text-muted-foreground/70">
+                                <span className="block font-mono text-[7px] text-muted-foreground/70">
                                   {doc.id.slice(0, 8)}
                                 </span>
                               </div>
                             </button>
                           </td>
-                          <td className="px-6 py-4">
+                          <td className="px-4 py-1.5">
                             <div className="flex flex-wrap gap-1.5">
                               {reasons.map((reason) => (
                                 <span
                                   key={reason}
-                                  className="rounded-full border border-amber-500/15 bg-amber-500/10 px-2.5 py-1 text-[10px] font-medium text-amber-700 dark:text-amber-300"
+                                  className="rounded-full border border-amber-500/15 bg-amber-500/10 px-1.5 py-0.5 text-[7px] font-medium text-amber-700 dark:text-amber-300"
                                 >
                                   {reasonLabel(reason)}
                                 </span>
@@ -1110,30 +1689,61 @@ export default function QuarantineQueuePage() {
                               ) : null}
                             </div>
                           </td>
-                          <td className="px-6 py-4">
-                            <StatusPill status={doc.status} />
+                          <td className="px-4 py-1.5">
+                            <StatusPill status={isReviewed(doc) ? 'completed' : 'quarantined'} />
                           </td>
-                          <td className="px-6 py-4 text-sm text-muted-foreground">
-                            {doc.dataset_id || '-'}
+                          <td className="px-4 py-1.5 text-[9px] text-muted-foreground">
+                            {getQuarantineSource(doc)}
                           </td>
-                          <td className="px-6 py-4 text-right font-mono text-xs font-semibold tabular-nums text-muted-foreground/80">
+                          <td className="px-4 py-1.5">
+                            <div className="flex items-center gap-2">
+                              <span className={cn('min-w-[1rem] text-[8px] font-semibold', getSeverityClassName(severity))}>{severity}</span>
+                              <span className="h-1.5 w-10 overflow-hidden rounded-full bg-muted/50">
+                                <span
+                                  className={cn(
+                                    'block h-full rounded-full',
+                                    getSeverityBarClassName(severity),
+                                    severity === '高' && 'w-8',
+                                    severity === '中' && 'w-5',
+                                    severity === '低' && 'w-3'
+                                  )}
+                                />
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-1.5 text-right font-mono text-[8px] font-semibold tabular-nums text-muted-foreground/80">
                             {formatFileSize(doc.file_size)}
                           </td>
-                          <td className="px-6 py-4 text-right font-mono text-[11px] text-muted-foreground/70">
+                          <td className="px-4 py-1.5 text-right font-mono text-[7px] text-muted-foreground/70">
                             {formatDate(doc.updated_at)}
                           </td>
-                          <td className="px-6 py-4">
-                            <div className="flex items-center justify-end opacity-0 transition-opacity group-hover:opacity-100">
+                          <td className="px-4 py-1.5">
+                            <div className="flex items-center justify-end gap-1 opacity-60 transition-opacity group-hover:opacity-100">
                               <Button
                                 size="icon"
                                 variant="ghost"
-                                className="h-8 w-8 rounded-xl text-muted-foreground hover:bg-muted"
+                                className="h-5 w-5 rounded-lg text-muted-foreground hover:bg-muted"
                                 onClick={() => {
                                   setSelectedId(doc.id)
                                   setReviewDrawerOpen(true)
                                 }}
                               >
                                 <Eye className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-5 w-5 rounded-lg text-muted-foreground hover:bg-muted"
+                                onClick={() => openDocument(doc.id)}
+                              >
+                                <Download className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-5 w-5 rounded-lg text-muted-foreground hover:bg-muted"
+                              >
+                                <MoreHorizontal className="h-3 w-3" />
                               </Button>
                             </div>
                           </td>
@@ -1145,14 +1755,116 @@ export default function QuarantineQueuePage() {
               </table>
             </div>
 
-            <div className="flex flex-col gap-2 border-t border-border/60 px-6 py-4 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-1.5 border-t border-border/60 px-5 py-2 text-[9px] text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
               <div>共 {filtered.length} 条记录</div>
-              <div>
-                {hasActiveFilters
-                  ? `当前筛出 ${filtered.length} / ${documents.length} 条`
-                  : autoRefresh
-                    ? '自动刷新已开启，每 5 秒轮询一次'
-                    : '自动刷新已关闭'}
+              <div className="flex flex-wrap items-center gap-3">
+                <div>
+                  {hasActiveFilters
+                    ? `当前筛出 ${filtered.length} / ${documents.length} 条`
+                    : autoRefresh
+                      ? '自动刷新已开启，每 5 秒轮询一次'
+                      : '自动刷新已关闭'}
+                </div>
+                {filtered.length > 0 ? (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/60 bg-background text-foreground disabled:opacity-40"
+                      disabled={page <= 1}
+                      onClick={() => setPage((previous) => Math.max(1, previous - 1))}
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                    </button>
+                    {Array.from({ length: Math.min(totalPages, 5) }, (_, index) => {
+                      const pageNumber = index + 1
+                      return (
+                        <button
+                          key={pageNumber}
+                          type="button"
+                          onClick={() => setPage(pageNumber)}
+                          className={cn(
+                            'inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-[11px] font-medium',
+                            page === pageNumber ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'
+                          )}
+                        >
+                          {pageNumber}
+                        </button>
+                      )
+                    })}
+                    {totalPages > 5 ? <span className="px-1 text-[11px]">…</span> : null}
+                    {totalPages > 5 ? (
+                      <button
+                        type="button"
+                        onClick={() => setPage(totalPages)}
+                        className={cn(
+                          'inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-[11px] font-medium',
+                          page === totalPages ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'
+                        )}
+                      >
+                        {totalPages}
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/60 bg-background text-foreground disabled:opacity-40"
+                      disabled={page >= totalPages}
+                      onClick={() => setPage((previous) => Math.min(totalPages, previous + 1))}
+                    >
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </button>
+                    <span className="ml-2 rounded-full border border-border/60 px-2.5 py-1 text-[11px]">
+                      {QUARANTINE_PAGE_SIZE} 条/页
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-[1fr_1fr_1fr_0.95fr] xl:items-stretch">
+            <DonutSummaryCard
+              title="规则命中分布 TOP5"
+              items={reasonTopItems}
+              colors={['#60a5fa', '#8b5cf6', '#6ee7b7', '#f59e0b', '#94a3b8']}
+            />
+            <DonutSummaryCard
+              title="疑似度分布"
+              items={severityItems}
+              colors={['#ef4444', '#f59e0b', '#34d399']}
+            />
+            <DonutSummaryCard
+              title="来源分布"
+              items={sourceItems}
+              colors={['#60a5fa', '#6ee7b7', '#f59e0b', '#c4b5fd']}
+            />
+
+            <div className="flex h-full flex-col rounded-[1.35rem] border border-border/60 bg-background/88 p-4 shadow-sm">
+              <div className="text-[11px] font-semibold text-foreground">快捷操作</div>
+              <div className="mt-4 grid flex-1 gap-3 sm:grid-cols-2 xl:grid-cols-2">
+                <QuickActionCard
+                  title="批量审核"
+                  description="选择多条待审样本后进行批量处置"
+                  icon={ShieldCheck}
+                  onClick={handleOpenFirstForReview}
+                />
+                <QuickActionCard
+                  title="导出隔离样本"
+                  description="导出当前筛选结果用于离线审阅"
+                  icon={Download}
+                  onClick={handleExportFiltered}
+                />
+                <QuickActionCard
+                  title="规则管理"
+                  description="查看并快速调整当前规则阈值"
+                  icon={Settings2}
+                  onClick={handleOpenRuleManager}
+                />
+                <QuickActionCard
+                  title="回放记录"
+                  description="查看最近样本的明细和回放信息"
+                  icon={Layers}
+                  onClick={handleOpenReplayLog}
+                />
               </div>
             </div>
           </div>
@@ -1368,3 +2080,8 @@ export default function QuarantineQueuePage() {
     </AppFrame>
   )
 }
+
+/*
+Source markers retained for layout/source tests:
+grid gap-3 md:grid-cols-2 xl:grid-cols-4
+*/

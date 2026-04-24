@@ -164,12 +164,13 @@ export function KnowledgeSettingsPanel({ selectedDatasetId }: Readonly<Knowledge
                 key={model} 
                 onClick={() => setDraftConfig(prev => prev ? ({ ...prev, embedding: { ...prev.embedding, model } }) : null)}
                 className={cn(
-                  "relative text-left p-4 rounded-2xl border transition-all duration-300",
+                  "relative overflow-hidden text-left p-4 rounded-2xl border transition-all duration-300",
                   draftConfig?.embedding.model === model 
-                    ? "border-primary/40 bg-primary/[0.03] shadow-inner-soft ring-1 ring-primary/20" 
-                    : "border-border/40 bg-background/40 hover:border-border/80"
+                    ? "border-primary/20 bg-primary/[0.05] shadow-inner-soft ring-1 ring-primary/15" 
+                    : "border-border/40 bg-background/70 hover:border-primary/15 hover:bg-primary/[0.02]"
                 )}
               >
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-primary/8 via-transparent to-primary/5" />
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[13px] font-bold text-foreground">{model}</span>
                   {draftConfig?.embedding.model === model && <div className="size-2 rounded-full bg-primary shadow-[0_0_8px_rgba(var(--primary),0.6)]" />}
@@ -177,7 +178,7 @@ export function KnowledgeSettingsPanel({ selectedDatasetId }: Readonly<Knowledge
                 <p className="text-xs text-muted-foreground/70 leading-relaxed mb-3">{EMBEDDING_MODEL_META[model].description}</p>
                 <div className="flex flex-wrap gap-2">
                   {EMBEDDING_MODEL_META[model].chips.map(chip => (
-                    <span key={chip} className="text-[9px] font-bold px-2 py-0.5 rounded-md bg-muted/50 text-muted-foreground/60 border border-border/20 uppercase tracking-tighter">{chip}</span>
+                    <span key={chip} className="text-[9px] font-bold px-2 py-0.5 rounded-md bg-primary/10 text-primary/75 border border-primary/15 uppercase tracking-tighter">{chip}</span>
                   ))}
                 </div>
               </button>
@@ -196,7 +197,8 @@ export function KnowledgeSettingsPanel({ selectedDatasetId }: Readonly<Knowledge
           </div>
           
           <div className="grid md:grid-cols-2 gap-4">
-             <div className="p-5 rounded-[2rem] border border-border/40 bg-background/60 space-y-5 group/slider transition-all hover:border-primary/20 hover:shadow-soft">
+             <div className="relative overflow-hidden p-5 rounded-[2rem] border border-primary/20 bg-primary/[0.05] space-y-5 group/slider transition-all hover:border-primary/30 hover:shadow-soft">
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-primary/10 via-transparent to-primary/5" />
                 <div className="flex items-center justify-between">
                   <div className="flex flex-col">
                     <span className="text-[11px] font-black text-foreground/80 uppercase tracking-widest leading-none">Top K</span>
@@ -217,7 +219,8 @@ export function KnowledgeSettingsPanel({ selectedDatasetId }: Readonly<Knowledge
                   />
                 </div>
              </div>
-             <div className="p-5 rounded-[2rem] border border-border/40 bg-background/60 space-y-5 group/slider transition-all hover:border-primary/20 hover:shadow-soft">
+             <div className="relative overflow-hidden p-5 rounded-[2rem] border border-indigo-500/20 bg-indigo-500/[0.05] space-y-5 group/slider transition-all hover:border-indigo-500/30 hover:shadow-soft">
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-indigo-500/12 via-transparent to-indigo-500/5" />
                 <div className="flex items-center justify-between">
                   <div className="flex flex-col">
                     <span className="text-[11px] font-black text-foreground/80 uppercase tracking-widest leading-none">Similarity</span>

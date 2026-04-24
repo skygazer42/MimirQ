@@ -225,7 +225,7 @@ export default function KnowledgePage() {
   const layoutTransition = { type: 'spring', bounce: 0.2, duration: 0.6 }
   const documentScopeSummary = useMemo(() => (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="inline-flex max-w-xs items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5 text-xs text-muted-foreground truncate">
+      <span className="inline-flex max-w-xs items-center rounded-full border border-sky-500/20 bg-sky-500/8 px-2.5 py-1 text-xs text-sky-700 dark:text-sky-300 truncate shadow-[0_10px_24px_-20px_rgba(14,165,233,0.45)]">
         {t('scopeSummary.labels.scope')}: <span className="ml-1 truncate font-medium text-foreground">{selectedDatasetLabel || scopeT('dataset.all')}</span>
       </span>
     </div>
@@ -256,17 +256,17 @@ export default function KnowledgePage() {
           title={
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between w-full">
               <div className="flex items-center gap-3">
-                <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 border border-primary/20 shadow-inner-soft">
+                <div className="flex size-10 items-center justify-center rounded-xl border border-primary/20 bg-[radial-gradient(circle_at_35%_35%,rgba(56,189,248,0.22),transparent_58%),linear-gradient(135deg,rgba(14,165,233,0.12),rgba(16,185,129,0.08))] shadow-inner-soft">
                   <Database className="size-5 text-primary" />
                 </div>
                 <div>
                   <h1 className="text-lg font-bold tracking-tight text-foreground leading-none">{t("header.title")}</h1>
-                  <p className="text-[10px] font-medium text-muted-foreground/40 mt-1">{t('header.description')}</p>
+                  <p className="text-[10px] font-medium text-muted-foreground/55 mt-1">{t('header.description')}</p>
                 </div>
               </div>
 
               {activeTab === 'documents' && (
-                <div className="flex flex-wrap items-center bg-muted/30 border border-border/40 rounded-2xl p-1 gap-1 shadow-inner-soft">
+                <div className="flex flex-wrap items-center rounded-2xl border border-border/40 bg-[linear-gradient(90deg,rgba(14,165,233,0.08),rgba(255,255,255,0.55),rgba(16,185,129,0.08))] p-1 gap-1 shadow-inner-soft dark:bg-[linear-gradient(90deg,rgba(14,165,233,0.12),rgba(17,24,39,0.7),rgba(16,185,129,0.12))]">
                   <StatCard variant="minimal" icon={FileStack} label={t("stats.totalDocuments")} value={totalDocs} color="sky" />
                   <div className="w-px h-6 bg-border/40 mx-0.5" />
                   <StatCard variant="minimal" icon={CheckCircle} label={t('stats.ready')} value={completedDocsValue} color="green" />
@@ -282,7 +282,7 @@ export default function KnowledgePage() {
           description={null}
           size="full"
           leftPanel={!desktopScopeCollapsed ? (
-            <aside className="h-full flex flex-col bg-card/30 backdrop-blur-md border border-border/40 rounded-[2.5rem] overflow-hidden shadow-soft">
+            <aside className="h-full flex flex-col rounded-[2.5rem] overflow-hidden border border-sky-500/12 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.08),transparent_38%),linear-gradient(180deg,rgba(255,255,255,0.78),rgba(255,255,255,0.48))] shadow-soft backdrop-blur-md dark:border-sky-500/15 dark:bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.12),transparent_34%),linear-gradient(180deg,rgba(17,24,39,0.68),rgba(15,23,42,0.52))]">
               <KnowledgeScopePanel
                 mode={scopeMode}
                 surface="embedded"
@@ -307,7 +307,7 @@ export default function KnowledgePage() {
             </aside>
           ) : null}
           rightPanel={(activeTab === 'retrieval' || peekingDocId || showTaskCenter) ? (
-            <aside className="h-full flex flex-col bg-card/30 backdrop-blur-md border border-border/40 rounded-[2.5rem] overflow-hidden shadow-soft">
+            <aside className="h-full flex flex-col rounded-[2.5rem] overflow-hidden border border-emerald-500/12 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.08),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.78),rgba(255,255,255,0.48))] shadow-soft backdrop-blur-md dark:border-emerald-500/15 dark:bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.12),transparent_32%),linear-gradient(180deg,rgba(17,24,39,0.68),rgba(15,23,42,0.52))]">
               {peekingDocId && activeTab === 'documents' ? (
                 <div className="flex flex-col h-full">
                   <div className="flex items-center justify-between px-5 py-3.5 border-b border-border/40 bg-background/20 backdrop-blur-sm">
@@ -357,7 +357,7 @@ export default function KnowledgePage() {
           top={null}
           toolbar={
             <div className="flex items-center justify-between">
-              <div className="flex p-1 gap-1 bg-muted/30 rounded-xl border border-border/40">
+              <div className="flex p-1 gap-1 rounded-xl border border-border/40 bg-[linear-gradient(90deg,rgba(56,189,248,0.08),rgba(255,255,255,0.45),rgba(16,185,129,0.08))] dark:bg-[linear-gradient(90deg,rgba(56,189,248,0.12),rgba(17,24,39,0.72),rgba(16,185,129,0.12))]">
                 {tabs.map((tab) => (
                   <button key={tab.key} onClick={() => { setActiveTab(tab.key); setPeekingDocId(null); setShowTaskCenter(false); }} className={cn('relative flex h-8 items-center gap-2 px-4 text-xs font-bold rounded-lg transition-all duration-300 focus-ring', activeTab === tab.key ? 'text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-muted/40')}>
                     {activeTab === tab.key && <motion.div layoutId="active-knowledge-tab" className="absolute inset-0 rounded-lg bg-background shadow-soft border border-border/50" transition={layoutTransition} />}
@@ -382,8 +382,8 @@ export default function KnowledgePage() {
                   className={cn(
                     "h-8 rounded-xl border px-3 text-[10px] font-bold transition-all duration-300",
                     activeTasksCount > 0 || showTaskCenter
-                      ? "border-primary/40 bg-primary/5 text-primary shadow-[0_0_12px_-5px_rgba(var(--primary),0.4)]" 
-                      : "border-border/40 bg-background/50 text-muted-foreground hover:text-foreground"
+                      ? "border-primary/40 bg-primary/8 text-primary shadow-[0_0_12px_-5px_rgba(var(--primary),0.4)]" 
+                      : "border-emerald-500/20 bg-emerald-500/8 text-emerald-700 dark:text-emerald-300 hover:border-emerald-500/35 hover:bg-emerald-500/12"
                   )}
                   onClick={() => { setShowTaskCenter(true); setPeekingDocId(null); }}
                 >
@@ -396,10 +396,27 @@ export default function KnowledgePage() {
                   ) : "任务历史"}
                 </Button>
 
-                <KnowledgeWorkbenchActions className="h-8 rounded-xl px-4 text-[10px] font-bold shadow-soft" datasets={datasets} datasetsLoading={datasetsLoading} selectedDatasetId={selectedDatasetId} datasetDefaultValue={DATASET_ALL} handleFileUpload={handleFileUpload} uploadDocumentFromUrl={uploadDocumentFromUrl} loadDocuments={loadDocuments} loadConnectorRuns={loadConnectorRuns} onConnectorRunCreated={(run) => { setShowTaskCenter(true); setPeekingDocId(null); setActiveTab('documents'); }} />
+                <KnowledgeWorkbenchActions className="h-8 rounded-xl border border-sky-500/20 bg-sky-500/8 px-4 text-[10px] font-bold text-sky-700 dark:text-sky-300 shadow-soft" datasets={datasets} datasetsLoading={datasetsLoading} selectedDatasetId={selectedDatasetId} datasetDefaultValue={DATASET_ALL} handleFileUpload={handleFileUpload} uploadDocumentFromUrl={uploadDocumentFromUrl} loadDocuments={loadDocuments} loadConnectorRuns={loadConnectorRuns} onConnectorRunCreated={(run) => { setShowTaskCenter(true); setPeekingDocId(null); setActiveTab('documents'); }} />
                 <Button type="button" variant="outline" size="sm" className="h-8 w-8 rounded-xl border-border/40 bg-background/50 p-0 text-muted-foreground hover:text-foreground hover:bg-muted" onClick={() => detachPromise(loadDocuments())} disabled={isLoading}><RefreshCw className={cn('size-3.5', isLoading && 'animate-spin')} /></Button>
                 {activeTab === 'documents' && (
                   <>
+                    {(docFilter.trim() || statusFilter !== 'all' || lifecycleFilter !== 'active' || folderPath) && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 rounded-xl border border-primary/20 bg-primary/5 px-3 text-[10px] font-bold text-primary hover:bg-primary/10"
+                        onClick={() => {
+                          setDocFilter('')
+                          setStatusFilter('all')
+                          setLifecycleFilter('active')
+                          setFolderPath(null)
+                        }}
+                      >
+                        <X className="mr-1.5 size-3" />
+                        清空筛选
+                      </Button>
+                    )}
                     <div className="h-4 w-px bg-border/60 mx-1" />
                     <div className="flex p-0.5 gap-0.5 bg-muted/30 rounded-lg border border-border/40">
                       <button type="button" onClick={() => setViewMode('grid')} className={cn('relative h-6 w-7 flex items-center justify-center rounded-md transition-colors', viewMode === 'grid' ? 'text-primary' : 'text-muted-foreground hover:text-foreground')}>{viewMode === 'grid' && <motion.span layoutId="knowledge-view-mode-pill" transition={layoutTransition} className="absolute inset-0 rounded-md bg-background shadow-soft border border-border/50" />}<LayoutGrid className="relative z-10 w-3.5 h-3.5" /></button>
