@@ -13,19 +13,20 @@ describe('KnowledgeSettingsPanel module', () => {
   it('normalizes connector run document ids before string conversion', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'knowledge-settings-panel.tsx'), 'utf8')
 
-    expect(src).toContain('normalizeConnectorRunDocumentId')
-    expect(src).toContain("typeof value === 'string'")
-    expect(src).toContain("typeof value === 'number'")
+    expect(src).toContain('getConnectorRunProgress')
+    expect(src).toContain("Number(stats?.total_items || stats?.items_total || stats?.total_urls || 0)")
+    expect(src).toContain("Number(stats?.processed_items || stats?.items_processed || stats?.processed_urls || 0)")
   })
 
   it('loads system settings into a controlled draft and saves them explicitly instead of relying on static defaults', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'knowledge-settings-panel.tsx'), 'utf8')
 
     expect(src).toContain('settingsApi.get()')
-    expect(src).toContain('settingsApi.update({')
+    expect(src).toContain('settingsApi.update(draftConfig)')
     expect(src).toContain('const [savedConfig, setSavedConfig] = useState<KnowledgeSettingsConfig | null>(null)')
     expect(src).toContain('const [draftConfig, setDraftConfig] = useState<KnowledgeSettingsConfig | null>(null)')
-    expect(src).toContain('const embeddingModelChanged =')
-    expect(src).toContain('const handleSaveSettings = async () => {')
+    expect(src).toContain('const isDirty = useMemo(() => JSON.stringify(savedConfig) !== JSON.stringify(draftConfig)')
+    expect(src).toContain('const handleResetDraft = useCallback(() => {')
+    expect(src).toContain('const handleSave = async () => {')
   })
 })

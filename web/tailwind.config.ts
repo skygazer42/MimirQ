@@ -23,6 +23,7 @@ const config = {
       fontFamily: {
         sans: ["var(--font-sans)", ...defaultTheme.fontFamily.sans],
         mono: ["var(--font-mono)", ...defaultTheme.fontFamily.mono],
+        code: ["var(--font-code)", "var(--font-mono)", ...defaultTheme.fontFamily.mono],
       },
       fontSize: {
         /* Typographic scale (8 steps, 1.2 ratio) — use these instead of arbitrary [10px]/[11px] */
@@ -222,6 +223,16 @@ const config = {
           "0%": { opacity: "1", transform: "scale(1)" },
           "100%": { opacity: "0", transform: "scale(0.95)" },
         },
+        "heartbeat": {
+          "0%, 40%, 100%": { transform: "scale(1)" },
+          "14%": { transform: "scale(1.18)" },
+          "28%": { transform: "scale(1)" },
+          "42%": { transform: "scale(1.12)" },
+        },
+        "pulse-ring": {
+          "0%": { transform: "scale(0.85)", opacity: "0.55" },
+          "100%": { transform: "scale(2.1)", opacity: "0" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -239,6 +250,8 @@ const config = {
         "slide-down-fade": "slide-down-fade 220ms cubic-bezier(0.22, 1, 0.36, 1) forwards",
         "scale-fade-in": "scale-fade-in 200ms cubic-bezier(0.22, 1, 0.36, 1) forwards",
         "scale-fade-out": "scale-fade-out 150ms cubic-bezier(0.4, 0, 1, 1) forwards",
+        "heartbeat": "heartbeat 1.4s ease-in-out infinite",
+        "pulse-ring": "pulse-ring 1.6s cubic-bezier(0, 0.2, 0.8, 1) infinite",
       },
     },
   },

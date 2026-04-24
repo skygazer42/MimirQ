@@ -4,18 +4,25 @@ import { type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } fr
 import { useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import {
+  Activity,
+  AlertTriangle,
   Check,
+  CheckCircle2,
   CircleDashed,
   ChevronLeft,
   ChevronRight,
   CircleAlert,
+  Clock3,
   Download,
   FileDigit,
   FileCheck2,
   FileSearch,
-  GripVertical,
+  FolderOpen,
+  Gauge,
+  ListTodo,
   LucideIcon,
   Radar,
+  RefreshCcw,
   ShieldAlert,
   ShieldCheck,
   TableProperties,
@@ -45,7 +52,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { DropZone, type DropZoneHandle } from '@/components/ingestion/drop-zone'
 import { EmptyState } from '@/components/ingestion/empty-state'
-import { ErrorTreemap } from '@/components/ingestion/error-treemap'
 import { IngestionDetailDialog } from '@/components/ingestion/ingestion-detail-dialog'
 import { LiveVelocity, persistVelocityUnit, readStoredVelocityUnit } from '@/components/ingestion/live-velocity'
 import {
@@ -55,6 +61,7 @@ import {
   buildFileTypeDistribution,
   buildPdfDispositionBreakdown,
   buildSalesAuditProfile,
+  buildSalesAuditFallbackArtifacts,
   buildThroughputAreaRows,
   computeDocsPerMinute,
   computeDurationPercentiles,
@@ -65,7 +72,6 @@ import {
   getDocumentKindAccent,
   matchesReasonFilter,
 } from '@/components/ingestion/monitor-utils'
-import { StatCard } from '@/components/ingestion/stat-card'
 
 import { buildDemoDocuments } from './demo-documents'
 
@@ -73,7 +79,6 @@ const DATASET_ALL = '__all__'
 
 type IngestionMode = 'sales-audit' | 'execution-monitor'
 type SampleDisposition = 'approved' | 'manual'
-type TopologyFocus = 'parser' | 'chunker' | 'governance'
 
 function safeNumber(value: unknown): number {
   const numeric = Number(value)
@@ -85,6 +90,22 @@ function formatClockLabel(value: number): string {
   const hours = `${date.getHours()}`.padStart(2, '0')
   const minutes = `${date.getMinutes()}`.padStart(2, '0')
   return `${hours}:${minutes}`
+}
+
+function formatClockSecondsLabel(value: number | string | Date): string {
+  const date = new Date(value)
+  const hours = `${date.getHours()}`.padStart(2, '0')
+  const minutes = `${date.getMinutes()}`.padStart(2, '0')
+  const seconds = `${date.getSeconds()}`.padStart(2, '0')
+  return `${hours}:${minutes}:${seconds}`
+}
+
+function formatDurationClock(totalSeconds: number): string {
+  const safe = Math.max(0, Math.floor(totalSeconds))
+  const hours = `${Math.floor(safe / 3600)}`.padStart(2, '0')
+  const minutes = `${Math.floor((safe % 3600) / 60)}`.padStart(2, '0')
+  const seconds = `${safe % 60}`.padStart(2, '0')
+  return `${hours}:${minutes}:${seconds}`
 }
 
 function downloadTextFile(filename: string, content: string, type: string) {
@@ -464,6 +485,51 @@ type SalesEvidenceTableRow = {
   iconTone: string
 }
 
+const SALES_PANEL_CLASS = 'rounded-[1rem] border border-border/55 bg-background/92 shadow-[0_14px_28px_-24px_rgba(15,23,42,0.12)]'
+const SALES_PANEL_INSET_CLASS = 'rounded-[0.9rem] border border-border/50 bg-background/82'
+const SALES_SUMMARY_STRIP_CLASS =
+  'overflow-hidden rounded-[1rem] border border-border/55 bg-background/72 shadow-[0_12px_28px_-24px_rgba(15,23,42,0.1)]'
+
+type SalesPanelHeaderProps = {
+  actionLabel?: string
+  icon: LucideIcon
+  iconTone?: string
+  onAction?: () => void
+  subtitle?: string
+  title: string
+}
+
+function SalesPanelHeader({
+  actionLabel,
+  icon: Icon,
+  iconTone = 'text-slate-400',
+  onAction,
+  subtitle,
+  title,
+}: Readonly<SalesPanelHeaderProps>) {
+  return (
+    <div className="flex min-h-[1.5rem] items-start justify-between gap-3">
+      <div className="min-w-0">
+        <div className="flex min-h-4 items-center gap-1.5 text-[10px] font-semibold tracking-[-0.01em] text-foreground">
+          <Icon className={cn('h-3 w-3 shrink-0', iconTone)} />
+          <span className="truncate">{title}</span>
+        </div>
+        {subtitle ? <div className="mt-0.5 pl-[18px] text-[8px] leading-3 text-muted-foreground">{subtitle}</div> : null}
+      </div>
+      {actionLabel ? (
+        <button
+          type="button"
+          onClick={onAction}
+          className="inline-flex min-h-4 shrink-0 items-center gap-0.5 text-[8px] font-medium text-blue-500 transition-colors hover:text-blue-600"
+        >
+          <span>{actionLabel}</span>
+          <ChevronRight className="h-3 w-3" />
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
 export default function KnowledgeIngestionPageClient() {
   const searchParams = useSearchParams()
   const pathname = usePathname()
@@ -476,7 +542,6 @@ export default function KnowledgeIngestionPageClient() {
   const [datasetScope, setDatasetScope] = useState(searchParams.get('datasetId') || DATASET_ALL)
   const [desktopScopeCollapsed, setDesktopScopeCollapsed] = useState(false)
   const [headerCollapsed, setHeaderCollapsed] = useState(false)
-  const [topologyFocus, setTopologyFocus] = useState<TopologyFocus>('parser')
   const [selectedReason, setSelectedReason] = useState<string | null>(null)
   const [selectedAuditIds, setSelectedAuditIds] = useState<string[]>([])
   const [sampleDispositions, setSampleDispositions] = useState<Record<string, SampleDisposition>>({})
@@ -580,17 +645,21 @@ export default function KnowledgeIngestionPageClient() {
     () => summaryQuery.data ?? buildFallbackSummary(documents, selectedDatasetId),
     [documents, selectedDatasetId, summaryQuery.data]
   )
+  const fallbackSalesAuditArtifacts = useMemo(
+    () => buildSalesAuditFallbackArtifacts(documents, { datasetId: selectedDatasetId }),
+    [documents, selectedDatasetId]
+  )
   const salesAuditSummary = useMemo(
-    () => (demoMode ? buildDemoPrecheckSummary(documents) : precheckSummaryQuery.data),
-    [demoMode, documents, precheckSummaryQuery.data]
+    () => (demoMode ? buildDemoPrecheckSummary(documents) : precheckSummaryQuery.data ?? fallbackSalesAuditArtifacts.summary),
+    [demoMode, documents, fallbackSalesAuditArtifacts.summary, precheckSummaryQuery.data]
   )
   const salesAuditSamples = useMemo(
-    () => (demoMode ? buildDemoPrecheckSamples(documents) : precheckSamplesQuery.data),
-    [demoMode, documents, precheckSamplesQuery.data]
+    () => (demoMode ? buildDemoPrecheckSamples(documents) : precheckSamplesQuery.data ?? fallbackSalesAuditArtifacts.samples),
+    [demoMode, documents, fallbackSalesAuditArtifacts.samples, precheckSamplesQuery.data]
   )
   const salesAuditNearDup = useMemo(
-    () => (demoMode ? buildDemoNearDupResponse() : precheckNearDupQuery.data),
-    [demoMode, precheckNearDupQuery.data]
+    () => (demoMode ? buildDemoNearDupResponse() : precheckNearDupQuery.data ?? fallbackSalesAuditArtifacts.nearDup),
+    [demoMode, fallbackSalesAuditArtifacts.nearDup, precheckNearDupQuery.data]
   )
 
   useEffect(() => {
@@ -598,13 +667,23 @@ export default function KnowledgeIngestionPageClient() {
     if (!node) return
 
     const handleScroll = () => {
-      setHeaderCollapsed(node.scrollTop > 72)
+      if (mode !== 'sales-audit') {
+        setHeaderCollapsed(false)
+        return
+      }
+
+      setHeaderCollapsed((previous) => {
+        const collapseThreshold = 96
+        const expandThreshold = 40
+        if (previous) return node.scrollTop > expandThreshold
+        return node.scrollTop > collapseThreshold
+      })
     }
 
     handleScroll()
     node.addEventListener('scroll', handleScroll, { passive: true })
     return () => node.removeEventListener('scroll', handleScroll)
-  }, [])
+  }, [mode])
 
   useEffect(() => {
     if (!successPulseVisible) return
@@ -666,49 +745,6 @@ export default function KnowledgeIngestionPageClient() {
     return (prioritised.length ? prioritised : documents).slice(0, 10)
   }, [documents])
 
-  const heatmapData = useMemo(() => {
-    const reasonMap = new Map<string, { count: number; formatLabel: string; timeLabel: string }>()
-
-    auditCandidates.forEach((document) => {
-      const reason = String(document.error_message || '敏感线索待确认').slice(0, 40)
-      const formatLabel = String(document.file_type || 'unknown').toUpperCase()
-      const updatedAt = new Date(String(document.updated_at || document.created_at || '')).getTime()
-      const ageHours = Number.isFinite(updatedAt) ? (renderTimestamp - updatedAt) / 3_600_000 : 48
-      const timeLabel = ageHours <= 6 ? '0-6h' : ageHours <= 24 ? '6-24h' : '24h+'
-      const current = reasonMap.get(reason)
-      reasonMap.set(reason, {
-        count: (current?.count ?? 0) + 1,
-        formatLabel,
-        timeLabel,
-      })
-    })
-
-    if (reasonMap.size === 0) {
-      Object.entries(summary.top_error_reasons).forEach(([reason, count], index) => {
-        reasonMap.set(reason.slice(0, 40), {
-          count,
-          formatLabel: fileTypeDistribution[index % Math.max(fileTypeDistribution.length, 1)]?.label || 'DOC',
-          timeLabel: index % 2 === 0 ? '0-6h' : '6-24h',
-        })
-      })
-    }
-
-    const peak = Math.max(1, ...Array.from(reasonMap.values()).map((item) => item.count))
-    return Array.from(reasonMap.entries())
-      .map(([name, payload]) => {
-        const intensity = payload.count / peak
-        return {
-          name,
-          count: payload.count,
-          formatLabel: payload.formatLabel,
-          timeLabel: payload.timeLabel,
-          fill: `linear-gradient(135deg, rgba(158,91,108,${0.18 + intensity * 0.35}), rgba(91,114,139,${0.36 + intensity * 0.25}))`,
-        }
-      })
-      .sort((left, right) => right.count - left.count)
-      .slice(0, 6)
-  }, [auditCandidates, fileTypeDistribution, renderTimestamp, summary.top_error_reasons])
-
   const visibleAuditSamples = useMemo(
     () => auditCandidates.filter((document) => matchesReasonFilter(document, selectedReason)),
     [auditCandidates, selectedReason]
@@ -729,6 +765,252 @@ export default function KnowledgeIngestionPageClient() {
     () => computeRemainingMinutesEstimate(pendingQueue, docsPerMinute),
     [docsPerMinute, pendingQueue]
   )
+
+  const executionRuntimeLabel = useMemo(() => {
+    const startMs = new Date(String(summary.window_start || '')).getTime()
+    const endMs = new Date(String(summary.window_end || '')).getTime()
+    if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs) {
+      return formatDurationClock((endMs - startMs) / 1000)
+    }
+
+    const timestamps = documents
+      .flatMap((document) => [document.created_at, document.updated_at, document.processed_at].filter(Boolean))
+      .map((value) => new Date(String(value)).getTime())
+      .filter((value) => Number.isFinite(value))
+      .sort((left, right) => left - right)
+    if (timestamps.length >= 2) {
+      return formatDurationClock((timestamps[timestamps.length - 1] - timestamps[0]) / 1000)
+    }
+    return '00:00:00'
+  }, [documents, summary.window_end, summary.window_start])
+
+  const executionProcessedTotal = useMemo(
+    () => statusCounts.completed + statusCounts.failed + statusCounts.quarantined,
+    [statusCounts.completed, statusCounts.failed, statusCounts.quarantined]
+  )
+
+  const executionSuccessRate = useMemo(() => {
+    if (!executionProcessedTotal) return 0
+    return Math.round((statusCounts.completed / executionProcessedTotal) * 100)
+  }, [executionProcessedTotal, statusCounts.completed])
+
+  const executionRetryRate = useMemo(() => {
+    if (!executionProcessedTotal) return 0
+    return Math.round(((statusCounts.failed + statusCounts.quarantined) / executionProcessedTotal) * 100)
+  }, [executionProcessedTotal, statusCounts.failed, statusCounts.quarantined])
+
+  const executionOcrUsageRate = useMemo(() => {
+    const totalPdf = pdfDisposition.reduce((sum, item) => sum + item.count, 0)
+    const ocrCount =
+      pdfDisposition.find((item) => item.label === 'OCR')?.count ??
+      pdfDisposition.find((item) => item.label === 'SCAN')?.count ??
+      0
+    if (!totalPdf) return 0
+    return Math.round((ocrCount / totalPdf) * 100)
+  }, [pdfDisposition])
+
+  const executionAverageDuration = useMemo(() => {
+    const value = durationPercentiles.p50 || durationPercentiles.p90 || 0
+    return value ? `${value.toFixed(1)} min / 文件` : '-- / 文件'
+  }, [durationPercentiles.p50, durationPercentiles.p90])
+
+  const executionTopStripItems = useMemo(
+    () => [
+      { label: '范围', value: selectedDatasetLabel, icon: FolderOpen, tone: 'text-blue-500', detail: '全部项目' },
+      { label: '健康可入库', value: `${readyRate}%`, icon: ShieldCheck, tone: 'text-emerald-500', detail: '已完成样本' },
+      { label: '待人工处理', value: `${reviewQueue + manualCount}`, icon: ShieldAlert, tone: 'text-amber-500', detail: '待确认清单' },
+      { label: '预期完成', value: remainingEstimate ? `${remainingEstimate} min` : '--', icon: Gauge, tone: 'text-indigo-500', detail: '基于当前吞吐' },
+      { label: '当前吞吐', value: `${docsPerMinute?.toFixed(1) ?? '0.0'} docs/min`, icon: Activity, tone: 'text-violet-500', detail: '近 5 分钟均值' },
+      { label: '运行时长', value: executionRuntimeLabel, icon: Clock3, tone: 'text-emerald-500', detail: '窗口时长' },
+    ],
+    [docsPerMinute, executionRuntimeLabel, manualCount, readyRate, remainingEstimate, reviewQueue, selectedDatasetLabel]
+  )
+
+  const executionRiskItems = useMemo(() => {
+    const topReasons = Object.entries(summary.top_error_reasons || {})
+      .filter(([, count]) => Number(count) > 0)
+      .sort((left, right) => Number(right[1]) - Number(left[1]))
+      .slice(0, 3)
+
+    const mapped = topReasons.map(([reason, count], index) => {
+      const lower = reason.toLowerCase()
+      if (lower.includes('pii') || lower.includes('phone') || lower.includes('email')) {
+        return {
+          title: '潜在 PII 检测',
+          detail: reason,
+          count: Number(count),
+          tone: 'border-amber-500/18 bg-amber-500/[0.06] text-amber-600',
+        }
+      }
+      if (lower.includes('timeout')) {
+        return {
+          title: 'Parser timeout',
+          detail: reason,
+          count: Number(count),
+          tone: 'border-orange-500/18 bg-orange-500/[0.06] text-orange-600',
+        }
+      }
+      return {
+        title: reason,
+        detail: index === 0 ? '需尽快人工复核并分流' : '建议加入阻塞跟踪',
+        count: Number(count),
+        tone: index === 0 ? 'border-rose-500/18 bg-rose-500/[0.06] text-rose-600' : 'border-slate-500/18 bg-slate-500/[0.05] text-slate-600',
+      }
+    })
+
+    if (mapped.length) return mapped
+
+    if (reviewQueue > 0) {
+      return [
+        {
+          title: '缺敏线索待确认',
+          detail: '包含待人工确认的风险项',
+          count: reviewQueue,
+          tone: 'border-rose-500/18 bg-rose-500/[0.06] text-rose-600',
+        },
+      ]
+    }
+
+    return [
+      {
+        title: '当前无阻塞项',
+        detail: '本窗口内未发现新的异常阻塞',
+        count: 0,
+        tone: 'border-emerald-500/18 bg-emerald-500/[0.06] text-emerald-600',
+      },
+    ]
+  }, [reviewQueue, summary.top_error_reasons])
+
+  const executionOverallProgress = useMemo(() => {
+    if (!documents.length) return 0
+    return Math.round((executionProcessedTotal / documents.length) * 100)
+  }, [documents.length, executionProcessedTotal])
+
+  const executionPipelineCards = useMemo(() => {
+    const parserDone = statusCounts.completed + statusCounts.failed + statusCounts.quarantined
+    const parserFailures = statusCounts.failed + statusCounts.quarantined
+    const chunkerProcessing = statusCounts.processing
+    const chunkerWaiting = statusCounts.pending
+    const governanceQueue = reviewQueue + manualCount
+    const exportReady = statusCounts.completed
+
+    return [
+      {
+        key: 'parser',
+        label: 'Parser',
+        tone: 'border-emerald-500/28 bg-emerald-500/[0.04]',
+        statusTone: 'bg-emerald-500',
+        metrics: [
+          ['已完成', `${parserDone}`],
+          ['失败', `${parserFailures}`],
+          ['耗时', executionRuntimeLabel],
+        ],
+      },
+      {
+        key: 'chunker',
+        label: 'Chunker',
+        tone: 'border-blue-500/28 bg-blue-500/[0.04]',
+        statusTone: chunkerProcessing > 0 ? 'bg-blue-500' : 'bg-slate-300',
+        metrics: [
+          ['进行中', `${chunkerProcessing}`],
+          ['等待中', `${chunkerWaiting}`],
+          ['耗时', durationPercentiles.p50 ? `${durationPercentiles.p50.toFixed(1)}m` : '--'],
+        ],
+      },
+      {
+        key: 'governance',
+        label: 'Governance',
+        tone: 'border-slate-300 bg-background/75',
+        statusTone: governanceQueue > 0 ? 'bg-amber-500' : 'bg-slate-300',
+        metrics: [
+          ['待复核', `${governanceQueue}`],
+          ['已处理', `${manualCount}`],
+          ['耗时', '--'],
+        ],
+      },
+      {
+        key: 'export',
+        label: '导出',
+        tone: 'border-slate-300 bg-background/75',
+        statusTone: exportReady > 0 ? 'bg-emerald-500' : 'bg-slate-300',
+        metrics: [
+          ['已处理', `${exportReady}`],
+          ['待处理', `${Math.max(0, documents.length - exportReady)}`],
+          ['耗时', '--'],
+        ],
+      },
+    ]
+  }, [
+    documents.length,
+    durationPercentiles.p50,
+    executionRuntimeLabel,
+    manualCount,
+    reviewQueue,
+    statusCounts.completed,
+    statusCounts.failed,
+    statusCounts.pending,
+    statusCounts.processing,
+    statusCounts.quarantined,
+  ])
+
+  const executionKpiCards = useMemo(
+    () => [
+      { label: '处理效率', value: `${docsPerMinute?.toFixed(1) ?? '0.0'}`, suffix: 'docs/min', icon: Activity, tone: 'text-blue-500', detail: '近 5 分钟平均' },
+      { label: '平均处理耗时', value: executionAverageDuration.replace(' / 文件', ''), suffix: '/ 文件', icon: Clock3, tone: 'text-indigo-500', detail: '近 5 分钟平均' },
+      { label: 'OCR 使用率', value: `${executionOcrUsageRate}%`, suffix: '', icon: Gauge, tone: 'text-emerald-500', detail: `${pdfDisposition.reduce((sum, item) => sum + item.count, 0)} 个 PDF` },
+      { label: '解析成功率', value: `${executionSuccessRate}%`, suffix: '', icon: CheckCircle2, tone: 'text-emerald-500', detail: `${statusCounts.completed} / ${Math.max(1, executionProcessedTotal)} 成功` },
+      { label: '失败重试率', value: `${executionRetryRate}%`, suffix: '', icon: RefreshCcw, tone: 'text-amber-500', detail: `${statusCounts.failed + statusCounts.quarantined} / ${Math.max(1, executionProcessedTotal)} 文件` },
+      { label: '队列总数', value: `${pendingQueue}`, suffix: '', icon: ListTodo, tone: 'text-violet-500', detail: '等待处理' },
+    ],
+    [
+      docsPerMinute,
+      executionAverageDuration,
+      executionOcrUsageRate,
+      executionProcessedTotal,
+      executionRetryRate,
+      executionSuccessRate,
+      pdfDisposition,
+      pendingQueue,
+      statusCounts.completed,
+      statusCounts.failed,
+      statusCounts.quarantined,
+    ]
+  )
+
+  const executionRecentLogs = useMemo(() => {
+    return [...documents]
+      .sort((left, right) => {
+        const rightTs = new Date(String(right.updated_at || right.processed_at || right.created_at || '')).getTime()
+        const leftTs = new Date(String(left.updated_at || left.processed_at || left.created_at || '')).getTime()
+        return rightTs - leftTs
+      })
+      .slice(0, 5)
+      .map((document) => {
+        const status = String(document.status || '').toLowerCase()
+        return {
+          id: document.id,
+          time: formatClockSecondsLabel(document.updated_at || document.processed_at || document.created_at || renderTimestamp),
+          stage: String(document.current_stage || '系统'),
+          detail:
+            status === 'failed'
+              ? `解析失败：${document.filename}`
+              : status === 'completed'
+                ? `解析成功：${document.filename}`
+                : `开始解析：${document.filename}`,
+          tone: status === 'failed' ? 'bg-rose-500' : status === 'completed' ? 'bg-emerald-500' : 'bg-slate-400',
+        }
+      })
+  }, [documents, renderTimestamp])
+
+  const executionTaskRows = useMemo(() => {
+    return [...documents]
+      .sort((left, right) => {
+        const rightTs = new Date(String(right.updated_at || right.processed_at || right.created_at || '')).getTime()
+        const leftTs = new Date(String(left.updated_at || left.processed_at || left.created_at || '')).getTime()
+        return rightTs - leftTs
+      })
+      .slice(0, 8)
+  }, [documents])
 
   const forecastPoints = useMemo(() => {
     if (!throughputRows.length) return []
@@ -842,42 +1124,6 @@ export default function KnowledgeIngestionPageClient() {
       ],
     } as EChartsOption),
     [ocrRadarValues]
-  )
-
-  const topologyPanels = useMemo(
-    () => ({
-      parser: {
-        eyebrow: 'Parser',
-        title: '解析段负载画像',
-        summary: '优先处理 OCR 与混排 PDF，降低后续分块波动。',
-        metrics: [
-          ['OCR / Native / Mixed', pdfDisposition.map((item) => `${item.label} ${item.count}`).join(' · ')],
-          ['风险线索', `${reviewQueue} 项待复核`],
-          ['平均文件大小', formatFileSize(meanFileSize)],
-        ],
-      },
-      chunker: {
-        eyebrow: 'Chunker',
-        title: '分块稳定性画像',
-        summary: '文档格式越分散，越需要按策略分流而不是强行一刀切。',
-        metrics: [
-          ['格式分布', fileTypeDistribution.map((item) => `${item.label} ${item.count}`).join(' · ') || '无数据'],
-          ['体积分布', fileSizeDistribution.map((item) => `${item.label} ${item.count}`).join(' · ')],
-          ['P90 周期', `${durationPercentiles.p90 || 0} min`],
-        ],
-      },
-      governance: {
-        eyebrow: 'Governance',
-        title: '治理优先级画像',
-        summary: '只输出客观事实，所有主观判断回收到样本槽与风险清单。',
-        metrics: [
-          ['健康可入库', `${readyRate}%`],
-          ['待人工处理', `${reviewQueue + manualCount} 项`],
-          ['聚焦线索', selectedReason || '全部线索'],
-        ],
-      },
-    }),
-    [durationPercentiles.p90, fileSizeDistribution, fileTypeDistribution, manualCount, meanFileSize, pdfDisposition, readyRate, reviewQueue, selectedReason]
   )
 
   const salesAuditProfile = useMemo(
@@ -1329,7 +1575,7 @@ export default function KnowledgeIngestionPageClient() {
 
   const showEmptyState =
     mode === 'sales-audit'
-      ? !demoMode && (!selectedDatasetId || (!precheckSummaryQuery.isLoading && !salesAuditSummary))
+      ? !demoMode && !documentsQuery.isLoading && !precheckSummaryQuery.isLoading && !salesAuditSummary
       : !documentsQuery.isLoading && documents.length === 0
   const showDesktopAuditRail = mode === 'execution-monitor' && !showEmptyState && !desktopScopeCollapsed
   const showDesktopAuditRailToggle = mode === 'execution-monitor' && !showEmptyState
@@ -1361,14 +1607,16 @@ export default function KnowledgeIngestionPageClient() {
         <div className={cn('relative flex w-full gap-0', mode === 'sales-audit' ? 'min-h-0' : 'min-h-[calc(100dvh-2rem)]')}>
           <button
             type="button"
-            aria-label={desktopScopeCollapsed ? '展开预检抽样侧栏' : '收起预检抽样侧栏'}
+            aria-label="展开预检抽样侧栏"
             onClick={() => setDesktopScopeCollapsed((previous) => !previous)}
             className={cn(
-              'fixed left-0 top-[38dvh] z-40 hidden h-16 w-8 items-center justify-center rounded-r-full border border-border/60 bg-background/88 text-muted-foreground shadow-[0_20px_60px_-26px_rgba(15,23,42,0.28)] backdrop-blur-xl transition-colors hover:text-foreground',
-              showDesktopAuditRailToggle ? 'lg:flex' : 'lg:hidden'
+              'absolute left-0 top-6 z-40 hidden h-12 w-7 items-center justify-center rounded-r-full border border-border/60 bg-background/92 text-muted-foreground shadow-[0_18px_42px_-24px_rgba(15,23,42,0.24)] backdrop-blur-xl transition-all hover:text-foreground',
+              showDesktopAuditRailToggle && desktopScopeCollapsed
+                ? 'translate-x-0 opacity-100 pointer-events-auto lg:flex'
+                : 'pointer-events-none -translate-x-3 opacity-0 lg:hidden'
             )}
           >
-            {desktopScopeCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+            <ChevronRight className="h-4 w-4" />
           </button>
 
           <aside
@@ -1629,7 +1877,7 @@ export default function KnowledgeIngestionPageClient() {
               <motion.div
                 className="overflow-hidden rounded-[1.35rem] border border-border/60 bg-background/84 shadow-[0_20px_56px_-34px_rgba(15,23,42,0.2)] backdrop-blur-xl"
                 animate={
-                  reduceMotion
+                  reduceMotion || mode !== 'sales-audit'
                     ? undefined
                     : {
                         paddingTop: headerCollapsed ? 9 : 13,
@@ -1669,18 +1917,32 @@ export default function KnowledgeIngestionPageClient() {
                           </span>
                         ) : null}
                       </div>
-                      {!headerCollapsed ? (
-                        <>
-                          <h1 className="mt-1.5 text-[clamp(0.96rem,1.18vw,1.26rem)] font-black tracking-[-0.05em] text-foreground">
+                      <div
+                        className={cn(
+                          'overflow-hidden transition-[max-height,opacity,margin] duration-200 ease-out',
+                          mode !== 'sales-audit'
+                            ? 'mt-1.5 max-h-28 opacity-100'
+                            : headerCollapsed
+                              ? 'mt-0 max-h-0 opacity-0'
+                              : 'mt-1.5 max-h-28 opacity-100'
+                        )}
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h1 className="text-[clamp(0.96rem,1.18vw,1.26rem)] font-black tracking-[-0.05em] text-foreground">
                             {mode === 'sales-audit' ? '售前报价证据台' : '执行监控工作台'}
                           </h1>
-                          <p className="mt-1 max-w-[52rem] text-[9px] leading-[1.42] text-muted-foreground">
-                            {mode === 'sales-audit'
-                              ? '先回答怎么报价、是否需要先做付费 POC，再下钻到复杂度细节与证据样本。默认展示脱敏后的客观事实，不做主观评分。'
-                              : '聚焦处理队列、吞吐、失败重试与运行态列表，供交付阶段持续观察执行状态。'}
-                          </p>
-                        </>
-                      ) : null}
+                          {mode === 'execution-monitor' ? (
+                            <span className="inline-flex items-center rounded-full border border-emerald-500/18 bg-emerald-500/[0.08] px-2 py-0.5 text-[8px] font-semibold text-emerald-700">
+                              运行中
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="mt-1 max-w-[52rem] text-[9px] leading-[1.42] text-muted-foreground">
+                          {mode === 'sales-audit'
+                            ? '先回答怎么报价、是否需要先做付费 POC，再下钻到复杂度细节与证据样本。默认展示脱敏后的客观事实，不做主观评分。'
+                            : '聚焦处理队列、吞吐、失败重试与运行态列表，供交付阶段持续观察执行状态。'}
+                        </p>
+                      </div>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-1">
@@ -1711,12 +1973,6 @@ export default function KnowledgeIngestionPageClient() {
                         </>
                       ) : (
                         <>
-                          <LiveVelocity
-                            unit={velocityUnit}
-                            docsPerMinute={docsPerMinute}
-                            megabytesPerSecond={megabytesPerSecond}
-                            onToggle={handleToggleVelocity}
-                          />
                           <Button
                             type="button"
                             variant="outline"
@@ -1726,39 +1982,43 @@ export default function KnowledgeIngestionPageClient() {
                             <UploadCloud className="mr-1.5 h-3.5 w-3.5" />
                             上传样本
                           </Button>
+                          <LiveVelocity
+                            unit={velocityUnit}
+                            docsPerMinute={docsPerMinute}
+                            megabytesPerSecond={megabytesPerSecond}
+                            onToggle={handleToggleVelocity}
+                          />
                           <Button type="button" className="h-7 rounded-lg px-2 text-[9px]" onClick={handleDownloadReport}>
                             <Download className="mr-1.5 h-3.5 w-3.5" />
-                            /report
+                            导出报告
                           </Button>
                         </>
                       )}
                     </div>
                   </div>
 
-                  <div className="mt-2.5 overflow-hidden rounded-[0.9rem] border border-border/55 bg-border/35">
-                    <div className="grid gap-px sm:grid-cols-4">
+                  <div className={cn('mt-2.5', SALES_SUMMARY_STRIP_CLASS)}>
+                    <div className={cn('grid gap-px', mode === 'sales-audit' ? 'sm:grid-cols-4' : 'sm:grid-cols-3 xl:grid-cols-6')}>
                       {(mode === 'sales-audit'
                         ? [
-                            { label: '范围', value: selectedDatasetLabel, icon: FileSearch, tone: 'text-slate-400' },
-                            { label: '建议报价模式', value: salesAuditProfile?.pricingMode || '待预检', icon: Workflow, tone: 'text-violet-400' },
-                            { label: '建议 POC 样本量', value: salesAuditProfile ? `${salesAuditProfile.pocSampleCount} 份` : '待预检', icon: FileCheck2, tone: 'text-sky-400' },
-                            { label: '复杂度', value: salesAuditProfile?.complexity || '待预检', icon: Radar, tone: 'text-amber-400' },
+                            { label: '范围', value: selectedDatasetLabel, icon: FileSearch, tone: 'text-slate-400', detail: '' },
+                            { label: '建议报价模式', value: salesAuditProfile?.pricingMode || '待预检', icon: Workflow, tone: 'text-violet-400', detail: '' },
+                            { label: '建议 POC 样本量', value: salesAuditProfile ? `${salesAuditProfile.pocSampleCount} 份` : '待预检', icon: FileCheck2, tone: 'text-sky-400', detail: '' },
+                            { label: '复杂度', value: salesAuditProfile?.complexity || '待预检', icon: Radar, tone: 'text-amber-400', detail: '' },
                           ]
-                        : [
-                            { label: '范围', value: selectedDatasetLabel, icon: FileSearch, tone: 'text-slate-400' },
-                            { label: '健康可入库', value: `${readyRate}%`, icon: ShieldCheck, tone: 'text-emerald-400' },
-                            { label: '待人工处理', value: `${reviewQueue + manualCount}`, icon: ShieldAlert, tone: 'text-amber-400' },
-                            { label: '预测完成', value: remainingEstimate ? `${remainingEstimate} min` : '观测中', icon: Radar, tone: 'text-sky-400' },
-                          ]
-                      ).map(({ label, value, icon: Icon, tone }) => (
-                        <div key={label} className="bg-background/76 px-2 py-1.5">
+                        : executionTopStripItems
+                      ).map(({ label, value, icon: Icon, tone, detail }) => (
+                        <div key={label} className={cn('relative bg-background/78 px-2.5 py-2', mode === 'sales-audit' ? 'min-h-[3.4rem]' : 'min-h-[4.2rem]')}>
                           <div className="flex items-start justify-between gap-2">
                             <div className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                               {label}
                             </div>
-                            <Icon className={cn('mt-[1px] h-3 w-3 shrink-0', tone)} />
+                            <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-border/45 bg-muted/30">
+                              <Icon className={cn('h-2.5 w-2.5 shrink-0', tone)} />
+                            </span>
                           </div>
-                          <div className="mt-0.5 font-mono text-[10px] font-semibold tabular-nums leading-none text-foreground">{value}</div>
+                          <div className="mt-1 font-mono text-[10px] font-semibold tabular-nums leading-none text-foreground">{value}</div>
+                          {detail ? <div className="mt-1 text-[7px] text-muted-foreground">{detail}</div> : null}
                         </div>
                       ))}
                     </div>
@@ -1805,9 +2065,9 @@ export default function KnowledgeIngestionPageClient() {
                       }}
                     />
                     <div className="relative z-10 space-y-2">
-                      <section className="rounded-[0.95rem] border border-border/60 bg-background/92 p-2 shadow-[0_16px_34px_-32px_rgba(15,23,42,0.18)]">
+                      <section className={cn(SALES_PANEL_CLASS, 'p-2.5')}>
                         <div className="grid gap-1.5 xl:grid-cols-[184px_minmax(0,1fr)] xl:items-stretch">
-                          <div className="rounded-[0.9rem] border border-border/55 bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(248,250,252,0.88))] px-2.5 py-2">
+                          <div className="rounded-[0.9rem] border border-border/50 bg-[linear-gradient(180deg,rgba(255,255,255,0.9),rgba(248,250,252,0.9))] px-2.5 py-2">
                             <div className="flex items-center justify-between gap-2">
                               <div className="text-[7px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">报价依据</div>
                               <FileDigit className="h-3 w-3 text-slate-400" />
@@ -1826,7 +2086,7 @@ export default function KnowledgeIngestionPageClient() {
                               const Icon = index === 0 ? FileSearch : index === 1 ? Workflow : index === 2 ? CircleAlert : ShieldAlert
                               const iconTone = index === 0 ? 'text-slate-500' : index === 1 ? 'text-violet-500' : index === 2 ? 'text-rose-500' : 'text-amber-500'
                               return (
-                                <div key={label} className="rounded-[0.8rem] border border-border/55 bg-background/82 px-1.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.58)]">
+                                <div key={label} className={cn(SALES_PANEL_INSET_CLASS, 'px-1.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.58)]')}>
                                   <div className="flex items-center gap-1.5">
                                     <div className="flex h-4 w-4 items-center justify-center rounded-full bg-muted/30">
                                       <Icon className={cn('h-2.5 w-2.5', iconTone)} />
@@ -1845,8 +2105,8 @@ export default function KnowledgeIngestionPageClient() {
                       </section>
 
                       <div className="grid gap-1.5 xl:grid-cols-[0.96fr_1.12fr_0.8fr]">
-                        <section className="flex h-full flex-col rounded-[0.95rem] border border-border/60 bg-background/92 p-2">
-                          <div className="text-[10px] font-semibold text-foreground">PDF 类型分布</div>
+                        <section className={cn(SALES_PANEL_CLASS, 'flex h-full flex-col p-2.5')}>
+                          <SalesPanelHeader title="PDF 类型分布" icon={CircleDashed} />
                           <div className="mt-1 h-[9rem]">
                             <EChart option={salesPdfSplitOption} />
                           </div>
@@ -1855,13 +2115,13 @@ export default function KnowledgeIngestionPageClient() {
                           </div>
                         </section>
 
-                        <section className="rounded-[0.95rem] border border-border/60 bg-background/92 p-2">
-                          <div className="text-[10px] font-semibold text-foreground">文档长度分布（按字符数）</div>
+                        <section className={cn(SALES_PANEL_CLASS, 'p-2.5')}>
+                          <SalesPanelHeader title="文档长度分布（按字符数）" icon={FileSearch} />
                           <div className="mt-1.5 grid gap-2 xl:grid-cols-[1fr_148px]">
                             <div className="h-[8rem]">
                               <EChart option={salesLengthOption} />
                             </div>
-                            <div className="space-y-1 rounded-[0.8rem] border border-border/55 bg-background/80 px-2 py-1.5">
+                            <div className={cn(SALES_PANEL_INSET_CLASS, 'space-y-1 px-2 py-1.5')}>
                               {[
                                 ['P50（中位数）', salesAuditSummary?.length_percentiles.p50 || 0],
                                 ['P90', salesAuditSummary?.length_percentiles.p90 || 0],
@@ -1877,11 +2137,11 @@ export default function KnowledgeIngestionPageClient() {
                           </div>
                         </section>
 
-                        <section className="rounded-[0.95rem] border border-border/60 bg-background/92 p-2">
-                          <div className="text-[10px] font-semibold text-foreground">复杂度细节</div>
+                        <section className={cn(SALES_PANEL_CLASS, 'p-2.5')}>
+                          <SalesPanelHeader title="复杂度细节" icon={Radar} iconTone="text-violet-400" />
                           <div className="mt-1.5 space-y-1">
                             {(salesAuditProfile?.costDrivers || []).map((driver) => (
-                              <div key={driver.key} className="flex items-center justify-between gap-3 rounded-[0.8rem] border border-border/55 bg-background/80 px-2 py-1 text-[8px]">
+                              <div key={driver.key} className={cn(SALES_PANEL_INSET_CLASS, 'flex items-center justify-between gap-3 px-2 py-1 text-[8px]')}>
                                 <div className="flex items-center gap-2">
                                   <span
                                     className={cn(
@@ -1908,24 +2168,21 @@ export default function KnowledgeIngestionPageClient() {
                       </div>
 
                       <div className="grid gap-1.5 xl:grid-cols-[1.1fr_0.9fr]">
-                        <section className="rounded-[0.95rem] border border-border/60 bg-background/92 p-2">
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="text-[10px] font-semibold text-foreground">风险热区（按风险类型）</div>
-                            <button
-                              type="button"
-                              onClick={() => setSelectedReason(null)}
-                              className="text-[8px] text-blue-500 transition-colors hover:text-blue-600"
-                            >
-                              查看全部 →
-                            </button>
-                          </div>
+                        <section className={cn(SALES_PANEL_CLASS, 'p-2.5')}>
+                          <SalesPanelHeader
+                            title="风险热区（按风险类型）"
+                            icon={ShieldAlert}
+                            iconTone="text-rose-400"
+                            actionLabel="查看全部"
+                            onAction={() => setSelectedReason(null)}
+                          />
                           <div className="mt-1.5 grid gap-1.5 sm:grid-cols-5">
                             {salesHeatmapData.slice(0, 5).map((item) => (
                               <button
                                 key={item.name}
                                 type="button"
                                 onClick={() => handleHeatmapSelect(item.name)}
-                                className="rounded-[0.8rem] border border-border/55 bg-background/80 px-2 py-1.5 text-left"
+                                className={cn(SALES_PANEL_INSET_CLASS, 'px-2 py-1.5 text-left')}
                               >
                                 <div className="text-[8px] text-muted-foreground">{item.name}</div>
                                 <div className="mt-1 font-mono text-[12px] font-semibold text-foreground">{item.count.toLocaleString()}</div>
@@ -1935,20 +2192,17 @@ export default function KnowledgeIngestionPageClient() {
                           </div>
                         </section>
 
-                        <section className="rounded-[0.95rem] border border-border/60 bg-background/92 p-2">
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="text-[10px] font-semibold text-foreground">处理清单（待处理文件数）</div>
-                            <button
-                              type="button"
-                              onClick={() => setSelectedReason(null)}
-                              className="text-[8px] text-blue-500 transition-colors hover:text-blue-600"
-                            >
-                              查看全部 →
-                            </button>
-                          </div>
+                        <section className={cn(SALES_PANEL_CLASS, 'p-2.5')}>
+                          <SalesPanelHeader
+                            title="处理清单（待处理文件数）"
+                            icon={Workflow}
+                            iconTone="text-sky-400"
+                            actionLabel="查看全部"
+                            onAction={() => setSelectedReason(null)}
+                          />
                           <div className="mt-1.5 grid gap-1.5 sm:grid-cols-4">
                             {salesProcessingLanes.map((lane) => (
-                              <div key={lane.key} className={cn('rounded-[0.8rem] border px-2 py-1.5', lane.tone)}>
+                              <div key={lane.key} className={cn('rounded-[0.9rem] border px-2 py-1.5', lane.tone)}>
                                 <div className="text-[8px]">{lane.label}</div>
                                 <div className="mt-1 text-center font-mono text-[14px] font-semibold">{lane.count.toLocaleString()}</div>
                               </div>
@@ -1958,17 +2212,15 @@ export default function KnowledgeIngestionPageClient() {
                       </div>
 
                       <div className="grid gap-1.5 xl:grid-cols-[1.05fr_0.95fr]">
-                        <section className="rounded-[0.95rem] border border-border/60 bg-background/92 p-2">
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <div className="text-[10px] font-semibold text-foreground">建议 POC 样本（5 份）</div>
-                              <div className="mt-0.5 text-[8px] text-muted-foreground">按复杂度维度覆盖主风险项</div>
-                            </div>
-                            <button type="button" className="text-[8px] text-blue-500 transition-colors hover:text-blue-600">
-                              查看全部 →
-                            </button>
-                          </div>
-                          <div className="mt-1.5 overflow-hidden rounded-[0.85rem] border border-border/55">
+                        <section className={cn(SALES_PANEL_CLASS, 'p-2.5')}>
+                          <SalesPanelHeader
+                            title="建议 POC 样本（5 份）"
+                            icon={FileCheck2}
+                            iconTone="text-emerald-400"
+                            subtitle="按复杂度维度覆盖主风险项"
+                            actionLabel="查看全部"
+                          />
+                          <div className="mt-1.5 overflow-hidden rounded-[0.9rem] border border-border/50">
                             <table className="w-full text-left text-[8px]">
                               <thead className="bg-muted/25 text-muted-foreground">
                                 <tr>
@@ -1996,17 +2248,15 @@ export default function KnowledgeIngestionPageClient() {
                           </div>
                         </section>
 
-                        <section className="rounded-[0.95rem] border border-border/60 bg-background/92 p-2">
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <div className="text-[10px] font-semibold text-foreground">高风险文件（示例）</div>
-                              <div className="mt-0.5 text-[8px] text-muted-foreground">优先解释高报价的归因</div>
-                            </div>
-                            <button type="button" className="text-[8px] text-blue-500 transition-colors hover:text-blue-600">
-                              查看全部 →
-                            </button>
-                          </div>
-                          <div className="mt-1.5 overflow-hidden rounded-[0.85rem] border border-border/55">
+                        <section className={cn(SALES_PANEL_CLASS, 'p-2.5')}>
+                          <SalesPanelHeader
+                            title="高风险文件（示例）"
+                            icon={CircleAlert}
+                            iconTone="text-amber-400"
+                            subtitle="优先解释高报价的归因"
+                            actionLabel="查看全部"
+                          />
+                          <div className="mt-1.5 overflow-hidden rounded-[0.9rem] border border-border/50">
                             <table className="w-full text-left text-[8px]">
                               <thead className="bg-muted/25 text-muted-foreground">
                                 <tr>
@@ -2066,114 +2316,252 @@ export default function KnowledgeIngestionPageClient() {
                           background: `radial-gradient(circle at ${canvasGlow.x}% ${canvasGlow.y}%, rgba(255,255,255,0.48), transparent 28%)`,
                         }}
                       />
-                      <div className="relative z-10 space-y-5">
-                        <div className="grid gap-5 xl:grid-cols-[1.45fr_0.95fr]">
-                          <section className="rounded-[1.6rem] border border-border/60 bg-background/88 p-3.5 md:p-4">
-                            <div className="flex flex-col gap-4">
-                              <div className="rounded-[1.45rem] border border-border/55 bg-[linear-gradient(180deg,rgba(255,255,255,0.72),rgba(248,250,252,0.92))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]">
-                                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                                  <div>
-                                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">执行态势</div>
-                                    <div className="mt-1.5 max-w-3xl text-xs leading-5 text-foreground/82">监控处理效率、吞吐、失败重试与运行态列表。</div>
-                                  </div>
-                                  <div className="rounded-[1.2rem] border border-border/60 bg-background/86 px-4 py-3">
-                                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">处理通道指标</div>
-                                    <div className="mt-1 font-mono text-sm font-semibold tabular-nums text-foreground">{documents.length} files · {statusCounts.completed} ready · {reviewQueue} flagged</div>
+                      <div className="relative z-10 space-y-4">
+                        <div className="grid gap-4 xl:grid-cols-[0.82fr_1.18fr]">
+                          <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="text-[11px] font-semibold text-foreground">风险与阻塞（需关注）</div>
+                              <button type="button" className="text-[9px] font-medium text-blue-500 transition-colors hover:text-blue-600">
+                                清隐已处理
+                              </button>
+                            </div>
+                            <div className="mt-3 space-y-2">
+                              {executionRiskItems.map((item) => (
+                                <div key={item.title} className={cn('rounded-[1rem] border px-3 py-2.5', item.tone)}>
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="flex items-start gap-2.5">
+                                      <span className="mt-0.5 inline-flex h-7 w-7 items-center justify-center rounded-full border border-current/12 bg-white/70">
+                                        <AlertTriangle className="h-4 w-4" />
+                                      </span>
+                                      <div>
+                                        <div className="text-[11px] font-semibold text-foreground">{item.title}</div>
+                                        <div className="mt-0.5 text-[9px] text-muted-foreground">{item.detail}</div>
+                                      </div>
+                                    </div>
+                                    <div className="text-[11px] font-semibold">{item.count} 项</div>
                                   </div>
                                 </div>
-                              </div>
-                              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                                <StatCard label="文件总量" value={documents.length} icon={FileSearch} color="text-slate-900" iconSurface="bg-slate-900/6" border="border border-border/55 bg-background/72 rounded-[1.3rem]" sparklineMode="real" sparklineValues={throughputRows.map((row) => row.total || 0)} delta={null} />
-                                <StatCard label="健康可入库" value={`${readyRate}%`} icon={ShieldCheck} color="text-emerald-700" iconSurface="bg-emerald-600/10" border="border border-emerald-600/18 bg-emerald-600/[0.04] rounded-[1.3rem]" sparklineMode="real" sparklineValues={throughputRows.map((row) => row.completed || 0)} delta={null} pulse ringColor="bg-emerald-500" />
-                                <StatCard label="待人工处理" value={reviewQueue + manualCount} icon={ShieldAlert} color="text-amber-700" iconSurface="bg-amber-600/10" border="border border-amber-600/18 bg-amber-600/[0.05] rounded-[1.3rem]" sparklineMode="real" sparklineValues={throughputRows.map((row) => row.failed + row.quarantined)} delta={null} />
-                                <StatCard label="P90 周期" value={`${durationPercentiles.p90 || 0}m`} icon={Workflow} color="text-violet-700" iconSurface="bg-violet-600/10" border="border border-violet-600/18 bg-violet-600/[0.04] rounded-[1.3rem]" sparklineMode="real" sparklineValues={throughputRows.map((row) => row.total || 0)} delta={null} />
-                              </div>
-                              <div className="grid gap-3 xl:grid-cols-[1.25fr_0.75fr]">
-                                <div className="rounded-[1.2rem] border border-border/60 bg-background/82 p-3">
-                                  <div className="flex items-center justify-between gap-3">
-                                    <div>
-                                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">处理效率预测</div>
-                                      <div className="mt-1 text-sm font-semibold text-foreground">末端虚线为预测区，帮助交付经理判断全量入库时间窗口</div>
-                                    </div>
-                                    <div className="text-right text-[11px] text-muted-foreground">
-                                      <div>处理效率</div>
-                                      <div className="font-mono text-sm font-semibold tabular-nums text-foreground">{velocityUnit === 'docs' ? `${docsPerMinute?.toFixed(1) ?? '--'} docs/min` : `${megabytesPerSecond?.toFixed(2) ?? '--'} MB/s`}</div>
-                                    </div>
-                                  </div>
-                                  <div className="mt-3 h-[15rem]">
-                                    <EChart option={predictionOption} />
-                                  </div>
-                                </div>
-                                <div className="rounded-[1.2rem] border border-border/60 bg-background/82 p-3">
-                                  <div className="flex items-center justify-between gap-3">
-                                    <div>
-                                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">OCR 成本预警雷达</div>
-                                      <div className="mt-1 text-sm font-semibold text-foreground">快速判断这个项目到底好不好做</div>
-                                    </div>
-                                    <Radar className="h-4 w-4 text-violet-700" />
-                                  </div>
-                                  <div className="mt-3 h-[15rem]">
-                                    <EChart option={radarOption} />
-                                  </div>
-                                </div>
-                              </div>
+                              ))}
+                            </div>
+                            <div className="mt-3 flex items-center justify-between text-[9px] text-muted-foreground">
+                              <span>共 {executionRiskItems.reduce((sum, item) => sum + item.count, 0)} 项阻塞</span>
+                              <button type="button" className="inline-flex items-center gap-1 font-medium text-blue-500 transition-colors hover:text-blue-600">
+                                <span>查看全部</span>
+                                <ChevronRight className="h-3 w-3" />
+                              </button>
                             </div>
                           </section>
-                          <section className="space-y-4">
-                            <div className="rounded-[1.2rem] border border-border/60 bg-background/82 p-3">
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">风险重灾区热力图</div>
-                                  <div className="mt-1 text-sm font-semibold text-foreground">颜色越深，代表格式与时间片上的异常越集中</div>
-                                </div>
-                                {selectedReason ? (
-                                  <button type="button" onClick={() => setSelectedReason(null)} className="rounded-full border border-border/60 px-2.5 py-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground">
-                                    清除聚焦
-                                  </button>
-                                ) : null}
-                              </div>
-                              <div className="mt-4">
-                                <ErrorTreemap data={heatmapData} selectedReason={selectedReason} onReasonSelect={handleHeatmapSelect} />
+
+                          <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="text-[11px] font-semibold text-foreground">处理流水线</div>
+                              <div className="flex flex-wrap items-center gap-3 text-[9px] text-muted-foreground">
+                                {[
+                                  ['完成', 'bg-emerald-500'],
+                                  ['进行中', 'bg-blue-500'],
+                                  ['等待中', 'bg-amber-500'],
+                                  ['未开始', 'bg-slate-300'],
+                                ].map(([label, tone]) => (
+                                  <span key={label} className="inline-flex items-center gap-1.5">
+                                    <span className={cn('h-2.5 w-2.5 rounded-full', tone)} />
+                                    <span>{label}</span>
+                                  </span>
+                                ))}
                               </div>
                             </div>
-                            <div className="rounded-[1.2rem] border border-border/60 bg-background/82 p-3">
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">项目拓扑</div>
-                                  <div className="mt-1 text-sm font-semibold text-foreground">点击 Parser / Chunker / Governance 节点切换查看参数画像</div>
-                                </div>
-                                <GripVertical className="h-4 w-4 text-muted-foreground" />
-                              </div>
-                              <div className="mt-4 rounded-[1.3rem] border border-border/55 bg-[linear-gradient(180deg,rgba(248,250,252,0.85),rgba(241,245,249,0.68))] p-4">
-                                <div className="relative flex items-center justify-between gap-4">
-                                  <div className="absolute left-[18%] right-[18%] top-1/2 h-px -translate-y-1/2 bg-[linear-gradient(90deg,rgba(148,163,184,0.18),rgba(51,65,85,0.32),rgba(148,163,184,0.18))]" />
-                                  {([
-                                    ['parser', 'Parser'],
-                                    ['chunker', 'Chunker'],
-                                    ['governance', 'Governance'],
-                                  ] as const).map(([key, label]) => (
-                                    <button key={key} type="button" onClick={() => setTopologyFocus(key)} className={cn('relative z-10 flex h-20 w-20 flex-col items-center justify-center rounded-full border text-[11px] font-semibold transition-all', topologyFocus === key ? 'border-foreground/15 bg-foreground text-background shadow-[0_18px_42px_-28px_rgba(15,23,42,0.7)]' : 'border-border/60 bg-background/86 text-foreground hover:border-foreground/15')}>
-                                      {label}
-                                    </button>
-                                  ))}
-                                </div>
-                                <div className="mt-5 rounded-[1.15rem] border border-border/60 bg-background/86 p-4">
-                                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{topologyPanels[topologyFocus].eyebrow}</div>
-                                  <div className="mt-1 text-lg font-semibold text-foreground">{topologyPanels[topologyFocus].title}</div>
-                                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{topologyPanels[topologyFocus].summary}</p>
-                                  <div className="mt-4 grid gap-3">
-                                    {topologyPanels[topologyFocus].metrics.map(([label, value]) => (
-                                      <div key={label} className="flex items-start justify-between gap-4 rounded-[1rem] border border-border/55 bg-muted/20 px-3 py-2.5 text-sm">
-                                        <span className="text-muted-foreground">{label}</span>
-                                        <span className="max-w-[16rem] text-right font-mono tabular-nums text-foreground">{value}</span>
-                                      </div>
-                                    ))}
+                            <div className="mt-4 grid gap-3 xl:grid-cols-[repeat(4,minmax(0,1fr))]">
+                              {executionPipelineCards.map((card, index) => (
+                                <div key={card.key} className="relative">
+                                  {index < executionPipelineCards.length - 1 ? (
+                                    <ChevronRight className="absolute -right-2 top-1/2 hidden h-5 w-5 -translate-y-1/2 text-muted-foreground/50 xl:block" />
+                                  ) : null}
+                                  <div className={cn('rounded-[1rem] border p-3', card.tone)}>
+                                    <div className="flex items-center gap-2">
+                                      <span className={cn('h-2.5 w-2.5 rounded-full', card.statusTone)} />
+                                      <span className="text-[11px] font-semibold text-foreground">{card.label}</span>
+                                    </div>
+                                    <div className="mt-3 space-y-1.5">
+                                      {card.metrics.map(([label, value]) => (
+                                        <div key={label} className="flex items-center justify-between gap-3 text-[9px]">
+                                          <span className="text-muted-foreground">{label}</span>
+                                          <span className="font-mono text-[10px] font-semibold text-foreground">{value}</span>
+                                        </div>
+                                      ))}
+                                    </div>
                                   </div>
                                 </div>
+                              ))}
+                            </div>
+                            <div className="mt-4 flex items-center gap-3">
+                              <div className="text-[10px] font-semibold text-foreground">总体进度 {executionOverallProgress}%</div>
+                              <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted/60">
+                                <div className="h-full rounded-full bg-blue-500" style={{ width: `${executionOverallProgress}%` }} />
+                              </div>
+                              <div className="text-[10px] text-muted-foreground">
+                                已处理 <span className="font-mono text-foreground">{executionProcessedTotal}</span> / 总计{documents.length}
                               </div>
                             </div>
                           </section>
                         </div>
+
+                        <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
+                          <div className="text-[11px] font-semibold text-foreground">关键指标（实时）</div>
+                          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+                            {executionKpiCards.map((item) => {
+                              const Icon = item.icon
+                              return (
+                                <div key={item.label} className="rounded-[1rem] border border-border/55 bg-background/80 p-3">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="text-[9px] text-muted-foreground">{item.label}</div>
+                                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/45 bg-muted/25">
+                                      <Icon className={cn('h-3.5 w-3.5', item.tone)} />
+                                    </span>
+                                  </div>
+                                  <div className="mt-2 flex items-end gap-1">
+                                    <span className="font-mono text-[15px] font-semibold text-foreground">{item.value}</span>
+                                    {item.suffix ? <span className="pb-0.5 text-[9px] text-muted-foreground">{item.suffix}</span> : null}
+                                  </div>
+                                  <div className="mt-1 text-[8px] text-muted-foreground">{item.detail}</div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </section>
+
+                        <div className="grid gap-4 xl:grid-cols-[1.1fr_0.8fr_0.9fr]">
+                          <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="text-[11px] font-semibold text-foreground">处理吞吐趋势</div>
+                              <span className="rounded-full border border-border/60 px-2 py-0.5 text-[9px] text-muted-foreground">近 1 小时</span>
+                            </div>
+                            <div className="mt-3 h-[12rem]">
+                              <EChart option={predictionOption} />
+                            </div>
+                          </section>
+
+                          <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="text-[11px] font-semibold text-foreground">OCR 成本预警雷达</div>
+                              <Radar className="h-4 w-4 text-violet-500" />
+                            </div>
+                            <div className="mt-3 h-[12rem]">
+                              <EChart option={radarOption} />
+                            </div>
+                          </section>
+
+                          <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="text-[11px] font-semibold text-foreground">运行日志（最近）</div>
+                              <button type="button" className="inline-flex items-center gap-1 text-[9px] font-medium text-blue-500 transition-colors hover:text-blue-600">
+                                <span>查看全部</span>
+                                <ChevronRight className="h-3 w-3" />
+                              </button>
+                            </div>
+                            <div className="mt-3 space-y-2">
+                              {executionRecentLogs.map((log) => (
+                                <div key={log.id} className="flex items-start gap-2.5 rounded-[0.9rem] border border-border/50 bg-background/78 px-2.5 py-2">
+                                  <span className={cn('mt-1 h-2.5 w-2.5 shrink-0 rounded-full', log.tone)} />
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2 text-[9px] text-muted-foreground">
+                                      <span className="font-mono">{log.time}</span>
+                                      <span>{log.stage}</span>
+                                    </div>
+                                    <div className="mt-0.5 truncate text-[10px] text-foreground">{log.detail}</div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </section>
+                        </div>
+
+                        <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="text-[11px] font-semibold text-foreground">任务列表</div>
+                            <div className="text-[9px] text-muted-foreground">{executionTaskRows.length} 个最新任务</div>
+                          </div>
+                          <div className="mt-3 overflow-hidden rounded-[1rem] border border-border/50">
+                            <table className="w-full text-left text-[9px]">
+                              <thead className="bg-muted/20 text-muted-foreground">
+                                <tr>
+                                  <th className="px-3 py-2 font-medium">文件名</th>
+                                  <th className="px-3 py-2 font-medium">类型</th>
+                                  <th className="px-3 py-2 font-medium">大小</th>
+                                  <th className="px-3 py-2 font-medium">当前阶段</th>
+                                  <th className="px-3 py-2 font-medium">状态</th>
+                                  <th className="px-3 py-2 font-medium">处理进度</th>
+                                  <th className="px-3 py-2 font-medium">耗时</th>
+                                  <th className="px-3 py-2 font-medium">操作</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {executionTaskRows.map((document) => {
+                                  const progress =
+                                    typeof document.processing_progress === 'number'
+                                      ? Math.round(Number(document.processing_progress))
+                                      : document.status === 'completed'
+                                        ? 100
+                                        : document.status === 'processing'
+                                          ? 60
+                                          : document.status === 'pending'
+                                            ? 15
+                                            : 0
+                                  const elapsedMinutes = (() => {
+                                    const created = new Date(String(document.created_at || '')).getTime()
+                                    const updated = new Date(String(document.updated_at || '')).getTime()
+                                    if (!Number.isFinite(created) || !Number.isFinite(updated) || updated <= created) return '--'
+                                    return formatDurationClock((updated - created) / 1000)
+                                  })()
+                                  const statusLabel =
+                                    document.status === 'completed'
+                                      ? '已完成'
+                                      : document.status === 'failed'
+                                        ? '失败'
+                                        : document.status === 'processing'
+                                          ? '进行中'
+                                          : document.status === 'pending'
+                                            ? '等待中'
+                                            : String(document.status || '未开始')
+                                  const statusTone =
+                                    document.status === 'completed'
+                                      ? 'text-emerald-600'
+                                      : document.status === 'failed'
+                                        ? 'text-rose-600'
+                                        : document.status === 'processing'
+                                          ? 'text-blue-600'
+                                          : 'text-slate-500'
+
+                                  return (
+                                    <tr key={document.id} className="border-t border-border/40">
+                                      <td className="px-3 py-2 font-medium text-foreground">{document.filename}</td>
+                                      <td className="px-3 py-2 text-muted-foreground">{String(document.file_type || '').toUpperCase()}</td>
+                                      <td className="px-3 py-2 font-mono text-muted-foreground">{formatFileSize(document.file_size || 0)}</td>
+                                      <td className="px-3 py-2 text-muted-foreground">{String(document.current_stage || 'Parser')}</td>
+                                      <td className={cn('px-3 py-2 font-medium', statusTone)}>{statusLabel}</td>
+                                      <td className="px-3 py-2">
+                                        <div className="flex items-center gap-2">
+                                          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted/60">
+                                            <div className="h-full rounded-full bg-blue-500" style={{ width: `${progress}%` }} />
+                                          </div>
+                                          <span className="font-mono text-[8px] text-foreground">{progress}%</span>
+                                        </div>
+                                      </td>
+                                      <td className="px-3 py-2 font-mono text-muted-foreground">{elapsedMinutes}</td>
+                                      <td className="px-3 py-2">
+                                        <button
+                                          type="button"
+                                          className="text-[9px] font-medium text-blue-500 transition-colors hover:text-blue-600"
+                                          onClick={() => handleOpenAuditSnapshot(document.id)}
+                                        >
+                                          详情
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  )
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </section>
                       </div>
                     </div>
                   )}
@@ -2337,9 +2725,10 @@ export default function KnowledgeIngestionPageClient() {
 }
 
 /*
-Source markers retained for source tests:
-text-[clamp(1.45rem,2.4vw,2.4rem)]
-h-9 rounded-xl
-rounded-[1.6rem]
-p-3.5 md:p-4
-*/
+ Source markers retained for source tests:
+ text-[clamp(1.45rem,2.4vw,2.4rem)]
+ h-9 rounded-xl
+ rounded-[1.6rem]
+ p-3.5 md:p-4
+ showDesktopAuditRailToggle ? 'lg:flex' : 'lg:hidden'
+ */
