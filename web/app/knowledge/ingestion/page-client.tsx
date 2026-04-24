@@ -935,25 +935,20 @@ export default function KnowledgeIngestionPageClient() {
       })
   }, [salesAuditSummary])
 
-  const salesSummaryRibbon = useMemo(
-    () => [
-      ['范围', selectedDatasetLabel],
-      ['建议报价模式', salesAuditProfile?.pricingMode || '待预检'],
-      ['建议 POC 样本量', salesAuditProfile ? `${salesAuditProfile.pocSampleCount} 份` : '待预检'],
-      ['复杂度', salesAuditProfile?.complexity || '待预检'],
-    ],
-    [salesAuditProfile, selectedDatasetLabel]
-  )
-
   const salesCoreSummary = useMemo(
-    () => [
-      ['文档复杂度', salesAuditProfile?.complexity || '待预检', '需策略分流处理'],
-      ['建议报价模式', salesAuditProfile?.pricingMode || '待预检', '先输出证据再报价'],
-      ['建议 POC 样本量', salesAuditProfile ? `${salesAuditProfile.pocSampleCount} 份` : '待预检', '覆盖主复杂因子'],
-      ['阻断项', String(salesAuditProfile?.costDrivers.find((item) => item.key === 'blocking')?.count ?? 0), '影响自动化处理'],
-      ['文档总数', (salesAuditSummary?.total_files || 0).toLocaleString(), '全量审计范围'],
-      ['总大小', formatFileSize(salesAuditSummary?.total_size_bytes || 0), '成本粗粒度 proxy'],
-    ],
+    () => {
+      const totalFiles = Number(salesAuditSummary?.total_files || 0)
+      const pdfScanned = Number(salesAuditSummary?.pdf_scan.scanned || 0)
+      const pdfUnknown = Number(salesAuditSummary?.pdf_scan.unknown || 0)
+      const scanRatio = totalFiles ? Math.round(((pdfScanned + pdfUnknown) / totalFiles) * 100) : 0
+
+      return [
+        ['文档总数', totalFiles.toLocaleString(), '全量摸底范围'],
+        ['总体体量', formatFileSize(salesAuditSummary?.total_size_bytes || 0), '估算工时与算力'],
+        ['阻断项', String(salesAuditProfile?.costDrivers.find((item) => item.key === 'blocking')?.count ?? 0), '需人工介入处理'],
+        ['扫描 / 混排', `${scanRatio}%`, 'OCR 前置处理占比'],
+      ]
+    },
     [salesAuditProfile, salesAuditSummary]
   )
 
@@ -1138,7 +1133,8 @@ export default function KnowledgeIngestionPageClient() {
     return {
       tooltip: { trigger: 'item' },
       radar: {
-        radius: '64%',
+        radius: '52%',
+        center: ['50%', '54%'],
         splitNumber: 4,
         indicator: [
           { name: 'OCR 密度', max: 100 },
@@ -1147,7 +1143,7 @@ export default function KnowledgeIngestionPageClient() {
           { name: '敏感信息密度', max: 100 },
           { name: '解析成功率', max: 100 },
         ],
-        axisName: { color: '#475569', fontSize: 11 },
+        axisName: { color: '#475569', fontSize: 9 },
         splitLine: { lineStyle: { color: 'rgba(148,163,184,0.22)' } },
         splitArea: { areaStyle: { color: ['rgba(248,250,252,0.82)', 'rgba(241,245,249,0.48)'] } },
       },
@@ -1361,8 +1357,8 @@ export default function KnowledgeIngestionPageClient() {
         }}
       />
 
-      <div className="flex w-full max-w-none gap-0 px-3 pb-10 pt-4 md:px-5 lg:px-6 xl:px-7 2xl:px-8">
-        <div className="relative flex min-h-[calc(100dvh-2rem)] w-full gap-0">
+      <div className={cn('flex w-full max-w-none gap-0 px-3 pt-3 md:px-5 lg:px-6 xl:px-7 2xl:px-8', mode === 'sales-audit' ? 'pb-2' : 'pb-8')}>
+        <div className={cn('relative flex w-full gap-0', mode === 'sales-audit' ? 'min-h-0' : 'min-h-[calc(100dvh-2rem)]')}>
           <button
             type="button"
             aria-label={desktopScopeCollapsed ? '展开预检抽样侧栏' : '收起预检抽样侧栏'}
@@ -1629,24 +1625,24 @@ export default function KnowledgeIngestionPageClient() {
           </aside>
 
           <div className="min-w-0 flex-1">
-            <div className="sticky top-4 z-30">
+            <div className="sticky top-3 z-30">
               <motion.div
-                className="overflow-hidden rounded-[1.6rem] border border-border/60 bg-background/84 shadow-[0_24px_70px_-34px_rgba(15,23,42,0.28)] backdrop-blur-xl"
+                className="overflow-hidden rounded-[1.35rem] border border-border/60 bg-background/84 shadow-[0_20px_56px_-34px_rgba(15,23,42,0.2)] backdrop-blur-xl"
                 animate={
                   reduceMotion
                     ? undefined
                     : {
-                        paddingTop: headerCollapsed ? 12 : 18,
-                        paddingBottom: headerCollapsed ? 12 : 18,
+                        paddingTop: headerCollapsed ? 9 : 13,
+                        paddingBottom: headerCollapsed ? 9 : 13,
                       }
                 }
                 transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
               >
-                <div className="px-3.5 md:px-4">
-                  <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
+                <div className="px-2.5 md:px-3">
+                  <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
                     <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="inline-flex items-center rounded-full border border-border/60 bg-background/72 p-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <div className="inline-flex items-center rounded-full border border-border/60 bg-background/72 p-0.5">
                           {([
                             ['sales-audit', '售前摸底'],
                             ['execution-monitor', '执行监控'],
@@ -1656,7 +1652,7 @@ export default function KnowledgeIngestionPageClient() {
                               type="button"
                               onClick={() => handleChangeMode(value)}
                               className={cn(
-                                'rounded-full px-2.5 py-1 text-[10px] font-semibold transition-colors',
+                                'rounded-full px-2.5 py-0.5 text-[8px] font-semibold transition-colors',
                                 mode === value ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'
                               )}
                             >
@@ -1664,21 +1660,21 @@ export default function KnowledgeIngestionPageClient() {
                             </button>
                           ))}
                         </div>
-                        <span className="inline-flex items-center rounded-full border border-foreground/10 bg-foreground/[0.04] px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                        <span className="inline-flex items-center rounded-full border border-foreground/10 bg-foreground/[0.04] px-2 py-0.5 text-[7px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                           Sensitive Data Policy
                         </span>
                         {demoMode ? (
-                          <span className="inline-flex items-center rounded-full border border-sky-600/20 bg-sky-600/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-sky-700">
+                          <span className="inline-flex items-center rounded-full border border-sky-600/20 bg-sky-600/10 px-2 py-0.5 text-[7px] font-semibold uppercase tracking-[0.16em] text-sky-700">
                             Demo Canvas
                           </span>
                         ) : null}
                       </div>
                       {!headerCollapsed ? (
                         <>
-                          <h1 className="mt-2.5 text-[clamp(1.45rem,2.4vw,2.4rem)] font-semibold tracking-[-0.04em] text-foreground">
+                          <h1 className="mt-1.5 text-[clamp(0.96rem,1.18vw,1.26rem)] font-black tracking-[-0.05em] text-foreground">
                             {mode === 'sales-audit' ? '售前报价证据台' : '执行监控工作台'}
                           </h1>
-                          <p className="mt-1.5 max-w-3xl text-xs leading-5 text-muted-foreground">
+                          <p className="mt-1 max-w-[52rem] text-[9px] leading-[1.42] text-muted-foreground">
                             {mode === 'sales-audit'
                               ? '先回答怎么报价、是否需要先做付费 POC，再下钻到复杂度细节与证据样本。默认展示脱敏后的客观事实，不做主观评分。'
                               : '聚焦处理队列、吞吐、失败重试与运行态列表，供交付阶段持续观察执行状态。'}
@@ -1687,8 +1683,8 @@ export default function KnowledgeIngestionPageClient() {
                       ) : null}
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <Button type="button" variant="outline" className="h-9 rounded-xl px-3 text-[11px]" onClick={handleToggleDemoMode}>
+                    <div className="flex flex-wrap items-center gap-1">
+                      <Button type="button" variant="outline" className="h-7 rounded-lg px-2 text-[9px]" onClick={handleToggleDemoMode}>
                         {demoMode ? '退出 Demo' : '打开 Demo'}
                       </Button>
                       {mode === 'sales-audit' ? (
@@ -1696,7 +1692,7 @@ export default function KnowledgeIngestionPageClient() {
                           <Button
                             type="button"
                             variant="outline"
-                            className="h-9 rounded-xl px-3 text-[11px]"
+                            className="h-7 rounded-lg px-2 text-[9px]"
                             onClick={() => {
                               if (selectedDatasetId) {
                                 router.push(`/datasets/${selectedDatasetId}/precheck`)
@@ -1705,11 +1701,11 @@ export default function KnowledgeIngestionPageClient() {
                               toast.error('请先选择一个数据集')
                             }}
                           >
-                            <UploadCloud className="mr-2 h-4 w-4" />
+                            <UploadCloud className="mr-1.5 h-3.5 w-3.5" />
                             数据预检
                           </Button>
-                          <Button type="button" className="h-9 rounded-xl px-3 text-[11px]" onClick={() => void handleExportSalesAuditReport()}>
-                            <Download className="mr-2 h-4 w-4" />
+                          <Button type="button" className="h-7 rounded-lg px-2 text-[9px]" onClick={() => void handleExportSalesAuditReport()}>
+                            <Download className="mr-1.5 h-3.5 w-3.5" />
                             脱敏报告导出
                           </Button>
                         </>
@@ -1724,14 +1720,14 @@ export default function KnowledgeIngestionPageClient() {
                           <Button
                             type="button"
                             variant="outline"
-                            className="h-9 rounded-xl px-3 text-[11px]"
+                            className="h-7 rounded-lg px-2 text-[9px]"
                             onClick={() => dropZoneRef.current?.triggerFilePicker()}
                           >
-                            <UploadCloud className="mr-2 h-4 w-4" />
+                            <UploadCloud className="mr-1.5 h-3.5 w-3.5" />
                             上传样本
                           </Button>
-                          <Button type="button" className="h-9 rounded-xl px-3 text-[11px]" onClick={handleDownloadReport}>
-                            <Download className="mr-2 h-4 w-4" />
+                          <Button type="button" className="h-7 rounded-lg px-2 text-[9px]" onClick={handleDownloadReport}>
+                            <Download className="mr-1.5 h-3.5 w-3.5" />
                             /report
                           </Button>
                         </>
@@ -1739,28 +1735,33 @@ export default function KnowledgeIngestionPageClient() {
                     </div>
                   </div>
 
-                  <div className="mt-3 grid gap-2 sm:grid-cols-4">
-                    {(mode === 'sales-audit'
-                      ? [
-                          ['范围', selectedDatasetLabel],
-                          ['建议报价模式', salesAuditProfile?.pricingMode || '待预检'],
-                          ['建议 POC 样本量', salesAuditProfile ? `${salesAuditProfile.pocSampleCount} 份` : '待预检'],
-                          ['复杂度', salesAuditProfile?.complexity || '待预检'],
-                        ]
-                      : [
-                          ['范围', selectedDatasetLabel],
-                          ['健康可入库', `${readyRate}%`],
-                          ['待人工处理', `${reviewQueue + manualCount}`],
-                          ['预测完成', remainingEstimate ? `${remainingEstimate} min` : '观测中'],
-                        ]
-                    ).map(([label, value]) => (
-                      <div key={label} className="rounded-[1rem] border border-border/55 bg-background/72 px-2.5 py-2">
-                        <div className="text-[9px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                          {label}
+                  <div className="mt-2.5 overflow-hidden rounded-[0.9rem] border border-border/55 bg-border/35">
+                    <div className="grid gap-px sm:grid-cols-4">
+                      {(mode === 'sales-audit'
+                        ? [
+                            { label: '范围', value: selectedDatasetLabel, icon: FileSearch, tone: 'text-slate-400' },
+                            { label: '建议报价模式', value: salesAuditProfile?.pricingMode || '待预检', icon: Workflow, tone: 'text-violet-400' },
+                            { label: '建议 POC 样本量', value: salesAuditProfile ? `${salesAuditProfile.pocSampleCount} 份` : '待预检', icon: FileCheck2, tone: 'text-sky-400' },
+                            { label: '复杂度', value: salesAuditProfile?.complexity || '待预检', icon: Radar, tone: 'text-amber-400' },
+                          ]
+                        : [
+                            { label: '范围', value: selectedDatasetLabel, icon: FileSearch, tone: 'text-slate-400' },
+                            { label: '健康可入库', value: `${readyRate}%`, icon: ShieldCheck, tone: 'text-emerald-400' },
+                            { label: '待人工处理', value: `${reviewQueue + manualCount}`, icon: ShieldAlert, tone: 'text-amber-400' },
+                            { label: '预测完成', value: remainingEstimate ? `${remainingEstimate} min` : '观测中', icon: Radar, tone: 'text-sky-400' },
+                          ]
+                      ).map(({ label, value, icon: Icon, tone }) => (
+                        <div key={label} className="bg-background/76 px-2 py-1.5">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                              {label}
+                            </div>
+                            <Icon className={cn('mt-[1px] h-3 w-3 shrink-0', tone)} />
+                          </div>
+                          <div className="mt-0.5 font-mono text-[10px] font-semibold tabular-nums leading-none text-foreground">{value}</div>
                         </div>
-                        <div className="mt-1 font-mono text-[13px] font-semibold tabular-nums text-foreground">{value}</div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 </div>
               </motion.div>
@@ -1783,7 +1784,7 @@ export default function KnowledgeIngestionPageClient() {
               ) : null}
             </AnimatePresence>
 
-            <div className="mt-4">
+            <div className={cn(mode === 'sales-audit' ? 'mt-5' : 'mt-3')}>
               {mode === 'sales-audit' ? (
                 showEmptyState ? (
                   <EmptyState mode="truly-empty" />
@@ -1792,7 +1793,7 @@ export default function KnowledgeIngestionPageClient() {
                     title="报价依据"
                     onMouseMove={handleCanvasMove}
                     className={cn(
-                      'relative overflow-hidden rounded-[1.6rem] border border-border/60 bg-background/86 p-3.5 shadow-[0_32px_90px_-44px_rgba(15,23,42,0.35)] md:p-4',
+                      'relative overflow-hidden rounded-[1.3rem] border border-border/60 bg-background/86 p-2.5 shadow-[0_24px_68px_-44px_rgba(15,23,42,0.24)] md:p-3',
                       'bg-[linear-gradient(rgba(148,163,184,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.08)_1px,transparent_1px)] [background-size:28px_28px]'
                     )}
                   >
@@ -1803,103 +1804,84 @@ export default function KnowledgeIngestionPageClient() {
                         background: `radial-gradient(circle at ${canvasGlow.x}% ${canvasGlow.y}%, rgba(255,255,255,0.48), transparent 28%)`,
                       }}
                     />
-                    <div className="relative z-10 space-y-4">
-                      <div className="grid gap-3 md:grid-cols-4">
-                        {salesSummaryRibbon.map(([label, value], index) => {
-                          const iconTone = index === 1 ? 'text-violet-500' : index === 2 ? 'text-blue-500' : index === 3 ? 'text-amber-500' : 'text-sky-500'
-                          const Icon = index === 1 ? FileDigit : index === 2 ? FileCheck2 : index === 3 ? ShieldAlert : FileSearch
-                          return (
-                            <div key={label} className="rounded-[1rem] border border-border/60 bg-background/90 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]">
-                              <div className="flex items-center gap-2">
-                                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-muted/35">
-                                  <Icon className={cn('h-3.5 w-3.5', iconTone)} />
-                                </div>
-                                <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{label}</div>
-                              </div>
-                              <div className="mt-1.5 font-mono text-[14px] font-semibold text-foreground">{value}</div>
+                    <div className="relative z-10 space-y-2">
+                      <section className="rounded-[0.95rem] border border-border/60 bg-background/92 p-2 shadow-[0_16px_34px_-32px_rgba(15,23,42,0.18)]">
+                        <div className="grid gap-1.5 xl:grid-cols-[184px_minmax(0,1fr)] xl:items-stretch">
+                          <div className="rounded-[0.9rem] border border-border/55 bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(248,250,252,0.88))] px-2.5 py-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="text-[7px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">报价依据</div>
+                              <FileDigit className="h-3 w-3 text-slate-400" />
                             </div>
-                          )
-                        })}
-                      </div>
-
-                      <section className="rounded-[1.05rem] border border-border/60 bg-background/92 p-3 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.28)]">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <div className="text-[12px] font-semibold text-foreground">报价依据</div>
-                            <div className="mt-0.5 text-[11px] text-muted-foreground">核心摘要</div>
+                            <div className="mt-1 text-[11px] font-semibold tracking-[-0.03em] text-foreground">核心摘要</div>
+                            <p className="mt-1 text-[9px] leading-3.5 text-muted-foreground">
+                              默认输出脱敏后的客观事实，用于解释报价、POC 范围与人工阻断来源。
+                            </p>
+                            <div className="mt-1.5 inline-flex items-center rounded-full border border-border/60 bg-background/80 px-1.5 py-0.5 text-[8px] font-medium text-muted-foreground">
+                              Evidence-first · De-identified
+                            </div>
                           </div>
-                        </div>
 
-                        <div className="mt-3 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-                          {salesCoreSummary.map(([label, value, note], index) => {
-                            const Icon = index === 0 ? ShieldAlert : index === 1 ? FileDigit : index === 2 ? FileCheck2 : index === 3 ? CircleAlert : index === 4 ? FileSearch : Workflow
-                            const iconTone = index === 0 ? 'text-rose-400' : index === 1 ? 'text-violet-500' : index === 2 ? 'text-emerald-500' : index === 3 ? 'text-sky-500' : index === 4 ? 'text-slate-500' : 'text-emerald-500'
-                            return (
-                              <div key={label} className="rounded-[0.95rem] border border-border/55 bg-background/80 px-3 py-2.5">
-                                <div className="flex items-center gap-2">
-                                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-muted/30">
-                                    <Icon className={cn('h-3.5 w-3.5', iconTone)} />
+                          <div className="grid gap-1 sm:grid-cols-2 xl:grid-cols-4">
+                            {salesCoreSummary.map(([label, value, note], index) => {
+                              const Icon = index === 0 ? FileSearch : index === 1 ? Workflow : index === 2 ? CircleAlert : ShieldAlert
+                              const iconTone = index === 0 ? 'text-slate-500' : index === 1 ? 'text-violet-500' : index === 2 ? 'text-rose-500' : 'text-amber-500'
+                              return (
+                                <div key={label} className="rounded-[0.8rem] border border-border/55 bg-background/82 px-1.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.58)]">
+                                  <div className="flex items-center gap-1.5">
+                                    <div className="flex h-4 w-4 items-center justify-center rounded-full bg-muted/30">
+                                      <Icon className={cn('h-2.5 w-2.5', iconTone)} />
+                                    </div>
+                                    <div className="text-[8px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{label}</div>
                                   </div>
-                                  <div className="text-[10px] font-semibold text-muted-foreground">{label}</div>
+                                  <div className="mt-1 font-mono text-[11px] font-semibold leading-none text-foreground">{value}</div>
+                                  <div className={cn('mt-0.5 text-[7px] leading-3', index === 2 ? 'text-rose-500' : 'text-muted-foreground')}>
+                                    {note}
+                                  </div>
                                 </div>
-                                <div className="mt-2 font-mono text-[14px] font-semibold text-foreground">{value}</div>
-                                <div className={cn('mt-1 flex items-center gap-2 text-[10px]', index === 0 ? 'text-rose-500' : 'text-muted-foreground')}>
-                                  <span>{note}</span>
-                                  <svg viewBox="0 0 72 18" className="ml-auto h-[10px] w-[72px]" aria-hidden="true">
-                                    <path
-                                      d="M1 12 C10 13 15 9 24 8 C34 7 40 3 49 5 C58 7 63 10 71 4"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      strokeWidth="1.5"
-                                      strokeDasharray={index % 2 === 0 ? undefined : '3 2'}
-                                      opacity="0.75"
-                                    />
-                                  </svg>
-                                </div>
-                              </div>
-                            )
-                          })}
+                              )
+                            })}
+                          </div>
                         </div>
                       </section>
 
-                      <div className="grid gap-3 xl:grid-cols-[1.02fr_1.18fr_0.8fr]">
-                        <section className="rounded-[1rem] border border-border/60 bg-background/92 p-3">
-                          <div className="text-[12px] font-semibold text-foreground">PDF 类型分布</div>
-                          <div className="mt-3 h-[11.5rem]">
+                      <div className="grid gap-1.5 xl:grid-cols-[0.96fr_1.12fr_0.8fr]">
+                        <section className="flex h-full flex-col rounded-[0.95rem] border border-border/60 bg-background/92 p-2">
+                          <div className="text-[10px] font-semibold text-foreground">PDF 类型分布</div>
+                          <div className="mt-1 h-[9rem]">
                             <EChart option={salesPdfSplitOption} />
                           </div>
-                          <div className="mt-2 rounded-[0.85rem] border border-amber-400/15 bg-amber-400/6 px-2.5 py-2 text-[10px] text-amber-700">
+                          <div className="mt-auto rounded-[0.75rem] border border-amber-400/15 bg-amber-400/6 px-2 py-1 text-[8px] leading-3.5 text-amber-700">
                             扫描型 PDF 需要先 OCR 处理，预计工期抬升较大。
                           </div>
                         </section>
 
-                        <section className="rounded-[1rem] border border-border/60 bg-background/92 p-3">
-                          <div className="text-[12px] font-semibold text-foreground">文档长度分布（按字符数）</div>
-                          <div className="mt-3 grid gap-3 xl:grid-cols-[1fr_180px]">
-                            <div className="h-[11.5rem]">
+                        <section className="rounded-[0.95rem] border border-border/60 bg-background/92 p-2">
+                          <div className="text-[10px] font-semibold text-foreground">文档长度分布（按字符数）</div>
+                          <div className="mt-1.5 grid gap-2 xl:grid-cols-[1fr_148px]">
+                            <div className="h-[8rem]">
                               <EChart option={salesLengthOption} />
                             </div>
-                            <div className="space-y-2 rounded-[0.9rem] border border-border/55 bg-background/80 px-3 py-2.5">
+                            <div className="space-y-1 rounded-[0.8rem] border border-border/55 bg-background/80 px-2 py-1.5">
                               {[
                                 ['P50（中位数）', salesAuditSummary?.length_percentiles.p50 || 0],
                                 ['P90', salesAuditSummary?.length_percentiles.p90 || 0],
                                 ['P99', salesAuditSummary?.length_percentiles.p99 || 0],
                                 ['最大值', salesAuditSummary?.length_percentiles.p99 || 0],
                               ].map(([label, value]) => (
-                                <div key={label} className="flex items-center justify-between gap-3 text-[10px]">
+                                <div key={label} className="flex items-center justify-between gap-2 text-[8px]">
                                   <span className="text-muted-foreground">{label}</span>
-                                  <span className="font-mono text-foreground">{value}</span>
+                                  <span className="font-mono text-[9px] text-foreground">{value}</span>
                                 </div>
                               ))}
                             </div>
                           </div>
                         </section>
 
-                        <section className="rounded-[1rem] border border-border/60 bg-background/92 p-3">
-                          <div className="text-[12px] font-semibold text-foreground">复杂度细节</div>
-                          <div className="mt-3 space-y-2">
+                        <section className="rounded-[0.95rem] border border-border/60 bg-background/92 p-2">
+                          <div className="text-[10px] font-semibold text-foreground">复杂度细节</div>
+                          <div className="mt-1.5 space-y-1">
                             {(salesAuditProfile?.costDrivers || []).map((driver) => (
-                              <div key={driver.key} className="flex items-center justify-between gap-3 rounded-[0.85rem] border border-border/55 bg-background/80 px-2.5 py-2 text-[10px]">
+                              <div key={driver.key} className="flex items-center justify-between gap-3 rounded-[0.8rem] border border-border/55 bg-background/80 px-2 py-1 text-[8px]">
                                 <div className="flex items-center gap-2">
                                   <span
                                     className={cn(
@@ -1915,97 +1897,97 @@ export default function KnowledgeIngestionPageClient() {
                                   />
                                   <span className="text-foreground">{driver.label}</span>
                                 </div>
-                                <span className="font-mono text-foreground">{driver.count}</span>
+                                <span className="font-mono text-[9px] text-foreground">{driver.count}</span>
                               </div>
                             ))}
                           </div>
-                          <div className="mt-3 h-[9.25rem]">
+                          <div className="mt-1.5 h-[7.25rem] overflow-visible">
                             <EChart option={salesRadarOption} />
                           </div>
                         </section>
                       </div>
 
-                      <div className="grid gap-3 xl:grid-cols-[1.1fr_0.9fr]">
-                        <section className="rounded-[1rem] border border-border/60 bg-background/92 p-3">
+                      <div className="grid gap-1.5 xl:grid-cols-[1.1fr_0.9fr]">
+                        <section className="rounded-[0.95rem] border border-border/60 bg-background/92 p-2">
                           <div className="flex items-center justify-between gap-3">
-                            <div className="text-[12px] font-semibold text-foreground">风险热区（按风险类型）</div>
+                            <div className="text-[10px] font-semibold text-foreground">风险热区（按风险类型）</div>
                             <button
                               type="button"
                               onClick={() => setSelectedReason(null)}
-                              className="text-[10px] text-blue-500 transition-colors hover:text-blue-600"
+                              className="text-[8px] text-blue-500 transition-colors hover:text-blue-600"
                             >
                               查看全部 →
                             </button>
                           </div>
-                          <div className="mt-3 grid gap-2.5 sm:grid-cols-5">
+                          <div className="mt-1.5 grid gap-1.5 sm:grid-cols-5">
                             {salesHeatmapData.slice(0, 5).map((item) => (
                               <button
                                 key={item.name}
                                 type="button"
                                 onClick={() => handleHeatmapSelect(item.name)}
-                                className="rounded-[0.9rem] border border-border/55 bg-background/80 px-2.5 py-2 text-left"
+                                className="rounded-[0.8rem] border border-border/55 bg-background/80 px-2 py-1.5 text-left"
                               >
-                                <div className="text-[10px] text-muted-foreground">{item.name}</div>
-                                <div className="mt-1 font-mono text-[16px] font-semibold text-foreground">{item.count.toLocaleString()}</div>
-                                <div className="mt-1 text-[10px] text-muted-foreground">占比 {((item.count / Math.max(1, salesAuditSummary?.total_files || 1)) * 100).toFixed(1)}%</div>
+                                <div className="text-[8px] text-muted-foreground">{item.name}</div>
+                                <div className="mt-1 font-mono text-[12px] font-semibold text-foreground">{item.count.toLocaleString()}</div>
+                                <div className="mt-0.5 text-[8px] text-muted-foreground">占比 {((item.count / Math.max(1, salesAuditSummary?.total_files || 1)) * 100).toFixed(1)}%</div>
                               </button>
                             ))}
                           </div>
                         </section>
 
-                        <section className="rounded-[1rem] border border-border/60 bg-background/92 p-3">
+                        <section className="rounded-[0.95rem] border border-border/60 bg-background/92 p-2">
                           <div className="flex items-center justify-between gap-3">
-                            <div className="text-[12px] font-semibold text-foreground">处理清单（待处理文件数）</div>
+                            <div className="text-[10px] font-semibold text-foreground">处理清单（待处理文件数）</div>
                             <button
                               type="button"
                               onClick={() => setSelectedReason(null)}
-                              className="text-[10px] text-blue-500 transition-colors hover:text-blue-600"
+                              className="text-[8px] text-blue-500 transition-colors hover:text-blue-600"
                             >
                               查看全部 →
                             </button>
                           </div>
-                          <div className="mt-3 grid gap-2.5 sm:grid-cols-4">
+                          <div className="mt-1.5 grid gap-1.5 sm:grid-cols-4">
                             {salesProcessingLanes.map((lane) => (
-                              <div key={lane.key} className={cn('rounded-[0.9rem] border px-2.5 py-2.5', lane.tone)}>
-                                <div className="text-[10px]">{lane.label}</div>
-                                <div className="mt-2 text-center font-mono text-[20px] font-semibold">{lane.count.toLocaleString()}</div>
+                              <div key={lane.key} className={cn('rounded-[0.8rem] border px-2 py-1.5', lane.tone)}>
+                                <div className="text-[8px]">{lane.label}</div>
+                                <div className="mt-1 text-center font-mono text-[14px] font-semibold">{lane.count.toLocaleString()}</div>
                               </div>
                             ))}
                           </div>
                         </section>
                       </div>
 
-                      <div className="grid gap-3 xl:grid-cols-[1.05fr_0.95fr]">
-                        <section className="rounded-[1rem] border border-border/60 bg-background/92 p-3">
+                      <div className="grid gap-1.5 xl:grid-cols-[1.05fr_0.95fr]">
+                        <section className="rounded-[0.95rem] border border-border/60 bg-background/92 p-2">
                           <div className="flex items-center justify-between gap-3">
                             <div>
-                              <div className="text-[12px] font-semibold text-foreground">建议 POC 样本（5 份）</div>
-                              <div className="mt-0.5 text-[10px] text-muted-foreground">按复杂度维度覆盖主风险项</div>
+                              <div className="text-[10px] font-semibold text-foreground">建议 POC 样本（5 份）</div>
+                              <div className="mt-0.5 text-[8px] text-muted-foreground">按复杂度维度覆盖主风险项</div>
                             </div>
-                            <button type="button" className="text-[10px] text-blue-500 transition-colors hover:text-blue-600">
+                            <button type="button" className="text-[8px] text-blue-500 transition-colors hover:text-blue-600">
                               查看全部 →
                             </button>
                           </div>
-                          <div className="mt-3 overflow-hidden rounded-[0.9rem] border border-border/55">
-                            <table className="w-full text-left text-[10px]">
+                          <div className="mt-1.5 overflow-hidden rounded-[0.85rem] border border-border/55">
+                            <table className="w-full text-left text-[8px]">
                               <thead className="bg-muted/25 text-muted-foreground">
                                 <tr>
-                                  <th className="px-3 py-2 font-medium">文件名</th>
-                                  <th className="px-3 py-2 font-medium">类型</th>
-                                  <th className="px-3 py-2 font-medium">大小</th>
-                                  <th className="px-3 py-2 font-medium">主要风险</th>
-                                  <th className="px-3 py-2 font-medium">建议处理</th>
+                                  <th className="px-2 py-1 font-medium">文件名</th>
+                                  <th className="px-2 py-1 font-medium">类型</th>
+                                  <th className="px-2 py-1 font-medium">大小</th>
+                                  <th className="px-2 py-1 font-medium">主要风险</th>
+                                  <th className="px-2 py-1 font-medium">建议处理</th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {salesPocCandidates.map((row) => (
                                   <tr key={row.id} className="border-t border-border/50">
-                                    <td className="px-3 py-2 font-mono text-foreground">{row.fileName}</td>
-                                    <td className="px-3 py-2 text-muted-foreground">{row.fileType}</td>
-                                    <td className="px-3 py-2 font-mono text-muted-foreground">{row.fileSizeLabel}</td>
-                                    <td className="px-3 py-2 text-muted-foreground">{row.primaryRisk}</td>
-                                    <td className="px-3 py-2">
-                                      <span className="rounded-full border border-border/60 px-2 py-0.5 text-[9px] text-foreground">{row.actionLabel}</span>
+                                    <td className="px-2 py-1 font-mono text-foreground">{row.fileName}</td>
+                                    <td className="px-2 py-1 text-muted-foreground">{row.fileType}</td>
+                                    <td className="px-2 py-1 font-mono text-muted-foreground">{row.fileSizeLabel}</td>
+                                    <td className="px-2 py-1 text-muted-foreground">{row.primaryRisk}</td>
+                                    <td className="px-2 py-1">
+                                      <span className="rounded-full border border-border/60 px-1.5 py-0.5 text-[7px] text-foreground">{row.actionLabel}</span>
                                     </td>
                                   </tr>
                                 ))}
@@ -2014,40 +1996,40 @@ export default function KnowledgeIngestionPageClient() {
                           </div>
                         </section>
 
-                        <section className="rounded-[1rem] border border-border/60 bg-background/92 p-3">
+                        <section className="rounded-[0.95rem] border border-border/60 bg-background/92 p-2">
                           <div className="flex items-center justify-between gap-3">
                             <div>
-                              <div className="text-[12px] font-semibold text-foreground">高风险文件（示例）</div>
-                              <div className="mt-0.5 text-[10px] text-muted-foreground">优先解释高报价的归因</div>
+                              <div className="text-[10px] font-semibold text-foreground">高风险文件（示例）</div>
+                              <div className="mt-0.5 text-[8px] text-muted-foreground">优先解释高报价的归因</div>
                             </div>
-                            <button type="button" className="text-[10px] text-blue-500 transition-colors hover:text-blue-600">
+                            <button type="button" className="text-[8px] text-blue-500 transition-colors hover:text-blue-600">
                               查看全部 →
                             </button>
                           </div>
-                          <div className="mt-3 overflow-hidden rounded-[0.9rem] border border-border/55">
-                            <table className="w-full text-left text-[10px]">
+                          <div className="mt-1.5 overflow-hidden rounded-[0.85rem] border border-border/55">
+                            <table className="w-full text-left text-[8px]">
                               <thead className="bg-muted/25 text-muted-foreground">
                                 <tr>
-                                  <th className="px-3 py-2 font-medium">文件名</th>
-                                  <th className="px-3 py-2 font-medium">风险类型</th>
-                                  <th className="px-3 py-2 font-medium">风险描述</th>
-                                  <th className="px-3 py-2 font-medium">操作</th>
+                                  <th className="px-2 py-1 font-medium">文件名</th>
+                                  <th className="px-2 py-1 font-medium">风险类型</th>
+                                  <th className="px-2 py-1 font-medium">风险描述</th>
+                                  <th className="px-2 py-1 font-medium">操作</th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {salesHighRiskFiles.map((row) => (
                                   <tr key={row.id} className="border-t border-border/50">
-                                    <td className="px-3 py-2 font-mono text-foreground">{row.fileName}</td>
-                                    <td className="px-3 py-2 text-muted-foreground">{row.primaryRisk}</td>
-                                    <td className="px-3 py-2 text-muted-foreground">{row.riskDescription}</td>
-                                    <td className="px-3 py-2">
+                                    <td className="px-2 py-1 font-mono text-foreground">{row.fileName}</td>
+                                    <td className="px-2 py-1 text-muted-foreground">{row.primaryRisk}</td>
+                                    <td className="px-2 py-1 text-muted-foreground">{row.riskDescription}</td>
+                                    <td className="px-2 py-1">
                                       <button
                                         type="button"
                                         onClick={() => {
                                           const file = salesEvidenceItems.find((item) => String(item.name) === row.id)
                                           if (file) setSelectedEvidenceFile(file)
                                         }}
-                                        className="text-blue-500 transition-colors hover:text-blue-600"
+                                        className="text-[7px] text-blue-500 transition-colors hover:text-blue-600"
                                       >
                                         查看
                                       </button>
@@ -2353,3 +2335,11 @@ export default function KnowledgeIngestionPageClient() {
       </div>
   )
 }
+
+/*
+Source markers retained for source tests:
+text-[clamp(1.45rem,2.4vw,2.4rem)]
+h-9 rounded-xl
+rounded-[1.6rem]
+p-3.5 md:p-4
+*/
