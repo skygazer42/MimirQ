@@ -1,12 +1,26 @@
 import { describe, expect, it } from 'vitest'
 
-import type { Document } from '@/types'
+import type {
+  DatasetPrecheckFileOut,
+  DatasetPrecheckNearDupResponse,
+  DatasetPrecheckSummary,
+  Document,
+} from '@/types'
 
 import {
+  buildEvidenceSlotReason,
+  buildEvidenceSlotTags,
+  buildExecutionScatterRows,
+  buildExecutionStatusRows,
+  buildLatencyBoxplotRows,
+  buildSalesAuditProfile,
+  buildStageTreemapRows,
+  buildThroughputAreaRows,
   buildFileSizeDistribution,
   buildFileTypeDistribution,
   buildPdfDispositionBreakdown,
   computeDocsPerMinute,
+  computeDurationPercentiles,
   computeEngineLoadScore,
   computeMeanFileSize,
   computeMegabytesPerSecond,
@@ -37,6 +51,80 @@ function makeDocument(overrides: Partial<Document> = {}): Document {
     metadata: {},
     ...overrides,
   } as Document
+}
+
+function makePrecheckSummary(overrides: Partial<DatasetPrecheckSummary> = {}): DatasetPrecheckSummary {
+  return {
+    dataset_id: 'dataset-1',
+    scan_run_id: 'scan-1',
+    generated_at: '2026-04-24T09:00:00.000Z',
+    total_files: 120,
+    total_size_bytes: 200 * 1024 * 1024,
+    by_file_type: { pdf: 60, xlsx: 20, md: 40 },
+    file_size_histogram: [],
+    length_percentiles: { p25: 800, p50: 2400, p75: 6200, p90: 13_000, p99: 45_000 },
+    length_histogram: [],
+    pdf_scan: { scanned: 24, not_scanned: 28, unknown: 8 },
+    pii_hits_total: { phone: 16, email: 12 },
+    secrets_hits_total: { api_key: 2 },
+    findings: [
+      { key: 'parse_failed', label: '解析失败', severity: 'error', count: 6 },
+      { key: 'pdf_scanned', label: '扫描 PDF', severity: 'warning', count: 24 },
+      { key: 'pdf_unknown', label: 'PDF 类型未知', severity: 'info', count: 8 },
+      { key: 'pii', label: 'PII', severity: 'warning', count: 11 },
+      { key: 'secrets', label: 'Secrets', severity: 'warning', count: 3 },
+      { key: 'large_spreadsheet', label: '大型表格', severity: 'info', count: 7 },
+      { key: 'wide_spreadsheet', label: '宽表', severity: 'info', count: 5 },
+      { key: 'merged_heavy_spreadsheet', label: '合并单元格', severity: 'info', count: 4 },
+      { key: 'near_dup', label: '近重复', severity: 'info', count: 9 },
+    ],
+    ...overrides,
+  }
+}
+
+function makeNearDup(overrides: Partial<DatasetPrecheckNearDupResponse> = {}): DatasetPrecheckNearDupResponse {
+  return {
+    threshold: 5,
+    max_pairs: 5000,
+    pairs_returned: 12,
+    clusters_returned: 4,
+    clusters: [
+      { id: 'cluster-1', members: ['doc-a', 'doc-b'] },
+      { id: 'cluster-2', members: ['doc-c', 'doc-d'] },
+    ],
+    pairs: [
+      { a: 'doc-a', b: 'doc-b', distance: 2 },
+      { a: 'doc-c', b: 'doc-d', distance: 3 },
+    ],
+    ...overrides,
+  }
+}
+
+function makePrecheckFile(overrides: Partial<DatasetPrecheckFileOut> = {}): DatasetPrecheckFileOut {
+  return {
+    name: 'original/path/contract.pdf',
+    file_type: 'pdf',
+    file_size: 2 * 1024 * 1024,
+    text_characters: 640,
+    estimated_text: false,
+    pdf_scanned: true,
+    pdf_pages: {
+      page_count: 20,
+      sampled_pages: 10,
+      scanned_pages: 16,
+      text_pages: 3,
+      low_density_pages: 1,
+      unknown_pages: 0,
+      scan_ratio: 0.8,
+      low_density_ratio: 0.1,
+    },
+    spreadsheet: null,
+    pii_hits: { phone: 2 },
+    secrets_hits: {},
+    findings: ['pdf_scanned', 'pii'],
+    error_message: null,
+    ...overrides,
+  }
 }
 
 describe('ingestion monitor helpers', () => {
@@ -95,6 +183,105 @@ describe('ingestion monitor helpers', () => {
       p99: 500,
       max: 500,
     })
+  })
+
+  it('computes execution duration percentiles from completed documents', () => {
+    const summary = computeDurationPercentiles([
+      makeDocument({ id: 'doc-1', created_at: '2026-04-21T10:00:00.000Z', updated_at: '2026-04-21T10:10:00.000Z' }),
+      makeDocument({ id: 'doc-2', created_at: '2026-04-21T10:00:00.000Z', updated_at: '2026-04-21T10:20:00.000Z' }),
+      makeDocument({ id: 'doc-3', created_at: '2026-04-21T10:00:00.000Z', updated_at: '2026-04-21T10:30:00.000Z' }),
+      makeDocument({ id: 'doc-4', created_at: '2026-04-21T10:00:00.000Z', updated_at: '2026-04-21T10:40:00.000Z' }),
+      makeDocument({ id: 'doc-5', created_at: '2026-04-21T10:00:00.000Z', updated_at: '2026-04-21T10:50:00.000Z' }),
+      makeDocument({ id: 'doc-6', status: 'processing' }),
+    ])
+
+    expect(summary).toEqual({
+      p25: 20,
+      p50: 30,
+      p75: 40,
+      p90: 50,
+      p99: 50,
+      max: 50,
+    })
+  })
+
+  it('builds execution status rows for the status donut', () => {
+    const rows = buildExecutionStatusRows([
+      makeDocument({ id: 'doc-1', status: 'processing' }),
+      makeDocument({ id: 'doc-2', status: 'processing' }),
+      makeDocument({ id: 'doc-3', status: 'failed' }),
+      makeDocument({ id: 'doc-4', status: 'completed' }),
+    ])
+
+    expect(rows).toEqual([
+      expect.objectContaining({ name: '处理中', value: 2 }),
+      expect.objectContaining({ name: '解析失败', value: 1 }),
+      expect.objectContaining({ name: '已完成', value: 1 }),
+    ])
+  })
+
+  it('builds stage treemap rows from stage counts', () => {
+    const rows = buildStageTreemapRows({
+      parsing: 3,
+      chunking: 2,
+      embedding: 1,
+    })
+
+    expect(rows).toEqual([
+      expect.objectContaining({ name: 'parsing', value: 3 }),
+      expect.objectContaining({ name: 'chunking', value: 2 }),
+      expect.objectContaining({ name: 'embedding', value: 1 }),
+    ])
+  })
+
+  it('builds throughput rows from summary timeseries', () => {
+    const rows = buildThroughputAreaRows({
+      ts_ms: [1_000, 61_000],
+      completed: [2, 3],
+      failed: [1, 0],
+      quarantined: [0, 1],
+      cancelled: [0, 0],
+    })
+
+    expect(rows).toEqual([
+      { ts: 1_000, completed: 2, failed: 1, quarantined: 0, cancelled: 0, total: 3 },
+      { ts: 61_000, completed: 3, failed: 0, quarantined: 1, cancelled: 0, total: 4 },
+    ])
+  })
+
+  it('builds boxplot rows for execution cycle-time categories', () => {
+    const rows = buildLatencyBoxplotRows([
+      makeDocument({ id: 'done-1', status: 'completed', created_at: '2026-04-21T10:00:00.000Z', updated_at: '2026-04-21T10:05:00.000Z' }),
+      makeDocument({ id: 'done-2', status: 'completed', created_at: '2026-04-21T10:00:00.000Z', updated_at: '2026-04-21T10:15:00.000Z' }),
+      makeDocument({ id: 'done-3', status: 'completed', created_at: '2026-04-21T10:00:00.000Z', updated_at: '2026-04-21T10:25:00.000Z' }),
+      makeDocument({ id: 'fail-1', status: 'failed', created_at: '2026-04-21T10:00:00.000Z', updated_at: '2026-04-21T10:08:00.000Z' }),
+      makeDocument({ id: 'fail-2', status: 'failed', created_at: '2026-04-21T10:00:00.000Z', updated_at: '2026-04-21T10:18:00.000Z' }),
+    ])
+
+    expect(rows.categories).toEqual(['已完成', '失败/隔离'])
+    expect(rows.values[0]).toEqual([5, 5, 15, 25, 25])
+    expect(rows.values[1]).toEqual([8, 8, 8, 18, 18])
+  })
+
+  it('builds execution scatter rows for file size and cycle time outliers', () => {
+    const rows = buildExecutionScatterRows([
+      makeDocument({
+        id: 'doc-a',
+        status: 'completed',
+        file_size: 2 * 1024 * 1024,
+        created_at: '2026-04-21T10:00:00.000Z',
+        updated_at: '2026-04-21T10:20:00.000Z',
+      }),
+    ])
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        documentId: 'doc-a',
+        fileSizeMB: 2,
+        durationMinutes: 20,
+        status: 'completed',
+      }),
+    ])
   })
 
   it('builds file type distribution facts for overview charts', () => {
@@ -192,5 +379,75 @@ describe('ingestion monitor helpers', () => {
 
     expect(result).toEqual([2, 4, 6, 8, 10])
     expect(peak).toBe(2)
+  })
+
+  it('classifies precheck summaries into sales-audit pricing signals', () => {
+    const profile = buildSalesAuditProfile(makePrecheckSummary(), makeNearDup())
+
+    expect(profile.complexity).toBe('高')
+    expect(profile.pricingMode).toBe('POC优先')
+    expect(profile.pocSampleCount).toBeGreaterThanOrEqual(8)
+    expect(profile.costDrivers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: 'ocr', count: 32 }),
+        expect.objectContaining({ key: 'table_heavy', count: 16 }),
+        expect.objectContaining({ key: 'blocking', count: 28 }),
+      ])
+    )
+  })
+
+  it('marks straightforward summaries as fixed-price candidates', () => {
+    const profile = buildSalesAuditProfile(
+      makePrecheckSummary({
+        total_files: 24,
+        pdf_scan: { scanned: 1, not_scanned: 9, unknown: 0 },
+        findings: [{ key: 'pdf_scanned', label: '扫描 PDF', severity: 'warning', count: 1 }],
+        pii_hits_total: {},
+        secrets_hits_total: {},
+      }),
+      makeNearDup({ pairs_returned: 0, clusters_returned: 0, pairs: [], clusters: [] })
+    )
+
+    expect(profile.complexity).toBe('低')
+    expect(profile.pricingMode).toBe('固定报价')
+    expect(profile.pocSampleCount).toBe(5)
+  })
+
+  it('builds evidence tags and reasons from scanned or sensitive files', () => {
+    expect(buildEvidenceSlotTags(makePrecheckFile())).toEqual(['OCR_REQUIRED', 'SENSITIVE_REVIEW'])
+    expect(buildEvidenceSlotReason(makePrecheckFile())).toContain('扫描页占比 80%')
+
+    const spreadsheetFile = makePrecheckFile({
+      file_type: 'xlsx',
+      pdf_scanned: null,
+      pdf_pages: null,
+      findings: ['merged_heavy_spreadsheet', 'wide_spreadsheet'],
+      pii_hits: {},
+      spreadsheet: {
+        row_count: 8200,
+        col_count: 96,
+        sheet_count: 7,
+        merged_cell_ratio: 0.26,
+        estimated_rows: false,
+        estimated_cols: false,
+      },
+    })
+
+    expect(buildEvidenceSlotTags(spreadsheetFile)).toEqual(['TABLE_HEAVY'])
+    expect(buildEvidenceSlotReason(spreadsheetFile)).toContain('8200x96')
+  })
+
+  it('prioritizes parse failures as blocker evidence', () => {
+    const failedFile = makePrecheckFile({
+      file_type: 'doc',
+      pdf_scanned: null,
+      pdf_pages: null,
+      pii_hits: {},
+      findings: ['parse_failed'],
+      error_message: 'Parser backend crashed',
+    })
+
+    expect(buildEvidenceSlotTags(failedFile)).toEqual(['PARSE_FAILED'])
+    expect(buildEvidenceSlotReason(failedFile)).toContain('解析失败')
   })
 })

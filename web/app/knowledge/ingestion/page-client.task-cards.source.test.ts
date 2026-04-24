@@ -3,19 +3,31 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-describe('ingestion precheck sample rail', () => {
-  it('uses a precheck sample rail with searchable representative samples and demo fallback data', () => {
+describe('knowledge ingestion sales-audit evidence tables', () => {
+  it('uses screenshot-like processing panels and tabular evidence blocks instead of a left evidence rail', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'page-client.tsx'), 'utf8')
 
-    expect(src).toContain('预检抽样')
-    expect(src).toContain('代表样本')
-    expect(src).toContain('SearchInput')
-    expect(src).toContain('所有状态')
-    expect(src).toContain("setDemoDocuments(buildDemoDocuments(documents))")
-    expect(src).toContain("import { buildDemoDocuments } from './demo-documents'")
-    expect(src).toContain('虚拟样本仅用于预检演示')
-    expect(src).toContain('StatusBadge')
-    expect(src).not.toContain('hoveredDocumentId')
-    expect(src).not.toContain('swipedDocumentId')
+    expect(src).toContain('风险热区（按风险类型）')
+    expect(src).toContain('处理清单（待处理文件数）')
+    expect(src).toContain('建议 POC 样本')
+    expect(src).toContain('高风险文件（示例）')
+    expect(src).toContain('纳入 POC')
+    expect(src).toContain('加入阻断')
+    expect(src).toContain('查看审计依据')
+    expect(src).toContain('FILE_')
+    expect(src).toContain('风险类型')
+    expect(src).toContain('风险描述')
+    expect(src).toContain('操作')
+    expect(src).toContain('buildEvidenceSlotTags')
+    expect(src).toContain('buildEvidenceSlotReason')
+    expect(src).toContain('handleToggleDemoMode')
+    expect(src).toContain('salesPocCandidates')
+    expect(src).toContain('salesHighRiskFiles')
+    expect(src).toContain('<IngestionDetailDialog')
+    expect(src).toContain("globalEventBus.on('ingestion:toggle-demo-mode'")
+    expect(src).toContain("params.set('demo', '1')")
+    expect(src).toContain("params.delete('demo')")
+    expect(src).not.toContain('执行队列')
+    expect(src).not.toContain('最近变更文档')
   })
 })

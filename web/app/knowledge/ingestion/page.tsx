@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic'
 import { useTranslations } from 'next-intl'
 
+import { AppFrame } from '@/components/app-frame'
 import { PageLoading } from '@/components/ui/page-loading'
 
 const KnowledgeIngestionPageClient = dynamic(() => import('./page-client'), {
@@ -11,7 +12,11 @@ const KnowledgeIngestionPageClient = dynamic(() => import('./page-client'), {
 })
 
 export default function KnowledgeIngestionPage() {
-  return <KnowledgeIngestionPageClient />
+  return (
+    <AppFrame>
+      <KnowledgeIngestionPageClient />
+    </AppFrame>
+  )
 }
 
 function KnowledgeIngestionLoading() {

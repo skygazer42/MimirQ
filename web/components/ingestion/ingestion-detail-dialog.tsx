@@ -11,7 +11,7 @@ import type { Document, DocumentVersionDiff, DocumentVersionList } from '@/types
 import { cn, formatDate, formatFileSize } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useDocumentView } from '@/store/document-view'
 import { formatApiError } from '@/lib/api-errors'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -189,12 +189,15 @@ export function IngestionDetailDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="left-auto right-0 top-0 h-dvh w-[min(560px,100vw)] max-w-[560px] translate-x-0 translate-y-0 rounded-none p-0 overflow-hidden border-l border-border/60 bg-background/95 shadow-strong data-[state=open]:animate-in data-[state=open]:slide-in-from-right-full data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right-full data-[state=closed]:fade-out-0 duration-280 ease-spring data-[state=open]:duration-280 data-[state=closed]:duration-220">
-        <DialogHeader className="sr-only">
-          <DialogTitle>{doc?.filename || t("header.fallbackTitle")}</DialogTitle>
-          <DialogDescription>{documentId || ''}</DialogDescription>
-        </DialogHeader>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="right"
+        className="h-[100dvh] w-[min(820px,100vw)] max-w-[820px] overflow-hidden border-l border-border/60 bg-background/95 shadow-strong"
+      >
+        <SheetHeader className="sr-only">
+          <SheetTitle>{doc?.filename || t("header.fallbackTitle")}</SheetTitle>
+          <SheetDescription>{documentId || ''}</SheetDescription>
+        </SheetHeader>
 
         <div className="flex h-full min-h-0 flex-col bg-background">
           <div className="border-b border-border/60 bg-card px-6 py-5">
@@ -493,8 +496,8 @@ export function IngestionDetailDialog({
             </>
           )}
         </div>
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
 
   )
 }
