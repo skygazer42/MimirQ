@@ -22,6 +22,7 @@ import requests
 from langchain_core.documents import Document
 
 from app.core.config import settings
+from app.parsing.utils.markdown_response import extract_markdown_response_text
 from app.parsing.utils.zip_processor import ZipImageProcessor
 from app.rag.core.logging import get_logger
 
@@ -124,12 +125,7 @@ class MarkerParser:
 
     @staticmethod
     def _extract_markdown_from_json(data: Any) -> str:
-        if isinstance(data, dict):
-            for key in ("markdown", "md", "content", "text", "result", "output"):
-                val = data.get(key)
-                if isinstance(val, str) and val.strip():
-                    return val
-        return ""
+        return extract_markdown_response_text(data)
 
     def _handle_zip_response(self, *, resp: requests.Response, artifact_root: Path) -> tuple[str, str | None]:
         artifact_root.mkdir(parents=True, exist_ok=True)

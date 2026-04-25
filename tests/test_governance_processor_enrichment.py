@@ -1,6 +1,7 @@
 from langchain_core.documents import Document
 
 from app.rag.preprocessing.processor import governance_processor
+from app.rag.preprocessing.processor import GovernanceCleanOptions
 
 
 def test_governance_processor_enrichment_and_stats():
@@ -99,3 +100,25 @@ def test_governance_processor_enrichment_and_stats():
     assert stats.keywords_total > 0
     assert stats.titles_docs == 1
     assert stats.tags_docs == 1
+
+
+def test_governance_processor_can_drop_high_perplexity_proxy_noise() -> None:
+    noisy = (
+        "xqv91 ztm42 qwrtyplk nmzx81 plmokn bvczx98 qrptlk "
+        "jwqz88 mnlkp0 trvbn7 qxplmn8 zvqtr11 "
+    ) * 8
+
+    docs, stats = governance_processor.clean_documents(
+        [Document(page_content=noisy, metadata={"source": "noise.txt"})],
+        options=GovernanceCleanOptions(
+            drop_outline_only=False,
+            drop_low_density=False,
+            drop_high_perplexity=True,
+            drop_high_perplexity_threshold=0.55,
+            drop_high_perplexity_min_tokens=20,
+        ),
+    )
+
+    assert docs == []
+    assert stats.dropped == 1
+    assert stats.drop_reasons == {"perplexity_proxy_high": 1}

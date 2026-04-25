@@ -305,6 +305,7 @@ def parse_pipeline_from_metadata(metadata: dict[str, Any]) -> PipelineOptions:
         chunk_strategy_params=_sanitize_chunk_strategy_params(pipeline.get("chunk_strategy_params")),
         embedding_context_prefix_enabled=_coerce_bool(index.get("embedding_context_prefix_enabled")),
         embedding_contextual_retrieval_enabled=_coerce_bool(index.get("embedding_contextual_retrieval_enabled")),
+        embedding_contextual_retrieval_lazy_mode=_coerce_bool(index.get("embedding_contextual_retrieval_lazy_mode")),
         embedding_field_aware_enabled=_coerce_bool(index.get("embedding_field_aware_enabled")),
         chunk_vector_enabled=_coerce_bool(index.get("chunk_vector_enabled")),
         bm25_index_enabled=_coerce_bool(index.get("bm25_index_enabled")),
@@ -535,6 +536,8 @@ def build_pipeline_metadata(options: PipelineOptions) -> dict[str, Any] | None:
         index["embedding_context_prefix_enabled"] = bool(options.embedding_context_prefix_enabled)
     if options.embedding_contextual_retrieval_enabled is not None:
         index["embedding_contextual_retrieval_enabled"] = bool(options.embedding_contextual_retrieval_enabled)
+    if options.embedding_contextual_retrieval_lazy_mode is not None:
+        index["embedding_contextual_retrieval_lazy_mode"] = bool(options.embedding_contextual_retrieval_lazy_mode)
     if options.embedding_field_aware_enabled is not None:
         index["embedding_field_aware_enabled"] = bool(options.embedding_field_aware_enabled)
     if index:
@@ -916,6 +919,11 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         if options.embedding_contextual_retrieval_enabled is None
         else bool(options.embedding_contextual_retrieval_enabled)
     )
+    embedding_contextual_retrieval_lazy_mode = (
+        getattr(settings, "CONTEXTUAL_RETRIEVAL_LAZY_MODE", False)
+        if options.embedding_contextual_retrieval_lazy_mode is None
+        else bool(options.embedding_contextual_retrieval_lazy_mode)
+    )
     embedding_field_aware_enabled = (
         False if options.embedding_field_aware_enabled is None else bool(options.embedding_field_aware_enabled)
     )
@@ -1063,6 +1071,7 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         chunk_strategy_params=dict(chunk_strategy_params),
         embedding_context_prefix_enabled=bool(embedding_context_prefix_enabled),
         embedding_contextual_retrieval_enabled=bool(embedding_contextual_retrieval_enabled),
+        embedding_contextual_retrieval_lazy_mode=bool(embedding_contextual_retrieval_lazy_mode),
         embedding_field_aware_enabled=bool(embedding_field_aware_enabled),
         chunk_vector_enabled=_resolve_flag(settings.CHUNK_VECTOR_ENABLED, options.chunk_vector_enabled),
         bm25_index_enabled=_resolve_flag(settings.BM25_INDEX_ENABLED, options.bm25_index_enabled),
@@ -1095,5 +1104,6 @@ def build_indexing_options(effective: PipelineEffective) -> IndexingOptions:
         entity_vector_enabled=effective.entity_vector_enabled,
         embedding_context_prefix_enabled=effective.embedding_context_prefix_enabled,
         embedding_contextual_retrieval_enabled=effective.embedding_contextual_retrieval_enabled,
+        embedding_contextual_retrieval_lazy_mode=effective.embedding_contextual_retrieval_lazy_mode,
         embedding_field_aware_enabled=effective.embedding_field_aware_enabled,
     )

@@ -1,6 +1,13 @@
 import uuid
 
+import langchain
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def _stub_langchain_globals(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(langchain, "debug", False, raising=False)
+    monkeypatch.setattr(langchain, "verbose", False, raising=False)
 
 
 @pytest.mark.asyncio
@@ -293,3 +300,65 @@ async def test_rag_retrieve_iterative_fallback_disabled_does_not_run_second_pass
     assert res.query_for_retrieval == "q_primary"
     assert len(calls) == 1
     assert (res.model_dump().get("metrics") or {}).get("iterative_retrieve") is None
+
+
+@pytest.mark.asyncio
+async def test_rag_retrieve_explicit_query_image_bypasses_text_modality_detection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True, raising=False)
+
+    import app.api.v1.rag as rag_api
+
+    monkeypatch.setattr(rag_api.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(rag_api.DatasetService, "get_dataset", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(rag_api.DatasetService, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
+
+    def _build_rag_state(**kwargs):  # noqa: ANN003
+        return dict(kwargs)
+
+    captured: dict = {}
+
+    def _run_retrieval(state):  # noqa: ANN001
+        captured.update(state)
+        return {
+            "citations": [{"chunk_id": "c1"}],
+            "metrics": {},
+            "query_for_retrieval": state.get("question") or "",
+        }
+
+    import app.rag.pipelines.langgraph as lg_mod
+    import app.rag.retrieval.orchestrator as orch_mod
+
+    monkeypatch.setattr(lg_mod, "build_rag_state", _build_rag_state, raising=True)
+    monkeypatch.setattr(orch_mod, "run_retrieval", _run_retrieval, raising=True)
+    monkeypatch.setattr(
+        "app.rag.policy.modality_router.classify_query_modality",
+        lambda _query: ("text", ["default_text"]),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        "app.services.chat_image_service.build_chat_image_context_docs",
+        lambda *_a, **_k: ([{"page_content": "image-doc", "metadata": {"kind": "image"}}], {"enabled": True, "used": True, "reason": "explicit_query_image", "hits": 1, "returned": 1}),
+        raising=True,
+    )
+
+    body = rag_api.EvidenceRetrieveRequest(
+        query="What does the login flow say?",
+        query_image="Find the login flow screenshot",
+        dataset_id=uuid.uuid4(),
+    )
+    res = await rag_api.retrieve_evidence(
+        body=body,
+        tenant_id=uuid.uuid4(),
+        account_id="u",
+        db=None,
+    )
+
+    assert captured.get("tag_docs") == [{"page_content": "image-doc", "metadata": {"kind": "image"}}]
+    assert (captured.get("image_meta") or {}).get("query_source") == "query_image"
+    assert (captured.get("multimodal_router") or {}).get("modality") == "image"
+    assert (res.metrics.get("multimodal_router") or {}).get("reasons") == ["explicit_query_image"]
+    assert (res.metrics.get("image") or {}).get("query_source") == "query_image"

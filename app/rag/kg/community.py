@@ -44,6 +44,27 @@ def _stable_sig(s: str) -> str:
     return s.casefold() if s.isascii() else s
 
 
+def _community_level(report: dict[str, Any]) -> int:
+    value = (report or {}).get("community_level")
+    if value is None:
+        value = (report or {}).get("level")
+    try:
+        return max(0, int(value or 0))
+    except Exception:
+        return 0
+
+
+def _community_rank_key(report: dict[str, Any]) -> tuple[float, int, int, str, str]:
+    community_id = str((report or {}).get("community_id") or "").strip()
+    return (
+        -_safe_float((report or {}).get("score"), default=0.0),
+        -int((report or {}).get("event_count") or 0),
+        -int((report or {}).get("entity_count") or 0),
+        _stable_sig(community_id),
+        community_id,
+    )
+
+
 def build_entity_cooccurrence_edges(
     *,
     event_entities: dict[str, list[str]],
@@ -98,6 +119,49 @@ def build_entity_cooccurrence_edges(
     # Deterministic order: weight desc, (a,b) asc.
     edges.sort(key=lambda e: (-float(e.w), _stable_sig(e.a), _stable_sig(e.b), e.a, e.b))
     return edges
+
+
+def build_multi_level_community_selection(
+    *,
+    reports: list[dict[str, Any]],
+    query_scope: str,
+    max_reports: int,
+) -> dict[str, Any]:
+    clean_reports = [dict(report) for report in (reports or []) if isinstance(report, dict)]
+    levels_present = sorted({_community_level(report) for report in clean_reports})
+    limit = max(0, int(max_reports or 0))
+    scope = str(query_scope or "").strip().lower() or "global"
+    if scope not in {"global", "local", "drift"}:
+        scope = "global"
+
+    selected: list[dict[str, Any]] = []
+    if limit > 0 and clean_reports:
+        if scope == "global":
+            selected = sorted(clean_reports, key=lambda report: (_community_level(report), _community_rank_key(report)))[:limit]
+        elif scope == "local":
+            selected = sorted(clean_reports, key=lambda report: (-_community_level(report), _community_rank_key(report)))[:limit]
+        else:
+            by_coarse = sorted(clean_reports, key=lambda report: (_community_level(report), _community_rank_key(report)))
+            if by_coarse:
+                selected.append(by_coarse[0])
+            selected_ids = {str(report.get("community_id") or "").strip() for report in selected}
+            by_deep = sorted(clean_reports, key=lambda report: (-_community_level(report), _community_rank_key(report)))
+            for report in by_deep:
+                community_id = str(report.get("community_id") or "").strip()
+                if community_id in selected_ids:
+                    continue
+                selected.append(report)
+                selected_ids.add(community_id)
+                if len(selected) >= limit:
+                    break
+            selected = selected[:limit]
+
+    return {
+        "schema": "mimirq.kg_community_selection.v1",
+        "query_scope": scope,
+        "levels_present": levels_present,
+        "selected_reports": selected,
+    }
 
 
 def label_propagation_communities(

@@ -17,6 +17,7 @@ __all__ = [
     "ExpandSearcher",
     "ExpandResult",
     "Tracker",
+    "build_subqrag_plan",
     "classify_kg_query_mode",
     "normalize_kg_query_mode",
     "build_mode_aware_recall_overrides",
@@ -70,6 +71,10 @@ def __getattr__(name: str) -> Any:  # pragma: no cover
         from app.rag.kg.search.tracker import Tracker
 
         return Tracker
+    if name == "build_subqrag_plan":
+        from app.rag.kg.search.subqrag import build_subqrag_plan
+
+        return build_subqrag_plan
     if name in {"classify_kg_query_mode", "normalize_kg_query_mode", "build_mode_aware_recall_overrides"}:
         from app.rag.kg.search.query_mode import (
             build_mode_aware_recall_overrides,

@@ -68,6 +68,15 @@ def _coerce_int(value: Any) -> int | None:
         return None
 
 
+def _coerce_float(value: Any) -> float | None:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except Exception:
+        return None
+
+
 def feedback_polarity_from_score(score: Any) -> str:
     numeric = _coerce_int(score)
     if numeric is None:
@@ -138,6 +147,24 @@ def build_poc_interaction_row(source: dict[str, Any]) -> dict[str, Any]:
     assistant_meta = _coerce_mapping(assistant_message.get("message_metadata"))
     feedback_extra = _coerce_mapping(feedback.get("extra"))
 
+    total_elapsed_sec = _coerce_float(assistant_meta.get("elapsed_sec"))
+    retrieval_elapsed_sec = _coerce_float(assistant_meta.get("retrieval_elapsed_sec"))
+    generation_elapsed_sec = _coerce_float(assistant_meta.get("generation_elapsed_sec"))
+    rewrite_elapsed_sec = _coerce_float(assistant_meta.get("rewrite_elapsed_sec"))
+    hyde_elapsed_sec = _coerce_float(assistant_meta.get("hyde_elapsed_sec"))
+    decompose_elapsed_sec = _coerce_float(assistant_meta.get("decompose_elapsed_sec"))
+    prompt_tokens = _coerce_int(
+        assistant_meta.get("prompt_tokens")
+        if assistant_meta.get("prompt_tokens") is not None
+        else assistant_meta.get("cost_llm_prompt_tokens")
+    )
+    completion_tokens = _coerce_int(
+        assistant_meta.get("completion_tokens")
+        if assistant_meta.get("completion_tokens") is not None
+        else assistant_meta.get("cost_llm_completion_tokens")
+    )
+    answer_tokens = _coerce_int(assistant_meta.get("answer_tokens") or completion_tokens or assistant_message.get("token_count"))
+
     request_id = _safe_str(
         trace.get("request_id")
         or assistant_meta.get("request_id")
@@ -197,7 +224,20 @@ def build_poc_interaction_row(source: dict[str, Any]) -> dict[str, Any]:
         "has_feedback": bool(feedback),
         "feedback_polarity": feedback_polarity,
         "attributable_feedback_eligible": feedback_polarity == "negative",
-        "latency_total_ms": _resolve_latency_total_ms(trace),
+        "latency_total_ms": (
+            int(round(total_elapsed_sec * 1000.0))
+            if total_elapsed_sec is not None
+            else _resolve_latency_total_ms(trace)
+        ),
+        "latency_total_sec": round(float(total_elapsed_sec), 4) if total_elapsed_sec is not None else None,
+        "retrieval_elapsed_sec": round(float(retrieval_elapsed_sec), 4) if retrieval_elapsed_sec is not None else None,
+        "generation_elapsed_sec": round(float(generation_elapsed_sec), 4) if generation_elapsed_sec is not None else None,
+        "rewrite_elapsed_sec": round(float(rewrite_elapsed_sec), 4) if rewrite_elapsed_sec is not None else None,
+        "hyde_elapsed_sec": round(float(hyde_elapsed_sec), 4) if hyde_elapsed_sec is not None else None,
+        "decompose_elapsed_sec": round(float(decompose_elapsed_sec), 4) if decompose_elapsed_sec is not None else None,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "answer_tokens": answer_tokens,
         "created_at": created_at,
         "trace_ts_ms": _coerce_int(trace.get("ts_ms")),
         "retrieval_trace_request_id": _safe_str(feedback_extra.get("retrieval_trace_request_id"), max_len=255),

@@ -13,6 +13,7 @@ from app.models.dataset import Dataset
 from app.models.feedback import MessageFeedback
 from app.rag.evaluation.poc_runner.attribution_classifier import classify_feedback_records
 from app.rag.evaluation.poc_runner.coverage_heatmap import build_document_heatmap
+from app.rag.evaluation.poc_runner.latency_decomposer import decompose_latency_rows
 from app.rag.evaluation.poc_runner.metrics import compute_feedback_metrics
 from app.rag.evaluation.poc_runner.png_tasks import (
     complete_png_export_task,
@@ -28,7 +29,9 @@ from app.rag.evaluation.poc_runner.reports.png_renderer import render_dataset_an
 from app.rag.evaluation.poc_runner.reports.umap_scatter import build_umap_scatter
 from app.rag.evaluation.poc_runner.source_builder import build_dataset_analysis_sources
 from app.rag.evaluation.poc_runner.telemetry import build_poc_interaction_rows
+from app.rag.industry_rules import load_ruleset
 from app.rag.industry_rules.loaders import write_glossary_candidates
+from app.rag.industry_rules.mining.auto_rules import build_ruleset_suggestions
 from app.services.dataset_service import DatasetService
 from app.services.rag_trace_service import list_rag_traces
 
@@ -254,6 +257,7 @@ def _build_full_bundle(
         "keyword_scores": patterns["keyword_scores"],
         "coverage_heatmap": build_document_heatmap(rows),
         "umap_scatter": build_umap_scatter(rows),
+        "latency_breakdown": decompose_latency_rows(rows),
         "rows": rows,
     }
 
@@ -327,6 +331,34 @@ def build_dataset_analysis_examples(
         "manual_review_candidates": manual_review,
         "glossary_candidates": bundle["glossary_candidates"][: max(1, int(limit or 1))],
     }
+
+
+def build_dataset_analysis_rule_suggestions(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    dataset_name: str,
+    ruleset_name: str,
+    from_ts: str | None = None,
+    to_ts: str | None = None,
+    feedback_polarity: str | None = None,
+    limit: int = 20,
+) -> dict[str, Any]:
+    rows = _load_dataset_scope_rows(
+        db=db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        from_ts=from_ts,
+        to_ts=to_ts,
+        feedback_polarity=feedback_polarity,
+    )
+    ruleset = load_ruleset(ruleset_name)
+    out = build_ruleset_suggestions(rows, ruleset=ruleset, top_k=limit)
+    out["dataset_id"] = str(dataset_id)
+    out["dataset_name"] = dataset_name
+    out["ruleset"] = ruleset_name
+    return out
 
 
 def build_tenant_dataset_analysis_dashboard(
@@ -498,6 +530,7 @@ def export_dataset_analysis_html(
         keyword_scores=bundle["keyword_scores"],
         coverage_heatmap=bundle["coverage_heatmap"],
         umap_scatter=bundle["umap_scatter"],
+        latency_breakdown=bundle["latency_breakdown"],
     )
     report["meta"]["definitions"] = bundle["meta"]["definitions"]
     return render_dataset_analysis_html(report)
@@ -595,6 +628,7 @@ def create_dataset_analysis_png_task(
                 keyword_scores=bundle["keyword_scores"],
                 coverage_heatmap=bundle["coverage_heatmap"],
                 umap_scatter=bundle["umap_scatter"],
+                latency_breakdown=bundle["latency_breakdown"],
             )
             report["meta"]["definitions"] = bundle["meta"]["definitions"]
             payload = render_dataset_analysis_png(report)

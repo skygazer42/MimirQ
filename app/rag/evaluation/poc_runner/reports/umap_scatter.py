@@ -4,8 +4,8 @@ from collections import Counter
 from typing import Any
 
 import numpy as np
+from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfVectorizer
-from umap.umap_ import UMAP
 
 _SCHEMA = "mimirq.dataset_analysis.umap_scatter.v1"
 
@@ -64,15 +64,27 @@ def _project_points(texts: list[str]) -> np.ndarray:
     if len(texts) == 2:
         return np.array([[0.0, 0.0], [1.0, 0.0]], dtype=float)
     matrix = TfidfVectorizer(min_df=1).fit_transform(texts)
-    projector = UMAP(
-        n_components=2,
-        n_neighbors=max(2, min(10, len(texts) - 1)),
-        min_dist=0.15,
-        metric="cosine",
-        random_state=42,
-        transform_seed=42,
-    )
-    return np.asarray(projector.fit_transform(matrix), dtype=float)
+    try:
+        from umap.umap_ import UMAP
+
+        projector = UMAP(
+            n_components=2,
+            n_neighbors=max(2, min(10, len(texts) - 1)),
+            min_dist=0.15,
+            metric="cosine",
+            random_state=42,
+            transform_seed=42,
+        )
+        return np.asarray(projector.fit_transform(matrix), dtype=float)
+    except Exception:
+        dense = np.asarray(matrix.toarray(), dtype=float)
+        if dense.shape[1] <= 1:
+            zeros = np.zeros((dense.shape[0], 2), dtype=float)
+            if dense.shape[1] == 1:
+                zeros[:, 0] = dense[:, 0]
+            return zeros
+        projector = TruncatedSVD(n_components=2, random_state=42)
+        return np.asarray(projector.fit_transform(matrix), dtype=float)
 
 
 def build_umap_scatter(

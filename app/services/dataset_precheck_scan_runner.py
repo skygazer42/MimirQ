@@ -40,6 +40,7 @@ from app.rag.core.logging import get_logger
 from app.rag.preprocessing.language import detect_language
 from app.rag.preprocessing.pii_anonymizer import anonymize_pii, find_pii_matches
 from app.rag.preprocessing.secrets import find_secret_matches, redact_secrets
+from app.rag.tools.pre_poc_scanner.settings import resolve_pre_poc_scanner_thresholds
 from app.services.dataset_precheck_near_dup_summary import summarize_near_dup_payload
 from app.services.dataset_precheck_risk_buckets import risk_buckets_for_file
 from app.services.dataset_precheck_classification import (
@@ -851,6 +852,18 @@ def run_dataset_precheck_scan(
     sample_size = safe_int(cfg.get("sample_size") or 60, default=60)
     sample_size = max(0, min(sample_size, 2000))
 
+    threshold_overrides = cfg.get("threshold_overrides") if isinstance(cfg.get("threshold_overrides"), dict) else {}
+    thresholds = resolve_pre_poc_scanner_thresholds(
+        {
+            **threshold_overrides,
+            "pdf_scan_ratio_threshold": cfg.get("pdf_scan_ratio_threshold"),
+            "near_dup_hamming_threshold": cfg.get("near_dup_hamming_threshold"),
+            "near_dup_max_pairs": cfg.get("near_dup_max_pairs"),
+            "sample_size": cfg.get("sample_size"),
+        }
+    )
+    sample_size = int(thresholds["sample_size"])
+
     # Optional: reuse unchanged file records from a previous scan run (incremental scans).
     reuse_unchanged_files = bool(cfg.get("reuse_unchanged_files", False))
     reuse_from_scan_run_id: UUID | None = None
@@ -874,11 +887,7 @@ def run_dataset_precheck_scan(
         cfg.get("pdf_text_chars_per_page") or getattr(settings, "PRECHECK_PDF_TEXT_CHARS_PER_PAGE", 200),
         default=200,
     )
-    pdf_scan_ratio_threshold = float(
-        cfg.get("pdf_scan_ratio_threshold")
-        if cfg.get("pdf_scan_ratio_threshold") is not None
-        else float(getattr(settings, "PRECHECK_PDF_SCAN_RATIO_THRESHOLD", 0.7) or 0.7)
-    )
+    pdf_scan_ratio_threshold = float(thresholds["pdf_scan_ratio_threshold"])
     spreadsheet_large_row_threshold = safe_int(
         getattr(settings, "PRECHECK_SPREADSHEET_LARGE_ROW_THRESHOLD", 5000),
         default=5000,
@@ -899,11 +908,11 @@ def run_dataset_precheck_scan(
 
     # Best-effort text quality / language heuristics (for precheck only).
     language_min_chars = safe_int(getattr(settings, "PRECHECK_LANGUAGE_MIN_CHARS", 40), default=40)
-    text_short_chars_threshold = safe_int(getattr(settings, "PRECHECK_TEXT_SHORT_CHARS_THRESHOLD", 200), default=200)
-    text_density_threshold = float(getattr(settings, "PRECHECK_TEXT_LOW_DENSITY_THRESHOLD", 0.12) or 0.12)
-    text_gibberish_density_threshold = float(getattr(settings, "PRECHECK_TEXT_GIBBERISH_DENSITY_THRESHOLD", 0.06) or 0.06)
-    text_high_replacement_ratio_threshold = float(getattr(settings, "PRECHECK_TEXT_HIGH_REPLACEMENT_RATIO_THRESHOLD", 0.08) or 0.08)
-    pdf_low_density_ratio_threshold = float(getattr(settings, "PRECHECK_PDF_LOW_DENSITY_RATIO_THRESHOLD", 0.3) or 0.3)
+    text_short_chars_threshold = int(thresholds["text_short_chars_threshold"])
+    text_density_threshold = float(thresholds["text_density_threshold"])
+    text_gibberish_density_threshold = float(thresholds["text_gibberish_density_threshold"])
+    text_high_replacement_ratio_threshold = float(thresholds["text_high_replacement_ratio_threshold"])
+    pdf_low_density_ratio_threshold = float(thresholds["pdf_low_density_ratio_threshold"])
 
     directory_stats_limit = safe_int(getattr(settings, "PRECHECK_DIRECTORY_STATS_LIMIT", 200), default=200)
     directory_stats_limit = max(0, min(int(directory_stats_limit or 0), 2000))

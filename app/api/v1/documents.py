@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal, cast
+from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
@@ -104,6 +105,7 @@ from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDataset
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk, DocumentParsedContent, DocumentPermission
 from app.parsing.factory import parser_factory
+from app.parsing.output import markdown_to_blocks, render_clean_docx_bytes
 from app.parsing.processors.processor import document_processor
 from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
 from app.rag.chunking.factory import chunker_factory
@@ -5638,6 +5640,58 @@ async def get_document_parsed_content(
         markdown_truncated=markdown_truncated,
         original_markdown_truncated=original_truncated,
         max_chars=max_chars_eff,
+    )
+
+
+@router.get("/{document_id}/clean-docx", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+async def download_document_clean_docx(
+    document_id: uuid.UUID,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    document = (
+        db.query(DBDocument)
+        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
+
+    ds: Dataset | None = None
+    if document.dataset_id:
+        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_readable(db, ds, account_id)
+    _assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=ds)
+
+    row = (
+        db.query(DocumentParsedContent)
+        .filter(DocumentParsedContent.document_id == document_id, DocumentParsedContent.tenant_id == tenant_id)
+        .first()
+    )
+    if row is None or not str(getattr(row, "markdown_content", "") or "").strip():
+        raise HTTPException(status_code=404, detail="Clean DOCX not available")
+
+    title = Path(str(getattr(document, "filename", "") or "document")).stem
+    markdown = str(getattr(row, "markdown_content", "") or "")
+    blocks = markdown_to_blocks(markdown)
+    if blocks:
+        first = blocks[0] if isinstance(blocks[0], dict) else {}
+        if str(first.get("type") or "").strip().lower() == "heading" and str(first.get("text") or "").strip() == title:
+            blocks = blocks[1:]
+    payload = render_clean_docx_bytes(title=title, blocks=blocks)
+    ascii_filename = "clean.docx"
+    encoded_filename = quote(f"{title}_Clean.docx")
+    headers = {
+        "Content-Disposition": f"inline; filename=\"{ascii_filename}\"; filename*=UTF-8''{encoded_filename}",
+    }
+    return StreamingResponse(
+        iter([payload]),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers=headers,
     )
 
 

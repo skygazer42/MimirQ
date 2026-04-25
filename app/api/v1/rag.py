@@ -12,7 +12,7 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
@@ -80,8 +80,87 @@ def _enforce_non_empty_retrieval_scope(
         raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_FOR_RETRIEVAL_DETAIL)
 
 
+def _inject_query_image_context(
+    *,
+    state: dict[str, Any],
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    scope_dataset_id: UUID | None,
+    scope_document_ids: list[UUID],
+    text_query: str,
+    query_image: str | None,
+    enable_auto_detect: bool,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    multimodal_meta: dict[str, Any] = {"enabled": True, "modality": "text", "reasons": []}
+    image_meta: dict[str, Any] = {"enabled": False, "used": False, "reason": "not_run"}
+
+    query_source: str | None = None
+    image_query = str(query_image or "").strip()
+    if image_query:
+        multimodal_meta["modality"] = "image"
+        multimodal_meta["reasons"] = ["explicit_query_image"]
+        query_source = "query_image"
+    elif enable_auto_detect:
+        try:
+            from app.rag.policy.modality_router import classify_query_modality  # noqa: WPS433
+
+            modality, reasons = classify_query_modality(text_query)
+            multimodal_meta["modality"] = modality
+            multimodal_meta["reasons"] = reasons
+            if str(modality or "text").lower().strip() == "image":
+                image_query = str(text_query or "").strip()
+                query_source = "query"
+        except Exception as exc:  # noqa: BLE001
+            return (
+                {"enabled": False, "modality": "text", "reasons": [f"router_exception:{str(exc)[:80]}"]},
+                image_meta,
+            )
+
+    if not image_query or not query_source:
+        return multimodal_meta, image_meta
+
+    try:
+        from app.services.chat_image_service import build_chat_image_context_docs  # noqa: WPS433
+
+        ds_for_images = scope_dataset_id
+        if ds_for_images is None and scope_document_ids:
+            ds_for_images = resolve_single_dataset_id_for_documents(
+                db,
+                tenant_id=tenant_id,
+                document_ids=scope_document_ids,
+            )
+        if ds_for_images is None:
+            return multimodal_meta, {
+                "enabled": False,
+                "used": False,
+                "reason": "missing_dataset_id",
+                "query_source": query_source,
+            }
+
+        image_docs, image_meta = build_chat_image_context_docs(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_id=ds_for_images,
+            question=image_query,
+            top_k=6,
+        )
+        image_meta = dict(image_meta or {})
+        image_meta["query_source"] = query_source
+        if image_docs:
+            state["tag_docs"] = image_docs
+        return multimodal_meta, image_meta
+    except Exception as exc:  # noqa: BLE001
+        return (
+            {"enabled": False, "modality": "text", "reasons": [f"image_exception:{str(exc)[:80]}"]},
+            {"enabled": False, "used": False, "reason": f"image_exception:{str(exc)[:120]}", "query_source": query_source},
+        )
+
+
 class RetrievePreviewRequest(BaseModel):
     query: str = Field(min_length=1)
+    query_image: str | None = Field(default=None, description="Optional explicit image query routed to CLIP image retrieval")
     history: list[HistoryMessage] = Field(default_factory=list)
     dataset_id: UUID | None = None
     document_ids: list[UUID] = Field(default_factory=list)
@@ -311,6 +390,20 @@ async def retrieve_preview(
     # Best-effort: allow retrieval-only orchestrator to load extra evidence from DB (e.g. KG chunk injection).
     state["db"] = db
 
+    multimodal_meta, image_meta = _inject_query_image_context(
+        state=state,
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        scope_dataset_id=scope_dataset_id,
+        scope_document_ids=scope_document_ids,
+        text_query=body.query,
+        query_image=body.query_image,
+        enable_auto_detect=False,
+    )
+    state["multimodal_router"] = multimodal_meta
+    state["image_meta"] = image_meta
+
     result = run_retrieval(state) or {}
     citations = result.get("citations") or []
     metrics = result.get("metrics") or {}
@@ -321,6 +414,8 @@ async def retrieve_preview(
     metrics.setdefault("vector_backend", settings.VECTOR_BACKEND)
     metrics.setdefault("requested_retrieval_mode", effective_rag_config.retrieval_mode)
     metrics.setdefault("tenant_qps_quota", tenant_qps_meta)
+    metrics.setdefault("multimodal_router", multimodal_meta)
+    metrics.setdefault("image", image_meta)
     if dataset_rag_defaults_applied_fields:
         metrics.setdefault("dataset_rag_defaults_applied", True)
         metrics.setdefault("dataset_rag_defaults_fields", dataset_rag_defaults_applied_fields)
@@ -449,6 +544,7 @@ class EvidenceRetrieveRequest(BaseModel):
     """
 
     query: str = Field(min_length=1)
+    query_image: str | None = Field(default=None, description="Optional explicit image query routed to CLIP image retrieval")
     history: list[HistoryMessage] = Field(default_factory=list)
     dataset_id: UUID | None = None
     document_ids: list[UUID] = Field(default_factory=list)
@@ -459,7 +555,14 @@ class EvidenceRetrieveRequest(BaseModel):
 
 
 class EvidenceRetrieveResponse(BaseModel):
-    schema: str = Field(default="mimirq.evidence.v1", description="Response schema identifier")
+    model_config = ConfigDict(populate_by_name=True)
+
+    schema_: str = Field(
+        default="mimirq.evidence.v1",
+        alias="schema",
+        serialization_alias="schema",
+        description="Response schema identifier",
+    )
     query_for_retrieval: str
     citations: list[dict[str, Any]]
     metrics: dict[str, Any] = Field(default_factory=dict)
@@ -472,6 +575,10 @@ class EvidenceRetrieveResponse(BaseModel):
     evidence_capsule: dict[str, Any] | None = None
     # Optional: debug payload for query normalization/expansion (best-effort).
     query_debug: dict[str, Any] | None = None
+
+    @property
+    def schema(self) -> str:
+        return str(self.schema_)
 
 
 @router.post("/retrieve", response_model=EvidenceRetrieveResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -608,40 +715,20 @@ async def retrieve_evidence(
     # Optional: multi-modal routing (image/table/text).
     #
     # This endpoint is "retrieval-only" (no answer generation), so we keep routing deterministic:
-    # - Image routing uses CLIP embeddings (when enabled).
+    # - Explicit `query_image` takes precedence and routes to CLIP.
+    # - Otherwise image intent can still be inferred from the text query.
     # - Table routing (TAG/NL2SQL) is intentionally *not* applied here by default.
-    multimodal_meta: dict[str, Any] = {"enabled": True, "modality": "text", "reasons": []}
-    image_meta: dict[str, Any] = {"enabled": False, "used": False, "reason": "not_run"}
-    try:
-        from app.rag.policy.modality_router import classify_query_modality  # noqa: WPS433
-
-        modality, reasons = classify_query_modality(body.query)
-        multimodal_meta["modality"] = modality
-        multimodal_meta["reasons"] = reasons
-
-        if str(modality or "text").lower().strip() == "image":
-            from app.services.chat_image_service import build_chat_image_context_docs  # noqa: WPS433
-
-            ds_for_images = scope_dataset_id
-            if ds_for_images is None and scope_document_ids:
-                ds_for_images = resolve_single_dataset_id_for_documents(db, tenant_id=tenant_id, document_ids=scope_document_ids)
-            if ds_for_images is not None:
-                image_docs, image_meta = build_chat_image_context_docs(
-                    db,
-                    tenant_id=tenant_id,
-                    account_id=account_id,
-                    dataset_id=ds_for_images,
-                    question=body.query,
-                    top_k=6,
-                )
-                if image_docs:
-                    # Legacy injection surface consumed by run_retrieval: "tag_docs" is prepended before
-                    # text retrieval results. We reuse it for image docs as well.
-                    state["tag_docs"] = image_docs
-            else:
-                image_meta = {"enabled": False, "used": False, "reason": "missing_dataset_id"}
-    except Exception as exc:  # noqa: BLE001
-        multimodal_meta = {"enabled": False, "modality": "text", "reasons": [f"router_exception:{str(exc)[:80]}"]}
+    multimodal_meta, image_meta = _inject_query_image_context(
+        state=state,
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        scope_dataset_id=scope_dataset_id,
+        scope_document_ids=scope_document_ids,
+        text_query=body.query,
+        query_image=body.query_image,
+        enable_auto_detect=True,
+    )
 
     state["multimodal_router"] = multimodal_meta
     state["image_meta"] = image_meta

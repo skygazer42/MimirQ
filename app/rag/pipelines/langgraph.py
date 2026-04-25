@@ -35,6 +35,7 @@ from app.rag.checkpointer.factory import get_checkpointer
 from app.rag.core.claim_evidence import build_claim_evidence_map
 from app.rag.core.confidence import compute_confidence_score
 from app.rag.core.conversation import format_history_text
+from app.rag.core.context_cliff import compute_context_cliff_metrics
 from app.rag.core.faithfulness import compute_faithfulness_score
 from app.rag.core.retrieval_profiles import apply_retrieval_profile_overrides
 from app.rag.core.sentence_citations import (
@@ -782,6 +783,12 @@ def _generate_node(state: RAGState) -> RAGState:
     metrics["generation_elapsed_sec"] = round(generation_elapsed, 3)
     metrics["context_chars"] = len(ctx or "")
     metrics["context_tokens"] = num_tokens_from_string(ctx or "")
+    metrics.update(
+        compute_context_cliff_metrics(
+            context_tokens=int(metrics["context_tokens"] or 0),
+            threshold_tokens=int(getattr(settings, "RAG_CONTEXT_CLIFF_THRESHOLD_TOKENS", 2500) or 2500),
+        )
+    )
     metrics["history_chars"] = len(hist_text or "")
     metrics["history_tokens"] = num_tokens_from_string(hist_text or "")
     metrics["question_chars"] = len(state.get("question") or "")

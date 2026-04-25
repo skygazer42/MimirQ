@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.api.schemas.base import OrmModel
 from app.api.schemas.regression import ReferenceSource
@@ -143,11 +143,17 @@ class EvidenceSuiteSyncRegressionResponse(BaseModel):
 
 
 class EvidenceSuiteExportV1(BaseModel):
-    schema: str = "mimirq.evidence_suite.v1"
+    model_config = ConfigDict(populate_by_name=True)
+
+    schema_: str = Field(default="mimirq.evidence_suite.v1", alias="schema", serialization_alias="schema")
     exported_at: str
     dataset_id: UUID
     suite: dict[str, Any]
     items: list[dict[str, Any]]
+
+    @property
+    def schema(self) -> str:
+        return str(self.schema_)
 
 
 class EvidenceItemImportResponse(BaseModel):

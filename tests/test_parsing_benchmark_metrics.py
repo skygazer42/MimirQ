@@ -46,4 +46,6 @@ def test_compute_parsing_proxy_metrics_smoke() -> None:
     assert metrics["images_gold"] == 1
     assert metrics["images_pred"] == 2
     assert metrics["image_recall"] == 1.0
-
+    assert metrics["table_grits_topology"] == 1.0
+    assert 0.0 < metrics["table_grits_content"] < 1.0
+    assert 0.0 < metrics["table_grits_f1"] < 1.0

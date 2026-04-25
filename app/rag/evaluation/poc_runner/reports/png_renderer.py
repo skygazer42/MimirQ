@@ -21,6 +21,27 @@ def render_dataset_analysis_png(report: dict[str, Any]) -> bytes:
 
     draw.text((24, y), "Metrics", fill=(17, 24, 39))
     y += 28
+    metric_cards = list(report.get("metric_cards") or [])
+    feedback_card = dict(report.get("feedback_coverage") or {})
+    card_width = 250
+    card_height = 70
+    gap = 16
+    card_x = 24
+    card_y = y
+    for idx, card in enumerate(metric_cards[:5]):
+        x0 = card_x + (idx % 3) * (card_width + gap)
+        y0 = card_y + (idx // 3) * (card_height + gap)
+        draw.rounded_rectangle((x0, y0, x0 + card_width, y0 + card_height), radius=12, outline=(203, 213, 225), width=2, fill=(248, 250, 252))
+        draw.text((x0 + 12, y0 + 10), str(card.get("key") or ""), fill=(71, 85, 105))
+        draw.text((x0 + 12, y0 + 36), str(card.get("value")), fill=(15, 23, 42))
+    if feedback_card:
+        fy = card_y + 2 * (card_height + gap)
+        draw.rounded_rectangle((card_x, fy, card_x + card_width * 2 + gap, fy + 60), radius=12, outline=(191, 219, 254), width=2, fill=(239, 246, 255))
+        draw.text((card_x + 12, fy + 10), str(feedback_card.get("key") or ""), fill=(30, 64, 175))
+        draw.text((card_x + 12, fy + 32), str(feedback_card.get("value")), fill=(15, 23, 42))
+        y = fy + 78
+    else:
+        y = card_y + 2 * (card_height + gap) + 12
     for key, value in dict(report.get("metrics") or {}).items():
         draw.text((32, y), f"{key}: {value}", fill=(31, 41, 55))
         y += 24

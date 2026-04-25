@@ -77,6 +77,7 @@ class RagTraceRetrieval(BaseModel):
     mode: str | None = None
     requested_mode: str | None = None
     auto_routed: bool | None = None
+    router_layers: dict[str, Any] | None = None
 
     # Stable, PII-safe fingerprint for cross-run comparisons.
     retrieval_config_hash: str | None = None
