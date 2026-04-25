@@ -8,12 +8,14 @@ This module provides functions to:
 """
 import asyncio
 
+from app.core.config import settings
 from app.rag.embedding.base import BaseEmbeddingModel
 from app.rag.embedding.config import (
     DEFAULT_EMBED_MODELS,
     get_model_info,
     get_supported_model_ids,
 )
+from app.rag.preprocessing.language import detect_language
 from app.rag.embedding.providers import (
     DashScopeEmbedding,
     OllamaEmbedding,
@@ -72,6 +74,36 @@ def select_embedding_model(model_id: str) -> BaseEmbeddingModel:
     else:
         # All other providers use OpenAI-compatible format
         return OpenAICompatibleEmbedding(**config_dict)
+
+
+def resolve_language_aware_model_id(
+    *,
+    language: str | None = None,
+    text: str | None = None,
+    current_model_id: str | None = None,
+) -> str:
+    base_model_id = str(current_model_id or settings.EMBEDDING_MODEL or "text-embedding-3-small").strip()
+    if "/" not in base_model_id:
+        base_model_id = f"openai/{base_model_id}"
+    if not bool(getattr(settings, "EMBEDDING_LANGUAGE_ROUTING_ENABLED", False)):
+        return base_model_id
+
+    lang = str(language or "").strip().lower()
+    if not lang and text:
+        try:
+            lang = str(detect_language(str(text or ""), min_chars=1).language or "").strip().lower()
+        except Exception:
+            lang = ""
+
+    mapping = {
+        "zh": str(getattr(settings, "EMBEDDING_MODEL_ZH", "") or "").strip(),
+        "en": str(getattr(settings, "EMBEDDING_MODEL_EN", "") or "").strip(),
+        "mixed": str(getattr(settings, "EMBEDDING_MODEL_MIXED", "") or "").strip(),
+    }
+    candidate = mapping.get(lang, "")
+    if candidate and candidate in get_supported_model_ids():
+        return candidate
+    return base_model_id
 
 
 async def test_embedding_model_status(model_id: str) -> dict:

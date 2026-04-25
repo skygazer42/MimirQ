@@ -59,6 +59,21 @@ def _render_umap_scatter(report: dict[str, Any]) -> str:
     return f"<div id='umap-scatter'>{svg}{legend}</div>"
 
 
+def _render_latency_breakdown(report: dict[str, Any]) -> str:
+    payload = dict(report.get("latency_breakdown") or {})
+    summary = dict(payload.get("summary") or {})
+    if not summary:
+        return "<div id='latency-breakdown'>暂无延迟分解数据</div>"
+    return (
+        "<div id='latency-breakdown'>"
+        f"<p><code>avg_wait_in_queue_ms</code>: {escape(str(summary.get('avg_wait_in_queue_ms')))}</p>"
+        f"<p><code>avg_active_inference_ms</code>: {escape(str(summary.get('avg_active_inference_ms')))}</p>"
+        f"<p><code>concurrency_issue_count</code>: {escape(str(summary.get('concurrency_issue_count')))}</p>"
+        f"<p><code>hardware_or_model_issue_count</code>: {escape(str(summary.get('hardware_or_model_issue_count')))}</p>"
+        "</div>"
+    )
+
+
 def _render_heatmap(report: dict[str, Any]) -> str:
     heatmap = dict(report.get("coverage_heatmap") or {})
     rows = list(heatmap.get("rows") or [])
@@ -94,6 +109,29 @@ def _render_metric_list(metrics: dict[str, Any]) -> str:
     for key, value in metrics.items():
         items.append(f"<li><code>{escape(str(key))}</code>: {escape(str(value))}</li>")
     return "<ul>" + "".join(items) + "</ul>"
+
+
+def _render_metric_cards(report: dict[str, Any]) -> str:
+    cards = list(report.get("metric_cards") or [])
+    feedback = dict(report.get("feedback_coverage") or {})
+    blocks: list[str] = []
+    for card in cards:
+        if not isinstance(card, dict):
+            continue
+        blocks.append(
+            "<div class='metric-card'>"
+            f"<div class='metric-key'><code>{escape(str(card.get('key') or ''))}</code></div>"
+            f"<div class='metric-value'>{escape(str(card.get('value')))}</div>"
+            "</div>"
+        )
+    if feedback:
+        blocks.append(
+            "<div class='metric-card feedback-coverage'>"
+            f"<div class='metric-key'><code>{escape(str(feedback.get('key') or ''))}</code></div>"
+            f"<div class='metric-value'>{escape(str(feedback.get('value')))}</div>"
+            "</div>"
+        )
+    return "<div id='metric-cards' class='metric-cards'>" + "".join(blocks) + "</div>"
 
 
 def _render_top_examples(top_examples: dict[str, Any]) -> str:
@@ -137,6 +175,11 @@ def render_dataset_analysis_html(report: dict[str, Any]) -> str:
     .meta, .section {{ margin-top: 20px; }}
     .card {{ border: 1px solid #d1d5db; border-radius: 12px; padding: 16px; margin-bottom: 16px; }}
     code {{ background: #f3f4f6; padding: 2px 6px; border-radius: 6px; }}
+    .metric-cards {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }}
+    .metric-card {{ border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; background: #f8fafc; }}
+    .metric-key {{ font-size: 12px; color: #475569; margin-bottom: 8px; }}
+    .metric-value {{ font-size: 22px; font-weight: 600; color: #0f172a; }}
+    .feedback-coverage {{ grid-column: span 3; background: #eef6ff; }}
   </style>
 </head>
 <body>
@@ -152,6 +195,7 @@ def render_dataset_analysis_html(report: dict[str, Any]) -> str:
   </div>
   <div class="card">
     <h2>metrics</h2>
+    {_render_metric_cards(report)}
     {_render_metric_list(dict(report.get("metrics") or {}))}
   </div>
   <div class="card">
@@ -169,6 +213,10 @@ def render_dataset_analysis_html(report: dict[str, Any]) -> str:
   <div class="card section">
     <h2>umap_scatter</h2>
     {_render_umap_scatter(report)}
+  </div>
+  <div class="card section">
+    <h2>latency_breakdown</h2>
+    {_render_latency_breakdown(report)}
   </div>
   <div class="card section">
     <h2>coverage_heatmap</h2>

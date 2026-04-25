@@ -18,6 +18,13 @@ def _load_yaml(path: Path) -> Any:
     return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
 
+def _write_yaml(path: Path, payload: Any) -> None:
+    path.write_text(
+        yaml.safe_dump(payload, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
+
+
 def _normalize_glossary(glossary: Any) -> dict[str, list[str]]:
     if not isinstance(glossary, dict):
         return {}
@@ -98,6 +105,36 @@ def write_glossary_candidates(name: str, candidates: Iterable[Any]) -> dict[str,
         "skipped_tokens": skipped,
         "generated_path": str(generated_path),
     }
+
+
+def replace_ruleset_glossary(name: str, glossary: Any) -> dict[str, Any]:
+    ruleset_name = str(name or "").strip()
+    base = _ruleset_root() / ruleset_name
+    if not ruleset_name or not base.is_dir():
+        raise FileNotFoundError(f"Unknown industry ruleset: {ruleset_name or '<empty>'}")
+    normalized = dict(sorted(_normalize_glossary(glossary).items()))
+    _write_yaml(base / "glossary.yaml", normalized)
+    return {"ruleset": ruleset_name, "section": "glossary", "updated_count": int(len(normalized))}
+
+
+def replace_ruleset_patterns(name: str, patterns: Any) -> dict[str, Any]:
+    ruleset_name = str(name or "").strip()
+    base = _ruleset_root() / ruleset_name
+    if not ruleset_name or not base.is_dir():
+        raise FileNotFoundError(f"Unknown industry ruleset: {ruleset_name or '<empty>'}")
+    normalized = [dict(item) for item in (patterns or []) if isinstance(item, dict)]
+    _write_yaml(base / "patterns.yaml", normalized)
+    return {"ruleset": ruleset_name, "section": "patterns", "updated_count": int(len(normalized))}
+
+
+def replace_ruleset_intents(name: str, intents: Any) -> dict[str, Any]:
+    ruleset_name = str(name or "").strip()
+    base = _ruleset_root() / ruleset_name
+    if not ruleset_name or not base.is_dir():
+        raise FileNotFoundError(f"Unknown industry ruleset: {ruleset_name or '<empty>'}")
+    normalized = [dict(item) for item in (intents or []) if isinstance(item, dict)]
+    _write_yaml(base / "intents.yaml", normalized)
+    return {"ruleset": ruleset_name, "section": "intents", "updated_count": int(len(normalized))}
 
 
 def load_ruleset(name: str) -> IndustryRuleset:

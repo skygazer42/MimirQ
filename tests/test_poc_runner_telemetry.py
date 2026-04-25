@@ -81,3 +81,44 @@ def test_build_poc_interaction_rows_preserves_order_and_handles_missing_feedback
     assert rows[0]["has_feedback"] is False
     assert rows[0]["feedback_polarity"] == "none"
     assert rows[1]["dataset_id"] == "ds-2"
+
+
+def test_build_poc_interaction_row_exposes_latency_metrics_from_message_metadata() -> None:
+    row = build_poc_interaction_row(
+        {
+            "trace": {
+                "request_id": "req-3",
+                "conversation_id": "conv-3",
+                "retrieval": {"elapsed_sec": 1.1},
+            },
+            "conversation": {"id": "conv-3", "dataset_id": "ds-3"},
+            "user_message": {"id": "u-3", "content": "Q3"},
+            "assistant_message": {
+                "id": "a-3",
+                "content": "A3",
+                "message_metadata": {
+                    "request_id": "req-3",
+                    "elapsed_sec": 4.2,
+                    "retrieval_elapsed_sec": 1.1,
+                    "generation_elapsed_sec": 2.6,
+                    "rewrite_elapsed_sec": 0.2,
+                    "hyde_elapsed_sec": 0.1,
+                    "decompose_elapsed_sec": 0.2,
+                    "prompt_tokens": 300,
+                    "completion_tokens": 120,
+                    "answer_tokens": 120,
+                },
+            },
+        }
+    )
+
+    assert row["latency_total_ms"] == 4200
+    assert row["latency_total_sec"] == 4.2
+    assert row["retrieval_elapsed_sec"] == 1.1
+    assert row["generation_elapsed_sec"] == 2.6
+    assert row["rewrite_elapsed_sec"] == 0.2
+    assert row["hyde_elapsed_sec"] == 0.1
+    assert row["decompose_elapsed_sec"] == 0.2
+    assert row["prompt_tokens"] == 300
+    assert row["completion_tokens"] == 120
+    assert row["answer_tokens"] == 120

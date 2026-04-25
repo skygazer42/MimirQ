@@ -4,6 +4,8 @@
 > **定位**：前 4 份 plan 的 **Agentic 推理专项深化**。KG 专项已讲 ToG/PoG（KG 侧 agentic），本专项聚焦**通用 Agentic RAG 与 Reasoning RAG**——Self-RAG / CRAG streaming / FLARE / A-RAG / RAG-Critic / Plan-Execute / ReAct / Reflexion / Multi-Agent / ToT / System 1/2 / SoK POMDP。
 > **核心问题**：LLM 何时、以何种粒度、用什么工具去"自主决策检索"？如何在**准确性、成本、延迟、可解释性**四维做 Pareto 最优？
 > **交叉引用**：`rag-capability-gap-2026-q2.md` §8；`rag-deep-research-2026-q2.md` §11-13；`rag-kg-deep-research-2026-q2.md`（KG 侧 agentic）；`rag-eval-dataset-deep-dive-2026-q2.md`（decomposition F1 / 路由评测）。
+>
+> `feat/backend` 当前只吸收其中对外可复用的 RAG 能力：检索编排、工具调用、评测与可观测性。多 agent 问答编排、research-debate、聊天型记忆增强不纳入当前分支交付范围。
 
 ---
 
@@ -283,8 +285,8 @@ Agent 通过 function calling 自主选择粒度。
 
 ### 8.5 建议
 
-- **P0** 在 multi_agent 上接入 **Supervisor pattern**（一个 agent 做 router + 一组 specialist agents），对齐 LangGraph 主流 multi-agent 范式
-- **P1** 评估是否需要 AutoGen GroupChat 风格的 **research-debate agent**（用于内部技术决策 / 长文档复杂总结），**但仅限 offline 质量优先场景**（成本 10×+）
+- 当前分支**不继续推进** multi-agent Supervisor / research-debate 这类问答编排强化。
+- 优先保留 LangGraph + MCP 作为可插拔 orchestration 底座，服务检索工具调用、追踪与可观测。
 - **P2** CrewAI 式 role-based 不推荐迁入（与现有 LangGraph 路线冲突）
 
 ---
@@ -461,19 +463,19 @@ ToT/GoT 在通用 RAG 中 **ROI 不高**（成本 5×+，收益仅在难题上�
 
 | # | 建议 | 理由 |
 |---|---|---|
-| 6 | `workflows/critic.py` 独立 critic agent | claim-level faithfulness 提升 |
+| 6 | ~~`workflows/critic.py` 独立 critic agent~~ | 当前分支不继续扩展 answer-agent critique loop |
 | 7 | `evaluation/agent_redteam.py` | memory poisoning / tool hijack / cascading 防护 |
-| 8 | Multi-agent Supervisor pattern | 对齐 LangGraph 生态主流 |
+| 8 | ~~Multi-agent Supervisor pattern~~ | 当前分支不做多 agent 问答编排 |
 | 9 | Cost-aware orchestration（每步 token/latency 门控） | 防止 runaway cost |
-| 10 | `evaluation/ragcap_bench_runner.py` | 业界基准自证 |
+| 10 | ~~`evaluation/ragcap_bench_runner.py`~~ | 当前分支不做 agent QA 基准对齐 |
 
 ### 🥉 P2（2–6 月，长期）
 
 | # | 建议 |
 |---|---|
 | 11 | `workflows/flare.py`（prompt-based FLARE） |
-| 12 | `evaluation/ragshaper_synthesizer.py`（RAGShaper 式训练数据合成） |
-| 13 | Fine-tuned Critic 小模型（降低 critic 每 query 成本） |
+| 12 | ~~`evaluation/ragshaper_synthesizer.py`~~（当前分支不做 agent 问答训练数据合成） |
+| 13 | ~~Fine-tuned Critic 小模型~~（当前分支不做 critic 专项优化） |
 | 14 | `workflows/tot.py`（ToT 仅限难题开关） |
 
 ### 观望 / 延后

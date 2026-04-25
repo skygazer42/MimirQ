@@ -1,0 +1,14 @@
+{
+  "dataset_name": "stage3-domain-chunk-failures",
+  "schema_version": "mimirq.eval.dataset.manifest.v1",
+  "dataset_version": "2026.04.24",
+  "sample_count": 3,
+  "source_type_counts": {
+    "manual_seed": 3
+  },
+  "query_type_counts": {
+    "factual": 2,
+    "multi_hop": 1
+  },
+  "generated_at": "2026-04-24T12:00:00Z"
+}

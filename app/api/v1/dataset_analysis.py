@@ -11,6 +11,7 @@ from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
 from app.services.dataset_analysis_service import (
     build_dataset_analysis_examples,
+    build_dataset_analysis_rule_suggestions,
     build_dataset_analysis_summary,
     build_tenant_dataset_analysis_dashboard,
     create_dataset_analysis_png_task,
@@ -107,6 +108,34 @@ def get_dataset_analysis_examples(
         to_ts=to_ts,
         feedback_polarity=feedback_polarity,
         category=category,
+        limit=limit,
+    )
+
+
+@router.get("/{dataset_id}/analysis/rule-suggestions", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+def get_dataset_analysis_rule_suggestions(
+    dataset_id: UUID,
+    ruleset: Annotated[str, Query(min_length=1)],
+    from_ts: Annotated[str | None, Query()] = None,
+    to_ts: Annotated[str | None, Query()] = None,
+    feedback_polarity: Annotated[str | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 20,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    return build_dataset_analysis_rule_suggestions(
+        db=db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        dataset_name=str(getattr(dataset, "name", "") or ""),
+        ruleset_name=ruleset,
+        from_ts=from_ts,
+        to_ts=to_ts,
+        feedback_polarity=feedback_polarity,
         limit=limit,
     )
 

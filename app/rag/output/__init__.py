@@ -22,6 +22,11 @@ from typing import Any, Union
 
 from pydantic import BaseModel, Field
 
+from app.rag.llm.structured_output import (
+    build_structured_output_instructions,
+    parse_and_repair_structured_output,
+)
+
 logger = logging.getLogger(__name__)
 
 _DESC_OUTPUT_MODE_IDENTIFIER = "Output mode identifier"
@@ -189,6 +194,78 @@ def get_all_schemas_description() -> str:
     return "\n".join(descriptions)
 
 
+def _shared_preset_for_mode(mode: OutputMode | None) -> str | None:
+    if mode == OutputMode.FAQ:
+        return "faq"
+    if mode == OutputMode.SUMMARY:
+        return "summary"
+    if mode == OutputMode.ACTION_ITEMS:
+        return "action_items"
+    return None
+
+
+def _adapt_shared_payload(
+    *,
+    mode: OutputMode,
+    payload: dict[str, Any],
+    query: str,
+    context: str,
+    sources: list[str],
+) -> StructuredOutput:
+    if mode == OutputMode.FAQ:
+        qa_pairs = list(payload.get("qa_pairs") or [])
+        related_questions = [
+            str(item.get("question") or "").strip()
+            for item in qa_pairs[1:]
+            if isinstance(item, dict) and str(item.get("question") or "").strip()
+        ]
+        return FAQOutput(
+            question=str(query or "").strip(),
+            answer=str(payload.get("answer") or "").strip(),
+            confidence=0.0,
+            related_questions=related_questions,
+            sources=list(sources or []),
+        )
+
+    if mode == OutputMode.SUMMARY:
+        summary = str(payload.get("summary") or payload.get("answer") or "").strip()
+        bullets = [str(item or "").strip() for item in list(payload.get("bullets") or []) if str(item or "").strip()]
+        return SummaryOutput(
+            title=str(query or "").strip() or "Summary",
+            summary=summary,
+            key_points=bullets,
+            word_count=len(str(context or "").split()),
+            sources=list(sources or []),
+        )
+
+    if mode == OutputMode.ACTION_ITEMS:
+        raw_actions = list(payload.get("actions") or [])
+        items: list[ActionItem] = []
+        for item in raw_actions:
+            if not isinstance(item, dict):
+                continue
+            task = str(item.get("item") or item.get("task") or "").strip()
+            if not task:
+                continue
+            items.append(
+                ActionItem(
+                    task=task,
+                    priority=str(item.get("priority") or "medium").strip() or "medium",
+                    assignee=(str(item.get("owner") or item.get("assignee") or "").strip() or None),
+                    deadline=(str(item.get("due") or item.get("deadline") or "").strip() or None),
+                    status=str(item.get("status") or "pending").strip() or "pending",
+                )
+            )
+        return ActionItemsOutput(
+            title=str(query or "").strip() or "Action Items",
+            items=items,
+            total_count=len(items),
+            sources=list(sources or []),
+        )
+
+    return PlainOutput(content=str(payload.get("answer") or "").strip(), sources=list(sources or []))
+
+
 # ============================================================================
 # Mode Detection
 # ============================================================================
@@ -303,7 +380,7 @@ class StructuredOutputGenerator:
 
         try:
             # Try using with_structured_output if available
-            if hasattr(self.llm, 'with_structured_output'):
+            if hasattr(self.llm, 'with_structured_output') and _shared_preset_for_mode(mode) is None:
                 structured_llm = self.llm.with_structured_output(schema)
                 result = await structured_llm.ainvoke(prompt)
                 if isinstance(result, BaseModel):
@@ -315,7 +392,7 @@ class StructuredOutputGenerator:
             # Fallback: parse JSON from response
             response = await self.llm.ainvoke(prompt)
             content = response.content if hasattr(response, 'content') else str(response)
-            return self._parse_response(content, schema, sources)
+            return self._parse_response(content, mode, schema, sources, query=query, context=context)
 
         except Exception as e:
             logger.error("Structured output generation failed: %s", e)
@@ -333,6 +410,15 @@ class StructuredOutputGenerator:
         schema: type[BaseModel],
     ) -> str:
         """Build the prompt for structured output generation."""
+        shared_preset = _shared_preset_for_mode(mode)
+        if shared_preset:
+            return (
+                "Based on the context provided, answer the query in a structured format.\n\n"
+                f"Context:\n{context}\n\n"
+                f"Query: {query}\n\n"
+                f"{build_structured_output_instructions(shared_preset)}"
+            )
+
         schema_json = schema.model_json_schema()
         schema_str = json.dumps(schema_json, indent=2, ensure_ascii=False)
 
@@ -355,10 +441,29 @@ JSON Response:"""
     def _parse_response(
         self,
         content: str,
+        mode: OutputMode,
         schema: type[BaseModel],
         sources: list[str],
+        query: str = "",
+        context: str = "",
     ) -> StructuredOutput:
         """Parse LLM response into structured output."""
+        shared_preset = _shared_preset_for_mode(mode)
+        if shared_preset:
+            payload, _meta = parse_and_repair_structured_output(
+                content,
+                preset=shared_preset,
+                fallback_answer="",
+                fallback_citations=[],
+            )
+            return _adapt_shared_payload(
+                mode=mode,
+                payload=payload,
+                query=query,
+                context=context,
+                sources=sources,
+            )
+
         # Try to extract JSON from response
         content = content.strip()
 
@@ -427,6 +532,27 @@ def parse_structured_output(
     """
     if mode is None:
         mode = OutputMode.PLAIN
+
+    shared_preset = _shared_preset_for_mode(mode)
+    if shared_preset:
+        payload, _meta = parse_and_repair_structured_output(
+            content,
+            preset=shared_preset,
+            fallback_answer="",
+            fallback_citations=[],
+        )
+        default_query = ""
+        if mode == OutputMode.SUMMARY:
+            default_query = "Summary"
+        elif mode == OutputMode.ACTION_ITEMS:
+            default_query = "Action Items"
+        return _adapt_shared_payload(
+            mode=mode,
+            payload=payload,
+            query=default_query,
+            context="",
+            sources=[],
+        )
 
     schema = get_schema_for_mode(mode)
 

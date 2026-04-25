@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.config import settings
+from app.rag.evaluation.retrieval_evaluator import evaluate_retrieval_verdict
 from app.rag.tools.web_search import web_search
 
 
@@ -12,17 +13,12 @@ def classify_retrieval_verdict(
     min_citations: int,
     min_top_score: float,
 ) -> str:
-    if bool(retrieval_result.get("abstain_triggered")):
-        return "incorrect"
-    citations = retrieval_result.get("citations") or []
-    metrics = retrieval_result.get("metrics") or {}
-    try:
-        top_score = float(metrics.get("top_relevance_score") or 0.0)
-    except Exception:
-        top_score = 0.0
-    if len(citations) >= max(1, int(min_citations or 1)) and top_score >= float(min_top_score or 0.0):
-        return "correct"
-    return "incorrect"
+    result = evaluate_retrieval_verdict(
+        retrieval_result=retrieval_result,
+        min_citations=min_citations,
+        min_top_score=min_top_score,
+    )
+    return str(result.get("verdict") or "incorrect")
 
 
 def format_web_search_context_block(search_result: dict[str, Any]) -> str:
@@ -57,11 +53,12 @@ async def run_crag_streaming(
 ) -> dict[str, Any]:
     min_citations = max(1, int(getattr(settings, "RAG_CRAG_STREAMING_MIN_CITATIONS", 1) or 1))
     min_top_score = float(getattr(settings, "RAG_CRAG_STREAMING_MIN_TOP_SCORE", 0.35) or 0.35)
-    verdict = classify_retrieval_verdict(
-        retrieval_result,
+    evaluator = evaluate_retrieval_verdict(
+        retrieval_result=retrieval_result,
         min_citations=min_citations,
         min_top_score=min_top_score,
     )
+    verdict = str(evaluator.get("verdict") or "incorrect")
 
     if not bool(getattr(settings, "RAG_CRAG_STREAMING_ENABLED", False)) or verdict != "incorrect":
         return {
@@ -71,6 +68,7 @@ async def run_crag_streaming(
             "web_result_count": 0,
             "context_block": "",
             "search_result": None,
+            "evaluator": evaluator,
         }
 
     search_query = str(query_for_retrieval or question or "").strip()
@@ -90,6 +88,7 @@ async def run_crag_streaming(
         "web_result_count": int(search_result.get("total_results") or 0),
         "context_block": context_block,
         "search_result": search_result,
+        "evaluator": evaluator,
     }
 
 

@@ -1,39 +1,34 @@
 """
-Document parser business layer wrapper
+Document parser business layer package.
 
-Provides parser collection with LangChain Document format output.
-Underlying calls to deepdoc/parser/ implementations.
+Keep package import lightweight. Advanced parser wrappers are exposed lazily so
+importing `app.parsing.factory` does not pull heavy PDF dependencies such as
+PyMuPDF unless a parser is actually constructed.
 """
+
+from __future__ import annotations
+
+from typing import Any
 
 from .base_parser import BaseAdvancedParser
 
-__all__ = ["BaseAdvancedParser"]
+__all__ = ["BaseAdvancedParser", "MinerUParser", "DoclingParser", "TCADPParser", "Etl4LlmParser"]
 
-# Optional advanced parsers: do not fail import-time if extra dependencies are missing.
-try:
-    from .mineru_parser import MinerUParser  # noqa: F401
-except Exception:  # pragma: no cover
-    MinerUParser = None  # type: ignore[assignment]
-else:
-    __all__.append("MinerUParser")
+_LAZY_EXPORTS: dict[str, tuple[str, str]] = {
+    "MinerUParser": ("app.parsing.parsers.mineru_parser", "MinerUParser"),
+    "DoclingParser": ("app.parsing.parsers.docling_parser", "DoclingParser"),
+    "TCADPParser": ("app.parsing.parsers.tcadp_parser", "TCADPParser"),
+    "Etl4LlmParser": ("app.parsing.parsers.etl4llm_parser", "Etl4LlmParser"),
+}
 
-try:
-    from .docling_parser import DoclingParser  # noqa: F401
-except Exception:  # pragma: no cover
-    DoclingParser = None  # type: ignore[assignment]
-else:
-    __all__.append("DoclingParser")
 
-try:
-    from .tcadp_parser import TCADPParser  # noqa: F401
-except Exception:  # pragma: no cover
-    TCADPParser = None  # type: ignore[assignment]
-else:
-    __all__.append("TCADPParser")
+def __getattr__(name: str) -> Any:
+    target = _LAZY_EXPORTS.get(name)
+    if target is None:
+        raise AttributeError(f"module 'app.parsing.parsers' has no attribute {name!r}")
 
-try:
-    from .etl4llm_parser import Etl4LlmParser  # noqa: F401
-except Exception:  # pragma: no cover
-    Etl4LlmParser = None  # type: ignore[assignment]
-else:
-    __all__.append("Etl4LlmParser")
+    module_name, attr_name = target
+    module = __import__(module_name, fromlist=[attr_name])
+    value = getattr(module, attr_name)
+    globals()[name] = value
+    return value

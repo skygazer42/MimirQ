@@ -28,6 +28,51 @@ def test_chat_rag_config_coverage80_overrides_top_k_and_threshold() -> None:
     assert cfg.score_threshold == pytest.approx(0.0)
 
 
+def test_chat_rag_config_basic_mode_maps_to_production_profile() -> None:
+    from app.api.schemas.chat import ChatRAGConfig
+
+    cfg = ChatRAGConfig(mode="basic", top_k=5, score_threshold=0.7)
+
+    assert cfg.mode == "basic"
+    assert cfg.retrieval_profile == "hybrid_ce"
+    assert cfg.retrieval_mode == "hybrid"
+    assert cfg.top_k >= 20
+
+
+def test_chat_rag_config_contextual_mode_maps_to_long_context_profile() -> None:
+    from app.api.schemas.chat import ChatRAGConfig
+
+    cfg = ChatRAGConfig(mode="contextual", top_k=20, score_threshold=0.7)
+
+    assert cfg.mode == "contextual"
+    assert cfg.retrieval_profile == "long_context"
+    assert cfg.retrieval_mode == "hybrid"
+    assert cfg.top_k == 8
+    assert cfg.reranker_top_n == 4
+
+
+def test_chat_rag_config_expanded_mode_maps_to_expanded_profile() -> None:
+    from app.api.schemas.chat import ChatRAGConfig
+
+    cfg = ChatRAGConfig(mode="expanded", top_k=5, score_threshold=0.7)
+
+    assert cfg.mode == "expanded"
+    assert cfg.retrieval_profile == "expanded"
+    assert cfg.enable_hierarchy_recall is True
+    assert cfg.hierarchy_parent_depth == 1
+    assert cfg.hierarchy_sibling_window == 1
+
+
+def test_chat_rag_config_explicit_profile_wins_over_mode() -> None:
+    from app.api.schemas.chat import ChatRAGConfig
+
+    cfg = ChatRAGConfig(mode="basic", retrieval_profile="expanded", top_k=5, score_threshold=0.7)
+
+    assert cfg.mode == "basic"
+    assert cfg.retrieval_profile == "expanded"
+    assert cfg.enable_hierarchy_recall is True
+
+
 def test_chat_rag_config_hybrid_ce_degrades_to_hybrid_without_reranker() -> None:
     from app.api.schemas.chat import ChatRAGConfig
 
@@ -157,6 +202,34 @@ def test_hierarchy_recall20_expand_profile_enables_default_context_expansion() -
     assert is_recall_first_profile("hierarchy_recall20_expand") is True
 
 
+def test_expanded_profile_maps_to_default_expansion_preset() -> None:
+    from app.rag.core.retrieval_profiles import apply_retrieval_profile_overrides, is_recall_first_profile
+
+    applied = apply_retrieval_profile_overrides(
+        profile="expanded",
+        top_k=5,
+        score_threshold=0.7,
+        retrieval_mode="keyword",
+        enable_reranker=False,
+        reranker_provider="llm",
+        reranker_top_n=3,
+        enable_weight_rerank=True,
+        retrieval_contract_mode="",
+        visible_evidence_only=False,
+    )
+
+    assert applied["retrieval_profile"] == "expanded"
+    assert applied["top_k"] >= 20
+    assert applied["score_threshold"] == pytest.approx(0.0)
+    assert applied["enable_hierarchy_recall"] is True
+    assert applied["hierarchy_family_collapse"] is True
+    assert applied["hierarchy_tree_dedup"] is True
+    assert applied["hierarchy_parent_depth"] == 1
+    assert applied["hierarchy_sibling_window"] == 1
+    assert applied["hierarchy_overfetch_factor"] == 4
+    assert is_recall_first_profile("expanded") is True
+
+
 def test_hierarchy_hybrid_ce_profile_keeps_hierarchy_overlay_without_reranker() -> None:
     from app.rag.core.retrieval_profiles import apply_retrieval_profile_overrides
 
@@ -270,3 +343,6 @@ def test_long_context_profile_prefers_small_top_k_and_rerank_budget() -> None:
     assert applied["reranker_top_n"] == 4
     assert applied["retrieval_mode"] == "hybrid"
     assert applied["score_threshold"] == pytest.approx(0.0)
+    assert applied["enable_reranker"] is True
+    assert applied["reranker_provider"] == "long_context"
+    assert applied["enable_weight_rerank"] is False

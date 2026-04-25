@@ -16,6 +16,7 @@ import re
 from collections import Counter
 from typing import Any
 
+from app.parsing.quality.grits import compute_table_collection_grits
 from app.parsing.quality.reading_order import score_reading_order
 
 _FENCE_RE = re.compile(r"^\s*(```+|~~~+)")
@@ -192,6 +193,7 @@ def compute_parsing_proxy_metrics(
     pred_tables = extract_pipe_tables(pred)
     gold_tables = extract_pipe_tables(gold)
     table_sim = table_cell_f1(pred_tables, gold_tables)
+    table_grits = compute_table_collection_grits(pred_tables=pred_tables, gold_tables=gold_tables)
 
     pred_imgs = extract_markdown_images(pred)
     gold_imgs = extract_markdown_images(gold)
@@ -208,6 +210,9 @@ def compute_parsing_proxy_metrics(
     return {
         "text_similarity": round(float(text_sim), 4),
         "table_cell_f1": (None if table_sim is None else round(float(table_sim), 4)),
+        "table_grits_topology": table_grits["topology"],
+        "table_grits_content": table_grits["content"],
+        "table_grits_f1": table_grits["f1"],
         "reading_order_score": (None if reading_order_score is None else round(float(reading_order_score), 4)),
         "images_pred": int(len(pred_imgs)),
         "images_gold": int(gold_img_count),

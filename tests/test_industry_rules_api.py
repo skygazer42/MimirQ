@@ -28,6 +28,9 @@ def test_industry_rules_router_is_included_in_api_v1() -> None:
     paths = {route.path for route in router.routes}
     assert "/industry-rules/rulesets" in paths
     assert "/industry-rules/rulesets/{name}" in paths
+    assert "/industry-rules/rulesets/{name}/glossary" in paths
+    assert "/industry-rules/rulesets/{name}/patterns" in paths
+    assert "/industry-rules/rulesets/{name}/intents" in paths
     assert "/industry-rules/preview-rewrite" in paths
 
 

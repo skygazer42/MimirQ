@@ -5,6 +5,7 @@ from typing import Any
 PRODUCTION_RETRIEVAL_PROFILE = "hybrid_ce"
 STRICT_GROUNDED_RETRIEVAL_PROFILE = "grounded_strict"
 LONG_CONTEXT_RETRIEVAL_PROFILE = "long_context"
+EXPANDED_RETRIEVAL_PROFILE = "expanded"
 HIERARCHY_PRODUCTION_RETRIEVAL_PROFILE = "hierarchy_hybrid_ce"
 HIERARCHY_STRICT_GROUNDED_RETRIEVAL_PROFILE = "hierarchy_grounded_strict"
 HIERARCHY_EXPANDED_RECALL_RETRIEVAL_PROFILE = "hierarchy_recall20_expand"
@@ -12,6 +13,7 @@ RECALL_FIRST_RETRIEVAL_PROFILES = {
     "recall20",
     "recall50",
     "coverage80",
+    EXPANDED_RETRIEVAL_PROFILE,
     "hierarchy_recall20",
     HIERARCHY_EXPANDED_RECALL_RETRIEVAL_PROFILE,
 }
@@ -44,6 +46,15 @@ def _apply_hierarchy_overlay_defaults(out: dict[str, Any]) -> dict[str, Any]:
     out["hierarchy_parent_depth"] = 0
     out["hierarchy_sibling_window"] = 0
     out["hierarchy_overfetch_factor"] = 4
+    return out
+
+
+def _apply_default_expansion_defaults(out: dict[str, Any]) -> dict[str, Any]:
+    out["top_k"] = max(int(out["top_k"] or 0), 20)
+    out["score_threshold"] = 0.0
+    out = _apply_hierarchy_overlay_defaults(out)
+    out["hierarchy_parent_depth"] = 1
+    out["hierarchy_sibling_window"] = 1
     return out
 
 
@@ -100,13 +111,10 @@ def apply_retrieval_profile_overrides(
         return _apply_hierarchy_overlay_defaults(out)
 
     if normalized == HIERARCHY_EXPANDED_RECALL_RETRIEVAL_PROFILE:
-        out["top_k"] = max(int(out["top_k"] or 0), 20)
-        out["score_threshold"] = 0.0
-        out = _apply_hierarchy_overlay_defaults(out)
-        # Default expansion: add parent + adjacent siblings after retrieval/rerank.
-        out["hierarchy_parent_depth"] = 1
-        out["hierarchy_sibling_window"] = 1
-        return out
+        return _apply_default_expansion_defaults(out)
+
+    if normalized == EXPANDED_RETRIEVAL_PROFILE:
+        return _apply_default_expansion_defaults(out)
 
     if normalized == PRODUCTION_RETRIEVAL_PROFILE:
         out["retrieval_mode"] = "hybrid"
@@ -126,7 +134,7 @@ def apply_retrieval_profile_overrides(
         out["top_k"] = 8
         out["score_threshold"] = 0.0
         out["enable_reranker"] = True
-        out["reranker_provider"] = "cross_encoder"
+        out["reranker_provider"] = "long_context"
         out["reranker_top_n"] = 4
         out["enable_weight_rerank"] = False
         return out
@@ -170,7 +178,7 @@ def apply_retrieval_profile_overrides(
 
     raise ValueError(
         "retrieval_profile must be one of: "
-        "recall20, recall50, coverage80, hybrid_ce, grounded_strict, long_context, "
+        "recall20, recall50, coverage80, expanded, hybrid_ce, grounded_strict, long_context, "
         "hierarchy_recall20, hierarchy_recall20_expand, hierarchy_hybrid_ce, hierarchy_grounded_strict"
     )
 
@@ -179,6 +187,7 @@ __all__ = [
     "PRODUCTION_RETRIEVAL_PROFILE",
     "STRICT_GROUNDED_RETRIEVAL_PROFILE",
     "LONG_CONTEXT_RETRIEVAL_PROFILE",
+    "EXPANDED_RETRIEVAL_PROFILE",
     "HIERARCHY_PRODUCTION_RETRIEVAL_PROFILE",
     "HIERARCHY_STRICT_GROUNDED_RETRIEVAL_PROFILE",
     "HIERARCHY_EXPANDED_RECALL_RETRIEVAL_PROFILE",

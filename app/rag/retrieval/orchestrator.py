@@ -53,6 +53,7 @@ from app.rag.core.text import (
     should_rewrite_query,
 )
 from app.rag.policy.intent_router import route_adaptive_retrieval_overrides, route_intent, route_retrieval_preset
+from app.rag.policy.router_layers import build_router_layers
 from app.rag.policy.must_recall import (
     MUST_RECALL_FAIL_REASON_TAXONOMY_V1,
     build_must_recall_fail_reasons,
@@ -89,6 +90,7 @@ from app.services.hardcase_discovery_service import (
     build_parse_risk_hardcase_candidate,
     evaluate_parse_risk_auto_enqueue_policy,
 )
+from app.services.router_prometheus_metrics import observe_router_layers
 
 _CHANNEL_BUDGET_POLICY_SCHEMA_V1 = "mimirq.channel_budget_policy.v1"
 
@@ -1312,6 +1314,9 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             "retrieval_profile_requested": profile_norm,
             "no_retrieval_intent": dict(no_retrieval_intent),
         }
+        router_layers = build_router_layers(query=question, intent_meta=dict(no_retrieval_intent))
+        query_debug["router_layers"] = router_layers
+        observe_router_layers(router_layers)
         retrieval_trace: dict[str, Any] = {
             "schema": "mimirq.retrieval_trace_pass.v1",
             "query_for_retrieval_hash": stable_hash(question),
@@ -1323,6 +1328,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             "intent_router": {"enabled": False, "used": False},
             "adaptive_router": {"enabled": False, "used": False},
             "channel_budget_policy": {"enabled": False, "used": False},
+            "router_layers": router_layers,
             "no_retrieval_intent": dict(no_retrieval_intent),
         }
         return {
@@ -3176,7 +3182,13 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                         if rr is None:
                             reranker = get_reranker(st_provider)
                             rr_start = time.time()
-                            rr = reranker.rerank(query=query_for_retrieval, candidates=candidates, top_n=st_n)
+                            rr = reranker.rerank(
+                                query=query_for_retrieval,
+                                candidates=candidates,
+                                top_n=st_n,
+                                tenant_id=str(state.get("tenant_id") or "").strip() or None,
+                                query_type=str(state.get("query_type") or "").strip() or None,
+                            )
                             if post_rerank_cache_enabled and cache_key:
                                 try:
                                     set_cached_evidence_post_rerank_result(cache_key, rr)
@@ -3327,6 +3339,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                                 query=query_for_retrieval,
                                 candidates=candidates,
                                 top_n=post_rerank_candidates_n,
+                                tenant_id=str(state.get("tenant_id") or "").strip() or None,
+                                query_type=str(state.get("query_type") or "").strip() or None,
                             )
                             if post_rerank_cache_enabled and cache_key:
                                 try:
@@ -3401,7 +3415,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             except Exception:
                 tenant_uuid = None
 
-            from app.rag.retrieval.hierarchy_expand import expand_hierarchy_context  # noqa: WPS433
+            from app.rag.retrieval.context_expansion import expand_hierarchy_documents  # noqa: WPS433
 
             # Version-aware expansion: only fetch hierarchy parents/siblings from the same
             # active pipeline version as the retrieved anchors.
@@ -3511,7 +3525,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             max_added = max(0, int(top_k) * (int(hierarchy_parent_depth) + (2 * int(hierarchy_sibling_window))))
             max_added = min(400, max_added or 120)
 
-            expanded_docs, hierarchy_expand_meta = expand_hierarchy_context(
+            expanded_docs, hierarchy_expand_meta = expand_hierarchy_documents(
                 [d for d in (docs or []) if d is not None],
                 parent_depth=int(hierarchy_parent_depth),
                 sibling_window=int(hierarchy_sibling_window),
@@ -4588,6 +4602,14 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     query_debug["retrieval_profile_requested"] = (
         str(requested_retrieval_profile).strip().lower() if requested_retrieval_profile is not None else None
     )
+    router_layers = build_router_layers(
+        query=query_for_retrieval,
+        entity_key=(str(state.get("entity_key") or "").strip() or None),
+        partition_keys=(list(state.get("partition_keys") or []) if isinstance(state.get("partition_keys"), list) else None),
+        entity_candidates=(list(state.get("entity_candidates") or []) if isinstance(state.get("entity_candidates"), list) else None),
+        intent_meta=(intent_router_meta if isinstance(intent_router_meta, dict) else None),
+    )
+    query_debug["router_layers"] = router_layers
     query_debug["intent_router"] = intent_router_meta
     query_debug["adaptive_router"] = adaptive_router_meta
     query_debug["channel_budget_policy"] = channel_budget_policy_meta
@@ -4806,6 +4828,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         "intent_router": intent_router_meta,
         "adaptive_router": adaptive_router_meta,
         "channel_budget_policy": channel_budget_policy_meta,
+        "router_layers": router_layers,
         "contextual_followup": {
             "enabled": bool(contextual_followup_enabled),
             "attempted": bool(contextual_followup_attempted),
@@ -5021,6 +5044,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         ),
         "hardcase_candidate": (metrics.get("hardcase_candidate") if isinstance(metrics.get("hardcase_candidate"), dict) else None),
     }
+    observe_router_layers(router_layers)
 
     # Stable retrieval config fingerprint (PII-safe).
     #

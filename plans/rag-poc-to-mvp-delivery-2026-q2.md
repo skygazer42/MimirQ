@@ -33,7 +33,7 @@ rag_engine = IndustrialRAG()
 | 对象存储 | Base64 暂用 |
 | SSE 流式 / SWR 缓存 | 等待几秒可接受 |
 | 运营 Dashboard | 只需 5 字段埋点 |
-| 多租户 / 企微机器人 | 先跑通主路径 |
+| 多租户 / 外部系统集成 | 先跑通主路径 |
 
 ### 1.3 MVP 阶段必做的 7 件事（本文重点）
 
@@ -407,9 +407,9 @@ def process_markdown_images(self, text):
 | 表 | 作用 |
 |---|---|
 | `profiles` | 用户（对接 Supabase Auth，含 admin / user 角色） |
-| `chat_sessions` | 多轮对话管理 |
-| `chat_messages` | **核心埋点**：rewritten_query / retrieved_docs / latency_stats |
-| `feedback` | 点赞点踩 + 具体原因 |
+| `chat_sessions` | 当前实现表名；承载一次交互 / 请求上下文 |
+| `chat_messages` | 当前实现表名；**核心请求轨迹埋点**：rewritten_query / retrieved_docs / latency_stats |
+| `feedback` | 反馈标注 + 具体原因 |
 
 ### 8.2 关键埋点字段
 
@@ -468,7 +468,7 @@ if 'supabase_client' not in st.session_state:
 ### 8.5 我方落地（与安全合规专项的交互）
 
 - **P0** `services/feedback_service.py`：对接 PostgreSQL（我方已有）+ 埋点规范
-- **P0** `models/chat_message.py` metadata JSONB 含 `rewritten_query` / `retrieved_docs` / `latency_stats`
+- **P0** 当前实现 `models/chat_message.py` / `app/models/chat.py` 承载请求轨迹 metadata JSONB：`rewritten_query` / `retrieved_docs` / `latency_stats`
 - **P1** RLS 风格的 tenant 隔离函数封装（若走 Supabase 或自建 row-level security）
 - **交叉引用**：
   - POC 归因专项 §2（5 字段极简埋点）
@@ -476,13 +476,13 @@ if 'supabase_client' not in st.session_state:
 
 ---
 
-## 9. Query Rewrite：多轮指代消解 + 信任展示
+## 9. Query Rewrite：上下文指代消解 + 检索词透出
 
-### 9.1 多轮对话的指代问题
+### 9.1 上下文相关 query 的指代问题
 
 用户：
-- Round 1：Wireshark 怎么抓包？
-- Round 2：**它**能过滤 IP 吗？ ← 独立去检索找不到
+- 请求 1：Wireshark 怎么抓包？
+- 请求 2：**它**能过滤 IP 吗？ ← 独立去检索找不到
 
 ### 9.2 轻量 LLM 改写
 
@@ -497,22 +497,22 @@ rewritten = lightweight_llm.rewrite(
 - 耗时 < 1s
 - 成本可忽略
 
-### 9.3 前端信任展示（**关键产品细节**）
+### 9.3 调用侧信任展示（**关键交互细节**）
 
-UI 显示：**🔄 优化检索词：Wireshark IP 过滤**
+调用侧可显示：**🔄 优化检索词：Wireshark IP 过滤**
 
 让用户**感知系统"听懂"了**，信任感显著提升。
 
 ### 9.4 我方落地
 
-- **P0** `workflows/query_rewrite.py`（若已有，升级以支持前端透出）
+- **P0** `workflows/query_rewrite.py`（若已有，升级以支持调用侧透出）
 - **P0** SSE 流式中**先透出 rewritten_query**，再流式答案
-- **P1** 记录 `rewritten_query` 到 chat_messages.metadata，供复盘 rewrite 质量
+- **P1** 记录 `rewritten_query` 到 `chat_messages.metadata`（当前实现表名），供复盘 rewrite 质量
 - **交叉引用**：综合报告 §5 查询理解；Agentic 专项 §5 A-RAG hierarchical tools
 
 ---
 
-## 10. 前端工程：Streamlit → Next.js 重构
+## 10. 调用侧交互：Streamlit → Next.js 重构
 
 ### 10.1 Streamlit 的 4 个天花板
 
@@ -520,20 +520,20 @@ UI 显示：**🔄 优化检索词：Wireshark IP 过滤**
 |---|---|
 | 交互体验差 | 渲染机制是**全量刷新** |
 | 图片显示困难 | Base64 内嵌 |
-| 多轮对话复杂 | session_state 代码冗长 |
+| 交互状态复杂 | session_state 代码冗长 |
 | 扩展性差 | 加 Dashboard 绕弯多 |
 
-### 10.2 MVP 前端核心功能
+### 10.2 MVP 调用侧核心功能
 
 | 功能 | 实现 |
 |---|---|
-| **流式打字机** | 后端完整响应 → 前端 setInterval 逐字渲染 / 长短文本不同速度 |
-| **引用源卡片** | hover 高亮 / 点击跳转 Clean DOCX |
-| **反馈按钮** | 悬停浮现 / 点踩弹输入框 |
-| **SWR 缓存** | Stale-While-Revalidate（历史会话秒开） |
+| **SSE 逐段展示** | 后端完整响应 → 前端 setInterval 逐字渲染 / 长短文本不同速度 |
+| **引用证据卡片** | hover 高亮 / 点击跳转 Clean DOCX |
+| **反馈采样入口** | 悬停浮现 / 点踩弹输入框 |
+| **SWR 缓存** | Stale-While-Revalidate（近期请求记录秒开） |
 | **运营 Dashboard** | 管理员可视化 |
 
-### 10.3 SSE 打字机代码范式
+### 10.3 SSE 逐段展示代码范式
 
 ```javascript
 const interval = setInterval(() => {
@@ -547,7 +547,7 @@ const interval = setInterval(() => {
 }, speed);
 ```
 
-### 10.4 SWR 历史会话秒开
+### 10.4 SWR 请求记录秒开
 
 ```javascript
 const { data: messages = [] } = useSWR(
@@ -617,16 +617,16 @@ const { data: messages = [] } = useSWR(
 | 反馈率 | % | **转人工率**（无法回答 / 总提问） |
 | 预警 | 人工投诉 | **Bad Case 自动告警**（单日点踩超阈值 / 同一问题连续无结果） |
 
-### 12.3 阶段三：生态集成（**落地最关键**）
+### 12.3 阶段三：生态集成（以可嵌入 RAG 能力为主）
 
-> "知识库不应该是独立网站，而应该是嵌入用户已有工作流的能力。"
+> RAG 能力不应该绑定在单一聊天入口，而应该通过标准接口嵌入已有工作流。
 
 | 集成 | 优先级 |
 |---|---|
-| **企微 / 钉钉 / 飞书机器人** | 最高（@一下回复卡片答案） |
+| **标准 API / SDK** | 最高（下游系统只接 RAG 也成立） |
+| **MCP Server** / LangChain Tool | 高 |
 | 浏览器插件 / 侧边栏 | 次 |
-| 标准 API / SDK | 次 |
-| **MCP Server** / LangChain Tool | 长期 |
+| ~~企微 / 钉钉 / 飞书机器人~~ | 当前分支不做 |
 
 ### 12.4 大型企业额外需求
 
@@ -637,7 +637,7 @@ const { data: messages = [] } = useSWR(
 ### 12.5 我方落地
 
 - **P2** MCP Server 暴露能力（对齐 Agentic 专项 §2 A-RAG hierarchical tools）
-- **P2** 企微机器人适配器（Webhook + 回调）
+- ~~**P2** 企微机器人适配器（Webhook + 回调）~~（当前分支不做）
 - **交叉引用**：安全合规专项 §20 / KG 专项 §6.7 网络分析 API
 
 ---
@@ -713,7 +713,7 @@ Step 4: ← 才考虑微调（数据量 + 效果瓶颈满足才做）
 | Supabase RLS 无限递归 | profiles 查询又触发 RLS | SECURITY DEFINER 函数封装 |
 | Streamlit session_state 新建匿名 Client | RLS 校验失败 | session_state 持久化 token |
 | 一开始就想微调 | 数据量不够、质量低 | 先建反馈基础设施 |
-| 知识库做成独立网站 | 用户上下文切换成本高 | **嵌入企微 / 钉钉 / IDE** |
+| 把 RAG 绑定在自有聊天壳 | 下游系统难复用 | **标准 API / SDK / MCP 可嵌入** |
 
 ---
 
@@ -748,7 +748,7 @@ Step 4: ← 才考虑微调（数据量 + 效果瓶颈满足才做）
 | # | 建议 |
 |---|---|
 | 15 | 微调评估（feedback 达到 N 条触发） |
-| 16 | 企微 / 钉钉 / 飞书机器人适配器 |
+| 16 | ~~企微 / 钉钉 / 飞书机器人适配器~~（当前分支不做） |
 | 17 | MCP Server 能力暴露 |
 | 18 | 诊断包导出工具（脱敏） |
 | 19 | Bad Case 自动告警（单日点踩超阈值） |
@@ -807,7 +807,7 @@ Step 4: ← 才考虑微调（数据量 + 效果瓶颈满足才做）
 3. **LLM 元数据三字段 + 富语义 chunk** 是低成本高收益的"**入库阶段语义放大器**"（比 Anthropic Contextual Retrieval 便宜）
 4. **Rerank 漏斗整形**（96.7% baseline → 100% + Top-N 精排）的工程决策依据是"**让 LLM 看到更干净的 context**"，而非"找回漏的"
 5. **不一开始就微调** 是 RAG 项目最关键的工程次序——先建反馈基础设施，业务专家日常使用即标注
-6. **知识库不是独立网站，是嵌入工作流的能力**——企微 / 钉钉 / MCP Server 是落地决定性
+6. **知识库能力应以标准接口嵌入工作流，而不是绑定聊天入口**——API / SDK / MCP Server 才是当前分支的落地重点
 7. **数据质量 > 业务理解 > 嵌入工作流** 决定企业 AI 成败，技术从来不是障碍
 
 **落地建议**：
@@ -843,4 +843,4 @@ Step 4: ← 才考虑微调（数据量 + 效果瓶颈满足才做）
 - `plans/query-rewrite-sse-display.md`（Query Rewrite 信任展示）
 - `plans/enterprise-ota-maintenance.md`（OTA 维护模式）
 - `plans/product-stage1-trust-building.md`（可信度建设）
-- `plans/product-stage3-enterprise-im.md`（企微 / 钉钉 / 飞书）
+- ~~`plans/product-stage3-enterprise-im.md`~~（当前分支不做企微 / 钉钉 / 飞书入口）

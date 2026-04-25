@@ -79,6 +79,7 @@ Available strategies:
 - terraform_plan: Terraform plan output block-aware chunking
 """
 from app.rag.chunking.strategies.ansible_playbook import AnsiblePlaybookChunker
+from app.rag.chunking.strategies.agentic_chunker import AgenticChunker
 from app.rag.chunking.strategies.api_reference import APIReferenceChunker
 from app.rag.chunking.strategies.asciidoc_sections import AsciiDocSectionsChunker
 from app.rag.chunking.strategies.auto import AutoChunker
@@ -106,6 +107,8 @@ from app.rag.chunking.strategies.json_code import (
 from app.rag.chunking.strategies.jsonl_records import JsonlRecordsChunker
 from app.rag.chunking.strategies.junit_xml import JUnitXMLChunker
 from app.rag.chunking.strategies.kv_config import KVConfigChunker
+from app.rag.chunking.strategies.late_chunking import LateChunkingChunker
+from app.rag.chunking.strategies.late_chunking_jina import LateChunkingJinaChunker
 from app.rag.chunking.strategies.latex_sections import LatexSectionsChunker
 from app.rag.chunking.strategies.laws_structured import LawsStructuredChunker
 from app.rag.chunking.strategies.llama_index import (
@@ -141,6 +144,7 @@ from app.rag.chunking.strategies.proposition import PropositionChunker
 from app.rag.chunking.strategies.proto_schema import ProtoSchemaChunker
 from app.rag.chunking.strategies.qa_markdown import QAMarkdownChunker
 from app.rag.chunking.strategies.qa_pairs import QAPairsChunker
+from app.rag.chunking.strategies.raptor import RaptorChunker
 from app.rag.chunking.strategies.recursive import LangChainRecursiveChunker
 from app.rag.chunking.strategies.resume_structured import ResumeStructuredChunker
 from app.rag.chunking.strategies.rst_sections import RSTSectionsChunker
@@ -166,6 +170,7 @@ from app.rag.chunking.strategies.yaml_manifest import YAMLManifestChunker
 __all__ = [
     "LangChainRecursiveChunker",
     "LangChainTokenChunker",
+    "AgenticChunker",
     "ParentChildChunker",
     "SemanticSentenceChunker",
     "SeparatorChunker",
@@ -184,6 +189,7 @@ __all__ = [
     "OutlineChunker",
     "TranscriptChunker",
     "QAPairsChunker",
+    "RaptorChunker",
     "PropositionChunker",
     "PaperChunker",
     "ManuscriptChunker",
@@ -206,6 +212,8 @@ __all__ = [
     "APIReferenceChunker",
     "DiffPatchChunker",
     "KVConfigChunker",
+    "LateChunkingChunker",
+    "LateChunkingJinaChunker",
     "QAMarkdownChunker",
     "MeetingMinutesChunker",
     "TimelineEventsChunker",

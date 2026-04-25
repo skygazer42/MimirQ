@@ -37,4 +37,4 @@ def test_render_dataset_analysis_png_returns_png_bytes_for_full_report() -> None
     assert payload.startswith(b"\x89PNG\r\n\x1a\n")
     image = Image.open(BytesIO(payload))
     assert image.width > 200
-    assert image.height > 200
+    assert image.height > 400

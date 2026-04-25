@@ -1,0 +1,15 @@
+{
+  "dataset_name": "stage3-adversarial-guardrails",
+  "schema_version": "mimirq.eval.dataset.manifest.v1",
+  "dataset_version": "2026.04.24",
+  "sample_count": 3,
+  "source_type_counts": {
+    "adversarial": 2,
+    "synthetic": 1
+  },
+  "query_type_counts": {
+    "multi_hop": 1,
+    "unanswerable": 2
+  },
+  "generated_at": "2026-04-24T13:30:00Z"
+}

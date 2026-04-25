@@ -28,7 +28,7 @@ from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
@@ -128,10 +128,25 @@ class ParsingExtractRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     mode: Literal["schema", "prompt"] = "schema"
-    schema: dict[str, ParsingExtractFieldSpec] | None = None
+    schema_: dict[str, ParsingExtractFieldSpec] | None = None
     prompt: str | None = None
     field_hints: dict[str, ParsingExtractFieldSpec] | None = None
     max_evidence: int = Field(default=1, ge=1, le=5)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_schema_alias(cls, value: Any):  # noqa: ANN001
+        if not isinstance(value, dict):
+            return value
+        if "schema_" not in value and "schema" in value:
+            copied = dict(value)
+            copied["schema_"] = copied.get("schema")
+            return copied
+        return value
+
+    @property
+    def schema(self) -> dict[str, ParsingExtractFieldSpec] | None:
+        return self.schema_
 
 
 class ParsingExtractEvidence(BaseModel):

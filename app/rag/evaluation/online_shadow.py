@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 
 
@@ -29,6 +30,70 @@ def _average(values: list[float]) -> float | None:
     if not values:
         return None
     return round(sum(values) / float(len(values)), 4)
+
+
+def _stable_rank(*, day_key: str, query_hash: str, dataset_id_hash: str) -> str:
+    raw = f"{day_key}|{query_hash}|{dataset_id_hash}".encode("utf-8", errors="ignore")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def build_online_shadow_plan(
+    *,
+    replay_records: list[dict[str, Any]],
+    day_key: str,
+    sample_size: int,
+    baseline_label: str,
+    candidate_label: str,
+) -> dict[str, Any]:
+    eligible: list[dict[str, Any]] = []
+    for row in replay_records or []:
+        if not isinstance(row, dict):
+            continue
+        query_hash = str(row.get("query_hash") or "").strip()
+        if not query_hash:
+            continue
+        rec = {
+            "query_hash": query_hash,
+            "dataset_id_hash": str(row.get("dataset_id_hash") or "").strip() or None,
+            "retrieval_config_hash": str(row.get("retrieval_config_hash") or "").strip() or None,
+            "rag_config": dict(row.get("rag_config") or {}),
+            "seed": row.get("seed"),
+        }
+        sample_id = _stable_rank(
+            day_key=str(day_key or "").strip(),
+            query_hash=query_hash,
+            dataset_id_hash=str(rec.get("dataset_id_hash") or ""),
+        )[:16]
+        rec["sample_id"] = sample_id
+        eligible.append(rec)
+
+    ranked = sorted(
+        eligible,
+        key=lambda row: (
+            _stable_rank(
+                day_key=str(day_key or "").strip(),
+                query_hash=str(row.get("query_hash") or ""),
+                dataset_id_hash=str(row.get("dataset_id_hash") or ""),
+            ),
+            str(row.get("sample_id") or ""),
+        ),
+    )
+
+    limit = max(0, int(sample_size or 0))
+    selected = ranked[:limit] if limit > 0 else []
+
+    return {
+        "schema": "mimirq.online_shadow_plan.v1",
+        "day_key": str(day_key or "").strip() or None,
+        "summary": {
+            "eligible": int(len(eligible)),
+            "selected": int(len(selected)),
+        },
+        "sample_ids": [str(row.get("sample_id") or "") for row in selected],
+        "samples": selected,
+        "baseline": {"label": str(baseline_label or "").strip() or None},
+        "candidate": {"label": str(candidate_label or "").strip() or None},
+    }
 
 
 def diff_online_shadow_runs(
@@ -92,4 +157,4 @@ def diff_online_shadow_runs(
     }
 
 
-__all__ = ["diff_online_shadow_runs"]
+__all__ = ["build_online_shadow_plan", "diff_online_shadow_runs"]

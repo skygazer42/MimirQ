@@ -241,6 +241,7 @@ class DatasetPrecheckScanRunCreateRequest(BaseModel):
     # Optional: representative sampling (for pricing/POC). Writes a sample list into run artifacts.
     enable_sampling: bool = True
     sample_size: int | None = Field(default=None, ge=0, le=2000)
+    threshold_overrides: dict[str, Any] | None = None
 
     # Optional: incremental scan reuse (reuse unchanged file records from a previous run).
     reuse_unchanged_files: bool = False

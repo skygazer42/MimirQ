@@ -370,6 +370,54 @@ def _safe_retriever_channels(ch_raw: Any) -> dict[str, Any] | None:
     return out_ch or None
 
 
+def _safe_router_layers(raw: Any) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+    schema = str(raw.get("schema") or "").strip()
+    if schema != "mimirq.router_layers.v1":
+        return None
+    out: dict[str, Any] = {"schema": "mimirq.router_layers.v1"}
+    for level in ("entity", "intent", "composite"):
+        item = raw.get(level)
+        if not isinstance(item, dict):
+            continue
+        row: dict[str, Any] = {}
+        decision = _safe_str(item.get("decision"), max_len=40)
+        if decision is not None:
+            row["decision"] = decision
+        used = _to_bool(item.get("used"))
+        if used is not None:
+            row["used"] = used
+        reason_codes_raw = item.get("reason_codes")
+        if isinstance(reason_codes_raw, list):
+            reason_codes: list[str] = []
+            for rc in reason_codes_raw:
+                s = _safe_str(rc, max_len=40)
+                if s is None:
+                    continue
+                reason_codes.append(s)
+                if len(reason_codes) >= 8:
+                    break
+            if reason_codes:
+                row["reason_codes"] = reason_codes
+        if level == "entity":
+            keys_raw = item.get("partition_keys")
+            if isinstance(keys_raw, list):
+                keys: list[str] = []
+                for key in keys_raw:
+                    s = _safe_str(key, max_len=120)
+                    if s is None:
+                        continue
+                    keys.append(s)
+                    if len(keys) >= 8:
+                        break
+                if keys:
+                    row["partition_keys"] = keys
+        if row:
+            out[level] = row
+    return out if len(out) > 1 else None
+
+
 def _safe_retriever_debug(raw: Any) -> dict[str, Any] | None:
     """
     Sanitize retriever-side debug metrics for UI exposure.
@@ -756,6 +804,7 @@ def normalize_rag_trace_record(record: dict[str, Any]) -> RagTrace:
         mode=(str(raw_retrieval.get("mode")) if raw_retrieval.get("mode") is not None else None),
         requested_mode=(str(raw_retrieval.get("requested_mode")) if raw_retrieval.get("requested_mode") is not None else None),
         auto_routed=_to_bool(raw_retrieval.get("auto_routed")),
+        router_layers=_safe_router_layers(raw_retrieval.get("router_layers") or record.get("router_layers")),
         retrieval_config_hash=retrieval_config_hash,
         top_k=_to_int(raw_retrieval.get("top_k")),
         query_parallelism=_to_int(raw_retrieval.get("query_parallelism")),

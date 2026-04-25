@@ -3,9 +3,11 @@ Vector store router: supports multiple backends.
 Milvus is implemented today; other backends are placeholders for extension.
 Switch via VECTOR_BACKEND to keep the retrieval path centralized.
 """
+import json
 import logging
 import math
 import os
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
@@ -14,6 +16,8 @@ from app.core.constants import EmbeddingProviders
 from app.rag.core.filters import match_metadata_filter
 from app.rag.embedding import create_langchain_embeddings_from_config
 from app.storage.vector.milvus import milvus_store
+from app.storage.vector.pgvector import PGVectorStore
+from app.storage.vector.qdrant import QdrantVectorStore
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +58,13 @@ def _get_chroma_cls():
         # Import it eagerly so optional-dependency problems are surfaced deterministically
         # when callers probe backend availability.
         import chromadb  # noqa: F401
+
+        chromadb_file = getattr(chromadb, "__file__", None)
+        # In unit tests we often monkeypatch a tiny `chromadb` stub module without a backing file;
+        # skip deep optional-dependency validation in that case so preference/fallback behavior
+        # can still be tested independently from the host environment.
+        if chromadb_file:
+            import pypika  # noqa: F401
     except Exception as exc:  # noqa: BLE001
         raise RuntimeError(
             "Chroma vector backend requires optional dependencies. "
@@ -634,26 +645,67 @@ class ChromaVectorStore(BaseVectorStore):
 _VECTOR_STORE_SINGLETONS: dict[str, BaseVectorStore] = {}
 
 
-def get_vector_store() -> BaseVectorStore:
+def _normalize_region(region: str | None = None) -> str:
+    return str(region or getattr(settings, "DATA_REGION", "") or "").strip().lower()
+
+
+def _load_vector_region_backends() -> dict[str, str]:
+    raw = getattr(settings, "VECTOR_REGION_BACKENDS", "") or ""
+    if isinstance(raw, Mapping):
+        source = dict(raw)
+    else:
+        text = str(raw).strip()
+        if not text:
+            return {}
+        try:
+            parsed = json.loads(text)
+        except Exception:
+            return {}
+        source = dict(parsed) if isinstance(parsed, dict) else {}
+
+    out: dict[str, str] = {}
+    for key, value in source.items():
+        region = str(key or "").strip().lower()
+        backend = str(value or "").strip().lower()
+        if not region or not backend:
+            continue
+        out[region] = backend
+    return out
+
+
+def _resolve_vector_backend(*, backend: str | None = None, region: str | None = None) -> tuple[str, str | None]:
+    region_key = _normalize_region(region)
+    requested = str(backend or settings.VECTOR_BACKEND or "milvus").strip().lower()
+    if region_key:
+        requested = _load_vector_region_backends().get(region_key, requested)
+    return requested, (region_key or None)
+
+
+def get_vector_store(*, backend: str | None = None, region: str | None = None) -> BaseVectorStore:
     """
     Return the configured vector store backend (singleton).
     Note: memory/faiss backends keep state in-process; singleton avoids losing data on each call.
     """
-    backend = (settings.VECTOR_BACKEND or "milvus").lower()
-    cached = _VECTOR_STORE_SINGLETONS.get(backend)
+    backend_name, region_key = _resolve_vector_backend(backend=backend, region=region)
+    cache_key = f"{region_key}:{backend_name}" if region_key else backend_name
+    cached = _VECTOR_STORE_SINGLETONS.get(cache_key)
     if cached is not None:
         return cached
 
-    if backend == "milvus":
+    if backend_name == "milvus":
         store: BaseVectorStore = MilvusVectorStore()
-    elif backend == "memory":
+    elif backend_name == "memory":
         store = MemoryVectorStore()
-    elif backend == "faiss":
+    elif backend_name == "faiss":
         store = FAISSVectorStore()
-    elif backend == "chroma":
+    elif backend_name == "chroma":
         store = ChromaVectorStore()
+    elif backend_name == "qdrant":
+        store = QdrantVectorStore()
+    elif backend_name == "pgvector":
+        store = PGVectorStore()
     else:
         store = StubVectorStore()
 
-    _VECTOR_STORE_SINGLETONS[backend] = store
+    _VECTOR_STORE_SINGLETONS[cache_key] = store
     return store

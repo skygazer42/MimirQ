@@ -50,3 +50,31 @@ async def test_crag_streaming_uses_web_fallback_when_retrieval_is_insufficient(
     assert out["web_result_count"] == 1
     assert "PLC Alarm Guide" in str(out["context_block"] or "")
     assert "https://example.com/plc" in str(out["context_block"] or "")
+
+
+@pytest.mark.asyncio
+async def test_crag_streaming_marks_low_score_hits_as_ambiguous_without_web_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.rag.workflows.crag_streaming as mod
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "RAG_CRAG_STREAMING_ENABLED", True, raising=False)
+
+    async def _unexpected_web_search(*_args, **_kwargs):  # noqa: ANN001, ANN003
+        raise AssertionError("ambiguous verdict should not trigger web fallback")
+
+    monkeypatch.setattr(mod, "web_search", _unexpected_web_search, raising=True)
+
+    out = await mod.run_crag_streaming(
+        question="Explain the partial PLC alarm context",
+        retrieval_result={
+            "citations": [{"chunk_id": "c1"}],
+            "metrics": {"top_relevance_score": 0.2},
+            "abstain_triggered": False,
+        },
+        max_results=3,
+    )
+
+    assert out["used"] is False
+    assert out["verdict"] == "ambiguous"

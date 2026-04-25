@@ -28,6 +28,12 @@ def describe_reranker_provider(provider: str | None, **kwargs: Any) -> dict[str,
 
     if normalized in {"cross_encoder", "cross-encoder", "sentence_transformers", "sentence-transformers"}:
         return {"provider": "cross_encoder", "tier": "prod"}
+    if normalized == "long_context":
+        return {"provider": "long_context", "tier": "prod"}
+    if normalized == "mmr":
+        return {"provider": "mmr", "tier": "prod"}
+    if normalized in {"local_bge_v2_m3", "bge_v2_m3"}:
+        return {"provider": "local_bge_v2_m3", "tier": "prod"}
 
     if normalized in {"ltr", "xgboost_ltr"}:
         return {"provider": "ltr", "tier": "prod"}
@@ -363,6 +369,49 @@ def get_reranker(
             if cached is not None:
                 return cached
             inst = CrossEncoderReranker(model_name=model_name, device=(str(device) if device is not None else None))
+            _local_reranker_cache[cache_key] = inst
+            return inst
+
+    elif provider == "long_context":
+        from app.rag.reranker.long_context_rerank import LongContextReranker
+
+        scorer = kwargs.get("scorer")
+        if scorer is not None:
+            return LongContextReranker(scorer=scorer, model_name=model_name)
+
+        resolved_model = str(model_name or "long_context:deterministic").strip() or "long_context:deterministic"
+        cache_key = _local_cache_key("long_context", [resolved_model])
+        with _local_reranker_lock:
+            cached = _local_reranker_cache.get(cache_key)
+            if cached is not None:
+                return cached
+            inst = LongContextReranker(model_name=resolved_model)
+            _local_reranker_cache[cache_key] = inst
+            return inst
+
+    elif provider == "mmr":
+        from app.rag.reranker.mmr import MMRReranker
+
+        lambda_mult = float(kwargs.get("lambda_mult") or kwargs.get("mmr_lambda") or settings.RETRIEVAL_MMR_LAMBDA or 0.7)
+        cache_key = _local_cache_key("mmr", [str(round(lambda_mult, 6))])
+        with _local_reranker_lock:
+            cached = _local_reranker_cache.get(cache_key)
+            if cached is not None:
+                return cached
+            inst = MMRReranker(lambda_mult=lambda_mult)
+            _local_reranker_cache[cache_key] = inst
+            return inst
+
+    elif provider in ("local_bge_v2_m3", "bge_v2_m3"):
+        from app.rag.reranker.local_bge_v2_m3 import LocalBGEV2M3Reranker
+
+        device = kwargs.get("device")
+        cache_key = _local_cache_key("local_bge_v2_m3", [str(model_name or ""), str(device or "")])
+        with _local_reranker_lock:
+            cached = _local_reranker_cache.get(cache_key)
+            if cached is not None:
+                return cached
+            inst = LocalBGEV2M3Reranker(model_name=model_name, device=(str(device) if device is not None else None))
             _local_reranker_cache[cache_key] = inst
             return inst
     

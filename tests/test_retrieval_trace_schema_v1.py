@@ -2,8 +2,15 @@ from __future__ import annotations
 
 import uuid
 
+import langchain
 import pytest
 from langchain_core.documents import Document
+
+
+@pytest.fixture(autouse=True)
+def _stub_langchain_globals(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(langchain, "debug", False, raising=False)
+    monkeypatch.setattr(langchain, "verbose", False, raising=False)
 
 
 class _FakeRetriever:
@@ -121,6 +128,7 @@ def test_orchestrator_emits_stable_retrieval_trace_schema(monkeypatch: pytest.Mo
     for key in (
         "contract_diagnostics",
         "adaptive_router",
+        "router_layers",
         "contextual_followup",
         "iterative_pass",
         "hard_fallback",
@@ -189,3 +197,9 @@ def test_orchestrator_emits_stable_retrieval_trace_schema(monkeypatch: pytest.Mo
     assert "enabled" in contextual
     assert "attempted" in contextual
     assert "used" in contextual
+
+    router_layers = trace.get("router_layers") or {}
+    assert router_layers.get("schema") == "mimirq.router_layers.v1"
+    assert "entity" in router_layers
+    assert "intent" in router_layers
+    assert "composite" in router_layers

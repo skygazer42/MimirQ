@@ -60,6 +60,19 @@ class MinIOService:
         self._bucket_ready = False
         self._metrics_path = Path(settings.MINIO_METRICS_LOG_PATH)
 
+    def describe_backend(self) -> dict[str, Any]:
+        return {
+            "provider": "minio",
+            "enabled": bool(getattr(settings, "MINIO_ENABLED", False)),
+            "endpoint": str(getattr(settings, "MINIO_ENDPOINT", "") or ""),
+            "bucket": str(getattr(settings, "MINIO_BUCKET_NAME", "") or ""),
+            "secure": bool(getattr(settings, "MINIO_USE_SSL", False)),
+            "documents_enabled": bool(getattr(settings, "MINIO_DOCUMENTS_ENABLED", False)),
+        }
+
+    def build_object_uri(self, bucket: str, object_name: str) -> str:
+        return build_minio_uri(bucket, object_name)
+
     def _get_client(self):
         """Lazily initialize the MinIO client."""
         if not bool(getattr(settings, "MINIO_ENABLED", False)):
@@ -427,7 +440,7 @@ class MinIOService:
                 content_type=content_type or "application/octet-stream",
             )
             self._log_metric("upload_doc", True, time.perf_counter() - t0, object_name)
-            return build_minio_uri(self._bucket_name, object_name)
+            return self.build_object_uri(self._bucket_name, object_name)
         except Exception as exc:  # noqa: BLE001
             logger.error("MinIO document upload failed: %s", str(exc)[:200])
             self._log_metric("upload_doc", False, time.perf_counter() - t0, object_name, error=str(exc))
@@ -480,7 +493,7 @@ class MinIOService:
             content_type=content_type or "application/octet-stream",
         )
         self._log_metric("put_bytes", True, time.perf_counter() - t0, obj)
-        return build_minio_uri(self._bucket_name, obj)
+        return self.build_object_uri(self._bucket_name, obj)
 
     def get_object_bytes(self, *, object_name: str, max_bytes: int = 0) -> bytes:
         """

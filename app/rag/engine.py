@@ -28,6 +28,7 @@ from app.rag.core.citations import build_citations_from_docs
 from app.rag.core.claim_evidence import build_claim_evidence_map
 from app.rag.core.confidence import compute_confidence_score
 from app.rag.core.conversation import format_history_text
+from app.rag.core.context_cliff import compute_context_cliff_metrics
 from app.rag.core.faithfulness import compute_faithfulness_score
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
@@ -1657,7 +1658,14 @@ Requirements:
                 str(getattr(settings, "RAG_CORRECTIVE_SECOND_PASS_PROFILE", "recall50") or "recall50").strip().lower()
                 or "recall50"
             )
-            if corrective_second_profile not in {"recall20", "recall50", "coverage80", "hierarchy_recall20", "hierarchy_recall20_expand"}:
+            if corrective_second_profile not in {
+                "recall20",
+                "recall50",
+                "coverage80",
+                "expanded",
+                "hierarchy_recall20",
+                "hierarchy_recall20_expand",
+            }:
                 corrective_second_profile = "recall50"
             corrective_second_enable_mq = bool(
                 getattr(settings, "RAG_CORRECTIVE_SECOND_PASS_ENABLE_MULTI_QUERY", True)
@@ -2271,6 +2279,7 @@ Requirements:
             abstain_triggered = False
             abstain_reason: str | None = None
             top_rel = 0.0
+            retrieval_info_event = None
             if citations:
                 try:
                     top_rel = max(
@@ -2289,40 +2298,39 @@ Requirements:
                 except Exception:
                     top_rel = 0.0
 
-                if abstain_enabled:
-                    min_citations = max(0, int(settings.RAG_ABSTAIN_MIN_CITATIONS or 0))
-                    min_top_rel = float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE or 0.0)
+            if abstain_enabled:
+                min_citations = max(0, int(settings.RAG_ABSTAIN_MIN_CITATIONS or 0))
+                min_top_rel = float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE or 0.0)
 
-                    if min_citations > 0 and len(citations) < min_citations:
-                        abstain_triggered = True
-                        abstain_reason = "citations_lt_min"
-                    elif min_top_rel > 0 and top_rel < min_top_rel:
-                        abstain_triggered = True
-                        abstain_reason = "top_relevance_lt_min"
+                if min_citations > 0 and len(citations) < min_citations:
+                    abstain_triggered = True
+                    abstain_reason = "citations_lt_min"
+                elif min_top_rel > 0 and top_rel < min_top_rel:
+                    abstain_triggered = True
+                    abstain_reason = "top_relevance_lt_min"
 
-                out_of_scope_guard = maybe_apply_out_of_scope_live_guard(
+            out_of_scope_guard = maybe_apply_out_of_scope_live_guard(
+                query=query_for_retrieval,
+                enabled=bool(getattr(settings, "RAG_OUT_OF_SCOPE_LIVE_GUARD_ENABLED", False)),
+                candidate=bool(abstain_triggered or not citations),
+                current_triggered=bool(abstain_triggered),
+                current_reason=abstain_reason,
+                tenant_id=(str(tenant_id or "").strip() or None),
+                dataset_id=(str(dataset_id or "").strip() or None),
+                verifier=lambda: run_default_out_of_scope_live_guard(
                     query=query_for_retrieval,
-                    enabled=bool(getattr(settings, "RAG_OUT_OF_SCOPE_LIVE_GUARD_ENABLED", False)),
-                    candidate=bool(abstain_triggered or not citations),
-                    current_triggered=bool(abstain_triggered),
-                    current_reason=abstain_reason,
-                    tenant_id=(str(tenant_id or "").strip() or None),
-                    dataset_id=(str(dataset_id or "").strip() or None),
-                    verifier=lambda: run_default_out_of_scope_live_guard(
-                        query=query_for_retrieval,
-                        tenant_id=str(tenant_id or ""),
-                        dataset_id=str(dataset_id or ""),
-                        ruleset_name=(str(getattr(settings, "RAG_OUT_OF_SCOPE_RULESET", "") or "").strip() or None),
-                        hyde_query=hyde_text if bool(hyde_used and hyde_text) else None,
-                        vector_similarity_threshold=float(getattr(settings, "RAG_OUT_OF_SCOPE_VECTOR_THRESHOLD", 0.35) or 0.35),
-                        hyde_similarity_threshold=float(getattr(settings, "RAG_OUT_OF_SCOPE_HYDE_THRESHOLD", 0.4) or 0.4),
-                    ),
-                )
-                abstain_triggered = bool(out_of_scope_guard.get("abstain_triggered"))
-                abstain_reason = out_of_scope_guard.get("abstain_reason")
-
-                retrieval_info_event = self._build_retrieval_info_event(
-                    attempt=corrective_attempt_count,
+                    tenant_id=str(tenant_id or ""),
+                    dataset_id=str(dataset_id or ""),
+                    ruleset_name=(str(getattr(settings, "RAG_OUT_OF_SCOPE_RULESET", "") or "").strip() or None),
+                    hyde_query=hyde_text if bool(hyde_used and hyde_text) else None,
+                    vector_similarity_threshold=float(getattr(settings, "RAG_OUT_OF_SCOPE_VECTOR_THRESHOLD", 0.35) or 0.35),
+                    hyde_similarity_threshold=float(getattr(settings, "RAG_OUT_OF_SCOPE_HYDE_THRESHOLD", 0.4) or 0.4),
+                ),
+            )
+            abstain_triggered = bool(out_of_scope_guard.get("abstain_triggered"))
+            abstain_reason = out_of_scope_guard.get("abstain_reason")
+            retrieval_info_event = self._build_retrieval_info_event(
+                attempt=corrective_attempt_count,
                 query_count=len(retrieval_queries),
                 docs_count=len(docs),
                 citations_count=len(citations),
@@ -3167,6 +3175,10 @@ Requirements:
                 "history_tokens": num_tokens_from_string(history_text or ""),
                 "context_chars": len(context or ""),
                 "context_tokens": num_tokens_from_string(context or ""),
+                **compute_context_cliff_metrics(
+                    context_tokens=num_tokens_from_string(context or ""),
+                    threshold_tokens=int(getattr(settings, "RAG_CONTEXT_CLIFF_THRESHOLD_TOKENS", 2500) or 2500),
+                ),
                 "citations_count": len(citations),
                 "context_evidence": {
                     "enabled": bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED),
