@@ -653,6 +653,12 @@ function buildFallbackPrecheckFiles(documents: Document[]): DatasetPrecheckFileO
     const filename = String(document.filename || '')
     const pdfDisposition = inferPdfDisposition(document, fileType)
     const { piiHits, secretsHits } = inferSensitiveHits(filename, document.error_message)
+    const normalizedPiiHits: Record<string, number> = Object.fromEntries(
+      Object.entries(piiHits).filter((entry): entry is [string, number] => typeof entry[1] === 'number')
+    )
+    const normalizedSecretsHits: Record<string, number> = Object.fromEntries(
+      Object.entries(secretsHits).filter((entry): entry is [string, number] => typeof entry[1] === 'number')
+    )
     const textCharacters = estimateTextCharacters(fileType, fileSize, pdfDisposition)
     const findings: string[] = []
     const status = String(document.status || '').toLowerCase()
@@ -667,8 +673,8 @@ function buildFallbackPrecheckFiles(documents: Document[]): DatasetPrecheckFileO
       if (fileSize >= 8 * 1024 * 1024) findings.push('wide_spreadsheet')
       if (fileType === 'xlsx' && fileSize >= 4 * 1024 * 1024) findings.push('merged_heavy_spreadsheet')
     }
-    if (Object.keys(piiHits).length) findings.push('pii')
-    if (Object.keys(secretsHits).length) findings.push('secrets')
+    if (Object.keys(normalizedPiiHits).length) findings.push('pii')
+    if (Object.keys(normalizedSecretsHits).length) findings.push('secrets')
     if (exactStem && (exactGroups.get(exactStem)?.length ?? 0) > 1) findings.push('exact_dup')
     else if (versionStem && (nearGroups.get(versionStem)?.length ?? 0) > 1) findings.push('near_dup')
 
@@ -700,8 +706,8 @@ function buildFallbackPrecheckFiles(documents: Document[]): DatasetPrecheckFileO
             }
           : null,
       spreadsheet: inferSpreadsheetStats(fileType, fileSize),
-      pii_hits: piiHits,
-      secrets_hits: secretsHits,
+      pii_hits: normalizedPiiHits,
+      secrets_hits: normalizedSecretsHits,
       findings: Array.from(new Set(findings)),
       error_message: document.error_message || null,
     }

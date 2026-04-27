@@ -166,14 +166,15 @@ function makeDemoQuarantineDocument(
 ): Document {
   const createdAt = new Date(Date.UTC(2026, 2, 31, 3, 0, 0) - id * 36 * 60_000).toISOString()
   const updatedAt = new Date(Date.UTC(2026, 2, 31, 11, 45, 0) - id * 22 * 60_000).toISOString()
+  const { filename, file_type: fileType, ...restOverrides } = overrides
 
   return {
     id: `demo-q-${id.toString().padStart(4, '0')}`,
     tenant_id: 'demo-tenant',
     dataset_id: 'dataset-demo',
-    filename: overrides.filename,
+    filename,
     status: 'quarantined',
-    file_type: overrides.file_type,
+    file_type: fileType,
     file_size: 1_240_000,
     chunk_count: 0,
     processing_progress: 0,
@@ -186,7 +187,7 @@ function makeDemoQuarantineDocument(
     governance: {
       drop_reasons: {},
     },
-    ...overrides,
+    ...restOverrides,
   } as Document
 }
 
@@ -851,7 +852,7 @@ function QuarantineReviewDrawer({
                     <CheckCircle2 className={getBusyIconClassName(acting, selected.id, 'review')} />
                     标记为已解决
                   </Button>
-                  
+
                   <ConfirmDialog
                     title="确定物理删除？"
                     description="此操作不可恢复，文档记录将从数据库中移除。"

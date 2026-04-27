@@ -18,7 +18,7 @@ import {
   X,
   Zap,
 } from 'lucide-react'
-import type { Citation, RetrievePreviewResponse } from '@/types'
+import type { Citation, RetrievePreviewRequest, RetrievePreviewResponse } from '@/types'
 import { toast } from 'sonner'
 
 import { AuthImage } from '@/components/auth-image'
@@ -42,13 +42,22 @@ type RetrievePreviewPanelProps = {
 
 type JsonRecord = Record<string, unknown>
 
-interface RetrievePreviewCitation extends Citation {
-  retrieval_role?: string
-  family_hit?: boolean
-  family_collapse_key?: string
-  hierarchy_family_key?: string
-  has_image?: boolean
+type RetrievePreviewCitation = Partial<
+  Omit<Citation, 'matched_terms' | 'policy_clause_number' | 'policy_path_str'>
+> & {
+  document_id?: string
+  document_name?: string
+  chunk_id?: string
+  chunk_content?: string
+  matched_terms?: unknown
+  retrieval_role?: string | null
+  family_hit?: boolean | null
+  family_collapse_key?: string | null
+  hierarchy_family_key?: string | null
+  has_image?: boolean | null
   img_url?: string | null
+  file_url?: string | null
+  score?: number | null
   text_range?: {
     start?: number
     end?: number
@@ -67,7 +76,9 @@ function isRecord(value: unknown): value is JsonRecord {
 }
 
 function normalizeCitations(response: RetrievePreviewResponse): RetrievePreviewCitation[] {
-  return Array.isArray(response.citations) ? (response.citations as RetrievePreviewCitation[]) : []
+  return Array.isArray(response.citations)
+    ? response.citations.filter(isRecord).map((citation) => citation as RetrievePreviewCitation)
+    : []
 }
 
 function formatRelativeNow(): string {
@@ -76,6 +87,11 @@ function formatRelativeNow(): string {
 
 function formatScore(value: unknown, digits = 3): string {
   return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(digits) : '—'
+}
+
+function getHitScore(hit: RetrievePreviewCitation): number | null {
+  const score = hit.score ?? hit.relevance_score ?? hit.retrieval_score
+  return typeof score === 'number' && Number.isFinite(score) ? score : null
 }
 
 function toHitKey(hit: Pick<RetrievePreviewCitation, 'document_id' | 'chunk_id' | 'retrieval_role'>): string {
@@ -176,13 +192,23 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
     setIsSearching(true)
     setSearchError(null)
     try {
+      const ragConfig: NonNullable<RetrievePreviewRequest['rag_config']> = {
+        top_k: Number(topK),
+        score_threshold: scoreThreshold,
+        max_tokens: 2000,
+        retrieval_mode: 'hybrid',
+        alpha: 0.6,
+        enable_weight_rerank: true,
+        vector_weight: 0.6,
+        keyword_weight: 0.4,
+        use_graph: false,
+        visible_evidence_only: false,
+      }
+
       const response = await ragApi.retrievePreview({
         query,
         dataset_id: selectedDatasetId || undefined,
-        rag_config: {
-          top_k: Number(topK),
-          score_threshold: scoreThreshold,
-        },
+        rag_config: ragConfig,
       })
       const citations = normalizeCitations(response)
       setSearchResults(citations)
@@ -476,10 +502,10 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
     const clause = String(hit.policy_clause_number || '')
     const pathStr = String(hit.policy_path_str || '')
     const familyHit = Boolean(hit.family_hit)
-    const imageUrl = resolveSafeCitationImageUrl(hit)
+    const imageUrl = resolveSafeCitationImageUrl(hit.img_url)
     const hasImage = Boolean(hit.has_image) || Boolean(hit.img_url) || Boolean(imageUrl)
     const terms = getMatchedTerms(hit)
-    const score = formatScore(hit.score)
+    const score = formatScore(getHitScore(hit))
 
     return (
       <div className="space-y-4">
@@ -638,7 +664,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                           <div className="truncate text-[15px] font-medium text-foreground">
                             {String(hit.document_name || hit.document_id || '未命名文档')}
                           </div>
-                          <Badge variant="outline">Score {formatScore(hit.score)}</Badge>
+                          <Badge variant="outline">Score {formatScore(getHitScore(hit))}</Badge>
                           {familyHit ? (
                             <span className="rounded-full bg-warning/10 text-warning border border-warning/20 px-2.5 py-1 text-[11px] font-medium">
                               Family Hit

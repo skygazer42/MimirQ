@@ -27,7 +27,7 @@ import {
   Star,
   X,
 } from 'lucide-react'
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { AnimatePresence, motion, useReducedMotion, type Transition } from 'framer-motion'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
@@ -423,14 +423,14 @@ export default function KnowledgePage() {
       if (!files?.length) return
 
       try {
-        await uploadDocuments(Array.from(files), selectedDatasetId)
+        await uploadDocuments(Array.from(files))
         toast.success(t('toasts.uploadSuccess'))
         await loadDocuments()
       } catch (err) {
         toast.error(formatApiError(err, t('toasts.uploadFailed')))
       }
     },
-    [loadDocuments, selectedDatasetId, t, uploadDocuments]
+    [loadDocuments, t, uploadDocuments]
   )
 
   const toggleDocSelection = useCallback((docId: string) => {
@@ -456,7 +456,13 @@ export default function KnowledgePage() {
 
       setBatchLifecycleWorking(true)
       try {
-        await documentApi.batchLifecycle(selectedDocIds, action)
+        const lifecycleAction = {
+          enable: documentApi.batchEnable,
+          disable: documentApi.batchDisable,
+          archive: documentApi.batchArchive,
+          unarchive: documentApi.batchUnarchive,
+        }[action]
+        await lifecycleAction(selectedDocIds)
         toast.success(t(`toasts.batchLifecycleSuccess.${action}`))
         await loadDocuments()
       } catch (err) {
@@ -473,7 +479,12 @@ export default function KnowledgePage() {
 
     setBatchReingestWorking(true)
     try {
-      await documentApi.batchReingest(selectedDocIds)
+      await documentApi.batchReingest({
+        document_ids: selectedDocIds,
+        replace: false,
+        force: true,
+        skip_if_unchanged: false,
+      })
       toast.success(t('toasts.batchReingestSuccess'))
       setSelectedDocIds([])
       await loadDocuments()
@@ -513,7 +524,7 @@ export default function KnowledgePage() {
     { key: 'settings', label: t('tabs.settings.label'), icon: Database },
   ]
 
-  const layoutTransition = { type: 'spring', bounce: 0.12, duration: 0.45 }
+  const layoutTransition: Transition = { type: 'spring', bounce: 0.12, duration: 0.45 }
   const toolbarSweepClassName =
     'group/button relative overflow-hidden before:pointer-events-none before:absolute before:inset-y-0 before:left-[-24%] before:w-[28%] before:-skew-x-[18deg] before:bg-white/25 before:opacity-0 before:blur-md before:transition-[left,opacity] before:duration-500 hover:before:left-[118%] hover:before:opacity-100 active:before:opacity-70'
   const iconShellBaseClassName =

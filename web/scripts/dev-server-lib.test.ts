@@ -4,7 +4,7 @@ import { buildNextArgs, findAvailablePort, resolveDevServerOptions } from './dev
 
 describe('dev server helpers', () => {
   it('defaults local development to localhost:3000 with webpack', () => {
-    const options = resolveDevServerOptions([], {})
+    const options = resolveDevServerOptions([], { NODE_ENV: 'test' })
 
     expect(options).toEqual({
       host: '127.0.0.1',
@@ -17,6 +17,7 @@ describe('dev server helpers', () => {
 
   it('supports public binding, custom host/port env, and start mode', () => {
     const options = resolveDevServerOptions(['--start', '--public'], {
+      NODE_ENV: 'test',
       HOST: '192.168.1.20',
       PORT: '4010',
       NEXT_DEV_HOST: '127.0.0.1',

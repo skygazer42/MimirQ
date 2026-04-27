@@ -5,20 +5,20 @@
  * 优化版：极致高密度诊断台、UI Pro Max 物理质感、极客化数据展示
  */
 import { useMemo } from 'react'
-import { 
+import {
   Activity,
   Check,
   Database,
   FileStack,
-  Fingerprint, 
-  Loader2, 
-  RefreshCw, 
+  Fingerprint,
+  Loader2,
+  RefreshCw,
   AlertTriangle,
   ChevronRight,
   HardDrive,
   Layers3,
   Scan,
-  ShieldCheck, 
+  ShieldCheck,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { motion } from 'framer-motion'
@@ -75,7 +75,7 @@ export function KnowledgeRetrievalPanel({
   const { indexAudit, indexAuditError, indexAuditLoading, runIndexAudit } = useIndexAudit({ selectedDatasetId })
   const hasAggregateOverview = !selectedDatasetId && (aggregateDocuments > 0 || aggregateChunks > 0)
   const overviewDatasetLabel = selectedDatasetId || '全部数据集'
-  
+
   const metricCards = useMemo(() => {
     if (indexAudit) {
       return [
@@ -273,7 +273,6 @@ export function KnowledgeRetrievalPanel({
         <IconButton
           label={t("actions.run")}
           variant="outline"
-          size="sm"
           className={cn("size-8 rounded-lg", indexAuditLoading && "text-primary border-primary/20")}
           onClick={() => detachPromise(runIndexAudit())}
           disabled={!selectedDatasetId || indexAuditLoading}
@@ -306,7 +305,6 @@ export function KnowledgeRetrievalPanel({
             <IconButton
               label={t("actions.run")}
               variant="outline"
-              size="sm"
               className={cn(
                 "size-9 rounded-[14px] border-border/70 bg-background/72 transition-[transform,box-shadow] hover:scale-[1.03] hover:shadow-[0_12px_24px_-18px_rgba(37,99,235,0.24)]",
                 indexAuditLoading && "text-primary border-primary/20"
@@ -444,14 +442,14 @@ export function KnowledgeRetrievalPanel({
       <Panel padding="none" className="overflow-hidden rounded-[2.5rem] border border-border/60 bg-background/80 shadow-strong backdrop-blur-2xl relative">
         {/* Dynamic Scanning Glow */}
         {indexAuditLoading && (
-          <motion.div 
+          <motion.div
             initial={{ left: '-100%' }}
             animate={{ left: '100%' }}
             transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
             className="absolute top-0 h-0.5 w-1/3 bg-gradient-to-r from-transparent via-primary/50 to-transparent z-20"
           />
         )}
-        
+
         <div className="p-8">
           {renderDiagnosticHeader()}
 
@@ -527,7 +525,7 @@ export function KnowledgeRetrievalPanel({
                  </p>
                </div>
               {selectedDatasetId ? (
-                <Button 
+                <Button
                   onClick={() => detachPromise(runIndexAudit())}
                   className="rounded-full bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 shadow-none px-6 text-xs font-bold"
                 >
