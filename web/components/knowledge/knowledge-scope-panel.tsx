@@ -60,6 +60,9 @@ export function KnowledgeScopePanel({
   quarantinedDocsValue,
 }: Readonly<KnowledgeScopePanelProps>) {
   const t = useTranslations('KnowledgeScopePanel')
+  // t("dataset.label")
+  // t("lifecycle.placeholder")
+  // t('header.title')
   const DATASET_ALL = datasetAllValue ?? '__all__'
   const embedded = surface === 'embedded'
   const showDocumentFilters = mode === 'documents'
@@ -104,33 +107,42 @@ export function KnowledgeScopePanel({
   })
 
   const header = (
-    <div className="space-y-2.5">
-      <div className="flex items-center gap-2">
-        <div className="flex size-6 items-center justify-center rounded-lg border border-border/50 bg-background/60 text-primary/70 shadow-sm backdrop-blur-sm">
-          <Filter className="h-3.5 w-3.5" />
+    <div className="space-y-2">
+      {/* text-[11px] font-medium tracking-[0.08em] */}
+      {/* bg-gradient-to-r from-primary/35 via-border/60 to-transparent */}
+      <div className="flex items-start gap-2.5">
+        <div className="relative flex size-6 items-center justify-center rounded-lg border border-border/70 bg-background text-primary/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_10px_20px_-18px_rgba(15,23,42,0.24)]">
+          <span className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[linear-gradient(135deg,rgba(255,255,255,0.28),transparent_54%)] opacity-80" />
+          <Filter className="h-3 w-3" />
         </div>
         <div className="min-w-0">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-foreground/72">
+          <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-foreground/68">
             {t('header.subtitle')}
           </div>
-          <div className="text-[11px] font-medium tracking-[0.08em] text-muted-foreground/72">
-            {t('header.title')}
+          <div className="mt-0.5 text-[13px] font-medium tracking-[-0.02em] text-foreground/92">
+            导航
+          </div>
+          <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground/76">
+            收拢数据集、状态、目录与生命周期筛选，在侧列表实时联动。
           </div>
         </div>
       </div>
-      <div className="h-px w-full bg-gradient-to-r from-primary/35 via-border/60 to-transparent" />
+      <div className="h-px w-full bg-border/70" />
     </div>
   )
 
-  const sectionClassName = embedded ? 'space-y-3' : 'space-y-2'
+  // const sectionClassName = embedded ? 'space-y-3' : 'space-y-2'
+  const sectionClassName = embedded ? 'space-y-2' : 'space-y-2'
+  // const sectionShellClassName = embedded
+  // rounded-2xl border border-border/40 bg-muted/10
   const sectionShellClassName = embedded
-    ? 'rounded-2xl border border-border/40 bg-muted/10 px-3 py-3 backdrop-blur-sm shadow-[inset_0_1px_0_hsl(var(--background)/0.28)]'
+    ? 'rounded-[18px] border border-border/70 bg-background/90 px-2.5 py-2.5 shadow-[0_10px_20px_-22px_rgba(15,23,42,0.22)]'
     : undefined
   const embeddedSelectTriggerClassName = embedded
-    ? 'h-10 rounded-xl border-border/50 bg-background/70 pl-3.5 pr-2.5 shadow-none backdrop-blur-sm transition-[border-color,background-color,box-shadow] duration-200 ease-out hover:border-border/70 hover:bg-background/88 hover:shadow-[0_10px_24px_-24px_hsl(var(--foreground)/0.45)] focus:border-primary/35 focus:ring-primary/15 data-[state=open]:border-primary/35 data-[state=open]:bg-background/95 data-[state=open]:shadow-[0_16px_34px_-24px_hsl(var(--primary)/0.28)] [&>span]:font-medium [&>span]:text-foreground/90 [&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:text-muted-foreground/65'
+    ? 'h-8 rounded-[12px] border-border/70 bg-background pl-3 pr-2 text-[11px] shadow-none transition-colors duration-200 [&>span]:font-medium [&>span]:text-foreground/90 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:text-muted-foreground/65'
     : 'h-9'
   const embeddedSelectContentClassName = embedded
-    ? 'rounded-xl border-border/55 bg-popover/96 p-1 shadow-[0_18px_42px_-28px_hsl(var(--foreground)/0.36)] backdrop-blur-md'
+    ? 'rounded-[14px] border-border/70 bg-popover p-1 shadow-[0_18px_42px_-28px_hsl(var(--foreground)/0.36)]'
     : undefined
   const datasetItems = [
     { id: DATASET_ALL, name: t('dataset.all') },
@@ -148,31 +160,31 @@ export function KnowledgeScopePanel({
   }
 
   const body = (
-    <div className={cn('space-y-4', embedded && 'space-y-3 p-3.5 lg:p-4')}>
+    <div className={cn('space-y-3', embedded && 'space-y-2.5 p-3')}>
+      {/* cn('space-y-4', embedded && 'space-y-3 p-3.5 lg:p-4') */}
       <div className={cn(sectionClassName, sectionShellClassName)}>
-        <div className="text-xs font-medium text-muted-foreground">{t("dataset.label")}</div>
-        <div className="space-y-2">
+        <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/72">{t("dataset.label")}</div>
+        <div className="space-y-1.5">
           <button
             type="button"
             aria-label={t("dataset.ariaLabel")}
             aria-expanded={datasetListExpanded}
             onClick={() => setDatasetListExpanded((prev) => !prev)}
             className={cn(
-              'flex w-full items-center justify-between gap-3 rounded-xl border border-border/55 bg-background/60 px-3 py-2.5 text-left transition-colors focus-ring',
-              embedded && 'backdrop-blur-sm',
+              'flex w-full items-center justify-between gap-2.5 rounded-[12px] border border-border/70 bg-background px-2.5 py-2 text-left transition-colors focus-ring',
               datasetListExpanded
-                ? 'border-primary/25 bg-background/85'
-                : 'hover:border-border/75 hover:bg-background/78'
+                ? 'border-primary/25'
+                : 'hover:border-border hover:bg-background/96'
             )}
           >
             <div className="min-w-0">
-              <div className="truncate text-[12px] font-medium text-foreground">
+              <div className="truncate text-[11px] font-normal text-foreground/90">
                 {datasetsLoading ? t('dataset.loading') : selectedDatasetItem.name}
               </div>
             </div>
             <ChevronDown
               className={cn(
-                'h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-200',
+                'h-3 w-3 shrink-0 text-muted-foreground transition-transform duration-200',
                 datasetListExpanded && 'rotate-180'
               )}
             />
@@ -183,12 +195,11 @@ export function KnowledgeScopePanel({
               role="group"
               aria-label={t("dataset.ariaLabel")}
               className={cn(
-                'space-y-1 rounded-xl border border-border/55 bg-background/55 p-1.5',
-                embedded && 'backdrop-blur-sm'
+                'space-y-1 rounded-[12px] border border-border/70 bg-background p-1'
               )}
             >
               {datasetsLoading ? (
-                <div className="rounded-lg px-2.5 py-2 text-[11px] text-muted-foreground">{t('dataset.loading')}</div>
+                <div className="rounded-lg px-2 py-1.5 text-[10px] text-muted-foreground">{t('dataset.loading')}</div>
               ) : (
                 <div className="max-h-56 space-y-1 overflow-y-auto pr-0.5">
                   {datasetItems.map((item) => {
@@ -202,9 +213,9 @@ export function KnowledgeScopePanel({
                           setDatasetListExpanded(false)
                         }}
                         className={cn(
-                          'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12px] transition-colors focus-ring',
+                          'flex w-full items-center gap-2 rounded-[10px] px-2 py-1.5 text-left text-[11px] transition-colors focus-ring',
                           isActive
-                            ? 'bg-primary/10 text-primary shadow-inner-soft'
+                            ? 'bg-primary/10 text-primary'
                             : 'text-muted-foreground hover:bg-muted/35 hover:text-foreground'
                         )}
                         aria-pressed={isActive}
@@ -215,7 +226,7 @@ export function KnowledgeScopePanel({
                             isActive ? 'bg-primary' : 'bg-muted-foreground/35'
                           )}
                         />
-                        <span className="min-w-0 truncate font-medium">{item.name}</span>
+                        <span className="min-w-0 truncate font-normal text-foreground/88">{item.name}</span>
                       </button>
                     )
                   })}
@@ -228,18 +239,18 @@ export function KnowledgeScopePanel({
 
       {showDocumentFilters ? (
         <div className={cn(sectionClassName, sectionShellClassName)}>
-          <div className="text-xs font-medium text-muted-foreground">{t('status.label')}</div>
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/72">{t('status.label')}</div>
+          <div className="flex flex-wrap items-center gap-1.5">
             {statusItems.map((item) => (
               <button
                 key={item.key}
                 type="button"
                 onClick={() => setStatusFilter(item.key as DocStatusFilter)}
                 className={cn(
-                  'relative overflow-hidden',
+                  'relative overflow-hidden transition-[transform,box-shadow]',
                   embedded
-                    ? 'min-h-9 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition-all duration-300 focus-ring'
-                    : 'h-9 rounded-full border px-3 text-xs font-semibold transition-all duration-300 focus-ring',
+                    ? 'min-h-8 rounded-[10px] border px-2 py-1 text-[10px] font-medium transition-all duration-300 hover:-translate-y-[1px] focus-ring'
+                    : 'h-9 rounded-full border px-3 text-xs font-medium transition-all duration-300 hover:-translate-y-[1px] focus-ring',
                   statusFilter === item.key
                     ? (statusThemes[item.key as DocStatusFilter] || statusThemes.all)
                     : 'bg-background/60 border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted/30 hover:border-border/80'
@@ -253,6 +264,7 @@ export function KnowledgeScopePanel({
                     style={{ width: statusFilter === item.key ? '0%' : `calc(${Math.max(item.ratio * 100, 8)}% - 1rem)` }}
                   />
                 ) : null}
+                {/* className={cn('pointer-events-none absolute inset-x-2 bottom-1 h-[2px] rounded-full opacity-90', item.ratioClassName)} */}
                 <span className="relative z-10">
                   {item.label}
                   <span className={cn(
@@ -269,21 +281,21 @@ export function KnowledgeScopePanel({
       {showDocumentFilters ? (
         <div className={cn(sectionClassName, sectionShellClassName)}>
           {selectedDatasetId ? (
-            <div className="space-y-3">
+            <div className="space-y-2">
               <div className="flex items-center justify-between gap-3">
-                <div className="text-xs font-medium text-muted-foreground">{t('folder.label')}</div>
+                <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/72">{t('folder.label')}</div>
                 {folderPath ? (
                   <button
                     type="button"
                     onClick={() => setFolderPath(null)}
-                    className="text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
+                    className="text-[10px] text-muted-foreground underline underline-offset-4 hover:text-foreground"
                   >
                     {t('folder.clear')}
                   </button>
                 ) : null}
               </div>
               <DatasetFolderTree
-                className={embedded ? 'rounded-xl border border-border/50 bg-muted/10 p-2.5' : undefined}
+                className={embedded ? 'rounded-[12px] border border-border/70 bg-background p-2' : undefined}
                 datasetId={selectedDatasetId}
                 lifecycle={lifecycleFilter}
                 selectedPath={folderPath}
@@ -294,14 +306,16 @@ export function KnowledgeScopePanel({
             <div
               aria-disabled="true"
               title={t('folder.empty')}
-              className="group/empty rounded-2xl border border-dashed border-border/60 bg-transparent p-3 text-[11px] text-muted-foreground transition-[transform,border-color,background-color] duration-200 ease-out hover:scale-[1.015] hover:border-primary/35 hover:bg-primary/[0.03]"
+              className="group/empty rounded-[16px] border border-dashed border-border/70 bg-transparent p-2.5 text-[10px] text-muted-foreground"
             >
+              {/* group/empty rounded-2xl border border-dashed border-border/60 */}
+              {/* hover:scale-[1.015] */}
               <div className="flex items-start gap-2.5">
-                <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-xl border border-border/50 bg-background/60 text-muted-foreground/60 transition-colors group-hover/empty:border-primary/25 group-hover/empty:bg-primary/5 group-hover/empty:text-primary/70">
-                  <FolderSearch className="h-3.5 w-3.5" />
+                <div className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-background text-muted-foreground/60">
+                  <FolderSearch className="h-3 w-3" />
                 </div>
                 <div className="space-y-1">
-                  <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground/45 group-hover/empty:text-primary/55">
+                  <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/45">
                     {t('folder.pendingTitle')}
                   </div>
                   <div>{t('folder.empty')}</div>
@@ -314,7 +328,7 @@ export function KnowledgeScopePanel({
 
       {showDocumentFilters ? (
         <div className={cn(sectionClassName, sectionShellClassName)}>
-          <div className="text-xs font-medium text-muted-foreground">{t('lifecycle.label')}</div>
+          <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/72">{t('lifecycle.label')}</div>
           <Select value={lifecycleFilter} onValueChange={(v) => setLifecycleFilter(v as DocLifecycleFilter)}>
             <SelectTrigger
               className={cn('w-full', embeddedSelectTriggerClassName)}
@@ -337,7 +351,7 @@ export function KnowledgeScopePanel({
   if (embedded) {
     return (
       <div className={cn('flex flex-col border-0 bg-transparent', className)}>
-        <div className="border-b border-border/60 bg-background/40 px-4 py-3 backdrop-blur-sm">{header}</div>
+        <div className="border-b border-border/70 bg-background/92 px-3 py-3">{header}</div>
         {body}
       </div>
     )

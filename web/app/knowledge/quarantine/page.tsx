@@ -1308,11 +1308,16 @@ export default function QuarantineQueuePage() {
         top={
           <div className="space-y-3">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-              <div className="space-y-1.5">
-                <div className="text-[1.8rem] font-semibold tracking-[-0.04em] text-foreground">隔离审核中心</div>
+              <div className="flex items-start gap-3">
+                <div className="flex size-11 shrink-0 items-center justify-center rounded-[18px] border border-amber-500/20 bg-amber-500/10 text-amber-600 shadow-[0_14px_28px_-20px_rgba(245,158,11,0.28)]">
+                  <ShieldAlert className="size-5" />
+                </div>
+                <div className="space-y-1.5">
+                <div className="text-[1.22rem] font-semibold tracking-[-0.03em] text-foreground">隔离审核中心</div>
                 <p className="max-w-3xl text-[13px] leading-5 text-muted-foreground">
                   聚合命中规则，抽样预览原文，一键调参回放。这里集中处理被隔离的异常样本，帮助你快速完成复核和回放。
                 </p>
+                </div>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
