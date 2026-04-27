@@ -2660,6 +2660,7 @@ const zhCNMessages = {
       copyFilename: '复制文件名',
       copySourcePath: '复制 Source Path',
       healthCard: '健康卡片',
+      peekChunks: '查看分块',
       deleteDocument: '删除文档',
     },
     loading: '正在加载文档库...',

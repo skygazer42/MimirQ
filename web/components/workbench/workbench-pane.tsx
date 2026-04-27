@@ -32,7 +32,7 @@ export function WorkbenchPane({
       <div
         data-page-scroll-container="true"
         className={cn(
-          'flex-1 min-h-0 overflow-y-auto overscroll-contain custom-scrollbar p-4',
+          'flex flex-1 min-h-0 flex-col overflow-y-auto overscroll-contain custom-scrollbar p-4',
           bodyClassName
         )}
       >

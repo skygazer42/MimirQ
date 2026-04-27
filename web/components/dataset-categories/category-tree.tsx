@@ -84,32 +84,32 @@ export function DatasetCategoryTreeView({
       <div key={node.id} className="select-none">
         <div
           className={cn(
-            'w-full flex items-center gap-2 rounded-xl px-2 py-1.5 text-sm transition-colors',
+            'w-full flex items-center gap-1.5 rounded-[12px] border px-1.5 py-1 text-[11px] transition-all duration-200 active:scale-[0.995]',
             isSelected
-              ? 'bg-primary/10 text-primary shadow-sm'
-              : 'text-muted-foreground hover:bg-background/80 hover:text-foreground'
+              ? 'border-primary/15 bg-primary/10 text-primary shadow-[0_10px_18px_-16px_rgba(37,99,235,0.25)]'
+              : 'border-transparent text-muted-foreground hover:border-slate-200/80 hover:bg-slate-50/80 hover:text-foreground'
           )}
-          style={{ paddingLeft: 8 + Math.max(0, Number(node.depth || 0)) * 10 }}
+          style={{ paddingLeft: 6 + Math.max(0, Number(node.depth || 0)) * 10 }}
         >
           {hasChildren ? (
             <button
               type="button"
-              className="p-0.5 rounded hover:bg-muted/50 focus-ring"
+              className="rounded p-0.5 transition-colors duration-200 hover:bg-slate-100 focus-ring"
               aria-label={isExpanded ? '折叠' : '展开'}
               onClick={(e) => {
                 e.stopPropagation()
                 toggle(node.id)
               }}
             >
-              <Chevron className="h-4 w-4 text-muted-foreground" />
+              <Chevron className="h-3.5 w-3.5 text-muted-foreground" />
             </button>
           ) : (
-            <span className="h-4 w-4" />
+            <span className="h-3.5 w-3.5" />
           )}
 
           <button
             type="button"
-            className="focus-ring min-w-0 flex-1 rounded-md px-1 py-0.5 text-left"
+            className="focus-ring min-w-0 flex-1 rounded-md px-0.5 py-0.5 text-left"
             onClick={() => onSelect(node.id)}
             title={node.name}
           >
@@ -117,18 +117,18 @@ export function DatasetCategoryTreeView({
               <span className="flex min-w-0 items-center gap-2">
                 <span
                   className={cn(
-                    'flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border text-muted-foreground',
-                    isSelected ? 'border-primary/15 bg-background/90 text-primary' : 'border-border/60 bg-background/70'
+                    'flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-muted-foreground',
+                    isSelected ? 'border-primary/15 bg-white text-primary shadow-[0_8px_14px_-12px_rgba(37,99,235,0.25)]' : 'border-slate-200/80 bg-slate-50 text-slate-500'
                   )}
                 >
-                  <FolderOpen className="h-3.5 w-3.5" />
+                  <FolderOpen className="h-3 w-3" />
                 </span>
-                <span className="truncate" title={node.name}>{node.name}</span>
+                <span className="truncate text-[11px]" title={node.name}>{node.name}</span>
               </span>
               <span
                 className={cn(
-                  'rounded-full border px-1.5 py-0.5 tabular-nums text-[11px] shadow-sm',
-                  isSelected ? 'border-primary/15 bg-background/85 text-primary' : 'border-border/60 bg-background/85 text-muted-foreground'
+                  'rounded-full border px-1.5 py-0.5 tabular-nums text-[9px] font-semibold shadow-sm',
+                  isSelected ? 'border-primary/15 bg-white text-primary shadow-[0_8px_14px_-12px_rgba(37,99,235,0.22)]' : 'border-slate-200/80 bg-white text-muted-foreground'
                 )}
               >
                 {Number(node.datasets || 0) || 0}
@@ -147,27 +147,27 @@ export function DatasetCategoryTreeView({
   }
 
   return (
-    <div className={cn('space-y-1', className)}>
+    <div className={cn('space-y-0.5', className)}>
       <button
         type="button"
         onClick={() => onSelect(null)}
         className={cn(
-          'focus-ring w-full flex items-center justify-between rounded-xl px-2 py-2 text-sm transition-colors',
+          'focus-ring w-full flex items-center justify-between rounded-[12px] border px-2 py-1.5 text-[11px] transition-all duration-200 active:scale-[0.995]',
           selectedId
-            ? 'text-muted-foreground hover:bg-background/80 hover:text-foreground'
-            : 'bg-primary/10 text-primary shadow-sm'
+            ? 'border-transparent text-muted-foreground hover:border-slate-200/80 hover:bg-slate-50/80 hover:text-foreground'
+            : 'border-primary/15 bg-primary/10 text-primary shadow-[0_10px_18px_-16px_rgba(37,99,235,0.25)]'
         )}
       >
         <span className="flex items-center gap-2 min-w-0">
           <span
             className={cn(
-              'flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border',
-              selectedId ? 'border-border/60 bg-background/75 text-muted-foreground' : 'border-primary/15 bg-background/85 text-primary'
+              'flex h-5 w-5 shrink-0 items-center justify-center rounded-md border',
+              selectedId ? 'border-slate-200/80 bg-slate-50 text-slate-500' : 'border-primary/15 bg-white text-primary shadow-[0_8px_14px_-12px_rgba(37,99,235,0.22)]'
             )}
           >
-            <FolderTree className="h-3.5 w-3.5" />
+            <FolderTree className="h-3 w-3" />
           </span>
-          <span className="truncate" title="全部分类">全部分类</span>
+          <span className="truncate text-[11px]" title="全部分类">全部分类</span>
         </span>
       </button>
       {items.map(renderNode)}

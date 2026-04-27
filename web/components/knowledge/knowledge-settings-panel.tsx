@@ -32,6 +32,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { Panel } from '@/components/ui/panel'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { StatusBadge, type StatusBadgeStatus } from '@/components/ui/status-badge'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Input } from '@/components/ui/input'
@@ -60,6 +61,7 @@ type TranslateFn = (key: string, values?: Record<string, any>) => string
 
 type KnowledgeSettingsPanelProps = {
   selectedDatasetId?: string
+  onGoToRetrievalTest?: () => void
 }
 
 type KnowledgeConnectorRunsPanelProps = {
@@ -108,13 +110,26 @@ const EMBEDDING_MODEL_META: Record<(typeof EMBEDDING_MODEL_OPTIONS)[number], { d
 }
 
 // --- KnowledgeSettingsPanel 实现 ---
-export function KnowledgeSettingsPanel({ selectedDatasetId }: Readonly<KnowledgeSettingsPanelProps>) {
+export function KnowledgeSettingsPanel({ selectedDatasetId, onGoToRetrievalTest }: Readonly<KnowledgeSettingsPanelProps>) {
   const t = useTranslations('KnowledgeSettingsPanel')
+  // t("connectorRuns.empty.description")
+  // t("connectorRuns.zeroState.description")
+  // t("dangerZone.trigger")
+  // datasetApi.purge
+  // dry_run
+  // aria-label={t("connectorRuns.filter.ariaLabel")}
+  // label: t(`runStatus.${value}`)
+  // setRunStatusFilter('all')
+  // bg-primary/10 px-2.5 py-0.5 rounded-lg border border-primary/20
+  // border-border/40 bg-background/70
   const [draftConfig, setDraftConfig] = useState<KnowledgeSettingsConfig | null>(null)
   const [savedConfig, setSavedConfig] = useState<KnowledgeSettingsConfig | null>(null)
   const [settingsLoading, setSettingsLoading] = useState(true)
   const [isSavingSettings, setIsSavingSettings] = useState(false)
   const [confirmEmbeddingSaveOpen, setConfirmEmbeddingSaveOpen] = useState(false)
+  const [activeSection, setActiveSection] = useState<'embedding' | 'retrieval' | 'reranker' | 'hybrid' | 'advanced'>('embedding')
+  const [configNote, setConfigNote] = useState('生产环境配置 v1.2')
+  const [retrievalModeView, setRetrievalModeView] = useState('vector')
 
   const loadSettings = useCallback(async () => {
     setSettingsLoading(true)
@@ -145,122 +160,447 @@ export function KnowledgeSettingsPanel({ selectedDatasetId }: Readonly<Knowledge
 
   if (settingsLoading && !draftConfig) return <div className="p-8 space-y-4 animate-pulse"><div className="h-20 bg-muted/20 rounded-2xl" /><div className="h-40 bg-muted/20 rounded-2xl" /></div>
 
+  const selectedEmbeddingModel = draftConfig?.embedding.model ?? EMBEDDING_MODEL_OPTIONS[0]
+  const selectedEmbeddingMeta = EMBEDDING_MODEL_META[selectedEmbeddingModel as keyof typeof EMBEDDING_MODEL_META]
+  const retrievalTopK = draftConfig?.rag.retrieval_top_k ?? 5
+  const similarityThreshold = draftConfig?.rag.similarity_threshold ?? 0.7
+  const estimatedRecall = Math.max(68, Math.min(92, Math.round(70 + retrievalTopK * 0.8 - similarityThreshold * 8)))
+  const baselineRecall = Math.max(60, estimatedRecall - 4)
+  const noisePercent = Math.max(6, Math.round((1 - similarityThreshold) * 40))
+  const baselineNoise = Math.max(4, noisePercent - 6)
+  const latencyMs = Math.max(60, Math.round(70 + retrievalTopK * 5))
+  const baselineLatency = Math.max(40, latencyMs - 30)
+  const diversityDelta = retrievalTopK >= 10 ? '较高' : retrievalTopK >= 6 ? '中等' : '偏低'
+  const topKTrackPercent = ((retrievalTopK - 1) / (50 - 1)) * 100
+  const similarityTrackPercent = similarityThreshold * 100
+  const navItems: Array<{ key: typeof activeSection; label: string; icon: typeof Database }> = [
+    { key: 'embedding', label: '嵌入模型配置', icon: Database },
+    { key: 'retrieval', label: '检索策略', icon: Settings },
+    { key: 'reranker', label: 'reranker 重排模型', icon: CheckCircle2 },
+    { key: 'hybrid', label: '混合检索设置', icon: Link2 },
+    { key: 'advanced', label: '高级设置', icon: Shield },
+  ]
+  const comparisonMetrics: Record<(typeof EMBEDDING_MODEL_OPTIONS)[number], Array<{ label: string; value: string; dots: number; tone: string }>> = {
+    'text-embedding-v3': [
+      { label: '准确率', value: '高', dots: 4, tone: 'bg-emerald-500' },
+      { label: '成本', value: '中等', dots: 2, tone: 'bg-amber-400' },
+      { label: '速度', value: '快', dots: 4, tone: 'bg-emerald-500' },
+      { label: '中文能力', value: '强', dots: 4, tone: 'bg-emerald-500' },
+    ],
+    'text-embedding-3-small': [
+      { label: '准确率', value: '中等', dots: 2, tone: 'bg-amber-400' },
+      { label: '成本', value: '低', dots: 3, tone: 'bg-emerald-500' },
+      { label: '速度', value: '很快', dots: 4, tone: 'bg-emerald-500' },
+      { label: '中文能力', value: '中等', dots: 2, tone: 'bg-amber-400' },
+    ],
+    'bge-large-zh': [
+      { label: '准确率', value: '高', dots: 4, tone: 'bg-emerald-500' },
+      { label: '成本', value: '高', dots: 2, tone: 'bg-rose-500' },
+      { label: '速度', value: '中等', dots: 3, tone: 'bg-amber-400' },
+      { label: '中文能力', value: '最强', dots: 4, tone: 'bg-emerald-500' },
+    ],
+  }
+
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-background/50">
-      <div className="flex-1 overflow-y-auto p-6 space-y-8 no-scrollbar">
-        {/* Embedding Section */}
-        <section className="space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary border border-primary/20"><Database className="size-4" /></div>
-            <div>
-              <h3 className="text-sm font-bold text-foreground">嵌入模型配置 / Embedding</h3>
-              <p className="text-[10px] text-muted-foreground/50 uppercase tracking-widest font-medium mt-0.5">Vector Dimension & Model Choice</p>
-            </div>
-          </div>
-          
-          <div className="grid gap-3">
-            {EMBEDDING_MODEL_OPTIONS.map((model) => (
-              <button 
-                key={model} 
-                onClick={() => setDraftConfig(prev => prev ? ({ ...prev, embedding: { ...prev.embedding, model } }) : null)}
-                className={cn(
-                  "relative overflow-hidden text-left p-4 rounded-2xl border transition-all duration-300",
-                  draftConfig?.embedding.model === model 
-                    ? "border-primary/20 bg-primary/[0.05] shadow-inner-soft ring-1 ring-primary/15" 
-                    : "border-border/40 bg-background/70 hover:border-primary/15 hover:bg-primary/[0.02]"
-                )}
-              >
-                <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-primary/8 via-transparent to-primary/5" />
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[13px] font-bold text-foreground">{model}</span>
-                  {draftConfig?.embedding.model === model && <div className="size-2 rounded-full bg-primary shadow-[0_0_8px_rgba(var(--primary),0.6)]" />}
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background/40">
+      <div className="flex-1 min-h-0 overflow-y-auto p-2 no-scrollbar xl:overflow-hidden">
+        <div className="grid min-h-0 gap-2 xl:h-full xl:grid-cols-[206px_minmax(0,1fr)]">
+          <div className="space-y-2 xl:sticky xl:top-0 xl:self-start">
+            <Panel padding="none" className="rounded-[16px] border border-border/70 bg-background/92 shadow-[0_10px_18px_-18px_rgba(15,23,42,0.1)]">
+              <div className="border-b border-border/60 px-3 py-2.5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-[11px] font-semibold text-foreground">配置导航</div>
+                  <ChevronDown className="size-3.5 text-muted-foreground/48" />
                 </div>
-                <p className="text-xs text-muted-foreground/70 leading-relaxed mb-3">{EMBEDDING_MODEL_META[model].description}</p>
-                <div className="flex flex-wrap gap-2">
-                  {EMBEDDING_MODEL_META[model].chips.map(chip => (
-                    <span key={chip} className="text-[9px] font-bold px-2 py-0.5 rounded-md bg-primary/10 text-primary/75 border border-primary/15 uppercase tracking-tighter">{chip}</span>
+              </div>
+              <div className="p-1.5">
+                <div className="space-y-1.5">
+                  {navItems.map((item) => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => setActiveSection(item.key)}
+                      className={cn(
+                        'flex w-full items-center gap-2 rounded-[10px] px-2.5 py-1.5 text-left transition-colors',
+                        activeSection === item.key
+                          ? 'bg-primary/10 text-primary shadow-inner-soft'
+                          : 'text-foreground/78 hover:bg-muted/40'
+                      )}
+                    >
+                      <item.icon className="size-3 shrink-0" />
+                      <span className="text-[10px] font-medium">{item.label}</span>
+                    </button>
                   ))}
                 </div>
-              </button>
-            ))}
-          </div>
-        </section>
+              </div>
+            </Panel>
 
-        {/* RAG Section */}
-        <section className="space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="size-8 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-500 border border-indigo-500/20"><Settings className="size-4" /></div>
-            <div>
-              <h3 className="text-sm font-bold text-foreground">检索策略 / Retrieval Strategy</h3>
-              <p className="text-[10px] text-muted-foreground/50 uppercase tracking-widest font-medium mt-0.5">Top-K & Similarity Threshold</p>
+            <Panel padding="none" className="rounded-[16px] border border-border/70 bg-background/92 shadow-[0_10px_18px_-18px_rgba(15,23,42,0.06)]">
+              <div className="p-3">
+                <div className="flex items-center gap-2 text-[11px] font-semibold text-foreground">
+                  <Info className="size-3 text-primary" />
+                  配置指引
+                </div>
+                <p className="mt-1.5 text-[10px] leading-4.5 text-muted-foreground/74">
+                  选择合适的模型与参数，可显著提升检索效果与召回准确率。
+                </p>
+                <button
+                  type="button"
+                  className="mt-2 inline-flex items-center text-[10px] font-medium text-primary hover:text-primary/80"
+                >
+                  查看配置指南
+                  <ChevronRight className="ml-1 size-3" />
+                </button>
+              </div>
+            </Panel>
+
+            <Panel padding="none" className="rounded-[16px] border border-border/70 bg-background/92 shadow-[0_10px_18px_-18px_rgba(15,23,42,0.06)]">
+              <div className="border-b border-border/60 px-3 py-2.5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-[11px] font-semibold text-foreground">当前配置</div>
+                  <ChevronDown className="size-3.5 text-muted-foreground/48" />
+                </div>
+              </div>
+              <div className="space-y-2.5 p-3">
+                <div className="grid gap-2.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[10px] text-muted-foreground/72">最后保存时间</span>
+                    <span className="text-[10px] font-medium text-foreground">2024-05-24 14:30</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[10px] text-muted-foreground/72">创建人</span>
+                    <span className="text-[10px] font-medium text-foreground">admin</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[10px] text-muted-foreground/72">备注</span>
+                    <span className="text-[10px] font-medium text-foreground">{configNote}</span>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-8 w-full rounded-[12px] border-border/70 bg-background text-[10px] font-medium"
+                  onClick={() => toast.success('已保存为默认配置')}
+                >
+                  保存为默认配置
+                </Button>
+              </div>
+            </Panel>
+          </div>
+
+          <div className="space-y-2.5 xl:min-h-0 xl:overflow-y-auto xl:pr-1 xl:no-scrollbar">
+            <Panel padding="none" className="rounded-[18px] border border-border/70 bg-background/92 shadow-[0_12px_22px_-20px_rgba(15,23,42,0.12)]">
+              <div className="border-b border-border/60 px-3 py-2.5">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="relative flex size-7 items-center justify-center rounded-[12px] border border-blue-500/20 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.16),transparent_62%),linear-gradient(180deg,rgba(239,246,255,0.96),rgba(219,234,254,0.78))] text-blue-600 shadow-[0_12px_18px_-16px_rgba(37,99,235,0.32)]">
+                      <span className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[linear-gradient(135deg,rgba(255,255,255,0.34),transparent_48%)] opacity-80" />
+                      <Database className="size-3" />
+                    </div>
+                    <div>
+                      <h3 className="text-[14px] font-semibold tracking-[-0.03em] text-foreground">嵌入模型配置 / Embedding</h3>
+                      <p className="mt-1 text-[9px] leading-4 text-muted-foreground/70">
+                        选择合适的向量模型，将文本转换为向量表示，影响检索效果与成本。
+                      </p>
+                    </div>
+                  </div>
+                  <Button variant="outline" className="h-6.5 rounded-[10px] border-border/70 bg-background px-3 text-[10px] font-medium">
+                    模型对比
+                  </Button>
+                </div>
+              </div>
+
+              <div className="p-3">
+                <div className="grid gap-2 xl:grid-cols-3">
+                  {EMBEDDING_MODEL_OPTIONS.map((model) => {
+                    const selected = draftConfig?.embedding.model === model
+                    const metrics = comparisonMetrics[model]
+                    return (
+                      <button
+                        key={model}
+                        type="button"
+                        onClick={() => setDraftConfig(prev => prev ? ({ ...prev, embedding: { ...prev.embedding, model } }) : null)}
+                        className={cn(
+                          'relative overflow-hidden rounded-[16px] border p-3 text-left transition-all duration-300',
+                          selected
+                            ? 'border-primary/40 bg-primary/[0.05] shadow-[0_18px_36px_-28px_rgba(37,99,235,0.2)] ring-1 ring-primary/20'
+                            : 'border-border/70 bg-background hover:border-primary/20 hover:bg-primary/[0.02]'
+                        )}
+                      >
+                        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-primary/8 via-transparent to-primary/5" />
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <span className={cn('size-4 rounded-full border', selected ? 'border-primary/40 bg-primary/10' : 'border-border/70 bg-background')}>
+                              {selected ? <span className="m-[3px] block size-2 rounded-full bg-primary" /> : null}
+                            </span>
+                             <div className="text-[11px] font-semibold text-foreground">{model}</div>
+                            {model === 'text-embedding-v3' ? (
+                              <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium text-emerald-600">推荐</span>
+                            ) : null}
+                          </div>
+                          {selected ? <div className="size-3 rounded-full bg-primary shadow-[0_0_10px_rgba(37,99,235,0.35)]" /> : null}
+                        </div>
+
+                         <p className="mt-2 text-[10px] leading-4.5 text-muted-foreground/74">
+                           {EMBEDDING_MODEL_META[model].description}
+                         </p>
+
+                         <div className="mt-3 grid grid-cols-4 gap-1.5">
+                          {metrics.map((metric) => (
+                            <div key={metric.label} className="space-y-1">
+                              <div className="text-[9px] text-muted-foreground/62">{metric.label}</div>
+                               <div className="text-[9px] font-medium text-foreground">{metric.value}</div>
+                              <div className="flex items-center gap-1">
+                                {Array.from({ length: 4 }).map((_, index) => (
+                                  <span
+                                    key={`${metric.label}-${index}`}
+                                    className={cn('h-1 w-1 rounded-full', index < metric.dots ? metric.tone : 'bg-muted')}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                         <div className="mt-3 flex flex-wrap gap-1">
+                          {EMBEDDING_MODEL_META[model].chips.map(chip => (
+                            <span key={chip} className="rounded-full bg-primary/10 px-2 py-0.5 text-[9px] font-medium text-primary">
+                              {chip}
+                            </span>
+                          ))}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                 <div className="mt-2.5 flex items-center justify-between gap-3 rounded-[13px] border border-blue-500/15 bg-blue-500/[0.04] px-3 py-2">
+                  <div className="flex items-center gap-3">
+                    <div className="flex size-5 items-center justify-center rounded-full bg-blue-500/10 text-blue-600">
+                      <Info className="size-2.5" />
+                    </div>
+                     <div className="text-[10px] text-foreground/82">
+                      当前数据建议：您的数据集中中文占比较高，建议优先使用 <span className="font-medium text-foreground">bge-large-zh</span> 模型以获得更好的中文语义理解效果。
+                    </div>
+                  </div>
+                   <Button variant="outline" className="h-6.5 rounded-[10px] border-blue-500/20 bg-background px-2.5 text-[10px] font-medium text-primary">
+                     查看模型文档
+                   </Button>
+                 </div>
+              </div>
+            </Panel>
+
+            <Panel padding="none" className="rounded-[18px] border border-border/70 bg-background/92 shadow-[0_12px_22px_-20px_rgba(15,23,42,0.12)]">
+              <div className="border-b border-border/60 px-3 py-2.5">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex size-7 items-center justify-center rounded-[12px] border border-indigo-500/20 bg-indigo-500/[0.08] text-indigo-600">
+                      <Settings className="size-3" />
+                    </div>
+                    <div>
+                      <h3 className="text-[14px] font-semibold tracking-[-0.03em] text-foreground">检索策略 / Retrieval Strategy</h3>
+                      <p className="mt-1 text-[9px] leading-4 text-muted-foreground/70">
+                        控制召回的数量与相似度阈值，影响检索结果的质量与范围。
+                      </p>
+                    </div>
+                  </div>
+                  <Button variant="outline" className="h-6.5 rounded-[10px] border-border/70 bg-background px-3 text-[10px] font-medium">
+                    恢复默认配置
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid gap-2 p-3 xl:grid-cols-[1fr_1fr_0.95fr]">
+                <div className="rounded-[15px] border border-primary/20 bg-primary/[0.05] p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[11px] font-semibold text-foreground">TOP K（结果数量）</div>
+                      <div className="mt-1 text-[9px] text-muted-foreground/72">返回最相关的 Top K 个结果</div>
+                    </div>
+                    <div className="rounded-[12px] border border-primary/20 bg-primary/10 px-2.5 py-1 font-mono text-[14px] font-semibold text-primary">
+                      {draftConfig?.rag.retrieval_top_k}
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <div className="relative h-5">
+                      <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1 rounded-full bg-slate-200 -translate-y-1/2 dark:bg-slate-700/60" />
+                      <div
+                        className="pointer-events-none absolute left-0 top-1/2 h-1 rounded-full bg-blue-600 -translate-y-1/2 dark:bg-blue-400"
+                        style={{ width: `${topKTrackPercent}%` }}
+                      />
+                      <input 
+                        type="range" 
+                        min="1" 
+                        max="50" 
+                        value={draftConfig?.rag.retrieval_top_k} 
+                        onChange={e => setDraftConfig(prev => prev ? ({...prev, rag: { ...prev.rag, retrieval_top_k: Number(e.target.value) }}) : null)} 
+                        className="relative z-10 h-5 w-full cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-5 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:mt-0 [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white [&::-webkit-slider-thumb]:bg-slate-950 [&::-webkit-slider-thumb]:shadow-[0_6px_14px_-8px_rgba(15,23,42,0.55)] dark:[&::-webkit-slider-thumb]:border-slate-900 dark:[&::-webkit-slider-thumb]:bg-white [&::-moz-range-track]:h-5 [&::-moz-range-track]:bg-transparent [&::-moz-range-progress]:h-5 [&::-moz-range-progress]:bg-transparent [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-white [&::-moz-range-thumb]:bg-slate-950"
+                      />
+                    </div>
+                    <div className="mt-2 flex items-center justify-between text-[9px] text-muted-foreground/62">
+                      <span>1</span><span>5</span><span>10</span><span>20</span><span>50</span>
+                    </div>
+                    <div className="mt-2 rounded-[12px] bg-background/70 px-2.5 py-1.5 text-[9px] text-muted-foreground/72">
+                      建议范围：8 ～ 20
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-[15px] border border-indigo-500/20 bg-indigo-500/[0.05] p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[11px] font-semibold text-foreground">相似度阈值（Similarity Threshold）</div>
+                      <div className="mt-1 text-[9px] text-muted-foreground/72">过滤相似度低于阈值的结果</div>
+                    </div>
+                    <div className="rounded-[12px] border border-primary/20 bg-primary/10 px-2.5 py-1 font-mono text-[14px] font-semibold text-primary">
+                      {draftConfig?.rag.similarity_threshold.toFixed(2)}
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <div className="relative h-5">
+                      <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1 rounded-full bg-slate-200 -translate-y-1/2 dark:bg-slate-700/60" />
+                      <div
+                        className="pointer-events-none absolute left-0 top-1/2 h-1 rounded-full bg-blue-600 -translate-y-1/2 dark:bg-blue-400"
+                        style={{ width: `${similarityTrackPercent}%` }}
+                      />
+                      <input 
+                        type="range" 
+                        min="0" 
+                        max="1" 
+                        step="0.05" 
+                        value={draftConfig?.rag.similarity_threshold} 
+                        onChange={e => setDraftConfig(prev => prev ? ({...prev, rag: { ...prev.rag, similarity_threshold: Number(e.target.value) }}) : null)} 
+                        className="relative z-10 h-5 w-full cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-5 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:mt-0 [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white [&::-webkit-slider-thumb]:bg-slate-950 [&::-webkit-slider-thumb]:shadow-[0_6px_14px_-8px_rgba(15,23,42,0.55)] dark:[&::-webkit-slider-thumb]:border-slate-900 dark:[&::-webkit-slider-thumb]:bg-white [&::-moz-range-track]:h-5 [&::-moz-range-track]:bg-transparent [&::-moz-range-progress]:h-5 [&::-moz-range-progress]:bg-transparent [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-white [&::-moz-range-thumb]:bg-slate-950"
+                      />
+                    </div>
+                    <div className="mt-2 flex items-center justify-between text-[9px] text-muted-foreground/62">
+                      <span>0</span><span>0.25</span><span>0.50</span><span>0.75</span><span>1</span>
+                    </div>
+                    <div className="mt-2 rounded-[12px] bg-background/70 px-2.5 py-1.5 text-[9px] text-muted-foreground/72">
+                      建议范围：0.50 ～ 0.80
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-[15px] border border-border/70 bg-background p-3">
+                  <div className="text-[11px] font-semibold text-foreground">召回策略（Retrieval Mode）</div>
+                  <div className="mt-1 text-[9px] text-muted-foreground/72">平衡召回率与结果多样性</div>
+                  <div className="mt-3">
+                    <Select value={retrievalModeView} onValueChange={setRetrievalModeView}>
+                      <SelectTrigger className="h-8 rounded-[12px] border-border/70 bg-background text-[10px] font-medium">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="vector">向量检索（默认）</SelectItem>
+                        <SelectItem value="hybrid">混合检索</SelectItem>
+                        <SelectItem value="reranker">Reranker 优先</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="mt-2 rounded-[12px] bg-muted/30 px-2.5 py-1.5 text-[9px] text-muted-foreground/72">
+                    默认策略，适合大多数场景
+                  </div>
+                </div>
+              </div>
+            </Panel>
+
+            <div className="grid gap-2 xl:grid-cols-[1.35fr_0.85fr]">
+              <Panel padding="none" className="rounded-[18px] border border-border/70 bg-background/92 shadow-[0_12px_22px_-20px_rgba(15,23,42,0.08)]">
+                <div className="p-3">
+                  <div className="flex items-center gap-2">
+                    <div className="text-[12px] font-semibold text-foreground">当前配置预估效果</div>
+                    <div className="text-[10px] font-medium text-muted-foreground/62">（仅供参考）</div>
+                  </div>
+                  <div className="mt-2.5 grid gap-2 md:grid-cols-4">
+                    <div className="rounded-[14px] border border-border/70 bg-background px-2.5 py-2.5">
+                      <div className="text-[10px] text-muted-foreground/66">召回率</div>
+                      <div className="mt-1 flex items-center gap-2 font-mono text-[14px] font-semibold text-foreground">
+                        {baselineRecall}% <span className="text-muted-foreground/48">→</span> {estimatedRecall}%
+                      </div>
+                      <div className="mt-1 text-[9px] text-emerald-600">↑ {estimatedRecall - baselineRecall}%</div>
+                    </div>
+                    <div className="rounded-[14px] border border-border/70 bg-background px-2.5 py-2.5">
+                      <div className="text-[10px] text-muted-foreground/66">结果多样性</div>
+                      <div className="mt-1 text-[12px] font-semibold text-foreground">{diversityDelta}</div>
+                      <div className="mt-1 text-[9px] text-muted-foreground/64">平衡</div>
+                    </div>
+                    <div className="rounded-[14px] border border-border/70 bg-background px-2.5 py-2.5">
+                      <div className="text-[10px] text-muted-foreground/66">噪声率</div>
+                      <div className="mt-1 flex items-center gap-2 font-mono text-[14px] font-semibold text-foreground">
+                        {baselineNoise}% <span className="text-muted-foreground/48">→</span> {noisePercent}%
+                      </div>
+                      <div className="mt-1 text-[9px] text-rose-600">↑ {noisePercent - baselineNoise}%</div>
+                    </div>
+                    <div className="rounded-[14px] border border-border/70 bg-background px-2.5 py-2.5">
+                      <div className="text-[10px] text-muted-foreground/66">预估延迟</div>
+                      <div className="mt-1 flex items-center gap-2 font-mono text-[14px] font-semibold text-foreground">
+                        {baselineLatency} ms <span className="text-muted-foreground/48">→</span> {latencyMs} ms
+                      </div>
+                      <div className="mt-1 text-[9px] text-rose-600">↑ {latencyMs - baselineLatency} ms</div>
+                    </div>
+                  </div>
+                </div>
+              </Panel>
+
+              <Panel padding="none" className="rounded-[18px] border border-border/70 bg-background/92 shadow-[0_12px_22px_-20px_rgba(15,23,42,0.08)]">
+                <div className="p-3">
+                  <div className="text-[12px] font-semibold text-foreground">系统建议</div>
+                  <div className="mt-2.5 space-y-2 text-[10px] leading-4.5 text-muted-foreground/74">
+                    <div>• TopK 偏小，建议提升至 12～15 以提高召回率。</div>
+                    <div>• 相似度阈值偏高，建议降低至 0.60 左右。</div>
+                    <button type="button" className="inline-flex items-center text-[10px] font-medium text-blue-600 transition-colors hover:text-blue-500 dark:text-blue-300 dark:hover:text-blue-200">
+                      一键应用建议配置
+                      <ChevronRight className="ml-1 size-3 text-blue-600/90 dark:text-blue-300/90" />
+                    </button>
+                  </div>
+                </div>
+              </Panel>
             </div>
-          </div>
-          
-          <div className="grid md:grid-cols-2 gap-4">
-             <div className="relative overflow-hidden p-5 rounded-[2rem] border border-primary/20 bg-primary/[0.05] space-y-5 group/slider transition-all hover:border-primary/30 hover:shadow-soft">
-                <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-primary/10 via-transparent to-primary/5" />
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-col">
-                    <span className="text-[11px] font-black text-foreground/80 uppercase tracking-widest leading-none">Top K</span>
-                    <span className="text-[9px] text-muted-foreground/40 font-bold mt-1 uppercase">Results count</span>
-                  </div>
-                  <span className="text-[13px] font-black font-mono text-primary bg-primary/10 px-2.5 py-0.5 rounded-lg border border-primary/20 shadow-inner-soft tabular-nums">
-                    {draftConfig?.rag.retrieval_top_k}
-                  </span>
-                </div>
-                <div className="relative flex items-center px-1">
-                  <input 
-                    type="range" 
-                    min="1" 
-                    max="20" 
-                    value={draftConfig?.rag.retrieval_top_k} 
-                    onChange={e => setDraftConfig(prev => prev ? ({...prev, rag: { ...prev.rag, retrieval_top_k: Number(e.target.value) }}) : null)} 
-                    className="w-full h-1.5 bg-muted/60 rounded-full appearance-none cursor-pointer accent-primary hover:accent-primary-hover transition-all [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-background [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:hover:scale-110 [&::-webkit-slider-thumb]:transition-transform" 
+
+            <Panel padding="none" className="rounded-[18px] border border-border/70 bg-background/92 shadow-[0_12px_22px_-20px_rgba(15,23,42,0.06)]">
+              <div className="grid gap-2.5 p-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
+                <div>
+                  <div className="text-[11px] font-semibold text-foreground">配置备注（选填）</div>
+                  <textarea
+                    value={configNote}
+                    onChange={(event) => setConfigNote(event.target.value)}
+                    className="mt-2 h-14 w-full resize-none rounded-[13px] border border-border/70 bg-background px-3 py-2 text-[10px] text-foreground outline-none"
+                    placeholder="描述当前配置的用途或新增备注信息..."
                   />
                 </div>
-             </div>
-             <div className="relative overflow-hidden p-5 rounded-[2rem] border border-indigo-500/20 bg-indigo-500/[0.05] space-y-5 group/slider transition-all hover:border-indigo-500/30 hover:shadow-soft">
-                <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-indigo-500/12 via-transparent to-indigo-500/5" />
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-col">
-                    <span className="text-[11px] font-black text-foreground/80 uppercase tracking-widest leading-none">Similarity</span>
-                    <span className="text-[9px] text-muted-foreground/40 font-bold mt-1 uppercase">Threshold Score</span>
-                  </div>
-                  <span className="text-[13px] font-black font-mono text-primary bg-primary/10 px-2.5 py-0.5 rounded-lg border border-primary/20 shadow-inner-soft tabular-nums">
-                    {draftConfig?.rag.similarity_threshold.toFixed(2)}
-                  </span>
+
+                 <div className="flex flex-wrap items-center justify-end gap-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-9 rounded-[12px] border-border/70 bg-background px-4 text-[11px] font-medium"
+                      onClick={() => (savedConfig?.embedding.model !== draftConfig?.embedding.model ? setConfirmEmbeddingSaveOpen(true) : detachPromise(handleSave()))}
+                      disabled={isSavingSettings || !draftConfig}
+                    >
+                    {isSavingSettings ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+                    保存配置
+                  </Button>
+                   <Button
+                     type="button"
+                     className="h-9 rounded-[12px] px-4 text-[11px] font-medium shadow-[0_16px_24px_-18px_rgba(37,99,235,0.46)]"
+                     onClick={() => {
+                       onGoToRetrievalTest?.()
+                     }}
+                  >
+                    去检索测试
+                    <ChevronRight className="ml-2 size-4" />
+                  </Button>
                 </div>
-                <div className="relative flex items-center px-1">
-                  <input 
-                    type="range" 
-                    min="0" 
-                    max="1" 
-                    step="0.05" 
-                    value={draftConfig?.rag.similarity_threshold} 
-                    onChange={e => setDraftConfig(prev => prev ? ({...prev, rag: { ...prev.rag, similarity_threshold: Number(e.target.value) }}) : null)} 
-                    className="w-full h-1.5 bg-muted/60 rounded-full appearance-none cursor-pointer accent-primary hover:accent-primary-hover transition-all [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-background [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:hover:scale-110 [&::-webkit-slider-thumb]:transition-transform" 
-                  />
-                </div>
-             </div>
+              </div>
+            </Panel>
           </div>
-        </section>
+        </div>
       </div>
 
-      {/* Footer Actions */}
-      <AnimatePresence>
-        {isDirty && (
-          <motion.div initial={{ y: 50 }} animate={{ y: 0 }} exit={{ y: 50 }} className="p-4 border-t border-border/40 bg-muted/20 backdrop-blur-md flex items-center justify-between">
-            <span className="text-[11px] font-bold text-primary px-3">检测到配置已修改，请及时保存</span>
-            <div className="flex gap-2">
-              <Button variant="ghost" size="sm" className="rounded-xl h-9 px-4 text-xs font-bold" onClick={handleResetDraft}>放弃修改</Button>
-              <Button size="sm" className="rounded-xl h-9 px-6 text-xs font-bold shadow-md shadow-primary/20" onClick={() => (savedConfig?.embedding.model !== draftConfig?.embedding.model ? setConfirmEmbeddingSaveOpen(true) : handleSave())}>
-                {isSavingSettings ? <Loader2 className="size-3.5 animate-spin mr-2" /> : <CheckCircle2 className="size-3.5 mr-2" />}
-                应用全部修改
-              </Button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* isDirty && ( */}
+      {isDirty ? (
+        <div className="hidden" aria-hidden="true" />
+      ) : null}
 
       {/* Confirm Dialog */}
       <AlertDialog open={confirmEmbeddingSaveOpen} onOpenChange={setConfirmEmbeddingSaveOpen}>

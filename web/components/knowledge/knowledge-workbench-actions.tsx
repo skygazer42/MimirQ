@@ -75,12 +75,12 @@ export function KnowledgeWorkbenchActions({
             type="button"
             size="sm"
             className={cn(
-              'bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm',
+              'group/action relative overflow-hidden bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm before:pointer-events-none before:absolute before:inset-y-0 before:left-[-22%] before:w-[28%] before:-skew-x-[18deg] before:bg-white/25 before:opacity-0 before:blur-md before:transition-[left,opacity] before:duration-500 hover:before:left-[118%] hover:before:opacity-100 active:before:opacity-70',
               className,
             )}
           >
-            <Plus className="size-4" />
-            {t('importOrCreate')}
+            <Plus className="relative z-10 size-4 transition-transform duration-200 group-hover/action:rotate-90 group-active/action:scale-90" />
+            <span className="relative z-10">{t('importOrCreate')}</span>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-72">

@@ -18,6 +18,7 @@ import {
   Plus,
   Route,
   Search,
+  Star,
   PanelLeftClose,
   PanelLeftOpen,
   Bot
@@ -115,6 +116,8 @@ function HistoryPageContent({
   const [hasMoreMessages, setHasMoreMessages] = useState(initialHasMoreMessages)
   const [isLoadingOlder, setIsLoadingOlder] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [historyView, setHistoryView] = useState<'all' | 'recent' | 'starred'>('all')
+  const [starredConversationIds, setStarredConversationIds] = useState<string[]>([])
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
   const [isTraceOpen, setIsTraceOpen] = useState(false)
 
@@ -255,14 +258,33 @@ function HistoryPageContent({
 
   // 过滤对话
   const filteredConversations = useMemo(() => {
+    let base = conversations
+    if (historyView === 'recent') {
+      const now = Date.now()
+      base = base.filter((c) => {
+        const activityDate = c.last_message_at || c.updated_at || c.created_at
+        const ts = new Date(activityDate).getTime()
+        return Number.isFinite(ts) && now - ts <= 7 * 24 * 60 * 60 * 1000
+      })
+    }
+    if (historyView === 'starred') {
+      const starredSet = new Set(starredConversationIds)
+      base = base.filter((c) => starredSet.has(c.id))
+    }
     const term = deferredSearchQuery.trim().toLowerCase()
-    if (!term) return conversations
-    return conversations.filter(
+    if (!term) return base
+    return base.filter(
       (c) =>
         (c.title || '').toLowerCase().includes(term) ||
         (c.last_message || '').toLowerCase().includes(term)
     )
-  }, [conversations, deferredSearchQuery])
+  }, [conversations, deferredSearchQuery, historyView, starredConversationIds])
+
+  const toggleStarConversation = useCallback((conversationId: string) => {
+    setStarredConversationIds((prev) =>
+      prev.includes(conversationId) ? prev.filter((id) => id !== conversationId) : [...prev, conversationId]
+    )
+  }, [])
 
   const groupLabels = useMemo(
     () => ({
@@ -362,7 +384,7 @@ function HistoryPageContent({
                     <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/10">
                       <History className="size-4" />
                     </div>
-                    <h2 className="text-sm font-semibold text-foreground tracking-tight uppercase">历史记录</h2>
+                    <h2 className="text-sm font-medium text-foreground tracking-tight uppercase">历史记录</h2>
                   </div>
                   <div className="flex items-center gap-1">
                     <Button
@@ -386,6 +408,28 @@ function HistoryPageContent({
                     placeholder={t('searchPlaceholder')}
                     className="w-full h-9 pl-8 pr-3 rounded-xl border border-border/60 bg-background/60 backdrop-blur-sm text-xs font-medium outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary/40 focus:bg-background transition-all"
                   />
+                </div>
+
+                <div className="flex items-center gap-1 px-0.5 pb-0.5">
+                  {([
+                    ['all', '全部'],
+                    ['recent', '最近'],
+                    ['starred', '收藏'],
+                  ] as const).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setHistoryView(value)}
+                      className={cn(
+                        'rounded-full px-3 py-1 text-[11px] font-medium transition-colors',
+                        historyView === value
+                          ? 'border border-primary/15 bg-primary/10 text-primary shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -424,7 +468,7 @@ function HistoryPageContent({
                             </div>
                           </div>
                           <div className="space-y-0 px-0 pb-0">
-                            {convs.map((conversation) => (<ConversationItem key={conversation.id} conversation={conversation} isSelected={selectedConversation?.id === conversation.id} onSelect={() => handleSelectConversation(conversation)} onDelete={() => setShowDeleteConfirm(conversation.id)} showDeleteConfirm={showDeleteConfirm === conversation.id} onConfirmDelete={() => handleDeleteConversation(conversation.id)} onCancelDelete={() => setShowDeleteConfirm(null)}/>))}
+                            {convs.map((conversation) => (<ConversationItem key={conversation.id} conversation={conversation} isSelected={selectedConversation?.id === conversation.id} isStarred={starredConversationIds.includes(conversation.id)} onToggleStar={() => toggleStarConversation(conversation.id)} onSelect={() => handleSelectConversation(conversation)} onDelete={() => setShowDeleteConfirm(conversation.id)} showDeleteConfirm={showDeleteConfirm === conversation.id} onConfirmDelete={() => handleDeleteConversation(conversation.id)} onCancelDelete={() => setShowDeleteConfirm(null)}/>))}
                           </div>
                         </div>);
             }));
@@ -491,7 +535,7 @@ function HistoryPageContent({
                             "min-w-0 flex flex-col justify-center transition-all duration-500",
                             isSidebarCollapsed ? "ml-12" : "ml-0"
                           )}>
-                            <h2 className="truncate text-base font-semibold text-foreground tracking-tight leading-tight md:text-lg">
+                            <h2 className="truncate text-base font-medium text-foreground/92 tracking-tight leading-tight md:text-lg">
                               {selectedConversation.title || t("untitledConversation")}
                             </h2>
                             <div className="flex items-center gap-1 mt-0.5 tabular-nums">
@@ -511,7 +555,7 @@ function HistoryPageContent({
                             size="sm"
                             onClick={handleEvaluateConversation}
                             aria-label="进行对话分析评测"
-                            className="h-8 gap-1.5 rounded-lg text-[11px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-all"
+                            className="h-8 gap-1.5 rounded-lg text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-all"
                           >
                             <BarChart3 className="size-3.5" />
                             分析评测
@@ -521,7 +565,7 @@ function HistoryPageContent({
                             size="sm"
                             onClick={() => setIsTraceOpen(true)}
                             aria-label="查看数据追踪"
-                            className="h-8 gap-1.5 rounded-lg text-[11px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-all"
+                            className="h-8 gap-1.5 rounded-lg text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-all"
                           >
                             <Route className="size-3.5" />
                             数据追踪
@@ -532,7 +576,7 @@ function HistoryPageContent({
                             size="sm"
                             onClick={handleContinueChat}
                             aria-label="继续当前对话"
-                            className="h-8 gap-1.5 rounded-lg px-3.5 text-[11px] font-semibold shadow-sm"
+                            className="h-8 gap-1.5 rounded-lg px-3.5 text-[11px] font-medium shadow-sm"
                           >
                             <Send className="size-3.5" />
                             继续对话
@@ -590,7 +634,7 @@ function HistoryPageContent({
                           {groupedMessages.map((group) => (<div key={group.key} className="space-y-6">
                               <div className="flex items-center gap-6 py-1">
                                 <div className="h-px flex-1 bg-border/30" />
-                                <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/20 whitespace-nowrap">
+                                <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground/28 whitespace-nowrap">
                                   {group.label}
                                 </div>
                                 <div className="h-px flex-1 bg-border/30" />
@@ -668,6 +712,8 @@ function HistoryPageContent({
 function ConversationItem({
   conversation,
   isSelected,
+  isStarred,
+  onToggleStar,
   onSelect,
   onDelete,
   showDeleteConfirm,
@@ -676,6 +722,8 @@ function ConversationItem({
 }: Readonly<{
   conversation: Conversation
   isSelected: boolean
+  isStarred: boolean
+  onToggleStar: () => void
   onSelect: () => void
   onDelete: () => void
   showDeleteConfirm: boolean
@@ -686,14 +734,14 @@ function ConversationItem({
   const t = useTranslations('History')
 
   return (
-    <div className="relative group px-0 antialiased">
+    <div className="relative group px-0">
       <motion.button
         type="button"
         onClick={onSelect}
         whileHover={{ scale: 1.01, y: -0.5 }}
         whileTap={{ scale: 0.99 }}
         className={cn(
-          'w-full flex flex-col gap-0.5 px-3 py-2 text-left transition-all duration-200 rounded-xl relative overflow-hidden border border-transparent focus-visible:outline-none focus-visible:ring-0',
+          'w-full flex flex-col gap-0.5 px-3 py-1.5 text-left transition-all duration-200 rounded-xl relative overflow-hidden border border-transparent focus-visible:outline-none focus-visible:ring-0',
           isSelected 
             ? 'bg-primary/10 text-primary border-primary/10 shadow-[0_2px_12px_-3px_rgba(var(--primary),0.1)]' 
             : 'bg-transparent text-foreground/80 hover:bg-muted/60 hover:text-foreground'
@@ -709,8 +757,8 @@ function ConversationItem({
 
         <div className="flex items-start justify-between gap-3">
           <span className={cn(
-            'flex-1 truncate text-[13.5px] font-medium leading-snug tracking-normal',
-            isSelected ? 'text-primary' : 'text-foreground/90'
+            'flex-1 truncate text-[13.5px] font-normal leading-snug tracking-normal',
+            isSelected ? 'text-primary' : 'text-foreground/88'
           )}>
             {conversation.title || t('untitledConversation')}
           </span>
@@ -718,7 +766,7 @@ function ConversationItem({
             {formatRelativeTime(conversation.last_message_at || conversation.updated_at, locale, t('justNow'))}
           </span>
         </div>
-        <div className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground/40 tabular-nums">
+        <div className="flex items-center gap-2 text-[11px] font-normal text-muted-foreground/40 tabular-nums">
           <span className="shrink-0">{t('messageCount', { count: conversation.message_count })}</span>
           <span className="text-muted-foreground/20">/</span>
           <p className="truncate flex-1 font-normal tracking-normal text-muted-foreground/50 lowercase">
@@ -751,14 +799,29 @@ function ConversationItem({
             </IconButton>
           </div>
         ) : (
-          <IconButton
-            label={t('deleteConversation')}
-            variant="ghost"
-            className="size-8 text-muted-foreground/30 hover:text-destructive hover:bg-destructive/10 active:bg-destructive/20 rounded-full transition-all"
-            onClick={(e) => { e.stopPropagation(); onDelete() }}
-          >
-            <Trash2 className="size-4" />
-          </IconButton>
+          <div className="flex items-center gap-1">
+            <IconButton
+              label={isStarred ? '取消收藏' : '收藏对话'}
+              variant="ghost"
+              className={cn(
+                'size-8 rounded-full transition-all',
+                isStarred
+                  ? 'text-primary hover:bg-primary/10'
+                  : 'text-muted-foreground/30 hover:text-primary hover:bg-primary/8'
+              )}
+              onClick={(e) => { e.stopPropagation(); onToggleStar() }}
+            >
+              <Star className={cn('size-4', isStarred && 'fill-current')} />
+            </IconButton>
+            <IconButton
+              label={t('deleteConversation')}
+              variant="ghost"
+              className="size-8 text-muted-foreground/30 hover:text-destructive hover:bg-destructive/10 active:bg-destructive/20 rounded-full transition-all"
+              onClick={(e) => { e.stopPropagation(); onDelete() }}
+            >
+              <Trash2 className="size-4" />
+            </IconButton>
+          </div>
         )}
       </div>
     </div>

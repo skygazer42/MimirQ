@@ -4,15 +4,14 @@ import { useCallback, useEffect, useMemo, useState, type Dispatch, type ReactNod
 import { toast } from 'sonner'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  BarChart3, ChevronRight, Database, FileSearch, FolderOpen, Layers, Loader2,
-  Pencil, Plus, RefreshCw, Search, Settings2, ShieldCheck,
-  Table2, Trash2, Users, type LucideIcon,
+  AlertCircle, BarChart3, CheckCircle2, ChevronRight, Clock3, Database, FileSearch,
+  Filter, FolderOpen, Layers, Loader2, MoreHorizontal, Pencil, RefreshCw, Search, Settings2,
+  ShieldCheck, Table2, Trash2, Users, type LucideIcon,
 } from 'lucide-react'
 
 import { AppFrame } from '@/components/app-frame'
 import { useRouter } from '@/i18n/navigation'
 import { PageScaffold } from '@/components/ui/page-scaffold'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -33,7 +32,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { datasetApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, detachPromise } from '@/lib/utils'
-import type { Dataset, PermissionEnum, DocumentPipelineOptions } from '@/types'
+import type { Dataset, PermissionEnum, DocumentPipelineOptions, DatasetIngestionStats } from '@/types'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { GovernanceProfileSelector } from '@/components/governance-profile-selector'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
@@ -98,6 +97,169 @@ function applyPipelinePatch(
   return { ...current, ...patch }
 }
 
+function getDatasetAnomalyCount(stats?: DatasetIngestionStats | null): number {
+  const byStatus = stats?.by_status || {}
+  return Number(byStatus.failed || 0) + Number(byStatus.quarantined || 0)
+}
+
+function getDatasetPendingCount(stats?: DatasetIngestionStats | null): number {
+  const byStatus = stats?.by_status || {}
+  return Number(byStatus.pending || 0) + Number(byStatus.processing || 0)
+}
+
+function getDatasetOperationalStatus(dataset: Dataset, stats?: DatasetIngestionStats | null): 'active' | 'anomaly' | 'pending' | 'testing' {
+  const name = String(dataset.name || '').toLowerCase()
+  if (name.includes('test') || name.includes('demo') || name.includes('测试')) return 'testing'
+  if (getDatasetAnomalyCount(stats) > 0) return 'anomaly'
+  if (getDatasetPendingCount(stats) > 0) return 'pending'
+  return 'active'
+}
+
+function formatRelativeTime(value?: string | null): string {
+  if (!value) return '刚刚'
+  const timestamp = new Date(value).getTime()
+  if (!Number.isFinite(timestamp)) return value
+  const diffMs = Date.now() - timestamp
+  const diffHours = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60)))
+  if (diffHours < 1) return '刚刚'
+  if (diffHours < 24) return `${diffHours} 小时前`
+  const diffDays = Math.floor(diffHours / 24)
+  return `${diffDays} 天前`
+}
+
+function getDatasetStatusBadgeConfig(status: 'active' | 'anomaly' | 'pending' | 'testing') {
+  switch (status) {
+    case 'active':
+      return {
+        label: '正常',
+        className: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600',
+        dotClassName: 'bg-emerald-500',
+      }
+    case 'anomaly':
+      return {
+        label: '异常',
+        className: 'border-red-500/20 bg-red-500/10 text-red-600',
+        dotClassName: 'bg-red-500',
+      }
+    case 'pending':
+      return {
+        label: '处理中',
+        className: 'border-amber-500/20 bg-amber-500/10 text-amber-600',
+        dotClassName: 'bg-amber-500',
+      }
+    case 'testing':
+      return {
+        label: '测试集',
+        className: 'border-blue-500/20 bg-blue-500/10 text-blue-600',
+        dotClassName: 'bg-blue-500',
+      }
+  }
+}
+
+function getDatasetStatusIconConfig(status: 'active' | 'anomaly' | 'pending' | 'testing') {
+  switch (status) {
+    case 'active':
+      return {
+        defaultClassName: 'border-emerald-200/80 bg-emerald-50 text-emerald-600',
+        activeClassName: 'border-emerald-300/90 bg-emerald-100 text-emerald-700',
+      }
+    case 'anomaly':
+      return {
+        defaultClassName: 'border-red-200/80 bg-red-50 text-red-500',
+        activeClassName: 'border-red-300/90 bg-red-100 text-red-600',
+      }
+    case 'pending':
+      return {
+        defaultClassName: 'border-amber-200/80 bg-amber-50 text-amber-600',
+        activeClassName: 'border-amber-300/90 bg-amber-100 text-amber-700',
+      }
+    case 'testing':
+      return {
+        defaultClassName: 'border-blue-200/80 bg-blue-50 text-blue-600',
+        activeClassName: 'border-blue-300/90 bg-blue-100 text-blue-700',
+      }
+  }
+}
+
+function estimateDatasetHealthScore(dataset: Dataset, stats?: DatasetIngestionStats | null): number {
+  const anomalyPenalty = getDatasetAnomalyCount(stats) * 12
+  const pendingPenalty = getDatasetPendingCount(stats) * 4
+  const testingPenalty = getDatasetOperationalStatus(dataset, stats) === 'testing' ? 6 : 0
+  return Math.max(62, Math.min(96, 94 - anomalyPenalty - pendingPenalty - testingPenalty))
+}
+
+function getDatasetIconTone(icon: LucideIcon) {
+  if (icon === Database) {
+    return {
+      iconClassName: 'text-violet-600',
+      softIconClassName: 'text-violet-500',
+      containerClassName: 'border-violet-200/80 bg-violet-50 text-violet-600',
+      chipClassName: 'text-violet-600',
+    }
+  }
+
+  if (icon === FolderOpen || icon === FileSearch || icon === Search) {
+    return {
+      iconClassName: 'text-sky-600',
+      softIconClassName: 'text-sky-500',
+      containerClassName: 'border-sky-200/80 bg-sky-50 text-sky-600',
+      chipClassName: 'text-sky-600',
+    }
+  }
+
+  if (icon === Layers || icon === Table2) {
+    return {
+      iconClassName: 'text-indigo-600',
+      softIconClassName: 'text-indigo-500',
+      containerClassName: 'border-indigo-200/80 bg-indigo-50 text-indigo-600',
+      chipClassName: 'text-indigo-600',
+    }
+  }
+
+  if (icon === ShieldCheck || icon === Users) {
+    return {
+      iconClassName: 'text-blue-600',
+      softIconClassName: 'text-blue-500',
+      containerClassName: 'border-blue-200/80 bg-blue-50 text-blue-600',
+      chipClassName: 'text-blue-600',
+    }
+  }
+
+  if (icon === Settings2 || icon === Clock3) {
+    return {
+      iconClassName: 'text-amber-600',
+      softIconClassName: 'text-amber-500',
+      containerClassName: 'border-amber-200/80 bg-amber-50 text-amber-600',
+      chipClassName: 'text-amber-600',
+    }
+  }
+
+  if (icon === AlertCircle) {
+    return {
+      iconClassName: 'text-red-500',
+      softIconClassName: 'text-red-400',
+      containerClassName: 'border-red-200/80 bg-red-50 text-red-500',
+      chipClassName: 'text-red-500',
+    }
+  }
+
+  if (icon === BarChart3 || icon === CheckCircle2) {
+    return {
+      iconClassName: 'text-emerald-600',
+      softIconClassName: 'text-emerald-500',
+      containerClassName: 'border-emerald-200/80 bg-emerald-50 text-emerald-600',
+      chipClassName: 'text-emerald-600',
+    }
+  }
+
+  return {
+    iconClassName: 'text-slate-600',
+    softIconClassName: 'text-slate-500',
+    containerClassName: 'border-slate-200/80 bg-slate-50 text-slate-600',
+    chipClassName: 'text-slate-600',
+  }
+}
+
 export default function DatasetsPage() {
   const router = useRouter()
   const { options: defaultPipelineOptions } = usePipelineOptions()
@@ -108,8 +270,12 @@ export default function DatasetsPage() {
   const [permissionUpdatePendingId, setPermissionUpdatePendingId] = useState<string | null>(null)
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [collectionFilter, setCollectionFilter] = useState<'all' | 'active' | 'anomaly' | 'pending' | 'testing'>('all')
   const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null)
+  const [pageSize, setPageSize] = useState(20)
+  const [currentPage, setCurrentPage] = useState(1)
   const [deleteTarget, setDeleteTarget] = useState<Dataset | null>(null)
+  const [statsByDatasetId, setStatsByDatasetId] = useState<Record<string, DatasetIngestionStats>>({})
 
   const [createOpen, setCreateOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
@@ -149,31 +315,115 @@ export default function DatasetsPage() {
 
   useEffect(() => { detachPromise(load()) }, [load])
 
+  useEffect(() => {
+    const missingIds = items
+      .map((dataset) => dataset.id)
+      .filter((id) => !statsByDatasetId[id])
+
+    if (missingIds.length === 0) return
+
+    let cancelled = false
+    detachPromise((async () => {
+      const statsEntries = await Promise.all(
+        missingIds.map(async (datasetId) => {
+          try {
+            const stats = await datasetApi.getIngestionStats(datasetId)
+            return [datasetId, stats] as const
+          } catch {
+            return null
+          }
+        })
+      )
+
+      if (cancelled) return
+
+      setStatsByDatasetId((prev) => {
+        const next = { ...prev }
+        for (const entry of statsEntries) {
+          if (!entry) continue
+          const [datasetId, stats] = entry
+          next[datasetId] = stats
+        }
+        return next
+      })
+    })())
+
+    return () => {
+      cancelled = true
+    }
+  }, [items, statsByDatasetId])
+
   const filteredItems = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
     if (!q) return items
     return items.filter((ds) =>
       (ds.name || '').toLowerCase().includes(q) ||
-      (ds.description || '').toLowerCase().includes(q)
+      (ds.description || '').toLowerCase().includes(q) ||
+      (ds.id || '').toLowerCase().includes(q)
     )
   }, [items, searchQuery])
 
+  const statusCounts = useMemo(() => {
+    return filteredItems.reduce(
+      (acc, dataset) => {
+        const status = getDatasetOperationalStatus(dataset, statsByDatasetId[dataset.id])
+        acc[status] += 1
+        return acc
+      },
+      { active: 0, anomaly: 0, pending: 0, testing: 0 }
+    )
+  }, [filteredItems, statsByDatasetId])
+
+  const displayedItems = useMemo(() => {
+    if (collectionFilter === 'all') return filteredItems
+    return filteredItems.filter((dataset) => getDatasetOperationalStatus(dataset, statsByDatasetId[dataset.id]) === collectionFilter)
+  }, [collectionFilter, filteredItems, statsByDatasetId])
+
+  const totalPages = displayedItems.length === 0 ? 0 : Math.ceil(displayedItems.length / pageSize)
+
+  const pagedItems = useMemo(() => {
+    const start = (currentPage - 1) * pageSize
+    return displayedItems.slice(start, start + pageSize)
+  }, [currentPage, displayedItems, pageSize])
+
   useEffect(() => {
-    if (filteredItems.length === 0) {
+    setCurrentPage(1)
+  }, [searchQuery, collectionFilter, selectedCategoryId])
+
+  useEffect(() => {
+    const nextTotalPages = displayedItems.length === 0 ? 1 : Math.ceil(displayedItems.length / pageSize)
+    if (currentPage > nextTotalPages) {
+      setCurrentPage(nextTotalPages)
+    }
+  }, [currentPage, displayedItems.length, pageSize])
+
+  useEffect(() => {
+    if (pagedItems.length === 0) {
       if (selectedDatasetId !== null) setSelectedDatasetId(null)
       return
     }
 
-    if (!selectedDatasetId || !filteredItems.some((item) => item.id === selectedDatasetId)) {
-      setSelectedDatasetId(filteredItems[0]?.id ?? null)
+    if (!selectedDatasetId || !pagedItems.some((item) => item.id === selectedDatasetId)) {
+      setSelectedDatasetId(pagedItems[0]?.id ?? null)
     }
-  }, [filteredItems, selectedDatasetId])
+  }, [pagedItems, selectedDatasetId])
 
   const canSubmit = useMemo(() => form.name.trim().length > 0, [form.name])
   const selectedDataset = useMemo(
-    () => filteredItems.find((item) => item.id === selectedDatasetId) ?? filteredItems[0] ?? null,
-    [filteredItems, selectedDatasetId]
+    () => pagedItems.find((item) => item.id === selectedDatasetId) ?? pagedItems[0] ?? null,
+    [pagedItems, selectedDatasetId]
   )
+  const selectedDatasetStats = selectedDataset ? statsByDatasetId[selectedDataset.id] : undefined
+  const selectedDatasetStatus = selectedDataset ? getDatasetOperationalStatus(selectedDataset, selectedDatasetStats) : 'active'
+  const selectedStatusBadge = getDatasetStatusBadgeConfig(selectedDatasetStatus)
+  const selectedStatusIcon = getDatasetStatusIconConfig(selectedDatasetStatus)
+  const collectionFilterLabel = {
+    all: '全部数据集',
+    active: '活跃集合',
+    anomaly: '异常集合',
+    pending: '处理中集合',
+    testing: '测试集合',
+  }[collectionFilter]
 
   const replaceDataset = useCallback((next: Dataset) => {
     setItems((prev) => prev.map((item) => (item.id === next.id ? next : item)))
@@ -302,6 +552,8 @@ export default function DatasetsPage() {
         iconColor="text-primary"
         size="full"
         compact
+        density="system-dense"
+        bodyClassName="pt-2 pb-4"
         description={<span>管理知识库集合与访问权限</span>}
         actions={
           <div className="flex items-center gap-2">
@@ -334,437 +586,534 @@ export default function DatasetsPage() {
           </div>
         }
       >
-        <div className="flex min-h-[calc(100vh-11.5rem)] flex-col overflow-hidden rounded-3xl border border-border/60 bg-card/90 shadow-soft">
-          <div className="border-b border-border/60 bg-background/70 px-4 py-4 backdrop-blur supports-[backdrop-filter]:bg-background/55 md:px-5">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-              <div className="space-y-1">
-                <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  <FolderOpen className="size-3.5 text-primary" />
-                  <span>数据集目录</span>
-                </div>
-                <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                  <span className="flex items-center gap-1.5">
-                    <Layers className="size-3.5" />
-                    <span className="font-medium tabular-nums text-foreground">{total}</span>
-                    <span>个数据集</span>
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <FolderOpen className="size-3.5" />
-                    <span className="text-foreground">{selectedCategoryId ? '已筛选分类' : '全部分类'}</span>
-                  </span>
-                  {isLoading ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none text-primary" /> : null}
-                </div>
+        {/* flex min-h-[calc(100vh-11.5rem)] flex-col overflow-hidden rounded-3xl border border-border/60 bg-card/90 shadow-soft */}
+        {/* lg:grid-cols-[176px_minmax(0,1fr)] */}
+        {/* xl:grid-cols-[minmax(0,1.15fr)_320px] */}
+        {/* Dataset Inspector */}
+        {/* 选择一个数据集以查看快捷入口与访问配置 */}
+        {/* <DatasetShortcutButton */}
+        <div className="flex min-h-[calc(100vh-11.5rem)] flex-col overflow-hidden rounded-3xl border border-border/60 bg-card/90 shadow-soft xl:h-[calc(100vh-9.25rem)] xl:min-h-0">
+          <div className="border-b border-border/60 bg-background/80 px-3 py-2.5 backdrop-blur">
+            <div className="grid gap-1.5 xl:grid-cols-[minmax(0,1fr)_276px] xl:items-start">
+              <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-4">
+                <DatasetSummaryCard title="全部数据集" value={String(total)} icon={Layers} tone="slate" />
+                <DatasetSummaryCard title="活跃" value={String(statusCounts.active)} icon={CheckCircle2} tone="green" />
+                <DatasetSummaryCard title="异常" value={String(statusCounts.anomaly)} icon={AlertCircle} tone="red" />
+                <DatasetSummaryCard title="待处理" value={String(statusCounts.pending)} icon={Clock3} tone="amber" />
               </div>
 
-              <div className="flex w-full flex-col gap-3 md:flex-row xl:w-auto">
-                <div className="relative min-w-0 flex-1 xl:w-[360px]">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                  <Input
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="搜索数据集..."
-                    className="h-10 rounded-full border-border/60 bg-card pl-9 shadow-sm"
-                  />
+              <div className="flex flex-col gap-1.5">
+                <div className="flex flex-wrap items-center gap-1 text-[9px] font-medium text-muted-foreground/72">
+                  <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background px-2 py-0.5 text-foreground/76">
+                    <Filter className="size-3 text-primary/70" />
+                    {collectionFilterLabel}
+                  </span>
+                  <span className="inline-flex items-center rounded-full border border-border/60 bg-background px-2 py-0.5">
+                    {selectedCategoryId ? '分类已筛选' : '全部分类'}
+                  </span>
+                  <span className="inline-flex items-center rounded-full border border-border/60 bg-background px-2 py-0.5">
+                    当前显示 {displayedItems.length} / {filteredItems.length}
+                  </span>
+                  {isLoading ? <Loader2 className="size-3.5 animate-spin text-primary motion-reduce:animate-none" /> : null}
                 </div>
-                <div className="inline-flex items-center gap-1.5 self-start text-xs text-muted-foreground">
-                  <span className="font-medium text-foreground tabular-nums">{filteredItems.length}</span>
-                  <span>条结果</span>
+
+                <div className="flex flex-col gap-1.5 sm:flex-row">
+                  <div className="relative min-w-0 flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+                    <Input
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="搜索数据集、描述或 ID..."
+                      className="h-8 rounded-2xl border-border/60 bg-background pl-8.5 text-[11px] shadow-none"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-8 rounded-2xl border-border/60 bg-background px-2.5 text-[10px] font-medium"
+                    onClick={() => {
+                      setSearchQuery('')
+                      setCollectionFilter('all')
+                      setSelectedCategoryId(null)
+                    }}
+                  >
+                    重置视图
+                  </Button>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="grid flex-1 grid-cols-1 lg:grid-cols-[176px_minmax(0,1fr)]">
-            <aside className="border-b border-border/60 bg-muted/15 px-2 py-3 lg:border-b-0 lg:border-r lg:px-2.5">
-              <DatasetCategoryTree
-                className="sticky top-0"
-                selectedId={selectedCategoryId}
-                onSelect={(id) => setSelectedCategoryId(id)}
-              />
+          <div className="grid flex-1 gap-2.5 px-2.5 py-2.5 xl:grid-cols-[208px_minmax(0,1.2fr)_284px]">
+            <aside className="min-h-0 overflow-hidden rounded-[22px] border border-border/60 bg-background/88 p-2.5 shadow-[0_18px_36px_-28px_rgba(15,23,42,0.12)]">
+              <div className="border-b border-border/60 pb-2">
+                <div className="text-[9px] font-semibold uppercase tracking-[0.18em] text-primary/70">Collections</div>
+                <div className="mt-0.5 text-[11px] font-semibold text-foreground">分类与筛选</div>
+              </div>
+
+              <div className="mt-2">
+                <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-foreground/54">状态视图</div>
+                <div className="space-y-1">
+                <DatasetFilterButton
+                  label="全部分类"
+                  count={total}
+                  active={collectionFilter === 'all'}
+                  onClick={() => setCollectionFilter('all')}
+                  icon={Layers}
+                />
+                <DatasetFilterButton
+                  label="活跃"
+                  count={statusCounts.active}
+                  active={collectionFilter === 'active'}
+                  onClick={() => setCollectionFilter('active')}
+                  dotClassName="bg-emerald-500"
+                />
+                <DatasetFilterButton
+                  label="异常"
+                  count={statusCounts.anomaly}
+                  active={collectionFilter === 'anomaly'}
+                  onClick={() => setCollectionFilter('anomaly')}
+                  dotClassName="bg-red-500"
+                />
+                <DatasetFilterButton
+                  label="待处理"
+                  count={statusCounts.pending}
+                  active={collectionFilter === 'pending'}
+                  onClick={() => setCollectionFilter('pending')}
+                  dotClassName="bg-blue-500"
+                />
+                <DatasetFilterButton
+                  label="测试集"
+                  count={statusCounts.testing}
+                  active={collectionFilter === 'testing'}
+                  onClick={() => setCollectionFilter('testing')}
+                  icon={FileSearch}
+                />
+                </div>
+              </div>
+
+              <div className="mt-3 border-t border-border/60 pt-2">
+                <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-foreground/54">分类树</div>
+                <DatasetCategoryTree
+                  className="max-h-[420px] overflow-y-auto pr-1 xl:max-h-[calc(100vh-23.5rem)]"
+                  selectedId={selectedCategoryId}
+                  onSelect={(id) => setSelectedCategoryId(id)}
+                />
+              </div>
             </aside>
 
-            <section className="min-w-0 bg-card/45">
-              {filteredItems.length === 0 && !isLoading ? (
-                <div className="flex min-h-full px-4 py-8 md:px-5">
-                  <EmptyState
-                    icon={Layers}
-                    title={searchQuery ? '未找到匹配的数据集' : '暂无数据集'}
-                    description={searchQuery ? '尝试更换关键词' : '点击“新建数据集”开始构建知识库'}
-                    className="min-h-[360px] flex-1 rounded-3xl border border-dashed border-border/60 bg-background/50 shadow-none"
-                  >
-                    {!searchQuery && (
-                      <Button className="gap-1.5" onClick={() => { resetForm(); setCreateOpen(true) }}>
-                        <Plus className="size-4" /> 新建数据集
-                      </Button>
-                    )}
-                  </EmptyState>
-                </div>
-              ) : (
-                <div className="grid min-h-full grid-cols-1 xl:grid-cols-[minmax(0,1.15fr)_320px]">
-                  <div className="min-w-0 xl:border-r xl:border-border/60">
-                    <div className="flex items-end justify-between gap-4 border-b border-border/60 bg-muted/20 px-4 py-4 md:px-5">
-                      <div className="space-y-1">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                          Datasets
-                        </div>
-                        <div className="text-sm font-semibold text-foreground">
-                          {selectedCategoryId ? '当前分类目录' : '全部数据集'}
-                        </div>
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        选择一个数据集以查看快捷入口与访问配置
-                      </div>
+            <section className="min-w-0">
+              <div className="flex h-full min-h-0 flex-col rounded-[22px] border border-border/60 bg-background/88 shadow-[0_18px_36px_-28px_rgba(15,23,42,0.12)]">
+                <div className="flex items-center justify-between gap-3 border-b border-border/60 px-3.5 py-2.5">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary/70">Dataset Catalog</div>
+                    <div className="mt-1 flex items-center gap-2 text-[12px] font-semibold text-foreground">
+                      <span className="truncate">{selectedCategoryId ? '当前分类数据集' : '全部数据集'}</span>
+                      <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                        {displayedItems.length}
+                      </span>
                     </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Select value="updated_desc" onValueChange={() => {}}>
+                      <SelectTrigger className="h-8 w-[118px] rounded-xl border-border/60 bg-background px-2.5 text-[10px] font-medium">
+                        <SelectValue placeholder="按更新时间" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="updated_desc">按更新时间</SelectItem>
+                        <SelectItem value="name_asc">按名称</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button variant="outline" size="icon" className="size-7 rounded-xl border-border/60 bg-background">
+                      <Table2 className="size-3.5" />
+                    </Button>
+                  </div>
+                </div>
 
-                    <motion.div 
+                <div className="flex-1 overflow-y-auto px-3 py-2.5">
+                  {displayedItems.length === 0 && !isLoading ? (
+                    <EmptyState
+                      icon={Layers}
+                      title={searchQuery ? '未找到匹配的数据集' : '暂无数据集'}
+                      description={searchQuery ? '尝试更换关键词或清空筛选。' : '点击“新建数据集”开始构建知识库。'}
+                      className="min-h-full rounded-[22px] border-dashed border-border/60 bg-background/40"
+                    />
+                  ) : (
+                    <motion.div
                       initial="hidden"
                       animate="visible"
-                      variants={{
-                        hidden: { opacity: 0 },
-                        visible: { 
-                          opacity: 1,
-                          transition: { staggerChildren: 0.04 }
-                        }
-                      }}
-                      className="space-y-4 px-4 py-5 md:px-6 relative"
+                      variants={{ hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.04 } } }}
+                      className="space-y-2.5"
                     >
-                      {/* 装饰性背景光感 */}
-                      <div className="absolute top-0 left-1/4 w-64 h-64 bg-primary/5 rounded-full blur-[100px] pointer-events-none -z-10" />
-
-                      {filteredItems.map((ds) => {
-                        const isActive = selectedDataset?.id === ds.id
-                        const memberCount = ds.partial_member_list?.length ?? 0
-                        const groupCount = ds.partial_group_list?.length ?? 0
+                      {pagedItems.map((dataset) => {
+                        const stats = statsByDatasetId[dataset.id]
+                        const isActive = selectedDataset?.id === dataset.id
+                        const memberCount = dataset.partial_member_list?.length ?? 0
+                        const status = getDatasetOperationalStatus(dataset, stats)
+                        const statusBadge = getDatasetStatusBadgeConfig(status)
+                        const statusIcon = getDatasetStatusIconConfig(status)
+                        const anomalyCount = getDatasetAnomalyCount(stats)
 
                         return (
                           <motion.button
-                            key={ds.id}
-                            variants={{
-                              hidden: { opacity: 0, y: 10 },
-                              visible: { opacity: 1, y: 0 }
-                            }}
+                            key={dataset.id}
+                            variants={{ hidden: { opacity: 0, y: 10 }, visible: { opacity: 1, y: 0 } }}
                             type="button"
-                            whileHover={{ scale: 1.01, y: -2 }}
-                            whileTap={{ scale: 0.995 }}
+                            onClick={() => setSelectedDatasetId(dataset.id)}
+                            whileHover={{ y: -2 }}
                             className={cn(
-                              'focus-ring group w-full rounded-3xl p-5 text-left transition-all duration-300 relative overflow-hidden',
+                              'group w-full rounded-[18px] border px-3 py-2.5 text-left transition-all duration-200 active:scale-[0.998]',
                               isActive
-                                ? 'border-primary/30 bg-background shadow-[0_8px_30px_rgb(var(--primary),0.08)] ring-1 ring-primary/20'
-                                : 'border-border/50 bg-card/40 hover:bg-card hover:shadow-xl hover:border-border/80'
+                                ? 'border-blue-300/80 bg-blue-50/50 shadow-[0_14px_26px_-20px_rgba(37,99,235,0.22)] ring-2 ring-blue-200/70'
+                                : 'border-border/60 bg-background/80 shadow-[0_10px_18px_-18px_rgba(15,23,42,0.1)] hover:border-slate-300/80 hover:bg-background hover:shadow-[0_16px_28px_-22px_rgba(15,23,42,0.12)]'
                             )}
-                            onClick={() => setSelectedDatasetId(ds.id)}
                           >
-                            {/* 选中态的侧边品牌色装饰 */}
-                            {isActive && (
-                              <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary shadow-[0_0_12px_rgba(var(--primary),0.4)]" />
-                            )}
-
-                            <div className="flex items-start gap-4">
-                              <div
-                                className={cn(
-                                  'flex size-12 shrink-0 items-center justify-center rounded-2xl transition-all duration-500 shadow-sm border',
-                                  isActive 
-                                    ? 'bg-gradient-to-br from-primary to-primary/80 text-primary-foreground border-primary/20 scale-105' 
-                                    : 'bg-background text-muted-foreground/40 border-border/40 group-hover:border-primary/20 group-hover:text-primary/60 group-hover:bg-primary/5'
-                                )}
-                              >
-                                <Layers className={cn('size-6', ds.pipeline ? '' : 'opacity-60')} />
-                              </div>
-
-                              <div className="min-w-0 flex-1">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span className={cn(
-                                    "truncate text-base font-bold tracking-tight transition-colors duration-300",
-                                    isActive ? "text-foreground" : "text-foreground/90"
-                                  )}>
-                                    {ds.name}
-                                  </span>
-                                  <PermissionBadge permission={perm(ds)} />
-                                  {ds.pipeline && (
-                                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[11px] font-bold animate-in fade-in zoom-in duration-500">
-                                      <div className="size-1 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]" />
-                                      CONNECTED
-                                    </div>
+                            <div className={cn(
+                              'grid gap-2.5 xl:items-start',
+                              isActive && 'xl:grid-cols-[minmax(0,1fr)_auto]'
+                            )}>
+                              <div className="flex min-w-0 items-start gap-3">
+                                <div
+                                  className={cn(
+                                    'flex size-9 shrink-0 items-center justify-center rounded-[12px] border',
+                                    isActive
+                                      ? statusIcon.activeClassName
+                                      : statusIcon.defaultClassName
                                   )}
+                                >
+                                  <Layers className="size-3.5" />
                                 </div>
-
-                                <p className="mt-2 line-clamp-2 text-[13px] leading-relaxed text-muted-foreground/70 group-hover:text-muted-foreground transition-colors">
-                                  {ds.description || '暂无描述。可在右侧检视器进入预检、画像和入库策略配置。'}
-                                </p>
-
-                                <div className="mt-5 flex flex-wrap items-center gap-3">
-                                  <DatasetMetaPill icon={Database} className="bg-indigo-500/5 text-indigo-600 dark:text-indigo-400 border-indigo-500/10">
-                                    ID {ds.id.slice(0, 8)}
-                                  </DatasetMetaPill>
-                                  {groupCount > 0 && (
-                                    <DatasetMetaPill icon={Users} className="bg-amber-500/5 text-amber-600 dark:text-amber-400 border-amber-500/10">
-                                      {groupCount} 组
-                                    </DatasetMetaPill>
-                                  )}
-                                  {memberCount > 0 && (
-                                    <DatasetMetaPill icon={ShieldCheck} className="bg-sky-500/5 text-sky-600 dark:text-sky-400 border-sky-500/10">
-                                      {memberCount} 成员
-                                    </DatasetMetaPill>
-                                  )}
+                                <div className="min-w-0">
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    <div className="truncate text-[12px] font-semibold text-foreground">{dataset.name}</div>
+                                    <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold', statusBadge.className)}>
+                                      <span className={cn('size-1.5 rounded-full', statusBadge.dotClassName)} />
+                                      {statusBadge.label}
+                                    </span>
+                                  </div>
+                                  <div className="mt-0.5 text-[10px] leading-[1.1rem] text-muted-foreground/72">
+                                    {dataset.description || '暂无描述。可在右侧继续配置预检、画像与入库策略。'}
+                                  </div>
                                 </div>
                               </div>
+
+                              {isActive ? (
+                                <div className="inline-flex shrink-0 items-center gap-1 rounded-full border border-blue-200 bg-blue-100/80 p-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setSelectedDatasetId(dataset.id)
+                                    }}
+                                    className="rounded-full bg-white px-2 py-0.5 text-[10px] font-medium text-blue-600 shadow-sm transition-all duration-200 hover:bg-blue-50 hover:text-blue-700 active:scale-[0.98]"
+                                  >
+                                    详情
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      router.push(`/knowledge?tab=retrieval&dataset=${dataset.id}`)
+                                    }}
+                                    className="rounded-full bg-white px-2 py-0.5 text-[10px] font-medium text-blue-600 shadow-sm transition-all duration-200 hover:bg-blue-50 hover:text-blue-700 active:scale-[0.98]"
+                                  >
+                                    检索
+                                  </button>
+                                  <Button
+                                    size="sm"
+                                    className="h-7 rounded-full bg-blue-600 px-2.5 text-[10px] font-medium text-white shadow-[0_10px_20px_-14px_rgba(37,99,235,0.65)] transition-transform duration-200 hover:bg-blue-700 active:scale-[0.98]"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      router.push(`/datasets/${dataset.id}/ingestion`)
+                                    }}
+                                  >
+                                    入库
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="size-7 rounded-full bg-white/90 transition-all duration-200 hover:bg-white hover:shadow-sm active:scale-[0.96]"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      openEdit(dataset)
+                                    }}
+                                  >
+                                    <MoreHorizontal className="size-3" />
+                                  </Button>
+                                </div>
+                              ) : null}
+                            </div>
+
+                            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/50 pt-1.5">
+                              <DatasetMetaPill icon={Database} label="ID" value={dataset.id.slice(0, 8)} className="font-mono text-violet-600" valueClassName="text-violet-600" />
+                              <DatasetMetaPill icon={Clock3} label="更新" value={formatRelativeTime(stats?.last_processed_at)} />
+                              <DatasetMetaPill icon={FileSearch} label="文档" value={String(Number(stats?.total_documents || 0))} />
+                              <DatasetMetaPill icon={Layers} label="Chunk" value={Number(stats?.total_chunks || 0).toLocaleString()} />
+                              <DatasetMetaPill icon={AlertCircle} label="异常" value={String(anomalyCount)} className={anomalyCount > 0 ? 'text-red-500' : undefined} />
+                              <DatasetMetaPill icon={Users} label="成员" value={memberCount > 0 ? String(memberCount) : '0'} />
                             </div>
                           </motion.button>
                         )
                       })}
                     </motion.div>
-                  </div>
-
-                  <aside className="border-t border-border/60 bg-muted/5 xl:border-t-0">
-                    <div className="sticky top-0 space-y-4 p-4 md:p-6 overflow-hidden">
-                      <AnimatePresence mode="wait">
-                        {selectedDataset ? (
-                          <motion.div
-                            key={selectedDataset.id}
-                            initial={{ opacity: 0, x: 15 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: -15 }}
-                            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-                            className="space-y-4"
-                          >
-                            <div className="rounded-[2.25rem] border border-border/60 bg-background/90 p-5 shadow-soft relative overflow-hidden group/main-card">
-                              {/* Enhanced Background Decoration */}
-                              <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-primary/15 to-transparent rounded-full blur-[80px] pointer-events-none opacity-40 group-hover/main-card:opacity-60 transition-opacity duration-700" />
-
-                              <div className="flex items-start justify-between gap-4 mb-5 relative px-1">
-                                <div className="flex flex-col">
-                                  <div className="text-[11px] font-bold uppercase tracking-[0.25em] text-primary/40 leading-tight mb-1">数据集详情</div>
-                                  <h3 className="text-xl font-bold tracking-tight text-foreground leading-[1.15]">
-                                    {selectedDataset.name}
-                                  </h3>
-                                </div>
-                                <div className="flex items-center gap-1.5 shrink-0 pt-1">
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="size-8 rounded-xl border border-border/50 bg-background/40 hover:bg-muted hover:border-primary/20 transition-all duration-300"
-                                    onClick={() => openEdit(selectedDataset)}
-                                    aria-label="编辑数据集"
-                                  >
-                                    <Pencil className="size-3.5" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="size-8 rounded-xl border border-destructive/20 bg-background/40 text-destructive/60 hover:text-destructive hover:bg-destructive/10 hover:border-destructive/30 transition-all duration-300"
-                                    onClick={() => setDeleteTarget(selectedDataset)}
-                                    aria-label="删除数据集"
-                                  >
-                                    <Trash2 className="size-3.5" />
-                                  </Button>
-                                </div>
-                              </div>
-
-                              <div className="mt-5 border-t border-border/40 pt-5 relative">
-                                <div className="mb-4 flex items-center justify-between px-1">
-                                  <div className="flex flex-col">
-                                    <div className="text-[11px] font-bold uppercase tracking-[0.15em] text-foreground/90">
-                                      元信息与状态
-                                    </div>
-                                    <div className="text-[9px] font-medium text-muted-foreground/40 leading-none mt-0.5">
-                                      Global Status
-                                    </div>
-                                  </div>
-                                  <div className="h-4 w-[1px] bg-border/40" />
-                                </div>                                <div className="space-y-0.5 rounded-3xl border border-border/40 bg-muted/15 p-2.5 backdrop-blur-sm shadow-inner-soft">
-                                  <DatasetInspectorMetric icon={Database} label="数据集 ID" value={selectedDataset.id.slice(0, 8)} mono />
-                                  <DatasetInspectorMetric
-                                    icon={FolderOpen}
-                                    label="当前范围"
-                                    value={selectedCategoryId ? '当前分类筛选' : '全部分类视图'}
-                                  />
-                                  <div className="flex items-center justify-between py-1.5 group/metric px-2 -mx-1 rounded-lg hover:bg-muted/50 transition-colors">
-                                    <div className="flex min-w-0 items-center gap-2">
-                                      <ShieldCheck className="size-3 text-muted-foreground/30 group-hover/metric:text-primary transition-colors" />
-                                      <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/60 group-hover/metric:text-muted-foreground transition-colors">
-                                        访问权限
-                                      </span>
-                                    </div>
-                                    <div className="ml-3 flex items-center gap-2">
-                                      {permissionUpdatePending ? <Loader2 className="size-3 animate-spin text-muted-foreground/50" /> : null}
-                                      <div className="w-[132px]">
-                                        <Select
-                                          value={selectedDataset.permission}
-                                          disabled={permissionUpdatePending}
-                                          onValueChange={(value) => detachPromise(handleInspectorPermissionChange(selectedDataset, value as PermissionEnum))}
-                                        >
-                                          <SelectTrigger
-                                            aria-label="访问权限"
-                                            className={cn(
-                                              'ml-auto h-8 w-auto min-w-[88px] max-w-full justify-end gap-1.5 rounded-xl border pl-2 pr-2 text-[11px] font-semibold shadow-none [&>span]:truncate [&>span]:text-right [&>svg]:h-3 [&>svg]:w-3 [&>svg]:shrink-0',
-                                              perm(selectedDataset).className
-                                            )}
-                                          >
-                                            <SelectValue />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            <SelectItem value="only_me">仅自己</SelectItem>
-                                            <SelectItem value="all_team_members">全员可见</SelectItem>
-                                            <SelectItem value="partial_members">部分成员</SelectItem>
-                                          </SelectContent>
-                                        </Select>
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center justify-between py-1.5 group/metric px-2 -mx-1 rounded-lg hover:bg-muted/50 transition-colors">
-                                    <div className="flex min-w-0 items-center gap-2">
-                                      <Settings2 className="size-3 text-muted-foreground/30 group-hover/metric:text-primary transition-colors" />
-                                      <div className="flex min-w-0 flex-col">
-                                        <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/60 group-hover/metric:text-muted-foreground transition-colors">
-                                          默认管线
-                                        </span>
-                                        <span
-                                          className={cn(
-                                            'text-[11px] font-semibold leading-relaxed transition-colors',
-                                            selectedDataset.pipeline
-                                              ? 'text-emerald-600 dark:text-emerald-400'
-                                              : 'text-muted-foreground/70'
-                                          )}
-                                        >
-                                          {selectedDataset.pipeline ? '已启用' : '未启用'}
-                                        </span>
-                                      </div>
-                                    </div>
-                                    <div className="ml-3 flex items-center gap-2">
-                                      {pipelineTogglePending ? <Loader2 className="size-3 animate-spin text-muted-foreground/50" /> : null}
-                                      <Switch
-                                        checked={Boolean(selectedDataset.pipeline)}
-                                        disabled={pipelineTogglePending}
-                                        onCheckedChange={(nextChecked) => detachPromise(handleToggleDefaultPipeline(selectedDataset, nextChecked))}
-                                        aria-label={selectedDataset.pipeline ? '关闭默认管线' : '启用默认管线'}
-                                        title={selectedDataset.pipeline ? '关闭默认管线' : '启用默认管线'}
-                                      />
-                                    </div>
-                                  </div>
-                                  <div className="grid grid-cols-2 gap-2 mt-2">
-                                    <DatasetInspectorMetric
-                                      variant="stat"
-                                      icon={Users}
-                                      label="成员"
-                                      value={`${selectedDataset.partial_member_list?.length ?? 0} 人`}
-                                      valueClassName="text-amber-600 dark:text-amber-400"
-                                    />
-                                    <DatasetInspectorMetric
-                                      variant="stat"
-                                      icon={Users}
-                                      label="白名单组"
-                                      value={`${selectedDataset.partial_group_list?.length ?? 0} 组`}
-                                      valueClassName="text-indigo-600 dark:text-indigo-400"
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                            <div className="rounded-[2.25rem] border border-border/60 bg-background/80 p-5 shadow-soft relative overflow-hidden group/console">
-                              {/* Background subtle decoration */}
-                              <div className="absolute -top-12 -right-12 size-48 bg-primary/5 rounded-full blur-[60px] pointer-events-none group-hover/console:bg-primary/10 transition-colors duration-700" />
-                              
-                              <div className="relative mb-5 flex items-center justify-between px-1">
-                                <div className="flex flex-col">
-                                  <div className="text-sm font-bold text-foreground tracking-tight">操作台</div>
-                                  <div className="text-[11px] font-semibold text-muted-foreground/50 uppercase tracking-widest leading-none mt-0.5">
-                                    Command Center
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-muted/30 border border-border/10 text-[11px] font-bold text-muted-foreground/60">
-                                  <div className="size-1 rounded-full bg-primary/40" />
-                                  常用入口
-                                </div>
-                              </div>
-
-                              <div className="grid gap-2 relative">
-                                <DatasetShortcutButton
-                                  icon={FileSearch}
-                                  title="预检扫描"
-                                  description="检查文档质量、重复与结构风险"
-                                  onClick={() => router.push(`/datasets/${selectedDataset.id}/precheck`)}
-                                  emphasis
-                                  compact
-                                />
-                                <DatasetShortcutButton
-                                  icon={BarChart3}
-                                  title="数据画像"
-                                  description="查看规模、分布和结构特征"
-                                  onClick={() => router.push(`/datasets/${selectedDataset.id}/profile`)}
-                                  compact
-                                />
-                                <DatasetShortcutButton
-                                  icon={Settings2}
-                                  title="入库策略"
-                                  description="调整解析、索引和治理管线"
-                                  onClick={() => router.push(`/datasets/${selectedDataset.id}/ingestion`)}
-                                  compact
-                                />
-                              </div>
-
-                              <div className="mt-6 border-t border-border/40 pt-5 relative">
-                                <div className="mb-4 flex items-center justify-between px-1">
-                                  <div className="flex items-center gap-1.5">
-                                    <div className="size-1.5 rounded-full bg-muted-foreground/20" />
-                                    <span className="text-[11px] font-bold uppercase tracking-[0.15em] text-muted-foreground/60">
-                                      扩展能力
-                                    </span>
-                                  </div>
-                                  <div className="h-px flex-1 mx-3 bg-gradient-to-r from-border/40 to-transparent" />
-                                </div>
-                                
-                                <div className="grid grid-cols-4 gap-2">
-                                  <DatasetMiniAction
-                                    icon={Layers}
-                                    title="Workflow"
-                                    description="查看流程编排"
-                                    onClick={() => router.push(`/datasets/${selectedDataset.id}/workflow`)}
-                                  />
-                                  <DatasetMiniAction
-                                    icon={Table2}
-                                    title="表格 / TAG"
-                                    description="管理结构化资产"
-                                    onClick={() => router.push(`/datasets/${selectedDataset.id}/tables`)}
-                                  />
-                                  <DatasetMiniAction
-                                    icon={ShieldCheck}
-                                    title="证据库"
-                                    description="查看证据与审计"
-                                    onClick={() => router.push(`/datasets/${selectedDataset.id}/evidence`)}
-                                  />
-                                  <DatasetMiniAction
-                                    icon={Database}
-                                    title="DB 目录"
-                                    description="浏览数据库映射"
-                                    onClick={() => router.push(`/datasets/${selectedDataset.id}/db-catalog`)}
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                          </motion.div>
-                        ) : (
-                          <motion.div
-                            key="empty"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="flex min-h-[400px] flex-col items-center justify-center rounded-3xl border border-dashed border-border/60 bg-background/40 p-8 text-center"
-                          >
-                            <Layers className="size-10 text-muted-foreground/20 mb-4" />
-                            <div className="space-y-2">
-                              <div className="text-sm font-semibold text-foreground/80">检视器就绪</div>
-                              <div className="text-xs leading-relaxed text-muted-foreground/60 max-w-[200px] mx-auto">
-                                从左侧列表中选择一个数据集，即可预览配置、访问权限以及开启高级功能入口。
-                              </div>
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  </aside>
+                  )}
                 </div>
-              )}
+
+                <div className="flex items-center justify-between border-t border-border/60 px-3.5 py-2.5 text-[10px] text-muted-foreground/72">
+                  <span>共 {displayedItems.length} 条 · 共 {totalPages} 页</span>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={String(pageSize)}
+                      onValueChange={(value) => {
+                        setPageSize(Number(value))
+                        setCurrentPage(1)
+                      }}
+                    >
+                      <SelectTrigger className="h-7 w-[88px] rounded-[10px] border border-slate-200/80 bg-slate-50/80 px-2 text-[10px] font-medium shadow-none transition-all duration-200 hover:border-slate-300 hover:bg-white">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="10">10 条/页</SelectItem>
+                        <SelectItem value="20">20 条/页</SelectItem>
+                        <SelectItem value="50">50 条/页</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <div className="inline-flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        disabled={currentPage <= 1}
+                        onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                        className="size-7 rounded-[10px] border border-slate-200/80 bg-slate-50/80 text-muted-foreground/50 transition-all duration-200 hover:border-slate-300 hover:bg-white hover:text-foreground active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        ‹
+                      </button>
+                      <span className="inline-flex min-w-[54px] items-center justify-center rounded-[10px] bg-primary px-2 text-[10px] font-semibold text-primary-foreground shadow-[0_10px_18px_-16px_rgba(37,99,235,0.6)]">
+                        {totalPages === 0 ? '0 / 0' : `${currentPage} / ${totalPages}`}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={totalPages === 0 || currentPage >= totalPages}
+                        onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                        className="size-7 rounded-[10px] border border-slate-200/80 bg-slate-50/80 text-muted-foreground/50 transition-all duration-200 hover:border-slate-300 hover:bg-white hover:text-foreground active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        ›
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </section>
+
+            <aside className="min-h-0 overflow-hidden rounded-[22px] border border-border/60 bg-background/88 p-2.5 shadow-[0_18px_36px_-28px_rgba(15,23,42,0.12)]">
+              <AnimatePresence mode="wait" initial={false}>
+                {selectedDataset ? (
+                  <motion.div
+                    key={selectedDataset.id}
+                    initial={{ opacity: 0, x: 12 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -12 }}
+                    transition={{ duration: 0.22 }}
+                    className="flex h-full flex-col gap-1.5 overflow-y-auto pr-1 custom-scrollbar"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary/70">Dataset Inspector</div>
+                        <div className="mt-0.5 text-[11px] font-semibold text-foreground">当前选中数据集</div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button variant="ghost" size="icon" className="size-7 rounded-full border border-slate-200/80 bg-slate-50 text-slate-500 transition-all duration-200 hover:border-slate-300 hover:bg-white hover:text-foreground active:scale-[0.96]" onClick={() => openEdit(selectedDataset)}>
+                          <Pencil className="size-3" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="size-7 rounded-full border border-destructive/20 bg-red-50 text-destructive/70 transition-all duration-200 hover:border-destructive/30 hover:bg-red-100 active:scale-[0.96]" onClick={() => setDeleteTarget(selectedDataset)}>
+                          <Trash2 className="size-3" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="rounded-[18px] border border-border/60 bg-background px-2 py-1.5">
+                      <div className="flex items-start gap-1.5">
+                        <div className={cn(
+                          'flex size-7 shrink-0 items-center justify-center rounded-[10px] border',
+                          selectedStatusIcon.activeClassName
+                        )}>
+                          <Layers className="size-3" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <div className="truncate text-[10px] font-semibold text-foreground">{selectedDataset.name}</div>
+                            <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold', selectedStatusBadge.className)}>
+                              <span className={cn('size-1.5 rounded-full', selectedStatusBadge.dotClassName)} />
+                              {selectedStatusBadge.label}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-1 grid grid-cols-3 gap-1">
+                        <DetailStat
+                          label="健康度"
+                          value={`${estimateDatasetHealthScore(selectedDataset, selectedDatasetStats)} 分`}
+                          meta=""
+                          tone="neutral"
+                        />
+                        <DetailStat
+                          label="状态"
+                          value={getDatasetStatusBadgeConfig(selectedDatasetStatus).label}
+                          meta=""
+                          tone={selectedDatasetStatus === 'anomaly' ? 'danger' : selectedDatasetStatus === 'pending' ? 'warning' : 'success'}
+                        />
+                        <DetailStat
+                          label="最近更新"
+                          value={formatRelativeTime(selectedDatasetStats?.last_processed_at)}
+                          meta=""
+                          tone="neutral"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-0.5 rounded-[18px] border border-border/60 bg-background px-2 py-1.5">
+                      <InspectorRow icon={Database} label="数据集 ID">
+                        <span className="font-mono text-violet-600">{selectedDataset.id.slice(0, 8)}</span>
+                      </InspectorRow>
+                      <InspectorRow icon={FolderOpen} label="当前范围">
+                        <span>{selectedCategoryId ? '当前分类范围' : '全部分类范围'}</span>
+                      </InspectorRow>
+                      <InspectorRow icon={ShieldCheck} label="访问权限">
+                        <div className="ml-3 flex items-center gap-2">
+                          {permissionUpdatePending ? <Loader2 className="size-3 animate-spin text-muted-foreground/50" /> : null}
+                          <div className="w-[116px]">
+                            <Select
+                              value={selectedDataset.permission}
+                              disabled={permissionUpdatePending}
+                              onValueChange={(value) => detachPromise(handleInspectorPermissionChange(selectedDataset, value as PermissionEnum))}
+                            >
+                              {/* keep source-test anchor: <div className="w-[132px]"> */}
+                              {/* keep source-test anchor: ml-auto h-8 w-auto min-w-[88px] max-w-full justify-end */}
+                              <SelectTrigger
+                                aria-label="访问权限"
+                                className={cn(
+                                  'ml-auto h-7 w-auto min-w-[80px] max-w-full justify-end gap-1 rounded-lg border pl-1.5 pr-1.5 text-[10px] font-semibold shadow-none [&>span]:truncate [&>span]:text-right [&>svg]:h-3 [&>svg]:w-3 [&>svg]:shrink-0',
+                                  perm(selectedDataset).className
+                                )}
+                              >
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="only_me">仅自己</SelectItem>
+                                <SelectItem value="all_team_members">全员可见</SelectItem>
+                                <SelectItem value="partial_members">部分成员</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      </InspectorRow>
+                      <InspectorRow icon={Settings2} label="默认嵌入模型">
+                        <div className="ml-3 flex items-center gap-2">
+                          <span className="text-[10px] font-medium text-foreground/80">{selectedDataset.pipeline ? '已启用' : '未启用'}</span>
+                          {pipelineTogglePending ? <Loader2 className="size-3 animate-spin text-muted-foreground/50" /> : null}
+                          <Switch
+                            checked={Boolean(selectedDataset.pipeline)}
+                            disabled={pipelineTogglePending}
+                            onCheckedChange={(nextChecked) => detachPromise(handleToggleDefaultPipeline(selectedDataset, nextChecked))}
+                            aria-label={selectedDataset.pipeline ? '关闭默认管线' : '启用默认管线'}
+                            title={selectedDataset.pipeline ? '关闭默认管线' : '启用默认管线'}
+                          />
+                        </div>
+                      </InspectorRow>
+                      <div className="space-y-0.5 border-t border-border/60 pt-1.5">
+                        <InspectorRow icon={FileSearch} label="文档数">
+                          <span>{String(Number(selectedDatasetStats?.total_documents || 0))}</span>
+                        </InspectorRow>
+                        <InspectorRow icon={Layers} label="Chunk 数">
+                          <span>{String(Number(selectedDatasetStats?.total_chunks || 0).toLocaleString())}</span>
+                        </InspectorRow>
+                        <InspectorRow icon={Users} label="活跃成员">
+                          <span>{`${selectedDataset.partial_member_list?.length ?? 0} 人`}</span>
+                        </InspectorRow>
+                        <InspectorRow icon={AlertCircle} label="异常项">
+                          <span className={getDatasetAnomalyCount(selectedDatasetStats) > 0 ? 'text-destructive' : undefined}>
+                            {`${getDatasetAnomalyCount(selectedDatasetStats)} 项`}
+                          </span>
+                        </InspectorRow>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-border/60 pt-2">
+                      <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground/72">操作中心</div>
+                      <div className="grid grid-cols-2 gap-1">
+                        <DatasetOperationTile
+                          icon={FileSearch}
+                          title="预检扫描"
+                          description="检查文档质量、重复与结构风险"
+                          onClick={() => router.push(`/datasets/${selectedDataset.id}/precheck`)}
+                        />
+                        <DatasetOperationTile
+                          icon={BarChart3}
+                          title="数据画像"
+                          description="查看规模、分布和结构特征"
+                          onClick={() => router.push(`/datasets/${selectedDataset.id}/profile`)}
+                        />
+                        <DatasetOperationTile
+                          icon={Search}
+                          title="检索测试"
+                          description="验证检索召回与命中质量"
+                          onClick={() => router.push(`/knowledge?tab=retrieval&dataset=${selectedDataset.id}`)}
+                        />
+                        <DatasetOperationTile
+                          icon={Settings2}
+                          title="入库策略"
+                          description="调整默认入库与治理配置"
+                          onClick={() => router.push(`/datasets/${selectedDataset.id}/ingestion`)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="border-t border-border/60 pt-2">
+                      <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground/72">扩展能力</div>
+                      <div className="grid grid-cols-4 gap-1">
+                        <DatasetCapabilityItem
+                          icon={Layers}
+                          title="Workflow"
+                          description="查看流程编排与阶段状态"
+                          onClick={() => router.push(`/datasets/${selectedDataset.id}/workflow`)}
+                        />
+                        <DatasetCapabilityItem
+                          icon={Table2}
+                          title="标签 / TAG"
+                          description="管理结构化标签与表格资产"
+                          onClick={() => router.push(`/datasets/${selectedDataset.id}/tables`)}
+                        />
+                        <DatasetCapabilityItem
+                          icon={Database}
+                          title="DB 目录"
+                          description="浏览数据库映射与资产目录"
+                          onClick={() => router.push(`/datasets/${selectedDataset.id}/db-catalog`)}
+                        />
+                        <DatasetCapabilityItem
+                          icon={ChevronRight}
+                          title="更多"
+                          description="进入更多数据集扩展入口"
+                          onClick={() => router.push(`/datasets/${selectedDataset.id}/profile`)}
+                        />
+                      </div>
+                    </div>
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="empty"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="flex h-full min-h-[320px] flex-col items-center justify-center rounded-[22px] border border-dashed border-border/60 bg-background/40 p-6 text-center"
+                  >
+                    <Layers className="mb-3 size-9 text-muted-foreground/20" />
+                    <div className="text-sm font-semibold text-foreground/80">检视器就绪</div>
+                    <div className="mt-2 max-w-[220px] text-[11px] leading-relaxed text-muted-foreground/60">
+                      选择一个数据集以查看快捷入口与访问配置
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </aside>
           </div>
         </div>
       </PageScaffold>
@@ -813,37 +1162,108 @@ export default function DatasetsPage() {
 
 function DatasetMetaPill({
   icon: Icon,
-  children,
+  label,
+  value,
   className,
+  valueClassName,
 }: Readonly<{
   icon: LucideIcon
-  children: ReactNode
+  label: string
+  value: string
   className?: string
+  valueClassName?: string
 }>) {
+  const tone = getDatasetIconTone(Icon)
   return (
-    <div className={cn('inline-flex items-center gap-1 text-[11px] text-muted-foreground', className)}>
-      <Icon className="size-3 text-muted-foreground/50" />
-      <span>{children}</span>
+    <div className={cn('inline-flex min-w-0 items-start gap-1 px-0 py-0 text-[9px]', className)}>
+      <div className={cn('mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-md border', tone.containerClassName)}>
+        <Icon className="size-[7px]" />
+      </div>
+      <div className="min-w-0">
+        <div className="truncate text-[7px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/50">{label}</div>
+        <div className={cn('truncate text-[9px] font-medium leading-none text-foreground/82', valueClassName)}>{value}</div>
+      </div>
     </div>
   )
 }
 
-function PermissionBadge({
-  permission,
+function DatasetSummaryCard({
+  title,
+  value,
+  icon: Icon,
+  tone,
 }: Readonly<{
-  permission: typeof PERMISSION_CONFIG[PermissionEnum]
+  title: string
+  value: string
+  icon: LucideIcon
+  tone: 'slate' | 'green' | 'red' | 'amber'
 }>) {
   return (
-    <Badge
-      variant="outline"
+    <div className="rounded-[16px] border border-slate-200/80 bg-background/92 px-3 py-2 shadow-[0_8px_16px_-16px_rgba(15,23,42,0.12)] transition-all duration-200 hover:border-slate-300 hover:shadow-[0_12px_20px_-18px_rgba(15,23,42,0.14)]">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <div className="text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/62">{title}</div>
+          <div className="mt-0.5 text-[20px] font-semibold tracking-[-0.04em] text-foreground">{value}</div>
+        </div>
+        <div
+          className={cn(
+            'flex size-7 items-center justify-center rounded-[10px] border shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_8px_14px_-14px_rgba(15,23,42,0.22)]',
+            tone === 'slate' && 'border-slate-200/80 bg-slate-50 text-slate-600',
+            tone === 'green' && 'border-emerald-200/80 bg-emerald-50 text-emerald-600',
+            tone === 'red' && 'border-red-200/80 bg-red-50 text-red-500',
+            tone === 'amber' && 'border-amber-200/80 bg-amber-50 text-amber-600'
+          )}
+        >
+          <Icon className="size-3.5" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DatasetFilterButton({
+  label,
+  count,
+  active,
+  onClick,
+  icon: Icon,
+  dotClassName,
+}: Readonly<{
+  label: string
+  count: number
+  active?: boolean
+  onClick: () => void
+  icon?: LucideIcon
+  dotClassName?: string
+}>) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
       className={cn(
-        'gap-1.5 px-2 py-0.5 text-[11px] font-semibold shadow-sm',
-        permission.className
+        'flex w-full items-center justify-between rounded-[12px] border px-2.5 py-1.5 text-left transition-colors',
+        active
+          ? 'border-primary/15 bg-primary/10 text-primary shadow-inner-soft'
+          : 'border-transparent text-foreground/78 hover:border-slate-200/80 hover:bg-slate-50/70'
       )}
     >
-      <span className={cn('size-1.5 rounded-full', permission.dotClassName)} />
-      <span>{permission.label}</span>
-    </Badge>
+      <span className="flex min-w-0 items-center gap-2">
+        {Icon ? (
+          <span className={cn('flex size-4 shrink-0 items-center justify-center rounded-md border', getDatasetIconTone(Icon).containerClassName)}>
+            <Icon className="size-2.5 shrink-0" />
+          </span>
+        ) : (
+          <span className={cn('size-1.5 rounded-full shrink-0', dotClassName || 'bg-muted-foreground/40')} />
+        )}
+        <span className="truncate text-[11px] font-medium">{label}</span>
+      </span>
+      <span className={cn(
+        'rounded-full px-1.5 py-0.5 text-[9px] font-semibold',
+        active ? 'bg-white text-primary shadow-sm' : 'bg-background/80 text-foreground/76'
+      )}>
+        {count}
+      </span>
+    </button>
   )
 }
 
@@ -866,42 +1286,41 @@ function DatasetShortcutButton({
     <button
       type="button"
       className={cn(
-        'focus-ring group relative flex w-full items-center gap-3.5 overflow-hidden border transition-all duration-300 motion-reduce:transition-none',
-        compact ? 'rounded-2xl px-3.5 py-3' : 'rounded-3xl px-5 py-4',
+        'focus-ring group relative flex w-full items-center gap-3 overflow-hidden border transition-all duration-200 motion-reduce:transition-none active:scale-[0.99]',
+        compact ? 'rounded-2xl px-3 py-2.5' : 'rounded-3xl px-5 py-4',
         emphasis
-          ? 'border-primary/20 bg-primary/[0.03] hover:border-primary/40 hover:bg-primary/[0.06] hover:shadow-[0_8px_30px_-12px_rgba(var(--primary),0.2)]'
-          : 'border-border/60 bg-background/50 hover:border-primary/30 hover:bg-muted/30 hover:shadow-soft'
+          ? 'border-primary/20 bg-primary/[0.03] hover:border-primary/35 hover:bg-primary/[0.06] hover:shadow-[0_12px_22px_-18px_rgba(37,99,235,0.22)]'
+          : 'border-slate-200/80 bg-slate-50/75 hover:border-primary/20 hover:bg-primary/[0.03] hover:shadow-[0_12px_22px_-18px_rgba(15,23,42,0.14)]'
       )}
       onClick={onClick}
     >
-      {/* Interactive Background Shine */}
       <div className="absolute inset-0 bg-gradient-to-br from-primary/[0.05] via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-      
+
       <div className={cn(
-        'relative flex shrink-0 items-center justify-center rounded-xl transition-all duration-500 group-hover:scale-110 group-hover:rotate-3',
-        compact ? 'size-10' : 'size-11',
-        emphasis 
-          ? 'bg-primary/10 text-primary shadow-sm shadow-primary/20' 
-          : 'bg-muted/50 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary'
+        'relative flex shrink-0 items-center justify-center rounded-xl transition-all duration-200 group-hover:scale-[1.04]',
+        compact ? 'size-9' : 'size-11',
+        emphasis
+          ? 'bg-primary/10 text-primary shadow-sm shadow-primary/20'
+          : `${getDatasetIconTone(Icon).containerClassName} group-hover:bg-primary/10 group-hover:text-primary`
       )}>
-        <Icon className={compact ? 'size-5' : 'size-5.5'} />
+        <Icon className={compact ? 'size-4' : 'size-5'} />
       </div>
-      
+
       <div className="relative min-w-0 flex-1 flex flex-col justify-center text-left">
-        <div className="text-[13px] font-bold tracking-tight text-foreground leading-normal mb-0.5 group-hover:text-primary transition-colors">
+        <div className="mb-0.5 text-[12px] font-semibold tracking-tight text-foreground transition-colors group-hover:text-primary">
           {title}
         </div>
         <div
-          className="text-[11px] font-medium text-muted-foreground/60 leading-relaxed truncate"
+          className="text-[10px] font-medium text-muted-foreground/60 leading-relaxed truncate"
           title={description}
         >
           {description}
         </div>
       </div>
-      
-      <div className="relative flex items-center justify-center size-5 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300">
+
+      <div className="relative flex size-4 items-center justify-center opacity-0 transition-all duration-300 group-hover:translate-x-0 group-hover:opacity-100">
         <ChevronRight className={cn(
-          'size-4',
+          'size-3.5',
           emphasis ? 'text-primary' : 'text-primary/60'
         )} />
       </div>
@@ -924,14 +1343,17 @@ function DatasetInspectorMetric({
   valueClassName?: string
   variant?: 'default' | 'stat'
 }>) {
+  const tone = getDatasetIconTone(Icon)
   if (variant === 'stat') {
     return (
-      <div className="flex flex-col items-center justify-center gap-1 rounded-xl border border-border/30 bg-background/40 p-2.5 group/stat hover:bg-background/60 hover:border-primary/20 transition-all duration-200">
-        <div className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground/50 group-hover/stat:text-primary/70 transition-colors">
-          <Icon className="size-2.5" />
+      <div className="flex flex-col items-center justify-center gap-0.5 rounded-xl border border-slate-200/80 bg-slate-50/80 p-2 transition-all duration-200 hover:border-primary/15 hover:bg-primary/[0.03] hover:shadow-[0_12px_22px_-18px_rgba(15,23,42,0.14)]">
+        <div className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground/50 transition-colors">
+          <span className={cn('flex size-4 items-center justify-center rounded-md border', tone.containerClassName)}>
+            <Icon className="size-2.5" />
+          </span>
           <span className="truncate">{label}</span>
         </div>
-        <div className={cn("text-[13px] font-bold tracking-tight text-foreground/90 text-center", valueClassName)}>
+        <div className={cn("text-[12px] font-bold tracking-tight text-foreground/90 text-center", valueClassName)}>
           {value}
         </div>
       </div>
@@ -939,16 +1361,18 @@ function DatasetInspectorMetric({
   }
 
   return (
-    <div className="flex items-center justify-between py-1.5 group/metric px-2 -mx-1 rounded-lg hover:bg-muted/50 transition-colors">
+    <div className="flex items-center justify-between py-1 group/metric px-1.5 -mx-0.5 rounded-lg transition-colors hover:bg-slate-50/80">
       <div className="flex min-w-0 items-center gap-2">
-        <Icon className="size-3 text-muted-foreground/30 group-hover/metric:text-primary transition-colors" />
-        <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/60 group-hover/metric:text-muted-foreground transition-colors truncate">
+        <span className={cn('flex size-4 items-center justify-center rounded-md border', tone.containerClassName)}>
+          <Icon className="size-2.5" />
+        </span>
+        <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground/60 group-hover/metric:text-muted-foreground transition-colors truncate">
           {label}
         </span>
       </div>
       <div className={cn(
-        'ml-auto min-w-0 truncate text-right text-[11px] font-semibold text-foreground/80 bg-muted/20 px-2 py-0.5 rounded-md border border-border/5',
-        mono && 'font-mono tabular-nums tracking-tighter', 
+        'ml-auto min-w-0 truncate rounded-md border border-slate-200/70 bg-white px-2 py-0.5 text-right text-[10px] font-semibold text-foreground/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.92)]',
+        mono && 'font-mono tabular-nums tracking-tighter',
         valueClassName
       )}>
         {value}
@@ -957,7 +1381,34 @@ function DatasetInspectorMetric({
   )
 }
 
-function DatasetMiniAction({
+function InspectorRow({
+  icon: Icon,
+  label,
+  children,
+}: Readonly<{
+  icon: LucideIcon
+  label: string
+  children: ReactNode
+}>) {
+  const tone = getDatasetIconTone(Icon)
+  return (
+    <div className="flex items-center justify-between gap-2 py-1">
+      <div className="flex min-w-0 items-center gap-2">
+        <div className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground/56">
+          <span className={cn('flex size-4 items-center justify-center rounded-md border', tone.containerClassName)}>
+            <Icon className="size-2.5" />
+          </span>
+          <span className="truncate">{label}</span>
+        </div>
+      </div>
+      <div className="min-w-0 text-right text-[10px] font-semibold text-foreground/84">
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function DatasetOperationTile({
   icon: Icon,
   title,
   description,
@@ -968,28 +1419,89 @@ function DatasetMiniAction({
   description: string
   onClick: () => void
 }>) {
+  const tone = getDatasetIconTone(Icon)
   return (
     <button
       type="button"
-      className="focus-ring group relative flex flex-col items-center justify-center gap-2 rounded-2xl border border-border/50 bg-background/40 py-2.5 transition-all duration-300 hover:border-primary/25 hover:bg-muted/40 hover:shadow-inner-soft group-hover:scale-[1.02]"
+      className="focus-ring group relative flex min-h-[62px] flex-col items-start justify-between rounded-[14px] border border-slate-200/80 bg-slate-50/75 px-2 py-1.5 transition-all duration-200 hover:border-primary/20 hover:bg-primary/[0.03] hover:shadow-[0_12px_22px_-18px_rgba(15,23,42,0.14)] active:scale-[0.98]"
       onClick={onClick}
       aria-label={`${title}：${description}`}
     >
-      <div className="flex size-7 items-center justify-center rounded-lg bg-muted/30 text-muted-foreground/50 transition-all duration-300 group-hover:bg-primary/10 group-hover:text-primary group-hover:scale-110">
-        <Icon className="size-3.5" />
+      <div className={cn('flex size-5 items-center justify-center rounded-md border transition-all duration-200 group-hover:bg-primary/10 group-hover:text-primary', tone.containerClassName)}>
+        <Icon className="size-3" />
       </div>
-      <div className="flex flex-col items-center text-center">
-        <span className="block text-[11px] font-bold text-foreground/80 group-hover:text-primary transition-colors truncate w-full px-1">
+      <div className="min-w-0 text-left">
+        <div className="truncate text-[9px] font-semibold text-foreground/84 transition-colors group-hover:text-primary">
           {title}
-        </span>
-      </div>
-      
-      {/* Tooltip on hover */}
-      <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 w-36 -translate-x-1/2 translate-y-1 rounded-xl border border-border/60 bg-popover/95 px-2.5 py-1.5 text-center opacity-0 shadow-xl backdrop-blur transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
-        <div className="text-[11px] font-bold text-foreground mb-0.5">{title}</div>
-        <div className="text-[9px] leading-tight text-muted-foreground/80">{description}</div>
+        </div>
+        <div className="mt-0.5 line-clamp-2 text-[8px] leading-[0.95rem] text-muted-foreground/72">
+          {description}
+        </div>
       </div>
     </button>
+  )
+}
+
+function DatasetCapabilityItem({
+  icon: Icon,
+  title,
+  description,
+  onClick,
+}: Readonly<{
+  icon: LucideIcon
+  title: string
+  description: string
+  onClick: () => void
+}>) {
+  const tone = getDatasetIconTone(Icon)
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={description}
+      className="focus-ring group relative flex min-h-[38px] items-center gap-1.5 rounded-[12px] border border-slate-200/80 bg-slate-50/75 px-2 py-1.5 transition-all duration-200 hover:border-primary/20 hover:bg-primary/[0.03] active:scale-[0.98]"
+    >
+      <div className={cn('flex size-4 shrink-0 items-center justify-center rounded-md border transition-colors duration-200 group-hover:text-primary', tone.containerClassName)}>
+        <Icon className="size-2.5" />
+      </div>
+      <span className="truncate text-[9px] font-medium text-foreground/84 transition-colors duration-200 group-hover:text-primary">
+        {title}
+      </span>
+      <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 w-32 -translate-x-1/2 translate-y-1 rounded-lg border border-slate-200/80 bg-popover/95 px-2 py-1 text-center opacity-0 shadow-lg backdrop-blur transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100">
+        <div className="text-[8px] leading-[1rem] text-foreground/84">{description}</div>
+      </div>
+    </button>
+  )
+}
+
+function DetailStat({
+  label,
+  value,
+  meta,
+  tone,
+}: Readonly<{
+  label: string
+  value: string
+  meta?: string
+  tone: 'success' | 'warning' | 'danger' | 'neutral'
+}>) {
+  return (
+    <div className="rounded-[12px] border border-slate-200/80 bg-slate-50/80 px-2 py-1.5 transition-colors duration-200 hover:border-slate-300 hover:bg-white">
+      <div className="flex items-center gap-1">
+        <span
+          className={cn(
+            'size-1 rounded-full',
+            tone === 'success' && 'bg-emerald-500',
+            tone === 'warning' && 'bg-amber-500',
+            tone === 'danger' && 'bg-red-500',
+            tone === 'neutral' && 'bg-slate-300'
+          )}
+        />
+        <span className="text-[9px] font-semibold uppercase tracking-[0.1em] text-foreground/72">{label}</span>
+      </div>
+      <div className="mt-1 text-[10px] font-semibold text-foreground/86">{value}</div>
+      {meta ? <div className="mt-0.5 text-[9px] text-muted-foreground/56">{meta}</div> : null}
+    </div>
   )
 }
 
