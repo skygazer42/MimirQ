@@ -1530,6 +1530,8 @@ def render_precheck_html(
     lang = _as_items(summary.get("language_mix"), top=4)
     pii = _as_items(summary.get("pii_hits_total"), top=12)
     secrets = _as_items(summary.get("secrets_hits_total"), top=12)
+    primary_tags = _as_items(summary.get("primary_tag_counts"), top=12)
+    processing_paths = _as_items(summary.get("processing_path_counts"), top=12)
 
     # Best-effort actionable suggestions (objective signals only).
     findings = summary.get("findings") if isinstance(summary.get("findings"), list) else []
@@ -1761,6 +1763,17 @@ def render_precheck_html(
     <div class="section">
       <h2>目录结构（Top 风险聚集区）</h2>
       {_render_dir_table(summary.get("directory_stats"), max_rows=20)}
+    </div>
+
+    <div class="section two">
+      <div>
+        <h2>主标签分布</h2>
+        {_render_bar_table(primary_tags, total=max(1, total_files))}
+      </div>
+      <div>
+        <h2>处理路径建议</h2>
+        {_render_bar_table(processing_paths, total=max(1, total_files))}
+      </div>
     </div>
 
     <div class="section two">

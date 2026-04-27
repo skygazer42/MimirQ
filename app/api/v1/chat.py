@@ -239,6 +239,64 @@ def _annotate_chat_singleflight_metrics(
     return out
 
 
+def _build_chat_message_metadata(
+    *,
+    request_id: str,
+    original_question: str | None,
+    metrics: dict[str, Any] | None,
+    citations: list[dict[str, Any]] | None,
+) -> dict[str, Any]:
+    out = dict(metrics or {})
+    out["request_id"] = str(request_id)
+
+    rewritten = str((out.get("query_for_retrieval") or "")).strip()
+    question = str(original_question or "").strip()
+    out["rewritten_query"] = rewritten if rewritten and rewritten != question else None
+
+    retrieved_docs: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in citations or []:
+        if not isinstance(item, dict):
+            continue
+        document_id = item.get("document_id")
+        document_name = item.get("document_name") or item.get("source")
+        chunk_id = item.get("chunk_id")
+        page_number = item.get("page_number")
+        key = str(document_id or document_name or chunk_id or "").strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        retrieved_docs.append(
+            {
+                "document_id": str(document_id) if document_id is not None else None,
+                "document_name": str(document_name) if document_name is not None else None,
+                "chunk_id": str(chunk_id) if chunk_id is not None else None,
+                "page_number": int(page_number) if page_number is not None else None,
+            }
+        )
+        if len(retrieved_docs) >= 20:
+            break
+    out["retrieved_docs"] = retrieved_docs
+
+    latency_keys = (
+        "latency_ms",
+        "elapsed_sec",
+        "retrieval_elapsed_sec",
+        "generation_elapsed_sec",
+        "rewrite_elapsed_sec",
+        "multi_query_elapsed_sec",
+        "hyde_elapsed_sec",
+        "decompose_elapsed_sec",
+    )
+    latency_stats = {
+        key: out.get(key)
+        for key in latency_keys
+        if out.get(key) is not None
+    }
+    out["latency_stats"] = latency_stats
+    return out
+
+
 @dataclass(frozen=True)
 class ChatCacheLookupInput:
     db: Session
@@ -422,7 +480,12 @@ async def _persist_chat_stream_turn_background(
                     stored = bool(set_cached_chat_response(cache_key, cache_payload))
                     metrics2.setdefault("chat_cache_store_ok", stored)
 
-                message_metadata = {**(metrics2 or {}), "request_id": str(request_id)}
+                message_metadata = _build_chat_message_metadata(
+                    request_id=str(request_id),
+                    original_question=question,
+                    metrics=metrics2,
+                    citations=citations if isinstance(citations, list) else [],
+                )
                 if enable_structured_memory and bool(getattr(settings, "STRUCTURED_MEMORY_ENABLED", False)):
                     try:
                         message_metadata["structured_memory"] = extract_structured_memory_for_turn(
@@ -1480,7 +1543,12 @@ async def chat(
                 ),
             )
 
-        message_metadata = {**(metrics_data or {}), "request_id": str(request_id)}
+        message_metadata = _build_chat_message_metadata(
+            request_id=str(request_id),
+            original_question=request.message,
+            metrics=metrics_data,
+            citations=citations_data if isinstance(citations_data, list) else [],
+        )
         if (
             bool(getattr(request, "enable_structured_memory", False))
             and bool(getattr(settings, "STRUCTURED_MEMORY_ENABLED", False))
@@ -2096,7 +2164,12 @@ async def stream_chat(
                     )
                 return
 
-            message_metadata = {**(metrics_data or {}), "request_id": str(request_id)}
+            message_metadata = _build_chat_message_metadata(
+                request_id=str(request_id),
+                original_question=request.message,
+                metrics=metrics_data,
+                citations=citations_data if isinstance(citations_data, list) else [],
+            )
             if enable_structured_memory and bool(getattr(settings, "STRUCTURED_MEMORY_ENABLED", False)):
                 try:
                     message_metadata["structured_memory"] = extract_structured_memory_for_turn(
@@ -2419,7 +2492,12 @@ async def stream_chat(
                         )
                     return
 
-                message_metadata = {**(metrics_data or {}), "request_id": str(request_id)}
+                message_metadata = _build_chat_message_metadata(
+                    request_id=str(request_id),
+                    original_question=request.message,
+                    metrics=metrics_data,
+                    citations=citations_data if isinstance(citations_data, list) else [],
+                )
                 if enable_structured_memory and bool(getattr(settings, "STRUCTURED_MEMORY_ENABLED", False)):
                     try:
                         message_metadata["structured_memory"] = extract_structured_memory_for_turn(
@@ -2780,7 +2858,12 @@ async def stream_chat(
                         )
                 return
 
-            message_metadata = {**(metrics_data or {}), "request_id": str(request_id)}
+            message_metadata = _build_chat_message_metadata(
+                request_id=str(request_id),
+                original_question=request.message,
+                metrics=metrics_data,
+                citations=citations_data if isinstance(citations_data, list) else [],
+            )
             if enable_structured_memory and bool(getattr(settings, "STRUCTURED_MEMORY_ENABLED", False)):
                 try:
                     message_metadata["structured_memory"] = extract_structured_memory_for_turn(

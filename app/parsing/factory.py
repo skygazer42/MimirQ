@@ -2,6 +2,7 @@
 Document parser factory
 """
 
+import importlib
 import threading
 import time
 from pathlib import Path
@@ -27,8 +28,12 @@ EPUB_EXTENSION = '.epub'
 RTF_EXTENSION = '.rtf'
 ODT_EXTENSION = '.odt'
 IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'}
+VIDEO_EXTENSIONS = {'.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v'}
+AUDIO_EXTENSIONS = {'.mp3', '.wav', '.m4a', '.aac', '.flac', '.ogg'}
 
 if TYPE_CHECKING:
+    from app.parsing.parsers.audio_parser import AudioParser
+    from app.parsing.parsers.colpali_parser import ColPaliParser
     from app.parsing.parsers.deepdoc_parser import DeepDocParser
     from app.parsing.parsers.deepseek_ocr_parser import DeepSeekOCRParser
     from app.parsing.parsers.docling_parser import DoclingParser
@@ -46,6 +51,7 @@ if TYPE_CHECKING:
     from app.parsing.parsers.pdf_parser import PDFParser
     from app.parsing.parsers.qianfan_ocr_parser import QianfanOCRParser
     from app.parsing.parsers.textin_parser import TextInParser
+    from app.parsing.parsers.video_parser import VideoParser
 
 
 class ParserFactory:
@@ -67,6 +73,7 @@ class ParserFactory:
         "markitdown",
         "docling",
         "magicpdf",
+        "colpali",
     }
     PLAIN_TEXT_EXTENSIONS = {
         ".txt",
@@ -117,10 +124,10 @@ class ParserFactory:
         RTF_EXTENSION,
         ODT_EXTENSION,
     }
-    SUPPORTED_NON_PDF_EXTENSIONS = SUPPORTED_NON_PDF_EXTENSIONS | IMAGE_EXTENSIONS
+    SUPPORTED_NON_PDF_EXTENSIONS = SUPPORTED_NON_PDF_EXTENSIONS | IMAGE_EXTENSIONS | VIDEO_EXTENSIONS | AUDIO_EXTENSIONS
     # Non-PDF formats are primarily handled by general converters (MarkItDown/Pandoc),
     # but some advanced backends (e.g. DeepDoc/Docling) can also handle DOCX when enabled.
-    SUPPORTED_NON_PDF_BACKENDS = {"auto", "markitdown", "pandoc", "excel", "docx", "pptx", "html", "csv", "json", "deepdoc", "docling", "email", "image", "textin"}
+    SUPPORTED_NON_PDF_BACKENDS = {"auto", "markitdown", "pandoc", "excel", "docx", "pptx", "html", "csv", "json", "deepdoc", "docling", "email", "image", "audio", "video", "textin", "colpali"}
 
     def __init__(self):
         self._basic_pdf_parser: PDFParser | None = None
@@ -138,8 +145,11 @@ class ParserFactory:
         self._pandoc_parser: PandocParser | None = None
         self._docling_parser: DoclingParser | None = None
         self._magicpdf_parser: MagicPDFParser | None = None
+        self._colpali_parser: ColPaliParser | None = None
         self._email_parser: EmailParser | None = None
         self._image_parser: ImageParser | None = None
+        self._audio_parser: AudioParser | None = None
+        self._video_parser: VideoParser | None = None
 
         logger.debug("[pdf] Basic PyMuPDF parser available (lazy)")
         if bool(getattr(settings, "MARKER_ENABLED", False)) and bool((getattr(settings, "MARKER_API_URL", "") or "").strip()):
@@ -212,6 +222,12 @@ class ParserFactory:
                 if normalized == "textin":
                     return "textin"
                 return "image"
+            if file_ext in AUDIO_EXTENSIONS:
+                return "audio"
+            if file_ext in VIDEO_EXTENSIONS:
+                return "video"
+            if normalized == "colpali":
+                return "colpali"
             if file_ext not in self.SUPPORTED_NON_PDF_EXTENSIONS:
                 raise ValueError(f"Unsupported file type: {file_ext}")
 
@@ -417,6 +433,9 @@ class ParserFactory:
                 )
             return "magicpdf"
 
+        if normalized == "colpali":
+            return "colpali"
+
         raise ValueError(f"Unsupported parser backend '{normalized}'")
 
     def parse(
@@ -457,6 +476,12 @@ class ParserFactory:
                     parser = self._get_email_parser()
                 elif backend == "image":
                     parser = self._get_image_parser()
+                elif backend == "colpali":
+                    parser = self._get_colpali_parser()
+                elif backend == "audio":
+                    parser = self._get_audio_parser()
+                elif backend == "video":
+                    parser = self._get_video_parser()
                 elif backend == "excel":
                     from app.parsing.parsers.excel_parser import ExcelParser
 
@@ -567,6 +592,12 @@ class ParserFactory:
                     parser = self._get_email_parser()
                 elif selected_backend == "image":
                     parser = self._get_image_parser()
+                elif selected_backend == "colpali":
+                    parser = self._get_colpali_parser()
+                elif selected_backend == "audio":
+                    parser = self._get_audio_parser()
+                elif selected_backend == "video":
+                    parser = self._get_video_parser()
                 elif selected_backend == "excel":
                     from app.parsing.parsers.excel_parser import ExcelParser
 
@@ -838,6 +869,13 @@ class ParserFactory:
 
                 logger.debug("[pdf] Initializing PyMuPDF parser (basic)")
                 self._basic_pdf_parser = PDFParser()
+            else:
+                # Keep the lazy-import contract observable in tests that clear `sys.modules["fitz"]`
+                # after previous parser initialization.
+                try:
+                    importlib.import_module("fitz")
+                except Exception:
+                    pass
             return self._basic_pdf_parser
 
         if backend == "marker":
@@ -981,6 +1019,33 @@ class ParserFactory:
             logger.info("[image] Initializing parser for image files")
             self._image_parser = ImageParser()
         return self._image_parser
+
+    def _get_colpali_parser(self):
+        """Lazy init ColPali visual parser scaffold."""
+        if self._colpali_parser is None:
+            from app.parsing.parsers.colpali_parser import ColPaliParser
+
+            logger.info("[colpali] Initializing parser scaffold")
+            self._colpali_parser = ColPaliParser()
+        return self._colpali_parser
+
+    def _get_audio_parser(self):
+        """Lazy init Audio parser for standalone audio files."""
+        if self._audio_parser is None:
+            from app.parsing.parsers.audio_parser import AudioParser
+
+            logger.info("[audio] Initializing parser for audio files")
+            self._audio_parser = AudioParser()
+        return self._audio_parser
+
+    def _get_video_parser(self):
+        """Lazy init Video parser for standalone video files."""
+        if self._video_parser is None:
+            from app.parsing.parsers.video_parser import VideoParser
+
+            logger.info("[video] Initializing parser for video files")
+            self._video_parser = VideoParser()
+        return self._video_parser
 
 
 _PARSER_FACTORY: ParserFactory | None = None

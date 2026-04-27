@@ -17,39 +17,39 @@ class PromptTemplateBase(BaseModel):
         default=None,
         max_length=100,
         description="Stable template identifier (for versioning/grouping), e.g.: kb_assistant",
-        example="kb_assistant",
+        json_schema_extra={"examples": ["kb_assistant"]},
     )
     name: str = Field(
         ...,
         max_length=200,
         description="Human-readable name for the template",
-        example="Legal Consultant"
+        json_schema_extra={"examples": ["Legal Consultant"]},
     )
     description: str | None = Field(
         None,
         description="Optional detailed description of template purpose",
-        example="A template for legal advice and consultation"
+        json_schema_extra={"examples": ["A template for legal advice and consultation"]},
     )
     content: str = Field(
         ...,
         description="The prompt template content with variable placeholders",
-        example="You are a legal consultant. Context: {context}\n\nQuestion: {question}"
+        json_schema_extra={"examples": ["You are a legal consultant. Context: {context}\n\nQuestion: {question}"]},
     )
     variables: list[str] = Field(
         default_factory=list,
         description="List of variable names supported in the template",
-        example=["context", "question", "history"]
+        json_schema_extra={"examples": [["context", "question", "history"]]},
     )
     category: str | None = Field(
         None,
         max_length=100,
         description="Category for organizing templates",
-        example="legal"
+        json_schema_extra={"examples": ["legal"]},
     )
     tags: list[str] = Field(
         default_factory=list,
         description="Tags for searchability and filtering",
-        example=["expert", "formal", "detailed"]
+        json_schema_extra={"examples": [["expert", "formal", "detailed"]]},
     )
     is_active: bool = Field(
         True,

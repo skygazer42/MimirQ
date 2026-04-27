@@ -1,4 +1,8 @@
-from app.rag.preprocessing.quality_filters import drop_if_low_density, drop_if_outline_only
+from app.rag.preprocessing.quality_filters import (
+    drop_if_high_perplexity_proxy,
+    drop_if_low_density,
+    drop_if_outline_only,
+)
 
 
 def test_drop_if_outline_only_triggers_for_headings_and_lists():
@@ -33,3 +37,22 @@ def test_drop_if_low_density_keeps_normal_text():
     decision = drop_if_low_density(text, threshold=0.2)
     assert decision.dropped is False
 
+
+def test_drop_if_high_perplexity_proxy_triggers_for_random_token_soup():
+    text = (
+        "xqv91 ztm42 qwrtyplk nmzx81 plmokn bvczx98 qrptlk "
+        "jwqz88 mnlkp0 trvbn7 qxplmn8 zvqtr11 "
+    ) * 8
+    decision = drop_if_high_perplexity_proxy(text, threshold=0.55, min_tokens=20)
+    assert decision.dropped is True
+    assert decision.reason == "perplexity_proxy_high"
+    assert float((decision.metrics or {}).get("perplexity_proxy") or 0.0) > 0.55
+
+
+def test_drop_if_high_perplexity_proxy_keeps_normal_prose():
+    text = (
+        "The deployment service validates incoming requests and writes audit logs "
+        "before syncing the finance ledger to downstream systems. "
+    ) * 12
+    decision = drop_if_high_perplexity_proxy(text, threshold=0.55, min_tokens=20)
+    assert decision.dropped is False

@@ -3,12 +3,14 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.constants import UserRoles
 
 
 class TenantMemberOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     tenant_id: UUID
     user_id: str | None = None
@@ -17,9 +19,6 @@ class TenantMemberOut(BaseModel):
     is_current: bool = False
     created_at: datetime | None = None
     updated_at: datetime | None = None
-
-    class Config:
-        from_attributes = True
 
 
 class TenantMemberListResponse(BaseModel):

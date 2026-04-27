@@ -10,6 +10,7 @@ from app.rag.kg.community import build_community_reports, lazy_summarize
 from app.rag.kg.search.cache import build_kg_community_summary_cache_key, kg_community_summary_cache
 from app.rag.kg.search.config import ReturnType, SearchConfig
 from app.rag.kg.search.expand import ExpandSearcher
+from app.rag.kg.search.path_verbalizer import attach_path_renderings
 from app.rag.kg.search.recall import RecallSearcher
 from app.rag.llm.factory import create_llm_client
 from app.rag.reranker.kg import get_kg_reranker
@@ -336,10 +337,16 @@ class KGSearcher:
                     pass
 
         stats.setdefault("community", community_meta)
+        rendered_events = attach_path_renderings(
+            events=list(rerank_result.items or []),
+            key_entities=list(expand_result.key_final or []),
+            query=str(config.query or ""),
+            community_reports=community_reports,
+        )
 
         if config.return_type == ReturnType.EVENT:
             return {
-                "events": rerank_result.items,
+                "events": rendered_events,
                 "entities": list(expand_result.key_final or []),
                 "clues": combined_clues,
                 "stats": stats,
@@ -356,7 +363,7 @@ class KGSearcher:
             }
 
         return {
-            "events": rerank_result.items,
+            "events": rendered_events,
             "entities": list(expand_result.key_final or []),
             "clues": combined_clues,
             "stats": stats,

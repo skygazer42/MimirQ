@@ -12,7 +12,7 @@ from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
@@ -253,6 +253,16 @@ class RagTraceBundleResponse(BaseModel):
     records: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class _SchemaAliasedModel(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    schema_: str = Field(alias="schema", serialization_alias="schema")
+
+    @property
+    def schema(self) -> str:
+        return str(self.schema_)
+
+
 class RagTraceBundleSummaryResponse(BaseModel):
     request_id: str
     window_minutes: int
@@ -287,8 +297,8 @@ class RagTraceBundleDiffItem(BaseModel):
     delta: float | None = None
 
 
-class RagTraceBundleDiffResponse(BaseModel):
-    schema: str
+class RagTraceBundleDiffResponse(_SchemaAliasedModel):
+    schema_: str = Field(alias="schema", serialization_alias="schema")
     generated_at: datetime
     request_id_a: str
     request_id_b: str
@@ -299,14 +309,14 @@ class RagTraceBundleDiffResponse(BaseModel):
     diff: list[RagTraceBundleDiffItem] = Field(default_factory=list)
 
 
-class OpsConfigSnapshotResponse(BaseModel):
-    schema: str
+class OpsConfigSnapshotResponse(_SchemaAliasedModel):
+    schema_: str = Field(alias="schema", serialization_alias="schema")
     fingerprint: str
     config: dict[str, Any] = Field(default_factory=dict)
 
 
-class TaskQueueObservabilitySnapshotResponse(BaseModel):
-    schema: str
+class TaskQueueObservabilitySnapshotResponse(_SchemaAliasedModel):
+    schema_: str = Field(alias="schema", serialization_alias="schema")
     generated_at: datetime
     source: str
 
@@ -339,8 +349,8 @@ class PeriodicJobFreshnessItemResponse(BaseModel):
     stale: bool = True
 
 
-class PeriodicJobFreshnessResponse(BaseModel):
-    schema: str
+class PeriodicJobFreshnessResponse(_SchemaAliasedModel):
+    schema_: str = Field(alias="schema", serialization_alias="schema")
     generated_at: datetime
     tenant_id: str
     items: list[PeriodicJobFreshnessItemResponse] = Field(default_factory=list)
@@ -356,8 +366,8 @@ class SloWindowSnapshotResponse(BaseModel):
     error_rate: float | None = None
 
 
-class SloSnapshotResponse(BaseModel):
-    schema: str
+class SloSnapshotResponse(_SchemaAliasedModel):
+    schema_: str = Field(alias="schema", serialization_alias="schema")
     generated_at: datetime
     windows: list[SloWindowSnapshotResponse] = Field(default_factory=list)
 
@@ -402,8 +412,8 @@ class IndexDriftItemResponse(BaseModel):
     resolution_note: str | None = None
 
 
-class IndexDriftListResponse(BaseModel):
-    schema: str
+class IndexDriftListResponse(_SchemaAliasedModel):
+    schema_: str = Field(alias="schema", serialization_alias="schema")
     items: list[IndexDriftItemResponse] = Field(default_factory=list)
 
 
@@ -427,8 +437,8 @@ class IngestionDashboardSummaryResponse(BaseModel):
     timeseries: dict[str, list[Any]] = {}
 
 
-class DepsDiagnosticsResponse(BaseModel):
-    schema: str
+class DepsDiagnosticsResponse(_SchemaAliasedModel):
+    schema_: str = Field(alias="schema", serialization_alias="schema")
     generated_at: datetime
 
     postgres: dict[str, Any] = Field(default_factory=dict)
@@ -451,8 +461,8 @@ class PerfSuiteRunRequest(BaseModel):
     timeout_sec: float = Field(default=2.0, ge=0.05, le=10.0, description="Timeout per request in seconds (bounded)")
 
 
-class PerfSuiteRunResponse(BaseModel):
-    schema: str
+class PerfSuiteRunResponse(_SchemaAliasedModel):
+    schema_: str = Field(alias="schema", serialization_alias="schema")
     baseline_path: str
     policy_path: str
     baseline_ts: str = ""

@@ -63,8 +63,13 @@ from app.rag.policy.must_recall_auto import (
     infer_expected_source_keys,
     infer_required_anchor_fields,
 )
+from app.rag.policy.out_of_scope_live_gate import (
+    maybe_apply_out_of_scope_live_guard,
+    run_default_out_of_scope_live_guard,
+)
 from app.rag.policy.query_expansion import build_clause_fastlane_queries
 from app.rag.policy.recall_obligation import build_must_recall_proof
+from app.rag.policy.router_layers import build_router_layers
 from app.rag.query_expansion import generate_alias_queries
 from app.rag.rerank_result_cache import (
     build_evidence_post_rerank_cache_key,
@@ -85,6 +90,7 @@ from app.services.hardcase_discovery_service import (
     build_parse_risk_hardcase_candidate,
     evaluate_parse_risk_auto_enqueue_policy,
 )
+from app.services.router_prometheus_metrics import observe_router_layers
 
 _CHANNEL_BUDGET_POLICY_SCHEMA_V1 = "mimirq.channel_budget_policy.v1"
 
@@ -1308,6 +1314,9 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             "retrieval_profile_requested": profile_norm,
             "no_retrieval_intent": dict(no_retrieval_intent),
         }
+        router_layers = build_router_layers(query=question, intent_meta=dict(no_retrieval_intent))
+        query_debug["router_layers"] = router_layers
+        observe_router_layers(router_layers)
         retrieval_trace: dict[str, Any] = {
             "schema": "mimirq.retrieval_trace_pass.v1",
             "query_for_retrieval_hash": stable_hash(question),
@@ -1319,6 +1328,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             "intent_router": {"enabled": False, "used": False},
             "adaptive_router": {"enabled": False, "used": False},
             "channel_budget_policy": {"enabled": False, "used": False},
+            "router_layers": router_layers,
             "no_retrieval_intent": dict(no_retrieval_intent),
         }
         return {
@@ -3172,7 +3182,13 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                         if rr is None:
                             reranker = get_reranker(st_provider)
                             rr_start = time.time()
-                            rr = reranker.rerank(query=query_for_retrieval, candidates=candidates, top_n=st_n)
+                            rr = reranker.rerank(
+                                query=query_for_retrieval,
+                                candidates=candidates,
+                                top_n=st_n,
+                                tenant_id=str(state.get("tenant_id") or "").strip() or None,
+                                query_type=str(state.get("query_type") or "").strip() or None,
+                            )
                             if post_rerank_cache_enabled and cache_key:
                                 try:
                                     set_cached_evidence_post_rerank_result(cache_key, rr)
@@ -3323,6 +3339,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                                 query=query_for_retrieval,
                                 candidates=candidates,
                                 top_n=post_rerank_candidates_n,
+                                tenant_id=str(state.get("tenant_id") or "").strip() or None,
+                                query_type=str(state.get("query_type") or "").strip() or None,
                             )
                             if post_rerank_cache_enabled and cache_key:
                                 try:
@@ -3397,7 +3415,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             except Exception:
                 tenant_uuid = None
 
-            from app.rag.retrieval.hierarchy_expand import expand_hierarchy_context  # noqa: WPS433
+            from app.rag.retrieval.context_expansion import expand_hierarchy_documents  # noqa: WPS433
 
             # Version-aware expansion: only fetch hierarchy parents/siblings from the same
             # active pipeline version as the retrieved anchors.
@@ -3507,7 +3525,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             max_added = max(0, int(top_k) * (int(hierarchy_parent_depth) + (2 * int(hierarchy_sibling_window))))
             max_added = min(400, max_added or 120)
 
-            expanded_docs, hierarchy_expand_meta = expand_hierarchy_context(
+            expanded_docs, hierarchy_expand_meta = expand_hierarchy_documents(
                 [d for d in (docs or []) if d is not None],
                 parent_depth=int(hierarchy_parent_depth),
                 sibling_window=int(hierarchy_sibling_window),
@@ -4411,9 +4429,33 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             abstain_triggered = True
             abstain_reason = "must_recall_failed"
 
+    out_of_scope_guard = maybe_apply_out_of_scope_live_guard(
+        query=query_for_retrieval,
+        enabled=bool(getattr(settings, "RAG_OUT_OF_SCOPE_LIVE_GUARD_ENABLED", False)),
+        candidate=bool(abstain_triggered or not citations),
+        current_triggered=bool(abstain_triggered),
+        current_reason=abstain_reason,
+        tenant_id=(str(state.get("tenant_id") or "").strip() or None),
+        dataset_id=(str(state.get("dataset_id") or "").strip() or None),
+        verifier=lambda: run_default_out_of_scope_live_guard(
+            query=query_for_retrieval,
+            tenant_id=str(state.get("tenant_id") or ""),
+            dataset_id=str(state.get("dataset_id") or ""),
+            ruleset_name=(str(getattr(settings, "RAG_OUT_OF_SCOPE_RULESET", "") or "").strip() or None),
+            hyde_query=hyde_text if bool(hyde_used and hyde_text) else None,
+            vector_similarity_threshold=float(getattr(settings, "RAG_OUT_OF_SCOPE_VECTOR_THRESHOLD", 0.35) or 0.35),
+            hyde_similarity_threshold=float(getattr(settings, "RAG_OUT_OF_SCOPE_HYDE_THRESHOLD", 0.4) or 0.4),
+        ),
+    )
+    abstain_triggered = bool(out_of_scope_guard.get("abstain_triggered"))
+    abstain_reason = out_of_scope_guard.get("abstain_reason")
+
     metrics["abstain_enabled"] = bool(abstain_enabled)
     metrics["abstain_triggered"] = bool(abstain_triggered)
     metrics["abstain_reason"] = abstain_reason
+    metrics["out_of_scope_guard_enabled"] = bool(getattr(settings, "RAG_OUT_OF_SCOPE_LIVE_GUARD_ENABLED", False))
+    if isinstance(out_of_scope_guard.get("verdict"), dict):
+        metrics["out_of_scope_guard"] = dict(out_of_scope_guard.get("verdict") or {})
     metrics["abstain_min_citations"] = int(settings.RAG_ABSTAIN_MIN_CITATIONS or 0)
     metrics["abstain_min_top_relevance_score"] = float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE or 0.0)
     metrics["visible_evidence_only_enabled"] = bool(strict_visible)
@@ -4560,6 +4602,14 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     query_debug["retrieval_profile_requested"] = (
         str(requested_retrieval_profile).strip().lower() if requested_retrieval_profile is not None else None
     )
+    router_layers = build_router_layers(
+        query=query_for_retrieval,
+        entity_key=(str(state.get("entity_key") or "").strip() or None),
+        partition_keys=(list(state.get("partition_keys") or []) if isinstance(state.get("partition_keys"), list) else None),
+        entity_candidates=(list(state.get("entity_candidates") or []) if isinstance(state.get("entity_candidates"), list) else None),
+        intent_meta=(intent_router_meta if isinstance(intent_router_meta, dict) else None),
+    )
+    query_debug["router_layers"] = router_layers
     query_debug["intent_router"] = intent_router_meta
     query_debug["adaptive_router"] = adaptive_router_meta
     query_debug["channel_budget_policy"] = channel_budget_policy_meta
@@ -4778,6 +4828,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         "intent_router": intent_router_meta,
         "adaptive_router": adaptive_router_meta,
         "channel_budget_policy": channel_budget_policy_meta,
+        "router_layers": router_layers,
         "contextual_followup": {
             "enabled": bool(contextual_followup_enabled),
             "attempted": bool(contextual_followup_attempted),
@@ -4993,6 +5044,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         ),
         "hardcase_candidate": (metrics.get("hardcase_candidate") if isinstance(metrics.get("hardcase_candidate"), dict) else None),
     }
+    observe_router_layers(router_layers)
 
     # Stable retrieval config fingerprint (PII-safe).
     #

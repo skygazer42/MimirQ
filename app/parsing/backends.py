@@ -40,6 +40,11 @@ _BACKEND_ALIASES: dict[str, str] = {
     # GLM-OCR (PDF -> Markdown external service)
     "glm-ocr": "glm_ocr",
     "glmocr": "glm_ocr",
+    # ColPali / ColQwen visual parser
+    "col-pali": "colpali",
+    "colpali": "colpali",
+    "col-qwen": "colpali",
+    "colqwen": "colpali",
     # olmOCR (PDF -> Markdown external service)
     "olmocr": "olmocr",
     "olm-ocr": "olmocr",

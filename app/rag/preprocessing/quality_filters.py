@@ -10,6 +10,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from app.rag.preprocessing.stopwords import STOPWORDS
+
 
 @dataclass(frozen=True)
 class QualityDecision:
@@ -24,6 +26,8 @@ _LIST_RE = re.compile(r"^\s*(?:[-*+]|\d{1,3}[.)])\s+\S")
 _SENT_PUNCT_RE = re.compile(r"[.!?\u3002\uff01\uff1f\uff1b;:\uff1a]")
 _ALNUM_CJK_RE = re.compile(r"[A-Za-z0-9\u4e00-\u9fff]")
 _ALLCAPS_RE = re.compile(r"^[A-Z0-9][A-Z0-9 \-_/]{6,}$")
+_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]*|\d+[A-Za-z0-9_-]*|[\u4e00-\u9fff]{1,4}")
+_VOWEL_RE = re.compile(r"[aeiou]")
 
 
 def _is_outline_line(line: str) -> bool:
@@ -121,4 +125,65 @@ def drop_if_low_density(text: str, *, threshold: float = 0.12) -> QualityDecisio
 
     if density < float(threshold or 0.0):
         return QualityDecision(dropped=True, reason="low_density", metrics=metrics)
+    return QualityDecision(dropped=False, reason=None, metrics=metrics)
+
+
+def drop_if_high_perplexity_proxy(
+    text: str,
+    *,
+    threshold: float = 0.55,
+    min_tokens: int = 20,
+) -> QualityDecision:
+    """
+    Deterministic "small-LM perplexity" proxy for noisy low-information text.
+
+    This is intentionally lightweight and model-free:
+    - very high unique-token ratio
+    - few stopwords / function words
+    - many long random-looking tokens
+    - many digit-mixed tokens
+    - very low vowel ratio in ASCII words
+    """
+    raw = text or ""
+    if not raw.strip():
+        return QualityDecision(dropped=True, reason="empty_document", metrics={"perplexity_proxy": 0.0, "token_count": 0})
+
+    tokens = [str(tok or "").strip().casefold() for tok in _TOKEN_RE.findall(raw) if str(tok or "").strip()]
+    token_count = len(tokens)
+    unique_ratio = (len(set(tokens)) / max(1, token_count)) if token_count else 0.0
+    stopword_ratio = (sum(1 for tok in tokens if tok in STOPWORDS) / max(1, token_count)) if token_count else 0.0
+    long_token_ratio = (sum(1 for tok in tokens if len(tok) >= 12) / max(1, token_count)) if token_count else 0.0
+    digit_token_ratio = (sum(1 for tok in tokens if any(ch.isdigit() for ch in tok)) / max(1, token_count)) if token_count else 0.0
+
+    ascii_alpha_tokens = [tok for tok in tokens if tok.isascii() and any(ch.isalpha() for ch in tok)]
+    ascii_letters = "".join(ch for tok in ascii_alpha_tokens for ch in tok if ch.isalpha())
+    vowel_ratio = (
+        len(_VOWEL_RE.findall(ascii_letters)) / max(1, len(ascii_letters))
+        if ascii_letters
+        else 0.0
+    )
+
+    proxy = 0.0
+    proxy += max(0.0, unique_ratio - 0.72) * 1.6
+    proxy += max(0.0, 0.12 - stopword_ratio) * 1.8
+    proxy += max(0.0, long_token_ratio - 0.18) * 1.4
+    proxy += max(0.0, digit_token_ratio - 0.15) * 1.2
+    if ascii_letters:
+        proxy += max(0.0, 0.24 - vowel_ratio) * 1.3
+    proxy = max(0.0, min(1.0, float(proxy)))
+
+    metrics: dict[str, float | int] = {
+        "token_count": int(token_count),
+        "unique_ratio": float(unique_ratio),
+        "stopword_ratio": float(stopword_ratio),
+        "long_token_ratio": float(long_token_ratio),
+        "digit_token_ratio": float(digit_token_ratio),
+        "vowel_ratio": float(vowel_ratio),
+        "perplexity_proxy": float(proxy),
+    }
+
+    if token_count < max(0, int(min_tokens or 0)):
+        return QualityDecision(dropped=False, reason=None, metrics=metrics)
+    if proxy > float(threshold or 0.0):
+        return QualityDecision(dropped=True, reason="perplexity_proxy_high", metrics=metrics)
     return QualityDecision(dropped=False, reason=None, metrics=metrics)

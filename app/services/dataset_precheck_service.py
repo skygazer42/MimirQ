@@ -31,6 +31,10 @@ from app.services.dataset_service import DatasetService
 
 FINDING_KEYS: set[str] = {
     "parse_failed",
+    "legacy_format",
+    "password_protected",
+    "corrupted_or_unreadable",
+    "other_parse_failure",
     "empty_text",
     "short_text",
     "low_density_text",

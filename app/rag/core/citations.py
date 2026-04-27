@@ -460,6 +460,16 @@ def build_citations_from_docs(
             img_url = str(raw_url).strip() if raw_url is not None else None
             if not img_url:
                 img_url = None
+        clean_docx_url = meta.get("clean_docx_url")
+        clean_docx_url = str(clean_docx_url).strip() if clean_docx_url is not None else None
+        if not clean_docx_url:
+            doc_id_for_clean = meta.get("document_id")
+            doc_name_for_clean = str(meta.get("source") or meta.get("document_name") or "").strip().lower()
+            file_type_for_clean = str(meta.get("file_type") or "").strip().lower()
+            if doc_id_for_clean is not None and (doc_name_for_clean.endswith(".docx") or file_type_for_clean == "docx"):
+                clean_docx_url = f"/api/v1/documents/{doc_id_for_clean}/clean-docx"
+            else:
+                clean_docx_url = None
 
         raw_chunk_id = getattr(doc, "id", None) or meta.get("chunk_id")
         chunk_id = raw_chunk_id
@@ -828,6 +838,8 @@ def build_citations_from_docs(
             citation["img_id"] = img_id
         if img_url:
             citation["img_url"] = img_url
+        if clean_docx_url:
+            citation["clean_docx_url"] = clean_docx_url
         citation["has_image"] = bool(has_image)
 
         anchor_payload = {

@@ -27,6 +27,7 @@ from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk, DocumentParsedContent
 from app.parsing.artifact_stats import compute_parsing_artifact_stats
+from app.parsing.enrich.chart_to_data import add_chart_data_blocks
 from app.parsing.enrich.formula_ocr import add_formula_latex_blocks
 from app.parsing.enrich.image_caption import add_image_captions
 from app.parsing.enrich.image_code import add_image_code_blocks
@@ -48,10 +49,10 @@ from app.parsing.processors.vlm_correction import apply_vlm_correction_async, sh
 from app.parsing.quality.document_quality import score_document_parse_quality
 from app.parsing.quality.reading_order import score_reading_order
 from app.parsing.quality.text_quality import score_parsed_text_quality
-from app.parsing.routing import route_pdf_backend
+from app.parsing.routing import route_pdf_backend, should_attempt_pdf_fallback
 from app.parsing.subprocess_runner import SubprocessCancelled, run_parser_subprocess
 from app.rag.chunking.factory import chunker_factory
-from app.rag.chunking.roles import classify_chunk_semantic_role
+from app.rag.chunking.roles import classify_chunk_semantic_role, classify_chunk_type
 from app.rag.chunking.strategies import SeparatorChunker
 from app.rag.chunking.utils.hierarchical import apply_sequence_hierarchy_metadata
 from app.rag.core.logging import get_logger
@@ -134,6 +135,9 @@ class InlineAssetResult:
     formulas_added: int = 0
     formula_backend: str | None = None
     formula_audit: dict[str, Any] | None = None
+    charts_added: int = 0
+    chart_backend: str | None = None
+    chart_audit: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -1005,8 +1009,11 @@ class InlineAssetStage:
         caption_enabled = bool(image_caption_enabled)
         formula_url = str(getattr(settings, "FORMULA_OCR_API_URL", "") or "").strip()
         formula_enabled = bool(getattr(settings, "FORMULA_OCR_ENABLED", False)) and bool(formula_url)
+        chart_enabled = bool(getattr(settings, "CHART_TO_DATA_ENABLED", False)) and bool(
+            str(getattr(settings, "CHART_TO_DATA_API_URL", "") or "").strip()
+        )
         image_code_enabled = True
-        if not upload_enabled and not caption_enabled and not formula_enabled and not image_code_enabled:
+        if not upload_enabled and not caption_enabled and not formula_enabled and not chart_enabled and not image_code_enabled:
             return InlineAssetResult(documents=documents, uploaded_img_ids=[], next_asset_index=int(start_index or 0))
 
         inline_cache: dict[str, str] = {}
@@ -1021,6 +1028,9 @@ class InlineAssetStage:
         formulas_added_total = 0
         formula_backend: str | None = None
         formula_audit: dict[str, Any] | None = None
+        charts_added_total = 0
+        chart_backend: str | None = None
+        chart_audit: dict[str, Any] | None = None
 
         for doc in documents:
             content = doc.page_content or ""
@@ -1092,6 +1102,22 @@ class InlineAssetStage:
                             next_meta["derived_elements"] = derived
                 except Exception:
                     # Never fail ingest due to optional enrichment.
+                    pass
+
+            # Best-effort chart -> structured data extraction.
+            if chart_enabled and next_content:
+                try:
+                    next_content, added, audit = add_chart_data_blocks(
+                        next_content,
+                        origin_path=origin_for_doc,
+                        max_images=int(getattr(settings, "CHART_TO_DATA_MAX_IMAGES", 8) or 8),
+                        max_image_bytes=int(getattr(settings, "CHART_TO_DATA_MAX_IMAGE_BYTES", 5_000_000) or 5_000_000),
+                        timeout_sec=float(getattr(settings, "CHART_TO_DATA_TIMEOUT_SEC", 20) or 20),
+                    )
+                    charts_added_total += int(added or 0)
+                    chart_backend = "chart_http"
+                    chart_audit = audit.to_dict()
+                except Exception:
                     pass
 
             # Opt5: image captions (best-effort) before asset rewriting so we can still
@@ -1168,6 +1194,9 @@ class InlineAssetStage:
             formulas_added=int(formulas_added_total),
             formula_backend=formula_backend,
             formula_audit=(dict(formula_audit) if isinstance(formula_audit, dict) else None),
+            charts_added=int(charts_added_total),
+            chart_backend=chart_backend,
+            chart_audit=(dict(chart_audit) if isinstance(chart_audit, dict) else None),
         )
 
 
@@ -1578,6 +1607,13 @@ class ChunkAssetStage:
                 )
             except Exception:
                 pass
+            try:
+                meta.setdefault(
+                    "chunk_type",
+                    classify_chunk_type(content=content_norm, meta=meta),
+                )
+            except Exception:
+                pass
             if not isinstance(meta.get("content_hash"), str) or not str(meta.get("content_hash") or "").strip():
                 meta["content_hash"] = hashlib.sha256(content_norm.strip().encode("utf-8", "ignore")).hexdigest()
                 meta.setdefault("content_hash_algo", "sha256")
@@ -1628,7 +1664,7 @@ class ChunkAssetStage:
                         chunk_index=int(out_idx),
                     )
                     # Recompute content-derived fields for OCR chunk.
-                    for k in ("content_hash", "content_hash_algo", "content_len", "simhash64", "simhash_algo", "structure", "chunk_semantic_role"):
+                    for k in ("content_hash", "content_hash_algo", "content_len", "simhash64", "simhash_algo", "structure", "chunk_semantic_role", "chunk_type"):
                         ocr_meta.pop(k, None)
                     ocr_meta["ocr_text_hash"] = str(ocr_hash)
                     ocr_meta.setdefault("ocr_text_hash_algo", "sha256")
@@ -1644,6 +1680,13 @@ class ChunkAssetStage:
                         ocr_meta.setdefault(
                             "chunk_semantic_role",
                             classify_chunk_semantic_role(content=ocr_content_norm, meta=ocr_meta),
+                        )
+                    except Exception:
+                        pass
+                    try:
+                        ocr_meta.setdefault(
+                            "chunk_type",
+                            classify_chunk_type(content=ocr_content_norm, meta=ocr_meta),
                         )
                     except Exception:
                         pass
@@ -2383,11 +2426,27 @@ class DocumentProcessorService:
             ):
                 try:
                     min_chars = max(0, int(getattr(pipeline_effective, "parse_fallback_min_content_chars", 0) or 0))
+                    min_parse_score = max(
+                        0.0,
+                        float(getattr(pipeline_effective, "parse_fallback_min_parse_score", 0.0) or 0.0),
+                    )
                     max_retries = max(0, int(getattr(pipeline_effective, "parse_fallback_max_retries", 0) or 0))
-                    if min_chars > 0 and max_retries > 0:
+                    if (min_chars > 0 or min_parse_score > 0.0) and max_retries > 0:
                         joined = "\n\n".join([(d.page_content or "") for d in (parsed.documents or [])])
                         q0 = score_parsed_text_quality(joined)
-                        if int(getattr(q0, "content_chars", 0) or 0) < min_chars:
+                        q0_quality = score_document_parse_quality(
+                            pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
+                            parsed_text_quality=q0.to_dict(),
+                        )
+                        q0_score = float(q0_quality.get("score") or 0.0)
+                        q0_chars = int(getattr(q0, "content_chars", 0) or 0)
+                        if should_attempt_pdf_fallback(
+                            grade="fail" if q0_chars <= 0 else "warn",
+                            parse_score=q0_score,
+                            content_chars=q0_chars,
+                            min_content_chars=min_chars,
+                            min_parse_score=min_parse_score,
+                        ):
                             from app.parsing.utils.cli import resolve_cli_command
 
                             def _magicpdf_available() -> bool:
@@ -2466,16 +2525,29 @@ class DocumentProcessorService:
                                     continue
                                 joined_alt = "\n\n".join([(d.page_content or "") for d in (alt.documents or [])])
                                 q1 = score_parsed_text_quality(joined_alt)
+                                q1_quality = score_document_parse_quality(
+                                    pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
+                                    parsed_text_quality=q1.to_dict(),
+                                )
+                                q1_score = float(q1_quality.get("score") or 0.0)
+                                q1_chars = int(getattr(q1, "content_chars", 0) or 0)
+                                accepted = not should_attempt_pdf_fallback(
+                                    grade="warn",
+                                    parse_score=q1_score,
+                                    content_chars=q1_chars,
+                                    min_content_chars=min_chars,
+                                    min_parse_score=min_parse_score,
+                                )
                                 attempts.append(
                                     {
                                         "from": current,
                                         "to": candidate,
                                         "quality_before": q0.to_dict(),
                                         "quality_after": q1.to_dict(),
-                                        "accepted": bool(int(q1.content_chars) >= min_chars),
+                                        "accepted": bool(accepted),
                                     }
                                 )
-                                if int(q1.content_chars) >= min_chars:
+                                if accepted:
                                     parsed = alt
                                     break
 
@@ -2551,7 +2623,11 @@ class DocumentProcessorService:
             ):
                 try:
                     min_chars = max(0, int(getattr(pipeline_effective, "parse_fallback_min_content_chars", 0) or 0))
-                    if min_chars > 0:
+                    min_parse_score = max(
+                        0.0,
+                        float(getattr(pipeline_effective, "parse_fallback_min_parse_score", 0.0) or 0.0),
+                    )
+                    if min_chars > 0 or min_parse_score > 0.0:
                         joined_final = "\n\n".join([(d.page_content or "") for d in (parsed.documents or [])])
                         q_final = score_parsed_text_quality(joined_final)
                         final_chars = int(getattr(q_final, "content_chars", 0) or 0)
@@ -2575,14 +2651,26 @@ class DocumentProcessorService:
                             db.commit()
                             db.refresh(db_document)
 
-                        if final_chars < min_chars:
+                        final_quality = score_document_parse_quality(
+                            pdf_quality=(meta.get("pdf_quality") if isinstance(meta.get("pdf_quality"), dict) else None),
+                            parsed_text_quality=q_final.to_dict(),
+                            specialty_signals=specialty_signals,
+                        )
+                        final_score = float(final_quality.get("score") or 0.0)
+                        if should_attempt_pdf_fallback(
+                            grade="warn",
+                            parse_score=final_score,
+                            content_chars=final_chars,
+                            min_content_chars=min_chars,
+                            min_parse_score=min_parse_score,
+                        ):
                             quarantined = bool(getattr(pipeline_effective, "governance_quarantine_on_drop", False))
                             status = "quarantined" if quarantined else "failed"
                             reason = "quarantined_by_parse_quality" if quarantined else "dropped_by_parse_quality"
                             msg = (
                                 f"Document {'quarantined' if quarantined else 'failed'} by parse quality gate "
-                                f"(content_chars={final_chars} < min_content_chars={int(min_chars)}). "
-                                "Consider enabling OCR/backends or lowering parse_fallback_min_content_chars."
+                                f"(content_chars={final_chars}, parse_score={round(final_score, 3)}). "
+                                "Consider enabling OCR/backends or lowering parse fallback thresholds."
                             )
                             logger.warning(LOG_DOC_ID_FMT, msg, document_id)
                             meta_patch = _with_stage_durations(dict(db_document.doc_metadata or {}))
@@ -2688,6 +2776,8 @@ class DocumentProcessorService:
                         or isinstance(getattr(inline_result, "caption_audit", None), dict)
                         or int(getattr(inline_result, "formulas_added", 0) or 0) > 0
                         or isinstance(getattr(inline_result, "formula_audit", None), dict)
+                        or int(getattr(inline_result, "charts_added", 0) or 0) > 0
+                        or isinstance(getattr(inline_result, "chart_audit", None), dict)
                     ):
                         try:
                             meta_patch = dict(db_document.doc_metadata or {})
@@ -2704,6 +2794,11 @@ class DocumentProcessorService:
                                 meta_patch["formula_ocr_backend"] = str(inline_result.formula_backend or "")
                             if isinstance(getattr(inline_result, "formula_audit", None), dict):
                                 meta_patch["formula_ocr_audit"] = dict(inline_result.formula_audit or {})
+                            meta_patch["chart_data_added"] = int(getattr(inline_result, "charts_added", 0) or 0)
+                            if getattr(inline_result, "chart_backend", None):
+                                meta_patch["chart_data_backend"] = str(inline_result.chart_backend or "")
+                            if isinstance(getattr(inline_result, "chart_audit", None), dict):
+                                meta_patch["chart_data_audit"] = dict(inline_result.chart_audit or {})
                             db_document.doc_metadata = meta_patch
                             db.commit()
                             db.refresh(db_document)
@@ -2935,6 +3030,8 @@ class DocumentProcessorService:
                         or isinstance(getattr(inline_result, "caption_audit", None), dict)
                         or int(getattr(inline_result, "formulas_added", 0) or 0) > 0
                         or isinstance(getattr(inline_result, "formula_audit", None), dict)
+                        or int(getattr(inline_result, "charts_added", 0) or 0) > 0
+                        or isinstance(getattr(inline_result, "chart_audit", None), dict)
                     ):
                         try:
                             meta_patch = dict(db_document.doc_metadata or {})
@@ -2951,6 +3048,11 @@ class DocumentProcessorService:
                                 meta_patch["formula_ocr_backend"] = str(inline_result.formula_backend or "")
                             if isinstance(getattr(inline_result, "formula_audit", None), dict):
                                 meta_patch["formula_ocr_audit"] = dict(inline_result.formula_audit or {})
+                            meta_patch["chart_data_added"] = int(getattr(inline_result, "charts_added", 0) or 0)
+                            if getattr(inline_result, "chart_backend", None):
+                                meta_patch["chart_data_backend"] = str(inline_result.chart_backend or "")
+                            if isinstance(getattr(inline_result, "chart_audit", None), dict):
+                                meta_patch["chart_data_audit"] = dict(inline_result.chart_audit or {})
                             db_document.doc_metadata = meta_patch
                             db.commit()
                             db.refresh(db_document)

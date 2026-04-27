@@ -1,0 +1,96 @@
+from __future__ import annotations
+
+import re
+from typing import Any
+
+from app.rag.preprocessing.pii_anonymizer import find_pii_matches
+
+_CN_PLATE_RE = re.compile(
+    r"(?<![A-Z0-9])([京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤青藏川宁琼][A-Z][A-Z0-9]{5,6})(?![A-Z0-9])"
+)
+_CN_SOCIAL_SECURITY_RE = re.compile(r"(?:社保号|社会保障号|社保)\s*[:：]?\s*(\d{8,12})")
+
+_KIND_MAP = {
+    "email": "EMAIL_ADDRESS",
+    "phone": "PHONE_NUMBER",
+    "cn_id": "CN_ID",
+    "credit_card": "CREDIT_CARD",
+    "ip": "IP_ADDRESS",
+}
+
+
+def _append_unique(items: list[dict[str, Any]], entry: dict[str, Any]) -> None:
+    key = (entry["entity_type"], int(entry["start"]), int(entry["end"]))
+    if any((it["entity_type"], int(it["start"]), int(it["end"])) == key for it in items):
+        return
+    items.append(entry)
+
+
+def analyze_pii_text(text: str) -> dict[str, Any]:
+    raw = str(text or "")
+    entities: list[dict[str, Any]] = []
+
+    for match in find_pii_matches(raw, max_matches=100):
+        entity_type = _KIND_MAP.get(match.kind)
+        if not entity_type:
+            continue
+        _append_unique(
+            entities,
+            {
+                "entity_type": entity_type,
+                "start": int(match.start),
+                "end": int(match.end),
+                "text": str(match.text),
+                "score": 0.9,
+            },
+        )
+
+    for found in _CN_PLATE_RE.finditer(raw):
+        _append_unique(
+            entities,
+            {
+                "entity_type": "CN_LICENSE_PLATE",
+                "start": int(found.start(1)),
+                "end": int(found.end(1)),
+                "text": str(found.group(1) or ""),
+                "score": 0.88,
+            },
+        )
+
+    for found in _CN_SOCIAL_SECURITY_RE.finditer(raw):
+        _append_unique(
+            entities,
+            {
+                "entity_type": "CN_SOCIAL_SECURITY",
+                "start": int(found.start(1)),
+                "end": int(found.end(1)),
+                "text": str(found.group(1) or ""),
+                "score": 0.86,
+            },
+        )
+
+    entities.sort(key=lambda item: (int(item["start"]), int(item["end"]), str(item["entity_type"])))
+    return {
+        "schema": "mimirq.pii_presidio_analysis.v1",
+        "entities": entities,
+    }
+
+
+def anonymize_pii_text(text: str, *, mask: str = "[REDACTED]") -> dict[str, Any]:
+    raw = str(text or "")
+    analyzed = analyze_pii_text(raw)
+    entities = list(analyzed.get("entities") or [])
+    current = raw
+    for entity in sorted(entities, key=lambda item: (int(item["start"]), int(item["end"])), reverse=True):
+        start = int(entity["start"])
+        end = int(entity["end"])
+        current = current[:start] + str(mask) + current[end:]
+    return {
+        "schema": "mimirq.pii_presidio_anonymize.v1",
+        "text": current,
+        "changed": current != raw,
+        "entities": entities,
+    }
+
+
+__all__ = ["analyze_pii_text", "anonymize_pii_text"]

@@ -34,6 +34,7 @@ from app.core.token_utils import num_tokens_from_string, truncate
 from app.rag.checkpointer.factory import get_checkpointer
 from app.rag.core.claim_evidence import build_claim_evidence_map
 from app.rag.core.confidence import compute_confidence_score
+from app.rag.core.context_cliff import compute_context_cliff_metrics
 from app.rag.core.conversation import format_history_text
 from app.rag.core.faithfulness import compute_faithfulness_score
 from app.rag.core.retrieval_profiles import apply_retrieval_profile_overrides
@@ -42,15 +43,20 @@ from app.rag.core.sentence_citations import (
     render_sentence_citations_markdown,
 )
 from app.rag.core.text import (
+    build_abstain_answer_message,
     derive_followup_questions,
     extract_evidence_text,
     extract_followup_questions_from_answer,
-    parse_json_from_text,
     scrub_structured_output_visible_evidence_only,
     split_into_claims,
     verify_claim_with_fallback,
 )
 from app.rag.engine import get_rag_engine
+from app.rag.llm.structured_output import (
+    build_structured_abstain_payload,
+    build_structured_output_instructions,
+    parse_and_repair_structured_output,
+)
 from app.rag.store.factory import get_langgraph_store
 from app.services.prompt_resolver import resolve_prompt_template
 
@@ -379,10 +385,9 @@ def _generate_node(state: RAGState) -> RAGState:
         engine = get_rag_engine()
         llm, route, reason = engine._select_llm(state["question"], state.get("history"))  # type: ignore[attr-defined]
 
-        abstain_message = _UNABLE_TO_ANSWER_MESSAGE
+        abstain_message = build_abstain_answer_message(state.get("abstain_reason"))
         answer = abstain_message
         if bool(state.get("structured_output")):
-            preset_key = (state.get("structured_preset") or "").lower()
             citations = state.get("citations") or []
             top_k = int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K or 5)
             structured_citations: list[dict[str, Any]] = []
@@ -395,14 +400,11 @@ def _generate_node(state: RAGState) -> RAGState:
                         "relevance_score": c.get("relevance_score"),
                     }
                 )
-            payload: dict[str, Any] = {"answer": abstain_message, "citations": structured_citations}
-            if preset_key == "faq":
-                payload["qa_pairs"] = []
-            elif preset_key == "summary":
-                payload["bullets"] = []
-                payload["summary"] = ""
-            elif preset_key == "action_items":
-                payload["actions"] = []
+            payload = build_structured_abstain_payload(
+                preset=state.get("structured_preset"),
+                answer=abstain_message,
+                citations=structured_citations,
+            )
             answer = json.dumps(payload, ensure_ascii=False)
 
         metrics = dict(state.get("metrics") or {})
@@ -597,20 +599,22 @@ def _generate_node(state: RAGState) -> RAGState:
                 cleaned = _UNABLE_TO_ANSWER_MESSAGE
             answer = cleaned
         elif claim_check_mode == "structured":
-            parsed, _meta = parse_json_from_text(str(answer or ""), expected="object")
-            if not isinstance(parsed, dict):
-                # Fail-safe: always return valid JSON when structured_output=true.
-                structured_citations: list[dict[str, Any]] = []
-                for c in (state.get("citations") or [])[: max(0, int(state.get("top_k") or 0))]:
-                    structured_citations.append(
-                        {
-                            "document_id": c.get("document_id"),
-                            "chunk_id": c.get("chunk_id"),
-                            "page_number": c.get("page_number"),
-                            "relevance_score": c.get("relevance_score"),
-                        }
-                    )
-                parsed = {"answer": _UNABLE_TO_ANSWER_MESSAGE, "citations": structured_citations}
+            structured_citations: list[dict[str, Any]] = []
+            for c in (state.get("citations") or [])[: max(0, int(state.get("top_k") or 0))]:
+                structured_citations.append(
+                    {
+                        "document_id": c.get("document_id"),
+                        "chunk_id": c.get("chunk_id"),
+                        "page_number": c.get("page_number"),
+                        "relevance_score": c.get("relevance_score"),
+                    }
+                )
+            parsed, _meta = parse_and_repair_structured_output(
+                str(answer or ""),
+                preset=state.get("structured_preset"),
+                fallback_answer=_UNABLE_TO_ANSWER_MESSAGE,
+                fallback_citations=structured_citations,
+            )
 
             scrubbed, scrub_meta = scrub_structured_output_visible_evidence_only(
                 parsed,
@@ -779,6 +783,12 @@ def _generate_node(state: RAGState) -> RAGState:
     metrics["generation_elapsed_sec"] = round(generation_elapsed, 3)
     metrics["context_chars"] = len(ctx or "")
     metrics["context_tokens"] = num_tokens_from_string(ctx or "")
+    metrics.update(
+        compute_context_cliff_metrics(
+            context_tokens=int(metrics["context_tokens"] or 0),
+            threshold_tokens=int(getattr(settings, "RAG_CONTEXT_CLIFF_THRESHOLD_TOKENS", 2500) or 2500),
+        )
+    )
     metrics["history_chars"] = len(hist_text or "")
     metrics["history_tokens"] = num_tokens_from_string(hist_text or "")
     metrics["question_chars"] = len(state.get("question") or "")
@@ -1425,7 +1435,6 @@ def build_rag_state(
     ab_user_key = resolved.ab_user_key
     db = resolved.db
 
-    engine = get_rag_engine()
     try:
         from app.rag.policy.intent_router import normalize_intent_router_policy
 
@@ -1433,17 +1442,9 @@ def build_rag_state(
     except Exception:
         intent_router_policy = None
 
-    preset_key = (structured_preset or "").lower()
     format_instructions = ""
     if structured_output:
-        format_instructions = engine.structured_presets.get(
-            preset_key,
-            (
-                "Please return JSON only, structure: "
-                '{"answer": "string", "citations": [{"document_id": "...", "chunk_id": "...", "page_number": null, "relevance_score": 0.0}]}'
-                " Do not output extra text."
-            ),
-        )
+        format_instructions = build_structured_output_instructions(structured_preset)
 
     prompt_template_content = None
     selected_prompt_template_id = None

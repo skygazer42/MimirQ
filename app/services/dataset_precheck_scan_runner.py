@@ -40,6 +40,12 @@ from app.rag.core.logging import get_logger
 from app.rag.preprocessing.language import detect_language
 from app.rag.preprocessing.pii_anonymizer import anonymize_pii, find_pii_matches
 from app.rag.preprocessing.secrets import find_secret_matches, redact_secrets
+from app.rag.tools.pre_poc_scanner.settings import resolve_pre_poc_scanner_thresholds
+from app.services.dataset_precheck_classification import (
+    classify_parse_failure_kind,
+    infer_primary_tag,
+    infer_processing_paths,
+)
 from app.services.dataset_precheck_near_dup_summary import summarize_near_dup_payload
 from app.services.dataset_precheck_risk_buckets import risk_buckets_for_file
 from app.services.dataset_profile_utils import (
@@ -63,6 +69,26 @@ FINDING_KEY_REASONS: dict[str, dict[str, Any]] = {
         "label": "解析/读取失败",
         "severity": "error",
         "description": "文件无法读取或解析（权限/损坏/依赖缺失）。",
+    },
+    "legacy_format": {
+        "label": "老格式/兼容格式解析失败",
+        "severity": "warning",
+        "description": "更像旧格式或兼容格式问题，建议尝试回退解析链路。",
+    },
+    "password_protected": {
+        "label": "受保护/加密文件",
+        "severity": "warning",
+        "description": "文件可能受密码保护或访问受限，建议人工解锁后再处理。",
+    },
+    "corrupted_or_unreadable": {
+        "label": "文件损坏或不可读",
+        "severity": "error",
+        "description": "文件本身可能损坏、压缩包异常或不可读，建议人工复核原件。",
+    },
+    "other_parse_failure": {
+        "label": "其他解析失败",
+        "severity": "warning",
+        "description": "发生解析失败，但当前只能归为其他异常类型，建议复核与回退。",
     },
     "empty_text": {
         "label": "空文本/未提取到文本（抽样）",
@@ -700,6 +726,9 @@ class _FileRecord:
     pii_samples: list[dict[str, Any]] = field(default_factory=list)
     secrets_samples: list[dict[str, Any]] = field(default_factory=list)
     file_sha256: str | None = None
+    parse_failure_kind: str | None = None
+    primary_tag: str | None = None
+    processing_paths: list[str] = field(default_factory=list)
     findings: list[str] = field(default_factory=list)
     error_message: str | None = None
 
@@ -823,6 +852,18 @@ def run_dataset_precheck_scan(
     sample_size = safe_int(cfg.get("sample_size") or 60, default=60)
     sample_size = max(0, min(sample_size, 2000))
 
+    threshold_overrides = cfg.get("threshold_overrides") if isinstance(cfg.get("threshold_overrides"), dict) else {}
+    thresholds = resolve_pre_poc_scanner_thresholds(
+        {
+            **threshold_overrides,
+            "pdf_scan_ratio_threshold": cfg.get("pdf_scan_ratio_threshold"),
+            "near_dup_hamming_threshold": cfg.get("near_dup_hamming_threshold"),
+            "near_dup_max_pairs": cfg.get("near_dup_max_pairs"),
+            "sample_size": cfg.get("sample_size"),
+        }
+    )
+    sample_size = int(thresholds["sample_size"])
+
     # Optional: reuse unchanged file records from a previous scan run (incremental scans).
     reuse_unchanged_files = bool(cfg.get("reuse_unchanged_files", False))
     reuse_from_scan_run_id: UUID | None = None
@@ -846,11 +887,7 @@ def run_dataset_precheck_scan(
         cfg.get("pdf_text_chars_per_page") or getattr(settings, "PRECHECK_PDF_TEXT_CHARS_PER_PAGE", 200),
         default=200,
     )
-    pdf_scan_ratio_threshold = float(
-        cfg.get("pdf_scan_ratio_threshold")
-        if cfg.get("pdf_scan_ratio_threshold") is not None
-        else float(getattr(settings, "PRECHECK_PDF_SCAN_RATIO_THRESHOLD", 0.7) or 0.7)
-    )
+    pdf_scan_ratio_threshold = float(thresholds["pdf_scan_ratio_threshold"])
     spreadsheet_large_row_threshold = safe_int(
         getattr(settings, "PRECHECK_SPREADSHEET_LARGE_ROW_THRESHOLD", 5000),
         default=5000,
@@ -871,11 +908,11 @@ def run_dataset_precheck_scan(
 
     # Best-effort text quality / language heuristics (for precheck only).
     language_min_chars = safe_int(getattr(settings, "PRECHECK_LANGUAGE_MIN_CHARS", 40), default=40)
-    text_short_chars_threshold = safe_int(getattr(settings, "PRECHECK_TEXT_SHORT_CHARS_THRESHOLD", 200), default=200)
-    text_density_threshold = float(getattr(settings, "PRECHECK_TEXT_LOW_DENSITY_THRESHOLD", 0.12) or 0.12)
-    text_gibberish_density_threshold = float(getattr(settings, "PRECHECK_TEXT_GIBBERISH_DENSITY_THRESHOLD", 0.06) or 0.06)
-    text_high_replacement_ratio_threshold = float(getattr(settings, "PRECHECK_TEXT_HIGH_REPLACEMENT_RATIO_THRESHOLD", 0.08) or 0.08)
-    pdf_low_density_ratio_threshold = float(getattr(settings, "PRECHECK_PDF_LOW_DENSITY_RATIO_THRESHOLD", 0.3) or 0.3)
+    text_short_chars_threshold = int(thresholds["text_short_chars_threshold"])
+    text_density_threshold = float(thresholds["text_density_threshold"])
+    text_gibberish_density_threshold = float(thresholds["text_gibberish_density_threshold"])
+    text_high_replacement_ratio_threshold = float(thresholds["text_high_replacement_ratio_threshold"])
+    pdf_low_density_ratio_threshold = float(thresholds["pdf_low_density_ratio_threshold"])
 
     directory_stats_limit = safe_int(getattr(settings, "PRECHECK_DIRECTORY_STATS_LIMIT", 200), default=200)
     directory_stats_limit = max(0, min(int(directory_stats_limit or 0), 2000))
@@ -984,6 +1021,8 @@ def run_dataset_precheck_scan(
     pdf_unknown = 0
     finding_counts: dict[str, int] = dict.fromkeys(FINDING_KEY_REASONS.keys(), 0)
     risk_bucket_counts: dict[str, int] = {}
+    primary_tag_counts: Counter[str] = Counter()
+    processing_path_counts: Counter[str] = Counter()
 
     # For exact-dup finding: sha256 -> count.
     sha_counts: dict[str, int] = {}
@@ -1550,9 +1589,25 @@ def run_dataset_precheck_scan(
                 rec.error_message = str(exc)[:200]
                 rec.findings.append("parse_failed")
                 finding_counts["parse_failed"] += 1
+                rec.parse_failure_kind = classify_parse_failure_kind(file_type=rec.file_type, error_message=rec.error_message)
+                if rec.parse_failure_kind not in rec.findings:
+                    rec.findings.append(rec.parse_failure_kind)
+                    finding_counts[rec.parse_failure_kind] += 1
 
             # Aggregation (best-effort).
             ft = str(rec.file_type or "unknown").strip().lower() or "unknown"
+            if rec.error_message and rec.parse_failure_kind is None and "parse_failed" in rec.findings:
+                rec.parse_failure_kind = classify_parse_failure_kind(file_type=rec.file_type, error_message=rec.error_message)
+                if rec.parse_failure_kind not in rec.findings:
+                    rec.findings.append(rec.parse_failure_kind)
+                    finding_counts[rec.parse_failure_kind] += 1
+
+            rec.primary_tag = infer_primary_tag(file_type=ft, findings=rec.findings)
+            rec.processing_paths = infer_processing_paths(primary_tag=rec.primary_tag, findings=rec.findings)
+            primary_tag_counts[rec.primary_tag] += 1
+            for path_key in rec.processing_paths:
+                processing_path_counts[str(path_key or "")] += 1
+
             by_type[ft] = by_type.get(ft, 0) + 1
             bytes_by_type[ft] = bytes_by_type.get(ft, 0) + int(rec.file_size or 0)
             file_sizes.append(int(rec.file_size or 0))
@@ -1819,6 +1874,16 @@ def run_dataset_precheck_scan(
                 risk_bucket_counts.items(),
                 key=lambda kv: (-int(kv[1] or 0), str(kv[0] or "")),
             )
+            if int(v or 0) > 0
+        },
+        "primary_tag_counts": {
+            k: int(v)
+            for k, v in sorted(primary_tag_counts.items(), key=lambda kv: (-int(kv[1] or 0), str(kv[0] or "")))
+            if int(v or 0) > 0
+        },
+        "processing_path_counts": {
+            k: int(v)
+            for k, v in sorted(processing_path_counts.items(), key=lambda kv: (-int(kv[1] or 0), str(kv[0] or "")))
             if int(v or 0) > 0
         },
         "near_dup_summary": near_dup_summary,

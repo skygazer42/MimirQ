@@ -1,0 +1,18 @@
+{
+  "dataset_name": "stage1-seed",
+  "schema_version": "mimirq.eval.dataset.manifest.v1",
+  "dataset_version": "2026.04.22",
+  "sample_count": 4,
+  "source_type_counts": {
+    "real_log": 2,
+    "manual_seed": 1,
+    "adversarial": 1
+  },
+  "query_type_counts": {
+    "factual": 1,
+    "multi_hop": 1,
+    "structured": 1,
+    "unanswerable": 1
+  },
+  "generated_at": "2026-04-22T12:00:00Z"
+}

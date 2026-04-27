@@ -14,7 +14,7 @@ def test_retrieval_profiles_endpoint_exposes_supported_profiles_and_version_hash
     assert isinstance(profiles, list) and profiles
 
     names = {str((row or {}).get("name") or "") for row in profiles if isinstance(row, dict)}
-    assert {"recall20", "recall50", "coverage80", "hybrid_ce", "grounded_strict"}.issubset(names)
+    assert {"recall20", "recall50", "coverage80", "hybrid_ce", "grounded_strict", "long_context"}.issubset(names)
 
     effective = payload.get("effective_defaults")
     assert isinstance(effective, dict)

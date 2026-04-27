@@ -455,6 +455,22 @@ def _build_contextual_prefix_for_chunk(
     )
 
 
+def _should_apply_contextual_retrieval_prefix(meta: dict[str, Any], *, lazy_mode: bool) -> bool:
+    if not lazy_mode:
+        return True
+    if bool((meta or {}).get("contextual_enrichment_required")):
+        return True
+    evidence_gap = (meta or {}).get("evidence_gap")
+    if isinstance(evidence_gap, dict):
+        if bool(evidence_gap.get("has_gap")):
+            return True
+        if int(evidence_gap.get("anchor_missing_any") or 0) > 0:
+            return True
+        if evidence_gap.get("missing_source_keys"):
+            return True
+    return False
+
+
 class Indexer:
     """
     Unified Indexer for chunk/event indexing.
@@ -662,6 +678,9 @@ class Indexer:
         prepared_chunks: list[tuple[ChunkInput, dict[str, Any], UUID]] = []
         embedding_prefix_enabled = bool(getattr(options, "embedding_context_prefix_enabled", False)) if options else False
         contextual_retrieval_enabled = bool(getattr(options, "embedding_contextual_retrieval_enabled", False)) if options else False
+        contextual_retrieval_lazy_mode = (
+            bool(getattr(options, "embedding_contextual_retrieval_lazy_mode", False)) if options else False
+        )
         field_aware_enabled = bool(getattr(options, "embedding_field_aware_enabled", False)) if options else False
         total_chunks = len(chunks)
         for idx, c in enumerate(chunks):
@@ -679,6 +698,8 @@ class Indexer:
                 meta.setdefault("embedding_context_prefix_enabled", True)
             if contextual_retrieval_enabled:
                 meta.setdefault("embedding_contextual_retrieval_enabled", True)
+            if contextual_retrieval_lazy_mode:
+                meta.setdefault("embedding_contextual_retrieval_lazy_mode", True)
             if field_aware_enabled:
                 meta.setdefault("embedding_field_aware_enabled", True)
             meta = _ensure_chunk_metadata(
@@ -713,7 +734,12 @@ class Indexer:
             )
             raw_body = c.content or ""
             embed_text = raw_body
-            if contextual_retrieval_enabled and raw_body and _should_prefix_embedding(meta):
+            if (
+                contextual_retrieval_enabled
+                and raw_body
+                and _should_prefix_embedding(meta)
+                and _should_apply_contextual_retrieval_prefix(meta, lazy_mode=contextual_retrieval_lazy_mode)
+            ):
                 try:
                     title = document_title or _extract_title_for_embedding(meta)
                     prefix = _build_contextual_prefix_for_chunk(

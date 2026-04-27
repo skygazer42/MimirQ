@@ -31,6 +31,16 @@ class ChunkSemanticRole(str, Enum):
     UNKNOWN = "unknown"
 
 
+class ChunkType(str, Enum):
+    TEXT = "text"
+    FORMULA = "formula"
+    TABLE = "table"
+    CODE = "code"
+    FIGURE = "figure"
+    CHART_DATA = "chart_data"
+    SEAL = "seal"
+
+
 _FENCED_CODE_RE = re.compile(r"(?m)^\s*(```|~~~)")
 _NUMBERED_LIST_RE = re.compile(r"(?m)^\s*\d{1,3}[.)]\s+\S")
 
@@ -206,4 +216,59 @@ def classify_chunk_semantic_role(*, content: str, meta: Mapping[str, Any] | None
     return ChunkSemanticRole.UNKNOWN.value
 
 
-__all__ = ["ChunkSemanticRole", "classify_chunk_semantic_role"]
+def classify_chunk_type(*, content: str, meta: Mapping[str, Any] | None = None) -> str:
+    meta = meta or {}
+
+    existing = meta.get("chunk_type")
+    if isinstance(existing, str):
+        existing_norm = existing.strip().lower()
+        if existing_norm in {r.value for r in ChunkType}:
+            return existing_norm
+
+    content_type = str(meta.get("content_type") or "").strip().lower()
+    doc_type = str(meta.get("doc_type_kwd") or "").strip().lower()
+    visual_kind = str(meta.get("visual_kind") or "").strip().lower()
+    text = str(content or "")
+    semantic_role = str(meta.get("chunk_semantic_role") or "").strip().lower()
+
+    if "Chart data:" in text or content_type == "chart_data":
+        return ChunkType.CHART_DATA.value
+    if content_type in {"formula", "formula_ocr"} or doc_type in {"formula", "formula_ocr"}:
+        return ChunkType.FORMULA.value
+    if doc_type == "seal" or content_type == "seal" or isinstance(meta.get("seal_primary"), dict):
+        return ChunkType.SEAL.value
+    if _FENCED_CODE_RE.search(text) or semantic_role == ChunkSemanticRole.CODE.value:
+        return ChunkType.CODE.value
+    if _looks_like_markdown_table(text) or semantic_role == ChunkSemanticRole.TABLE.value:
+        return ChunkType.TABLE.value
+    if visual_kind in {"chart", "diagram", "figure"} or doc_type == "image":
+        return ChunkType.FIGURE.value
+    if semantic_role == ChunkSemanticRole.TABLE.value:
+        return ChunkType.TABLE.value
+    return ChunkType.TEXT.value
+
+
+def build_chunk_type_subindex_payload(
+    *,
+    chunk_id: str,
+    content: str,
+    meta: Mapping[str, Any] | None = None,
+) -> dict[str, str]:
+    resolved_chunk_id = str(chunk_id or "").strip()
+    chunk_type = classify_chunk_type(content=content, meta=meta)
+    return {
+        "schema": "mimirq.chunk_type_subindex.v1",
+        "chunk_id": resolved_chunk_id,
+        "chunk_type": chunk_type,
+        "subindex_key": chunk_type,
+        "subindex_id": f"{resolved_chunk_id}@{chunk_type}",
+    }
+
+
+__all__ = [
+    "ChunkSemanticRole",
+    "ChunkType",
+    "build_chunk_type_subindex_payload",
+    "classify_chunk_semantic_role",
+    "classify_chunk_type",
+]

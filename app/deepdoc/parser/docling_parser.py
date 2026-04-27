@@ -48,6 +48,131 @@ class _BBox:
     y1: float
 
 
+class JsonReportProcessor:
+    """
+    Small Docling report assembler.
+
+    Why:
+    - keep the legacy `(sections, tables)` contract stable for existing callers
+    - expose a structured intermediate payload (`metainfo/content/tables/pictures`)
+      so parser behavior becomes easier to inspect and test
+    """
+
+    def __init__(self, parser: "DoclingParser") -> None:
+        self._parser = parser
+
+    def _table_entries(self, doc: Any) -> list[tuple[tuple[Any, Any], Any]]:
+        rows: list[tuple[tuple[Any, Any], Any]] = []
+        for tab in getattr(doc, "tables", []):
+            img = None
+            positions: Any = ""
+            if getattr(tab, "prov", None):
+                pn = getattr(tab.prov[0], "page_no", None)
+                bb = getattr(tab.prov[0], "bbox", None)
+                if pn is not None and bb is not None:
+                    left = getattr(bb, "l", None)
+                    top = getattr(bb, "t", None)
+                    right = getattr(bb, "r", None)
+                    bott = getattr(bb, "b", None)
+                    if None not in (left, top, right, bott):
+                        img, positions = self._parser.cropout_docling_table(
+                            int(pn),
+                            (float(left), float(top), float(right), float(bott)),
+                        )
+            html = ""
+            try:
+                html = tab.export_to_html(doc=doc)
+            except Exception:
+                pass
+            rows.append(((img, html), positions if positions else ""))
+        return rows
+
+    def _picture_entries(self, doc: Any) -> list[tuple[tuple[Any, Any], Any]]:
+        rows: list[tuple[tuple[Any, Any], Any]] = []
+        for pic in getattr(doc, "pictures", []):
+            img = None
+            positions: Any = ""
+            if getattr(pic, "prov", None):
+                pn = getattr(pic.prov[0], "page_no", None)
+                bb = getattr(pic.prov[0], "bbox", None)
+                if pn is not None and bb is not None:
+                    left = getattr(bb, "l", None)
+                    top = getattr(bb, "t", None)
+                    right = getattr(bb, "r", None)
+                    bott = getattr(bb, "b", None)
+                    if None not in (left, top, right, bott):
+                        img, positions = self._parser.cropout_docling_table(
+                            int(pn),
+                            (float(left), float(top), float(right), float(bott)),
+                        )
+            captions = ""
+            try:
+                captions = pic.caption_text(doc=doc)
+            except Exception:
+                pass
+            rows.append(((img, [captions]), positions if positions else ""))
+        return rows
+
+    @staticmethod
+    def _page_numbers(doc: Any) -> list[int]:
+        pages: set[int] = set()
+
+        def _collect_from_prov(raw: Any) -> None:
+            if isinstance(raw, list):
+                for item in raw:
+                    pn = getattr(item, "page_no", None)
+                    if isinstance(pn, int) and pn > 0:
+                        pages.add(int(pn))
+                return
+            pn = getattr(raw, "page_no", None)
+            if isinstance(pn, int) and pn > 0:
+                pages.add(int(pn))
+
+        for item in getattr(doc, "texts", []) or []:
+            _collect_from_prov(getattr(item, "prov", None))
+        for item in getattr(doc, "tables", []) or []:
+            _collect_from_prov(getattr(item, "prov", None))
+        for item in getattr(doc, "pictures", []) or []:
+            _collect_from_prov(getattr(item, "prov", None))
+
+        return sorted(pages)
+
+    def build_report(self, doc: Any, *, parse_method: str = "raw") -> dict[str, Any]:
+        content = self._parser._transfer_to_sections(doc, parse_method=parse_method)
+        tables = self._table_entries(doc)
+        pictures = self._picture_entries(doc)
+
+        pages_seen = self._page_numbers(doc)
+        missing_pages: list[int] = []
+        if pages_seen:
+            for page_no in range(min(pages_seen), max(pages_seen) + 1):
+                if page_no not in pages_seen:
+                    missing_pages.append(int(page_no))
+
+        return {
+            "schema": "mimirq.docling_json_report.v1",
+            "metainfo": {
+                "page_count": int(getattr(doc, "num_pages", 0) or 0),
+                "page_continuity": {
+                    "pages_seen": pages_seen,
+                    "missing_pages": missing_pages,
+                    "continuous": not bool(missing_pages),
+                },
+            },
+            "content": list(content),
+            "tables": list(tables),
+            "pictures": list(pictures),
+        }
+
+    @staticmethod
+    def to_sections_tables(report: dict[str, Any]) -> tuple[list[Any], list[Any]]:
+        payload = dict(report or {})
+        return (
+            list(payload.get("content") or []),
+            list(payload.get("tables") or []) + list(payload.get("pictures") or []),
+        )
+
+
 class DoclingParser(IntegratedPipelinePdfParser):
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -275,45 +400,8 @@ class DoclingParser(IntegratedPipelinePdfParser):
         return crop, [pos]
 
     def _transfer_to_tables(self, doc):
-        tables = []
-        for tab in getattr(doc, "tables", []):
-            img = None
-            positions = ""
-            if getattr(tab, "prov", None):
-                pn = getattr(tab.prov[0], "page_no", None)
-                bb = getattr(tab.prov[0], "bbox", None)
-                if pn is not None and bb is not None:
-                    left = getattr(bb, "l", None)
-                    top = getattr(bb, "t", None)
-                    right = getattr(bb, "r", None)
-                    bott = getattr(bb, "b", None)
-                    if None not in (left, top, right, bott):
-                        img, positions = self.cropout_docling_table(int(pn), (float(left), float(top), float(right), float(bott)))
-            html = ""
-            try:
-                html = tab.export_to_html(doc=doc)
-            except Exception:
-                pass
-            tables.append(((img, html), positions if positions else ""))
-        for pic in getattr(doc, "pictures", []):
-            img = None
-            positions = ""
-            if getattr(pic, "prov", None):
-                pn = getattr(pic.prov[0], "page_no", None)
-                bb = getattr(pic.prov[0], "bbox", None)
-                if pn is not None and bb is not None:
-                    left = getattr(bb, "l", None)
-                    top = getattr(bb, "t", None)
-                    right = getattr(bb, "r", None)
-                    bott = getattr(bb, "b", None)
-                    if None not in (left, top, right, bott):
-                        img, positions = self.cropout_docling_table(int(pn), (float(left), float(top), float(right), float(bott)))
-            captions = ""
-            try:
-                captions = pic.caption_text(doc=doc)
-            except Exception:
-                pass
-            tables.append(((img, [captions]), positions if positions else ""))
+        report = JsonReportProcessor(self).build_report(doc, parse_method="raw")
+        _sections, tables = JsonReportProcessor.to_sections_tables(report)
         return tables
 
     def parse_pdf(
@@ -363,8 +451,8 @@ class DoclingParser(IntegratedPipelinePdfParser):
         if callback:
             callback(0.7, f"[Docling] Parsed doc: {getattr(doc, 'num_pages', 'n/a')} pages")
 
-        sections = self._transfer_to_sections(doc, parse_method=parse_method)
-        tables = self._transfer_to_tables(doc)
+        report = JsonReportProcessor(self).build_report(doc, parse_method=parse_method)
+        sections, tables = JsonReportProcessor.to_sections_tables(report)
 
         if callback:
             callback(0.95, f"[Docling] Sections: {len(sections)}, Tables: {len(tables)}")
