@@ -35,6 +35,7 @@ def _build_router() -> APIRouter:
     health = import_module("app.api.v1.health")
     ingestion_runs = import_module("app.api.v1.ingestion_runs")
     industry_rules = import_module("app.api.v1.industry_rules")
+    lineage = import_module("app.api.v1.lineage")
     ltr = import_module("app.api.v1.ltr")
     meta = import_module("app.api.v1.meta")
     network_analysis = import_module("app.api.v1.network_analysis")
@@ -52,6 +53,7 @@ def _build_router() -> APIRouter:
     retrieval_profiles = import_module("app.api.v1.retrieval_profiles")
     scim = import_module("app.api.v1.scim")
     settings = import_module("app.api.v1.settings")
+    rtbf = import_module("app.api.v1.rtbf")
     usage = import_module("app.api.v1.usage")
     kg = import_module("app.rag.kg.api.routes")
 
@@ -81,6 +83,7 @@ def _build_router() -> APIRouter:
     router.include_router(rag_config_templates.router, prefix="/rag-config-templates", tags=["RAG Config Templates"])
     router.include_router(feedback.router, prefix="/feedback", tags=["Feedback"])
     router.include_router(industry_rules.router, prefix="/industry-rules", tags=["Industry Rules"])
+    router.include_router(lineage.router, prefix="/lineage", tags=["Lineage"])
     router.include_router(pipeline.router, prefix="/pipeline", tags=["Pipeline"])
     router.include_router(connectors.router, prefix="/connectors", tags=["Connectors"])
     router.include_router(ingestion_runs.router, prefix="/ingestion", tags=["Ingestion Runs"])
@@ -94,6 +97,7 @@ def _build_router() -> APIRouter:
     router.include_router(scim.router, prefix="/scim/v2", tags=["SCIM v2"])
     router.include_router(reports.router, prefix="/reports", tags=["Reports"])
     router.include_router(observability.router, prefix="/observability", tags=["Observability"])
+    router.include_router(rtbf.router, prefix="/rtbf", tags=["RTBF"])
     router.include_router(audit.router, prefix="/audit", tags=["Audit"])
     router.include_router(usage.router, prefix="/usage", tags=["Usage"])
     return router

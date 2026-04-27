@@ -3,8 +3,10 @@ from __future__ import annotations
 import asyncio
 import re
 from dataclasses import dataclass
+from typing import Any
 
 from app.core.config import settings
+from app.rag.safety.llama_guard import LlamaGuard
 
 _OUTPUT_GUARD_MODE_DEFAULT = "warn"
 _OUTPUT_GUARD_SCORE_THRESHOLD_DEFAULT = 0.7
@@ -13,6 +15,7 @@ _OUTPUT_GUARD_WARN_THRESHOLD_DEFAULT = 0.35
 _PHONE_RE = re.compile(r"\b1\d{10}\b")
 _ID_CARD_RE = re.compile(r"\b\d{17}[\dXx]\b")
 _FAKE_CITATION_RE = re.compile(r"第\s*999\s*页|page\s*999", flags=re.IGNORECASE)
+_CN_ENTITY_RE = re.compile(r"[\u4e00-\u9fff]{2,12}")
 
 
 @dataclass(frozen=True)
@@ -20,16 +23,50 @@ class OutputGuardResult:
     action: str = "allow"
     score: float = 0.0
     matched_rules: list[str] | None = None
+    details: dict[str, Any] | None = None
 
 
 class OutputGuard:
     """Best-effort output-side guard for obvious leakage and fabricated citation signals."""
 
-    async def check(self, text: str) -> OutputGuardResult:
-        return await asyncio.to_thread(self._check_sync, str(text or ""))
+    def __init__(self) -> None:
+        self._llama_guard = LlamaGuard()
 
-    def _check_sync(self, text: str) -> OutputGuardResult:
+    async def check(
+        self,
+        text: str,
+        *,
+        context_chunks: list[str] | None = None,
+        question: str | None = None,
+        tenant: str | None = None,
+    ) -> OutputGuardResult:
+        del tenant  # reserved for future topic policy
+        sync_result = await asyncio.to_thread(
+            self._check_sync,
+            str(text or ""),
+            list(context_chunks or []),
+        )
+        llama_result = await self._llama_guard.guard_agent_response(str(text or ""))
+        matched_rules = list(sync_result.matched_rules or [])
+        details = dict(sync_result.details or {})
+        score = float(sync_result.score or 0.0)
+
+        if str(getattr(llama_result, "action", "allow") or "allow").strip().lower() != "allow":
+            matched_rules.append("llama_guard_response")
+            details["llama_guard_action"] = str(getattr(llama_result, "action", "allow") or "allow")
+            score = min(1.0, max(score, 0.9))
+
+        matched_rules = sorted(set(matched_rules))
+        return OutputGuardResult(
+            action=self._resolve_action(score=score, matched_rules=matched_rules),
+            score=round(score, 3),
+            matched_rules=matched_rules,
+            details=details or None,
+        )
+
+    def _check_sync(self, text: str, context_chunks: list[str]) -> OutputGuardResult:
         matched: dict[str, float] = {}
+        details: dict[str, Any] = {}
 
         def _record(name: str, score: float) -> None:
             matched[name] = max(float(matched.get(name) or 0.0), float(score))
@@ -41,12 +78,22 @@ class OutputGuard:
         if _FAKE_CITATION_RE.search(text):
             _record("citation_fabrication_risk", 0.42)
 
+        context_text = " ".join(str(item or "") for item in context_chunks if str(item or "").strip())
+        if context_text:
+            answer_entities = {item.strip() for item in _CN_ENTITY_RE.findall(text) if len(item.strip()) >= 4}
+            context_entities = {item.strip() for item in _CN_ENTITY_RE.findall(context_text) if len(item.strip()) >= 4}
+            missing = sorted(entity for entity in answer_entities if entity not in context_entities)
+            if missing:
+                _record("citation_consistency", 0.41)
+                details["missing_entities"] = missing[:10]
+
         score = min(1.0, sum(sorted(matched.values(), reverse=True)[:3]))
         matched_rules = sorted(matched.keys())
         return OutputGuardResult(
             action=self._resolve_action(score=score, matched_rules=matched_rules),
             score=round(score, 3),
             matched_rules=matched_rules,
+            details=details or None,
         )
 
     @staticmethod
