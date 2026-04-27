@@ -102,10 +102,10 @@ export function StatCard({
 
   if (variant === 'minimal') {
     const Wrapper = onClick ? 'button' : 'div'
-    const statusColorStyle = isDimmed 
-      ? "bg-muted/40 text-muted-foreground/60 border-border/40" 
-      : active 
-        ? "bg-primary/10 text-primary border-primary/20 shadow-[0_0_12px_-4px_rgba(var(--primary),0.2)]" 
+    const statusColorStyle = isDimmed
+      ? "bg-muted/40 text-muted-foreground/60 border-border/40"
+      : active
+        ? "bg-primary/10 text-primary border-primary/20 shadow-[0_0_12px_-4px_rgba(var(--primary),0.2)]"
         : (colorStyles[color] || colorStyles.sky) + " border-border/30"
 
     return (
@@ -121,10 +121,10 @@ export function StatCard({
       >
         <div className={cn(
           "relative flex size-5 shrink-0 items-center justify-center rounded-lg transition-all duration-500",
-          isDimmed 
-            ? "bg-muted/40 text-muted-foreground/70" 
-            : active 
-              ? "bg-primary/20 text-primary" 
+          isDimmed
+            ? "bg-muted/40 text-muted-foreground/70"
+            : active
+              ? "bg-primary/20 text-primary"
               : (iconBgStyles[color] || iconBgStyles.sky)
         )}>
           <Icon className="size-3.5" />

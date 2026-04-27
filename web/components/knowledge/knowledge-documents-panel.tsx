@@ -919,16 +919,20 @@ function DocumentCard({
   onToggleSelect: () => void
   onPeek?: (docId: string) => void
 }>) {
+  const peekChunksLabel = (() => {
+    const resolved = t('actions.peekChunks')
+    return resolved === 'KnowledgeDocumentsPanel.actions.peekChunks' ? '查看分块' : resolved
+  })()
   const parserLabel = doc.metadata?.parser_backend ? getParserLabel(doc.metadata.parser_backend as string) : null
   const userTags = getUserTagsFromDocument(doc)
   const fileType = getFileTypeMeta(doc)
   const TypeIcon = fileType.icon
   const parseScoreRaw = (doc.metadata as any)?.parse_quality?.score
   const parseScore = typeof parseScoreRaw === 'number' && Number.isFinite(parseScoreRaw) ? parseScoreRaw : null
-  
+
   // 计算质量百分比和颜色
   const qualityPercent = parseScore !== null ? Math.round(parseScore * 100) : null
-  const qualityColor = qualityPercent !== null 
+  const qualityColor = qualityPercent !== null
     ? qualityPercent > 80 ? 'text-emerald-500' : qualityPercent > 50 ? 'text-amber-500' : 'text-rose-500'
     : 'text-muted-foreground/20'
 
@@ -962,14 +966,14 @@ function DocumentCard({
         <div className="flex items-start justify-between mb-5">
           <div className="relative">
             <div className={cn(
-              'size-14 rounded-2xl flex items-center justify-center border shadow-sm transition-transform duration-500 group-hover:scale-110 group-hover:rotate-3', 
+              'size-14 rounded-2xl flex items-center justify-center border shadow-sm transition-transform duration-500 group-hover:scale-110 group-hover:rotate-3',
               fileType.bg, fileType.border, fileType.color
             )}>
               <TypeIcon className="size-7" />
             </div>
             {/* Quality Indicator Mini-Ring */}
             {qualityPercent !== null && (
-              <div 
+              <div
                 className="absolute -bottom-1 -right-1 size-6 rounded-full bg-background border border-border/60 flex items-center justify-center shadow-sm"
                 title={`解析质量: ${qualityPercent}%`}
               >
@@ -1006,7 +1010,7 @@ function DocumentCard({
       </div>
 
       <div className={cn(
-        'px-6 py-3.5 bg-muted/30 border-t border-border/40 flex items-center justify-between transition-all duration-300', 
+        'px-6 py-3.5 bg-muted/30 border-t border-border/40 flex items-center justify-between transition-all duration-300',
         contextualRevealClassName
       )}>
         <span className="text-[11px] text-muted-foreground/60 font-bold uppercase tracking-widest truncate max-w-[100px]">
@@ -1027,7 +1031,7 @@ function DocumentCard({
             <Layers className="size-3 mr-1.5" />
             {peekChunksLabel}
           </Button>
-          
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <IconButton

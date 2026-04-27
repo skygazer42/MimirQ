@@ -51,7 +51,7 @@ import { Switch } from '@/components/ui/switch'
 
 import { connectorApi, datasetApi, settingsApi, type SystemSettings } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
-import { cn, detachPromise, formatDate, formatDurationMs } from '@/lib/utils'
+import { cn, detachPromise, formatDate } from '@/lib/utils'
 import type { ConnectorInfo, ConnectorRunOut, Dataset } from '@/types'
 
 // --- 类型定义 ---
@@ -428,12 +428,12 @@ export function KnowledgeSettingsPanel({ selectedDatasetId, onGoToRetrievalTest 
                         className="pointer-events-none absolute left-0 top-1/2 h-1 rounded-full bg-blue-600 -translate-y-1/2 dark:bg-blue-400"
                         style={{ width: `${topKTrackPercent}%` }}
                       />
-                      <input 
-                        type="range" 
-                        min="1" 
-                        max="50" 
-                        value={draftConfig?.rag.retrieval_top_k} 
-                        onChange={e => setDraftConfig(prev => prev ? ({...prev, rag: { ...prev.rag, retrieval_top_k: Number(e.target.value) }}) : null)} 
+                      <input
+                        type="range"
+                        min="1"
+                        max="50"
+                        value={draftConfig?.rag.retrieval_top_k}
+                        onChange={e => setDraftConfig(prev => prev ? ({...prev, rag: { ...prev.rag, retrieval_top_k: Number(e.target.value) }}) : null)}
                         className="relative z-10 h-5 w-full cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-5 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:mt-0 [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white [&::-webkit-slider-thumb]:bg-slate-950 [&::-webkit-slider-thumb]:shadow-[0_6px_14px_-8px_rgba(15,23,42,0.55)] dark:[&::-webkit-slider-thumb]:border-slate-900 dark:[&::-webkit-slider-thumb]:bg-white [&::-moz-range-track]:h-5 [&::-moz-range-track]:bg-transparent [&::-moz-range-progress]:h-5 [&::-moz-range-progress]:bg-transparent [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-white [&::-moz-range-thumb]:bg-slate-950"
                       />
                     </div>
@@ -463,13 +463,13 @@ export function KnowledgeSettingsPanel({ selectedDatasetId, onGoToRetrievalTest 
                         className="pointer-events-none absolute left-0 top-1/2 h-1 rounded-full bg-blue-600 -translate-y-1/2 dark:bg-blue-400"
                         style={{ width: `${similarityTrackPercent}%` }}
                       />
-                      <input 
-                        type="range" 
-                        min="0" 
-                        max="1" 
-                        step="0.05" 
-                        value={draftConfig?.rag.similarity_threshold} 
-                        onChange={e => setDraftConfig(prev => prev ? ({...prev, rag: { ...prev.rag, similarity_threshold: Number(e.target.value) }}) : null)} 
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        value={draftConfig?.rag.similarity_threshold}
+                        onChange={e => setDraftConfig(prev => prev ? ({...prev, rag: { ...prev.rag, similarity_threshold: Number(e.target.value) }}) : null)}
                         className="relative z-10 h-5 w-full cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-5 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:mt-0 [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white [&::-webkit-slider-thumb]:bg-slate-950 [&::-webkit-slider-thumb]:shadow-[0_6px_14px_-8px_rgba(15,23,42,0.55)] dark:[&::-webkit-slider-thumb]:border-slate-900 dark:[&::-webkit-slider-thumb]:bg-white [&::-moz-range-track]:h-5 [&::-moz-range-track]:bg-transparent [&::-moz-range-progress]:h-5 [&::-moz-range-progress]:bg-transparent [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-white [&::-moz-range-thumb]:bg-slate-950"
                       />
                     </div>
@@ -635,7 +635,7 @@ export function KnowledgeConnectorRunsPanel({
   const [runStatusFilter, setRunStatusFilter] = useState<ConnectorRunStatusFilter>('all')
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null)
-  
+
   const stats = useMemo(() => ({
     total: connectorRuns.length,
     active: connectorRuns.filter(r => r.status === 'running' || r.status === 'pending').length,
@@ -644,10 +644,10 @@ export function KnowledgeConnectorRunsPanel({
   }), [connectorRuns])
 
   const visibleRuns = useMemo(() => {
-    let list = runStatusFilter === 'all' 
-      ? connectorRuns 
+    let list = runStatusFilter === 'all'
+      ? connectorRuns
       : connectorRuns.filter(r => String(r.status).toLowerCase() === runStatusFilter)
-    
+
     return [...list].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
   }, [connectorRuns, runStatusFilter])
 
@@ -666,18 +666,17 @@ export function KnowledgeConnectorRunsPanel({
             <Terminal className="size-3.5 text-primary/60" />
             <span className="text-[10px] font-black uppercase tracking-[0.2em] text-foreground/80">{t('connectorRuns.title')}</span>
           </div>
-          
+
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-muted/30 border border-border/40">
               <div className={cn("size-1 rounded-full transition-all", autoRefresh ? "bg-emerald-500 animate-pulse shadow-[0_0_5px_rgba(16,185,129,0.4)]" : "bg-muted-foreground/30")} />
               <span className="text-[9px] font-bold text-foreground/50 uppercase tracking-tighter">{t('connectorRuns.liveBadge')}</span>
               <Switch checked={autoRefresh} onCheckedChange={setAutoRefresh} className="scale-[0.5] origin-right" />
             </div>
-            <IconButton 
-              label="刷新" 
-              variant="ghost" 
-              size="sm" 
-              className="h-6 w-6 rounded-md text-muted-foreground hover:text-foreground" 
+            <IconButton
+              label="刷新"
+              variant="ghost"
+              className="h-6 w-6 rounded-md text-muted-foreground hover:text-foreground"
               onClick={() => onLoadConnectorRuns({ datasetId: selectedDatasetId })}
             >
               <RefreshCw className={cn("size-3", connectorRunsLoading && "animate-spin")} />
@@ -698,7 +697,7 @@ export function KnowledgeConnectorRunsPanel({
               onClick={() => setRunStatusFilter(item.key as any)}
               className={cn(
                 "flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[10px] font-black transition-all duration-200",
-                runStatusFilter === item.key 
+                runStatusFilter === item.key
                   ? "bg-background text-primary shadow-sm ring-1 ring-border/10 " + item.color
                   : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40"
               )}
@@ -719,9 +718,9 @@ export function KnowledgeConnectorRunsPanel({
             </motion.div>
           ) : (
             visibleRuns.map((run) => (
-              <TaskCard 
-                key={run.id} 
-                run={run} 
+              <TaskCard
+                key={run.id}
+                run={run}
                 t={t}
                 onCancel={onCancelConnectorRun}
                 onResume={onResumeConnectorRun}
@@ -743,9 +742,9 @@ function TaskCard({ run, t, onCancel, onRetry, isExpanded, onToggleExpand }: any
   const progressPct = total > 0 ? Math.round((processed / total) * 100) : 0
   const isFailed = run.status === 'failed'
   const isRunning = run.status === 'running' || run.status === 'pending'
-  
+
   return (
-    <motion.div 
+    <motion.div
       layout
       initial={{ opacity: 0, scale: 0.98 }}
       animate={{ opacity: 1, scale: 1 }}
@@ -758,16 +757,16 @@ function TaskCard({ run, t, onCancel, onRetry, isExpanded, onToggleExpand }: any
       <div className="p-3 space-y-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className={cn("size-8 shrink-0 rounded-lg flex items-center justify-center border shadow-sm", 
-              isFailed ? "bg-destructive/10 border-destructive/20 text-destructive" : 
+            <div className={cn("size-8 shrink-0 rounded-lg flex items-center justify-center border shadow-sm",
+              isFailed ? "bg-destructive/10 border-destructive/20 text-destructive" :
               isRunning ? "bg-primary/10 border-primary/20 text-primary" : "bg-muted/40 border-border/40 text-muted-foreground")}>
               <Link2 className="size-4" />
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
                 <span className="text-[12px] font-bold text-foreground truncate max-w-[140px] leading-none">{run.connector_id}</span>
-                <div className={cn("size-1.5 rounded-full", 
-                  isFailed ? "bg-destructive shadow-[0_0_6px_rgba(var(--destructive),0.5)]" : 
+                <div className={cn("size-1.5 rounded-full",
+                  isFailed ? "bg-destructive shadow-[0_0_6px_rgba(var(--destructive),0.5)]" :
                   isRunning ? "bg-primary animate-pulse" : "bg-muted-foreground/30")} />
               </div>
               <div className="flex items-center gap-1.5 text-[9px] font-bold text-muted-foreground/40 tabular-nums mt-1 uppercase tracking-tighter">
@@ -780,16 +779,16 @@ function TaskCard({ run, t, onCancel, onRetry, isExpanded, onToggleExpand }: any
 
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             {isRunning && (
-              <IconButton label="取消" variant="ghost" size="sm" className="h-7 w-7 rounded-md text-muted-foreground hover:text-destructive" onClick={() => onCancel(run.id)}>
+              <IconButton label="取消" variant="ghost" className="h-7 w-7 rounded-md text-muted-foreground hover:text-destructive" onClick={() => onCancel(run.id)}>
                 <X className="size-3.5" />
               </IconButton>
             )}
             {isFailed && (
-              <IconButton label="重试" variant="ghost" size="sm" className="h-7 w-7 rounded-md text-muted-foreground hover:text-primary" onClick={() => onRetry(run.id)}>
+              <IconButton label="重试" variant="ghost" className="h-7 w-7 rounded-md text-muted-foreground hover:text-primary" onClick={() => onRetry(run.id)}>
                 <RotateCcw className="size-3.5" />
               </IconButton>
             )}
-            <IconButton label="复制" variant="ghost" size="sm" className="h-7 w-7 rounded-md text-muted-foreground" onClick={() => { navigator.clipboard.writeText(run.id); toast.success("Copied") }}>
+            <IconButton label="复制" variant="ghost" className="h-7 w-7 rounded-md text-muted-foreground" onClick={() => { navigator.clipboard.writeText(run.id); toast.success("Copied") }}>
               <Terminal className="size-3.5" />
             </IconButton>
           </div>
