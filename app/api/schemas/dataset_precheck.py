@@ -153,6 +153,8 @@ class DatasetPrecheckSummary(BaseModel):
 
     # Higher-level, explainable buckets for report dashboards.
     risk_buckets: dict[str, int] = Field(default_factory=dict)
+    primary_tag_counts: dict[str, int] = Field(default_factory=dict)
+    processing_path_counts: dict[str, int] = Field(default_factory=dict)
     # Compact near-dup summary (full artifact lives in near_dups.json).
     near_dup_summary: DatasetPrecheckNearDupSummary = Field(default_factory=DatasetPrecheckNearDupSummary)
 
@@ -184,6 +186,9 @@ class DatasetPrecheckFileOut(BaseModel):
     pii_samples: list[DatasetPrecheckMatchSample] = Field(default_factory=list)
     secrets_samples: list[DatasetPrecheckMatchSample] = Field(default_factory=list)
     file_sha256: str | None = None
+    parse_failure_kind: str | None = None
+    primary_tag: str | None = None
+    processing_paths: list[str] = Field(default_factory=list)
     findings: list[str] = Field(default_factory=list)
     error_message: str | None = None
 
@@ -236,6 +241,7 @@ class DatasetPrecheckScanRunCreateRequest(BaseModel):
     # Optional: representative sampling (for pricing/POC). Writes a sample list into run artifacts.
     enable_sampling: bool = True
     sample_size: int | None = Field(default=None, ge=0, le=2000)
+    threshold_overrides: dict[str, Any] | None = None
 
     # Optional: incremental scan reuse (reuse unchanged file records from a previous run).
     reuse_unchanged_files: bool = False

@@ -99,3 +99,40 @@ def test_parent_child_chunker_emits_stable_hierarchy_family_keys() -> None:
         assert meta.get("hierarchy_level") == "child"
         assert meta.get("hierarchy_parent_key") == parent_id
         assert meta.get("hierarchy_family_key") == parent_id
+
+
+def test_parent_child_chunker_reuses_cached_hierarchy_for_identical_inputs(monkeypatch) -> None:  # noqa: ANN001
+    chunker = ParentChildChunker(chunk_size=120, chunk_overlap=20, child_ratio=0.5, min_child_size=60)
+
+    content = "\n\n".join(
+        [
+            "Section 1: " + ("A" * 140),
+            "Section 2: " + ("B" * 140),
+        ]
+    )
+    docs = [Document(page_content=content, metadata={"source": "t"})]
+
+    parent_calls = {"n": 0}
+    child_calls = {"n": 0}
+    original_parent = chunker.parent_splitter.split_text
+    original_child = chunker.child_splitter.split_text
+
+    def _parent(text):  # noqa: ANN001
+        parent_calls["n"] += 1
+        return original_parent(text)
+
+    def _child(text):  # noqa: ANN001
+        child_calls["n"] += 1
+        return original_child(text)
+
+    monkeypatch.setattr(chunker.parent_splitter, "split_text", _parent, raising=True)
+    monkeypatch.setattr(chunker.child_splitter, "split_text", _child, raising=True)
+
+    out1 = chunker.split_documents(docs)
+    out2 = chunker.split_documents(docs)
+
+    assert out1
+    assert out2
+    assert parent_calls["n"] == 1
+    assert child_calls["n"] >= 1
+    assert child_calls["n"] == len([d for d in out1 if (d.metadata or {}).get("chunk_role") == "parent"])

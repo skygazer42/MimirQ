@@ -128,6 +128,22 @@ class Settings(BaseSettings):
     MINIO_IMAGE_MAX_BYTES: int = 0
     # Store uploaded document source files in MinIO (recommended for enterprise deployments / multi-instance).
     MINIO_DOCUMENTS_ENABLED: bool = False
+    # Generic object storage profile used by factory-routed S3-compatible backends
+    # (e.g. S3 / OSS / COS) without changing business code.
+    OBJECT_STORAGE_PROVIDER: str = "minio"
+    OBJECT_STORAGE_ENABLED: bool = False
+    OBJECT_STORAGE_ENDPOINT: str = ""
+    OBJECT_STORAGE_ACCESS_KEY: str = ""
+    OBJECT_STORAGE_SECRET_KEY: str = ""
+    OBJECT_STORAGE_BUCKET_NAME: str = ""
+    OBJECT_STORAGE_USE_SSL: bool = True
+    OBJECT_STORAGE_METRICS_LOG_PATH: str = "./logs/object_store_metrics.jsonl"
+    OBJECT_STORAGE_DOCUMENTS_ENABLED: bool = False
+    # Optional data residency / region routing key used by backend factories.
+    DATA_REGION: str = ""
+    # Optional JSON object keyed by region, e.g.
+    # {"cn-shanghai":{"provider":"oss","endpoint":"...","bucket_name":"..."}}.
+    OBJECT_STORAGE_REGION_PROFILES: str = ""
 
     # Task Queue / Redis (ingest throughput optimization)
     # - Task queue is off by default: keeps API compatibility; when enabled,
@@ -333,6 +349,10 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     EMBEDDING_API_KEY: str = ""
     EMBEDDING_API_BASE: str = ""
+    EMBEDDING_LANGUAGE_ROUTING_ENABLED: bool = False
+    EMBEDDING_MODEL_ZH: str = ""
+    EMBEDDING_MODEL_EN: str = ""
+    EMBEDDING_MODEL_MIXED: str = ""
     # Embedding API engineering knobs (batching + concurrency + retry/backoff).
     # Keep defaults conservative to avoid rate-limit spikes in mid-scale ingest.
     EMBEDDING_API_TIMEOUT_SEC: float = 60.0
@@ -387,6 +407,9 @@ class Settings(BaseSettings):
     PRECHECK_TEXT_GIBBERISH_DENSITY_THRESHOLD: float = 0.06
     PRECHECK_TEXT_HIGH_REPLACEMENT_RATIO_THRESHOLD: float = 0.08
     PRECHECK_PDF_LOW_DENSITY_RATIO_THRESHOLD: float = 0.3
+    PRECHECK_NEAR_DUP_HAMMING_THRESHOLD: int = 5
+    PRECHECK_NEAR_DUP_MAX_PAIRS: int = 5000
+    PRECHECK_SAMPLE_SIZE: int = 60
     PRECHECK_DIRECTORY_STATS_LIMIT: int = 200
     # Whether to include chunk_size hints derived from token distribution in precheck suggestions.
     PRECHECK_SUGGEST_CHUNK_SIZE: bool = True
@@ -847,6 +870,11 @@ class Settings(BaseSettings):
     RETRIEVAL_FIELD_AWARE_TITLE_BOOST: float = 0.08
     RETRIEVAL_FIELD_AWARE_HEADING_BOOST: float = 0.05
     RETRIEVAL_FIELD_AWARE_MAX_BOOST: float = 0.10
+    # Optional chunk-type-aware recall signal (disabled by default).
+    # When enabled, candidates whose standardized chunk_type matches the query intent
+    # receive a small bounded additive score during channel fusion.
+    RETRIEVAL_CHUNK_TYPE_WEIGHTING_ENABLED: bool = False
+    RETRIEVAL_CHUNK_TYPE_MATCH_BOOST: float = 0.08
     # When retrieval is not pre-scoped by explicit document_ids (open scope / dataset scope),
     # we may need to over-fetch to compensate for candidate-level ACL + active-pipeline trimming.
     # 1 disables.
@@ -984,6 +1012,8 @@ class Settings(BaseSettings):
     COLBERT_RETRIEVAL_MAX_DOCS: int = 10_000
     # Used only by deterministic provider.
     COLBERT_RETRIEVAL_EMBED_DIM: int = 64
+    # Optional visual-document retrieval scaffold (ColPali / ColQwen parser outputs).
+    COLPALI_RETRIEVAL_ENABLED: bool = False
     # Optional ColBERT-style reranker provider.
     #
     # Notes:
@@ -1042,6 +1072,12 @@ class Settings(BaseSettings):
     RAG_CONTEXT_NEIGHBOR_WINDOW: int = 0
     # Max number of neighbor chunks to add in total (0 disables the cap).
     RAG_CONTEXT_NEIGHBOR_MAX_ADDED: int = 20
+    # Optional: expand all chunks from short documents around a strong anchor hit.
+    RAG_CONTEXT_SIBLING_EXPAND_ENABLED: bool = False
+    # Route to sibling expansion when the active pipeline version has at most this many chunks.
+    RAG_CONTEXT_SIBLING_SHORT_DOC_MAX_CHUNKS: int = 8
+    # Max number of sibling chunks to add in total (0 disables the cap).
+    RAG_CONTEXT_SIBLING_MAX_ADDED: int = 40
     # Optional: reorder returned context chunks to improve continuity by stitching contiguous
     # (document_id, chunk_index) sequences together. Default off to preserve legacy ordering.
     RAG_CONTEXT_STITCHING_ENABLED: bool = False
@@ -1052,6 +1088,12 @@ class Settings(BaseSettings):
     RAG_PARENT_CHILD_AUTO_MERGE_MODE: str = "replace"
     RAG_PARENT_CHILD_AUTO_MERGE_MIN_CHILDREN: int = 2
     RAG_PARENT_CHILD_AUTO_MERGE_MAX_PARENTS: int = 20
+    WEB_SEARCH_ENABLED: bool = False
+    WEB_SEARCH_TIMEOUT_SEC: float = 8.0
+    WEB_SEARCH_MAX_RESULTS: int = 5
+    TAVILY_API_KEY: str = ""
+    SERPER_API_KEY: str = ""
+    BRAVE_SEARCH_API_KEY: str = ""
     # Optional context compression before final prompt formatting.
     RAG_CONTEXT_COMPRESSION_ENABLED: bool = False
     # Optional lightweight generation-time reordering for better reading flow.
@@ -1066,6 +1108,9 @@ class Settings(BaseSettings):
     # Optional query-aware LLM compression for final prompt context assembly.
     RAG_CONTEXT_LLM_COMPRESSION_ENABLED: bool = False
     RAG_CONTEXT_LLM_COMPRESSION_TARGET_RATIO: float = 0.5
+    # Context Cliff warning threshold (2026 follow-up literature suggests quality drops sharply
+    # once effective prompt context exceeds ~2500 tokens).
+    RAG_CONTEXT_CLIFF_THRESHOLD_TOKENS: int = 2500
     # Context evidence extraction (query-focused sentence selection)
     RAG_CONTEXT_EVIDENCE_ENABLED: bool = False
     RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK: int = 6
@@ -1073,6 +1118,12 @@ class Settings(BaseSettings):
     # Grounding guard: abstain when evidence is weak/empty.
     RAG_ABSTAIN_ENABLED: bool = False
     RAG_ABSTAIN_MIN_CITATIONS: int = 1
+    # Optional live out-of-scope guard: only upgrades weak/no-evidence abstain paths when the
+    # verifier says the question appears outside the current knowledge base.
+    RAG_OUT_OF_SCOPE_LIVE_GUARD_ENABLED: bool = False
+    RAG_OUT_OF_SCOPE_RULESET: str = ""
+    RAG_OUT_OF_SCOPE_VECTOR_THRESHOLD: float = 0.35
+    RAG_OUT_OF_SCOPE_HYDE_THRESHOLD: float = 0.4
     RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE: float = 0.0  # 0 disables
     # Strict evidence contract: when enabled, citations without span offsets are discarded.
     RAG_EVIDENCE_REQUIRE_SPANS_ENABLED: bool = False
@@ -1159,7 +1210,9 @@ class Settings(BaseSettings):
     AGENT_LOG_INCLUDE_EXECUTION_PATH: bool = False
     AGENT_LOG_MAX_PREVIEW_CHARS: int = 500
 
-    VECTOR_BACKEND: str = "milvus"  # milvus | memory | faiss | chroma
+    VECTOR_BACKEND: str = "milvus"  # milvus | memory | faiss | chroma | qdrant | pgvector
+    # Optional JSON object keyed by region -> backend, e.g. {"cn-shanghai":"qdrant"}.
+    VECTOR_REGION_BACKENDS: str = ""
     # Indexing toggles (to reduce duplicate pipelines when desired)
     CHUNK_VECTOR_ENABLED: bool = True
     # Index-consistency controls for manual chunk operations (create/patch/delete/disable/reembed).
@@ -1175,6 +1228,9 @@ class Settings(BaseSettings):
     # When true, inject a short document/section-level context prefix before embedding (vector-only).
     # Default off to keep backward-compatible vectors and ingestion costs stable.
     CONTEXTUAL_RETRIEVAL_ENABLED: bool = False
+    # When true, contextual retrieval prefixes are only generated for chunks with an explicit
+    # enrichment trigger (for example evidence_gap feedback or contextual_enrichment_required=true).
+    CONTEXTUAL_RETRIEVAL_LAZY_MODE: bool = False
     # Best-effort deterministic contextual prefix knobs (no LLM calls by default).
     CONTEXTUAL_RETRIEVAL_PREFIX_MAX_CHARS: int = 240
     CONTEXTUAL_RETRIEVAL_KEYWORDS_TOP_K: int = 6
@@ -1185,6 +1241,14 @@ class Settings(BaseSettings):
     CONTEXTUAL_RETRIEVAL_LLM_ENRICHMENT_ENABLED: bool = False
     CONTEXTUAL_RETRIEVAL_LLM_MAX_INPUT_CHARS: int = 2400
     CONTEXTUAL_RETRIEVAL_LLM_MAX_SUMMARY_CHARS: int = 180
+    # Optional chart-to-data enrichment backend (disabled by default).
+    CHART_TO_DATA_ENABLED: bool = False
+    CHART_TO_DATA_API_URL: str = ""
+    CHART_TO_DATA_TIMEOUT_SEC: float = 20.0
+    CHART_TO_DATA_MAX_IMAGES: int = 8
+    CHART_TO_DATA_MAX_IMAGE_BYTES: int = 5_000_000
+    MATHPIX_APP_ID: str = ""
+    MATHPIX_APP_KEY: str = ""
     EVENT_VECTOR_ENABLED: bool = True
     ENTITY_VECTOR_ENABLED: bool = True
     BM25_INDEX_ENABLED: bool = True
@@ -1402,6 +1466,12 @@ class Settings(BaseSettings):
     RAG_AGENTIC_COMPLEXITY_THRESHOLD: float = 250.0
     RAG_AGENTIC_MAX_RETRIEVE_ROUNDS: int = 3
     RAG_AGENTIC_TOOLS_ENABLED: bool = False
+    RAG_CRAG_STREAMING_ENABLED: bool = False
+    RAG_CRAG_STREAMING_MAX_RESULTS: int = 5
+    RAG_CRAG_STREAMING_MIN_CITATIONS: int = 1
+    RAG_CRAG_STREAMING_MIN_TOP_SCORE: float = 0.35
+    RAG_SELF_RAG_ENABLED: bool = False
+    RAG_CRITIC_ENABLED: bool = False
     RAG_MULTI_AGENT_ENABLED: bool = False
     RAG_MULTI_AGENT_MAX_SUB_AGENTS: int = 4
     RAG_AGENTIC_REFLECT_TOP_CITATIONS_MIN: int = 1
@@ -1466,6 +1536,7 @@ class Settings(BaseSettings):
     # Parsing fallback (PDF only): retry with a different backend when output quality is low.
     PARSE_FALLBACK_ENABLED: bool = False
     PARSE_FALLBACK_MIN_CONTENT_CHARS: int = 120
+    PARSE_FALLBACK_MIN_PARSE_SCORE: float = 0.55
     PARSE_FALLBACK_MAX_RETRIES: int = 1
     # Cross-page structure restoration.
     CROSS_PAGE_MERGE_ENABLED: bool = False
@@ -1485,7 +1556,7 @@ class Settings(BaseSettings):
     NEAR_DEDUP_MAX_BUCKET_SIZE: int = 256
     # Reranker (optional: use LLM to rerank candidates for better quality).
     ENABLE_RERANKER: bool = False
-    RERANKER_PROVIDER: str = "llm"  # llm | pc | ltr | colbert | cross_encoder | none
+    RERANKER_PROVIDER: str = "llm"  # llm | pc | ltr | colbert | cross_encoder | long_context | mmr | none
     # Local Learning-to-Rank model path (xgboost JSON/UBJ).
     # Used when reranker_provider="ltr" and by Evidence API post-rerank when enabled.
     LTR_MODEL_PATH: str = ""
@@ -1498,6 +1569,8 @@ class Settings(BaseSettings):
     # - v2: v1 + KG ranking features (kg_pagerank/path/etc)
     LTR_FEATURE_SPEC_VERSION: int = 1
     RERANKER_MODEL: str | None = None
+    # Optional rerank budget/search profile. Example: "sweet_spot" -> keep coarse retrieval at SEARCH_K=20.
+    RERANK_PROFILE: str = ""
     # Optional: use a dedicated API key/base for API-style rerankers (openai/dashscope),
     # falls back to LLM_API_KEY/LLM_API_BASE when empty.
     RERANKER_API_KEY: str = ""
@@ -1517,6 +1590,10 @@ class Settings(BaseSettings):
     RERANKER_API_CACHE_ENABLED: bool = True
     RERANKER_API_CACHE_MAX_ENTRIES: int = 2000
     RERANKER_API_CACHE_TTL_SEC: int = 3600
+    RERANKER_LLM_WEIGHT: float = 0.7
+    RERANKER_LLM_FALLBACK_SCORE: float = 0.5
+    RERANKER_LLM_WEIGHT_BY_TENANT: str = ""
+    RERANKER_LLM_WEIGHT_BY_QUERY_TYPE: str = ""
     RERANK_CONDITIONAL_ENABLED: bool = False
     RERANK_SKIP_THRESHOLD: float = 0.85
     RERANK_SKIP_GAP: float = 0.15
@@ -2179,6 +2256,9 @@ class Settings(BaseSettings):
             raise ValueError("RETRIEVAL_FIELD_AWARE_TITLE_BOOST must be <= RETRIEVAL_FIELD_AWARE_MAX_BOOST")
         if field_heading_boost > field_max_boost:
             raise ValueError("RETRIEVAL_FIELD_AWARE_HEADING_BOOST must be <= RETRIEVAL_FIELD_AWARE_MAX_BOOST")
+        chunk_type_match_boost = float(getattr(self, "RETRIEVAL_CHUNK_TYPE_MATCH_BOOST", 0.0) or 0.0)
+        if chunk_type_match_boost < 0.0:
+            raise ValueError("RETRIEVAL_CHUNK_TYPE_MATCH_BOOST must be >= 0")
         if int(self.RETRIEVAL_QUERY_PARALLELISM or 0) < 1:
             raise ValueError(
                 f"RETRIEVAL_QUERY_PARALLELISM ({self.RETRIEVAL_QUERY_PARALLELISM}) must be >= 1"
@@ -2491,7 +2571,7 @@ class Settings(BaseSettings):
             )
 
         # Validate vector backend
-        valid_vector_backends = {"milvus", "memory", "faiss", "chroma"}
+        valid_vector_backends = {"milvus", "memory", "faiss", "chroma", "qdrant", "pgvector"}
         if self.VECTOR_BACKEND not in valid_vector_backends:
             raise ValueError(
                 f"VECTOR_BACKEND ({self.VECTOR_BACKEND}) must be one of {valid_vector_backends}"
@@ -2751,6 +2831,8 @@ class Settings(BaseSettings):
             "cross-encoder",
             "sentence_transformers",
             "sentence-transformers",
+            "long_context",
+            "mmr",
             "kg_pagerank",
             "kg_rrf",
             "none",

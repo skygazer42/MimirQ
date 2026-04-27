@@ -36,6 +36,37 @@ def test_prepare_chat_cache_lookup_accepts_options(monkeypatch: pytest.MonkeyPat
     assert skip_reason == "history_not_empty"
 
 
+def test_build_chat_message_metadata_embeds_rewrite_docs_and_latency() -> None:
+    import app.api.v1.chat as chat_mod
+
+    out = chat_mod._build_chat_message_metadata(  # noqa: SLF001
+        request_id="req-1",
+        original_question="原问题",
+        metrics={
+            "query_for_retrieval": "重写后的问题",
+            "elapsed_sec": 4.2,
+            "retrieval_elapsed_sec": 1.1,
+            "generation_elapsed_sec": 2.6,
+        },
+        citations=[
+            {"document_id": "doc-1", "document_name": "手册A", "chunk_id": "c-1", "page_number": 3},
+            {"document_id": "doc-2", "source": "手册B", "chunk_id": "c-2", "page_number": 4},
+        ],
+    )
+
+    assert out["request_id"] == "req-1"
+    assert out["rewritten_query"] == "重写后的问题"
+    assert out["retrieved_docs"] == [
+        {"document_id": "doc-1", "document_name": "手册A", "chunk_id": "c-1", "page_number": 3},
+        {"document_id": "doc-2", "document_name": "手册B", "chunk_id": "c-2", "page_number": 4},
+    ]
+    assert out["latency_stats"] == {
+        "elapsed_sec": 4.2,
+        "retrieval_elapsed_sec": 1.1,
+        "generation_elapsed_sec": 2.6,
+    }
+
+
 @pytest.mark.asyncio
 async def test_persist_chat_stream_turn_background_accepts_options(
     monkeypatch: pytest.MonkeyPatch,
@@ -141,6 +172,9 @@ async def test_persist_chat_stream_turn_background_accepts_options(
     assert cache_store["key"] == "chat-cache-key"
     assert isinstance(fake_db.added, _FakeMessage)
     assert fake_db.added.message_metadata["request_id"] == "req-1"
+    assert fake_db.added.message_metadata["rewritten_query"] is None
+    assert fake_db.added.message_metadata["retrieved_docs"] == [{"document_id": "doc", "document_name": None, "chunk_id": None, "page_number": None}]
+    assert fake_db.added.message_metadata["latency_stats"] == {"latency_ms": 12}
     assert fake_db.committed is True
     assert conv.message_count == 1
     assert len(audit_calls) == 1

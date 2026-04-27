@@ -9,11 +9,15 @@ Pattern: Think -> Act -> Observe -> Think -> ... -> Answer
 
 
 import asyncio
+import json
 import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from app.rag.middleware import ToolMiddlewareChain
+from app.rag.tools.hierarchical_retrieval_tools import chunk_read, keyword_search, semantic_search
+from app.rag.tools.retrieval_config_tool import configure_retrieval
+from app.rag.tools.web_search import web_search
 from app.rag.workflows.base import (
     BaseWorkflow,
     WorkflowMode,
@@ -101,6 +105,91 @@ class ReActWorkflow(BaseWorkflow):
     def set_llm(self, llm: Any) -> "ReActWorkflow":
         """Set the language model."""
         self._llm = llm
+        return self
+
+    def register_hierarchical_retrieval_tools(
+        self,
+        *,
+        dataset_id: str,
+        account_id: str | None = None,
+    ) -> "ReActWorkflow":
+        async def _keyword(input_text: str) -> str:
+            result = await keyword_search(str(input_text or ""), dataset_id=dataset_id)
+            return str(result)
+
+        async def _semantic(input_text: str) -> str:
+            result = await semantic_search(str(input_text or ""), dataset_id=dataset_id)
+            return str(result)
+
+        async def _chunk(input_text: str) -> str:
+            result = await chunk_read(document_id=str(input_text or ""), dataset_id=dataset_id, account_id=account_id)
+            return str(result)
+
+        self.add_tool("keyword_search", _keyword, "Keyword-first retrieval for exact terms, IDs, and entity names.")
+        self.add_tool("semantic_search", _semantic, "Semantic retrieval for natural language questions over the dataset.")
+        self.add_tool("chunk_read", _chunk, "Read the full document/chunk content for a selected document id.")
+        return self
+
+    def register_retrieval_config_tool(self) -> "ReActWorkflow":
+        async def _configure(input_text: str) -> str:
+            payload: dict[str, Any] = {}
+            raw = str(input_text or "").strip()
+            if raw:
+                try:
+                    parsed = json.loads(raw)
+                    if isinstance(parsed, dict):
+                        payload = dict(parsed)
+                except Exception:
+                    payload = {}
+                    for part in raw.replace(",", " ").split():
+                        if "=" not in part:
+                            continue
+                        key, value = part.split("=", 1)
+                        payload[str(key).strip()] = str(value).strip()
+
+            result = configure_retrieval(
+                top_k=payload.get("top_k", 20),
+                reranker_top_n=payload.get("reranker_top_n", payload.get("rerank_n", 20)),
+                retrieval_profile=payload.get("retrieval_profile"),
+                retrieval_mode=payload.get("retrieval_mode"),
+                score_threshold=payload.get("score_threshold", 0.0),
+            )
+            return str(result)
+
+        self.add_tool(
+            "configure_retrieval",
+            _configure,
+            "Adjust retrieval knobs such as top_k, reranker_top_n, retrieval_profile, and retrieval_mode.",
+        )
+        return self
+
+    def register_web_search_tool(
+        self,
+        *,
+        provider_order: list[str] | tuple[str, ...] | None = None,
+        max_results: int = 5,
+        site_filter: list[str] | None = None,
+        freshness: str | None = None,
+        lang: str | None = None,
+        region: str | None = None,
+    ) -> "ReActWorkflow":
+        async def _web_search(input_text: str) -> str:
+            result = await web_search(
+                str(input_text or ""),
+                provider_order=list(provider_order) if provider_order is not None else None,
+                max_results=max_results,
+                site_filter=site_filter,
+                freshness=freshness,
+                lang=lang,
+                region=region,
+            )
+            return str(result)
+
+        self.add_tool(
+            "web_search",
+            _web_search,
+            "Search the public web with provider fallback for recent or out-of-corpus information.",
+        )
         return self
 
     def _get_tools_prompt(self) -> str:

@@ -11,7 +11,7 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
@@ -38,10 +38,16 @@ class RetrievalConfigHashRequest(BaseModel):
 
 
 class RetrievalConfigHashResponse(BaseModel):
-    schema: str = _SCHEMA
+    model_config = ConfigDict(populate_by_name=True)
+
+    schema_: str = Field(default=_SCHEMA, alias="schema", serialization_alias="schema")
     hash: str
     fingerprint: dict[str, Any] = Field(default_factory=dict)
     effective_config: dict[str, Any] = Field(default_factory=dict)
+
+    @property
+    def schema(self) -> str:
+        return str(self.schema_)
 
 
 def _runtime_flags() -> dict[str, Any]:

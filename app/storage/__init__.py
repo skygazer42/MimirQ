@@ -13,7 +13,7 @@ Note: Hybrid retrieval has been moved to app.rag.retriever module.
 
 from typing import Any
 
-__all__ = ["get_vector_store", "milvus_store", "minio_service"]
+__all__ = ["get_vector_store", "milvus_store", "minio_service", "get_object_store"]
 
 
 def __getattr__(name: str) -> Any:
@@ -37,8 +37,11 @@ def __getattr__(name: str) -> Any:
         from app.storage.object.minio import minio_service
 
         return minio_service
-    raise AttributeError(f"module 'app.storage' has no attribute {name!r}")
+    if name == "get_object_store":
+        from app.storage.object.factory import get_object_store
 
+        return get_object_store
+    raise AttributeError(f"module 'app.storage' has no attribute {name!r}")
 
 
 

@@ -28,7 +28,11 @@ from app.rag.preprocessing.keyword import extract_keywords as extract_keywords_f
 from app.rag.preprocessing.language import detect_language as detect_language_fn
 from app.rag.preprocessing.paragraph_dedup import drop_duplicate_paragraphs as drop_duplicate_paragraphs_fn
 from app.rag.preprocessing.pii_anonymizer import anonymize_pii
-from app.rag.preprocessing.quality_filters import drop_if_low_density, drop_if_outline_only
+from app.rag.preprocessing.quality_filters import (
+    drop_if_high_perplexity_proxy,
+    drop_if_low_density,
+    drop_if_outline_only,
+)
 from app.rag.preprocessing.references import trim_references_section as trim_references_section_fn
 from app.rag.preprocessing.rules import DEFAULT_MARKDOWN_RULES
 from app.rag.preprocessing.secrets import redact_secrets
@@ -106,6 +110,9 @@ class GovernanceCleanOptions:
     drop_outline_max_heading_ratio: float = 0.85
     drop_low_density: bool = False
     drop_low_density_threshold: float = 0.12
+    drop_high_perplexity: bool = False
+    drop_high_perplexity_threshold: float = 0.55
+    drop_high_perplexity_min_tokens: int = 20
     collapse_blank_lines: bool = True
     unwrap_max_line_length: int = 120
     noise_min_chars: int = 2
@@ -170,6 +177,9 @@ class GovernanceProcessor:
         drop_outline_max_heading_ratio = resolved.drop_outline_max_heading_ratio
         drop_low_density = resolved.drop_low_density
         drop_low_density_threshold = resolved.drop_low_density_threshold
+        drop_high_perplexity = resolved.drop_high_perplexity
+        drop_high_perplexity_threshold = resolved.drop_high_perplexity_threshold
+        drop_high_perplexity_min_tokens = resolved.drop_high_perplexity_min_tokens
         collapse_blank_lines = resolved.collapse_blank_lines
         unwrap_max_line_length = resolved.unwrap_max_line_length
         noise_min_chars = resolved.noise_min_chars
@@ -425,6 +435,15 @@ class GovernanceProcessor:
                 if decision.dropped:
                     drop_reason = decision.reason or "low_density"
 
+            if drop_reason is None and drop_high_perplexity:
+                decision = drop_if_high_perplexity_proxy(
+                    text,
+                    threshold=float(drop_high_perplexity_threshold or 0.0),
+                    min_tokens=int(drop_high_perplexity_min_tokens or 0),
+                )
+                if decision.dropped:
+                    drop_reason = decision.reason or "perplexity_proxy_high"
+
             if drop_reason is not None:
                 dropped += 1
                 key = str(drop_reason or "dropped")
@@ -524,6 +543,7 @@ class GovernanceProcessor:
             try:
                 density_metrics = drop_if_low_density(text, threshold=-1.0).metrics or {}
                 outline_metrics = drop_if_outline_only(text, min_content_chars=0, max_heading_ratio=2.0).metrics or {}
+                perplexity_metrics = drop_if_high_perplexity_proxy(text, threshold=2.0, min_tokens=0).metrics or {}
                 meta["governance_quality"] = {
                     "density": float(density_metrics.get("density") or 0.0),
                     "chars_non_space": int(density_metrics.get("chars_non_space") or 0),
@@ -532,6 +552,8 @@ class GovernanceProcessor:
                     "lines_total": int(outline_metrics.get("lines_total") or 0),
                     "lines_outline": int(outline_metrics.get("lines_outline") or 0),
                     "content_chars": int(outline_metrics.get("content_chars") or 0),
+                    "perplexity_proxy": float(perplexity_metrics.get("perplexity_proxy") or 0.0),
+                    "token_count": int(perplexity_metrics.get("token_count") or 0),
                 }
             except Exception:
                 # Best-effort only; never fail ingestion due to metrics.

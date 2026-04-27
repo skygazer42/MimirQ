@@ -136,8 +136,29 @@ def _ensure_datetime_utc_available() -> None:
         _datetime.UTC = timezone.utc
 
 
+def _ensure_langchain_legacy_globals() -> None:
+    """
+    Some langchain-core versions still read `langchain.verbose` / `langchain.debug`
+    during model construction, while newer langchain packages may not expose those
+    attributes anymore. Provide safe defaults so imports/tests stay stable.
+    """
+
+    try:
+        import langchain  # type: ignore
+    except ImportError:
+        return
+
+    if not hasattr(langchain, "verbose"):
+        langchain.verbose = False
+    if not hasattr(langchain, "debug"):
+        langchain.debug = False
+    if not hasattr(langchain, "llm_cache"):
+        langchain.llm_cache = None
+
+
 _ensure_pkg_resources_available()
 _preload_conda_libstdcxx()
 _ensure_datetime_utc_available()
+_ensure_langchain_legacy_globals()
 
 __version__ = "1.0.0"

@@ -13,6 +13,41 @@ from app.parsing.backends import normalize_parser_backend
 from app.parsing.utils.cli import resolve_cli_command
 
 
+def should_attempt_pdf_fallback(
+    *,
+    grade: str | None,
+    parse_score: float | None,
+    content_chars: int | None,
+    min_content_chars: int,
+    min_parse_score: float,
+) -> bool:
+    """
+    Decide whether a low-quality parse should trigger an alternative backend retry.
+
+    Conditions:
+    - hard fail always retries
+    - too-short content retries
+    - low parse quality score retries when threshold > 0
+    """
+    grade_norm = str(grade or "").strip().lower()
+    if grade_norm == "fail":
+        return True
+
+    chars = max(0, int(content_chars or 0))
+    if int(min_content_chars or 0) > 0 and chars < int(min_content_chars or 0):
+        return True
+
+    if float(min_parse_score or 0.0) > 0.0 and parse_score is not None:
+        try:
+            score = float(parse_score)
+        except (TypeError, ValueError):
+            score = None
+        if score is not None and score < float(min_parse_score):
+            return True
+
+    return False
+
+
 def choose_pdf_backend(quality: dict | None, requested: str | None) -> str:
     """
     Choose a PDF parser backend based on quality scoring and user request.
@@ -112,3 +147,6 @@ def route_pdf_backend(
     if quality is None:
         quality = score_pdf_quality(file_path, sample_pages=sample_pages, use_ocr_validation=use_ocr)
     return choose_pdf_backend(quality, requested), quality
+
+
+__all__ = ["choose_pdf_backend", "route_pdf_backend", "should_attempt_pdf_fallback"]

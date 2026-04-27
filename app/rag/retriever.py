@@ -23,6 +23,7 @@ from pydantic import ConfigDict, Field, PrivateAttr
 from sqlalchemy import func, or_, text, tuple_
 from sqlalchemy.orm import Session
 
+from app.config.rerank_profile import resolve_rerank_search_k
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.stream_events import emit_stream_event
@@ -37,6 +38,8 @@ from app.rag.preprocessing.stopwords import STOPWORDS
 from app.rag.preprocessing.tokenization import tokenize_for_bm25
 from app.rag.reranker.factory import get_reranker
 from app.rag.reranker.types import RerankCandidate
+from app.rag.retrieval.context_expansion import expand_ranked_chunk_results
+from app.rag.retrieval.sibling_expand import select_document_expansion_mode
 from app.rag.retrieval.sparse import SparseVector
 from app.rag.retrieval_candidate_cache import (
     build_retrieval_candidate_cache_key,
@@ -51,6 +54,8 @@ logger = get_logger("rag.retriever")
 SPARSE_INDEX_DIR_FALLBACK = "./data/sparse_indexes"
 COLBERT_INDEX_DIR_FALLBACK = "./data/colbert_indexes"
 LEXICAL_DB_SEARCH_FAILED_LOG = "Lexical DB search failed: %s"
+_RETRIEVAL_DISPLAY_CONTENT_KEY = "_retrieval_display_content"
+_RETRIEVAL_QUESTIONS_CHANNEL_KEY = "_retrieval_questions_channel_applied"
 
 
 @dataclass(frozen=True)
@@ -67,6 +72,9 @@ class HybridSearchOptions:
     mmr_lambda: float = 0.7
     mmr_fetch_k_multiplier: int = 4
     metadata_filter: dict[str, Any] | None = None
+    entity_key: str | None = None
+    partition_keys: list[str] | None = None
+    entity_candidates: list[str] | None = None
     requested_k: int | None = None
 
 
@@ -126,6 +134,9 @@ class HybridRetriever(BaseRetriever):
     document_ids: list[UUID] | None = None
     # Metadata filtering
     metadata_filter: dict[str, Any] | None = None
+    entity_key: str | None = None
+    partition_keys: list[str] | None = None
+    entity_candidates: list[str] | None = None
     metadata_filter_enabled: bool = getattr(settings, "RETRIEVAL_METADATA_FILTER_ENABLED", True)
     retrieval_profile: str | None = None
     enable_hierarchy_recall: bool = False
@@ -197,6 +208,168 @@ class HybridRetriever(BaseRetriever):
 
     def _tenant_key(self, tenant_id: UUID | None) -> str:
         return str(tenant_id or settings.DEFAULT_TENANT_ID)
+
+    @staticmethod
+    def _normalize_partition_keys(value: Any, *, max_items: int = 8) -> list[str]:
+        out: list[str] = []
+        seen: set[str] = set()
+
+        if isinstance(value, str):
+            raw_items = [value]
+        elif isinstance(value, (list, tuple, set)):
+            raw_items = list(value)
+        else:
+            raw_items = []
+
+        for raw in raw_items:
+            text = str(raw or "").strip()
+            if not text:
+                continue
+            norm = text.casefold()
+            if norm in seen:
+                continue
+            seen.add(norm)
+            out.append(text)
+            if len(out) >= max(0, int(max_items or 0)):
+                break
+        return out
+
+    def _resolve_entity_partition_keys(
+        self,
+        *,
+        query: str,
+        entity_key: str | None = None,
+        partition_keys: list[str] | None = None,
+        entity_candidates: list[str] | None = None,
+    ) -> list[str]:
+        explicit_keys = self._normalize_partition_keys(partition_keys)
+        if explicit_keys:
+            return explicit_keys
+
+        explicit_entity = str(entity_key or "").strip()
+        if explicit_entity:
+            return [explicit_entity]
+
+        candidates = entity_candidates if entity_candidates is not None else self.entity_candidates
+        if not candidates:
+            return []
+
+        try:
+            from app.rag.utils.entity_matcher import extract_partition_keys
+
+            return extract_partition_keys(query, candidates)
+        except Exception:
+            return []
+
+    def _merge_entity_partition_metadata_filter(
+        self,
+        *,
+        query: str,
+        metadata_filter: dict[str, Any] | None,
+        entity_key: str | None = None,
+        partition_keys: list[str] | None = None,
+        entity_candidates: list[str] | None = None,
+    ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+        keys = self._resolve_entity_partition_keys(
+            query=query,
+            entity_key=entity_key if entity_key is not None else self.entity_key,
+            partition_keys=partition_keys if partition_keys is not None else self.partition_keys,
+            entity_candidates=entity_candidates,
+        )
+        if not keys:
+            return metadata_filter, None
+
+        merged = dict(metadata_filter or {})
+        existing = merged.get("partition_keys")
+        if existing is None:
+            merged["partition_keys"] = {"$in": list(keys)}
+        elif isinstance(existing, dict) and isinstance(existing.get("$in"), (list, tuple, set)):
+            allowed = {str(v or "").strip() for v in existing.get("$in") or [] if str(v or "").strip()}
+            merged["partition_keys"] = {"$in": [k for k in keys if k in allowed]}
+        else:
+            existing_text = str(existing or "").strip()
+            merged["partition_keys"] = {"$in": [k for k in keys if k == existing_text]}
+
+        meta = {
+            "entity_key": (str(entity_key or self.entity_key or "").strip() or None),
+            "partition_keys": list(keys),
+            "candidates_count": int(len(entity_candidates or self.entity_candidates or [])),
+        }
+        return merged, meta
+
+    @staticmethod
+    def _result_content_from_doc(doc: Document) -> str:
+        meta = doc.metadata or {}
+        preserved = meta.get(_RETRIEVAL_DISPLAY_CONTENT_KEY)
+        if isinstance(preserved, str) and preserved:
+            return preserved
+        return str(doc.page_content or "")
+
+    @staticmethod
+    def _normalize_document_questions(value: Any, *, max_items: int = 5) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        out: list[str] = []
+        seen: set[str] = set()
+        for item in value:
+            text = str(item or "").strip()
+            if not text:
+                continue
+            key = text.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(text[:200])
+            if len(out) >= max(1, int(max_items or 1)):
+                break
+        return out
+
+    def _augment_retrieval_corpus_text(self, *, content: str, metadata: dict[str, Any]) -> tuple[str, bool]:
+        base = str(content or "")
+        if bool(metadata.get("rich_metadata_header_applied")):
+            return base, False
+
+        questions = self._normalize_document_questions(metadata.get("document_questions"))
+        if not questions:
+            return base, False
+
+        base_folded = base.casefold()
+        additions = [question for question in questions if question.casefold() not in base_folded]
+        if not additions:
+            return base, False
+
+        question_block = "Questions:\n" + "\n".join(f"- {question}" for question in additions)
+        if not base.strip():
+            return question_block, True
+        return f"{base.rstrip()}\n\n{question_block}", True
+
+    def _prepare_retrieval_document(self, doc: Document) -> Document:
+        meta = dict(doc.metadata or {})
+        display_content = str(meta.get(_RETRIEVAL_DISPLAY_CONTENT_KEY) or doc.page_content or "")
+        retrieval_content, applied = self._augment_retrieval_corpus_text(content=display_content, metadata=meta)
+        meta[_RETRIEVAL_DISPLAY_CONTENT_KEY] = display_content
+        meta[_RETRIEVAL_QUESTIONS_CHANNEL_KEY] = bool(applied)
+        try:
+            return doc.model_copy(update={"page_content": retrieval_content, "metadata": meta})
+        except Exception:
+            return Document(page_content=retrieval_content, metadata=meta, id=getattr(doc, "id", None))
+
+    def _question_channel_overlap_score(
+        self,
+        *,
+        query_tokens: list[str],
+        metadata: dict[str, Any],
+    ) -> float:
+        questions = self._normalize_document_questions(metadata.get("document_questions"))
+        if not questions or not query_tokens:
+            return 0.0
+        question_tokens = set(self._bm25_tokenize(" ".join(questions)))
+        if not question_tokens:
+            return 0.0
+        overlap = set(query_tokens) & question_tokens
+        if not overlap:
+            return 0.0
+        return min(1.0, float(len(overlap)) / float(max(1, len(set(query_tokens)))))
 
     def _bm25_scope_key(
         self,
@@ -1271,6 +1444,9 @@ class HybridRetriever(BaseRetriever):
         """Build BM25 from LangChain Document list (avoids dependency on ORM objects)."""
         if not docs:
             return
+        docs = [self._prepare_retrieval_document(doc) for doc in docs if doc is not None]
+        if not docs:
+            return
         key = str(cache_key) if cache_key is not None else self._tenant_key(tenant_id)
         retriever = BM25Retriever.from_documents(docs, preprocess_func=self._bm25_tokenize, k=10)
         self._bm25_retrievers[key] = retriever
@@ -1377,7 +1553,7 @@ class HybridRetriever(BaseRetriever):
                 meta["page"] = page_number
             meta.setdefault("image_id", meta.get("image_id"))
             meta.setdefault("image_url", meta.get("image_url"))
-            docs.append(Document(page_content=content or "", id=str(chunk_id), metadata=meta))
+            docs.append(self._prepare_retrieval_document(Document(page_content=content or "", id=str(chunk_id), metadata=meta)))
         return docs
 
     def rebuild_persisted_retrieval_indexes(
@@ -1453,6 +1629,9 @@ class HybridRetriever(BaseRetriever):
             except Exception:
                 tenant_uuid = None
         if tenant_uuid is None:
+            return
+        docs = [self._prepare_retrieval_document(doc) for doc in docs if doc is not None]
+        if not docs:
             return
 
         cache_key = self._bm25_scope_key(
@@ -1744,6 +1923,7 @@ class HybridRetriever(BaseRetriever):
         allowed_ids = {str(doc_id) for doc_id in document_ids} if document_ids else None
         processed_query = retriever.preprocess_func(query)
         scores = retriever.vectorizer.get_scores(processed_query)  # type: ignore[attr-defined]
+        query_tokens = [str(token or "").strip() for token in processed_query if str(token or "").strip()]
 
         results: list[dict[str, Any]] = []
         for doc, score in zip(docs, scores, strict=False):
@@ -1754,10 +1934,12 @@ class HybridRetriever(BaseRetriever):
             if metadata_filter and self.metadata_filter_enabled:
                 if not self._match_metadata_filter(meta, metadata_filter):
                     continue
+            question_channel_score = self._question_channel_overlap_score(query_tokens=query_tokens, metadata=meta)
+            final_score = float(score) + float(question_channel_score or 0.0)
             results.append(
                 {
                     "chunk_id": doc.id,
-                    "content": doc.page_content,
+                    "content": self._result_content_from_doc(doc),
                     "metadata": {
                         "tenant_id": meta.get("tenant_id"),
                         "document_id": meta.get("document_id"),
@@ -1768,15 +1950,66 @@ class HybridRetriever(BaseRetriever):
                         "img_id": meta.get("img_id"),
                         "image_id": meta.get("image_id"),
                         "image_url": meta.get("image_url"),
-                        "bm25_score": float(score),
+                        "bm25_score": float(final_score),
+                        "bm25_score_raw": float(score),
+                        "question_channel_score": float(question_channel_score),
                     },
-                    "score": float(score),
+                    "score": float(final_score),
                 }
             )
 
         if not results:
             return []
         return heapq.nlargest(max(0, int(top_k or 0)), results, key=lambda x: float(x.get("score", 0.0) or 0.0))
+
+    def _search_colpali_retriever(
+        self,
+        query: str,
+        top_k: int = 10,
+        document_ids: list[UUID] | None = None,
+        tenant_id: UUID | None = None,
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """
+        Minimal ColPali retriever scaffold.
+
+        Today this reuses the BM25 corpus and narrows it to visual-document parser outputs
+        (`visual_parser=colpali` / `content_type=visual_document` / image-like docs). This keeps
+        the path deterministic and dependency-light until a dedicated page-embedding index lands.
+        """
+        visual_filter: dict[str, Any] = {
+            "$or": [
+                {"visual_parser": "colpali"},
+                {"content_type": "visual_document"},
+                {"doc_type_kwd": "image"},
+            ]
+        }
+        combined_filter: dict[str, Any] | None = visual_filter
+        if isinstance(metadata_filter, dict) and metadata_filter:
+            combined_filter = {"$and": [dict(metadata_filter), visual_filter]}
+
+        rows = self._search_bm25(
+            query=query,
+            top_k=top_k,
+            document_ids=document_ids,
+            tenant_id=tenant_id,
+            metadata_filter=combined_filter,
+        )
+
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            item = dict(row or {})
+            score = float(item.get("score", 0.0) or 0.0)
+            meta = dict(item.get("metadata") or {})
+            meta.setdefault("visual_parser", "colpali")
+            meta["colpali_score"] = float(score)
+            item["metadata"] = meta
+            item["colpali_score"] = float(score)
+            # Piggyback on lexical score so existing fusion logic can merge the channel.
+            item["lexical_score"] = float(score)
+            item["hit_type"] = "colpali_retriever"
+            out.append(item)
+        return out
 
     def _search_colbert_ann(
         self,
@@ -1986,7 +2219,7 @@ class HybridRetriever(BaseRetriever):
             results.append(
                 {
                     "chunk_id": doc_id,
-                    "content": doc.page_content,
+                    "content": self._result_content_from_doc(doc),
                     "metadata": meta,
                     "score": float(score),
                 }
@@ -2167,7 +2400,7 @@ class HybridRetriever(BaseRetriever):
                 results.append(
                     {
                         "chunk_id": doc.id,
-                        "content": doc.page_content,
+                        "content": self._result_content_from_doc(doc),
                         "metadata": {
                             "tenant_id": meta.get("tenant_id"),
                             "document_id": meta.get("document_id"),
@@ -2521,6 +2754,9 @@ class HybridRetriever(BaseRetriever):
         mmr_lambda = search_options.mmr_lambda
         mmr_fetch_k_multiplier = search_options.mmr_fetch_k_multiplier
         metadata_filter = search_options.metadata_filter
+        entity_key = search_options.entity_key
+        partition_keys = search_options.partition_keys
+        entity_candidates = search_options.entity_candidates
         requested_k = search_options.requested_k
 
         retrieval_mode = (retrieval_mode or "hybrid").lower()
@@ -2532,6 +2768,7 @@ class HybridRetriever(BaseRetriever):
             "counts": {
                 "vector_candidates": 0,
                 "colbert_candidates": 0,
+                "colpali_candidates": 0,
                 "bm25_candidates": 0,
                 "lexical_candidates": 0,
                 "sparse_candidates": 0,
@@ -2546,12 +2783,23 @@ class HybridRetriever(BaseRetriever):
         bm25_elapsed_ms = 0.0
         colbert_used = False
         colbert_candidates = 0
+        colpali_results: list[dict[str, Any]] = []
+        want_colpali = False
+        colpali_reason = "disabled"
 
         # Metadata filter strategy:
         # - BM25 sees Postgres chunk metadata (rich JSON) -> can apply most filters early.
         # - Milvus (document collection) stores a small fixed metadata schema -> only pass supported keys early
         #   to avoid false negatives when users filter on richer DB-only metadata.
         full_metadata_filter = metadata_filter if (metadata_filter and self.metadata_filter_enabled) else None
+        if self.metadata_filter_enabled:
+            full_metadata_filter, _entity_routing_meta = self._merge_entity_partition_metadata_filter(
+                query=query,
+                metadata_filter=full_metadata_filter,
+                entity_key=entity_key,
+                partition_keys=partition_keys,
+                entity_candidates=entity_candidates,
+            )
         # Dataset scope is a first-class retrieval boundary. Push it down via metadata_filter so:
         # - vector backends can apply it in their scalar expr/where clauses (when supported)
         # - BM25 can filter early and avoid "top_k filled by other datasets" trimming losses
@@ -2587,6 +2835,7 @@ class HybridRetriever(BaseRetriever):
                 "image_id",
                 "image_url",
                 "page_number",
+                "partition_keys",
             }
             vf: dict[str, Any] = {}
             for k, v in bm25_filter.items():
@@ -2612,6 +2861,19 @@ class HybridRetriever(BaseRetriever):
             if space and "embedding_space_hash" not in vf:
                 vf["embedding_space_hash"] = {"$in": [space, ""]}
             vector_filter = vf or None
+
+        if bool(getattr(settings, "COLPALI_RETRIEVAL_ENABLED", False)):
+            try:
+                from app.rag.policy.modality_router import classify_query_modality  # noqa: WPS433
+
+                modality, _reasons = classify_query_modality(query)
+                if str(modality or "").strip().lower() == "image":
+                    want_colpali = True
+                    colpali_reason = "image_query"
+            except Exception:
+                colpali_reason = "router_exception"
+        else:
+            colpali_reason = "COLPALI_RETRIEVAL_ENABLED=false"
 
         lexical_db_enabled = bool(getattr(settings, "LEXICAL_DB_ENABLED", True))
         bm25_index_enabled = bool(getattr(settings, "BM25_INDEX_ENABLED", True))
@@ -2934,6 +3196,19 @@ class HybridRetriever(BaseRetriever):
                 logger.warning("Sparse search failed: %s", exc)
                 sparse_results = []
 
+        if want_colpali:
+            try:
+                colpali_results = self._search_colpali_retriever(
+                    query=query,
+                    top_k=fetch_k,
+                    document_ids=document_ids,
+                    tenant_id=tenant_id,
+                    metadata_filter=bm25_filter,
+                )
+            except Exception as exc:
+                logger.warning("ColPali retriever failed: %s", exc)
+                colpali_results = []
+
         # Fallback: when single-channel mode fails, try the other channel.
         if retrieval_mode == "vector" and not vector_results:
             t0 = time.perf_counter()
@@ -3055,6 +3330,7 @@ class HybridRetriever(BaseRetriever):
             if isinstance(counts, dict):
                 counts["vector_candidates"] = int(len(vector_results or []))
                 counts["colbert_candidates"] = int(colbert_candidates or 0)
+                counts["colpali_candidates"] = int(len(colpali_results or []))
                 counts["bm25_candidates"] = int(len(bm25_results or []))
                 counts["lexical_candidates"] = int(len(lexical_results or []))
                 counts["sparse_candidates"] = int(len(sparse_results or []))
@@ -3131,6 +3407,12 @@ class HybridRetriever(BaseRetriever):
                         "pg_trgm_available": self._lexical_pg_trgm_available,
                         "methods": dict(lexical_methods),
                     },
+                    "colpali": {
+                        "enabled": bool(want_colpali),
+                        "used": bool(colpali_results),
+                        "candidates": len(colpali_results or []),
+                        "reason": colpali_reason,
+                    },
                     "sparse": {
                         "enabled": bool(want_sparse),
                         "candidates": len(sparse_results or []),
@@ -3160,6 +3442,7 @@ class HybridRetriever(BaseRetriever):
                 if isinstance(counts, dict):
                     counts["vector_candidates"] = int(len(vector_results or []))
                     counts["colbert_candidates"] = int(colbert_candidates or 0)
+                    counts["colpali_candidates"] = int(len(colpali_results or []))
                     counts["bm25_candidates"] = int(len(bm25_results or []))
                     counts["lexical_candidates"] = int(len(lexical_results or []))
                     counts["sparse_candidates"] = int(len(sparse_results or []))
@@ -3171,8 +3454,9 @@ class HybridRetriever(BaseRetriever):
         merged_results = self._merge_results(
             vector_results,
             bm25_results,
-            lexical_results,
+            list(lexical_results or []) + list(colpali_results or []),
             sparse_results,
+            query=query,
             alpha=alpha,
             fusion_strategy=self.fusion_strategy,
             rrf_k=self.rrf_k,
@@ -3284,6 +3568,8 @@ class HybridRetriever(BaseRetriever):
                                 query=query,
                                 candidates=candidates,
                                 top_n=candidates_n,
+                                tenant_id=str(self.tenant_id or "").strip() or None,
+                                query_type=None,
                             )
                             rerank_elapsed = result.elapsed_sec or (time.time() - start)
                             rerank_provider = result.provider or provider
@@ -3422,6 +3708,7 @@ class HybridRetriever(BaseRetriever):
         *,
         stats: dict[str, Any] | None = None,
         _stats: dict[str, Any] | None = None,
+        metadata_filter_override: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """
         Vector store may return "trimmed" metadata (e.g., without img_id).
@@ -3780,12 +4067,13 @@ class HybridRetriever(BaseRetriever):
                 resolved.append(r)
 
             # Apply the full metadata filter *after* DB enrichment.
-            if self.metadata_filter and self.metadata_filter_enabled:
+            effective_metadata_filter = metadata_filter_override if metadata_filter_override is not None else self.metadata_filter
+            if effective_metadata_filter and self.metadata_filter_enabled:
                 try:
                     before = len(resolved)
                     from app.rag.core.filters import apply_metadata_filter_with_stats  # noqa: WPS433
 
-                    resolved, mf_stats = apply_metadata_filter_with_stats(resolved, self.metadata_filter)
+                    resolved, mf_stats = apply_metadata_filter_with_stats(resolved, effective_metadata_filter)
                     blocked = int(mf_stats.get("blocked") or max(0, before - len(resolved)))
                     matched = int(mf_stats.get("matched") or len(resolved))
                     summary = mf_stats.get("summary") if isinstance(mf_stats.get("summary"), dict) else None
@@ -3817,10 +4105,16 @@ class HybridRetriever(BaseRetriever):
             return results
 
         window = max(0, int(getattr(settings, "RAG_CONTEXT_NEIGHBOR_WINDOW", 0) or 0))
-        if window <= 0:
+        sibling_enabled = bool(getattr(settings, "RAG_CONTEXT_SIBLING_EXPAND_ENABLED", False))
+        short_doc_max_chunks = max(0, int(getattr(settings, "RAG_CONTEXT_SIBLING_SHORT_DOC_MAX_CHUNKS", 0) or 0))
+        if window <= 0 and not (sibling_enabled and short_doc_max_chunks > 0):
             return results
 
         max_added = max(0, int(getattr(settings, "RAG_CONTEXT_NEIGHBOR_MAX_ADDED", 0) or 0))
+        sibling_max_added = max(
+            0,
+            int(getattr(settings, "RAG_CONTEXT_SIBLING_MAX_ADDED", max_added or 0) or (max_added or 0)),
+        )
         tenant_filter = self.tenant_id
 
         # Version-aware neighbor fetch:
@@ -3849,8 +4143,14 @@ class HybridRetriever(BaseRetriever):
                 desired_pipeline_by_doc.setdefault(str(doc_uuid), pipeline_key)
             anchors.append((r, doc_uuid, idx, pipeline_key))
 
+        document_chunks_by_doc: dict[str, list[DocumentChunk]] = {}
+        short_doc_ids: set[str] = set()
+        doc_ids_for_sibling = {doc_uuid for _, doc_uuid, _, _ in anchors if doc_uuid is not None}
+
         needed_pairs: set[tuple[UUID, int]] = set()
         for _, doc_uuid, idx, _pk in anchors:
+            if doc_uuid is not None and str(doc_uuid) in short_doc_ids:
+                continue
             if doc_uuid is None or idx is None:
                 continue
             for delta in range(-window, window + 1):
@@ -3867,6 +4167,33 @@ class HybridRetriever(BaseRetriever):
         neighbors_by_pair: dict[tuple[str, int], DocumentChunk] = {}
         db = SessionLocal()
         try:
+            if sibling_enabled and short_doc_max_chunks > 0 and doc_ids_for_sibling:
+                q_all = db.query(DocumentChunk).filter(DocumentChunk.document_id.in_(list(doc_ids_for_sibling)))
+                if tenant_filter:
+                    q_all = q_all.filter(DocumentChunk.tenant_id == tenant_filter)
+                for ck in q_all.all():
+                    doc_key = str(ck.document_id)
+                    desired = desired_pipeline_by_doc.get(doc_key)
+                    if desired:
+                        stored_meta = dict(getattr(ck, "doc_metadata", None) or {})
+                        ck_key = str(stored_meta.get("doc_pipeline_key") or "").strip()
+                        if not ck_key:
+                            ph = str(stored_meta.get("pipeline_hash") or "").strip()
+                            if ph:
+                                ck_key = f"{ck.document_id}:{ph}"
+                        if not ck_key or ck_key != desired:
+                            continue
+                    document_chunks_by_doc.setdefault(doc_key, []).append(ck)
+                short_doc_ids = {
+                    doc_key
+                    for doc_key, rows in document_chunks_by_doc.items()
+                    if select_document_expansion_mode(
+                        total_chunks=len(rows),
+                        short_doc_max_chunks=short_doc_max_chunks,
+                    )
+                    == "sibling"
+                }
+
             q = db.query(DocumentChunk).filter(
                 tuple_(DocumentChunk.document_id, DocumentChunk.chunk_index).in_(list(needed_pairs))
             )
@@ -3893,74 +4220,21 @@ class HybridRetriever(BaseRetriever):
             except Exception:
                 pass
 
-        seen: set[str] = set()
+        original_results_by_chunk_id: dict[str, dict[str, Any]] = {}
         for r in results:
             cid = r.get("chunk_id") or (r.get("metadata") or {}).get("chunk_id")
             if cid:
-                seen.add(str(cid))
-
-        expanded: list[dict[str, Any]] = []
-        added_neighbors = 0
-        for r, doc_uuid, idx, _pk in anchors:
-            meta = r.get("metadata") or {}
-            anchor_cid = str(r.get("chunk_id") or meta.get("chunk_id") or "")
-            anchor_header_path = str(meta.get("header_path") or meta.get("header_context") or "").strip() or None
-
-            # Build a [prev..anchor..next] group in document order.
-            if doc_uuid is not None and idx is not None:
-                doc_key = str(doc_uuid)
-                for gi in range(idx - window, idx + window + 1):
-                    if gi < 0:
-                        continue
-                    if gi == idx:
-                        if anchor_cid and anchor_cid not in seen:
-                            seen.add(anchor_cid)
-                        expanded.append(r)
-                        continue
-
-                    ck = neighbors_by_pair.get((doc_key, gi))
-                    if ck is None:
-                        continue
-                    ck_id = str(ck.id)
-                    if ck_id in seen:
-                        continue
-                    if max_added and added_neighbors >= max_added:
-                        continue
-
-                    stored_meta = dict(ck.doc_metadata or {})
-                    # Respect section boundaries when possible: don't cross header_path changes.
-                    # (Fallback to legacy behavior when either side lacks the field.)
-                    neighbor_header_path = str(
-                        stored_meta.get("header_path") or stored_meta.get("header_context") or ""
-                    ).strip() or None
-                    if anchor_header_path and neighbor_header_path and neighbor_header_path != anchor_header_path:
-                        continue
-                    stored_meta.setdefault("tenant_id", str(ck.tenant_id))
-                    stored_meta.setdefault("document_id", str(ck.document_id))
-                    stored_meta.setdefault("chunk_index", int(ck.chunk_index))
-                    stored_meta.setdefault("chunk_id", ck_id)
-                    if ck.page_number is not None:
-                        stored_meta.setdefault("page", ck.page_number)
-                    if not stored_meta.get("source"):
-                        stored_meta["source"] = "unknown"
-                    stored_meta["neighbor_of"] = anchor_cid
-                    stored_meta["retrieval_role"] = "neighbor"
-
-                    anchor_score = float(r.get("score", 0.0) or 0.0)
-                    neighbor_score = float(anchor_score * 0.85) if anchor_score else 0.0
-                    expanded.append(
-                        {
-                            "chunk_id": ck_id,
-                            "content": ck.content,
-                            "metadata": stored_meta,
-                            "score": neighbor_score,
-                        }
-                    )
-                    seen.add(ck_id)
-                    added_neighbors += 1
-            else:
-                expanded.append(r)
-
+                original_results_by_chunk_id[str(cid)] = r
+        expanded, _meta = expand_ranked_chunk_results(
+            results=results,
+            window=window,
+            max_added=max_added,
+            sibling_max_added=sibling_max_added,
+            document_chunks_by_doc=document_chunks_by_doc,
+            short_doc_ids=short_doc_ids,
+            neighbors_by_pair=neighbors_by_pair,
+            original_results_by_chunk_id=original_results_by_chunk_id,
+        )
         return expanded
 
     def _stitch_results_for_continuity(self, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -4343,6 +4617,11 @@ class HybridRetriever(BaseRetriever):
         # - metadata filtering (post-enrichment, especially for dotted `document_user.*` keys)
         # Over-fetch to keep enough final results after trimming.
         search_k = requested_k
+        if bool(self.enable_reranker):
+            search_k = resolve_rerank_search_k(
+                requested_k=search_k,
+                profile=str(getattr(settings, "RERANK_PROFILE", "") or "").strip().lower() or None,
+            )
         if hierarchy_family_collapse_enabled and hierarchy_overfetch_factor > 1:
             search_k = max(search_k, requested_k * hierarchy_overfetch_factor)
         overfetch_enabled = False
@@ -4379,6 +4658,7 @@ class HybridRetriever(BaseRetriever):
             "fetch_k": int(fetch_k),
             "overfetch_enabled": bool(search_k > requested_k),
             "retrieval_profile": str(self.retrieval_profile or "").strip().lower() or None,
+            "rerank_profile": str(getattr(settings, "RERANK_PROFILE", "") or "").strip().lower() or None,
             "hierarchy_family_collapse_enabled": bool(hierarchy_family_collapse_enabled),
             "hierarchy_overfetch_factor": int(hierarchy_overfetch_factor),
             "overfetch_multiplier": int(getattr(settings, "RETRIEVAL_OVERFETCH_MULTIPLIER", 1) or 1),
@@ -4396,6 +4676,18 @@ class HybridRetriever(BaseRetriever):
                 "kind": scope_kind,
             },
         }
+        effective_metadata_filter = self.metadata_filter
+        entity_routing_meta: dict[str, Any] | None = None
+        if self.metadata_filter_enabled:
+            effective_metadata_filter, entity_routing_meta = self._merge_entity_partition_metadata_filter(
+                query=query,
+                metadata_filter=self.metadata_filter,
+                entity_key=self.entity_key,
+                partition_keys=self.partition_keys,
+                entity_candidates=self.entity_candidates,
+            )
+        if entity_routing_meta:
+            debug["entity_routing"] = entity_routing_meta
         try:
             max_doc_ids = int(getattr(settings, "MILVUS_EXPR_MAX_DOC_IDS", 0) or 0)
             debug["milvus_doc_id_pushdown_skipped"] = bool(
@@ -4421,7 +4713,10 @@ class HybridRetriever(BaseRetriever):
             retrieval_mode=self.retrieval_mode,
             mmr_lambda=self.mmr_lambda,
             mmr_fetch_k_multiplier=self.mmr_fetch_k_multiplier,
-            metadata_filter=self.metadata_filter,
+            metadata_filter=effective_metadata_filter,
+            entity_key=self.entity_key,
+            partition_keys=self.partition_keys,
+            entity_candidates=self.entity_candidates,
             requested_k=requested_k,
         )
         debug["hybrid_results"] = len(results or [])
@@ -4456,7 +4751,16 @@ class HybridRetriever(BaseRetriever):
         except Exception:
             pass
         enrich1: dict[str, Any] = {}
-        results = self._enrich_results_with_db_metadata(results, stats=enrich1)
+        try:
+            results = self._enrich_results_with_db_metadata(
+                results,
+                stats=enrich1,
+                metadata_filter_override=effective_metadata_filter,
+            )
+        except TypeError as exc:
+            if "metadata_filter_override" not in str(exc):
+                raise
+            results = self._enrich_results_with_db_metadata(results, stats=enrich1)
         debug["enrich_pass1"] = enrich1
         n_enrich1 = len(results or [])
 
@@ -4470,7 +4774,16 @@ class HybridRetriever(BaseRetriever):
         # not part of the original retrieval result set. Re-apply DB enrichment + ACL/version
         # trimming to guarantee defense-in-depth and avoid leaking stale/non-active pipelines.
         enrich2: dict[str, Any] = {}
-        results = self._enrich_results_with_db_metadata(results, stats=enrich2)
+        try:
+            results = self._enrich_results_with_db_metadata(
+                results,
+                stats=enrich2,
+                metadata_filter_override=effective_metadata_filter,
+            )
+        except TypeError as exc:
+            if "metadata_filter_override" not in str(exc):
+                raise
+            results = self._enrich_results_with_db_metadata(results, stats=enrich2)
         debug["enrich_pass2"] = enrich2
 
         # Optional: lifecycle governance-aware retrieval policy (disabled by default).
@@ -4508,6 +4821,10 @@ class HybridRetriever(BaseRetriever):
                 meta["field_aware_signal"] = r.get("field_aware_signal")
             if "field_aware_boost" in r:
                 meta["field_aware_boost"] = r.get("field_aware_boost")
+            if "chunk_type_signal" in r:
+                meta["chunk_type_signal"] = r.get("chunk_type_signal")
+            if "chunk_type_boost" in r:
+                meta["chunk_type_boost"] = r.get("chunk_type_boost")
             if "keyword_score" in r:
                 meta["keyword_score"] = r.get("keyword_score")
             if "rerank_score" in r:
@@ -5169,6 +5486,7 @@ class HybridRetriever(BaseRetriever):
         bm25_results: list[dict[str, Any]],
         lexical_results: list[dict[str, Any]] | None = None,
         sparse_results: list[dict[str, Any]] | None = None,
+        query: str | None = None,
         alpha: float = 0.5,
         fusion_strategy: str | None = None,
         rrf_k: int | None = None,
@@ -5185,6 +5503,54 @@ class HybridRetriever(BaseRetriever):
         field_aware_max_boost = max(0.0, float(getattr(settings, "RETRIEVAL_FIELD_AWARE_MAX_BOOST", 0.10) or 0.0))
         field_aware_title_boost = min(field_aware_title_boost, field_aware_max_boost)
         field_aware_heading_boost = min(field_aware_heading_boost, field_aware_max_boost)
+        chunk_type_weighting_enabled = bool(getattr(settings, "RETRIEVAL_CHUNK_TYPE_WEIGHTING_ENABLED", False))
+        chunk_type_match_boost = max(0.0, float(getattr(settings, "RETRIEVAL_CHUNK_TYPE_MATCH_BOOST", 0.08) or 0.0))
+
+        def _resolve_chunk_type(result: dict[str, Any]) -> str:
+            meta = result.get("metadata") or {}
+            raw = str(
+                meta.get("chunk_type")
+                or meta.get("content_type")
+                or meta.get("visual_kind")
+                or ""
+            ).strip().lower()
+            if raw in {"text", "formula", "table", "code", "figure", "chart_data", "seal"}:
+                return raw
+            if raw == "chart":
+                return "figure"
+            role = str(meta.get("chunk_semantic_role") or "").strip().lower()
+            if role == "code":
+                return "code"
+            if role == "table":
+                return "table"
+            return "text"
+
+        def _resolve_query_chunk_type_signal(text: str | None) -> str | None:
+            raw = str(text or "").strip().lower()
+            if not raw:
+                return None
+            if any(token in raw for token in ("表格", "字段", "列", "schema", "table", "column")):
+                return "table"
+            if any(token in raw for token in ("公式", "latex", "equation", "math", "公式识别")):
+                return "formula"
+            if any(token in raw for token in ("代码", "sql", "python", "bash", "json", "yaml", "脚本", "code")):
+                return "code"
+            if any(token in raw for token in ("图表", "曲线", "趋势图", "chart", "plot", "graph")):
+                return "chart_data"
+            if any(token in raw for token in ("公章", "印章", "seal", "stamp")):
+                return "seal"
+            return None
+
+        preferred_chunk_type = _resolve_query_chunk_type_signal(query)
+
+        def _chunk_type_boost(chunk_type: str) -> float:
+            if not chunk_type_weighting_enabled or not preferred_chunk_type:
+                return 0.0
+            if chunk_type == preferred_chunk_type:
+                return chunk_type_match_boost
+            if preferred_chunk_type == "chart_data" and chunk_type == "figure":
+                return max(0.0, chunk_type_match_boost * 0.75)
+            return 0.0
 
         def _resolve_field_signal(result: dict[str, Any]) -> str:
             meta = result.get("metadata") or {}
@@ -5226,16 +5592,20 @@ class HybridRetriever(BaseRetriever):
                 norm_score = (r.get("score", 0.0) - min_score) / rng
                 field_signal = "body"
                 field_boost = 0.0
+                chunk_type = _resolve_chunk_type(r)
+                chunk_type_boost = _chunk_type_boost(chunk_type)
                 if channel == "vector":
                     field_signal = _resolve_field_signal(r)
                     field_boost = min(_field_boost(field_signal), field_aware_max_boost)
-                scored = float(norm_score) + float(field_boost)
+                scored = float(norm_score) + float(field_boost) + float(chunk_type_boost)
                 existing = out.get(key)
                 if existing is None or float(scored) > float(existing.get("score", 0.0) or 0.0):
                     out[key] = {
                         "score": float(scored),
                         "base_score": float(norm_score),
                         "data": r,
+                        "chunk_type": chunk_type,
+                        "chunk_type_boost": float(chunk_type_boost),
                         "field_aware_signal": field_signal if channel == "vector" else None,
                         "field_aware_boost": float(field_boost if channel == "vector" else 0.0),
                     }
@@ -5249,10 +5619,26 @@ class HybridRetriever(BaseRetriever):
         def _attach_field_aware_signal(item: dict[str, Any], key: str) -> None:
             field_signal = vector_norm.get(key, {}).get("field_aware_signal")
             field_boost = float(vector_norm.get(key, {}).get("field_aware_boost") or 0.0)
+            chunk_type = (
+                vector_norm.get(key, {}).get("chunk_type")
+                or bm25_norm.get(key, {}).get("chunk_type")
+                or lexical_norm.get(key, {}).get("chunk_type")
+                or sparse_norm.get(key, {}).get("chunk_type")
+            )
+            chunk_type_boost = max(
+                float(vector_norm.get(key, {}).get("chunk_type_boost") or 0.0),
+                float(bm25_norm.get(key, {}).get("chunk_type_boost") or 0.0),
+                float(lexical_norm.get(key, {}).get("chunk_type_boost") or 0.0),
+                float(sparse_norm.get(key, {}).get("chunk_type_boost") or 0.0),
+            )
             if field_signal:
                 item["field_aware_signal"] = str(field_signal)
             if field_boost > 0.0:
                 item["field_aware_boost"] = float(field_boost)
+            if chunk_type:
+                item["chunk_type_signal"] = str(chunk_type)
+            if chunk_type_boost > 0.0:
+                item["chunk_type_boost"] = float(chunk_type_boost)
 
         try:
             if isinstance(self._last_channel_metrics, dict):
@@ -5272,6 +5658,21 @@ class HybridRetriever(BaseRetriever):
                     "candidates": int(len(vector_norm)),
                     "boosted_candidates": int(boosted),
                     "signals": dict(sorted((str(k), int(v)) for k, v in field_signal_counts.items())),
+                }
+                chunk_type_counts: Counter[str] = Counter()
+                chunk_boosted = 0
+                for payload in vector_norm.values():
+                    signal = str(payload.get("chunk_type") or "text").strip().lower() or "text"
+                    chunk_type_counts[signal] += 1
+                    if float(payload.get("chunk_type_boost") or 0.0) > 0.0:
+                        chunk_boosted += 1
+                self._last_channel_metrics["chunk_type_weighting"] = {
+                    "enabled": bool(chunk_type_weighting_enabled),
+                    "preferred_chunk_type": preferred_chunk_type,
+                    "match_boost": round(float(chunk_type_match_boost), 6),
+                    "candidates": int(len(vector_norm)),
+                    "boosted_candidates": int(chunk_boosted),
+                    "signals": dict(sorted((str(k), int(v)) for k, v in chunk_type_counts.items())),
                 }
         except Exception:
             pass

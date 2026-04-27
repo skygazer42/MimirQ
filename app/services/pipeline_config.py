@@ -284,6 +284,7 @@ def parse_pipeline_from_metadata(metadata: dict[str, Any]) -> PipelineOptions:
         governance_common_lines_min_ratio=_coerce_float(governance.get("common_lines_min_ratio")),
         parse_fallback_enabled=_coerce_bool(pipeline.get("parse_fallback_enabled")),
         parse_fallback_min_content_chars=_coerce_int(pipeline.get("parse_fallback_min_content_chars")),
+        parse_fallback_min_parse_score=_coerce_float(pipeline.get("parse_fallback_min_parse_score")),
         parse_fallback_max_retries=_coerce_int(pipeline.get("parse_fallback_max_retries")),
         cross_page_merge_enabled=_coerce_bool(pipeline.get("cross_page_merge_enabled")),
         cross_page_merge_max_page_gap=_coerce_int(pipeline.get("cross_page_merge_max_page_gap")),
@@ -304,6 +305,7 @@ def parse_pipeline_from_metadata(metadata: dict[str, Any]) -> PipelineOptions:
         chunk_strategy_params=_sanitize_chunk_strategy_params(pipeline.get("chunk_strategy_params")),
         embedding_context_prefix_enabled=_coerce_bool(index.get("embedding_context_prefix_enabled")),
         embedding_contextual_retrieval_enabled=_coerce_bool(index.get("embedding_contextual_retrieval_enabled")),
+        embedding_contextual_retrieval_lazy_mode=_coerce_bool(index.get("embedding_contextual_retrieval_lazy_mode")),
         embedding_field_aware_enabled=_coerce_bool(index.get("embedding_field_aware_enabled")),
         chunk_vector_enabled=_coerce_bool(index.get("chunk_vector_enabled")),
         bm25_index_enabled=_coerce_bool(index.get("bm25_index_enabled")),
@@ -338,6 +340,8 @@ def build_pipeline_metadata(options: PipelineOptions) -> dict[str, Any] | None:
         pipeline["parse_fallback_enabled"] = bool(options.parse_fallback_enabled)
     if options.parse_fallback_min_content_chars is not None:
         pipeline["parse_fallback_min_content_chars"] = int(options.parse_fallback_min_content_chars)
+    if options.parse_fallback_min_parse_score is not None:
+        pipeline["parse_fallback_min_parse_score"] = float(options.parse_fallback_min_parse_score)
     if options.parse_fallback_max_retries is not None:
         pipeline["parse_fallback_max_retries"] = int(options.parse_fallback_max_retries)
     if options.cross_page_merge_enabled is not None:
@@ -532,6 +536,8 @@ def build_pipeline_metadata(options: PipelineOptions) -> dict[str, Any] | None:
         index["embedding_context_prefix_enabled"] = bool(options.embedding_context_prefix_enabled)
     if options.embedding_contextual_retrieval_enabled is not None:
         index["embedding_contextual_retrieval_enabled"] = bool(options.embedding_contextual_retrieval_enabled)
+    if options.embedding_contextual_retrieval_lazy_mode is not None:
+        index["embedding_contextual_retrieval_lazy_mode"] = bool(options.embedding_contextual_retrieval_lazy_mode)
     if options.embedding_field_aware_enabled is not None:
         index["embedding_field_aware_enabled"] = bool(options.embedding_field_aware_enabled)
     if index:
@@ -815,6 +821,11 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         if options.parse_fallback_min_content_chars is not None
         else int(getattr(settings, "PARSE_FALLBACK_MIN_CONTENT_CHARS", 120) or 120)
     )
+    parse_fallback_min_parse_score = (
+        options.parse_fallback_min_parse_score
+        if options.parse_fallback_min_parse_score is not None
+        else float(getattr(settings, "PARSE_FALLBACK_MIN_PARSE_SCORE", 0.55) or 0.55)
+    )
     parse_fallback_max_retries = (
         options.parse_fallback_max_retries
         if options.parse_fallback_max_retries is not None
@@ -907,6 +918,11 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         getattr(settings, "CONTEXTUAL_RETRIEVAL_ENABLED", False)
         if options.embedding_contextual_retrieval_enabled is None
         else bool(options.embedding_contextual_retrieval_enabled)
+    )
+    embedding_contextual_retrieval_lazy_mode = (
+        getattr(settings, "CONTEXTUAL_RETRIEVAL_LAZY_MODE", False)
+        if options.embedding_contextual_retrieval_lazy_mode is None
+        else bool(options.embedding_contextual_retrieval_lazy_mode)
     )
     embedding_field_aware_enabled = (
         False if options.embedding_field_aware_enabled is None else bool(options.embedding_field_aware_enabled)
@@ -1034,6 +1050,7 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         governance_common_lines_min_ratio=float(governance_common_lines_min_ratio),
         parse_fallback_enabled=bool(parse_fallback_enabled),
         parse_fallback_min_content_chars=int(parse_fallback_min_content_chars),
+        parse_fallback_min_parse_score=float(parse_fallback_min_parse_score),
         parse_fallback_max_retries=int(parse_fallback_max_retries),
         cross_page_merge_enabled=bool(cross_page_merge_enabled),
         cross_page_merge_max_page_gap=int(cross_page_merge_max_page_gap),
@@ -1054,6 +1071,7 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         chunk_strategy_params=dict(chunk_strategy_params),
         embedding_context_prefix_enabled=bool(embedding_context_prefix_enabled),
         embedding_contextual_retrieval_enabled=bool(embedding_contextual_retrieval_enabled),
+        embedding_contextual_retrieval_lazy_mode=bool(embedding_contextual_retrieval_lazy_mode),
         embedding_field_aware_enabled=bool(embedding_field_aware_enabled),
         chunk_vector_enabled=_resolve_flag(settings.CHUNK_VECTOR_ENABLED, options.chunk_vector_enabled),
         bm25_index_enabled=_resolve_flag(settings.BM25_INDEX_ENABLED, options.bm25_index_enabled),
@@ -1086,5 +1104,6 @@ def build_indexing_options(effective: PipelineEffective) -> IndexingOptions:
         entity_vector_enabled=effective.entity_vector_enabled,
         embedding_context_prefix_enabled=effective.embedding_context_prefix_enabled,
         embedding_contextual_retrieval_enabled=effective.embedding_contextual_retrieval_enabled,
+        embedding_contextual_retrieval_lazy_mode=effective.embedding_contextual_retrieval_lazy_mode,
         embedding_field_aware_enabled=effective.embedding_field_aware_enabled,
     )

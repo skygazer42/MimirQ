@@ -40,6 +40,9 @@ class IndexingOptions:
     # When enabled, inject a short document/section-level context prefix before embedding (vector-only).
     # This is a deterministic heuristic by default; does not change stored chunk.content (DB).
     embedding_contextual_retrieval_enabled: bool | None = None
+    # When enabled, contextual retrieval prefixes are only injected for chunks that carry
+    # an explicit enrichment trigger (e.g. evidence_gap/contextual_enrichment_required).
+    embedding_contextual_retrieval_lazy_mode: bool | None = None
     # When enabled, store extra field-aware embeddings (title/heading) alongside body embeddings.
     embedding_field_aware_enabled: bool | None = None
 

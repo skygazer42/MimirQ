@@ -18,6 +18,9 @@ from app.rag.core.text import heuristic_decompose_query, parse_json_from_text
 from app.rag.pipelines.langgraph import _build_context, _build_history_text, build_rag_state
 from app.rag.retrieval.decomposition_chain import build_chained_query, summarize_chain_step
 from app.rag.retrieval.orchestrator import run_retrieval
+from app.rag.workflows.crag_streaming import run_crag_streaming
+from app.rag.workflows.critic import run_critic_review
+from app.rag.workflows.self_rag import run_self_rag_reflection
 
 if TYPE_CHECKING:
     from app.rag.engine import RAGEngine
@@ -394,6 +397,11 @@ class AgenticRAGRunner:
             "abstain_triggered": True,
             "abstain_reason": "no_rounds",
         }
+        crag_used = False
+        crag_provider: str | None = None
+        crag_web_results = 0
+        self_rag_reflection: dict[str, Any] | None = None
+        critic_review: dict[str, Any] | None = None
 
         tool_invocations = self._plan_tool_invocations(
             question=question,
@@ -466,6 +474,26 @@ class AgenticRAGRunner:
                 prior_findings.append(step_summary)
             if self._is_sufficient(result):
                 break
+            if bool(getattr(settings, "RAG_CRAG_STREAMING_ENABLED", False)):
+                crag_result = await run_crag_streaming(
+                    question=question,
+                    query_for_retrieval=retrieval_query,
+                    retrieval_result=result,
+                )
+                if bool(crag_result.get("used")) and str(crag_result.get("context_block") or "").strip():
+                    crag_used = True
+                    crag_provider = str(crag_result.get("provider") or "").strip() or None
+                    crag_web_results = int(crag_result.get("web_result_count") or 0)
+                    yield {
+                        "type": "agentic_step",
+                        "data": {
+                            "step": "web_search",
+                            "provider": crag_provider,
+                            "result_count": crag_web_results,
+                        },
+                    }
+                    tool_context_blocks.append(str(crag_result.get("context_block") or ""))
+                    break
 
         citations = build_citations_from_docs(
             collected_docs,
@@ -473,6 +501,8 @@ class AgenticRAGRunner:
             retrieval_mode=str((final_result.get("metrics") or {}).get("retrieval_mode") or retrieval_mode),
             query=question,
         )
+        if not citations:
+            citations = list(final_result.get("citations") or [])
         yield {"type": "citations", "data": citations}
 
         if not collected_docs and not tool_context_blocks:
@@ -521,6 +551,45 @@ class AgenticRAGRunner:
             if structured_output:
                 structured_data, _meta = parse_json_from_text(full_response, expected="object")
 
+            evidence_text = ""
+            if bool(getattr(settings, "RAG_SELF_RAG_ENABLED", False)) or bool(getattr(settings, "RAG_CRITIC_ENABLED", False)):
+                evidence_text = "\n".join(
+                    [
+                        str(getattr(doc, "page_content", "") or "").strip()
+                        for doc in (collected_docs or [])
+                        if str(getattr(doc, "page_content", "") or "").strip()
+                    ]
+                )
+                self_rag_reflection = run_self_rag_reflection(
+                    question=question,
+                    answer=full_response,
+                    evidence_text=evidence_text,
+                    citations=citations,
+                )
+                yield {
+                    "type": "agentic_step",
+                    "data": {
+                        "step": "self_reflect",
+                        "verdict": self_rag_reflection.get("verdict"),
+                        "need_retrieval": self_rag_reflection.get("need_retrieval"),
+                    },
+                }
+            if bool(getattr(settings, "RAG_CRITIC_ENABLED", False)):
+                critic_review = run_critic_review(
+                    question=question,
+                    answer=full_response,
+                    evidence_text=evidence_text,
+                    citations=citations,
+                )
+                yield {
+                    "type": "agentic_step",
+                    "data": {
+                        "step": "critic_review",
+                        "verdict": critic_review.get("verdict"),
+                        "citation_missing": critic_review.get("citation_missing"),
+                    },
+                }
+
         metrics = {
             "elapsed_sec": round(time.time() - t_start, 3),
             "retrieval_elapsed_sec": round(float(retrieval_elapsed_total or 0.0), 3),
@@ -538,6 +607,29 @@ class AgenticRAGRunner:
             "docs_returned": int(len(collected_docs)),
             "agentic_tools_used": int(sum(1 for item in tool_metrics if item.get("success"))),
             "agentic_tool_calls": tool_metrics,
+            "agentic_crag_used": bool(crag_used),
+            "agentic_crag_provider": crag_provider,
+            "agentic_crag_web_results": int(crag_web_results),
+            "agentic_self_rag_used": bool(self_rag_reflection is not None),
+            "agentic_self_rag_verdict": (self_rag_reflection or {}).get("verdict") if self_rag_reflection else None,
+            "agentic_self_rag_need_retrieval": (
+                bool((self_rag_reflection or {}).get("need_retrieval")) if self_rag_reflection is not None else None
+            ),
+            "agentic_critic_used": bool(critic_review is not None),
+            "agentic_critic_verdict": (critic_review or {}).get("verdict") if critic_review else None,
+            "agentic_critic_citation_missing": (
+                bool((critic_review or {}).get("citation_missing")) if critic_review is not None else None
+            ),
+            "agentic_critic_supported_claims": (
+                int((critic_review or {}).get("supported_claims") or 0) if critic_review is not None else None
+            ),
+            "agentic_critic_total_claims": (
+                int((critic_review or {}).get("total_claims") or 0) if critic_review is not None else None
+            ),
+            "agentic_critic_style_issue_count": (
+                len((critic_review or {}).get("style_issues") or []) if critic_review is not None else None
+            ),
+            "agentic_critic_reason_codes": list((critic_review or {}).get("reason_codes") or []) if critic_review else [],
         }
 
         yield {

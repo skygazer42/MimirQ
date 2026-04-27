@@ -24,6 +24,7 @@ from langchain_core.documents import Document
 from app.core.config import settings
 from app.core.http_client import get_http_client_pool
 from app.core.jwt_inspect import format_unix_ts_utc, try_get_jwt_exp
+from app.parsing.utils.markdown_response import extract_markdown_response_text
 from app.parsing.utils.mineru_layout import (
     extract_position_tagged_markdown_from_zip_bytes,
     extract_position_tagged_markdown_from_zip_path,
@@ -872,7 +873,7 @@ class MinerUService:
                     dataset_id=str(dataset_id),
                     document_id=str(document_id),
                 )
-                markdown_content = result.get("markdown", "") or ""
+                markdown_content = extract_markdown_response_text(result)
                 images_meta = result.get("images") or []
                 position_tagged_markdown = extract_position_tagged_markdown_from_zip_path(tmp_zip_path)
             finally:
@@ -965,7 +966,7 @@ class MinerUService:
                     dataset_id=str(dataset_id),
                     document_id=str(document_id),
                 )
-                markdown_content = result.get("markdown", "") or ""
+                markdown_content = extract_markdown_response_text(result)
                 images_meta = result.get("images") or []
             finally:
                 if tmp_zip_path and tmp_zip_path.exists():
@@ -1151,7 +1152,7 @@ class MinerUService:
                     dataset_id=str(dataset_id),
                     document_id=str(document_id),
                 )
-                markdown_content = result.get("markdown", "") or ""
+                markdown_content = extract_markdown_response_text(result)
                 images_meta = result.get("images") or []
             finally:
                 if tmp_zip_path and tmp_zip_path.exists():

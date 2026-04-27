@@ -61,6 +61,7 @@ class Citation(BaseModel):
     has_image: bool = Field(default=False, description="Whether this citation contains an image")
     img_id: str | None = Field(default=None, description="Image ID (MinIO format: {tenant_id}:{dataset_id}:{document_id}:{chunk_index})")
     img_url: str | None = Field(default=None, description="Image access URL")
+    clean_docx_url: str | None = Field(default=None, description="Optional URL for cleaned DOCX preview/download")
 
     model_config = ConfigDict(extra="ignore")
 
@@ -124,11 +125,20 @@ class HistoryMessage(BaseModel):
 class ChatRAGConfig(BaseModel):
     """RAG parameters specific to the chat endpoint."""
 
+    # Product-facing retrieval tier alias.
+    # - basic: production baseline (hybrid_ce)
+    # - contextual: long-context synthesis preset (long_context)
+    # - expanded: recall-first + context expansion preset (expanded)
+    #
+    # When both `mode` and `retrieval_profile` are provided, explicit `retrieval_profile` wins.
+    mode: Literal["basic", "contextual", "expanded"] | None = None
+
     # Optional retrieval preset (applies internal recall-first overrides).
     # Supported:
     # - "recall20": maximize chunk-level Hit@20 (top_k>=20, score_threshold=0.0)
     # - "recall50": recall-first for larger corpora (top_k>=50, score_threshold=0.0)
     # - "coverage80": aggressive recall/coverage preset (top_k>=80, score_threshold=0.0)
+    # - "expanded": recall-first expansion preset (hierarchy recall + parent/sibling context expansion)
     # - "hybrid_ce": explicit production baseline (hybrid recall; cross-encoder only when reranker stays enabled)
     retrieval_profile: str | None = None
     # Optional retrieval contract override.
@@ -413,7 +423,16 @@ class ChatRAGConfig(BaseModel):
         is a contract about retrieval behavior, not just a suggestion.
         """
         p = (self.retrieval_profile or "").strip().lower()
+        mode = str(self.mode or "").strip().lower()
         default_profile_applied = False
+
+        if not p and mode:
+            mode_to_profile = {
+                "basic": "hybrid_ce",
+                "contextual": "long_context",
+                "expanded": "expanded",
+            }
+            p = mode_to_profile.get(mode, "")
 
         # Request-level default retrieval profile:
         # apply only when caller omitted retrieval_profile and did not provide explicit retrieval knobs.

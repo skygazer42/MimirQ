@@ -119,6 +119,7 @@ class DocumentPipelineOptions(BaseModel):
     governance_common_lines_min_ratio: float | None = Field(default=None, ge=0.0, le=1.0, description="common line ratio")
     parse_fallback_enabled: bool | None = Field(default=None, description="Retry parsing with an alternative backend when output quality is low (PDF only)")
     parse_fallback_min_content_chars: int | None = Field(default=None, ge=0, le=200_000, description="Min alnum/CJK chars to consider parse successful")
+    parse_fallback_min_parse_score: float | None = Field(default=None, ge=0.0, le=1.0, description="Min parse-quality score before triggering PDF fallback")
     parse_fallback_max_retries: int | None = Field(default=None, ge=0, le=3, description="Max parse fallback retries")
     cross_page_merge_enabled: bool | None = Field(default=None, description="Merge cross-page table/list continuations before chunking")
     cross_page_merge_max_page_gap: int | None = Field(default=None, ge=1, le=5, description="Maximum page gap allowed for cross-page merging")

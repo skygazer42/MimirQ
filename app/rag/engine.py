@@ -27,6 +27,7 @@ from app.core.utils import parse_csv
 from app.rag.core.citations import build_citations_from_docs
 from app.rag.core.claim_evidence import build_claim_evidence_map
 from app.rag.core.confidence import compute_confidence_score
+from app.rag.core.context_cliff import compute_context_cliff_metrics
 from app.rag.core.conversation import format_history_text
 from app.rag.core.faithfulness import compute_faithfulness_score
 from app.rag.core.hashing import stable_hash
@@ -46,6 +47,7 @@ from app.rag.core.temporal import (
     fetch_document_updated_ts,
 )
 from app.rag.core.text import (
+    build_abstain_answer_message,
     build_abstain_followup,
     derive_followup_questions,
     extract_evidence_text,
@@ -65,7 +67,16 @@ from app.rag.core.vision_reader import (
 )
 from app.rag.kg.pipeline import kg_search
 from app.rag.llm.langchain_chat import build_chat_model_from_config
+from app.rag.llm.structured_output import (
+    build_structured_abstain_payload,
+    build_structured_output_instructions,
+    parse_and_repair_structured_output,
+)
 from app.rag.policy.intent_router import route_retrieval_preset
+from app.rag.policy.out_of_scope_live_gate import (
+    maybe_apply_out_of_scope_live_guard,
+    run_default_out_of_scope_live_guard,
+)
 from app.rag.policy.query_expansion import build_clause_fastlane_queries
 from app.rag.query_expansion import generate_alias_queries
 from app.rag.reranker.factory import describe_reranker_provider
@@ -251,27 +262,8 @@ class RAGEngine:
 [Answer]"""
         )
 
-        # Structured output presets (extensible).
-        self.structured_presets: dict[str, str] = {
-            "faq": (
-                "Output JSON only, structure: "
-                '{"answer": "string", "citations": [{"document_id": "...", "chunk_id": "..."}],'
-                '"qa_pairs": [{"question": "string", "answer": "string"}]}'
-                " No extra text."
-            ),
-            "summary": (
-                "Output JSON only, structure: "
-                '{"answer": "string", "citations": [{"document_id": "...", "chunk_id": "..."}],'
-                '"bullets": ["point 1", "point 2"], "summary": "concise summary"}'
-                " No extra text."
-            ),
-            "action_items": (
-                "Output JSON only, structure: "
-                '{"answer": "string", "citations": [{"document_id": "...", "chunk_id": "..."}],'
-                '"actions": [{"item": "action", "owner": "responsible person", "due": "deadline"}]}'
-                " No extra text."
-            ),
-        }
+        # Structured output instructions are centralized in app.rag.llm.structured_output.
+        self.structured_presets: dict[str, str] = {}
 
         # Query Rewrite: rewrite follow-ups into standalone retrievable queries (optional).
         self.rewrite_prompt = ChatPromptTemplate.from_template(
@@ -843,6 +835,20 @@ Requirements:
             "score": 0.0,
             "matched_rules": [],
         }
+        retrieval_rail_enabled = bool(getattr(settings, "RAG_RETRIEVAL_RAIL_ENABLED", False))
+        retrieval_rail_meta: dict[str, Any] = {
+            "enabled": bool(retrieval_rail_enabled),
+            "used": False,
+            "blocked_docs": 0,
+            "masked_docs": 0,
+        }
+        output_guard_enabled = bool(getattr(settings, "OUTPUT_GUARD_ENABLED", False))
+        output_guard_result: dict[str, Any] = {
+            "enabled": bool(output_guard_enabled),
+            "action": "allow",
+            "score": 0.0,
+            "matched_rules": [],
+        }
 
         if bool(getattr(settings, "INPUT_GUARD_ENABLED", False)):
             try:
@@ -972,15 +978,7 @@ Requirements:
 
             format_instructions = ""
             if structured_output:
-                preset_key = (structured_preset or "").lower()
-                format_instructions = self.structured_presets.get(
-                    preset_key,
-                    (
-                        "Please return JSON only, structure: "
-                        '{"answer": "string", "citations": [{"document_id": "...", "chunk_id": "...", "page_number": null, "relevance_score": 0.0}]} '
-                        "No extra text."
-                    ),
-                )
+                format_instructions = build_structured_output_instructions(structured_preset)
 
             yield {
                     "type": "route",
@@ -1660,7 +1658,14 @@ Requirements:
                 str(getattr(settings, "RAG_CORRECTIVE_SECOND_PASS_PROFILE", "recall50") or "recall50").strip().lower()
                 or "recall50"
             )
-            if corrective_second_profile not in {"recall20", "recall50", "coverage80", "hierarchy_recall20", "hierarchy_recall20_expand"}:
+            if corrective_second_profile not in {
+                "recall20",
+                "recall50",
+                "coverage80",
+                "expanded",
+                "hierarchy_recall20",
+                "hierarchy_recall20_expand",
+            }:
                 corrective_second_profile = "recall50"
             corrective_second_enable_mq = bool(
                 getattr(settings, "RAG_CORRECTIVE_SECOND_PASS_ENABLE_MULTI_QUERY", True)
@@ -2187,6 +2192,33 @@ Requirements:
                     temporal_intent_meta = {"detected": False, "reason_codes": [], "error": str(exc)[:200]}
                     temporal_recency_meta = {"enabled": True, "used": False, "reason": "exception"}
 
+            if retrieval_rail_enabled and docs:
+                try:
+                    from app.rag.safety.retrieval_rail import apply_retrieval_rail
+
+                    rail_result = apply_retrieval_rail(
+                        docs,
+                        mask_pii=bool(getattr(settings, "RAG_RETRIEVAL_RAIL_MASK_PII", False)),
+                        pii_mask=str(getattr(settings, "RAG_RETRIEVAL_RAIL_PII_MASK", "[REDACTED]") or "[REDACTED]"),
+                    )
+                    docs = list(rail_result.get("docs") or [])
+                    meta = dict(rail_result.get("meta") or {})
+                    retrieval_rail_meta = {
+                        "enabled": True,
+                        "used": bool(meta.get("used")),
+                        "blocked_docs": int(meta.get("blocked_docs") or 0),
+                        "masked_docs": int(meta.get("masked_docs") or 0),
+                    }
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Retrieval rail failed open: %s", str(exc)[:160])
+                    retrieval_rail_meta = {
+                        "enabled": True,
+                        "used": False,
+                        "blocked_docs": 0,
+                        "masked_docs": 0,
+                        "error": str(exc)[:160],
+                    }
+
             yield {
                 "type": "event",
                 "data": {
@@ -2247,6 +2279,7 @@ Requirements:
             abstain_triggered = False
             abstain_reason: str | None = None
             top_rel = 0.0
+            retrieval_info_event = None
             if citations:
                 try:
                     top_rel = max(
@@ -2276,6 +2309,26 @@ Requirements:
                     abstain_triggered = True
                     abstain_reason = "top_relevance_lt_min"
 
+            out_of_scope_guard = maybe_apply_out_of_scope_live_guard(
+                query=query_for_retrieval,
+                enabled=bool(getattr(settings, "RAG_OUT_OF_SCOPE_LIVE_GUARD_ENABLED", False)),
+                candidate=bool(abstain_triggered or not citations),
+                current_triggered=bool(abstain_triggered),
+                current_reason=abstain_reason,
+                tenant_id=(str(tenant_id or "").strip() or None),
+                dataset_id=(str(dataset_id or "").strip() or None),
+                verifier=lambda: run_default_out_of_scope_live_guard(
+                    query=query_for_retrieval,
+                    tenant_id=str(tenant_id or ""),
+                    dataset_id=str(dataset_id or ""),
+                    ruleset_name=(str(getattr(settings, "RAG_OUT_OF_SCOPE_RULESET", "") or "").strip() or None),
+                    hyde_query=hyde_text if bool(hyde_used and hyde_text) else None,
+                    vector_similarity_threshold=float(getattr(settings, "RAG_OUT_OF_SCOPE_VECTOR_THRESHOLD", 0.35) or 0.35),
+                    hyde_similarity_threshold=float(getattr(settings, "RAG_OUT_OF_SCOPE_HYDE_THRESHOLD", 0.4) or 0.4),
+                ),
+            )
+            abstain_triggered = bool(out_of_scope_guard.get("abstain_triggered"))
+            abstain_reason = out_of_scope_guard.get("abstain_reason")
             retrieval_info_event = self._build_retrieval_info_event(
                 attempt=corrective_attempt_count,
                 query_count=len(retrieval_queries),
@@ -2498,6 +2551,40 @@ Requirements:
                         merged_retry_docs.append(doc)
                     docs = merged_retry_docs[: max(0, int(top_k or 0))] if merged_retry_docs else []
 
+                retrieval_rail_enabled = bool(getattr(settings, "RAG_RETRIEVAL_RAIL_ENABLED", False))
+                retrieval_rail_meta: dict[str, Any] = {
+                    "enabled": bool(retrieval_rail_enabled),
+                    "used": False,
+                    "blocked_docs": 0,
+                    "masked_docs": 0,
+                }
+                if retrieval_rail_enabled and docs:
+                    try:
+                        from app.rag.safety.retrieval_rail import apply_retrieval_rail
+
+                        rail_result = apply_retrieval_rail(
+                            docs,
+                            mask_pii=bool(getattr(settings, "RAG_RETRIEVAL_RAIL_MASK_PII", False)),
+                            pii_mask=str(getattr(settings, "RAG_RETRIEVAL_RAIL_PII_MASK", "[REDACTED]") or "[REDACTED]"),
+                        )
+                        docs = list(rail_result.get("docs") or [])
+                        meta = dict(rail_result.get("meta") or {})
+                        retrieval_rail_meta = {
+                            "enabled": True,
+                            "used": bool(meta.get("used")),
+                            "blocked_docs": int(meta.get("blocked_docs") or 0),
+                            "masked_docs": int(meta.get("masked_docs") or 0),
+                        }
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("Retrieval rail failed open: %s", str(exc)[:160])
+                        retrieval_rail_meta = {
+                            "enabled": True,
+                            "used": False,
+                            "blocked_docs": 0,
+                            "masked_docs": 0,
+                            "error": str(exc)[:160],
+                        }
+
                 citations = build_citations_from_docs(
                     docs,
                     retrieval_elapsed_sec=retrieval_elapsed,
@@ -2569,14 +2656,13 @@ Requirements:
                 )
 
             if abstain_triggered:
-                abstain_message = _UNABLE_TO_ANSWER_MESSAGE
+                abstain_message = build_abstain_answer_message(abstain_reason)
 
                 structured_data = None
                 structured_parse_meta = {"ok": False, "method": None, "error": None}
                 full_response = abstain_message
 
                 if structured_output:
-                    preset_key = (structured_preset or "").lower()
                     structured_citations: list[dict[str, Any]] = []
                     for c in citations[: max(0, int(top_k or 0))] if citations else []:
                         structured_citations.append(
@@ -2587,14 +2673,11 @@ Requirements:
                                 "relevance_score": c.get("relevance_score"),
                             }
                         )
-                    payload: dict[str, Any] = {"answer": abstain_message, "citations": structured_citations}
-                    if preset_key == "faq":
-                        payload["qa_pairs"] = []
-                    elif preset_key == "summary":
-                        payload["bullets"] = []
-                        payload["summary"] = ""
-                    elif preset_key == "action_items":
-                        payload["actions"] = []
+                    payload = build_structured_abstain_payload(
+                        preset=structured_preset,
+                        answer=abstain_message,
+                        citations=structured_citations,
+                    )
                     structured_data = payload
                     structured_parse_meta = {"ok": True, "method": "abstain", "error": None}
                     full_response = json.dumps(payload, ensure_ascii=False)
@@ -2695,6 +2778,7 @@ Requirements:
                             "model_route": model_route,
                             "top_k": top_k,
                             "docs_returned": len(docs),
+                            "retrieval_rail": dict(retrieval_rail_meta),
                             "alias_enabled": bool(alias_enabled),
                             "alias_used": bool(alias_used),
                             "alias_count": len(alias_queries),
@@ -3091,6 +3175,10 @@ Requirements:
                 "history_tokens": num_tokens_from_string(history_text or ""),
                 "context_chars": len(context or ""),
                 "context_tokens": num_tokens_from_string(context or ""),
+                **compute_context_cliff_metrics(
+                    context_tokens=num_tokens_from_string(context or ""),
+                    threshold_tokens=int(getattr(settings, "RAG_CONTEXT_CLIFF_THRESHOLD_TOKENS", 2500) or 2500),
+                ),
                 "citations_count": len(citations),
                 "context_evidence": {
                     "enabled": bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED),
@@ -3251,7 +3339,7 @@ Requirements:
             question_for_model = redact_text(question) if pii_on else question
 
             pending = ""
-            buffered_parts: list[str] | None = [] if claim_check_applied else None
+            buffered_parts: list[str] | None = [] if (claim_check_applied or output_guard_enabled) else None
             generation_inputs = {
                 "context": context_for_model,
                 "history": history_for_model,
@@ -3447,20 +3535,22 @@ Requirements:
                     full_response = cleaned
                 elif claim_check_mode == "structured":
                     # Keep JSON parseable: only scrub natural-language string fields.
-                    parsed, _meta = parse_json_from_text(full_response, expected="object")
-                    if not isinstance(parsed, dict):
-                        # Fail-safe: always return valid JSON when structured_output=true.
-                        structured_citations: list[dict[str, Any]] = []
-                        for c in citations[: max(0, int(top_k or 0))] if citations else []:
-                            structured_citations.append(
-                                {
-                                    "document_id": c.get("document_id"),
-                                    "chunk_id": c.get("chunk_id"),
-                                    "page_number": c.get("page_number"),
-                                    "relevance_score": c.get("relevance_score"),
-                                }
-                            )
-                        parsed = {"answer": _UNABLE_TO_ANSWER_MESSAGE, "citations": structured_citations}
+                    structured_citations: list[dict[str, Any]] = []
+                    for c in citations[: max(0, int(top_k or 0))] if citations else []:
+                        structured_citations.append(
+                            {
+                                "document_id": c.get("document_id"),
+                                "chunk_id": c.get("chunk_id"),
+                                "page_number": c.get("page_number"),
+                                "relevance_score": c.get("relevance_score"),
+                            }
+                        )
+                    parsed, _meta = parse_and_repair_structured_output(
+                        full_response,
+                        preset=structured_preset,
+                        fallback_answer=_UNABLE_TO_ANSWER_MESSAGE,
+                        fallback_citations=structured_citations,
+                    )
 
                     scrubbed, scrub_meta = scrub_structured_output_visible_evidence_only(
                         parsed,
@@ -3492,6 +3582,34 @@ Requirements:
                         pass
 
                     full_response = json.dumps(scrubbed, ensure_ascii=False, separators=(",", ":"))
+
+            if output_guard_enabled:
+                try:
+                    from app.rag.safety import get_output_guard
+
+                    guard = get_output_guard()
+                    guard_result = await guard.check(full_response)
+                    output_guard_result = {
+                        "enabled": True,
+                        "action": str(guard_result.action or "allow"),
+                        "score": float(guard_result.score or 0.0),
+                        "matched_rules": list(guard_result.matched_rules or []),
+                    }
+                    if guard_result.action == "block":
+                        blocked_message = "Response withheld by safety filter."
+                        if structured_output:
+                            full_response = json.dumps({"answer": blocked_message, "citations": []}, ensure_ascii=False)
+                        else:
+                            full_response = blocked_message
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Output guard failed open: %s", str(exc)[:160])
+                    output_guard_result = {
+                        "enabled": True,
+                        "action": "allow",
+                        "score": 0.0,
+                        "matched_rules": [],
+                        "error": str(exc)[:160],
+                    }
 
             claim_evidence: list[dict[str, Any]] = []
             if not structured_output:
@@ -3670,7 +3788,7 @@ Requirements:
                     if not claim_check_applied:
                         yield {"type": "token", "data": {"content": suffix_md_safe}}
 
-            if claim_check_applied:
+            if claim_check_applied or output_guard_enabled:
                 yield {"type": "token", "data": {"content": full_response}}
 
             # ---- Wave22-T095: Cost attribution (per request) ----
@@ -3807,7 +3925,22 @@ Requirements:
             structured_data = None
             structured_parse_meta = {"ok": False, "method": None, "error": None}
             if structured_output:
-                structured_data, structured_parse_meta = parse_json_from_text(full_response, expected="object")
+                structured_citations: list[dict[str, Any]] = []
+                for c in citations[: max(0, int(top_k or 0))] if citations else []:
+                    structured_citations.append(
+                        {
+                            "document_id": c.get("document_id"),
+                            "chunk_id": c.get("chunk_id"),
+                            "page_number": c.get("page_number"),
+                            "relevance_score": c.get("relevance_score"),
+                        }
+                    )
+                structured_data, structured_parse_meta = parse_and_repair_structured_output(
+                    full_response,
+                    preset=structured_preset,
+                    fallback_answer=_UNABLE_TO_ANSWER_MESSAGE,
+                    fallback_citations=structured_citations,
+                )
             done_payload = {
                 "type": "done",
                 "data": {
@@ -3865,6 +3998,7 @@ Requirements:
                         "llm_provider_anthropic_compatible": bool(llm_invocation_meta.get("provider_anthropic_compatible")),
                         "top_k": top_k,
                         "docs_returned": len(docs),
+                        "retrieval_rail": dict(retrieval_rail_meta),
                         "kg_chunks_injected": int(kg_chunks_injected or 0),
                         "recall_bucket": recall_bucket,
                         "temporal_intent_enabled": bool(temporal_intent_enabled),
@@ -4023,6 +4157,7 @@ Requirements:
                         "structured_parse_error": structured_parse_meta.get("error"),
                         "structured_type": type(structured_data).__name__ if structured_data is not None else None,
                         "structured_preset": structured_preset,
+                        "output_guard": dict(output_guard_result),
                         "prompt_template_id": str(selected_prompt_template_id) if selected_prompt_template_id else None,
                         "prompt_template_key": selected_prompt_template_key,
                         "prompt_ab_experiment_key": selected_prompt_ab_experiment_key,

@@ -11,9 +11,12 @@ Usage:
 import inspect
 from typing import Any
 
+from langchain_core.documents import Document
+
 from app.core.config import settings
 from app.rag.chunking.base import BaseChunker
 from app.rag.chunking.strategies import (
+    AgenticChunker,
     AnsiblePlaybookChunker,
     APIReferenceChunker,
     AsciiDocSectionsChunker,
@@ -41,6 +44,8 @@ from app.rag.chunking.strategies import (
     KVConfigChunker,
     LangChainRecursiveChunker,
     LangChainTokenChunker,
+    LateChunkingChunker,
+    LateChunkingJinaChunker,
     LatexSectionsChunker,
     LawsStructuredChunker,
     LlamaIndexChunker,
@@ -73,6 +78,7 @@ from app.rag.chunking.strategies import (
     ProtoSchemaChunker,
     QAMarkdownChunker,
     QAPairsChunker,
+    RaptorChunker,
     ResumeStructuredChunker,
     RSTSectionsChunker,
     SemanticSentenceChunker,
@@ -94,6 +100,76 @@ from app.rag.chunking.strategies import (
     XMLFeedChunker,
     YAMLManifestChunker,
 )
+from app.rag.preprocessing.metadata_enrichment import (
+    build_document_metadata_enrichment,
+    build_rich_metadata_header,
+    enrich_documents_metadata,
+)
+
+
+class _MetadataAwareChunker(BaseChunker):
+    def __init__(
+        self,
+        inner: BaseChunker,
+        *,
+        enrich_document_metadata: bool,
+        inject_metadata_header: bool,
+        metadata_keywords_provider: str,
+        metadata_keyword_top_k: int,
+        metadata_keyword_max_chars: int,
+        metadata_summary_max_chars: int,
+        metadata_question_count: int,
+    ) -> None:
+        self._inner = inner
+        self._enrich_document_metadata = bool(enrich_document_metadata)
+        self._inject_metadata_header = bool(inject_metadata_header)
+        self._metadata_keywords_provider = str(metadata_keywords_provider or "auto")
+        self._metadata_keyword_top_k = int(metadata_keyword_top_k or 8)
+        self._metadata_keyword_max_chars = int(metadata_keyword_max_chars or 4000)
+        self._metadata_summary_max_chars = int(metadata_summary_max_chars or 220)
+        self._metadata_question_count = int(metadata_question_count or 3)
+
+    def _enrichment_kwargs(self) -> dict[str, Any]:
+        return {
+            "keywords_provider": self._metadata_keywords_provider,
+            "keyword_top_k": self._metadata_keyword_top_k,
+            "keyword_max_chars": self._metadata_keyword_max_chars,
+            "summary_max_chars": self._metadata_summary_max_chars,
+            "question_count": self._metadata_question_count,
+        }
+
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        working = list(documents or [])
+        if self._enrich_document_metadata:
+            working = enrich_documents_metadata(working, **self._enrichment_kwargs())
+
+        chunks = self._inner.split_documents(working)
+        if not self._inject_metadata_header:
+            return chunks
+
+        out: list[Document] = []
+        for chunk in chunks:
+            meta = dict(chunk.metadata or {})
+            if not meta.get("document_summary") or not meta.get("document_questions"):
+                meta.update(
+                    build_document_metadata_enrichment(
+                        chunk.page_content or "",
+                        metadata=meta,
+                        **self._enrichment_kwargs(),
+                    )
+                )
+            header = build_rich_metadata_header(meta)
+            if not header:
+                out.append(chunk)
+                continue
+            payload = f"{header}\n\nContent:\n{chunk.page_content or ''}".strip()
+            meta["rich_metadata_header_applied"] = True
+            meta["rich_metadata_header_chars"] = len(header)
+            try:
+                out.append(chunk.model_copy(update={"page_content": payload, "metadata": meta}))
+            except Exception:
+                out.append(Document(page_content=payload, metadata=meta, id=getattr(chunk, "id", None)))
+        return out
 
 
 class ChunkerFactory:
@@ -185,6 +261,7 @@ class ChunkerFactory:
     SUPPORTED_STRATEGIES = {
         "auto": AutoChunker,
         "manuscript": ManuscriptChunker,
+        "agentic_chunker": AgenticChunker,
         "langchain_recursive": LangChainRecursiveChunker,
         "langchain_token": LangChainTokenChunker,
         "pdf_layout": PDFLayoutChunker,
@@ -207,6 +284,7 @@ class ChunkerFactory:
         "outline": OutlineChunker,
         "transcript": TranscriptChunker,
         "qa_pairs": QAPairsChunker,
+        "raptor": RaptorChunker,
         "proposition": PropositionChunker,
         "paper": PaperChunker,
         "book_structured": BookStructuredChunker,
@@ -227,6 +305,8 @@ class ChunkerFactory:
         "api_reference": APIReferenceChunker,
         "diff_patch": DiffPatchChunker,
         "kv_config": KVConfigChunker,
+        "late_chunking": LateChunkingChunker,
+        "late_chunking_jina": LateChunkingJinaChunker,
         "qa_markdown": QAMarkdownChunker,
         "meeting_minutes": MeetingMinutesChunker,
         "timeline_events": TimelineEventsChunker,
@@ -541,7 +621,16 @@ class ChunkerFactory:
                 f"Use 'chunk_file' from app.rag.chunking.integrated_pipeline.bridge instead."
             )
 
+        enrich_document_metadata = bool(kwargs.pop("enrich_document_metadata", False))
+        inject_metadata_header = bool(kwargs.pop("inject_metadata_header", False))
+        metadata_keywords_provider = str(kwargs.pop("metadata_keywords_provider", "auto") or "auto")
+        metadata_keyword_top_k = int(kwargs.pop("metadata_keyword_top_k", 8) or 8)
+        metadata_keyword_max_chars = int(kwargs.pop("metadata_keyword_max_chars", 4000) or 4000)
+        metadata_summary_max_chars = int(kwargs.pop("metadata_summary_max_chars", 220) or 220)
+        metadata_question_count = int(kwargs.pop("metadata_question_count", 3) or 3)
+
         chunker_cls = self.SUPPORTED_STRATEGIES[resolved]
+        chunker: BaseChunker
 
         # Strategy-specific kwargs are allowed for enterprise tuning (e.g. parent_child child_ratio/min_child_size),
         # but must not break chunkers that don't accept them.
@@ -570,12 +659,26 @@ class ChunkerFactory:
                 cache[chunker_cls] = accepted
 
             if accepted is False:
-                return chunker_cls(chunk_size=chunk_size, chunk_overlap=chunk_overlap, **kwargs)
+                chunker = chunker_cls(chunk_size=chunk_size, chunk_overlap=chunk_overlap, **kwargs)
+            else:
+                filtered = {k: v for k, v in kwargs.items() if k in accepted}
+                chunker = chunker_cls(chunk_size=chunk_size, chunk_overlap=chunk_overlap, **filtered)
+        else:
+            chunker = chunker_cls(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
 
-            filtered = {k: v for k, v in kwargs.items() if k in accepted}
-            return chunker_cls(chunk_size=chunk_size, chunk_overlap=chunk_overlap, **filtered)
+        if enrich_document_metadata or inject_metadata_header:
+            return _MetadataAwareChunker(
+                chunker,
+                enrich_document_metadata=enrich_document_metadata or inject_metadata_header,
+                inject_metadata_header=inject_metadata_header,
+                metadata_keywords_provider=metadata_keywords_provider,
+                metadata_keyword_top_k=metadata_keyword_top_k,
+                metadata_keyword_max_chars=metadata_keyword_max_chars,
+                metadata_summary_max_chars=metadata_summary_max_chars,
+                metadata_question_count=metadata_question_count,
+            )
 
-        return chunker_cls(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+        return chunker
 
     def is_integrated_pipeline_strategy(self, strategy: str | None) -> bool:
         """Check if the strategy requires the integrated parse+chunk pipeline."""

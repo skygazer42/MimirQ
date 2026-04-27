@@ -1,10 +1,9 @@
-from types import SimpleNamespace
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from fastapi import BackgroundTasks
-from fastapi import HTTPException
+from fastapi import BackgroundTasks, HTTPException
 
 import app.models.chat  # noqa: F401
 from app.api.schemas.chat import ChatRequest, ConversationUpdate

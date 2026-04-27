@@ -25,9 +25,8 @@ def test_body_size_limit_middleware_blocks_large_requests():
 
     client = TestClient(app)
 
-    small = client.post("/echo", data="x" * 5)
+    small = client.post("/echo", content="x" * 5)
     assert small.status_code == 200
 
-    big = client.post("/echo", data="x" * 20)
+    big = client.post("/echo", content="x" * 20)
     assert big.status_code == 413
-

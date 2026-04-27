@@ -51,6 +51,7 @@ def test_describe_reranker_provider_classifies_tiers() -> None:
     from app.rag.reranker.factory import describe_reranker_provider
 
     assert describe_reranker_provider("cross_encoder")["tier"] == "prod"
+    assert describe_reranker_provider("long_context")["tier"] == "prod"
     assert describe_reranker_provider("ltr")["tier"] == "prod"
     assert describe_reranker_provider("llm")["tier"] == "experimental"
     assert describe_reranker_provider("none")["tier"] == "disabled"

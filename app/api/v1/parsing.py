@@ -28,7 +28,7 @@ from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
@@ -51,6 +51,7 @@ from app.parsing.quality.competition import compute_competition_matrix_score, se
 from app.parsing.quality.document_quality import score_document_parse_quality
 from app.parsing.quality.reading_order import score_reading_order
 from app.parsing.quality.text_quality import score_parsed_text_quality
+from app.parsing.routing import should_attempt_pdf_fallback
 from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
 from app.parsing.utils.cli import resolve_cli_command
 from app.parsing.utils.document_elements import normalize_document_elements
@@ -127,10 +128,25 @@ class ParsingExtractRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     mode: Literal["schema", "prompt"] = "schema"
-    schema: dict[str, ParsingExtractFieldSpec] | None = None
+    schema_: dict[str, ParsingExtractFieldSpec] | None = None
     prompt: str | None = None
     field_hints: dict[str, ParsingExtractFieldSpec] | None = None
     max_evidence: int = Field(default=1, ge=1, le=5)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_schema_alias(cls, value: Any):  # noqa: ANN001
+        if not isinstance(value, dict):
+            return value
+        if "schema_" not in value and "schema" in value:
+            copied = dict(value)
+            copied["schema_"] = copied.get("schema")
+            return copied
+        return value
+
+    @property
+    def schema(self) -> dict[str, ParsingExtractFieldSpec] | None:
+        return self.schema_
 
 
 class ParsingExtractEvidence(BaseModel):
@@ -803,6 +819,7 @@ async def parse_workspace_document(
         captions_added = 0
 
         min_chars = max(0, int(getattr(settings, "PARSE_FALLBACK_MIN_CONTENT_CHARS", 120) or 120))
+        min_parse_score = max(0.0, float(getattr(settings, "PARSE_FALLBACK_MIN_PARSE_SCORE", 0.55) or 0.55))
         max_retries = max(0, int(getattr(settings, "PARSE_FALLBACK_MAX_RETRIES", 1) or 1))
 
         gate = _compute_parsing_quality_gate(
@@ -873,7 +890,20 @@ async def parse_workspace_document(
                 cross_page_merge_stats=cross_page_merge_stats,
             )
         ]
-        if file_ext == ".pdf" and requested_backend in {"", "auto"} and gate.grade == "fail" and max_retries > 0:
+        gate_parse_score = _coerce_float(((gate.evidence or {}).get("parse_quality") or {}).get("score"))
+        gate_content_chars = _coerce_int(((gate.evidence or {}).get("text_quality") or {}).get("content_chars"))
+        if (
+            file_ext == ".pdf"
+            and requested_backend in {"", "auto"}
+            and max_retries > 0
+            and should_attempt_pdf_fallback(
+                grade=gate.grade,
+                parse_score=gate_parse_score,
+                content_chars=gate_content_chars,
+                min_content_chars=min_chars,
+                min_parse_score=min_parse_score,
+            )
+        ):
             candidates = _build_pdf_fallback_candidates()
             filtered = [c for c in candidates if c != (resolved_backend or "").strip().lower()]
             retries_left = int(max_retries)

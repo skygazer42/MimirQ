@@ -26,9 +26,10 @@ class SemanticSentenceChunker(BaseChunker):
     _FENCED_CODE_PATTERN = re.compile(r"```.*?```", flags=re.S)
     _LIST_ITEM_RE = re.compile(r"^\s{0,3}(?:[-*+]\s+|\d+[.)]\s+)")
 
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int, min_chunk_size: int | None = 256):
         self.chunk_size = max(chunk_size, 1)
         self.chunk_overlap = max(chunk_overlap, 0)
+        self.min_chunk_size = max(0, int(256 if min_chunk_size is None else min_chunk_size))
 
     @dataclass(frozen=True)
     class _Unit:
@@ -205,8 +206,27 @@ class SemanticSentenceChunker(BaseChunker):
 
         return units
 
+    def _effective_min_chunk_size(self) -> int:
+        if self.min_chunk_size <= 0:
+            return 0
+        return min(self.min_chunk_size, self.chunk_size)
+
+    def _merge_text_with_overlap(self, left: str, right: str) -> str:
+        if not left:
+            return right
+        if not right:
+            return left
+        max_overlap = min(len(left), len(right), max(0, int(self.chunk_overlap or 0)))
+        if max_overlap <= 0:
+            return left + right
+        for size in range(max_overlap, 0, -1):
+            if left.endswith(right[:size]):
+                return left + right[size:]
+        return left + right
+
     def split_documents(self, documents: list[Document]) -> list[Document]:
         chunks: list[Document] = []
+        effective_floor = self._effective_min_chunk_size()
 
         for doc in documents:
             text = doc.page_content or ""
@@ -228,6 +248,8 @@ class SemanticSentenceChunker(BaseChunker):
                 meta["start_char"] = start_idx
                 meta["end_char"] = end_idx
                 meta["chunk_strategy"] = "semantic_sentence"
+                if effective_floor > 0:
+                    meta["min_chunk_size"] = effective_floor
                 chunks.append(Document(page_content=payload, metadata=meta))
 
                 # Overlap by unit boundaries (avoid cutting inside list/code blocks).
@@ -253,6 +275,10 @@ class SemanticSentenceChunker(BaseChunker):
                     continue
 
                 if buffer_len + len(u.text) > self.chunk_size:
+                    if effective_floor > 0 and buffer_len < effective_floor:
+                        buffer.append(u)
+                        buffer_len += len(u.text)
+                        continue
                     flush()
                     if not buffer:
                         buffer = [u]
@@ -263,5 +289,28 @@ class SemanticSentenceChunker(BaseChunker):
                 buffer_len += len(u.text)
 
             flush()
+
+            while effective_floor > 0 and len(chunks) >= 2:
+                tail = chunks[-1]
+                if len(tail.page_content or "") >= effective_floor:
+                    break
+                prev = chunks[-2]
+                merged_meta = dict(prev.metadata or {})
+                tail_meta = dict(tail.metadata or {})
+                start_idx = int(merged_meta.get("start_char", 0) or 0)
+                end_idx = int(tail_meta.get("end_char", merged_meta.get("end_char", start_idx)) or start_idx)
+                merged_meta["end_char"] = end_idx
+                merged_meta["chunk_strategy"] = "semantic_sentence"
+                merged_meta["min_chunk_size"] = effective_floor
+                merged_meta["min_chunk_floor_merged"] = True
+                if 0 <= start_idx <= end_idx <= len(text):
+                    merged_content = text[start_idx:end_idx]
+                else:
+                    merged_content = self._merge_text_with_overlap(prev.page_content or "", tail.page_content or "")
+                merged_doc = Document(
+                    page_content=merged_content,
+                    metadata=merged_meta,
+                )
+                chunks[-2:] = [merged_doc]
 
         return chunks
