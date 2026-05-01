@@ -209,7 +209,7 @@ export function KnowledgeSettingsPanel({ selectedDatasetId, onGoToRetrievalTest 
             <Panel padding="none" className="rounded-[16px] border border-border/70 bg-background/92 shadow-[0_10px_18px_-18px_rgba(15,23,42,0.1)]">
               <div className="border-b border-border/60 px-3 py-2.5">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="text-[11px] font-semibold text-foreground">配置导航</div>
+                  <div className="text-[11px] font-semibold text-foreground">{t('header.title')}</div>
                   <ChevronDown className="size-3.5 text-muted-foreground/48" />
                 </div>
               </div>
@@ -327,7 +327,7 @@ export function KnowledgeSettingsPanel({ selectedDatasetId, onGoToRetrievalTest 
                             : 'border-border/70 bg-background hover:border-primary/20 hover:bg-primary/[0.02]'
                         )}
                       >
-                        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-primary/8 via-transparent to-primary/5" />
+                        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-primary/10" />
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex items-center gap-3">
                             <span className={cn('size-4 rounded-full border', selected ? 'border-primary/40 bg-primary/10' : 'border-border/70 bg-background')}>
@@ -434,7 +434,7 @@ export function KnowledgeSettingsPanel({ selectedDatasetId, onGoToRetrievalTest 
                         max="50"
                         value={draftConfig?.rag.retrieval_top_k}
                         onChange={e => setDraftConfig(prev => prev ? ({...prev, rag: { ...prev.rag, retrieval_top_k: Number(e.target.value) }}) : null)}
-                        className="relative z-10 h-5 w-full cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-5 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:mt-0 [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white [&::-webkit-slider-thumb]:bg-slate-950 [&::-webkit-slider-thumb]:shadow-[0_6px_14px_-8px_rgba(15,23,42,0.55)] dark:[&::-webkit-slider-thumb]:border-slate-900 dark:[&::-webkit-slider-thumb]:bg-white [&::-moz-range-track]:h-5 [&::-moz-range-track]:bg-transparent [&::-moz-range-progress]:h-5 [&::-moz-range-progress]:bg-transparent [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-white [&::-moz-range-thumb]:bg-slate-950"
+                        className="relative z-10 h-5 w-full cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-5 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:mt-0 [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-border [&::-webkit-slider-thumb]:bg-slate-950 [&::-webkit-slider-thumb]:shadow-[0_6px_14px_-8px_rgba(15,23,42,0.55)] dark:[&::-webkit-slider-thumb]:border-slate-900 dark:[&::-webkit-slider-thumb]:bg-card [&::-moz-range-track]:h-5 [&::-moz-range-track]:bg-transparent [&::-moz-range-progress]:h-5 [&::-moz-range-progress]:bg-transparent [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-border [&::-moz-range-thumb]:bg-slate-950"
                       />
                     </div>
                     <div className="mt-2 flex items-center justify-between text-[9px] text-muted-foreground/62">
@@ -470,7 +470,7 @@ export function KnowledgeSettingsPanel({ selectedDatasetId, onGoToRetrievalTest 
                         step="0.05"
                         value={draftConfig?.rag.similarity_threshold}
                         onChange={e => setDraftConfig(prev => prev ? ({...prev, rag: { ...prev.rag, similarity_threshold: Number(e.target.value) }}) : null)}
-                        className="relative z-10 h-5 w-full cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-5 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:mt-0 [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white [&::-webkit-slider-thumb]:bg-slate-950 [&::-webkit-slider-thumb]:shadow-[0_6px_14px_-8px_rgba(15,23,42,0.55)] dark:[&::-webkit-slider-thumb]:border-slate-900 dark:[&::-webkit-slider-thumb]:bg-white [&::-moz-range-track]:h-5 [&::-moz-range-track]:bg-transparent [&::-moz-range-progress]:h-5 [&::-moz-range-progress]:bg-transparent [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-white [&::-moz-range-thumb]:bg-slate-950"
+                        className="relative z-10 h-5 w-full cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-5 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:mt-0 [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-border [&::-webkit-slider-thumb]:bg-slate-950 [&::-webkit-slider-thumb]:shadow-[0_6px_14px_-8px_rgba(15,23,42,0.55)] dark:[&::-webkit-slider-thumb]:border-slate-900 dark:[&::-webkit-slider-thumb]:bg-card [&::-moz-range-track]:h-5 [&::-moz-range-track]:bg-transparent [&::-moz-range-progress]:h-5 [&::-moz-range-progress]:bg-transparent [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-border [&::-moz-range-thumb]:bg-slate-950"
                       />
                     </div>
                     <div className="mt-2 flex items-center justify-between text-[9px] text-muted-foreground/62">
@@ -597,16 +597,28 @@ export function KnowledgeSettingsPanel({ selectedDatasetId, onGoToRetrievalTest 
         </div>
       </div>
 
-      {/* isDirty && ( */}
       {isDirty ? (
-        <div className="hidden" aria-hidden="true" />
+        <div className="border-t border-border/70 bg-background/95 px-3 py-2 backdrop-blur">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-[14px] border border-warning/20 bg-warning/10 px-3 py-2 text-[11px] text-warning-foreground">
+            <span className="font-medium">当前配置有未保存更改。</span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 rounded-[10px] border-warning/30 bg-background/80 px-3 text-[11px]"
+              onClick={handleResetDraft}
+            >
+              重置更改
+            </Button>
+          </div>
+        </div>
       ) : null}
 
       {/* Confirm Dialog */}
       <AlertDialog open={confirmEmbeddingSaveOpen} onOpenChange={setConfirmEmbeddingSaveOpen}>
         <AlertDialogContent className="sm:rounded-[2rem] border-border/40 shadow-strong backdrop-blur-xl bg-background/90">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-lg font-bold tracking-tight">确认更改嵌入模型？</AlertDialogTitle>
+            <AlertDialogTitle className="text-lg font-bold ">确认更改嵌入模型？</AlertDialogTitle>
             <AlertDialogDescription className="text-sm font-medium leading-relaxed">
               更换模型将导致已有文档的向量失效，所有文档必须重新进入 Ingestion 管线进行向量化。这可能产生显著的 Token 消耗和处理耗时。
             </AlertDialogDescription>
@@ -670,7 +682,7 @@ export function KnowledgeConnectorRunsPanel({
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-muted/30 border border-border/40">
               <div className={cn("size-1 rounded-full transition-all", autoRefresh ? "bg-emerald-500 animate-pulse shadow-[0_0_5px_rgba(16,185,129,0.4)]" : "bg-muted-foreground/30")} />
-              <span className="text-[9px] font-bold text-foreground/50 uppercase tracking-tighter">{t('connectorRuns.liveBadge')}</span>
+              <span className="text-[9px] font-bold text-foreground/50 uppercase ">{t('connectorRuns.liveBadge')}</span>
               <Switch checked={autoRefresh} onCheckedChange={setAutoRefresh} className="scale-[0.5] origin-right" />
             </div>
             <IconButton
@@ -714,7 +726,7 @@ export function KnowledgeConnectorRunsPanel({
           {visibleRuns.length === 0 ? (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center py-24 text-center opacity-30">
               <History className="size-10 text-muted-foreground/10 mb-2" />
-              <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/30">Quiet Environment</span>
+              <span className="text-[10px] font-bold uppercase  text-muted-foreground/30">Quiet Environment</span>
             </motion.div>
           ) : (
             visibleRuns.map((run) => (
@@ -769,7 +781,7 @@ function TaskCard({ run, t, onCancel, onRetry, isExpanded, onToggleExpand }: any
                   isFailed ? "bg-destructive shadow-[0_0_6px_rgba(var(--destructive),0.5)]" :
                   isRunning ? "bg-primary animate-pulse" : "bg-muted-foreground/30")} />
               </div>
-              <div className="flex items-center gap-1.5 text-[9px] font-bold text-muted-foreground/40 tabular-nums mt-1 uppercase tracking-tighter">
+              <div className="flex items-center gap-1.5 text-[9px] font-bold text-muted-foreground/40 tabular-nums mt-1 uppercase ">
                 <span>{formatDate(run.created_at)}</span>
                 <span>·</span>
                 <span>{run.id.slice(0, 8)}</span>
@@ -800,7 +812,7 @@ function TaskCard({ run, t, onCancel, onRetry, isExpanded, onToggleExpand }: any
                <motion.div initial={{ width: 0 }} animate={{ width: `${progressPct}%` }} className={cn("h-full transition-colors", isFailed ? "bg-destructive/60" : "bg-primary/70")} />
             </div>
             <div className="flex items-center justify-between px-0.5">
-              <span className="text-[9px] font-black text-foreground/40 uppercase tracking-tighter">{progressPct}% Complete</span>
+              <span className="text-[9px] font-black text-foreground/40 uppercase ">{progressPct}% Complete</span>
               <span className="text-[9px] font-bold text-muted-foreground/30 tabular-nums">{processed}/{total}</span>
             </div>
           </div>
@@ -808,7 +820,7 @@ function TaskCard({ run, t, onCancel, onRetry, isExpanded, onToggleExpand }: any
 
         {isFailed && run.error_message && (
           <button onClick={onToggleExpand} className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-destructive/5 border border-destructive/10 text-destructive/80 hover:bg-destructive/10 transition-colors">
-            <span className="text-[9px] font-bold truncate uppercase tracking-wider">Error Details</span>
+            <span className="text-[9px] font-bold truncate uppercase ">Error Details</span>
             <ChevronDown className={cn("size-3 transition-transform", isExpanded && "rotate-180")} />
           </button>
         )}
@@ -817,7 +829,7 @@ function TaskCard({ run, t, onCancel, onRetry, isExpanded, onToggleExpand }: any
       <AnimatePresence>
         {isExpanded && isFailed && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden bg-zinc-950">
-            <div className="p-3 border-t border-white/5 font-mono text-[9px] leading-relaxed text-zinc-500">
+            <div className="p-3 border-t border-border/5 font-mono text-[9px] leading-relaxed text-zinc-500">
               <div className="text-rose-400/80 font-bold mb-1">ERR: {run.error_message}</div>
               {(run.stats?.errors || []).slice(0, 2).map((err: any, i: number) => (
                 <div key={i} className="mt-1 opacity-60 truncate">! {err.error}</div>

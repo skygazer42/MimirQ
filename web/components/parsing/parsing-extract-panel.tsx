@@ -131,7 +131,7 @@ export function ParsingExtractPanel({
   onSelectEvidence,
   className,
 }: Readonly<ParsingExtractPanelProps>) {
-  const [isCollapsed, setIsCollapsed] = useState(false)
+  const [isCollapsed, setIsCollapsed] = useState(true)
   const [mode, setMode] = useState<'schema' | 'prompt'>('schema')
   const [schemaFieldName, setSchemaFieldName] = useState('')
   const [schemaSourceKind, setSchemaSourceKind] = useState('')
@@ -185,7 +185,7 @@ export function ParsingExtractPanel({
     setResult(null)
     setError(null)
     setMode('schema')
-    setIsCollapsed(false)
+    setIsCollapsed(true)
   }, [activeElements, documentId])
 
   const handleRun = async () => {

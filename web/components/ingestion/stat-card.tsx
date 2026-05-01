@@ -57,8 +57,8 @@ export function StatCard({
         <Icon className={cn('relative h-3.5 w-3.5', color, pulseActive && 'animate-heartbeat motion-reduce:animate-none')} />
       </div>
 
-      <div className="flex flex-col leading-tight">
-        <div className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-muted-foreground/60">
+      <div className="flex min-w-0 flex-1 flex-col leading-tight">
+        <div className="flex items-center gap-1 text-[9px] font-bold uppercase  text-muted-foreground/60">
           <span className="truncate">{label}</span>
           {delta !== null && (
             <span
@@ -71,8 +71,20 @@ export function StatCard({
             </span>
           )}
         </div>
-        <div className={cn('text-sm font-bold tracking-tight tabular-nums', color)}>{value}</div>
+        <div className={cn('text-sm font-bold  tabular-nums', color)}>{value}</div>
       </div>
+      <svg viewBox="0 0 80 24" aria-hidden="true" className="ml-auto h-6 w-20 shrink-0 overflow-visible">
+        <path
+          d={pathData}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeDasharray={sparklineMode === 'placeholder' ? '4 3' : undefined}
+          className={cn(sparklineColor || color, sparklineMode === 'placeholder' && 'opacity-45')}
+        />
+      </svg>
     </div>
   )
 }

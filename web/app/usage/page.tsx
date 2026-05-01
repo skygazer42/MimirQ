@@ -17,6 +17,7 @@ import type { ChatCostUsageSummary, ChatTokenQuotaStatus, ChatTokenUsageSummary 
 import { cn, detachPromise } from '@/lib/utils'
 import { EmptyState } from '@/components/ui/empty-state'
 import { systemDenseControls, systemPageTokens, systemWorkbenchTokens } from '@/components/ui/system-page-tokens'
+import { TenantQuotaPanel } from '@/components/usage/tenant-quota-panel'
 
 const WINDOW_PRESETS = [
     { label: '24 小时', value: 1 },
@@ -323,6 +324,8 @@ export default function UsagePage() {
                   </div>
                 </Panel>
               ) : null}
+
+              <TenantQuotaPanel />
             </div>
           ) : (
             <EmptyState

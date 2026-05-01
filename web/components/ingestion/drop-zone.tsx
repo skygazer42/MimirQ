@@ -154,7 +154,7 @@ export const DropZone = React.forwardRef<DropZoneHandle, {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
           <div
             aria-live="polite"
-            className="rounded-3xl border border-dashed border-white/50 bg-background/95 px-10 py-12 text-center shadow-strong"
+            className="rounded-3xl border border-dashed border-border/50 bg-background/95 px-10 py-12 text-center shadow-strong"
           >
             <UploadCloud className="mx-auto h-10 w-10 text-sky-500" />
             <p className="mt-4 text-base font-semibold text-foreground">

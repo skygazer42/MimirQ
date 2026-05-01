@@ -5,7 +5,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffect } from 'react'
 import { useTranslations } from 'next-intl'
-import { Send, StopCircle, Sparkles, Database, Wand2, Settings2, Bot, Mic, ArrowDown, Zap, Layers, ShieldCheck, type LucideIcon } from 'lucide-react'
+import { Send, StopCircle, Sparkles, Database, Wand2, Settings2, Bot, Mic, ArrowDown, Zap, Layers, ShieldCheck, Route, type LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { useChat } from '@/hooks/use-chat'
 import type { Dataset } from '@/types'
@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/popover'
 import { VoiceModeOverlay } from '@/components/chat/voice-mode-overlay'
 import { ConversationSummaryDialog } from '@/components/chat/conversation-summary-dialog'
+import { RagTraceDialog } from '@/components/rag-trace/rag-trace-dialog'
 import getCaretCoordinates from 'textarea-caret'
 import { SlashMenu } from '@/components/chat/slash-menu'
 import { globalEventBus } from '@/lib/event-bus'
@@ -79,12 +80,16 @@ export function ChatArea({
     score_threshold: number
     retrieval_mode: string
     use_graph: boolean
+    enable_multi_query: boolean
+    enable_hyde: boolean
     metadata_filter?: Record<string, unknown> | null
   }>(() => ({
     top_k: 5,
     score_threshold: 0.7,
     retrieval_mode: 'hybrid',
     use_graph: false,
+    enable_multi_query: false,
+    enable_hyde: false,
     metadata_filter: undefined,
   }))
   const [metadataFilterMode, setMetadataFilterMode] = useState<'all' | 'exclude_qa' | 'qa_only' | 'custom'>('all')
@@ -95,6 +100,7 @@ export function ChatArea({
   const [enableLongTermMemory, setEnableLongTermMemory] = useState(false)
   const [enableSummaryMemory, setEnableSummaryMemory] = useState(false)
   const [summaryDialogOpen, setSummaryDialogOpen] = useState(false)
+  const [traceDialogOpen, setTraceDialogOpen] = useState(false)
   const [visibleCount, setVisibleCount] = useState(DEFAULT_VISIBLE_MESSAGES)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -367,6 +373,14 @@ export function ChatArea({
     }
   }, [])
 
+  const effectiveChatRagConfig = useMemo(() => {
+    if (ragConfigDirty || hasSystemRagDefaults) return ragConfig
+    return {
+      enable_multi_query: ragConfig.enable_multi_query,
+      enable_hyde: ragConfig.enable_hyde,
+    }
+  }, [hasSystemRagDefaults, ragConfig, ragConfigDirty])
+
   const {
     messages,
     isLoading,
@@ -383,7 +397,7 @@ export function ChatArea({
     documentIds: activeDocumentIds,
     datasetId: activeDocumentIds?.length ? undefined : selectedDatasetId || undefined,
     promptTemplateId: promptTemplateId || undefined,
-    ragConfig: ragConfigDirty || hasSystemRagDefaults ? ragConfig : undefined,
+    ragConfig: effectiveChatRagConfig,
     structuredOutput,
     structuredPreset: structuredPreset || undefined,
     enableLongTermMemory,
@@ -910,9 +924,9 @@ export function ChatArea({
                         className="accent-primary h-4 w-4"
                       />
                     </label>
-                    <div className="flex items-center justify-between text-sm hover:bg-secondary/50 p-1 rounded-md transition-colors">
-                      <Label
-                        htmlFor={summaryMemoryId}
+                     <div className="flex items-center justify-between text-sm hover:bg-secondary/50 p-1 rounded-md transition-colors">
+                       <Label
+                         htmlFor={summaryMemoryId}
                         className="text-muted-foreground text-xs cursor-pointer"
                       >
                         {t('enableSummaryMemory')}
@@ -935,12 +949,29 @@ export function ChatArea({
                           checked={enableSummaryMemory}
                           onChange={(e) => setEnableSummaryMemory(e.target.checked)}
                           className="accent-primary h-4 w-4 focus-ring"
-                        />
-                      </div>
-                    </div>
-                    <label className="flex items-center justify-between text-sm cursor-pointer hover:bg-secondary/50 p-1 rounded-md transition-colors">
-                      <span className="text-muted-foreground text-xs">{t('structuredOutput')}</span>
-                      <input
+                         />
+                       </div>
+                     </div>
+                     <div className="flex items-center justify-between text-sm hover:bg-secondary/50 p-1 rounded-md transition-colors">
+                       <div className="flex min-w-0 items-center gap-2 text-muted-foreground text-xs">
+                         <Route className="size-3.5 shrink-0" />
+                         <span className="truncate">{t('ragTraceEntry')}</span>
+                       </div>
+                       <Button
+                         type="button"
+                         variant="ghost"
+                         size="sm"
+                         className="h-7 px-2 text-[11px] rounded-lg"
+                         onClick={() => setTraceDialogOpen(true)}
+                         disabled={!conversationId}
+                         title={conversationId ? t('viewRagTrace') : t('sendMessageFirst')}
+                       >
+                         {t('viewTrace')}
+                       </Button>
+                     </div>
+                     <label className="flex items-center justify-between text-sm cursor-pointer hover:bg-secondary/50 p-1 rounded-md transition-colors">
+                       <span className="text-muted-foreground text-xs">{t('structuredOutput')}</span>
+                       <input
                         type="checkbox"
                         checked={structuredOutput}
                         onChange={(e) => setStructuredOutput(e.target.checked)}
@@ -1073,6 +1104,11 @@ export function ChatArea({
         onOpenChange={setSummaryDialogOpen}
         conversationId={conversationId}
       />
+      <RagTraceDialog
+        open={traceDialogOpen}
+        onOpenChange={setTraceDialogOpen}
+        conversationId={conversationId ?? null}
+      />
     </div>
   )
 }
@@ -1135,13 +1171,13 @@ function WelcomeScreen({
       {/* Centered Brand Area */}
       <div className="flex flex-col items-center text-center space-y-6 animate-fade-in-up">
         <div className="flex size-16 items-center justify-center rounded-2xl bg-foreground text-background shadow-strong">
-          <span className="text-3xl font-bold tracking-tighter">M</span>
+          <span className="text-3xl font-bold">M</span>
         </div>
         <div className="space-y-3">
-          <h2 className="text-4xl md:text-5xl font-bold tracking-tight text-foreground">
+          <h2 className="text-4xl md:text-5xl font-bold leading-tight text-foreground">
             {greeting}，<span className="text-primary">{t('explorer')}</span>
           </h2>
-          <p className="max-w-2xl text-pretty text-base md:text-lg font-medium text-muted-foreground/80 leading-relaxed">
+          <p className="max-w-2xl text-pretty text-base font-medium leading-7 text-muted-foreground/90 md:text-lg">
             {t('welcomeLead')}
           </p>
         </div>
@@ -1150,7 +1186,7 @@ function WelcomeScreen({
       {/* Quick Start Grid */}
       <div className="w-full space-y-6 animate-fade-in-up [animation-delay:150ms]">
         <div className="flex items-center justify-between px-2">
-          <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground/60 flex items-center gap-2">
+          <h3 className="flex items-center gap-2 text-sm font-bold uppercase text-muted-foreground/60">
             <Zap className="size-3.5 text-primary" />
             {t('quickStart.title')}
           </h3>
@@ -1166,7 +1202,7 @@ function WelcomeScreen({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {quickStartPrompts.map((item) => (
             <button
               key={item.title}

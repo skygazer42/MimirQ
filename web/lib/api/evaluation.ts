@@ -1,5 +1,7 @@
 import type {
   RagasRegressionRunDiffResponse,
+  RegressionAblationBatchRequest,
+  RegressionAblationBatchResponse,
   RegressionCase,
   RegressionCaseBundleV1,
   RegressionCaseCreate,
@@ -188,6 +190,11 @@ export const evaluationApi = {
     return data
   },
 
+  async createRegressionAblationBatch(params: RegressionAblationBatchRequest): Promise<RegressionAblationBatchResponse> {
+    const { data } = await apiClient.post('/evaluations/ragas/regression/ablation/batch', params)
+    return data
+  },
+
   async listRegressionRuns(params?: {
     skip?: number
     limit?: number
@@ -215,7 +222,10 @@ export const evaluationApi = {
     return data
   },
 
-  async diffRegressionRuns(runId: string, params: { base_run_id: string }): Promise<RagasRegressionRunDiffResponse> {
+  async diffRegressionRuns(
+    runId: string,
+    params: { base_run_id: string; include_significance?: boolean; include_per_case?: boolean; max_case_diffs?: number }
+  ): Promise<RagasRegressionRunDiffResponse> {
     const { data } = await apiClient.get(`/evaluations/ragas/regression/runs/${runId}/diff`, { params })
     return data
   },

@@ -75,10 +75,10 @@ function formatRatio(value) {
 async function main() {
   const source = await fs.readFile(GLOBALS_PATH, 'utf8')
   const lightBlock = extractBlock(source, ':root')
-  const darkBlock = extractBlock(source, 'html.dark')
+  const darkBlock = extractBlock(source, 'html.dark {')
 
   if (!lightBlock || !darkBlock) {
-    throw new Error('Could not locate :root/html.dark token blocks in app/globals.css')
+    throw new Error('Could not locate :root/default html.dark token blocks in app/globals.css')
   }
 
   const themes = [

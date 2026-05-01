@@ -40,7 +40,16 @@ type SnapshotDiffEntityRow = {
 type SnapshotDiffPayload = {
   delta?: SnapshotPayload | null
   entity_types_delta?: SnapshotDiffEntityRow[] | null
+  node_diff?: SnapshotExactDiffSummary | null
+  edge_diff?: SnapshotExactDiffSummary | null
   [key: string]: unknown
+}
+
+type SnapshotExactDiffSummary = {
+  added_count?: number | null
+  removed_count?: number | null
+  changed_count?: number | null
+  sample_limit?: number | null
 }
 
 type SnapshotView = 'diff' | 'a' | 'b'
@@ -398,6 +407,74 @@ function SnapshotChartTooltip({ active, payload }: Readonly<SnapshotChartTooltip
   )
 }
 
+function exactDiffCount(summary: SnapshotExactDiffSummary | null | undefined, key: keyof SnapshotExactDiffSummary): number {
+  const value = Number(summary?.[key] ?? 0)
+  return Number.isFinite(value) ? value : 0
+}
+
+function exactDiffSample(diff: SnapshotDiffPayload | null, key: string): Array<Record<string, unknown>> {
+  const value = diff?.[key]
+  return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object')) : []
+}
+
+function SnapshotExactDriftPanel({ diff }: Readonly<{ diff: SnapshotDiffPayload | null }>) {
+  const nodeSummary = diff?.node_diff
+  const edgeSummary = diff?.edge_diff
+  const hasExactDiff = Boolean(nodeSummary || edgeSummary)
+  const sampleRows = [
+    { label: '新增节点', key: 'nodes_added', tone: 'text-emerald-700' },
+    { label: '移除节点', key: 'nodes_removed', tone: 'text-rose-700' },
+    { label: '变更节点', key: 'nodes_changed', tone: 'text-amber-700' },
+    { label: '新增边', key: 'edges_added', tone: 'text-emerald-700' },
+    { label: '移除边', key: 'edges_removed', tone: 'text-rose-700' },
+    { label: '变更边', key: 'edges_changed', tone: 'text-amber-700' },
+  ]
+
+  return (
+    <div className="border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.12))] px-4 py-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">精确节点/边 Diff</div>
+          <div className="mt-1 text-[11px] leading-5 text-muted-foreground">
+            {hasExactDiff ? '后端已返回 bounded nodes / edges 明细，可直接定位新增、移除和属性变化。' : '当前 diff 只有聚合计数；重新执行对比会请求 include_details=true。'}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <SnapshotInlineStat label="Node +" value={exactDiffCount(nodeSummary, 'added_count')} tone="positive" />
+          <SnapshotInlineStat label="Node -" value={exactDiffCount(nodeSummary, 'removed_count')} tone="negative" />
+          <SnapshotInlineStat label="Node Δ" value={exactDiffCount(nodeSummary, 'changed_count')} tone="neutral" />
+          <SnapshotInlineStat label="Edge +" value={exactDiffCount(edgeSummary, 'added_count')} tone="positive" />
+          <SnapshotInlineStat label="Edge -" value={exactDiffCount(edgeSummary, 'removed_count')} tone="negative" />
+          <SnapshotInlineStat label="Edge Δ" value={exactDiffCount(edgeSummary, 'changed_count')} tone="neutral" />
+        </div>
+      </div>
+
+      {hasExactDiff ? (
+        <div className="mt-3 grid gap-2 lg:grid-cols-3">
+          {sampleRows.map((row) => {
+            const items = exactDiffSample(diff, row.key)
+            const preview = items
+              .slice(0, 3)
+              .map((item) => String(item.name || item.id || 'unknown'))
+              .join(' / ')
+            return (
+              <div key={row.key} className="rounded-lg border border-border/70 bg-card px-3 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-medium text-muted-foreground">{row.label}</span>
+                  <span className={cn('font-mono text-[11px] font-semibold', row.tone)}>{items.length}</span>
+                </div>
+                <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground" title={preview || '暂无样本'}>
+                  {preview || '暂无样本'}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function JsonLine({
   lineNumber,
   text,
@@ -532,6 +609,7 @@ function SnapshotDiffView({
   subtitleB,
   leftCode,
   rightCode,
+  diff,
   typeDrift,
   onCopy,
   onDownload,
@@ -542,6 +620,7 @@ function SnapshotDiffView({
   subtitleB?: string
   leftCode: string
   rightCode: string
+  diff: SnapshotDiffPayload | null
   typeDrift: SnapshotDiffEntityRow[]
   onCopy: () => void
   onDownload: () => void
@@ -582,6 +661,8 @@ function SnapshotDiffView({
           </Button>
         </div>
       </div>
+
+      <SnapshotExactDriftPanel diff={diff} />
 
       <div className="min-h-0 flex-1 overflow-auto bg-card">
         <div className="min-w-[980px]">
@@ -767,6 +848,7 @@ export function KGSnapshotsPage() {
       const snapshot = await kgApi.exportSnapshot({
         pipeline_hash: pipelineHash,
         document_ids: documentIds.length ? documentIds : undefined,
+        include_details: true,
       })
       if (which === 'a') {
         setSnapA(snapshot)
@@ -803,10 +885,12 @@ export function KGSnapshotsPage() {
         kgApi.exportSnapshot({
           pipeline_hash: a,
           document_ids: documentIds.length ? documentIds : undefined,
+          include_details: true,
         }),
         kgApi.exportSnapshot({
           pipeline_hash: b,
           document_ids: documentIds.length ? documentIds : undefined,
+          include_details: true,
         }),
       ])
       const result = await kgApi.diffSnapshots({ snapshot_a: snapshotA, snapshot_b: snapshotB })
@@ -818,6 +902,38 @@ export function KGSnapshotsPage() {
       toast.success('已生成 diff')
     } catch (err) {
       toast.error(formatApiError(err, 'KG snapshot compare 失败'))
+    } finally {
+      setIsRunning(false)
+    }
+  }
+
+  async function runBackendCompare(): Promise<void> {
+    const a = pipelineHashA.trim()
+    const b = pipelineHashB.trim()
+    if (!a || !b) {
+      toast.error('请输入 pipeline_hash A / B')
+      return
+    }
+    if (a === b) {
+      toast.error('A / B pipeline_hash 不能相同')
+      return
+    }
+
+    setIsRunning(true)
+    setLatencyMs(null)
+    try {
+      const start = Date.now()
+      const result = await kgApi.compareSnapshots({
+        pipeline_hash_a: a,
+        pipeline_hash_b: b,
+        document_ids: documentIds.length ? documentIds : undefined,
+      })
+      setLatencyMs(Math.max(0, Date.now() - start))
+      setDiff(result)
+      setActiveView('diff')
+      toast.success('后端对比完成')
+    } catch (err) {
+      toast.error(formatApiError(err, 'KG snapshot 后端对比失败'))
     } finally {
       setIsRunning(false)
     }
@@ -1055,8 +1171,18 @@ export function KGSnapshotsPage() {
                   {isRunning ? '对比中…' : '开始对比'}
                 </Button>
 
+                <Button
+                  variant="outline"
+                  className="mt-2 h-10 w-full rounded-xl border-border/70 bg-card text-xs font-semibold"
+                  onClick={() => detachPromise(runBackendCompare())}
+                  disabled={isRunning}
+                >
+                  <GitCompare className="mr-2 h-4 w-4" aria-hidden="true" />
+                  后端对比
+                </Button>
+
                 <p className="mt-3 text-[11px] leading-5 text-muted-foreground">
-                  快照只包含计数与类型直方图。更细粒度的 drift 仍需结合 KG diagnostics 或 traces 排查。
+                  默认请求 bounded 明细：节点、边、属性 hash 都会参与 diff；完整溯源仍可结合 KG diagnostics 或 traces 排查。
                 </p>
               </div>
             </div>
@@ -1132,6 +1258,7 @@ export function KGSnapshotsPage() {
                     subtitleB={documentIds.length ? `${documentIds.length} 个 document_ids` : '默认可访问范围'}
                     leftCode={snapAJson}
                     rightCode={snapBJson}
+                    diff={diff}
                     typeDrift={auditDriftRows}
                     onCopy={() => detachPromise(copyToClipboard(diffJson, 'diff JSON'))}
                     onDownload={() => {

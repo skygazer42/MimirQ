@@ -46,6 +46,7 @@ import { cn, detachPromise } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
 import { EmptyState } from '@/components/ui/empty-state'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { PromptRagOperationsPanel } from '@/components/prompts/prompt-rag-operations-panel'
 
 export default function PromptsPage() {
   const [templates, setTemplates] = useState<PromptTemplate[]>([])
@@ -360,6 +361,8 @@ const inactiveStatusBadgeClass = 'rounded-md border-slate-200 bg-slate-50 text-s
         <KgPredicateOntologySettings />
       </div>
     </section>
+
+    <PromptRagOperationsPanel />
 
     {selectedIds.size > 0 && (
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-sky-200/80 bg-sky-50/70 px-3 py-2">

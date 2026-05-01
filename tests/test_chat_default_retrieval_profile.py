@@ -97,3 +97,13 @@ def test_chat_rag_config_hierarchy_profile_projects_hierarchy_fields() -> None:
     assert cfg.hierarchy_parent_depth == 0
     assert cfg.hierarchy_sibling_window == 0
     assert cfg.hierarchy_overfetch_factor == 4
+
+
+def test_chat_rag_config_accepts_low_latency_expansion_overrides() -> None:
+    from app.api.schemas.chat import ChatRAGConfig
+
+    cfg = ChatRAGConfig(enable_multi_query=False, enable_hyde=False)
+
+    assert cfg.enable_multi_query is False
+    assert cfg.enable_hyde is False
+    assert cfg.model_dump()["enable_hyde"] is False

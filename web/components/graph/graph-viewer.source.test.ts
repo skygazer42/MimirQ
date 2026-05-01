@@ -11,4 +11,15 @@ describe('graph viewer source', () => {
     expect(src).toContain('图谱渲染失败')
     expect(src).toContain('componentDidCatch')
   })
+
+  it('connects large-graph viewport LOD to force-graph visibility hooks', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'graph-viewer.tsx'), 'utf8')
+
+    expect(src).toContain("from '@/lib/graph-viewport-lod'")
+    expect(src).toContain('buildGraphViewportLod')
+    expect(src).toContain('nodeVisibility={isNodeVisibleForViewport}')
+    expect(src).toContain('linkVisibility={isLinkVisibleForViewport}')
+    expect(src).toContain('onZoomEnd={updateViewportLod}')
+    expect(src).toContain('onEngineStop={updateViewportLod}')
+  })
 })

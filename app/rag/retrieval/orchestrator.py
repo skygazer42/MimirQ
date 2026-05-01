@@ -2161,7 +2161,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     hyde_text = ""
     hyde_max_chars = max(0, int(settings.HYDE_MAX_CHARS or 0))
     retrieval_mode_norm = str(request_retrieval_mode or "hybrid").lower()
-    if bool(settings.ENABLE_HYDE) and retrieval_mode_norm not in ("keyword",) and hyde_max_chars > 0 and len(query_for_retrieval) <= hyde_max_chars:
+    hyde_enabled = bool(settings.ENABLE_HYDE) if state.get("enable_hyde") is None else bool(state.get("enable_hyde"))
+    if hyde_enabled and retrieval_mode_norm not in ("keyword",) and hyde_max_chars > 0 and len(query_for_retrieval) <= hyde_max_chars:
         hyde_llm = engine.models.get("fast") or engine.models.get("default")  # type: ignore[attr-defined]
         hyde_model_used = getattr(hyde_llm, "model_name", None) or getattr(hyde_llm, "model", None)
         try:
@@ -4349,7 +4350,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     metrics["hierarchy_context_expansion_error"] = hierarchy_expand_error
     metrics["hierarchy_context_expansion_meta"] = (dict(hierarchy_expand_meta) if isinstance(hierarchy_expand_meta, dict) else None)
 
-    metrics["hyde_enabled"] = bool(settings.ENABLE_HYDE)
+    metrics["hyde_enabled"] = bool(hyde_enabled)
     metrics["hyde_used"] = bool(hyde_used)
     metrics["hyde_elapsed_sec"] = round(hyde_elapsed, 3)
     metrics["hyde_model_used"] = hyde_model_used
@@ -4927,7 +4928,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                 "parse_error": step_back_parse_meta.get("error"),
             },
             "hyde": {
-                "enabled": bool(settings.ENABLE_HYDE),
+                "enabled": bool(hyde_enabled),
                 "used": bool(hyde_used),
                 "elapsed_sec": round(float(hyde_elapsed or 0.0), 3),
                 "model_used": hyde_model_used,

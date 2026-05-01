@@ -148,7 +148,7 @@ export function useParsingLibraryActions({
       const parsedAtTs = Date.parse(libEntry.parsedAt || '')
       const createdAt = Number.isFinite(parsedAtTs) ? parsedAtTs : Date.now()
       const queueId = generateId()
-      const autoParse = Boolean(options.autoParse)
+      const autoParse = libEntry.source === 'knowledge_base' ? false : Boolean(options.autoParse)
       const select = options.select ?? true
       const restoredDurationSec =
         !autoParse && Number.isFinite(Number(libEntry.durationSec)) ? Number(libEntry.durationSec) : undefined
@@ -183,28 +183,56 @@ export function useParsingLibraryActions({
           let cleaned = (cached?.markdownContent || libEntry.markdownContent || '').trim()
           let raw = (cached?.originalMarkdownContent || cached?.markdownContent || libEntry.markdownContent || '').trim()
 
-          if (
+          const needsRemoteContent =
+            !raw ||
             shouldRefreshParsingContentFromRemote({
               fileType: libEntry.fileType || sourceFile.name.split('.').pop()?.toLowerCase() || '',
               originalMarkdownContent: raw || cleaned,
             })
-          ) {
+
+          if (needsRemoteContent) {
             try {
-              const remote = await parsingApi.getContent(id)
-              cleaned = (remote?.markdown_content || cleaned || raw).trim()
-              raw = (remote?.original_markdown_content || remote?.markdown_content || raw || cleaned).trim()
-              restoredElements = remote?.elements || libEntry.elements || []
-              updateParsedFile(id, {
-                markdownContent: cleaned || raw,
-                originalMarkdownContent: raw || cleaned,
-                parser: getParserLabel(remote?.parser_backend || backend),
-                parserBackend: String(remote?.parser_backend || backend),
-                durationSec: Number.isFinite(Number(remote?.parse_duration_sec))
-                  ? Number(remote?.parse_duration_sec)
-                  : libEntry.durationSec,
-                elements: remote?.elements || libEntry.elements || [],
-                status: 'parsed',
-              })
+              if (libEntry.source === 'knowledge_base') {
+                const remote = await documentApi.getParsedContent(id, { max_chars: 2_000_000 })
+                if (remote?.available) {
+                  cleaned = (remote.markdown_content || cleaned || raw).trim()
+                  raw = (remote.original_markdown_content || remote.markdown_content || raw || cleaned).trim()
+                  const persistedMeta =
+                    remote.persisted_meta && typeof remote.persisted_meta === 'object'
+                      ? (remote.persisted_meta as Record<string, unknown>)
+                      : {}
+                  const remoteBackend =
+                    normalizeBackendCandidate(persistedMeta.parser_backend) ||
+                    normalizeBackendCandidate(persistedMeta.parser_backend_requested) ||
+                    backend
+                  updateParsedFile(id, {
+                    markdownContent: cleaned || raw,
+                    originalMarkdownContent: raw || cleaned,
+                    parser: getParserLabel(remoteBackend),
+                    parserBackend: remoteBackend,
+                    durationSec: Number.isFinite(Number(persistedMeta.parse_duration_sec))
+                      ? Number(persistedMeta.parse_duration_sec)
+                      : libEntry.durationSec,
+                    status: 'parsed',
+                  })
+                }
+              } else {
+                const remote = await parsingApi.getContent(id)
+                cleaned = (remote?.markdown_content || cleaned || raw).trim()
+                raw = (remote?.original_markdown_content || remote?.markdown_content || raw || cleaned).trim()
+                restoredElements = remote?.elements || libEntry.elements || []
+                updateParsedFile(id, {
+                  markdownContent: cleaned || raw,
+                  originalMarkdownContent: raw || cleaned,
+                  parser: getParserLabel(remote?.parser_backend || backend),
+                  parserBackend: String(remote?.parser_backend || backend),
+                  durationSec: Number.isFinite(Number(remote?.parse_duration_sec))
+                    ? Number(remote?.parse_duration_sec)
+                    : libEntry.durationSec,
+                  elements: remote?.elements || libEntry.elements || [],
+                  status: 'parsed',
+                })
+              }
             } catch {
               // fall back to local cache if remote refresh fails
             }
@@ -247,7 +275,12 @@ export function useParsingLibraryActions({
         } catch {
           // ignore cache restore failures and fall back to pending state
         }
-        status = markdownContent ? 'parsed' : 'pending'
+        if (libEntry.source === 'knowledge_base' && !markdownContent) {
+          status = 'error'
+          errorMessage = '该知识库文档没有持久化解析内容，仅能在知识库详情中查看源文件'
+        } else {
+          status = markdownContent ? 'parsed' : 'pending'
+        }
       } else if (libStatus === 'error') {
         status = 'error'
         errorMessage = (libEntry.error || '').trim() || '解析失败'
@@ -272,6 +305,7 @@ export function useParsingLibraryActions({
         parserBackend: backend,
         parserLabel: label,
         libraryId: id,
+        librarySource: libEntry.source,
         createdAt,
         runs,
         activeRunId,
@@ -567,6 +601,7 @@ export function useParsingLibraryActions({
             parser: getParserLabel(requestedBackend),
             parserBackend: requestedBackend,
             folderId: queuedFile.folderId,
+            source: 'parsing_workspace',
             status: mapBackendStatusToLibraryStatus(doc.status),
             error: doc.error_message || undefined,
           })

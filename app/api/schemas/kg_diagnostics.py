@@ -64,6 +64,8 @@ class KGSearchRunMetrics(BaseModel):
     hit_at_k: bool = False
     mrr: float = 0.0
     recall: float = 0.0
+    ndcg: float = 0.0
+    map: float = 0.0
     matched_evidence_chunks: int = 0
     total_evidence_chunks: int = 0
     k: int = 10
@@ -113,10 +115,14 @@ class KGSearchDiagnosticsSummary(BaseModel):
     baseline_hit_rate: float = 0.0
     baseline_mrr: float = 0.0
     baseline_recall: float = 0.0
+    baseline_ndcg: float = 0.0
+    baseline_map: float = 0.0
 
     hardcase_hit_rate: float | None = None
     hardcase_mrr: float | None = None
     hardcase_recall: float | None = None
+    hardcase_ndcg: float | None = None
+    hardcase_map: float | None = None
 
     failure_breakdown: dict[str, int] = Field(default_factory=dict)
     preflight: dict[str, Any] = Field(default_factory=dict)

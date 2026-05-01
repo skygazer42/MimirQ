@@ -8,6 +8,7 @@ RAGAS evaluation service.
 
 import math
 from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -35,6 +36,135 @@ from app.rag.embedding import create_langchain_embeddings_from_config
 from app.rag.evaluation.regression_sample_builder import build_regression_item_meta, build_regression_sample
 from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids, get_allowed_document_id_sets
+
+RAGAS_REGRESSION_METRICS = frozenset(
+    {
+        "faithfulness",
+        "response_relevancy",
+        "answer_relevancy",
+        "answer_similarity",
+        "answer_correctness",
+        "context_recall",
+        "context_precision",
+        "id_based_context_recall",
+        "id_based_context_precision",
+        "llm_context_precision_without_reference",
+    }
+)
+
+DETERMINISTIC_REGRESSION_METRICS = frozenset(
+    {
+        "faithfulness_det",
+        "atomic_faithfulness",
+        "hallucination_rate",
+        "citation_accuracy",
+        "citation_coverage",
+        "quote_verifiability",
+        "chunk_attribution",
+        "chunk_utilization",
+        "noise_sensitivity",
+        "self_knowledge_ratio",
+        "refusal_correctness",
+        "retrieval_recall",
+        "retrieval_mrr",
+        "retrieval_ndcg_at_10",
+        "retrieval_ndcg_at_20",
+        "retrieval_hit_at_1",
+        "retrieval_hit_at_3",
+        "retrieval_hit_at_5",
+        "retrieval_hit_at_10",
+        "retrieval_hit_at_20",
+        "multihop_path_completeness",
+        "multihop_order_consistency",
+        "multihop_chain_hit_rate",
+    }
+)
+
+_DETERMINISTIC_SCORE_META_KEYS = {
+    "faithfulness_det": "faithfulness_det",
+    "atomic_faithfulness": "atomic_faithfulness",
+    "hallucination_rate": "hallucination_rate",
+    "citation_accuracy": "citation_accuracy",
+    "citation_coverage": "citation_coverage",
+    "quote_verifiability": "quote_verifiability",
+    "chunk_attribution": "chunk_attribution",
+    "chunk_utilization": "chunk_utilization",
+    "noise_sensitivity": "noise_sensitivity",
+    "self_knowledge_ratio": "self_knowledge_ratio",
+    "retrieval_recall": "retrieval_recall",
+    "retrieval_mrr": "retrieval_mrr",
+    "retrieval_ndcg_at_10": "retrieval_ndcg_at_10",
+    "retrieval_ndcg_at_20": "retrieval_ndcg_at_20",
+    "retrieval_hit_at_1": "retrieval_hit_at_1",
+    "retrieval_hit_at_3": "retrieval_hit_at_3",
+    "retrieval_hit_at_5": "retrieval_hit_at_5",
+    "retrieval_hit_at_10": "retrieval_hit_at_10",
+    "retrieval_hit_at_20": "retrieval_hit_at_20",
+    "multihop_path_completeness": "multihop_path_completeness",
+    "multihop_order_consistency": "multihop_order_consistency",
+}
+
+
+@dataclass(frozen=True)
+class RegressionMetricSplit:
+    ragas: list[str]
+    deterministic: list[str]
+
+
+def _normalized_metric_names(metric_names: list[str] | None) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in metric_names or []:
+        key = str(raw or "").strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(key)
+    return out
+
+
+def split_regression_metric_names(metric_names: list[str] | None) -> RegressionMetricSplit:
+    ragas: list[str] = []
+    deterministic: list[str] = []
+    for key in _normalized_metric_names(metric_names):
+        if key in DETERMINISTIC_REGRESSION_METRICS:
+            deterministic.append(key)
+        else:
+            ragas.append(key)
+    return RegressionMetricSplit(ragas=ragas, deterministic=deterministic)
+
+
+def build_selected_deterministic_scores(metric_names: list[str] | None, meta: dict[str, Any] | None) -> dict[str, Any]:
+    source = meta if isinstance(meta, dict) else {}
+    scores: dict[str, Any] = {}
+    for key in _normalized_metric_names(metric_names):
+        if key == "refusal_correctness":
+            value = source.get("refusal_correct")
+            if isinstance(value, bool):
+                scores[key] = 1.0 if value else 0.0
+            continue
+        if key == "multihop_chain_hit_rate":
+            value = source.get("multihop_chain_hit")
+            if isinstance(value, bool):
+                scores[key] = 1.0 if value else 0.0
+            continue
+        if key == "atomic_faithfulness" and source.get("atomic_faithfulness") is None:
+            value = source.get("faithfulness_det")
+            if value is not None:
+                scores[key] = value
+            continue
+        if key == "hallucination_rate" and source.get("hallucination_rate") is None:
+            value = source.get("faithfulness_det")
+            if value is not None:
+                scores[key] = round(1.0 - float(value), 4)
+            continue
+        meta_key = _DETERMINISTIC_SCORE_META_KEYS.get(key)
+        if not meta_key:
+            continue
+        value = source.get(meta_key)
+        if value is not None:
+            scores[key] = value
+    return scores
 
 
 def _build_http_clients() -> tuple[httpx.Client, httpx.AsyncClient]:
@@ -261,12 +391,22 @@ def _build_answer_quality_metrics_summary(metas: list[dict[str, Any]]) -> dict[s
     faith_det = _mean_float("faithfulness_det")
     if faith_det is not None:
         out["faithfulness_det"] = faith_det
+        out["atomic_faithfulness"] = faith_det
+        out["hallucination_rate"] = round(1.0 - float(faith_det), 4)
         # Back-compat / convenience: expose under "faithfulness" when RAGAS is not used.
         # `_merge_summary_with_regression_gate` is intentionally "do not override existing keys",
         # so RAGAS faithfulness wins when present.
         out["faithfulness"] = faith_det
 
-    for key in ("chunk_utilization", "chunk_attribution", "noise_sensitivity", "self_knowledge_ratio"):
+    for key in (
+        "citation_accuracy",
+        "citation_coverage",
+        "quote_verifiability",
+        "chunk_utilization",
+        "chunk_attribution",
+        "noise_sensitivity",
+        "self_knowledge_ratio",
+    ):
         v = _mean_float(key)
         if v is not None:
             out[key] = v
@@ -1218,13 +1358,13 @@ def run_regression_ragas_evaluation(
             }
 
         eval_items: list[dict[str, Any]] = []
-        normalized_metric_names = [str(m or "").strip().lower() for m in (metric_names or []) if str(m or "").strip()]
+        normalized_metric_names = _normalized_metric_names(metric_names)
+        metric_split = split_regression_metric_names(normalized_metric_names)
         retrieval_only = not bool(normalized_metric_names)
         # Deterministic (no-RAGAS) answer-level gate mode:
         # - still runs the RAG graph to produce an answer/citations
         # - computes offline metrics (faithfulness_det/refusal_correctness) via item_meta aggregation
-        det_metrics = {"faithfulness_det", "refusal_correctness"}
-        deterministic_only = (not retrieval_only) and all(m in det_metrics for m in normalized_metric_names)
+        deterministic_only = (not retrieval_only) and bool(metric_split.deterministic) and not metric_split.ragas
         for case in cases:
             scope_doc_ids, scope_dataset_id = _resolve_case_scope(
                 db=db, tenant_id=tenant_id, account_id=account_id, case=case
@@ -1361,6 +1501,7 @@ def run_regression_ragas_evaluation(
                 multi_query_count=rag_params.get("multi_query_count"),
                 multi_query_temperature=rag_params.get("multi_query_temperature"),
                 multi_query_max_chars=rag_params.get("multi_query_max_chars"),
+                enable_hyde=rag_params.get("enable_hyde"),
                 enable_query_rewrite=rag_params.get("enable_query_rewrite"),
                 query_rewrite_strategy=rag_params.get("query_rewrite_strategy"),
                 query_rewrite_temperature=rag_params.get("query_rewrite_temperature"),
@@ -1541,14 +1682,7 @@ def run_regression_ragas_evaluation(
 
             for item in eval_items:
                 meta = item.get("item_meta") if isinstance(item.get("item_meta"), dict) else {}
-                scores: dict[str, Any] = {}
-                if "faithfulness_det" in normalized_metric_names:
-                    if meta.get("faithfulness_det") is not None:
-                        scores["faithfulness_det"] = meta.get("faithfulness_det")
-                if "refusal_correctness" in normalized_metric_names:
-                    rc = meta.get("refusal_correct")
-                    if isinstance(rc, bool):
-                        scores["refusal_correctness"] = 1.0 if rc else 0.0
+                scores = build_selected_deterministic_scores(metric_split.deterministic, meta)
 
                 db.add(
                     RagasRegressionItem(
@@ -1625,7 +1759,7 @@ def run_regression_ragas_evaluation(
         ragas_llm = LangchainLLMWrapper(llm)
         ragas_embeddings = LangchainEmbeddingsWrapper(embeddings)
 
-        metrics = _resolve_metrics(metric_names)
+        metrics = _resolve_metrics(metric_split.ragas)
         metric_keys = [getattr(m, "name", None) or str(m) for m in metrics]
 
         samples = [SingleTurnSample(**(item.get("sample_kwargs") or {})) for item in eval_items]
@@ -1677,6 +1811,8 @@ def run_regression_ragas_evaluation(
             scores = {}
             if idx < len(result.scores):
                 scores = result.scores[idx] or {}
+            meta = item.get("item_meta") if isinstance(item.get("item_meta"), dict) else {}
+            scores.update(build_selected_deterministic_scores(metric_split.deterministic, meta))
             db.add(
                 RagasRegressionItem(
                     run_id=run_id,
@@ -1723,7 +1859,7 @@ def run_regression_ragas_evaluation(
         )
 
         run.status = "completed"
-        run.metrics = metric_keys
+        run.metrics = [*metric_keys, *metric_split.deterministic]
         run.params = {
             **(run.params or {}),
             "requested_metrics": metric_names,

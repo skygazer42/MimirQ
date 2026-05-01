@@ -280,6 +280,64 @@ class KeywordExtractResponse(BaseModel):
     keywords: list[str] = Field(default_factory=list)
 
 
+class AutoAnnotationRequest(BaseModel):
+    text: str = Field(..., description="Text to inspect for reviewable annotation candidates.")
+    mode: Literal["document_focus", "compliance"] = Field(
+        default="document_focus",
+        description="document_focus extracts important document spans; compliance exposes PII/secret/entity detectors.",
+    )
+    providers: list[Literal["cpu", "llm", "gliner", "keyword", "entity", "regex", "pii", "secret", "sensitive"]] | None = Field(
+        default=None,
+        description="Optional explicit provider list. When omitted, legacy enable_* switches decide providers.",
+        max_length=20,
+    )
+    enable_llm: bool = Field(default=False, description="Use configured LLM first for document_focus mode.")
+    enable_llm_topics: bool = Field(default=False, description="Return LLM document-level semantic tags when available.")
+    llm_model: str | None = Field(default=None, max_length=120)
+    enable_keywords: bool = True
+    enable_entities: bool = True
+    enable_sensitive: bool = False
+    keyword_provider: str = Field(default="simple", max_length=32)
+    keyword_top_k: int = Field(default=12, ge=1, le=50)
+    max_chars: int = Field(default=20000, ge=1, le=200_000)
+    max_annotations: int = Field(default=80, ge=1, le=500)
+
+
+class AutoAnnotationItem(BaseModel):
+    text: str
+    type: Literal["entity", "keyword", "sensitive", "custom"]
+    label: str
+    start: int = Field(..., ge=0)
+    end: int = Field(..., ge=0)
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+    source: str = Field(
+        default="keyword",
+        description="Detector source, e.g. keyword, regex_entity, pii, secret.",
+        max_length=64,
+    )
+
+
+class AutoDocumentTag(BaseModel):
+    type: Literal["topic", "category", "domain", "industry", "doc_type", "sensitivity", "quality", "keyword"]
+    value: str = Field(..., min_length=1, max_length=120)
+    label: str = Field(default="", max_length=80)
+    confidence: float = Field(default=0.85, ge=0.0, le=1.0)
+    source: str = Field(default="llm", max_length=64)
+
+
+class AutoAnnotationResponse(BaseModel):
+    annotations: list[AutoAnnotationItem] = Field(default_factory=list)
+    document_tags: list[AutoDocumentTag] = Field(default_factory=list)
+    summary: str | None = None
+    text_chars: int = Field(default=0, ge=0)
+    scanned_chars: int = Field(default=0, ge=0)
+    truncated: bool = False
+    keyword_provider: str | None = None
+    strategy: Literal["llm", "rules", "hybrid"] = "rules"
+    providers_used: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
 class LLMCleanPreviewRequest(BaseModel):
     markdown: str
     prompt_template_id: UUID | None = None

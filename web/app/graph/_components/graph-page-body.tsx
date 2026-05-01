@@ -12,6 +12,7 @@ import { GraphExplainabilityPanel } from './graph-explainability-panel'
 import { GraphFloatingControls } from './graph-floating-controls'
 import { GraphLinkDetailPanel } from './graph-link-detail-panel'
 import { GraphNodeDetailPanel } from './graph-node-detail-panel'
+import { KgNetworkAnalysisPanel } from './kg-network-analysis-panel'
 
 type GraphExplainabilityStep = {
   node: string
@@ -36,6 +37,9 @@ type GraphPageBodyProps = Readonly<{
   statsNodeCount: number
   statsLinkCount: number
   statsEntityTypeCount: number
+  networkAnalysisNodes: GraphData['nodes']
+  networkAnalysisLinks: GraphData['links']
+  networkAnalysisSelectedNodeId?: string | null
   floatingControlsProps: ComponentProps<typeof GraphFloatingControls>
   nodeDetailPanelProps: ComponentProps<typeof GraphNodeDetailPanel>
   linkDetailPanelProps: ComponentProps<typeof GraphLinkDetailPanel>
@@ -59,6 +63,9 @@ export function GraphPageBody({
   statsNodeCount,
   statsLinkCount,
   statsEntityTypeCount,
+  networkAnalysisNodes,
+  networkAnalysisLinks,
+  networkAnalysisSelectedNodeId,
   floatingControlsProps,
   nodeDetailPanelProps,
   linkDetailPanelProps,
@@ -83,6 +90,12 @@ export function GraphPageBody({
         explainSteps={explainSteps}
         currentStepIndex={currentStepIndex}
         nodes={displayNodes}
+      />
+
+      <KgNetworkAnalysisPanel
+        nodes={networkAnalysisNodes}
+        links={networkAnalysisLinks}
+        selectedNodeId={networkAnalysisSelectedNodeId}
       />
 
       {showPendingDocs ? (

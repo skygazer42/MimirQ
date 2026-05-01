@@ -46,6 +46,7 @@ _RAG_STATE_BUILD_KEYS = {
     "multi_query_count",
     "multi_query_temperature",
     "multi_query_max_chars",
+    "enable_hyde",
     "enable_hierarchy_recall",
     "hierarchy_family_collapse",
     "hierarchy_family_aggregation",

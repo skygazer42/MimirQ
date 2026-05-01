@@ -69,4 +69,25 @@ describe('use-chat formatter helpers', () => {
       enable_summary_memory: false,
     })
   })
+
+  it('preserves explicit low-latency RAG expansion flags', () => {
+    expect(
+      buildChatRequest({
+        message: 'WQW',
+        history: [],
+        ragConfig: {
+          enable_multi_query: false,
+          enable_hyde: false,
+          retrieval_mode: 'hybrid',
+          use_graph: false,
+        },
+        useGraph: false,
+      }).rag_config
+    ).toMatchObject({
+      enable_multi_query: false,
+      enable_hyde: false,
+      retrieval_mode: 'hybrid',
+      use_graph: false,
+    })
+  })
 })

@@ -249,7 +249,7 @@ export function ParserServicesSection({
 
       <section>
         <h2 className={SECTION_TITLE}>
-          <LayoutGrid className="h-4 w-4 text-cyan-600 dark:text-cyan-300" />
+          <LayoutGrid className="h-4 w-4 text-info dark:text-info" />
           TextIn xParse 配置
         </h2>
 

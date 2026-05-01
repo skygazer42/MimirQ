@@ -176,6 +176,7 @@ class ChatRAGConfig(BaseModel):
     multi_query_count: int | None = Field(default=None, ge=1, le=8)
     multi_query_temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     multi_query_max_chars: int | None = Field(default=None, ge=0, le=2000)
+    enable_hyde: bool | None = None
 
     # Optional hierarchy-aware recall overlay.
     enable_hierarchy_recall: bool | None = None

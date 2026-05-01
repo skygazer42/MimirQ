@@ -39,6 +39,7 @@ export interface ParsedFile extends FileQueueItemData {
   parserBackend: string
   parserLabel: string
   libraryId?: string
+  librarySource?: 'parsing_workspace' | 'knowledge_base'
   runs?: ParseRun[]
   activeRunId?: string
   parseStartTime?: number

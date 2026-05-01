@@ -18,6 +18,7 @@ import type { AuditLogItem, AuditLogListResponse } from '@/types'
 import { cn, detachPromise } from '@/lib/utils'
 import { EmptyState } from '@/components/ui/empty-state'
 import { systemDenseControls, systemPageTokens, systemWorkbenchTokens } from '@/components/ui/system-page-tokens'
+import { AuditRetentionPanel } from '@/components/audit/audit-retention-panel'
 
 const DENSE_OUTLINE_BUTTON = systemDenseControls.outlineButton
 const DENSE_INPUT = systemDenseControls.input
@@ -309,6 +310,8 @@ export default function AuditLogsPage() {
               </div>
             </div>
           </Panel>
+
+          <AuditRetentionPanel />
 
           <Panel padding="md" className={cn('mt-3', DENSE_PANEL)}>
             {(() => {

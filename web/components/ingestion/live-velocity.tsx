@@ -43,7 +43,7 @@ export function LiveVelocity({
       aria-pressed={unit === 'bytes'}
       onClick={onToggle}
       className={cn(
-        'inline-flex items-center gap-2 rounded-lg border border-sky-500/20 bg-sky-500/5 px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-sky-600 transition-colors hover:bg-sky-500/10 motion-reduce:transition-none',
+        'inline-flex items-center gap-2 rounded-lg border border-sky-500/20 bg-sky-500/5 px-2 py-1 text-[11px] font-bold uppercase  text-sky-600 transition-colors hover:bg-sky-500/10 motion-reduce:transition-none',
         'dark:text-sky-400'
       )}
       title="点击切换 docs/min 与 MB/s"

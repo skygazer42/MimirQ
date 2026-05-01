@@ -43,6 +43,7 @@ def test_regression_run_request_accepts_extended_runtime_knobs() -> None:
         enable_query_alias_expansion=True,
         enable_multi_query=True,
         multi_query_count=3,
+        enable_hyde=False,
         enable_query_rewrite=True,
         query_rewrite_strategy="kb_followup.v2",
         query_rewrite_temperature=0.3,
@@ -59,6 +60,7 @@ def test_regression_run_request_accepts_extended_runtime_knobs() -> None:
     assert req.enable_query_alias_expansion is True
     assert req.enable_multi_query is True
     assert req.multi_query_count == 3
+    assert req.enable_hyde is False
     assert req.enable_query_rewrite is True
     assert req.query_rewrite_strategy == "kb_followup.v2"
     assert req.query_rewrite_temperature == pytest.approx(0.3)

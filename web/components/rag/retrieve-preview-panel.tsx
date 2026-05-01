@@ -18,7 +18,7 @@ import {
   X,
   Zap,
 } from 'lucide-react'
-import type { Citation, RetrievePreviewRequest, RetrievePreviewResponse } from '@/types'
+import type { Citation, EvidenceRetrieveRequest, EvidenceRetrieveResponse } from '@/types'
 import { toast } from 'sonner'
 
 import { AuthImage } from '@/components/auth-image'
@@ -75,7 +75,7 @@ function isRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function normalizeCitations(response: RetrievePreviewResponse): RetrievePreviewCitation[] {
+function normalizeCitations(response: EvidenceRetrieveResponse): RetrievePreviewCitation[] {
   return Array.isArray(response.citations)
     ? response.citations.filter(isRecord).map((citation) => citation as RetrievePreviewCitation)
     : []
@@ -192,7 +192,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
     setIsSearching(true)
     setSearchError(null)
     try {
-      const ragConfig: NonNullable<RetrievePreviewRequest['rag_config']> = {
+      const ragConfig: NonNullable<EvidenceRetrieveRequest['rag_config']> = {
         top_k: Number(topK),
         score_threshold: scoreThreshold,
         max_tokens: 2000,
@@ -205,7 +205,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
         visible_evidence_only: false,
       }
 
-      const response = await ragApi.retrievePreview({
+      const response = await ragApi.retrieveEvidence({
         query,
         dataset_id: selectedDatasetId || undefined,
         rag_config: ragConfig,

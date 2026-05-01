@@ -229,7 +229,7 @@ export function KnowledgeRetrievalPanel({
             <span className="text-[10px] font-black uppercase tracking-[0.2em] text-primary/40 leading-none">{t("header.badge")}</span>
             <div className={cn("size-1 rounded-full", selectedDatasetId ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]" : "bg-muted-foreground/20")} />
           </div>
-          <h4 className="text-sm font-bold text-foreground tracking-tight mt-1">{t("header.title")}</h4>
+          <h4 className="text-sm font-bold text-foreground  mt-1">{t("header.title")}</h4>
         </div>
       </div>
 
@@ -237,7 +237,7 @@ export function KnowledgeRetrievalPanel({
         type="button"
         variant={indexAuditLoading ? "secondary" : "outline"}
         className={cn(
-          "h-9 rounded-xl border-border/60 bg-background/50 px-4 text-xs font-black uppercase tracking-tight transition-all active:scale-[0.98]",
+          "h-9 rounded-xl border-border/60 bg-background/50 px-4 text-xs font-black uppercase  transition-all active:scale-[0.98]",
           indexAuditLoading && "border-primary/30 text-primary"
         )}
         onClick={() => detachPromise(runIndexAudit())}
@@ -263,7 +263,7 @@ export function KnowledgeRetrievalPanel({
           <div className="min-w-0">
             <h4 className="text-[13px] font-bold text-foreground leading-none">{t("header.title")}</h4>
             <div className="flex items-center gap-1.5 mt-1.5 min-w-0">
-              <span className="text-[9px] font-bold text-muted-foreground/40 uppercase tracking-tighter shrink-0">{t("header.currentDataset")}</span>
+              <span className="text-[9px] font-bold text-muted-foreground/40 uppercase  shrink-0">{t("header.currentDataset")}</span>
               <span className="text-[10px] font-bold font-mono text-muted-foreground/80 truncate px-1.5 py-0.5 rounded bg-muted/40">
                 {selectedDatasetId || t("header.noneSelected")}
               </span>
@@ -446,7 +446,7 @@ export function KnowledgeRetrievalPanel({
             initial={{ left: '-100%' }}
             animate={{ left: '100%' }}
             transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-            className="absolute top-0 h-0.5 w-1/3 bg-gradient-to-r from-transparent via-primary/50 to-transparent z-20"
+            className="absolute top-0 z-20 h-0.5 w-1/3 bg-primary/50"
           />
         )}
 
@@ -468,11 +468,11 @@ export function KnowledgeRetrievalPanel({
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {metricCards.map((item) => (
                  <div key={item.key} className="p-4 rounded-2xl border border-border/40 bg-background/40 hover:border-primary/20 transition-all group/metric shadow-inner-soft">
-                    <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/40 mb-2 group-hover/metric:text-primary/60 transition-colors">
+                    <div className="text-[10px] font-black uppercase  text-muted-foreground/40 mb-2 group-hover/metric:text-primary/60 transition-colors">
                        {item.label}
                      </div>
                      <div className={cn(
-                       "text-xl font-black font-mono tabular-nums tracking-tighter",
+                       "text-xl font-black font-mono tabular-nums ",
                        item.tone === 'emerald' && 'text-emerald-600',
                        item.tone === 'blue' && 'text-blue-600',
                        item.tone === 'violet' && 'text-violet-600',
@@ -487,7 +487,7 @@ export function KnowledgeRetrievalPanel({
               <div className="grid gap-6 md:grid-cols-2 mt-8">
                 {(indexAudit.vector_ids_missing_in_backend_sample || []).length > 0 && (
                   <div className="space-y-3">
-                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-destructive">
+                    <div className="flex items-center gap-2 text-[10px] font-black uppercase  text-destructive">
                       <div className="size-1.5 rounded-full bg-destructive animate-pulse" />
                       {t("samples.missingInBackend")}
                     </div>
@@ -499,7 +499,7 @@ export function KnowledgeRetrievalPanel({
 
                 {(indexAudit.milvus_orphan_ids_sample || []).length > 0 && (
                   <div className="space-y-3">
-                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-warning">
+                    <div className="flex items-center gap-2 text-[10px] font-black uppercase  text-warning">
                       <div className="size-1.5 rounded-full bg-warning animate-pulse" />
                       {t("samples.orphanIds")}
                     </div>

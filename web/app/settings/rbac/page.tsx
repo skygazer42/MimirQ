@@ -18,6 +18,8 @@ import { cn, detachPromise } from '@/lib/utils'
 import { rbacApi, type TenantMember } from '@/lib/api'
 import { EmptyState } from '@/components/ui/empty-state'
 import { systemDenseControls, systemPageTokens, systemWorkbenchTokens } from '@/components/ui/system-page-tokens'
+import { SamlOpsPanel } from '@/components/settings/saml-ops-panel'
+import { ScimProvisioningPanel } from '@/components/settings/scim-provisioning-panel'
 
 const ROLE_OPTIONS = [
   { key: 'owner', label: '拥有者（owner）' },
@@ -216,6 +218,9 @@ export default function SettingsRbacPage() {
               </div>
             </div>
           </Panel>
+
+          <ScimProvisioningPanel />
+          <SamlOpsPanel />
         </div>
       </PageScaffold>
     </AppFrame>

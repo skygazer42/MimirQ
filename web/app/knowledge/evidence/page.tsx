@@ -6,6 +6,7 @@ import { Search } from 'lucide-react'
 import { AppFrame } from '@/components/app-frame'
 import { PageLoading } from '@/components/ui/page-loading'
 import { PageScaffold } from '@/components/ui/page-scaffold'
+import { EvidenceOpsPanel } from '@/components/evidence/evidence-ops-panel'
 
 const EvidenceWorkbench = dynamic(() => import('@/components/ragviz/evidence-workbench').then((mod) => mod.EvidenceWorkbench), {
   ssr: false,
@@ -22,6 +23,7 @@ export default function KnowledgeEvidencePage() {
         iconColor="text-sky-600 dark:text-sky-400"
       >
         <EvidenceWorkbench />
+        <EvidenceOpsPanel />
       </PageScaffold>
     </AppFrame>
   )

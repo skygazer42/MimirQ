@@ -6,7 +6,7 @@
 import { startTransition, useActionState, useCallback, useEffect, useId, useMemo, useOptimistic, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import { useFormStatus } from 'react-dom'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Calendar, Database, Eye, FileType, Hash, Loader2, Shield } from 'lucide-react'
+import { Calendar, Database, Download, Eye, FileType, Hash, Loader2, Shield } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
@@ -59,6 +59,22 @@ type LifecycleValidationKey =
   | 'validation.authorityInteger'
   | 'validation.authorityRange'
   | 'validation.reviewDueAt'
+
+function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
+}
+
+function safeFilename(value: string | null | undefined, fallback: string): string {
+  const raw = String(value || '').trim() || fallback
+  return raw.replace(/[^\w.-]+/g, '_').slice(0, 96) || fallback
+}
 
 function asStatusBadgeStatus(status: string | undefined): StatusBadgeStatus {
   switch (status) {
@@ -226,6 +242,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   const [viewPipelineHash, setViewPipelineHash] = useState<string>(ACTIVE_PIPELINE_VALUE)
 
   const [isKgWorking, setIsKgWorking] = useState(false)
+  const [isCleanDocxDownloading, setIsCleanDocxDownloading] = useState(false)
   const [chunkQuery, setChunkQuery] = useState('')
   const [editingChunkId, setEditingChunkId] = useState<string | null>(null)
   const [editingChunkContent, setEditingChunkContent] = useState<string>('')
@@ -831,6 +848,21 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
     }
   }
 
+  const handleDownloadCleanDocx = async () => {
+    if (isCleanDocxDownloading) return
+    setIsCleanDocxDownloading(true)
+    try {
+      const blob = await documentApi.cleanDocx(displayDoc.id)
+      downloadBlob(blob, `${safeFilename(displayDoc.filename, displayDoc.id)}.clean.docx`)
+      toast.success('已下载清洗 DOCX')
+    } catch (err: any) {
+      console.error('Download clean DOCX failed:', err)
+      toast.error(formatApiError(err, '下载清洗 DOCX 失败'))
+    } finally {
+      setIsCleanDocxDownloading(false)
+    }
+  }
+
   const parseAccessMembers = useCallback((raw: string): string[] => {
     const parts = (raw || '')
       .split(/[\n,;]+/g)
@@ -1141,6 +1173,19 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                   <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
                 ) : null}
                 {t("kg.extract")}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => detachPromise(handleDownloadCleanDocx())}
+                disabled={isCleanDocxDownloading}
+                className="w-full gap-2 sm:w-auto"
+              >
+                {isCleanDocxDownloading ? (
+                  <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                ) : (
+                  <Download className="h-4 w-4" />
+                )}
+                下载清洗 DOCX
               </Button>
               <ConfirmDialog
                 title={t("kg.deleteDialog.title")}

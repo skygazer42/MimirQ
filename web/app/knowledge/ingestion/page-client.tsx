@@ -42,6 +42,7 @@ import type {
   DatasetPrecheckSummary,
   Document,
   IngestionDashboardSummaryResponse,
+  TaskQueueObservabilitySnapshotResponse,
 } from '@/types'
 import { cn, formatDate, formatFileSize } from '@/lib/utils'
 import { useDatasets } from '@/hooks/use-datasets'
@@ -67,7 +68,6 @@ import {
   computeDurationPercentiles,
   computeMeanFileSize,
   computeMegabytesPerSecond,
-  computeRemainingMinutesEstimate,
   getDocumentKind,
   getDocumentKindAccent,
   matchesReasonFilter,
@@ -79,6 +79,7 @@ const DATASET_ALL = '__all__'
 
 type IngestionMode = 'sales-audit' | 'execution-monitor'
 type SampleDisposition = 'approved' | 'manual'
+type AuditDispositionFilter = 'all' | 'pending' | 'manual' | 'approved'
 
 function safeNumber(value: unknown): number {
   const numeric = Number(value)
@@ -116,6 +117,15 @@ function downloadTextFile(filename: string, content: string, type: string) {
   anchor.download = filename
   anchor.click()
   URL.revokeObjectURL(url)
+}
+
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
 }
 
 function buildFallbackSummary(
@@ -175,6 +185,15 @@ function buildFallbackSummary(
   }
 }
 
+type ReportEvidenceRow = {
+  actionLabel: string
+  fileName: string
+  fileSizeLabel: string
+  fileType: string
+  primaryRisk: string
+  riskDescription: string
+}
+
 function buildReportHtml({
   datasetLabel,
   totalDocs,
@@ -184,6 +203,9 @@ function buildReportHtml({
   latencyP90,
   selectedReason,
   documents,
+  salesAuditSummary,
+  salesPocCandidates,
+  salesHighRiskFiles,
 }: Readonly<{
   datasetLabel: string
   totalDocs: number
@@ -193,18 +215,111 @@ function buildReportHtml({
   latencyP90: string
   selectedReason: string | null
   documents: Document[]
+  salesAuditSummary?: DatasetPrecheckSummary | null
+  salesPocCandidates?: ReportEvidenceRow[]
+  salesHighRiskFiles?: ReportEvidenceRow[]
 }>) {
   const rows = documents
     .slice(0, 12)
     .map(
       (document) => `
         <tr>
-          <td>${document.filename}</td>
-          <td>${String(document.status || '-')}</td>
-          <td>${String(document.current_stage || '-')}</td>
+          <td>${escapeHtml(document.filename)}</td>
+          <td>${escapeHtml(document.status || '-')}</td>
+          <td>${escapeHtml(document.current_stage || '-')}</td>
           <td>${formatFileSize(document.file_size || 0)}</td>
-          <td>${document.error_message || '—'}</td>
+          <td>${escapeHtml(document.error_message || '—')}</td>
         </tr>`
+    )
+    .join('')
+  const findingRows = (salesAuditSummary?.findings ?? [])
+    .slice(0, 8)
+    .map(
+      (item) => `
+        <tr>
+          <td>${escapeHtml(item.label)}</td>
+          <td><span class="status-pill">${escapeHtml(item.severity)}</span></td>
+          <td>${Number(item.count || 0).toLocaleString()}</td>
+          <td>${escapeHtml(item.key)}</td>
+        </tr>`
+    )
+    .join('')
+  const pocRows = salesPocCandidates
+    ?.slice(0, 8)
+    .map(
+      (item) => `
+        <tr>
+          <td>${escapeHtml(item.fileName)}</td>
+          <td>${escapeHtml(item.fileType)}</td>
+          <td>${escapeHtml(item.fileSizeLabel)}</td>
+          <td>${escapeHtml(item.primaryRisk)}</td>
+          <td><span class="action-pill">${escapeHtml(item.actionLabel)}</span></td>
+          <td>${escapeHtml(item.riskDescription)}</td>
+        </tr>`
+    )
+    .join('')
+  const highRiskRows = salesHighRiskFiles
+    ?.slice(0, 8)
+    .map(
+      (item) => `
+        <tr>
+          <td>${escapeHtml(item.fileName)}</td>
+          <td>${escapeHtml(item.fileType)}</td>
+          <td>${escapeHtml(item.fileSizeLabel)}</td>
+          <td>${escapeHtml(item.primaryRisk)}</td>
+          <td>${escapeHtml(item.riskDescription)}</td>
+        </tr>`
+    )
+    .join('')
+  const totalPrecheckFiles = Number(salesAuditSummary?.total_files || totalDocs || 0)
+  const scannedPdf = Number(salesAuditSummary?.pdf_scan.scanned || 0)
+  const mixedPdf = Number(salesAuditSummary?.pdf_scan.unknown || 0)
+  const blockingCount = (salesAuditSummary?.findings ?? [])
+    .filter((item) => ['parse_failed', 'pii', 'secrets'].includes(item.key))
+    .reduce((sum, item) => sum + Number(item.count || 0), 0)
+  const generatedAt = new Intl.DateTimeFormat('zh-CN', {
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(new Date())
+  const metricCards = [
+    { glyph: 'S', label: '范围', tone: 'blue', value: datasetLabel },
+    { glyph: 'DOC', label: '文件总数', tone: 'blue', value: totalPrecheckFiles.toLocaleString() },
+    { glyph: '%', label: '健康可入库', tone: 'steel', value: `${readyRate}%` },
+    { glyph: 'H', label: '待人工处理', tone: 'violet', value: manualQueue.toLocaleString() },
+    { glyph: 'MB', label: '处理效率', tone: 'cyan', value: efficiency },
+    { glyph: 'P90', label: 'P90 周期', tone: 'violet', value: latencyP90 },
+    { glyph: 'F', label: '当前聚焦线索', tone: 'blue', value: selectedReason || '全部' },
+    { glyph: 'JPG', label: '导出方式', tone: 'cyan', value: 'JPG 图片' },
+  ]
+    .map(
+      (item) => `
+        <article class="kpi-card kpi-card--${item.tone}">
+          <div class="metric-icon" aria-hidden="true">${escapeHtml(item.glyph)}</div>
+          <div class="metric-copy">
+            <div class="metric-label">${escapeHtml(item.label)}</div>
+            <div class="metric-value">${escapeHtml(item.value)}</div>
+          </div>
+        </article>`
+    )
+    .join('')
+  const basisCards = [
+    { glyph: 'I', label: '摸底总量', tone: 'cyan', value: totalPrecheckFiles.toLocaleString() },
+    { glyph: 'DB', label: '总体体量', tone: 'blue', value: formatFileSize(salesAuditSummary?.total_size_bytes || 0) },
+    { glyph: 'PDF', label: '扫描 / 混排', tone: 'violet', value: (scannedPdf + mixedPdf).toLocaleString() },
+    { glyph: '!', label: '阻断项', tone: 'orange', value: blockingCount.toLocaleString() },
+  ]
+    .map(
+      (item) => `
+        <article class="basis-card basis-card--${item.tone}">
+          <div class="metric-icon metric-icon--small" aria-hidden="true">${escapeHtml(item.glyph)}</div>
+          <div>
+            <div class="metric-label">${escapeHtml(item.label)}</div>
+            <div class="metric-value metric-value--compact">${escapeHtml(item.value)}</div>
+          </div>
+        </article>`
     )
     .join('')
 
@@ -212,47 +327,376 @@ function buildReportHtml({
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
-  <title>Audit Report</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>项目数据盘点报告</title>
   <style>
-    body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 32px; color: #0f172a; }
-    h1 { font-size: 28px; margin-bottom: 8px; }
-    .muted { color: #475569; }
-    .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 24px 0; }
-    .card { border: 1px solid #cbd5e1; border-radius: 16px; padding: 16px; background: #f8fafc; }
-    .label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.16em; color: #64748b; }
-    .value { margin-top: 8px; font-size: 22px; font-weight: 700; }
-    table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-    th, td { border-bottom: 1px solid #e2e8f0; padding: 10px 8px; text-align: left; vertical-align: top; }
-    th { font-size: 12px; text-transform: uppercase; color: #475569; }
+    :root {
+      --paper: #f5f8fc;
+      --paper-strong: #ffffff;
+      --ink: #0c1730;
+      --muted: #52627a;
+      --line: #dfe7f2;
+      --line-soft: #edf2f8;
+      --blue: #1264e8;
+      --cyan: #0ea5b7;
+      --violet: #6d47e8;
+      --orange: #f97316;
+      --shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 18% 0%, rgba(18, 100, 232, 0.08), transparent 26rem),
+        linear-gradient(180deg, #f8fbff 0%, var(--paper) 52%, #eef4fb 100%);
+      font-family: "Inter", "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+      padding: 36px;
+    }
+    .report-shell {
+      max-width: 1760px;
+      margin: 0 auto;
+    }
+    .report-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 24px;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(28px, 2.3vw, 40px);
+      line-height: 1.1;
+      letter-spacing: -0.05em;
+    }
+    h2 {
+      margin: 0;
+      font-size: 20px;
+      letter-spacing: -0.03em;
+    }
+    .report-subtitle {
+      max-width: 980px;
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.6;
+    }
+    .generated-at {
+      margin-top: 8px;
+      color: #718096;
+      font-size: 12px;
+    }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: flex-end;
+    }
+    .toolbar button {
+      min-height: 48px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.82);
+      color: var(--ink);
+      cursor: pointer;
+      font: inherit;
+      font-weight: 700;
+      padding: 0 20px;
+      box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
+    }
+    .toolbar .primary {
+      border-color: #0d5bd6;
+      background: linear-gradient(135deg, #1668ee, #0d5bd6);
+      color: #ffffff;
+    }
+    .button-icon {
+      display: inline-flex;
+      min-width: 24px;
+      margin-right: 8px;
+      font-size: 12px;
+      letter-spacing: -0.04em;
+    }
+    .kpi-grid,
+    .basis-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 16px;
+    }
+    .kpi-grid {
+      margin-bottom: 12px;
+    }
+    .kpi-card,
+    .basis-card,
+    .section-card {
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.86);
+      box-shadow: var(--shadow);
+    }
+    .kpi-card,
+    .basis-card {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      min-height: 108px;
+      border-radius: 12px;
+      padding: 22px;
+    }
+    .metric-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 64px;
+      height: 64px;
+      flex: 0 0 auto;
+      border-radius: 16px;
+      background: #eef5ff;
+      color: var(--blue);
+      font-size: 13px;
+      font-weight: 900;
+      letter-spacing: -0.05em;
+    }
+    .metric-icon--small {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      font-size: 12px;
+    }
+    .kpi-card--cyan .metric-icon,
+    .basis-card--cyan .metric-icon { background: #e9fbfd; color: var(--cyan); }
+    .kpi-card--violet .metric-icon,
+    .basis-card--violet .metric-icon { background: #f0ebff; color: var(--violet); }
+    .basis-card--orange .metric-icon { background: #fff2e8; color: var(--orange); }
+    .kpi-card--steel .metric-icon { background: #edf2f8; color: #334155; }
+    .metric-label {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.2;
+    }
+    .metric-value {
+      margin-top: 8px;
+      color: var(--ink);
+      font-size: 26px;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 1.1;
+    }
+    .metric-value--compact {
+      font-size: 22px;
+    }
+    .section-card {
+      margin-top: 12px;
+      border-radius: 12px;
+      padding: 16px 20px;
+    }
+    .section-head {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 14px;
+    }
+    .section-note {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .table-frame {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--paper-strong);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    th,
+    td {
+      border-bottom: 1px solid var(--line-soft);
+      padding: 12px 16px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      color: #475569;
+      background: #f8fbff;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    tbody tr:last-child td {
+      border-bottom: 0;
+    }
+    .status-pill,
+    .action-pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      border: 1px solid #a7c9ff;
+      border-radius: 7px;
+      background: #eaf3ff;
+      color: #075bd8;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 2px 9px;
+    }
+    .action-pill {
+      border-color: #9bdfb8;
+      background: #e9fbf0;
+      color: #067647;
+    }
+    .split-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 12px;
+    }
+    .empty {
+      border: 1px dashed var(--line);
+      border-radius: 10px;
+      color: var(--muted);
+      padding: 18px;
+      background: #f8fbff;
+    }
+    @media (max-width: 980px) {
+      body { padding: 20px; }
+      .report-header { display: block; }
+      .toolbar { justify-content: flex-start; margin-top: 16px; }
+      .kpi-grid,
+      .basis-grid,
+      .split-grid { grid-template-columns: 1fr; }
+    }
+    @media print {
+      body { background: #ffffff; padding: 0; }
+      .report-shell { max-width: none; }
+      .toolbar { display: none; }
+      .kpi-card,
+      .basis-card,
+      .section-card { box-shadow: none; break-inside: avoid; }
+    }
   </style>
 </head>
 <body>
-  <h1>项目数据盘点报告</h1>
-  <div class="muted">Sensitive Data Policy: 默认仅展示脱敏后的聚合事实与待确认线索，不做主观评分；需要人工判断的项统一保留在样本槽与风险清单里。</div>
-  <div class="grid">
-    <div class="card"><div class="label">范围</div><div class="value">${datasetLabel}</div></div>
-    <div class="card"><div class="label">文件总数</div><div class="value">${totalDocs}</div></div>
-    <div class="card"><div class="label">健康可入库</div><div class="value">${readyRate}%</div></div>
-    <div class="card"><div class="label">待人工处理</div><div class="value">${manualQueue}</div></div>
-  </div>
-  <div class="grid">
-    <div class="card"><div class="label">处理效率</div><div class="value">${efficiency}</div></div>
-    <div class="card"><div class="label">P90 周期</div><div class="value">${latencyP90}</div></div>
-    <div class="card"><div class="label">当前聚焦线索</div><div class="value">${selectedReason || '全部'}</div></div>
-    <div class="card"><div class="label">导出方式</div><div class="value">Print to PDF</div></div>
-  </div>
-  <table>
-    <thead>
-      <tr>
-        <th>文件</th>
-        <th>状态</th>
-        <th>阶段</th>
-        <th>大小</th>
-        <th>线索</th>
-      </tr>
-    </thead>
-    <tbody>${rows}</tbody>
-  </table>
+  <main class="report-shell">
+    <header class="report-header">
+      <div>
+        <h1>项目数据盘点报告</h1>
+        <p class="report-subtitle">Sensitive Data Policy: 默认仅展示脱敏后的聚合事实与待确认线索，不做主观评分；需要人工判断的项统一保留在样本槽与风险清单里。</p>
+        <div class="generated-at">生成时间：${escapeHtml(generatedAt)}</div>
+      </div>
+      <div class="toolbar" aria-label="报告操作">
+        <button type="button" onclick="window.location.reload()"><span class="button-icon">R</span>刷新数据</button>
+        <button class="primary" type="button"><span class="button-icon">JPG</span>导出 JPG</button>
+      </div>
+    </header>
+
+    <section class="kpi-grid" aria-label="项目指标">
+      ${metricCards}
+    </section>
+
+    <section class="section-card">
+      <div class="section-head">
+        <div>
+          <h2>报价依据</h2>
+          <p class="section-note">面向入库前摸底与报价沟通，仅保留脱敏后的规模、体量和阻断线索。</p>
+        </div>
+      </div>
+      <div class="basis-grid">
+        ${basisCards}
+      </div>
+    </section>
+
+    <section class="section-card">
+      <div class="section-head">
+        <div>
+          <h2>风险分布</h2>
+          <p class="section-note">按后端预检 findings 聚合，等级用于排查优先级，不代表最终主观评分。</p>
+        </div>
+      </div>
+      ${
+        findingRows
+          ? `<div class="table-frame">
+              <table>
+                <thead>
+                  <tr><th>类型</th><th>等级</th><th>数量</th><th>KEY</th></tr>
+                </thead>
+                <tbody>${findingRows}</tbody>
+              </table>
+            </div>`
+          : '<div class="empty">暂无风险分布数据</div>'
+      }
+    </section>
+
+    <div class="split-grid">
+      <section class="section-card">
+        <div class="section-head">
+          <div>
+            <h2>建议 POC 样本</h2>
+            <p class="section-note">优先挑选能代表复杂度、体量和阻断原因的样本。</p>
+          </div>
+        </div>
+        ${
+          pocRows
+            ? `<div class="table-frame">
+                <table>
+                  <thead>
+                    <tr><th>文件</th><th>类型</th><th>大小</th><th>主要风险</th><th>建议动作</th><th>原因</th></tr>
+                  </thead>
+                  <tbody>${pocRows}</tbody>
+                </table>
+              </div>`
+            : '<div class="empty">暂无 POC 样本数据</div>'
+        }
+      </section>
+
+      <section class="section-card">
+        <div class="section-head">
+          <div>
+            <h2>高风险文件</h2>
+            <p class="section-note">用于人工复核与实施排期，不在报告中暴露原始敏感内容。</p>
+          </div>
+        </div>
+        ${
+          highRiskRows
+            ? `<div class="table-frame">
+                <table>
+                  <thead>
+                    <tr><th>文件</th><th>类型</th><th>大小</th><th>风险</th><th>原因</th></tr>
+                  </thead>
+                  <tbody>${highRiskRows}</tbody>
+                </table>
+              </div>`
+            : '<div class="empty">暂无高风险文件数据</div>'
+        }
+      </section>
+    </div>
+
+    <section class="section-card">
+      <div class="section-head">
+        <div>
+          <h2>当前页面样本</h2>
+          <p class="section-note">导出时页面内可见文件的脱敏状态快照。</p>
+        </div>
+      </div>
+      <div class="table-frame">
+        <table>
+          <thead>
+            <tr>
+              <th>文件</th>
+              <th>状态</th>
+              <th>阶段</th>
+              <th>大小</th>
+              <th>线索</th>
+            </tr>
+          </thead>
+          <tbody>${rows || '<tr><td colspan="5">暂无当前页面样本</td></tr>'}</tbody>
+        </table>
+      </div>
+    </section>
+  </main>
 </body>
 </html>`
 }
@@ -264,6 +708,354 @@ function downloadBlob(blob: Blob, filename: string) {
   anchor.download = filename
   anchor.click()
   URL.revokeObjectURL(url)
+}
+
+function buildSafeReportFilename(label: string, extension: string): string {
+  const safe = String(label || 'ingestion-audit-report')
+    .replace(/[\\/:*?"<>|]+/g, '_')
+    .replace(/\s+/g, '_')
+    .slice(0, 90)
+  return `${safe || 'ingestion-audit-report'}${extension}`
+}
+
+function waitForNextPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    globalThis.window.requestAnimationFrame(() => {
+      globalThis.window.requestAnimationFrame(() => resolve())
+    })
+  })
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality?: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (blob) resolve(blob)
+        else reject(new Error('Report image encode failed'))
+      },
+      type,
+      quality
+    )
+  })
+}
+
+type CanvasReportCard = {
+  label: string
+  value: string
+}
+
+type CanvasReportTable = {
+  headers: string[]
+  rows: string[][]
+}
+
+type CanvasReportSection = {
+  note: string
+  table: CanvasReportTable | null
+  title: string
+}
+
+async function renderReportHtmlToJpeg(html: string, filename: string) {
+  const iframe = document.createElement('iframe')
+  iframe.setAttribute('aria-hidden', 'true')
+  Object.assign(iframe.style, {
+    border: '0',
+    height: '1px',
+    left: '-10000px',
+    opacity: '0',
+    pointerEvents: 'none',
+    position: 'fixed',
+    top: '0',
+    width: '1760px',
+  })
+  document.body.appendChild(iframe)
+
+  try {
+    const frameDocument = iframe.contentDocument
+    if (!frameDocument) throw new Error('Report frame unavailable')
+
+    frameDocument.open()
+    frameDocument.write(html)
+    frameDocument.close()
+    await new Promise((resolve) => globalThis.window.setTimeout(resolve, 160))
+    await frameDocument.fonts?.ready.catch(() => undefined)
+    await waitForNextPaint()
+
+    const getText = (selector: string, root: ParentNode = frameDocument): string =>
+      root.querySelector(selector)?.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+    const readCards = (selector: string): CanvasReportCard[] =>
+      Array.from(frameDocument.querySelectorAll<HTMLElement>(selector))
+        .map((card) => ({
+          label: getText('.metric-label, .kpi-label', card),
+          value: getText('.metric-value, .kpi-value', card),
+        }))
+        .filter((card) => card.label || card.value)
+    const readTable = (section: HTMLElement): CanvasReportTable | null => {
+      const table = section.querySelector('table')
+      if (!table) return null
+      const headers = Array.from(table.querySelectorAll('thead th')).map((cell) => cell.textContent?.trim() ?? '')
+      const rows = Array.from(table.querySelectorAll('tbody tr')).map((row) =>
+        Array.from(row.querySelectorAll('td')).map((cell) => cell.textContent?.replace(/\s+/g, ' ').trim() ?? '')
+      )
+      return headers.length || rows.length ? { headers, rows } : null
+    }
+    const readSection = (titlePart: string): CanvasReportSection | null => {
+      const section = Array.from(frameDocument.querySelectorAll<HTMLElement>('.section-card, .section')).find((item) =>
+        getText('h2', item).includes(titlePart)
+      )
+      if (!section) return null
+      return {
+        note: getText('.section-note, .notes', section),
+        table: readTable(section),
+        title: getText('h2', section),
+      }
+    }
+
+    const title = getText('.report-header h1') || getText('.title') || frameDocument.title || '项目数据盘点报告'
+    const subtitle = getText('.report-subtitle') || getText('.sub')
+    const generatedAt = getText('.generated-at')
+    const metricCards = readCards('.kpi-card')
+    const fallbackCards = readCards('.grid .card')
+    const kpiCards = metricCards.length ? metricCards : fallbackCards.slice(0, 8)
+    const basisCards = readCards('.basis-card').length ? readCards('.basis-card') : fallbackCards.slice(8, 12)
+    const riskSection = readSection('风险分布') ?? readSection('问题清单')
+    const pocSection = readSection('建议 POC') ?? readSection('代表性样本')
+    const highRiskSection = readSection('高风险文件') ?? readSection('需复核样本')
+    const sampleSection = readSection('当前页面样本')
+
+    const width = 1760
+    const margin = 36
+    const gap = 16
+    const contentWidth = width - margin * 2
+    const pixelRatio = Math.min(2, Math.max(1, globalThis.window.devicePixelRatio || 1))
+    const canvas = document.createElement('canvas')
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('Report image canvas unavailable')
+
+    const setFont = (size: number, weight: number | string = 400) => {
+      context.font = `${weight} ${size}px "PingFang SC", "Microsoft YaHei", "Inter", sans-serif`
+    }
+    const roundRect = (x: number, y: number, rectWidth: number, rectHeight: number, radius: number) => {
+      context.beginPath()
+      context.moveTo(x + radius, y)
+      context.lineTo(x + rectWidth - radius, y)
+      context.quadraticCurveTo(x + rectWidth, y, x + rectWidth, y + radius)
+      context.lineTo(x + rectWidth, y + rectHeight - radius)
+      context.quadraticCurveTo(x + rectWidth, y + rectHeight, x + rectWidth - radius, y + rectHeight)
+      context.lineTo(x + radius, y + rectHeight)
+      context.quadraticCurveTo(x, y + rectHeight, x, y + rectHeight - radius)
+      context.lineTo(x, y + radius)
+      context.quadraticCurveTo(x, y, x + radius, y)
+      context.closePath()
+    }
+    const drawCardBase = (x: number, y: number, rectWidth: number, rectHeight: number, radius = 14) => {
+      context.save()
+      context.shadowColor = 'rgba(15, 23, 42, 0.08)'
+      context.shadowBlur = 26
+      context.shadowOffsetY = 12
+      context.fillStyle = 'rgba(255, 255, 255, 0.92)'
+      roundRect(x, y, rectWidth, rectHeight, radius)
+      context.fill()
+      context.restore()
+      context.strokeStyle = '#dfe7f2'
+      context.lineWidth = 1
+      roundRect(x, y, rectWidth, rectHeight, radius)
+      context.stroke()
+    }
+    const drawTextLines = (
+      text: string,
+      x: number,
+      y: number,
+      maxWidth: number,
+      lineHeight: number,
+      maxLines = 2
+    ): number => {
+      if (!text) return y
+      const chars = Array.from(text)
+      const lines: string[] = []
+      let current = ''
+      for (const char of chars) {
+        const next = `${current}${char}`
+        if (context.measureText(next).width > maxWidth && current) {
+          lines.push(current)
+          current = char
+          if (lines.length >= maxLines) break
+        } else {
+          current = next
+        }
+      }
+      if (current && lines.length < maxLines) lines.push(current)
+      lines.forEach((line, index) => {
+        const suffix = index === maxLines - 1 && chars.join('').length > lines.join('').length ? '...' : ''
+        context.fillText(`${line}${suffix}`, x, y + index * lineHeight)
+      })
+      return y + Math.max(1, lines.length) * lineHeight
+    }
+    const drawMetricCard = (card: CanvasReportCard, index: number, x: number, y: number, rectWidth: number, rectHeight: number) => {
+      drawCardBase(x, y, rectWidth, rectHeight, 12)
+      const tones = ['#1264e8', '#1264e8', '#334155', '#6d47e8', '#0ea5b7', '#6d47e8', '#1264e8', '#0ea5b7']
+      const tone = tones[index % tones.length] ?? '#1264e8'
+      context.fillStyle = `${tone}18`
+      roundRect(x + 22, y + 24, 60, 60, 16)
+      context.fill()
+      setFont(12, 900)
+      context.fillStyle = tone
+      context.textAlign = 'center'
+      context.textBaseline = 'middle'
+      context.fillText(card.label.slice(0, 4).toUpperCase(), x + 52, y + 54)
+      context.textAlign = 'left'
+      context.textBaseline = 'alphabetic'
+      setFont(14, 500)
+      context.fillStyle = '#52627a'
+      context.fillText(card.label, x + 102, y + 44)
+      setFont(26, 900)
+      context.fillStyle = '#0c1730'
+      drawTextLines(card.value, x + 102, y + 78, rectWidth - 126, 28, 1)
+    }
+    const drawSection = (
+      section: CanvasReportSection,
+      x: number,
+      y: number,
+      rectWidth: number,
+      options: { maxRows?: number } = {}
+    ): number => {
+      const table = section.table
+      const rows = table?.rows.slice(0, options.maxRows ?? 8) ?? []
+      const headers = table?.headers.length ? table.headers : rows[0]?.map((_, index) => `列 ${index + 1}`) ?? []
+      const rowHeight = 48
+      const tableHeight = headers.length ? 44 + Math.max(1, rows.length) * rowHeight : 58
+      const noteHeight = section.note ? 22 : 0
+      const rectHeight = 70 + noteHeight + tableHeight
+      drawCardBase(x, y, rectWidth, rectHeight, 12)
+
+      setFont(20, 800)
+      context.fillStyle = '#0c1730'
+      context.fillText(section.title, x + 20, y + 32)
+      if (section.note) {
+        setFont(13, 400)
+        context.fillStyle = '#52627a'
+        drawTextLines(section.note, x + 20, y + 56, rectWidth - 40, 18, 1)
+      }
+
+      const tableY = y + 50 + noteHeight
+      context.fillStyle = '#ffffff'
+      roundRect(x + 18, tableY, rectWidth - 36, tableHeight, 10)
+      context.fill()
+      context.strokeStyle = '#dfe7f2'
+      context.stroke()
+
+      if (!headers.length) {
+        setFont(14, 500)
+        context.fillStyle = '#52627a'
+        context.fillText('暂无数据', x + 34, tableY + 34)
+        return y + rectHeight
+      }
+
+      const tableWidth = rectWidth - 36
+      const columnWidth = tableWidth / Math.max(1, headers.length)
+      context.fillStyle = '#f8fbff'
+      roundRect(x + 18, tableY, tableWidth, 44, 10)
+      context.fill()
+      setFont(12, 800)
+      context.fillStyle = '#475569'
+      headers.forEach((header, index) => {
+        drawTextLines(header, x + 34 + index * columnWidth, tableY + 28, columnWidth - 24, 14, 1)
+      })
+      rows.forEach((row, rowIndex) => {
+        const currentY = tableY + 44 + rowIndex * rowHeight
+        context.strokeStyle = '#edf2f8'
+        context.beginPath()
+        context.moveTo(x + 18, currentY)
+        context.lineTo(x + 18 + tableWidth, currentY)
+        context.stroke()
+        setFont(13, rowIndex === 0 ? 650 : 500)
+        context.fillStyle = '#0c1730'
+        row.slice(0, headers.length).forEach((cell, index) => {
+          drawTextLines(cell || '-', x + 34 + index * columnWidth, currentY + 22, columnWidth - 24, 16, 2)
+        })
+      })
+      if (!rows.length) {
+        setFont(14, 500)
+        context.fillStyle = '#52627a'
+        context.fillText('暂无数据', x + 34, tableY + 82)
+      }
+      return y + rectHeight
+    }
+
+    const cardWidth = (contentWidth - gap * 3) / 4
+    const kpiRows = Math.max(1, Math.ceil(kpiCards.length / 4))
+    let height = margin + 92 + kpiRows * 124 + 20 + 190
+    if (riskSection) height += 260
+    if (pocSection || highRiskSection) height += 360
+    if (sampleSection) height += 260
+    height += margin
+
+    canvas.width = Math.ceil(width * pixelRatio)
+    canvas.height = Math.ceil(height * pixelRatio)
+    context.scale(pixelRatio, pixelRatio)
+    context.fillStyle = '#f5f8fc'
+    context.fillRect(0, 0, width, height)
+    const gradient = context.createLinearGradient(0, 0, 0, height)
+    gradient.addColorStop(0, '#f8fbff')
+    gradient.addColorStop(0.55, '#f5f8fc')
+    gradient.addColorStop(1, '#eef4fb')
+    context.fillStyle = gradient
+    context.fillRect(0, 0, width, height)
+
+    let y = margin
+    setFont(40, 900)
+    context.fillStyle = '#0c1730'
+    context.fillText(title, margin, y + 28)
+    setFont(15, 400)
+    context.fillStyle = '#52627a'
+    y = drawTextLines(subtitle, margin, y + 66, 1060, 22, 2)
+    if (generatedAt) {
+      setFont(12, 500)
+      context.fillStyle = '#718096'
+      context.fillText(generatedAt, margin, y + 8)
+    }
+    y += 34
+
+    kpiCards.slice(0, 8).forEach((card, index) => {
+      const col = index % 4
+      const row = Math.floor(index / 4)
+      drawMetricCard(card, index, margin + col * (cardWidth + gap), y + row * 124, cardWidth, 108)
+    })
+    y += kpiRows * 124 + 12
+
+    const basisSection: CanvasReportSection = {
+      note: '面向入库前摸底与报价沟通，仅保留脱敏后的规模、体量和阻断线索。',
+      table: null,
+      title: '报价依据',
+    }
+    drawCardBase(margin, y, contentWidth, 178, 12)
+    setFont(20, 800)
+    context.fillStyle = '#0c1730'
+    context.fillText(basisSection.title, margin + 20, y + 32)
+    setFont(13, 400)
+    context.fillStyle = '#52627a'
+    context.fillText(basisSection.note, margin + 20, y + 56)
+    basisCards.slice(0, 4).forEach((card, index) => {
+      const x = margin + 18 + index * ((contentWidth - 36 - gap * 3) / 4 + gap)
+      const w = (contentWidth - 36 - gap * 3) / 4
+      drawMetricCard(card, index + 8, x, y + 80, w, 78)
+    })
+    y += 190
+
+    if (riskSection) y = drawSection(riskSection, margin, y, contentWidth, { maxRows: 8 }) + 12
+    if (pocSection || highRiskSection) {
+      const splitWidth = (contentWidth - gap) / 2
+      const leftEnd = pocSection ? drawSection(pocSection, margin, y, splitWidth, { maxRows: 5 }) : y
+      const rightEnd = highRiskSection ? drawSection(highRiskSection, margin + splitWidth + gap, y, splitWidth, { maxRows: 5 }) : y
+      y = Math.max(leftEnd, rightEnd) + 12
+    }
+    if (sampleSection) y = drawSection(sampleSection, margin, y, contentWidth, { maxRows: 8 }) + 12
+
+    const jpeg = await canvasToBlob(canvas, 'image/jpeg', 0.94)
+    downloadBlob(jpeg, filename)
+  } finally {
+    iframe.remove()
+  }
 }
 
 function anonymizeEvidenceName(name: string): string {
@@ -543,6 +1335,7 @@ export default function KnowledgeIngestionPageClient() {
   const [desktopScopeCollapsed, setDesktopScopeCollapsed] = useState(false)
   const [headerCollapsed, setHeaderCollapsed] = useState(false)
   const [selectedReason, setSelectedReason] = useState<string | null>(null)
+  const [auditDispositionFilter, setAuditDispositionFilter] = useState<AuditDispositionFilter>('all')
   const [selectedAuditIds, setSelectedAuditIds] = useState<string[]>([])
   const [sampleDispositions, setSampleDispositions] = useState<Record<string, SampleDisposition>>({})
   const [activeDetailId, setActiveDetailId] = useState<string | null>(null)
@@ -584,6 +1377,20 @@ export default function KnowledgeIngestionPageClient() {
         return null
       }
     },
+    staleTime: 10_000,
+    refetchInterval: demoMode ? false : 25_000,
+  })
+
+  const taskQueueQuery = useQuery<TaskQueueObservabilitySnapshotResponse | null>({
+    queryKey: ['knowledge-ingestion-task-queue'],
+    queryFn: async () => {
+      try {
+        return await observabilityApi.getTaskQueueSnapshot()
+      } catch {
+        return null
+      }
+    },
+    enabled: mode === 'execution-monitor' && !demoMode,
     staleTime: 10_000,
     refetchInterval: demoMode ? false : 25_000,
   })
@@ -645,6 +1452,21 @@ export default function KnowledgeIngestionPageClient() {
     () => summaryQuery.data ?? buildFallbackSummary(documents, selectedDatasetId),
     [documents, selectedDatasetId, summaryQuery.data]
   )
+  const taskQueueSnapshot = taskQueueQuery.data ?? null
+  const taskQueueStatusLabel = useMemo(() => {
+    if (demoMode) return 'Demo 运行态'
+    if (taskQueueQuery.isFetching && !taskQueueSnapshot) return '读取队列'
+    if (!taskQueueSnapshot) return '队列未知'
+    if (!taskQueueSnapshot.enabled) return '队列未启用'
+    if (!taskQueueSnapshot.broker_up) return 'Broker 异常'
+    return 'Broker 正常'
+  }, [demoMode, taskQueueQuery.isFetching, taskQueueSnapshot])
+  const taskQueueStatusTone = useMemo(() => {
+    if (demoMode || !taskQueueSnapshot) return 'border-slate-500/18 bg-slate-500/[0.08] text-slate-700'
+    if (!taskQueueSnapshot.enabled) return 'border-amber-500/18 bg-amber-500/[0.08] text-amber-700'
+    if (!taskQueueSnapshot.broker_up) return 'border-rose-500/18 bg-rose-500/[0.08] text-rose-700'
+    return 'border-emerald-500/18 bg-emerald-500/[0.08] text-emerald-700'
+  }, [demoMode, taskQueueSnapshot])
   const fallbackSalesAuditArtifacts = useMemo(
     () => buildSalesAuditFallbackArtifacts(documents, { datasetId: selectedDatasetId }),
     [documents, selectedDatasetId]
@@ -745,10 +1567,33 @@ export default function KnowledgeIngestionPageClient() {
     return (prioritised.length ? prioritised : documents).slice(0, 10)
   }, [documents])
 
-  const visibleAuditSamples = useMemo(
+  const reasonFilteredAuditSamples = useMemo(
     () => auditCandidates.filter((document) => matchesReasonFilter(document, selectedReason)),
     [auditCandidates, selectedReason]
   )
+
+  const auditRailCounts = useMemo(() => {
+    const pending = reasonFilteredAuditSamples.filter((document) => !sampleDispositions[document.id]).length
+    const approved = reasonFilteredAuditSamples.filter((document) => sampleDispositions[document.id] === 'approved').length
+    const manual = reasonFilteredAuditSamples.filter((document) => sampleDispositions[document.id] === 'manual').length
+
+    return {
+      total: reasonFilteredAuditSamples.length,
+      pending,
+      approved,
+      manual,
+    }
+  }, [reasonFilteredAuditSamples, sampleDispositions])
+
+  const visibleAuditSamples = useMemo(() => {
+    if (auditDispositionFilter === 'all') return reasonFilteredAuditSamples
+
+    return reasonFilteredAuditSamples.filter((document) => {
+      const disposition = sampleDispositions[document.id]
+      if (auditDispositionFilter === 'pending') return !disposition
+      return disposition === auditDispositionFilter
+    })
+  }, [auditDispositionFilter, reasonFilteredAuditSamples, sampleDispositions])
 
   const selectedAuditDocuments = useMemo(
     () => documents.filter((document) => selectedAuditIds.includes(document.id)),
@@ -760,11 +1605,6 @@ export default function KnowledgeIngestionPageClient() {
     [activeDetailId, documents]
   )
   const activeAuditIsDemo = Boolean(activeAuditDocument?.id?.startsWith('demo-'))
-
-  const remainingEstimate = useMemo(
-    () => computeRemainingMinutesEstimate(pendingQueue, docsPerMinute),
-    [docsPerMinute, pendingQueue]
-  )
 
   const executionRuntimeLabel = useMemo(() => {
     const startMs = new Date(String(summary.window_start || '')).getTime()
@@ -817,13 +1657,36 @@ export default function KnowledgeIngestionPageClient() {
   const executionTopStripItems = useMemo(
     () => [
       { label: '范围', value: selectedDatasetLabel, icon: FolderOpen, tone: 'text-blue-500', detail: '全部项目' },
-      { label: '健康可入库', value: `${readyRate}%`, icon: ShieldCheck, tone: 'text-emerald-500', detail: '已完成样本' },
+      {
+        label: '队列深度',
+        value: taskQueueSnapshot?.queue_depth == null ? '--' : `${taskQueueSnapshot.queue_depth}`,
+        icon: ListTodo,
+        tone: taskQueueSnapshot?.broker_up ? 'text-emerald-500' : 'text-amber-500',
+        detail: taskQueueSnapshot?.queue_name || 'task queue',
+      },
+      {
+        label: '活跃 Worker',
+        value: taskQueueSnapshot?.workers_active == null ? '--' : `${taskQueueSnapshot.workers_active}`,
+        icon: Activity,
+        tone: taskQueueSnapshot?.workers_active ? 'text-emerald-500' : 'text-slate-500',
+        detail: taskQueueStatusLabel,
+      },
       { label: '待人工处理', value: `${reviewQueue + manualCount}`, icon: ShieldAlert, tone: 'text-amber-500', detail: '待确认清单' },
-      { label: '预期完成', value: remainingEstimate ? `${remainingEstimate} min` : '--', icon: Gauge, tone: 'text-indigo-500', detail: '基于当前吞吐' },
       { label: '当前吞吐', value: `${docsPerMinute?.toFixed(1) ?? '0.0'} docs/min`, icon: Activity, tone: 'text-violet-500', detail: '近 5 分钟均值' },
       { label: '运行时长', value: executionRuntimeLabel, icon: Clock3, tone: 'text-emerald-500', detail: '窗口时长' },
     ],
-    [docsPerMinute, executionRuntimeLabel, manualCount, readyRate, remainingEstimate, reviewQueue, selectedDatasetLabel]
+    [
+      docsPerMinute,
+      executionRuntimeLabel,
+      manualCount,
+      reviewQueue,
+      selectedDatasetLabel,
+      taskQueueSnapshot?.broker_up,
+      taskQueueSnapshot?.queue_depth,
+      taskQueueSnapshot?.queue_name,
+      taskQueueSnapshot?.workers_active,
+      taskQueueStatusLabel,
+    ]
   )
 
   const executionRiskItems = useMemo(() => {
@@ -957,6 +1820,22 @@ export default function KnowledgeIngestionPageClient() {
     () => [
       { label: '处理效率', value: `${docsPerMinute?.toFixed(1) ?? '0.0'}`, suffix: 'docs/min', icon: Activity, tone: 'text-blue-500', detail: '近 5 分钟平均' },
       { label: '平均处理耗时', value: executionAverageDuration.replace(' / 文件', ''), suffix: '/ 文件', icon: Clock3, tone: 'text-indigo-500', detail: '近 5 分钟平均' },
+      {
+        label: '队列深度',
+        value: taskQueueSnapshot?.queue_depth == null ? '--' : `${taskQueueSnapshot.queue_depth}`,
+        suffix: '',
+        icon: ListTodo,
+        tone: taskQueueSnapshot?.broker_up ? 'text-emerald-500' : 'text-amber-500',
+        detail: taskQueueSnapshot?.queue_name || 'task queue',
+      },
+      {
+        label: '活跃 Worker',
+        value: taskQueueSnapshot?.workers_active == null ? '--' : `${taskQueueSnapshot.workers_active}`,
+        suffix: '',
+        icon: Activity,
+        tone: taskQueueSnapshot?.workers_active ? 'text-emerald-500' : 'text-slate-500',
+        detail: taskQueueStatusLabel,
+      },
       { label: 'OCR 使用率', value: `${executionOcrUsageRate}%`, suffix: '', icon: Gauge, tone: 'text-emerald-500', detail: `${pdfDisposition.reduce((sum, item) => sum + item.count, 0)} 个 PDF` },
       { label: '解析成功率', value: `${executionSuccessRate}%`, suffix: '', icon: CheckCircle2, tone: 'text-emerald-500', detail: `${statusCounts.completed} / ${Math.max(1, executionProcessedTotal)} 成功` },
       { label: '失败重试率', value: `${executionRetryRate}%`, suffix: '', icon: RefreshCcw, tone: 'text-amber-500', detail: `${statusCounts.failed + statusCounts.quarantined} / ${Math.max(1, executionProcessedTotal)} 文件` },
@@ -974,10 +1853,35 @@ export default function KnowledgeIngestionPageClient() {
       statusCounts.completed,
       statusCounts.failed,
       statusCounts.quarantined,
+      taskQueueSnapshot?.broker_up,
+      taskQueueSnapshot?.queue_depth,
+      taskQueueSnapshot?.queue_name,
+      taskQueueSnapshot?.workers_active,
+      taskQueueStatusLabel,
     ]
   )
 
+  const recentQueueOutcomes = useMemo(() => {
+    const outcomes = taskQueueSnapshot?.recent_job_outcomes ?? []
+    return outcomes.slice(0, 5).map((item, index) => {
+      const jobName = String(item.job_name || item.run_id || item.document_id || `job-${index + 1}`)
+      const ok = item.ok === true
+      const finishedAt = item.finished_at ? String(item.finished_at) : taskQueueSnapshot?.generated_at || renderTimestamp
+      const elapsed = Number(item.elapsed_sec || 0)
+      const reason = item.reason ? String(item.reason) : ok ? '任务完成' : '任务失败或被跳过'
+      return {
+        detail: `${jobName} · ${elapsed ? `${elapsed.toFixed(2)}s` : reason}`,
+        id: `${jobName}-${index}`,
+        stage: ok ? '队列完成' : '队列异常',
+        time: formatClockSecondsLabel(finishedAt),
+        tone: ok ? 'bg-emerald-500' : 'bg-rose-500',
+      }
+    })
+  }, [renderTimestamp, taskQueueSnapshot?.generated_at, taskQueueSnapshot?.recent_job_outcomes])
+
   const executionRecentLogs = useMemo(() => {
+    if (recentQueueOutcomes.length) return recentQueueOutcomes
+
     return [...documents]
       .sort((left, right) => {
         const rightTs = new Date(String(right.updated_at || right.processed_at || right.created_at || '')).getTime()
@@ -1000,7 +1904,7 @@ export default function KnowledgeIngestionPageClient() {
           tone: status === 'failed' ? 'bg-rose-500' : status === 'completed' ? 'bg-emerald-500' : 'bg-slate-400',
         }
       })
-  }, [documents, renderTimestamp])
+  }, [documents, recentQueueOutcomes, renderTimestamp])
 
   const executionTaskRows = useMemo(() => {
     return [...documents]
@@ -1455,7 +2359,7 @@ export default function KnowledgeIngestionPageClient() {
     [pathname, router, searchParams]
   )
 
-  const handleDownloadReport = useCallback(() => {
+  const handleDownloadReport = useCallback(async () => {
     const html = buildReportHtml({
       datasetLabel: selectedDatasetLabel,
       totalDocs: documents.length,
@@ -1468,21 +2372,26 @@ export default function KnowledgeIngestionPageClient() {
       latencyP90: `${durationPercentiles.p90 || 0} min`,
       selectedReason,
       documents: visibleAuditSamples.length ? visibleAuditSamples : documents,
+      salesAuditSummary,
+      salesPocCandidates,
+      salesHighRiskFiles,
     })
 
-    const reportWindow = globalThis.window.open('', '_blank', 'noopener,noreferrer')
-    if (reportWindow) {
-      reportWindow.document.write(html)
-      reportWindow.document.close()
-      globalThis.window.setTimeout(() => {
-        reportWindow.focus()
-        reportWindow.print()
-      }, 120)
-      toast.success('已打开审计报告打印视图，可直接另存为 PDF')
-      return
-    }
+    try {
+      await renderReportHtmlToJpeg(html, buildSafeReportFilename(selectedDatasetLabel, '.audit-report.jpg'))
+      toast.success('已导出 JPG 报告')
+    } catch (error) {
+      const reportWindow = globalThis.window.open('', '_blank', 'noopener,noreferrer')
+      if (reportWindow) {
+        reportWindow.document.write(html)
+        reportWindow.document.close()
+        toast.error('JPG 生成失败，已回退到 HTML 预览')
+        return
+      }
 
-    downloadTextFile('ingestion-audit-report.html', html, 'text/html;charset=utf-8')
+      downloadTextFile('ingestion-audit-report.html', html, 'text/html;charset=utf-8')
+      toast.error('JPG 生成失败，已回退到 HTML 文件')
+    }
   }, [
     docsPerMinute,
     documents,
@@ -1493,23 +2402,27 @@ export default function KnowledgeIngestionPageClient() {
     reviewQueue,
     selectedDatasetLabel,
     selectedReason,
+    salesAuditSummary,
+    salesHighRiskFiles,
+    salesPocCandidates,
     velocityUnit,
     visibleAuditSamples,
   ])
 
   const handleExportSalesAuditReport = useCallback(async () => {
     if (demoMode || !selectedDatasetId || !latestPrecheckRun?.id) {
-      handleDownloadReport()
+      await handleDownloadReport()
       return
     }
 
     try {
       const blob = await datasetApi.exportPrecheckHtml(selectedDatasetId, latestPrecheckRun.id, { redact: true })
-      downloadBlob(blob, `${selectedDatasetLabel}.precheck.html`)
-      toast.success('已导出脱敏报告')
+      const html = await blob.text()
+      await renderReportHtmlToJpeg(html, buildSafeReportFilename(selectedDatasetLabel, '.precheck.jpg'))
+      toast.success('已导出脱敏 JPG 报告')
     } catch (error) {
-      toast.error('导出脱敏报告失败，已回退到当前页面报告视图')
-      handleDownloadReport()
+      toast.error('导出脱敏 JPG 报告失败，已回退到当前页面报告')
+      await handleDownloadReport()
     }
   }, [demoMode, handleDownloadReport, latestPrecheckRun?.id, selectedDatasetId, selectedDatasetLabel])
 
@@ -1519,7 +2432,7 @@ export default function KnowledgeIngestionPageClient() {
         void handleExportSalesAuditReport()
         return
       }
-      handleDownloadReport()
+      void handleDownloadReport()
     })
     return off
   }, [handleDownloadReport, handleExportSalesAuditReport, mode])
@@ -1537,6 +2450,20 @@ export default function KnowledgeIngestionPageClient() {
     downloadTextFile('audit-sample-selection.json', JSON.stringify(payload, null, 2), 'application/json;charset=utf-8')
     toast.success('已导出当前预检抽样清单')
   }, [sampleDispositions, selectedAuditDocuments])
+
+  const handleRefreshExecutionMonitor = useCallback(async () => {
+    const results = await Promise.allSettled([
+      documentsQuery.refetch(),
+      summaryQuery.refetch(),
+      taskQueueQuery.refetch(),
+    ])
+    const failed = results.some((result) => result.status === 'rejected')
+    if (failed) {
+      toast.error('刷新运行态失败，请检查后端观测接口')
+      return
+    }
+    toast.success('运行态已刷新')
+  }, [documentsQuery, summaryQuery, taskQueueQuery])
 
   const handleBulkDisposition = useCallback(
     (disposition: SampleDisposition) => {
@@ -1622,34 +2549,35 @@ export default function KnowledgeIngestionPageClient() {
           <aside
             className={cn(
               'hidden shrink-0 overflow-hidden pr-4 transition-all duration-300 ease-out lg:block',
-              showDesktopAuditRail ? 'w-[19.5rem] opacity-100' : 'w-0 opacity-0 -translate-x-4 pointer-events-none'
+              showDesktopAuditRail ? 'w-[18rem] opacity-100' : 'w-0 opacity-0 -translate-x-4 pointer-events-none'
             )}
           >
             <div className="sticky top-4 space-y-3">
-              <div className="rounded-[1.35rem] border border-border/60 bg-background/86 p-3 shadow-[0_24px_70px_-34px_rgba(15,23,42,0.28)] backdrop-blur-xl">
+              <div className="rounded-[1.45rem] border border-blue-100/80 bg-background/94 p-3 shadow-[0_22px_58px_-34px_rgba(37,99,235,0.25)] backdrop-blur-xl">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    <div className="inline-flex items-center gap-1.5 text-[12px] font-black tracking-[-0.02em] text-foreground">
                       {mode === 'sales-audit' ? '证据槽' : '预检抽样'}
+                      <Check className="h-3.5 w-3.5 text-emerald-500" />
                     </div>
-                    <div className="mt-0.5 text-[15px] font-semibold text-foreground">{mode === 'sales-audit' ? '报价证据' : '待确认线索'}</div>
+                    <div className="mt-1 text-[17px] font-black leading-none tracking-[-0.04em] text-foreground">{mode === 'sales-audit' ? '报价证据' : '待确认线索'}</div>
                   </div>
                   <button
                     type="button"
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/60 bg-background/70 text-muted-foreground transition-colors hover:text-foreground"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/60 bg-background/75 text-muted-foreground transition-colors hover:text-foreground"
                     onClick={() => setDesktopScopeCollapsed(true)}
                   >
-                    <ChevronLeft className="h-4 w-4" />
+                    <ChevronLeft className="h-3.5 w-3.5" />
                   </button>
                 </div>
 
-                <div className="mt-3 space-y-2.5">
-                  <div className="rounded-[1.1rem] border border-border/60 bg-muted/20 p-2.5">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                <div className="mt-3 space-y-3">
+                  <div className="space-y-2">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
                       Dataset Scope
                     </div>
                     <Select value={datasetScope} onValueChange={setDatasetScope}>
-                      <SelectTrigger className="mt-2 h-10 rounded-xl border-border/60 bg-background/80">
+                      <SelectTrigger className="h-9 rounded-xl border-border/60 bg-background/80 text-[11px] font-semibold shadow-none">
                         <SelectValue placeholder="全部项目" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1663,19 +2591,35 @@ export default function KnowledgeIngestionPageClient() {
                     </Select>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedReason(null)}
-                      className={cn(
-                        'rounded-full border px-2.5 py-1 transition-colors',
-                        !selectedReason
-                          ? 'border-foreground/15 bg-foreground/6 text-foreground'
-                          : 'border-border/60 bg-background/70 hover:text-foreground'
-                      )}
-                    >
-                      全部线索
-                    </button>
+                  <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-bold text-muted-foreground">
+                    {([
+                      ['all', '全部', auditRailCounts.total, 'blue'],
+                      ['pending', '待确认', auditRailCounts.pending, 'emerald'],
+                      ['manual', '人工处理', auditRailCounts.manual, 'amber'],
+                      ['approved', '已确认', auditRailCounts.approved, 'blue'],
+                    ] as const).map(([value, label, count, tone]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        aria-pressed={auditDispositionFilter === value}
+                        onClick={() => setAuditDispositionFilter(value)}
+                        className={cn(
+                          'rounded-full border px-2.5 py-1 transition-colors',
+                          auditDispositionFilter !== value && 'border-border/60 bg-background/70 hover:text-foreground',
+                          auditDispositionFilter === value &&
+                            tone === 'blue' &&
+                            'border-blue-500/30 bg-blue-500/10 text-blue-700',
+                          auditDispositionFilter === value &&
+                            tone === 'emerald' &&
+                            'border-emerald-500/30 bg-emerald-500/10 text-emerald-700',
+                          auditDispositionFilter === value &&
+                            tone === 'amber' &&
+                            'border-amber-500/30 bg-amber-500/10 text-amber-700'
+                        )}
+                      >
+                        {label} {count}
+                      </button>
+                    ))}
                     {selectedReason ? (
                       <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-2.5 py-1 text-amber-700">
                         {selectedReason}
@@ -1789,32 +2733,34 @@ export default function KnowledgeIngestionPageClient() {
                               if (info.offset.x > 100) handleSampleDisposition(document.id, 'approved')
                               if (info.offset.x < -100) handleSampleDisposition(document.id, 'manual')
                             }}
-                            className="relative overflow-hidden rounded-[1rem] border border-border/60 bg-background/82 p-2 shadow-[0_18px_40px_-30px_rgba(15,23,42,0.4)]"
+                            className="relative overflow-hidden rounded-[1.15rem] border border-border/60 bg-[linear-gradient(90deg,rgba(219,234,254,0.48),rgba(255,255,255,0.92)_22%,rgba(255,255,255,0.92)_78%,rgba(226,232,240,0.5))] p-2 shadow-[0_18px_44px_-34px_rgba(15,23,42,0.28)]"
                           >
-                            <div className="absolute inset-y-0 left-0 flex w-16 items-center justify-center bg-emerald-600/10 text-emerald-700">
-                              <Check className="h-4 w-4" />
+                            <div className="absolute inset-y-0 left-0 flex w-14 items-center justify-center bg-blue-500/[0.06] text-blue-500/55">
+                              <Check className="h-3.5 w-3.5" />
                             </div>
-                            <div className="absolute inset-y-0 right-0 flex w-16 items-center justify-center bg-amber-600/10 text-amber-700">
-                              <CircleAlert className="h-4 w-4" />
+                            <div className="absolute inset-y-0 right-0 flex w-14 items-center justify-center bg-slate-500/[0.06] text-slate-500/55">
+                              <CircleAlert className="h-3.5 w-3.5" />
                             </div>
-                            <div className="relative z-10 rounded-[0.85rem] bg-background/92 p-2">
-                              <div className="flex items-start gap-3">
+                            <div className="relative z-10 rounded-[0.95rem] bg-background/96 p-2.5">
+                              <div className="flex items-start gap-2.5">
                                 <input
                                   checked={selectedAuditIds.includes(document.id)}
                                   onChange={() => handleSelectAudit(document.id)}
-                                  className="mt-1 h-4 w-4 rounded border-border/60 text-foreground"
+                                  className="mt-1 h-3.5 w-3.5 rounded border-border/60 text-foreground"
                                   type="checkbox"
                                   aria-label={`选择 ${document.filename}`}
                                 />
                                 <div className="min-w-0 flex-1">
-                                  <div className="flex items-center gap-2">
-                                    <span className={cn('rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase', getDocumentKindAccent(kind))}>
-                                      {String(document.file_type || kind).toUpperCase()}
-                                    </span>
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex min-w-0 items-center gap-1.5">
+                                      <span className={cn('rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase', getDocumentKindAccent(kind))}>
+                                        {String(document.file_type || kind).toUpperCase()}
+                                      </span>
+                                    </div>
                                     {disposition ? (
                                       <span
                                         className={cn(
-                                          'rounded-full border px-2 py-0.5 text-[10px] font-semibold',
+                                          'shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-bold',
                                           disposition === 'approved'
                                             ? 'border-emerald-600/20 bg-emerald-600/10 text-emerald-700'
                                             : 'border-amber-600/25 bg-amber-600/10 text-amber-700'
@@ -1822,51 +2768,78 @@ export default function KnowledgeIngestionPageClient() {
                                       >
                                         {disposition === 'approved' ? '已确认' : '转人工'}
                                       </span>
-                                    ) : null}
+                                    ) : (
+                                      <span className="shrink-0 rounded-full border border-emerald-600/20 bg-emerald-600/8 px-2 py-0.5 text-[9px] font-bold text-emerald-700">
+                                        待确认
+                                      </span>
+                                    )}
                                   </div>
-                                  <div className="mt-1 truncate text-[13px] font-semibold text-foreground">{document.filename}</div>
+                                  <div className="mt-2 truncate text-[12px] font-bold leading-4 text-foreground">{document.filename}</div>
                                   <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
                                     <span className="font-mono tabular-nums">{formatFileSize(document.file_size || 0)}</span>
                                     <span>{formatDate(document.updated_at || document.created_at)}</span>
                                   </div>
-                                  <div className="mt-1 line-clamp-2 text-[10px] leading-4 text-muted-foreground">
+                                  <div className="mt-1.5 line-clamp-2 text-[10px] leading-4 text-muted-foreground">
                                     {document.error_message || '无明确异常文本，建议抽样核查内容密度与脱敏边界。'}
                                   </div>
                                 </div>
                               </div>
-                              <div className="mt-2.5 grid grid-cols-3 gap-1.5">
+                              <div className="mt-2.5 grid grid-cols-4 gap-1.5">
+                                <span className="inline-flex h-7 items-center justify-center rounded-lg border border-emerald-600/20 bg-emerald-600/8 px-2 text-[9px] font-bold text-emerald-700">
+                                  待确认
+                                </span>
                                 <Button
                                   type="button"
                                   size="sm"
                                   variant="outline"
-                                  className="h-8 rounded-lg border-emerald-600/20 bg-emerald-600/8 px-2 text-[9px] text-emerald-700"
+                                  className="h-7 rounded-lg border-emerald-600/20 bg-emerald-600/8 px-2 text-[9px] font-bold text-emerald-700"
                                   onClick={() => handleSampleDisposition(document.id, 'approved')}
                                 >
-                                  确认可入库
+                                  入库
                                 </Button>
                                 <Button
                                   type="button"
                                   size="sm"
                                   variant="outline"
-                                  className="h-8 rounded-lg border-amber-600/20 bg-amber-600/8 px-2 text-[9px] text-amber-700"
+                                  className="h-7 rounded-lg border-amber-600/20 bg-amber-600/8 px-2 text-[9px] font-bold text-amber-700"
                                   onClick={() => handleSampleDisposition(document.id, 'manual')}
                                 >
-                                  需人工处理
+                                  人工处理
                                 </Button>
                                 <Button
                                   type="button"
                                   size="sm"
                                   variant="outline"
-                                  className="h-8 rounded-lg px-2 text-[9px]"
+                                  className="h-7 rounded-lg px-2 text-[9px] font-bold"
                                   onClick={() => handleOpenAuditSnapshot(document.id)}
                                 >
-                                  打开审计快照
+                                  审计快照
                                 </Button>
                               </div>
                             </div>
                           </motion.article>
                         )
                       })}
+                  {mode === 'execution-monitor' && visibleAuditSamples.length === 0 ? (
+                    <div className="rounded-[1rem] border border-dashed border-border/70 bg-background/70 px-4 py-6 text-center text-[11px] text-muted-foreground">
+                      当前没有待确认线索
+                    </div>
+                  ) : null}
+                  {mode === 'execution-monitor' ? (
+                    <div className="flex items-center justify-between border-t border-border/50 pt-2.5 text-[10px] font-semibold text-muted-foreground">
+                      <span>共 {visibleAuditSamples.length} 项线索</span>
+                      <button
+                        type="button"
+                        className="text-blue-600 transition-colors hover:text-blue-700"
+                        onClick={() => {
+                          setSelectedReason(null)
+                          setAuditDispositionFilter('all')
+                        }}
+                      >
+                        查看全部
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -1932,8 +2905,8 @@ export default function KnowledgeIngestionPageClient() {
                             {mode === 'sales-audit' ? '售前报价证据台' : '执行监控工作台'}
                           </h1>
                           {mode === 'execution-monitor' ? (
-                            <span className="inline-flex items-center rounded-full border border-emerald-500/18 bg-emerald-500/[0.08] px-2 py-0.5 text-[8px] font-semibold text-emerald-700">
-                              运行中
+                            <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[8px] font-semibold', taskQueueStatusTone)}>
+                              {taskQueueStatusLabel}
                             </span>
                           ) : null}
                         </div>
@@ -1973,6 +2946,16 @@ export default function KnowledgeIngestionPageClient() {
                         </>
                       ) : (
                         <>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-7 rounded-lg px-2 text-[9px]"
+                            disabled={documentsQuery.isFetching || summaryQuery.isFetching || taskQueueQuery.isFetching}
+                            onClick={() => void handleRefreshExecutionMonitor()}
+                          >
+                            <RefreshCcw className="mr-1.5 h-3.5 w-3.5" />
+                            刷新运行态
+                          </Button>
                           <Button
                             type="button"
                             variant="outline"
@@ -2321,16 +3304,16 @@ export default function KnowledgeIngestionPageClient() {
                           <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
                             <div className="flex items-center justify-between gap-3">
                               <div className="text-[11px] font-semibold text-foreground">风险与阻塞（需关注）</div>
-                              <button type="button" className="text-[9px] font-medium text-blue-500 transition-colors hover:text-blue-600">
-                                清隐已处理
-                              </button>
+                              <span className="text-[9px] text-muted-foreground">
+                                {taskQueueSnapshot?.generated_at ? `队列快照 ${formatClockSecondsLabel(taskQueueSnapshot.generated_at)}` : '文档状态聚合'}
+                              </span>
                             </div>
                             <div className="mt-3 space-y-2">
                               {executionRiskItems.map((item) => (
                                 <div key={item.title} className={cn('rounded-[1rem] border px-3 py-2.5', item.tone)}>
                                   <div className="flex items-start justify-between gap-3">
                                     <div className="flex items-start gap-2.5">
-                                      <span className="mt-0.5 inline-flex h-7 w-7 items-center justify-center rounded-full border border-current/12 bg-white/70">
+                                      <span className="mt-0.5 inline-flex h-7 w-7 items-center justify-center rounded-full border border-current/12 bg-card/70">
                                         <AlertTriangle className="h-4 w-4" />
                                       </span>
                                       <div>
@@ -2345,7 +3328,11 @@ export default function KnowledgeIngestionPageClient() {
                             </div>
                             <div className="mt-3 flex items-center justify-between text-[9px] text-muted-foreground">
                               <span>共 {executionRiskItems.reduce((sum, item) => sum + item.count, 0)} 项阻塞</span>
-                              <button type="button" className="inline-flex items-center gap-1 font-medium text-blue-500 transition-colors hover:text-blue-600">
+                              <button
+                                type="button"
+                                className="inline-flex items-center gap-1 font-medium text-blue-500 transition-colors hover:text-blue-600"
+                                onClick={() => setSelectedReason(null)}
+                              >
                                 <span>查看全部</span>
                                 <ChevronRight className="h-3 w-3" />
                               </button>
@@ -2406,7 +3393,7 @@ export default function KnowledgeIngestionPageClient() {
 
                         <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
                           <div className="text-[11px] font-semibold text-foreground">关键指标（实时）</div>
-                          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+                          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
                             {executionKpiCards.map((item) => {
                               const Icon = item.icon
                               return (
@@ -2452,10 +3439,9 @@ export default function KnowledgeIngestionPageClient() {
                           <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
                             <div className="flex items-center justify-between gap-3">
                               <div className="text-[11px] font-semibold text-foreground">运行日志（最近）</div>
-                              <button type="button" className="inline-flex items-center gap-1 text-[9px] font-medium text-blue-500 transition-colors hover:text-blue-600">
-                                <span>查看全部</span>
-                                <ChevronRight className="h-3 w-3" />
-                              </button>
+                              <span className="text-[9px] text-muted-foreground">
+                                {recentQueueOutcomes.length ? '来自任务队列' : '来自文档状态'}
+                              </span>
                             </div>
                             <div className="mt-3 space-y-2">
                               {executionRecentLogs.map((log) => (

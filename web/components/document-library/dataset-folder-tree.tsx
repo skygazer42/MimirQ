@@ -118,7 +118,7 @@ export function DatasetFolderTreeView({
           >
             <span className="min-w-0 flex items-center gap-2">
               <Icon className={cn("h-4 w-4 transition-colors", isSelected ? "text-primary" : "text-muted-foreground/60")} />
-              <span className={cn("truncate tracking-tight transition-colors", isSelected ? "font-bold" : "font-medium")}>
+              <span className={cn("truncate  transition-colors", isSelected ? "font-bold" : "font-medium")}>
                 {node.name || node.path || labels.unnamed}
               </span>
             </span>

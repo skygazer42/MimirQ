@@ -7,6 +7,7 @@ describe('parsing elements panel source', () => {
   it('supports kind filtering and element selection for direct review', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'parsing-elements-panel.tsx'), 'utf8')
 
+    expect(src).toContain('const [isCollapsed, setIsCollapsed] = useState(true)')
     expect(src).toContain("const [filterKind, setFilterKind] = useState<string>('all')")
     expect(src).toContain("const [filterVisualKind, setFilterVisualKind] = useState<string>('all')")
     expect(src).toContain('const filterVisualKinds = useMemo(')
@@ -19,6 +20,7 @@ describe('parsing elements panel source', () => {
     expect(src).toContain('cross_page_merge_pages')
     expect(src).toContain('跨页')
     expect(src).toContain('结构元素列表')
+    expect(src).toContain("isCollapsed ? '展开' : '收起'")
     expect(src).toContain('全部')
   })
 })

@@ -133,7 +133,7 @@ export function StatCard({
           )}
         </div>
         <div className="flex flex-col">
-          <span className="text-[9px] font-black uppercase tracking-tight opacity-60 leading-none mb-0.5">
+          <span className="text-[9px] font-black uppercase  opacity-60 leading-none mb-0.5">
             {label}
           </span>
           <div className="flex items-baseline gap-1">
@@ -145,7 +145,7 @@ export function StatCard({
             </span>
             {unit && (
               <span className={cn(
-                "text-[9px] font-bold uppercase tracking-tighter transition-opacity duration-500",
+                "text-[9px] font-bold uppercase  transition-opacity duration-500",
                 isDimmed ? "opacity-30" : "opacity-40"
               )}>
                 {unit}
@@ -171,7 +171,7 @@ export function StatCard({
           <Icon className="size-3.5" />
         </div>
         <div className="min-w-0">
-          <p className="truncate text-[9px] font-black uppercase tracking-widest text-muted-foreground/60">{label}</p>
+          <p className="truncate text-[9px] font-black uppercase  text-muted-foreground/60">{label}</p>
           <p className={cn("truncate text-sm font-mono tabular-nums transition-all duration-500", isDimmed ? "font-black text-foreground/70" : "font-black text-foreground/80")}>{value}</p>
         </div>
       </div>
@@ -189,9 +189,9 @@ export function StatCard({
         <Icon className="size-5" />
       </div>
       <div className="relative min-w-0 flex-1">
-        <p className="truncate text-[11px] font-black uppercase tracking-widest mb-1 text-muted-foreground/60">{label}</p>
+        <p className="truncate text-[11px] font-black uppercase  mb-1 text-muted-foreground/60">{label}</p>
         <div className="flex items-baseline gap-2">
-          <p className={cn("truncate text-[22px] font-mono font-black tracking-tight leading-none transition-all duration-500", isDimmed ? "text-foreground/70 font-black" : "text-foreground")}>{value}</p>
+          <p className={cn("truncate text-[22px] font-mono font-black  leading-none transition-all duration-500", isDimmed ? "text-foreground/70 font-black" : "text-foreground")}>{value}</p>
           {unit && <span className={cn("text-xs font-bold uppercase transition-all duration-500", isDimmed ? "text-muted-foreground/40" : "text-muted-foreground/40")}>{unit}</span>}
         </div>
       </div>

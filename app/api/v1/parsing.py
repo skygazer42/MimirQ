@@ -218,6 +218,26 @@ def _strip_position_tags(markdown: str) -> str:
     return POSITION_TAG_RE.sub("", markdown)
 
 
+def _strip_storage_nul_chars(value: str) -> str:
+    """PostgreSQL text/jsonb cannot store NUL bytes; OCR backends may emit them."""
+    if not value:
+        return ""
+    return value.replace("\x00", "")
+
+
+def _sanitize_storage_value(value: Any) -> Any:
+    if isinstance(value, str):
+        return _strip_storage_nul_chars(value)
+    if isinstance(value, list):
+        return [_sanitize_storage_value(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            _strip_storage_nul_chars(str(key)): _sanitize_storage_value(item)
+            for key, item in value.items()
+        }
+    return value
+
+
 def _extract_markdown_pair_from_documents(documents: list[dict[str, Any]] | None) -> tuple[str, str]:
     original_parts: list[str] = []
     cleaned_parts: list[str] = []
@@ -227,7 +247,7 @@ def _extract_markdown_pair_from_documents(documents: list[dict[str, Any]] | None
         if not isinstance(item, dict):
             continue
 
-        page_content = str(item.get("page_content") or "")
+        page_content = _strip_storage_nul_chars(str(item.get("page_content") or ""))
         cleaned_parts.append(page_content)
 
         metadata = item.get("metadata")
@@ -235,16 +255,16 @@ def _extract_markdown_pair_from_documents(documents: list[dict[str, Any]] | None
             tagged = metadata.get("position_tagged_markdown")
             if isinstance(tagged, str) and tagged.strip():
                 has_position_tagged_override = True
-                original_parts.append(tagged)
+                original_parts.append(_strip_storage_nul_chars(tagged))
                 continue
 
         original_parts.append(page_content)
 
-    original = "\n\n".join(original_parts).strip()
+    original = _strip_storage_nul_chars("\n\n".join(original_parts).strip())
     if has_position_tagged_override:
-        cleaned = "\n\n".join(cleaned_parts).strip()
+        cleaned = _strip_storage_nul_chars("\n\n".join(cleaned_parts).strip())
     else:
-        cleaned = _strip_position_tags(original).strip()
+        cleaned = _strip_storage_nul_chars(_strip_position_tags(original).strip())
 
     return original, cleaned
 
@@ -799,10 +819,38 @@ async def parse_workspace_document(
             timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
         )
         resolved_backend = str(parsed.get("resolved_backend") or resolved_backend)
+        parse_provenance = parsed.get("provenance") if isinstance(parsed.get("provenance"), dict) else None
+        if requested_backend not in {"", "auto"} and resolved_backend != requested_backend:
+            diagnostics = _sanitize_storage_value(
+                {
+                    "requested_backend": requested_backend,
+                    "resolved_backend": resolved_backend,
+                    "provenance": parse_provenance or {},
+                }
+            )
+            msg = f"Requested parser backend '{requested_backend}' fell back to '{resolved_backend}'"
+            doc.status = "failed"
+            doc.processing_progress = 0
+            doc.current_stage = "failed"
+            doc.error_message = msg
+            next_meta = dict(meta) if isinstance(meta, dict) else {}
+            next_meta["workspace"] = "parsing"
+            next_meta["parser_backend_requested"] = requested_backend
+            next_meta["parser_backend"] = resolved_backend
+            next_meta["parse_diagnostics"] = diagnostics
+            doc.doc_metadata = _sanitize_storage_value(next_meta)
+            db.commit()
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "message": msg,
+                    "diagnostics": diagnostics,
+                },
+            )
 
         pdf_quality = parsed.get("pdf_quality") if isinstance(parsed.get("pdf_quality"), dict) else None
         artifact_docs = parsed.get("documents") if isinstance(parsed, dict) else None
-        elements = normalize_document_elements(artifact_docs)
+        elements = _sanitize_storage_value(normalize_document_elements(artifact_docs))
 
         # Opt2: cross-page merge (workspace preview, best-effort; off by default).
         cross_page_merge_stats: dict[str, int] | None = None
@@ -1091,7 +1139,7 @@ async def parse_workspace_document(
                 )
                 vlm_audit = audit.to_dict()
                 if len(corrected_pages) == len(pages) and corrected_pages:
-                    markdown = "\n\n".join([str(p or "") for p in corrected_pages]).strip()
+                    markdown = _strip_storage_nul_chars("\n\n".join([str(p or "") for p in corrected_pages]).strip())
 
                     # Re-run the quality gate on the corrected output, but keep selection/debug evidence.
                     gate_after = _compute_parsing_quality_gate(
@@ -1135,8 +1183,13 @@ async def parse_workspace_document(
         if bool(image_caption_enabled):
             try:
                 markdown, captions_added = add_image_captions(markdown)
+                markdown = _strip_storage_nul_chars(markdown)
             except Exception:
                 captions_added = 0
+
+        original_markdown = _strip_storage_nul_chars(original_markdown)
+        markdown = _strip_storage_nul_chars(markdown)
+        elements = _sanitize_storage_value(elements)
 
         duration_sec = max(0.0, time.perf_counter() - t0)
         artifact_stats = compute_parsing_artifact_stats(
@@ -1175,6 +1228,8 @@ async def parse_workspace_document(
         next_meta["workspace"] = "parsing"
         next_meta["parser_backend_requested"] = requested_backend
         next_meta["parser_backend"] = resolved_backend
+        if isinstance(parse_provenance, dict) and parse_provenance:
+            next_meta["parse_provenance"] = parse_provenance
         next_meta["image_caption_enabled"] = bool(image_caption_enabled)
         if bool(image_caption_enabled):
             next_meta["image_captions_added"] = int(captions_added)
@@ -1204,7 +1259,7 @@ async def parse_workspace_document(
                 "max_retries": int(max_retries),
             }
         next_meta.update(artifact_stats)
-        doc.doc_metadata = next_meta
+        doc.doc_metadata = _sanitize_storage_value(next_meta)
 
         db.commit()
         db.refresh(doc)
@@ -1268,6 +1323,8 @@ async def parse_workspace_document(
             status_code=status_code,
             detail={"message": detail_msg, "diagnostics": diagnostics},
         ) from exc
+    except HTTPException:
+        raise
     except Exception as exc:  # noqa: BLE001
         msg = (str(exc) or "").strip()
         if not msg:
@@ -1372,7 +1429,7 @@ async def update_parsing_content(
     ds = DatasetService.get_dataset(db, tenant_id, doc.dataset_id)
     DatasetService.assert_dataset_writable(db, ds, account_id)
 
-    markdown = str(payload.markdown_content or "")
+    markdown = _strip_storage_nul_chars(str(payload.markdown_content or ""))
     original = payload.original_markdown_content
     if original is None:
         # Keep original if not explicitly provided.
@@ -1384,6 +1441,7 @@ async def update_parsing_content(
         original = row_existing.original_markdown_content if row_existing else markdown
     else:
         original = str(original or "")
+    original = _strip_storage_nul_chars(str(original or ""))
 
     row = (
         db.query(DocumentParsedContent)
@@ -1412,7 +1470,7 @@ async def update_parsing_content(
     next_meta = dict(meta) if isinstance(meta, dict) else {}
     next_meta["workspace"] = "parsing"
     next_meta["edited"] = True
-    doc.doc_metadata = next_meta
+    doc.doc_metadata = _sanitize_storage_value(next_meta)
 
     db.commit()
     db.refresh(doc)

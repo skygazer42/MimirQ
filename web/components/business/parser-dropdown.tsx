@@ -126,40 +126,40 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          'w-full flex items-center gap-3 px-3 border transition-colors duration-150 motion-reduce:transition-none',
-          compact ? 'py-2 rounded-full' : 'py-2.5 rounded-2xl',
+          'w-full flex items-center border transition-colors duration-150 motion-reduce:transition-none',
+          compact ? 'gap-2 px-2.5 py-1.5 rounded-full' : 'gap-2.5 px-2.5 py-2 rounded-xl',
           'bg-card hover:bg-muted',
           isOpen
             ? 'border-sky-300/60 ring-2 ring-sky-500/10'
             : 'border-border hover:border-border'
         )}
       >
-        <div className={cn('p-1.5 rounded-lg', selectedColor.bg)}>
-          <SelectedIcon className={cn('size-4', selectedColor.text)} />
+        <div className={cn(compact ? 'rounded-md p-1' : 'rounded-md p-1.5', selectedColor.bg)}>
+          <SelectedIcon className={cn(compact ? 'size-3.5' : 'size-3.5', selectedColor.text)} />
         </div>
         <div className="flex-1 text-left min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-foreground truncate">
+            <span className={cn('font-medium text-foreground truncate', compact ? 'text-xs' : 'text-[13px]')}>
               {selectedOption.label}
             </span>
             {selectedOption.badge && (
-              <span className="text-[11px] font-medium px-1.5 py-0.5 bg-sky-100 text-sky-600 dark:bg-sky-500/20 dark:text-sky-300 rounded">
+              <span className="rounded bg-sky-100 px-1.5 py-px text-[9px] font-medium leading-4 text-sky-600 dark:bg-sky-500/20 dark:text-sky-300">
                 {selectedOption.badge}
               </span>
             )}
             {selectedOption.value === 'paddle_vl' && paddleVlVersionBadge ? (
-              <span className="text-[11px] font-medium px-1.5 py-0.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300 rounded">
+              <span className="rounded bg-emerald-100 px-1.5 py-px text-[9px] font-medium leading-4 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
                 {paddleVlVersionBadge}
               </span>
             ) : null}
           </div>
           {!compact && (
-            <p className="text-xs text-muted-foreground truncate">{selectedOption.description}</p>
+            <p className="mt-0.5 truncate text-[11px] leading-4 text-muted-foreground">{selectedOption.description}</p>
           )}
         </div>
         <ChevronDown
           className={cn(
-            'w-4 h-4 text-muted-foreground transition-transform flex-shrink-0',
+            'size-3.5 text-muted-foreground transition-transform flex-shrink-0',
             isOpen && 'rotate-180'
           )}
         />
@@ -167,7 +167,12 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
 
       {/* 下拉菜单 */}
       {isOpen && (
-        <div className="absolute z-50 w-full mt-2 bg-card border border-border rounded-2xl shadow-strong overflow-hidden">
+        <div
+          className={cn(
+            'absolute z-50 mt-2 max-h-[min(440px,70vh)] overflow-y-auto overscroll-contain rounded-2xl border border-border bg-card shadow-strong no-scrollbar',
+            compact ? 'right-0 w-[min(420px,calc(100vw-2rem))]' : 'w-full min-w-[360px]'
+          )}
+        >
           {(loading || error) && (
             <div
               className={cn(
@@ -216,6 +221,7 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
               const disabledTitle = isDisabledByFile
                 ? '该文件类型不支持此解析器'
                 : (notes || '后端未启用该解析器（可到“设置”开启/配置）')
+              const disabledLabel = isDisabledByFile ? '不适用' : '未启用'
 
               return (
                 <button
@@ -272,11 +278,11 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
                         </span>
                       ) : null}
                     </div>
-                    <p className="text-xs text-muted-foreground truncate">{option.description}</p>
+                    <p className="text-xs leading-5 text-muted-foreground">{option.description}</p>
                   </div>
                   {isDisabled && (
                     <span className="text-[11px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground flex-shrink-0">
-                      未启用
+                      {disabledLabel}
                     </span>
                   )}
                   {isSelected && (

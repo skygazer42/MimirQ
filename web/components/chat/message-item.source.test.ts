@@ -66,6 +66,17 @@ describe('message item source', () => {
     expect(src).toContain('transition={streamingLayoutTransition}')
   })
 
+  it('collapses assistant thinking steps behind an accessible disclosure', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'message-item.tsx'), 'utf8')
+
+    expect(src).toContain('const [stepsOpen, setStepsOpen] = useState(() => isStreaming)')
+    expect(src).toContain('aria-expanded={stepsOpen}')
+    expect(src).toContain('setStepsOpen((open) => !open)')
+    expect(src).toContain('{message.steps.length} 步')
+    expect(src).toContain('stepsOpen ? (')
+    expect(src).toContain('思考路径')
+  })
+
   it('exposes expert-loop actions after feedback is captured', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'message-item.tsx'), 'utf8')
 

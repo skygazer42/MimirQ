@@ -13,6 +13,6 @@ describe('KnowledgeSettingsPanel form controls', () => {
     expect(src).toContain('setConfirmEmbeddingSaveOpen(true)')
     expect(src).toContain('更换模型将导致已有文档的向量失效')
     expect(src).toContain('handleResetDraft')
-    expect(src).toContain('isDirty && (')
+    expect(src).toContain('{isDirty ? (')
   })
 })

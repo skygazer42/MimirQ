@@ -48,10 +48,25 @@ describe('ParsingPage workbench scaffold', () => {
 
     expect(shellSrc).toContain('restoreLibraryFileFromCache(activeLibraryFile.id, false)')
     expect(shellSrc).toContain("activeLibraryFile.status === 'parsed'")
+    expect(shellSrc).toContain('activeLibraryMarkdownAvailable')
     expect(shellSrc).toContain("filename.toLowerCase().endsWith('.pdf')")
     expect(shellSrc).toContain('if (activeFile || !activeLibraryFile) return')
     expect(shellSrc).toContain('const bumpPdfPreviewResetToken = () => setPdfPreviewResetToken((prev) => prev + 1)')
     expect(shellSrc).toContain('bumpPdfPreviewResetToken()')
+  })
+
+  it('adds a dataset scope bridge for knowledge-base documents in the parsing sidebar', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'parsing-page.tsx'), 'utf8')
+    const shellSrc = fs.readFileSync(path.resolve(__dirname, 'parsing-workbench-shell.tsx'), 'utf8')
+    const sidebarSrc = fs.readFileSync(path.resolve(__dirname, 'parsing-sidebar-pane.tsx'), 'utf8')
+
+    expect(src).toContain('selectedDatasetId: pageState.selectedDatasetId')
+    expect(src).toContain('availableDatasets={viewState.availableDatasets}')
+    expect(src).toContain('onDatasetScopeChange={(datasetId) => {')
+    expect(shellSrc).toContain('datasetOptions={datasetOptions}')
+    expect(shellSrc).toContain("readOnly: file.source === 'knowledge_base'")
+    expect(sidebarSrc).toContain('DATASET_ALL_VALUE')
+    expect(sidebarSrc).toContain('onDatasetScopeChange(value === DATASET_ALL_VALUE ? null : value)')
   })
 
   it('moves page-local state and lifecycle wiring into the dedicated hook', () => {

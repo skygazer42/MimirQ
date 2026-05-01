@@ -12,6 +12,7 @@ module.exports = [
   {
     ignores: [
       '.next/**',
+      '.next_*/**',
       '.next_build/**',
       'out/**',
       'dist/**',

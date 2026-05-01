@@ -100,6 +100,7 @@ class RAGState(TypedDict, total=False):
     multi_query_count: int | None
     multi_query_temperature: float | None
     multi_query_max_chars: int | None
+    enable_hyde: bool | None
     enable_hierarchy_recall: bool | None
     hierarchy_family_collapse: bool | None
     hierarchy_family_aggregation: str | None
@@ -211,6 +212,7 @@ def _retrieve_cache_key(state: dict[str, Any]) -> str:
         "multi_query_count": state.get("multi_query_count"),
         "multi_query_temperature": state.get("multi_query_temperature"),
         "multi_query_max_chars": state.get("multi_query_max_chars"),
+        "enable_hyde": state.get("enable_hyde"),
         "enable_query_rewrite": state.get("enable_query_rewrite"),
         "query_rewrite_strategy": state.get("query_rewrite_strategy"),
         "query_rewrite_temperature": state.get("query_rewrite_temperature"),
@@ -1319,6 +1321,7 @@ class RagStateBuildOptions:
     multi_query_count: int | None = None
     multi_query_temperature: float | None = None
     multi_query_max_chars: int | None = None
+    enable_hyde: bool | None = None
     enable_hierarchy_recall: bool | None = None
     hierarchy_family_collapse: bool | None = None
     hierarchy_family_aggregation: str | None = None
@@ -1400,6 +1403,7 @@ def build_rag_state(
     multi_query_count = resolved.multi_query_count
     multi_query_temperature = resolved.multi_query_temperature
     multi_query_max_chars = resolved.multi_query_max_chars
+    enable_hyde = resolved.enable_hyde
     enable_hierarchy_recall = resolved.enable_hierarchy_recall
     hierarchy_family_collapse = resolved.hierarchy_family_collapse
     hierarchy_family_aggregation = resolved.hierarchy_family_aggregation
@@ -1563,6 +1567,7 @@ def build_rag_state(
         "multi_query_count": multi_query_count,
         "multi_query_temperature": multi_query_temperature,
         "multi_query_max_chars": multi_query_max_chars,
+        "enable_hyde": enable_hyde,
         "enable_hierarchy_recall": enable_hierarchy_recall,
         "hierarchy_family_collapse": hierarchy_family_collapse,
         "hierarchy_family_aggregation": hierarchy_family_aggregation,

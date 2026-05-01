@@ -26,6 +26,8 @@ type ParsingSidebarPaneProps = {
   activeFolderPathLabel: string
   currentFolderId: string
   currentFolderFileCount: number
+  datasetOptions: DatasetScopeOption[]
+  selectedDatasetId: string | null
   pendingCount: number
   parsingCount: number
   parsedCount: number
@@ -40,6 +42,7 @@ type ParsingSidebarPaneProps = {
   folderInputRef: RefObject<HTMLInputElement | null>
   rebindInputRef: RefObject<HTMLInputElement | null>
   onToggleCollapsed: () => void
+  onDatasetScopeChange: (datasetId: string | null) => void
   onRequestUploadToCurrentFolder: () => void
   onRequestUploadToFolder: (folderId: string) => void
   onRequestUploadFolder: (folderId: string) => void
@@ -59,6 +62,14 @@ type ParsingSidebarPaneProps = {
   onRebindFileSelect: (event: React.ChangeEvent<HTMLInputElement>) => void
 }
 
+type DatasetScopeOption = {
+  id: string
+  name: string
+  count?: number
+}
+
+const DATASET_ALL_VALUE = '__all__'
+
 export function ParsingSidebarPane({
   collapsed,
   className,
@@ -66,6 +77,8 @@ export function ParsingSidebarPane({
   activeFolderPathLabel,
   currentFolderId,
   currentFolderFileCount,
+  datasetOptions,
+  selectedDatasetId,
   pendingCount,
   parsingCount,
   parsedCount,
@@ -80,6 +93,7 @@ export function ParsingSidebarPane({
   folderInputRef,
   rebindInputRef,
   onToggleCollapsed,
+  onDatasetScopeChange,
   onRequestUploadToCurrentFolder,
   onRequestUploadToFolder,
   onRequestUploadFolder,
@@ -217,6 +231,39 @@ export function ParsingSidebarPane({
           </DropdownMenu>
         </div>
       </div>
+
+      {!collapsed ? (
+        <div className="border-b border-border/40 bg-background/82 px-2 py-2 dark:bg-background/50">
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <span className="text-[9px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/75">
+              {t('sidebar.datasetScope')}
+            </span>
+            <span className="rounded-full bg-muted/55 px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
+              {selectedDatasetId ? t('sidebar.datasetScoped') : t('sidebar.datasetAll')}
+            </span>
+          </div>
+          <select
+            value={selectedDatasetId || DATASET_ALL_VALUE}
+            onChange={(event) => {
+              const value = event.target.value
+              onDatasetScopeChange(value === DATASET_ALL_VALUE ? null : value)
+            }}
+            className="h-8 w-full rounded-lg border border-border/60 bg-background/90 px-2 text-[11px] font-medium text-foreground shadow-[inset_0_1px_0_hsl(var(--background))] outline-none transition-colors focus:border-primary/45 focus:ring-2 focus:ring-primary/12 dark:bg-background/60"
+          >
+            <option value={DATASET_ALL_VALUE}>{t('sidebar.allDatasetScope')}</option>
+            {datasetOptions.map((dataset) => (
+              <option key={dataset.id} value={dataset.id}>
+                {typeof dataset.count === 'number'
+                  ? t('sidebar.datasetOptionWithCount', { name: dataset.name, count: dataset.count })
+                  : dataset.name}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-[10px] leading-4 text-muted-foreground/70">
+            {selectedDatasetId ? t('sidebar.datasetScopeSelectedHint') : t('sidebar.datasetScopeHint')}
+          </p>
+        </div>
+      ) : null}
 
       <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar bg-background/70 px-2 py-1.5 dark:bg-background/30">
         {isLibraryLoaded ? (

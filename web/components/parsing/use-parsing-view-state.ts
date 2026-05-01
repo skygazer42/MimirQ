@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, type Dispatch, type SetStateAction } f
 
 import { toast } from 'sonner'
 
-import { parsingApi } from '@/lib/api'
+import { datasetApi, documentApi, parsingApi } from '@/lib/api'
 import { getDocContentFromCache, getDocSourceFromCache } from '@/lib/doc-content-cache'
 import { extractMarkdownHeadings } from '@/lib/markdown'
 import { getParserLabel } from '@/lib/parser-options'
@@ -42,11 +42,17 @@ type UseParsingViewStateOptions = {
     options?: { autoParse?: boolean; select?: boolean }
   ) => Promise<string | null>
   rehydratedFolderIdsRef: MutableRef<Set<string>>
+  selectedDatasetId: string | null
   setActiveFileId: Dispatch<SetStateAction<string | null>>
   setActiveLibrarySourceStatus: Dispatch<SetStateAction<SourceStatus>>
   setIsQueueRehydrating: Dispatch<SetStateAction<boolean>>
   setParsedFiles: (files: ParsedFileData[]) => void
   updateParsedFile: (id: string, updates: Partial<Omit<ParsedFileData, 'id'>>) => void
+}
+
+type DatasetOption = {
+  id: string
+  name: string
 }
 
 type ParsingLibraryContentHydration = {
@@ -93,15 +99,67 @@ function mapParsingDocumentToLibraryFile(
     durationSec,
     elements: existing?.elements || [],
     folderId: existing?.folderId || ROOT_FOLDER_ID,
+    datasetId: doc.dataset_id || null,
+    datasetName: existing?.datasetName || null,
+    source: 'parsing_workspace',
     status,
     error: status === 'error' ? String(doc.error_message || existing?.error || '解析失败') : undefined,
   }
 }
 
+function mapKnowledgeDocumentToLibraryFile(
+  doc: Awaited<ReturnType<typeof documentApi.list>>['items'][number],
+  currentFiles: ParsedFileData[],
+  mapBackendStatusToLibraryStatus: (status?: string) => FileStatus,
+  datasetNameById: Map<string, string>
+): ParsedFileData {
+  const byId = new Map(currentFiles.map((file) => [file.id, file]))
+  const id = String(doc.id || '').trim()
+  const existing = byId.get(id)
+  const meta = doc.metadata as Record<string, unknown> | undefined
+  const rawDuration = meta?.parse_duration_sec
+  const durationSec = Number.isFinite(Number(rawDuration)) ? Number(rawDuration) : existing?.durationSec
+  const backendFromServer =
+    normalizeBackendCandidate(meta?.parser_backend) ||
+    normalizeBackendCandidate(meta?.parser_backend_requested) ||
+    existing?.parserBackend ||
+    'auto'
+  const resolved = resolveParserBackendForFilename(doc.filename || existing?.filename || 'document', backendFromServer)
+  const backend = resolved.backend
+  const status = mapBackendStatusToLibraryStatus(doc.status)
+  const datasetId = doc.dataset_id || null
+
+  return {
+    id,
+    filename: doc.filename || existing?.filename || 'document',
+    fileType: doc.file_type || existing?.fileType || '',
+    fileSize: Number(doc.file_size || existing?.fileSize || 0),
+    markdownContent: existing?.markdownContent || '',
+    originalMarkdownContent: existing?.originalMarkdownContent || '',
+    parsedAt: String(doc.updated_at || doc.created_at || existing?.parsedAt || new Date().toISOString()),
+    parser: getParserLabel(backend),
+    parserBackend: backend,
+    durationSec,
+    elements: existing?.elements || [],
+    folderId: existing?.folderId || ROOT_FOLDER_ID,
+    datasetId,
+    datasetName: datasetId ? datasetNameById.get(datasetId) || existing?.datasetName || datasetId : existing?.datasetName || null,
+    source: 'knowledge_base',
+    sourcePath: typeof meta?.source_path === 'string' ? meta.source_path : existing?.sourcePath || null,
+    status,
+    error: status === 'error' ? String(doc.error_message || existing?.error || '入库失败') : undefined,
+  }
+}
+
+function isParsingWorkspaceDocument(doc: Awaited<ReturnType<typeof documentApi.list>>['items'][number]): boolean {
+  const meta = doc.metadata as Record<string, unknown> | undefined
+  return meta?.workspace === 'parsing'
+}
+
 async function hydrateLibraryContent(
   id: string,
   status: FileStatus,
-  options?: { fileType?: string | null }
+  options?: { fileType?: string | null; source?: ParsedFileData['source'] }
 ): Promise<ParsingLibraryContentHydration> {
   let cachedFallback: ParsingLibraryContentHydration = null
   try {
@@ -125,6 +183,40 @@ async function hydrateLibraryContent(
     }
   } catch {
     // ignore cache miss and fall back to backend
+  }
+
+  if (options?.source === 'knowledge_base') {
+    try {
+      const remote = await documentApi.getParsedContent(id, { max_chars: 2_000_000 })
+      if (!remote?.available) return cachedFallback
+
+      const markdown = (remote.markdown_content || '').trim()
+      const original = (remote.original_markdown_content || '').trim()
+      if (!markdown && !original) return cachedFallback
+
+      const persistedMeta =
+        remote.persisted_meta && typeof remote.persisted_meta === 'object'
+          ? (remote.persisted_meta as Record<string, unknown>)
+          : {}
+      const backend =
+        normalizeBackendCandidate(persistedMeta.parser_backend) ||
+        normalizeBackendCandidate(persistedMeta.parser_backend_requested) ||
+        'auto'
+      const rawDuration = persistedMeta.parse_duration_sec
+      const durationSec = Number.isFinite(Number(rawDuration)) ? Number(rawDuration) : undefined
+
+      return {
+        markdownContent: markdown || original,
+        originalMarkdownContent: original || markdown,
+        status: 'parsed',
+        parser: getParserLabel(backend),
+        parserBackend: backend,
+        durationSec,
+      }
+    } catch {
+      // ignore backend content load failures for passive selection
+      return cachedFallback
+    }
   }
 
   try {
@@ -161,20 +253,76 @@ export function useParsingViewState({
   mapBackendStatusToLibraryStatus,
   mountLibraryFileToQueue,
   rehydratedFolderIdsRef,
+  selectedDatasetId,
   setActiveFileId,
   setActiveLibrarySourceStatus,
   setIsQueueRehydrating,
   setParsedFiles,
   updateParsedFile,
 }: Readonly<UseParsingViewStateOptions>) {
+  const datasetsQuery = useQuery({
+    queryKey: ['parsing', 'datasets'],
+    enabled: isLibraryLoaded,
+    queryFn: async (): Promise<DatasetOption[]> => {
+      try {
+        const response = await datasetApi.list({ skip: 0, limit: 200 })
+        return (response.items || []).map((dataset) => ({
+          id: String(dataset.id),
+          name: dataset.name || String(dataset.id),
+        }))
+      } catch (err) {
+        console.warn('Failed to sync datasets for parsing workspace:', err)
+        return []
+      }
+    },
+  })
+
+  const availableDatasets = useMemo(() => datasetsQuery.data || [], [datasetsQuery.data])
+  const datasetNameSignature = useMemo(
+    () => availableDatasets.map((dataset) => `${dataset.id}:${dataset.name}`).join('|'),
+    [availableDatasets]
+  )
+  const datasetNameById = useMemo(
+    () => new Map(availableDatasets.map((dataset) => [dataset.id, dataset.name])),
+    [availableDatasets]
+  )
+
   const librarySyncQuery = useQuery({
-    queryKey: ['parsing', 'library-documents'],
+    queryKey: ['parsing', 'library-documents', datasetNameSignature],
     enabled: isLibraryLoaded,
     queryFn: async () => {
+      const [parsingResult, knowledgeResult] = await Promise.allSettled([
+        parsingApi.listDocuments({ skip: 0, limit: 200 }),
+        documentApi.list({ skip: 0, limit: 200 }),
+      ])
+
+      if (parsingResult.status === 'rejected' && knowledgeResult.status === 'rejected') {
+        console.warn('Failed to sync parsing and knowledge documents:', parsingResult.reason, knowledgeResult.reason)
+        return null
+      }
+
+      if (parsingResult.status === 'rejected') {
+        console.warn('Failed to sync parsing library from server:', parsingResult.reason)
+      }
+      if (knowledgeResult.status === 'rejected') {
+        console.warn('Failed to sync knowledge documents into parsing workspace:', knowledgeResult.reason)
+      }
+
+      const current = useParsedFiles.getState().files || []
+      const parsingItems = parsingResult.status === 'fulfilled' ? parsingResult.value.items || [] : []
+      const knowledgeItems = knowledgeResult.status === 'fulfilled' ? knowledgeResult.value.items || [] : []
+
       try {
-        const { items } = await parsingApi.listDocuments({ skip: 0, limit: 200 })
-        const current = useParsedFiles.getState().files || []
-        return items.map((doc) => mapParsingDocumentToLibraryFile(doc, current, mapBackendStatusToLibraryStatus))
+        return [
+          ...parsingItems.map((doc) =>
+            mapParsingDocumentToLibraryFile(doc, current, mapBackendStatusToLibraryStatus)
+          ),
+          ...knowledgeItems
+            .filter((doc) => !isParsingWorkspaceDocument(doc))
+            .map((doc) =>
+              mapKnowledgeDocumentToLibraryFile(doc, current, mapBackendStatusToLibraryStatus, datasetNameById)
+            ),
+        ]
       } catch (err) {
         console.warn('Failed to sync parsing library from server:', err)
         return null
@@ -196,7 +344,7 @@ export function useParsingViewState({
   }, [activeLibraryFileId, libraryFiles])
 
   const activeLibraryContentQuery = useQuery({
-    queryKey: ['parsing', 'library-content', activeLibraryFileId],
+    queryKey: ['parsing', 'library-content', activeLibraryFileId, activeLibraryFile?.source],
     enabled: Boolean(
       activeLibraryFileId &&
         activeLibraryFile &&
@@ -215,6 +363,7 @@ export function useParsingViewState({
       if (!activeLibraryFileId || !activeLibraryFile) return null
       return hydrateLibraryContent(activeLibraryFileId, activeLibraryFile.status || 'parsed', {
         fileType: activeLibraryFile.fileType,
+        source: activeLibraryFile.source,
       })
     },
   })
@@ -278,16 +427,24 @@ export function useParsingViewState({
 
   const currentFolderId = activeFolderId || ROOT_FOLDER_ID
   const visibleQueueFiles = useMemo(() => {
+    if (selectedDatasetId) {
+      return activeFileId ? files.filter((file) => file.id === activeFileId) : []
+    }
     return files
       .filter((file) => (file.folderId || ROOT_FOLDER_ID) === currentFolderId)
       .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
-  }, [currentFolderId, files])
+  }, [activeFileId, currentFolderId, files, selectedDatasetId])
 
   const visibleLibraryFiles = useMemo(() => {
     return libraryFiles
-      .filter((file) => (file.folderId || ROOT_FOLDER_ID) === currentFolderId)
+      .filter((file) => {
+        if (selectedDatasetId) {
+          return file.source === 'knowledge_base' && file.datasetId === selectedDatasetId
+        }
+        return (file.folderId || ROOT_FOLDER_ID) === currentFolderId
+      })
       .sort((a, b) => Date.parse(b.parsedAt) - Date.parse(a.parsedAt))
-  }, [currentFolderId, libraryFiles])
+  }, [currentFolderId, libraryFiles, selectedDatasetId])
 
   const queueLibraryIdSet = useMemo(() => {
     const ids = new Set<string>()
@@ -310,6 +467,7 @@ export function useParsingViewState({
 
     const candidates = visibleLibraryOnlyFiles.filter((file) => {
       const status = (file.status || 'parsed') as FileStatus
+      if (file.source === 'knowledge_base') return false
       return status === 'pending' || status === 'error' || status === 'parsing'
     })
 
@@ -383,6 +541,7 @@ export function useParsingViewState({
     activePdfQuality,
     activeQualityGate,
     activeRun,
+    availableDatasets,
     currentFolderId,
     folderPathById,
     isPdf,

@@ -109,7 +109,6 @@ export function KnowledgeScopePanel({
   const header = (
     <div className="space-y-2">
       {/* text-[11px] font-medium tracking-[0.08em] */}
-      {/* bg-gradient-to-r from-primary/35 via-border/60 to-transparent */}
       <div className="flex items-start gap-2.5">
         <div className="relative flex size-6 items-center justify-center rounded-lg border border-border/70 bg-background text-primary/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_10px_20px_-18px_rgba(15,23,42,0.24)]">
           <span className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[linear-gradient(135deg,rgba(255,255,255,0.28),transparent_54%)] opacity-80" />

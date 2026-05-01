@@ -15,6 +15,13 @@ import {
 import { toast } from 'sonner'
 
 import { AppFrame } from '@/components/app-frame'
+import { AblationCaseDrilldown } from '@/components/evaluation/ablation-case-drilldown'
+import { AblationComparisonMatrix } from '@/components/evaluation/ablation-comparison-matrix'
+import { AblationGridPanel } from '@/components/evaluation/ablation-grid-panel'
+import { AblationParameterImpactPanel } from '@/components/evaluation/ablation-parameter-impact-panel'
+import { AblationParetoPanel } from '@/components/evaluation/ablation-pareto-panel'
+import { AblationSliceDiffPanel } from '@/components/evaluation/ablation-slice-diff-panel'
+import { AblationStatisticsPanel } from '@/components/evaluation/ablation-statistics-panel'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -29,7 +36,7 @@ import { datasetApi } from '@/lib/api/datasets'
 import { evaluationApi } from '@/lib/api/evaluation'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { sanitizeFilename } from '@/lib/sanitize'
-import type { Dataset, RegressionRun, RegressionRunCreate, RagasRegressionRunDiffResponse } from '@/types'
+import type { Dataset, RegressionAblationGridValue, RegressionRun, RegressionRunCreate, RagasRegressionRunDiffResponse } from '@/types'
 import { cn, detachPromise } from '@/lib/utils'
 
 type RegressionLeaderboardRow = {
@@ -452,13 +459,12 @@ export function RetrievalAblationsPage() {
     }
   }
 
-  async function runAblation(): Promise<void> {
+  function buildRegressionRunPayload(variant: Partial<RegressionRunCreate> = {}): RegressionRunCreate | null {
     const ds = datasetId.trim()
     if (!ds) {
-      toast.error('请选择 dataset')
-      return
+      return null
     }
-    const payload: RegressionRunCreate = {
+    const basePayload: RegressionRunCreate = {
       dataset_id: ds,
       metrics: retrievalOnly ? [] : metricKeys,
       skip_empty_contexts: Boolean(skipEmptyContexts),
@@ -475,6 +481,19 @@ export function RetrievalAblationsPage() {
       reranker_provider: String(rerankerProvider || 'llm'),
       reranker_top_n: Math.max(1, Math.min(rerankerTopN, 200)),
     }
+    return {
+      ...basePayload,
+      ...variant,
+      dataset_id: ds,
+    }
+  }
+
+  async function runAblation(): Promise<void> {
+    const payload = buildRegressionRunPayload()
+    if (!payload) {
+      toast.error('请选择 dataset')
+      return
+    }
 
     try {
       const run = await evaluationApi.createRegressionRun(payload)
@@ -483,6 +502,29 @@ export function RetrievalAblationsPage() {
       setSelectedTargetRunId(run.id)
     } catch (err) {
       toast.error(formatApiError(err, '创建 regression run 失败'))
+    }
+  }
+
+  async function runGridBatch(grid: Record<string, RegressionAblationGridValue[]>, maxCombinations: number): Promise<void> {
+    const payload = buildRegressionRunPayload()
+    if (!payload) {
+      toast.error('请选择 dataset')
+      return
+    }
+    try {
+      const batch = await evaluationApi.createRegressionAblationBatch({
+        ...payload,
+        grid,
+        max_combinations: maxCombinations,
+      })
+      if (batch.run_ids[0]) {
+        setSelectedTargetRunId(batch.run_ids[0])
+      }
+      toast.success(`已提交 ${batch.total} 个 ablation runs`)
+    } catch (err) {
+      const message = formatApiError(err, '批量创建 ablation runs 失败')
+      toast.error(message)
+      throw new Error(message)
     }
   }
 
@@ -499,7 +541,12 @@ export function RetrievalAblationsPage() {
     }
     setDiffLoading(true)
     try {
-      const res = await evaluationApi.diffRegressionRuns(targetId, { base_run_id: baseId })
+      const res = await evaluationApi.diffRegressionRuns(targetId, {
+        base_run_id: baseId,
+        include_significance: true,
+        include_per_case: true,
+        max_case_diffs: 500,
+      })
       setDiff(res)
       toast.success('已生成 diff')
     } catch (err) {
@@ -568,6 +615,10 @@ export function RetrievalAblationsPage() {
   const selectedTargetRun = useMemo(
     () => runsByDataset.find((run) => _stableId(run.id) === _stableId(selectedTargetRunId)) || null,
     [runsByDataset, selectedTargetRunId]
+  )
+  const deepDiveMetricKeys = useMemo(
+    () => LEADERBOARD_METRIC_OPTIONS.map((item) => item.key),
+    []
   )
   const completedRunsCount = useMemo(
     () => runsByDataset.filter((run) => String(run.status || '') === 'completed').length,
@@ -1098,6 +1149,9 @@ export function RetrievalAblationsPage() {
                       <TabsTrigger value="config" className="h-10 rounded-none border-b-2 border-transparent px-0 text-[13px] data-[state=active]:border-primary data-[state=active]:bg-transparent">
                         配置差异
                       </TabsTrigger>
+                      <TabsTrigger value="deep-dive" className="h-10 rounded-none border-b-2 border-transparent px-0 text-[13px] data-[state=active]:border-primary data-[state=active]:bg-transparent">
+                        深度分析
+                      </TabsTrigger>
                       <TabsTrigger value="raw" className="h-10 rounded-none border-b-2 border-transparent px-0 text-[13px] data-[state=active]:border-primary data-[state=active]:bg-transparent">
                         原始 JSON
                       </TabsTrigger>
@@ -1192,6 +1246,36 @@ export function RetrievalAblationsPage() {
                         )}
                       </div>
                     )}
+                  </TabsContent>
+
+                  <TabsContent value="deep-dive" className="mt-0 min-h-0 flex-1 overflow-auto bg-slate-50/70">
+                    <div className="space-y-4 px-5 py-4">
+                      <AblationGridPanel
+                        disabled={!datasetId.trim()}
+                        onRunGrid={runGridBatch}
+                        onBatchComplete={async () => {
+                          await refreshRuns()
+                          await refreshLeaderboard()
+                        }}
+                      />
+                      <AblationStatisticsPanel diff={diff} />
+                      <AblationComparisonMatrix
+                        runs={runsByDataset}
+                        baseRunId={selectedBaseRunId}
+                        metricKeys={deepDiveMetricKeys}
+                      />
+                      <div className="grid gap-4 xl:grid-cols-2">
+                        <AblationParetoPanel runs={runsByDataset} metricKey={leaderboardMetricKey} />
+                        <AblationParameterImpactPanel runs={runsByDataset} metricKey={leaderboardMetricKey} />
+                      </div>
+                      <AblationSliceDiffPanel diff={diff} />
+                      <AblationCaseDrilldown
+                        baseRunId={selectedBaseRunId}
+                        targetRunId={selectedTargetRunId}
+                        metricKeys={deepDiveMetricKeys}
+                        caseDiffs={diff?.case_diffs ?? []}
+                      />
+                    </div>
                   </TabsContent>
 
                   <TabsContent value="raw" className="mt-0 min-h-0 flex-1 overflow-hidden">

@@ -61,6 +61,7 @@ export default function ReportsCenterPage() {
   const [isExportingJson, setIsExportingJson] = useState(false)
   const [isExportingHtml, setIsExportingHtml] = useState(false)
   const [isExportingRagAuditHtml, setIsExportingRagAuditHtml] = useState(false)
+  const [isExportingBundle, setIsExportingBundle] = useState(false)
 
   const [report, setReport] = useState<DatasetReport | null>(null)
   const [folderQuery, setFolderQuery] = useState<string>('')
@@ -201,6 +202,26 @@ export default function ReportsCenterPage() {
       toast.error(formatApiError(e, '导出 RAG Audit 报告失败'))
     } finally {
       setIsExportingRagAuditHtml(false)
+    }
+  }, [connectorRunsLimit, datasetId, pipelineHash, redact, selectedDataset?.name])
+
+  const handleExportBundleZip = useCallback(async () => {
+    if (!datasetId) return
+    setIsExportingBundle(true)
+    try {
+      const blob = await reportApi.exportDatasetReportBundleZip(datasetId, {
+        pipeline_hash: pipelineHash.trim() || undefined,
+        connector_runs_limit: connectorRunsLimit,
+        redact,
+      })
+      const safe = sanitizeFilename(selectedDataset?.name || 'dataset')
+      const suffix = pipelineHash.trim() ? `.${pipelineHash.trim().slice(0, 8)}` : ''
+      downloadBlob(blob, `${safe}.report-bundle${suffix}.zip`)
+    } catch (e: any) {
+      console.error('Export report bundle zip failed', e)
+      toast.error(formatApiError(e, '导出 Bundle ZIP 失败'))
+    } finally {
+      setIsExportingBundle(false)
     }
   }, [connectorRunsLimit, datasetId, pipelineHash, redact, selectedDataset?.name])
 
@@ -552,6 +573,20 @@ export default function ReportsCenterPage() {
                     <Download className="size-4" />
                   )}
                   <span className="ml-2">导出 RAG 审计</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50"
+                  onClick={() => detachPromise(handleExportBundleZip())}
+                  disabled={!datasetId || isExportingBundle}
+                  aria-label="导出 Bundle ZIP"
+                >
+                  {isExportingBundle ? (
+                    <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+                  ) : (
+                    <Download className="size-4" />
+                  )}
+                  <span className="ml-2">导出 Bundle ZIP</span>
                 </Button>
                 <Button
                   variant="outline"

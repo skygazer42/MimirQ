@@ -38,6 +38,7 @@ export function useParsingPageState({ files, setFiles }: Readonly<UseParsingPage
   const [autoParseFileId, setAutoParseFileId] = useState<string | null>(null)
   const [activeLibraryFileId, setActiveLibraryFileId] = useState<string | null>(null)
   const [activeLibrarySourceStatus, setActiveLibrarySourceStatus] = useState<ParsingLibrarySourceStatus>('unknown')
+  const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null)
   const [previewMode, setPreviewMode] = useState<'raw' | 'rendered'>('rendered')
   const [pdfPreviewResetToken, setPdfPreviewResetToken] = useState(0)
   const [isEditing, setIsEditing] = useState(false)
@@ -153,6 +154,7 @@ export function useParsingPageState({ files, setFiles }: Readonly<UseParsingPage
     rebindTargetRef,
     rehydratedFolderIdsRef,
     rightPanelMode,
+    selectedDatasetId,
     setActiveBlockId,
     setActiveFileId,
     setActiveLibraryFileId,
@@ -174,6 +176,7 @@ export function useParsingPageState({ files, setFiles }: Readonly<UseParsingPage
     setQueueFileParserBackend,
     setQueueOpen,
     setRightPanelMode,
+    setSelectedDatasetId,
     consumeUploadTargetFolderId,
     uploadTargetFolderIdRef,
   }

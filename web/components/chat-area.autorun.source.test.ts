@@ -18,4 +18,21 @@ describe('chat area autorun source', () => {
     expect(src).toContain("useDocumentView((state) => state.documentId)")
     expect(src).toContain('documentIds: activeDocumentIds')
   })
+
+  it('keeps first-page chat on a low-latency RAG profile by default', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'chat-area.tsx'), 'utf8')
+
+    expect(src).toContain('enable_multi_query: false')
+    expect(src).toContain('enable_hyde: false')
+  })
+
+  it('exposes current conversation RAG trace without leaving the chat page', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'chat-area.tsx'), 'utf8')
+
+    expect(src).toContain("import { RagTraceDialog } from '@/components/rag-trace/rag-trace-dialog'")
+    expect(src).toContain('const [traceDialogOpen, setTraceDialogOpen] = useState(false)')
+    expect(src).toContain("title={conversationId ? t('viewRagTrace') : t('sendMessageFirst')}")
+    expect(src).toContain('<RagTraceDialog')
+    expect(src).toContain('conversationId={conversationId ?? null}')
+  })
 })

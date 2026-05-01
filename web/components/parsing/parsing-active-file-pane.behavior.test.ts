@@ -228,6 +228,11 @@ function findButtonByText(container: HTMLElement, text: string) {
   return Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.includes(text)) ?? null
 }
 
+function findLastButtonByText(container: HTMLElement, text: string) {
+  const matches = Array.from(container.querySelectorAll('button')).filter((button) => button.textContent?.includes(text))
+  return matches[matches.length - 1] ?? null
+}
+
 function makeRun(overrides: Partial<ParseRun> = {}): ParseRun {
   return {
     blocks: [],
@@ -502,6 +507,12 @@ describe('ParsingActiveFilePane lazy compare interactions', () => {
       )
     )
 
+    const extractExpandButton = findButtonByText(view.container, '展开')
+    expect(extractExpandButton).not.toBeNull()
+    act(() => {
+      extractExpandButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
     const runButton = findButtonByText(view.container, '运行抽取')
     expect(runButton).not.toBeNull()
 
@@ -550,6 +561,12 @@ describe('ParsingActiveFilePane lazy compare interactions', () => {
         })
       )
     )
+
+    const elementsExpandButton = findLastButtonByText(view.container, '展开')
+    expect(elementsExpandButton).not.toBeNull()
+    act(() => {
+      elementsExpandButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
 
     const sealFilter = findButtonByText(view.container, '印章')
     expect(sealFilter).not.toBeNull()
@@ -600,6 +617,12 @@ describe('ParsingActiveFilePane lazy compare interactions', () => {
         })
       )
     )
+
+    const elementsExpandButton = findLastButtonByText(view.container, '展开')
+    expect(elementsExpandButton).not.toBeNull()
+    act(() => {
+      elementsExpandButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
 
     const equationFilter = findButtonByText(view.container, '公式')
     expect(equationFilter).not.toBeNull()

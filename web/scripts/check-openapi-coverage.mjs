@@ -29,7 +29,7 @@ function parseOpenapiRoutes() {
   const spec = JSON.parse(readText('web/openapi.json'))
   const paths = spec?.paths && typeof spec.paths === 'object' ? spec.paths : {}
 
-  const out = new Set()
+  const out = new Map()
 
   for (const [rawPath, ops] of Object.entries(paths)) {
     const stripped = stripApiV1Prefix(rawPath)
@@ -40,11 +40,16 @@ function parseOpenapiRoutes() {
       if (String(method || '').startsWith('x-')) continue
       const upper = String(method || '').toUpperCase()
       if (!HTTP_METHODS.has(upper)) continue
-      out.add(`${upper} ${normalized}`)
+      out.set(`${upper} ${normalized}`, { rawPath, method: upper })
     }
   }
 
   return out
+}
+
+function isOpenapiV1Route(route) {
+  const rawPath = String(route?.rawPath || '')
+  return rawPath === '/api/v1' || rawPath.startsWith('/api/v1/')
 }
 
 function main() {
@@ -57,29 +62,46 @@ function main() {
   }
 
   // OpenAPI will include non-v1 routes (e.g. /metrics, /). We don't fail on extras,
-  // but we do print the first few to help diagnose parser gaps.
+  // but any extra /api/v1 route means app/api/v1 static parsing missed a backend
+  // route or OpenAPI is exposing a route outside the canonical v1 router contract.
   const extras = []
-  for (const key of openapi.values()) {
-    if (!backend.has(key)) extras.push(key)
+  for (const [key, route] of openapi.entries()) {
+    if (!backend.has(key)) extras.push({ key, route })
   }
-  extras.sort()
+  extras.sort((a, b) => a.key.localeCompare(b.key))
+  const unexpectedV1Extras = extras.filter((item) => isOpenapiV1Route(item.route))
 
-  if (!missing.length) {
+  if (!missing.length && !unexpectedV1Extras.length) {
     process.stdout.write(
       `[openapi-coverage] OK: ${backend.size} backend routes covered (${openapi.size} OpenAPI routes; extras: ${extras.length})\n`
     )
     return
   }
 
-  missing.sort((a, b) => a.key.localeCompare(b.key))
-  process.stderr.write(
-    `[openapi-coverage] FAIL: missing ${missing.length} backend routes in web/openapi.json\n\n`
-  )
-  for (const m of missing.slice(0, 200)) {
-    process.stderr.write(`- ${m.key}  (backend: ${m.src})\n`)
+  if (missing.length) {
+    missing.sort((a, b) => a.key.localeCompare(b.key))
+    process.stderr.write(
+      `[openapi-coverage] FAIL: missing ${missing.length} backend routes in web/openapi.json\n\n`
+    )
+    for (const m of missing.slice(0, 200)) {
+      process.stderr.write(`- ${m.key}  (backend: ${m.src})\n`)
+    }
+    if (missing.length > 200) {
+      process.stderr.write(`\n...and ${missing.length - 200} more\n`)
+    }
   }
-  if (missing.length > 200) {
-    process.stderr.write(`\n...and ${missing.length - 200} more\n`)
+
+  if (unexpectedV1Extras.length) {
+    if (missing.length) process.stderr.write('\n')
+    process.stderr.write(
+      `[openapi-coverage] FAIL: ${unexpectedV1Extras.length} OpenAPI /api/v1 routes are not represented by app/api/v1 route parsing\n\n`
+    )
+    for (const item of unexpectedV1Extras.slice(0, 200)) {
+      process.stderr.write(`- ${item.key}  (openapi: ${item.route.rawPath})\n`)
+    }
+    if (unexpectedV1Extras.length > 200) {
+      process.stderr.write(`\n...and ${unexpectedV1Extras.length - 200} more\n`)
+    }
   }
 
   process.stderr.write('\nHint: Run `make openapi-export` and ensure the routes are included in schema.\n')
@@ -87,4 +109,3 @@ function main() {
 }
 
 main()
-

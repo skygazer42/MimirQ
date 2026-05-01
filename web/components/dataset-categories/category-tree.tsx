@@ -118,7 +118,7 @@ export function DatasetCategoryTreeView({
                 <span
                   className={cn(
                     'flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-muted-foreground',
-                    isSelected ? 'border-primary/15 bg-white text-primary shadow-[0_8px_14px_-12px_rgba(37,99,235,0.25)]' : 'border-slate-200/80 bg-slate-50 text-slate-500'
+                    isSelected ? 'border-primary/15 bg-card text-primary shadow-[0_8px_14px_-12px_rgba(37,99,235,0.25)]' : 'border-slate-200/80 bg-slate-50 text-slate-500'
                   )}
                 >
                   <FolderOpen className="h-3 w-3" />
@@ -128,7 +128,7 @@ export function DatasetCategoryTreeView({
               <span
                 className={cn(
                   'rounded-full border px-1.5 py-0.5 tabular-nums text-[9px] font-semibold shadow-sm',
-                  isSelected ? 'border-primary/15 bg-white text-primary shadow-[0_8px_14px_-12px_rgba(37,99,235,0.22)]' : 'border-slate-200/80 bg-white text-muted-foreground'
+                  isSelected ? 'border-primary/15 bg-card text-primary shadow-[0_8px_14px_-12px_rgba(37,99,235,0.22)]' : 'border-slate-200/80 bg-card text-muted-foreground'
                 )}
               >
                 {Number(node.datasets || 0) || 0}
@@ -162,7 +162,7 @@ export function DatasetCategoryTreeView({
           <span
             className={cn(
               'flex h-5 w-5 shrink-0 items-center justify-center rounded-md border',
-              selectedId ? 'border-slate-200/80 bg-slate-50 text-slate-500' : 'border-primary/15 bg-white text-primary shadow-[0_8px_14px_-12px_rgba(37,99,235,0.22)]'
+              selectedId ? 'border-slate-200/80 bg-slate-50 text-slate-500' : 'border-primary/15 bg-card text-primary shadow-[0_8px_14px_-12px_rgba(37,99,235,0.22)]'
             )}
           >
             <FolderTree className="h-3 w-3" />
