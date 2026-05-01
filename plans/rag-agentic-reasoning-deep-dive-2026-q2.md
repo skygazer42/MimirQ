@@ -545,3 +545,21 @@ ToT/GoT 在通用 RAG 中 **ROI 不高**（成本 5×+，收益仅在难题上�
 > - `plans/agentic-critic-agent.md`
 > - `plans/agentic-redteam-suite.md`
 > - `plans/agentic-ragcap-bench.md`
+
+---
+
+## 15. 2026-05-01 Product PASS
+
+Status: PASS - 已完成必要产品化子集,本 MD 不再作为后续执行入口.
+
+已落地:
+- Self-RAG / CRAG / Web Search / hierarchical retrieval 已拆进真实后端路径:`app/rag/workflows/self_rag.py`,`app/rag/workflows/crag_streaming.py`,`app/rag/tools/web_search.py`,`app/rag/tools/hierarchical_retrieval_tools.py`.
+- Adaptive-RAG 路由已落地:`app/rag/policy/complexity_classifier.py` 与 `app/rag/workflows/system_router.py` 支撑查询复杂度判定、系统路由和降级.
+- 主要行为已有测试覆盖:`tests/test_self_rag_workflow.py`,`tests/test_agentic_crag_streaming.py`,`tests/test_web_search_tool.py`,`tests/test_hierarchical_retrieval_tools.py`,`tests/test_system_router.py`,`tests/test_complexity_classifier.py`.
+- Redteam 相关能力已并入安全评测路径:`app/rag/evaluation/agent_redteam.py` 与 `tests/test_agent_redteam.py`.
+
+暂缓:
+- 不做开放式多智能体辩论、无限 ReAct 工具链和长期记忆代理,避免把 3-5s RAG 响应目标拖成研究型 deep research.
+- 不做 fine-tuned critic agent 和 RAGCap 全量 benchmark runner,除非后续有独立评测目标和数据集.
+
+Directive: 后续 agentic 能力只能围绕明确产品路径增量补工具,不要再按本文研究清单逐项推进.

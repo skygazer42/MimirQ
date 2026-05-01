@@ -558,3 +558,20 @@ app/rag/tools/pre_poc_scanner/
 > - 第 5–7 份：Agentic / 解析切块 / 安全合规
 > - 第 8 份：POC 归因框架（运营手册）
 > - 第 9 份：**Pre-POC Scanner（本文，入库前预检）**
+
+---
+
+## 11. 2026-05-01 Product PASS
+
+Status: PASS - 已完成必要产品化子集,本 MD 不再作为后续执行入口.
+
+已落地:
+- Pre-POC scanner 已进入 `app/rag/tools/pre_poc_scanner/`,并通过 dataset precheck / profile API 与入库前页面联动.
+- 产品路径已覆盖项目盘点报告、预检线索、隔离/风险、脱敏报告和入库监控事件流,运维不需要手写 scanner JSON.
+- 测试覆盖 precheck、dataset profile、scanner report、风险线索和入库集成相关路径.
+
+暂缓:
+- 暂缓 PyInstaller 单文件交付、客户桌面包和独立离线扫描器 UI.
+- 暂缓把 Word/Excel/PPT 截图级审计做成默认链路,现阶段以现有解析/预检结果驱动.
+
+Directive: 预检后续只补真实入库阻断问题,不要再扩成独立桌面扫描产品.

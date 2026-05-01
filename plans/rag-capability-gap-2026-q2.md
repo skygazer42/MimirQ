@@ -644,3 +644,21 @@
 ---
 
 > **下一步**：对 Quick Wins 象限的每一项，拆成独立 plan（约 500–2000 行实现粒度），按优先级单独执行；战略项先做设计 RFC 后再拆 plan。
+
+---
+
+## 14. 2026-05-01 Product PASS
+
+Status: PASS - 已完成必要产品化子集,本 MD 不再作为后续执行入口.
+
+已落地:
+- RAG 核心短板已补齐到产品可用层:Self-RAG、CRAG streaming、web search、hierarchical retrieval、context expand、MMR、local BGE、long-context rerank、retrieval profiles 已进入 `app/rag/` 与 API/UI 路径.
+- 质量与成本治理已具备闭环:semantic cache、tenant quota、cost tracker、evaluation/ablation、POC attribution、precheck scanner 已有服务和测试覆盖.
+- 安全合规已覆盖输出防护、PII、redteam、RTBF、lineage、SCIM/SAML 等企业必需能力.
+- 前端已经把诊断、评测、反馈、入库监控、隔离、KG 可视化等新增能力产品化,不再集中堆在诊断工作台.
+
+暂缓:
+- 暂缓商业 embedding / rerank provider 矩阵、向量数据库替换矩阵、SharePoint/Confluence/Notion 等连接器生态和多模态 parser 大扩容.
+- 暂缓把所有外部 SOTA benchmark 常驻仓库,真实客户数据不足时做全量榜单没有产品收益.
+
+Directive: 本文后续仅作为能力雷达参考;新投入必须拆独立 RFC/plan 并说明真实业务触发条件.

@@ -598,3 +598,20 @@ connector_source → raw_doc (object storage)
 > - `plans/rtbf-cascade.md`（P1）
 > - `plans/lineage-service.md`（P1）
 > - `plans/ci-redteam-gate.md`（P1）
+
+---
+
+## 11. 2026-05-01 Product PASS
+
+Status: PASS - 已完成必要产品化子集,本 MD 不再作为后续执行入口.
+
+已落地:
+- 安全核心已实现:`app/rag/safety/llama_guard.py`,`app/rag/safety/prompt_guard.py`,`app/rag/safety/llm_guard.py`,`app/rag/safety/output_guard.py`,`app/rag/safety/retrieval_rail.py`,`app/rag/preprocessing/pii_presidio.py`.
+- 企业合规路径已覆盖 redteam、agent redteam、RTBF、lineage、SCIM、SAML 和审计相关 API/测试.
+- 主要测试包括:`tests/test_output_guard.py`,`tests/test_output_guard_engine.py`,`tests/test_pii_presidio.py`,`tests/test_redteam_suite.py`,`tests/test_agent_redteam.py`,`tests/test_rtbf_service.py`,`tests/test_lineage_service.py`.
+
+暂缓:
+- 不强制所有本地部署默认加载外部 guard 模型,避免离线部署、显存和延迟问题.
+- 暂缓 always-on 重型 NLI/LLM guard 与 CI 红队门禁,当前采用配置开关和显式评测更符合产品阶段.
+
+Directive: 安全能力必须沿真实风险面和部署约束迭代,不要把研究型 guardrail 全量默认开启.

@@ -577,3 +577,20 @@ app/rag/demo/poc_streamlit.py      # POC 演示前端
 > - `plans/industry-rules-industrial-control.md`（首个行业模板）
 > - `plans/poc-umap-scatter.md`（客户沟通可视化）
 > - `plans/poc-streamlit-demo.md`（POC 前端模板）
+
+---
+
+## 12. 2026-05-01 Product PASS
+
+Status: PASS - 已完成必要产品化子集,本 MD 不再作为后续执行入口.
+
+已落地:
+- POC attribution 已在 `app/rag/evaluation/poc_runner/` 下形成根因分类、超纲验证、query pattern mining、coverage、latency decomposition 与 report 生成闭环.
+- 行业规则与数据分析能力已接入 API/UI,可从产品页面查看归因、风险和样本建议.
+- 测试覆盖 POC runner、industry rules、dataset analysis 等关键路径,能支撑坏例复盘.
+
+暂缓:
+- 不再做 Streamlit POC 模板,统一使用现有 Next.js + FastAPI 产品入口.
+- 暂缓 UMAP scatter 作为默认客户沟通页;后续若需要,从可视化 plan 的 trace/embedding map 路径增量补.
+
+Directive: POC 归因后续只服务真实验收和坏例复盘,不要再新增一套旁路 demo 前端.

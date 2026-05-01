@@ -646,3 +646,20 @@ chunking_grid/
 > - `plans/late-chunking.md`
 > - `plans/contextual-enrichment-lazy.md`
 > - `plans/parser-quality-fallback.md`
+
+---
+
+## 13. 2026-05-01 Product PASS
+
+Status: PASS - 已完成必要产品化子集,本 MD 不再作为后续执行入口.
+
+已落地:
+- 切块质量核心已实现:semantic floor、RAPTOR、contextual enrichment、chunk preview、parser quality/precheck 路径已进入后端与前端产品链路.
+- 关键文件包括:`app/rag/chunking/strategies/semantic.py`,`app/rag/chunking/strategies/raptor.py`,`app/rag/chunking/contextual_enrichment.py` 以及 parsing / precheck / dataset profile 相关 API.
+- 测试覆盖主要边界:`tests/test_semantic_chunk_floor.py`,`tests/test_raptor_chunker.py`,`tests/test_raptor_semantic_leiden.py`,`tests/test_chunk_semantic_quality_scorer.py`,`tests/test_contextual_enrichment.py`.
+
+暂缓:
+- 暂缓 OmniDocBench runner、chunking grid runner、MinerU 2.5 强制升级、Mathpix/ColPali/chart/video/audio parser 扩容.
+- 暂缓把所有 parser benchmark 放到常规验证;当前更需要保持解析页和入库链路稳定.
+
+Directive: 解析/切块新增必须从真实失败样本出发,先补可回归 fixture,再考虑引入新 parser 或新策略.
