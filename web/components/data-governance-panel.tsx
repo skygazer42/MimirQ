@@ -5,7 +5,8 @@
 'use client'
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
-import { ShieldCheck, Sparkles, Tag, FolderTree, FileText, Upload, Save, RotateCcw, Trash2, Eye, Search, Wrench, ScanLine, FileSearch, Hash, Layers, X, Info, AlertTriangle, Copy, PanelRightOpen, PanelRightClose } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { ShieldCheck, Sparkles, Tag, FolderTree, FileText, Upload, Save, RotateCcw, Trash2, Eye, Search, Wrench, ScanLine, FileSearch, Hash, Layers, X, Info, AlertTriangle, Copy, PanelRightOpen, PanelRightClose, Database } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -30,20 +31,22 @@ import { PipelineRail, WorkbenchScaffold } from '@/components/workbench'
 import { useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { useRouter } from '@/i18n/navigation'
-import { ROOT_FOLDER_ID, useParsedFiles } from '@/store/use-parsed-files-store'
+import { ROOT_FOLDER_ID, useParsedFiles, type ParsedFileData } from '@/store/use-parsed-files-store'
 import { cn, formatFileSize, detachPromise } from '@/lib/utils'
 import { getDocContentFromCache } from '@/lib/doc-content-cache'
 import { QualityChecker } from '@/components/data-governance/quality-checker'
 import { DataCleaner } from '@/components/data-governance/data-cleaner'
 import { DataAnnotator } from '@/components/data-governance/data-annotator'
 import { DataClassifier } from '@/components/data-governance/data-classifier'
-import { documentApi, parsingApi } from '@/lib/api'
+import { datasetApi, documentApi, parsingApi } from '@/lib/api'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
 
 import { DocumentFolderTree, getFileIcon } from '@/components/document-library/folder-tree'
 import { extractZipFiles, isZipFile } from '@/lib/zip'
 import { UPLOAD_ACCEPT_WITH_ZIP, ZIP_ALLOWED_EXTENSIONS } from '@/lib/upload-extensions'
+import { getParserLabel } from '@/lib/parser-options'
+import { resolveParserBackendForFilename } from '@/lib/parser-compat'
 
 const GOVERNANCE_TAB_CONFIGS = [
   { id: 'quality', icon: ScanLine, color: 'blue' },
@@ -53,6 +56,94 @@ const GOVERNANCE_TAB_CONFIGS = [
 ] as const
 
 type GovernanceTab = typeof GOVERNANCE_TAB_CONFIGS[number]['id']
+type DatasetOption = {
+  id: string
+  name: string
+}
+
+type GovernanceDocument = Awaited<ReturnType<typeof documentApi.list>>['items'][number]
+type GovernanceParsingDocument = Awaited<ReturnType<typeof parsingApi.listDocuments>>['items'][number]
+
+const ALL_DATASETS_VALUE = '__all_datasets__'
+
+function normalizeBackendCandidate(value: unknown): string {
+  return typeof value === 'string' && value.trim() ? value.trim() : ''
+}
+
+function mapBackendStatusToGovernanceStatus(status: unknown): ParsedFileData['status'] {
+  const normalized = String(status || '').toLowerCase()
+  if (['completed', 'complete', 'ready', 'parsed', 'done', 'success'].includes(normalized)) return 'parsed'
+  if (['processing', 'parsing', 'running'].includes(normalized)) return 'parsing'
+  if (['failed', 'failure', 'error'].includes(normalized)) return 'error'
+  if (['pending', 'queued', 'waiting'].includes(normalized)) return 'pending'
+  return 'parsed'
+}
+
+function isParsingWorkspaceDocument(doc: GovernanceDocument): boolean {
+  const meta = doc.metadata as Record<string, unknown> | undefined
+  return meta?.workspace === 'parsing'
+}
+
+function mapKnowledgeDocumentToGovernanceFile(
+  doc: GovernanceDocument,
+  datasetNameById: Map<string, string>
+): ParsedFileData {
+  const meta = doc.metadata as Record<string, unknown> | undefined
+  const backendCandidate =
+    normalizeBackendCandidate(meta?.parser_backend) ||
+    normalizeBackendCandidate(meta?.parser_backend_requested) ||
+    'auto'
+  const resolved = resolveParserBackendForFilename(doc.filename || 'document', backendCandidate)
+  const backend = resolved.backend || backendCandidate
+  const datasetId = doc.dataset_id || null
+
+  return {
+    id: String(doc.id || '').trim(),
+    filename: doc.filename || 'document',
+    fileType: doc.file_type || '',
+    fileSize: Number(doc.file_size || 0),
+    markdownContent: '',
+    originalMarkdownContent: '',
+    parsedAt: String(doc.updated_at || doc.created_at || new Date().toISOString()),
+    parser: getParserLabel(backend),
+    parserBackend: backend,
+    folderId: ROOT_FOLDER_ID,
+    datasetId,
+    datasetName: datasetId ? datasetNameById.get(datasetId) || datasetId : null,
+    source: 'knowledge_base',
+    sourcePath: typeof meta?.source_path === 'string' ? meta.source_path : null,
+    status: mapBackendStatusToGovernanceStatus(doc.status),
+    error: doc.error_message || undefined,
+  }
+}
+
+function mapParsingDocumentToGovernanceFile(doc: GovernanceParsingDocument): ParsedFileData {
+  const meta = doc.metadata as Record<string, unknown> | undefined
+  const backendCandidate =
+    normalizeBackendCandidate(meta?.parser_backend) ||
+    normalizeBackendCandidate(meta?.parser_backend_requested) ||
+    'auto'
+  const resolved = resolveParserBackendForFilename(doc.filename || 'document', backendCandidate)
+  const backend = resolved.backend || backendCandidate
+
+  return {
+    id: String(doc.id || '').trim(),
+    filename: doc.filename || 'document',
+    fileType: doc.file_type || '',
+    fileSize: Number(doc.file_size || 0),
+    markdownContent: '',
+    originalMarkdownContent: '',
+    parsedAt: String(doc.updated_at || doc.created_at || new Date().toISOString()),
+    parser: getParserLabel(backend),
+    parserBackend: backend,
+    folderId: ROOT_FOLDER_ID,
+    datasetId: doc.dataset_id || null,
+    datasetName: null,
+    source: 'parsing_workspace',
+    status: mapBackendStatusToGovernanceStatus(doc.status),
+    error: doc.error_message || undefined,
+  }
+}
 
 // 鏂囦欢娌荤悊鐘舵€?
 interface FileGovernanceState {
@@ -90,6 +181,7 @@ export function DataGovernancePanel() {
   const createFolder = useParsedFiles((state) => state.createFolder)
   const isLoaded = useParsedFiles((state) => state.isLoaded)
   const addParsedFile = useParsedFiles((state) => state.addParsedFile)
+  const setParsedFiles = useParsedFiles((state) => state.setParsedFiles)
   const updateParsedFile = useParsedFiles((state) => state.updateParsedFile)
   const removeFile = useParsedFiles((state) => state.removeFile)
   const { parserBackend } = useParserBackendPreference()
@@ -104,6 +196,10 @@ export function DataGovernancePanel() {
   const [uploading, setUploading] = useState(false)
   const [deleteFileOpen, setDeleteFileOpen] = useState(false)
   const [deleteFileTarget, setDeleteFileTarget] = useState<{ id: string; filename: string } | null>(null)
+  const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(() => {
+    const fromUrl = (searchParams.get('dataset_id') || '').trim()
+    return fromUrl || null
+  })
   const uploadAbortRef = useRef<AbortController | null>(null)
   const headerTitle = t("header.title")
   const headerSubtitle = t("header.subtitle")
@@ -144,6 +240,98 @@ export function DataGovernancePanel() {
       governanceProfileRef: governanceProfileRef || null,
     }
   }, [searchParams])
+
+  useEffect(() => {
+    setSelectedDatasetId(inboundContext.datasetId)
+    setActiveFolderId(ROOT_FOLDER_ID)
+    setSelectedFileId(null)
+  }, [inboundContext.datasetId, setActiveFolderId])
+
+  const datasetsQuery = useQuery({
+    queryKey: ['data-governance', 'datasets'],
+    enabled: isLoaded,
+    queryFn: async (): Promise<DatasetOption[]> => {
+      const response = await datasetApi.list({ skip: 0, limit: 200 })
+      return (response.items || []).map((dataset) => ({
+        id: String(dataset.id),
+        name: dataset.name || String(dataset.id),
+      }))
+    },
+  })
+
+  const availableDatasets = useMemo(() => datasetsQuery.data || [], [datasetsQuery.data])
+  const datasetNameById = useMemo(
+    () => new Map(availableDatasets.map((dataset) => [dataset.id, dataset.name])),
+    [availableDatasets]
+  )
+  const datasetNameSignature = useMemo(
+    () => availableDatasets.map((dataset) => `${dataset.id}:${dataset.name}`).join('|'),
+    [availableDatasets]
+  )
+  const selectedDatasetName = selectedDatasetId ? datasetNameById.get(selectedDatasetId) || selectedDatasetId : null
+
+  const documentSyncQuery = useQuery({
+    queryKey: ['data-governance', 'library-documents', datasetNameSignature, selectedDatasetId],
+    enabled: isLoaded,
+    queryFn: async (): Promise<ParsedFileData[]> => {
+      const [parsingResult, knowledgeResult] = await Promise.allSettled([
+        parsingApi.listDocuments({ skip: 0, limit: 200 }),
+        documentApi.list({ skip: 0, limit: 200, dataset_id: selectedDatasetId }),
+      ])
+
+      if (parsingResult.status === 'rejected') {
+        console.warn('Failed to sync parsing documents for governance:', parsingResult.reason)
+      }
+      if (knowledgeResult.status === 'rejected') {
+        console.warn('Failed to sync knowledge documents for governance:', knowledgeResult.reason)
+      }
+
+      const parsingItems = parsingResult.status === 'fulfilled' ? parsingResult.value.items || [] : []
+      const knowledgeItems = knowledgeResult.status === 'fulfilled' ? knowledgeResult.value.items || [] : []
+      return [
+        ...parsingItems.map(mapParsingDocumentToGovernanceFile),
+        ...knowledgeItems
+          .filter((doc) => !isParsingWorkspaceDocument(doc))
+          .map((doc) => mapKnowledgeDocumentToGovernanceFile(doc, datasetNameById)),
+      ].filter((file) => file.id)
+    },
+  })
+
+  useEffect(() => {
+    if (!isLoaded || !documentSyncQuery.data) return
+
+    const remoteById = new Map(documentSyncQuery.data.map((file) => [file.id, file]))
+    const currentFiles = useParsedFiles.getState().files || []
+    const merged = currentFiles.map((file) => {
+      const remote = remoteById.get(file.id)
+      if (!remote) return file
+      remoteById.delete(file.id)
+      return {
+        ...remote,
+        markdownContent: file.markdownContent || remote.markdownContent,
+        originalMarkdownContent: file.originalMarkdownContent || remote.originalMarkdownContent,
+        folderId: file.folderId || remote.folderId || ROOT_FOLDER_ID,
+      }
+    })
+
+    setParsedFiles([...merged, ...remoteById.values()])
+  }, [documentSyncQuery.data, isLoaded, setParsedFiles])
+
+  const handleDatasetScopeChange = useCallback(
+    (value: string) => {
+      const nextDatasetId = value === ALL_DATASETS_VALUE ? null : value
+      setSelectedDatasetId(nextDatasetId)
+      setSelectedFileId(null)
+      setActiveFolderId(ROOT_FOLDER_ID)
+
+      const params = new URLSearchParams(searchParams.toString())
+      if (nextDatasetId) params.set('dataset_id', nextDatasetId)
+      else params.delete('dataset_id')
+      const query = params.toString()
+      router.replace(query ? `/data-governance?${query}` : '/data-governance')
+    },
+    [router, searchParams, setActiveFolderId]
+  )
 
   const InboundBanner = useMemo(() => {
     if (inboundBannerDismissed) return null
@@ -276,12 +464,26 @@ export function DataGovernancePanel() {
     }
   }, [isResizing, isPanelResizing, resize, stopResizing])
 
+  const scopedFiles = useMemo(() => {
+    if (!selectedDatasetId) return files
+    return files.filter((file) => file.datasetId === selectedDatasetId)
+  }, [files, selectedDatasetId])
+
+  const datasetDocumentCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const file of files) {
+      if (!file.datasetId) continue
+      counts.set(file.datasetId, (counts.get(file.datasetId) || 0) + 1)
+    }
+    return counts
+  }, [files])
+
   // 閫変腑鐨勬枃浠?
-  const selectedFile = files.find((f) => f.id === selectedFileId) || null
+  const selectedFile = scopedFiles.find((f) => f.id === selectedFileId) || null
   const governanceState = selectedFileId ? governanceStates[selectedFileId] : null
 
   const visibleFiles = useMemo(() => {
-    if (!activeFolderId || activeFolderId === ROOT_FOLDER_ID) return files
+    if (!activeFolderId || activeFolderId === ROOT_FOLDER_ID) return scopedFiles
 
     const childrenByParentId = new Map<string, string[]>()
     for (const folder of libraryFolders) {
@@ -302,8 +504,8 @@ export function DataGovernancePanel() {
       for (const childId of children) stack.push(childId)
     }
 
-    return files.filter((f) => allowedFolderIds.has(f.folderId || ROOT_FOLDER_ID))
-  }, [files, activeFolderId, libraryFolders])
+    return scopedFiles.filter((f) => allowedFolderIds.has(f.folderId || ROOT_FOLDER_ID))
+  }, [scopedFiles, activeFolderId, libraryFolders])
 
   // 鍒濆鍖栨枃浠舵不鐞嗙姸鎬?
   const initializeGovernanceState = useCallback((file: { id: string; markdownContent: string; originalMarkdownContent?: string }) => {
@@ -372,7 +574,10 @@ export function DataGovernancePanel() {
       }
 
       try {
-        const remote = await parsingApi.getContent(id)
+        const remote =
+          file?.source === 'knowledge_base'
+            ? await documentApi.getParsedContent(id, { max_chars: 2_000_000 })
+            : await parsingApi.getContent(id)
         if (cancelled) return
         const markdown = (remote?.markdown_content || '').trim()
         const original = (remote?.original_markdown_content || '').trim()
@@ -544,7 +749,10 @@ export function DataGovernancePanel() {
       for (const { file, folderId } of expanded) {
         // 浣跨敤 preview 鎺ュ彛蹇€熻幏鍙?Markdown
         if (controller.signal.aborted || uploadAbortRef.current !== controller) return
-        const data = await documentApi.preview(file, parserBackend, undefined, { signal: controller.signal })
+        const data = await documentApi.preview(file, parserBackend, undefined, {
+          signal: controller.signal,
+          dataset_id: selectedDatasetId || undefined,
+        })
         if (controller.signal.aborted || uploadAbortRef.current !== controller) return
 
         // 鎷兼帴 segments 鑾峰彇鍏ㄦ枃
@@ -557,6 +765,8 @@ export function DataGovernancePanel() {
           markdownContent,
           parser: data.parser_backend,
           folderId,
+          datasetId: selectedDatasetId,
+          datasetName: selectedDatasetName,
         })
 
         // 濡傛灉鏄涓€涓枃浠讹紝鑷姩閫変腑
@@ -576,7 +786,17 @@ export function DataGovernancePanel() {
         setUploading(false)
       }
     }
-  }, [activeFolderId, addParsedFile, createFolder, initializeGovernanceState, libraryFolders, parserBackend, t])
+  }, [
+    activeFolderId,
+    addParsedFile,
+    createFolder,
+    initializeGovernanceState,
+    libraryFolders,
+    parserBackend,
+    selectedDatasetId,
+    selectedDatasetName,
+    t,
+  ])
 
   const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault()
@@ -605,12 +825,12 @@ export function DataGovernancePanel() {
 
   // 鏂囦欢閫夋嫨
   const handleSelectFile = useCallback((fileId: string) => {
-    const file = files.find((f) => f.id === fileId)
+    const file = scopedFiles.find((f) => f.id === fileId)
     if (file) {
       setSelectedFileId(fileId)
       initializeGovernanceState(file)
     }
-  }, [files, initializeGovernanceState])
+  }, [scopedFiles, initializeGovernanceState])
 
   // 鎵嬪姩缂栬緫鍥炶皟
   const handleManualEdit = useCallback((newContent: string) => {
@@ -748,18 +968,74 @@ export function DataGovernancePanel() {
 
   // 缁熻鏁版嵁
   const stats = useMemo(() => {
-    const totalFiles = files.length
-    const completedFiles = Object.values(governanceStates).filter((s) => s.qualityScore > 0).length
-    const modifiedFiles = Object.values(governanceStates).filter((s) => s.isModified).length
-    const avgScore = Object.values(governanceStates)
+    const scopedIds = new Set(scopedFiles.map((file) => file.id))
+    const scopedStates = Object.values(governanceStates).filter((state) => scopedIds.has(state.id))
+    const totalFiles = scopedFiles.length
+    const completedFiles = scopedStates.filter((s) => s.qualityScore > 0).length
+    const modifiedFiles = scopedStates.filter((s) => s.isModified).length
+    const avgScore = scopedStates
       .filter((s) => s.qualityScore > 0)
       .reduce((sum, s) => sum + s.qualityScore, 0) / completedFiles || 0
 
     return { totalFiles, completedFiles, modifiedFiles, avgScore }
-  }, [files, governanceStates])
+  }, [governanceStates, scopedFiles])
+
+  const ScopeToolbar = (
+    <div className="rounded-2xl border border-border/60 bg-card/80 px-4 py-3 shadow-sm backdrop-blur">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-primary/10">
+            <Database className="size-4 text-primary" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary/75">
+              {t('scope.title')}
+            </div>
+            <div className="mt-1 truncate text-sm font-medium text-foreground">
+              {selectedDatasetName || t('scope.allDatasets')}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {selectedDatasetId
+                ? t('scope.selectedDescription', { count: scopedFiles.length })
+                : t('scope.allDescription', { count: scopedFiles.length })}
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Select value={selectedDatasetId || ALL_DATASETS_VALUE} onValueChange={handleDatasetScopeChange}>
+            <SelectTrigger className="h-9 min-w-[220px] rounded-xl border-border/60 bg-background text-xs">
+              <SelectValue placeholder={t('scope.placeholder')} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_DATASETS_VALUE}>
+                {t('scope.allDatasets')} · {files.length}
+              </SelectItem>
+              {availableDatasets.map((dataset) => (
+                <SelectItem key={dataset.id} value={dataset.id}>
+                  {dataset.name} · {datasetDocumentCounts.get(dataset.id) || 0}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <span className="rounded-full border border-border/60 bg-muted/40 px-2.5 py-1 text-[11px] text-muted-foreground">
+            {documentSyncQuery.isFetching
+              ? t('scope.syncing')
+              : t('scope.synced', { count: scopedFiles.length })}
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+
+  const TopContent = (
+    <div className="space-y-3">
+      {ScopeToolbar}
+      {InboundBanner}
+    </div>
+  )
 
   // 绌虹姸鎬?- 鏀逛负涓婁紶寮曞
-  if (isLoaded && files.length === 0) {
+  if (isLoaded && scopedFiles.length === 0) {
     return (
       <WorkbenchScaffold
         title={headerTitle}
@@ -775,7 +1051,7 @@ export function DataGovernancePanel() {
         }
         size="full"
         bodyClassName="px-0 pb-0"
-        top={InboundBanner}
+        top={TopContent}
         pipelineRail={<PipelineRail />}
         mainPanel={
           <div className="flex-1 flex flex-col min-h-0">
@@ -1031,7 +1307,7 @@ export function DataGovernancePanel() {
       }
       size="full"
       bodyClassName="px-0 pb-0"
-      top={InboundBanner}
+      top={TopContent}
       pipelineRail={<PipelineRail />}
       mainPanel={
         <div className="flex-1 flex flex-col bg-background text-foreground min-h-0">
@@ -1176,11 +1452,22 @@ export function DataGovernancePanel() {
                                 day: '2-digit'
                               }) : ''}
                             </span>
+                            {file.datasetName ? (
+                              <>
+                                <span className="text-muted-foreground">|</span>
+                                <span className="truncate">{file.datasetName}</span>
+                              </>
+                            ) : null}
                           </div>
 
                           {/* Row 3: Badges & Actions */}
 	                          <div className="flex items-center justify-between h-5 pr-8">
 	                            <div className="flex items-center gap-2">
+                              {file.source ? (
+                                <span className="text-[9px] text-muted-foreground flex items-center gap-1 bg-muted px-1.5 py-0.5 rounded border border-border font-bold">
+                                  {file.source === 'knowledge_base' ? t('scope.sourceKnowledge') : t('scope.sourceParsing')}
+                                </span>
+                              ) : null}
 	                              {state?.isModified && (
 	                                <span className="text-[9px] text-sky-600 dark:text-sky-300 flex items-center gap-1 bg-sky-500/10 dark:bg-sky-500/20 px-1.5 py-0.5 rounded border border-sky-500/30 font-bold">
                                   <Sparkles className="w-2.5 h-2.5" /> {t('sidebar.cleaned')}
@@ -1196,18 +1483,20 @@ export function DataGovernancePanel() {
 	                        </div>
 	                      </div>
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDeleteFileTarget({ id: file.id, filename: file.filename })
-                            setDeleteFileOpen(true)
-                          }}
-                          className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 p-1 text-muted-foreground hover:text-rose-600 hover:bg-rose-50 rounded transition-opacity transition-colors duration-150 motion-reduce:transition-none"
-                          aria-label={t('a11y.deleteFile', { filename: file.filename })}
-                          title={t('dialogs.deleteFile.confirm')}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {file.source !== 'knowledge_base' ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDeleteFileTarget({ id: file.id, filename: file.filename })
+                              setDeleteFileOpen(true)
+                            }}
+                            className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 p-1 text-muted-foreground hover:text-rose-600 hover:bg-rose-50 rounded transition-opacity transition-colors duration-150 motion-reduce:transition-none"
+                            aria-label={t('a11y.deleteFile', { filename: file.filename })}
+                            title={t('dialogs.deleteFile.confirm')}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        ) : null}
                       </div>
 	                  )
 	                })
