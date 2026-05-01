@@ -49,7 +49,10 @@ def _enforce_non_empty_retrieval_scope(
     account_id: str,
     scope_document_ids: list[UUID],
     scope_dataset_id: UUID | None,
+    allow_empty_scope: bool = False,
 ) -> None:
+    if allow_empty_scope and bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True)):
+        return
     if bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True)) and scope_dataset_id is None:
         return
     if scope_document_ids:
@@ -240,6 +243,7 @@ async def retrieve_preview(
         account_id=account_id,
         scope_document_ids=scope_document_ids,
         scope_dataset_id=scope_dataset_id,
+        allow_empty_scope=bool(str(body.query_image or "").strip()),
     )
 
     from app.rag.pipelines.langgraph import build_rag_state
@@ -625,6 +629,7 @@ async def retrieve_evidence(
         account_id=account_id,
         scope_document_ids=scope_document_ids,
         scope_dataset_id=scope_dataset_id,
+        allow_empty_scope=bool(str(body.query_image or "").strip()),
     )
 
     from app.rag.pipelines.langgraph import build_rag_state
