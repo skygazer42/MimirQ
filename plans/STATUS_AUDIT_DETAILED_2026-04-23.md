@@ -410,12 +410,20 @@
 
 ## 汇总结论
 
-- 当前 **没有任何一份 plan 可以整体打 `[x]`**。
-- 完成度最高的方向：
-  - agentic 基础件
-  - POC attribution
-  - 上下文扩展的邻近扩展 / rerank-expand-rerank
-- 缺口最密集的方向：
-  - parsing/chunking benchmark 与多模态 parser
-  - enterprise / governance / safety 深水区
-  - POC→MVP 的产品化闭环
+- 2026-04-23 原始审计时,这些 plan 不能整体打 `[x]`;该判断已被后续实现与 2026-04-30/2026-05-01 Product PASS 收口取代。
+- 当前清单内明确行动项已无 `- [ ]` 未完成项;不继续把本文作为执行 backlog。
+- `plans/` 下 25 个 `rag-*-2026-q2.md` 均已补 `Status: PASS`,必要产品化子集已闭环。
+- 原先缺口密集方向 parsing/chunking、多模态 parser、enterprise/governance/safety、POC→MVP 已按产品必要范围吸收;不必要的研究型扩展已在各 plan 尾部明确转长期 backlog。
+
+---
+
+## 2026-05-01 Product PASS
+
+Status: PASS - 本审计表已完成历史归档,不再作为后续执行入口.
+
+验收口径:
+- 全量 `plans/*.md`:26 个 Markdown 文件。
+- RAG 计划文档:25 个 `rag-*-2026-q2.md`,均包含 `Status: PASS`。
+- 本审计表:0 个实际 `- [ ]` 未完成行动项。
+
+Directive: 后续如需继续规划,新建针对真实产品缺口的独立 plan;不要复用本文或已 PASS 的研究报告作为任务清单。
