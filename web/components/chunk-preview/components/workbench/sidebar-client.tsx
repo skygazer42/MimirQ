@@ -164,6 +164,8 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
     currentFileIndex,
     currentFile,
     datasetId,
+    scopeSyncLoading,
+    scopeSyncError,
     previewData,
     isLoading,
     cacheHit,
@@ -517,6 +519,55 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
         variant === 'pane' ? 'min-h-0' : 'flex-1 overflow-y-auto overscroll-contain no-scrollbar'
       )}
     >
+        <div className="mb-3 border-b border-border/60 pb-3">
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <span className="text-[9px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/75">
+              {t('sidebar.datasetScope.title')}
+            </span>
+            <span className="rounded-full bg-muted/55 px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
+              {datasetId ? t('sidebar.datasetScope.scoped') : t('sidebar.datasetScope.all')}
+            </span>
+          </div>
+          <select
+            value={datasetId || DATASET_DEFAULT_VALUE}
+            onChange={(event) => {
+              setIngestionPreview(null)
+              setIngestionError(null)
+              setDatasetId(event.target.value === DATASET_DEFAULT_VALUE ? '' : event.target.value)
+            }}
+            className="h-8 w-full rounded-lg border border-border/60 bg-background/90 px-2 text-[11px] font-medium text-foreground shadow-[inset_0_1px_0_hsl(var(--background))] outline-none transition-colors focus:border-primary/45 focus:ring-2 focus:ring-primary/12 dark:bg-background/60"
+          >
+            <option value={DATASET_DEFAULT_VALUE}>{t('sidebar.datasetScope.defaultOption')}</option>
+            {datasets.map((ds) => (
+              <option key={ds.id} value={ds.id}>
+                {ds.name}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-[10px] leading-4 text-muted-foreground/70">
+            {datasetId ? t('sidebar.datasetScope.selectedHint') : t('sidebar.datasetScope.hint')}
+          </p>
+          {datasetsLoading ? (
+            <div className="mt-1 text-[10px] text-muted-foreground">{t('sidebar.dataset.loading')}</div>
+          ) : null}
+          {datasetsError ? (
+            <SidebarNote tone="amber" className="mt-1 py-1.5">
+              {datasetsError}
+            </SidebarNote>
+          ) : null}
+          {scopeSyncLoading ? (
+            <div className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" />
+              {t('sidebar.datasetScope.syncing')}
+            </div>
+          ) : null}
+          {scopeSyncError ? (
+            <SidebarNote tone="amber" className="mt-1 py-1.5">
+              {scopeSyncError}
+            </SidebarNote>
+          ) : null}
+        </div>
+
         {/* 文件列表 */}
         <div className="mb-5 border-b border-border/60 pb-4">
           <div className="mb-3 flex items-center justify-between gap-3">
@@ -616,6 +667,11 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                           ) : null}
                           {typeof f.originalFileSize === 'number' ? (
                             <span className="font-mono">{formatFileSize(f.originalFileSize)}</span>
+                          ) : null}
+                          {f.source ? (
+                            <span className="rounded border border-border/50 bg-muted/50 px-1.5 py-0.5 text-[9px]">
+                              {t(`sidebar.datasetScope.sources.${f.source}`)}
+                            </span>
                           ) : null}
                           {processedStatus[f.id] === 'success' ? <Check className="h-3 w-3 text-success" /> : null}
                           {processedStatus[f.id] === 'error' ? <AlertCircle className="h-3 w-3 text-destructive" /> : null}
@@ -787,39 +843,11 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
               <div className="text-[11px] font-semibold text-foreground/82">{t('sidebar.dataset.title')}</div>
               <SidebarChip tone="cyan">可选</SidebarChip>
             </div>
-            <Select
-              value={datasetId || DATASET_DEFAULT_VALUE}
-              onValueChange={(value) => {
-                setIngestionPreview(null)
-                setIngestionError(null)
-                setDatasetId(value === DATASET_DEFAULT_VALUE ? '' : value)
-              }}
-            >
-              <SelectTrigger className="h-8 bg-background/90 text-[11px]">
-                <SelectValue placeholder={t('sidebar.dataset.selectPlaceholder')} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={DATASET_DEFAULT_VALUE}>{t('sidebar.dataset.defaultOption')}</SelectItem>
-                {datasets.map((ds) => (
-                  <SelectItem key={ds.id} value={ds.id}>
-                    {ds.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {(() => {
-    if (datasetsLoading) {
-        return (<div className="text-[11px] text-muted-foreground">{t('sidebar.dataset.loading')}</div>);
-    }
-    else if (datasetsError) {
-            return (<SidebarNote tone="amber" className="py-1.5">
-                {datasetsError}
-              </SidebarNote>);
-        }
-        else {
-            return null;
-        }
-})()}
+            <div className="rounded-lg border border-border/60 bg-background/80 px-2.5 py-2 text-[11px] text-muted-foreground">
+              {datasetId
+                ? t('sidebar.dataset.currentTarget', { name: selectedDataset?.name || datasetId })
+                : t('sidebar.dataset.defaultOption')}
+            </div>
 
             {selectedDataset?.pipeline ? (
               <div className="rounded-lg border border-border/60 bg-background p-2">

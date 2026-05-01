@@ -6,7 +6,7 @@
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ShieldCheck, Sparkles, Tag, FolderTree, FileText, Upload, Save, RotateCcw, Trash2, Eye, Search, Wrench, ScanLine, FileSearch, Hash, Layers, X, Info, AlertTriangle, Copy, PanelRightOpen, PanelRightClose, Database } from 'lucide-react'
+import { ShieldCheck, Sparkles, Tag, FolderTree, FileText, Upload, Save, RotateCcw, Trash2, Eye, Search, Wrench, ScanLine, FileSearch, Hash, Layers, X, Info, AlertTriangle, Copy, PanelRightOpen, PanelRightClose } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -980,62 +980,8 @@ export function DataGovernancePanel() {
     return { totalFiles, completedFiles, modifiedFiles, avgScore }
   }, [governanceStates, scopedFiles])
 
-  const ScopeToolbar = (
-    <div className="rounded-2xl border border-border/60 bg-card/80 px-4 py-3 shadow-sm backdrop-blur">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex min-w-0 items-start gap-3">
-          <div className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-primary/10">
-            <Database className="size-4 text-primary" />
-          </div>
-          <div className="min-w-0">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary/75">
-              {t('scope.title')}
-            </div>
-            <div className="mt-1 truncate text-sm font-medium text-foreground">
-              {selectedDatasetName || t('scope.allDatasets')}
-            </div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              {selectedDatasetId
-                ? t('scope.selectedDescription', { count: scopedFiles.length })
-                : t('scope.allDescription', { count: scopedFiles.length })}
-            </div>
-          </div>
-        </div>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <Select value={selectedDatasetId || ALL_DATASETS_VALUE} onValueChange={handleDatasetScopeChange}>
-            <SelectTrigger className="h-9 min-w-[220px] rounded-xl border-border/60 bg-background text-xs">
-              <SelectValue placeholder={t('scope.placeholder')} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_DATASETS_VALUE}>
-                {t('scope.allDatasets')} · {files.length}
-              </SelectItem>
-              {availableDatasets.map((dataset) => (
-                <SelectItem key={dataset.id} value={dataset.id}>
-                  {dataset.name} · {datasetDocumentCounts.get(dataset.id) || 0}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <span className="rounded-full border border-border/60 bg-muted/40 px-2.5 py-1 text-[11px] text-muted-foreground">
-            {documentSyncQuery.isFetching
-              ? t('scope.syncing')
-              : t('scope.synced', { count: scopedFiles.length })}
-          </span>
-        </div>
-      </div>
-    </div>
-  )
-
-  const TopContent = (
-    <div className="space-y-3">
-      {ScopeToolbar}
-      {InboundBanner}
-    </div>
-  )
-
   // 绌虹姸鎬?- 鏀逛负涓婁紶寮曞
-  if (isLoaded && scopedFiles.length === 0) {
+  if (isLoaded && files.length === 0) {
     return (
       <WorkbenchScaffold
         title={headerTitle}
@@ -1051,7 +997,7 @@ export function DataGovernancePanel() {
         }
         size="full"
         bodyClassName="px-0 pb-0"
-        top={TopContent}
+        top={InboundBanner}
         pipelineRail={<PipelineRail />}
         mainPanel={
           <div className="flex-1 flex flex-col min-h-0">
@@ -1307,7 +1253,7 @@ export function DataGovernancePanel() {
       }
       size="full"
       bodyClassName="px-0 pb-0"
-      top={TopContent}
+      top={InboundBanner}
       pipelineRail={<PipelineRail />}
       mainPanel={
         <div className="flex-1 flex flex-col bg-background text-foreground min-h-0">
@@ -1364,6 +1310,35 @@ export function DataGovernancePanel() {
                   className="w-full rounded-lg border border-border bg-muted py-1.5 pl-9 pr-3 text-xs text-foreground/80 placeholder:text-muted-foreground focus:bg-card focus:outline-none focus:border-primary/30 focus-ring transition-colors duration-200 motion-reduce:transition-none"
                 />
               </div>
+            </div>
+
+            <div className="border-b border-border/40 bg-background/82 px-3 py-2 dark:bg-background/50">
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <span className="text-[9px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/75">
+                  {t('scope.title')}
+                </span>
+                <span className="rounded-full bg-muted/55 px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
+                  {selectedDatasetId ? t('scope.datasetScoped') : t('scope.datasetAll')}
+                </span>
+              </div>
+              <select
+                value={selectedDatasetId || ALL_DATASETS_VALUE}
+                onChange={(event) => handleDatasetScopeChange(event.target.value)}
+                className="h-8 w-full rounded-lg border border-border/60 bg-background/90 px-2 text-[11px] font-medium text-foreground shadow-[inset_0_1px_0_hsl(var(--background))] outline-none transition-colors focus:border-primary/45 focus:ring-2 focus:ring-primary/12 dark:bg-background/60"
+              >
+                <option value={ALL_DATASETS_VALUE}>{t('scope.allDatasets')}</option>
+                {availableDatasets.map((dataset) => (
+                  <option key={dataset.id} value={dataset.id}>
+                    {t('scope.datasetOptionWithCount', {
+                      name: dataset.name,
+                      count: datasetDocumentCounts.get(dataset.id) || 0,
+                    })}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-[10px] leading-4 text-muted-foreground/70">
+                {selectedDatasetId ? t('scope.datasetScopeSelectedHint') : t('scope.datasetScopeHint')}
+              </p>
             </div>
 
             {/* 鏂囦欢鐩綍鏍?- 鍙姌鍙犲尯鍩?*/}
