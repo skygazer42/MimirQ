@@ -475,6 +475,8 @@ def main(argv: list[str] | None = None) -> int:
             "top_k": 3,
             "score_threshold": 0.0,
             "retrieval_mode": "keyword",
+            "enable_multi_query": False,
+            "enable_hyde": False,
             "enable_reranker": False,
             "reranker_provider": "none",
             "enable_weight_rerank": False,
