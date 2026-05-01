@@ -25,6 +25,10 @@ export type ChunkPreviewFileItem = {
   originalFileType?: string
   originalFileSize?: number
   addedAt?: number
+  source?: 'local_upload' | 'example' | 'parsing_workspace' | 'knowledge_base'
+  datasetId?: string | null
+  datasetName?: string | null
+  documentId?: string | null
 }
 
 export interface ChunkPreviewState {
@@ -37,6 +41,8 @@ export interface ChunkPreviewState {
 
   // 数据集（可选）
   datasetId: string
+  scopeSyncLoading: boolean
+  scopeSyncError: string | null
 
   // UI 状态
   isLoading: boolean

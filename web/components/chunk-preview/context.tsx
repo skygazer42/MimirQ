@@ -8,7 +8,7 @@ import { createContext, useContext, useState, useCallback, useRef, useEffect, us
 import { useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { useRouter } from '@/i18n/navigation'
-import { documentApi } from '@/lib/api'
+import { documentApi, parsingApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { generateRequestId } from '@/lib/request-id'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
@@ -16,6 +16,7 @@ import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-contex
 import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { useParsedFiles } from '@/store/use-parsed-files-store'
+import type { ParsedFileData } from '@/store/use-parsed-files-store'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { getParserLabel } from '@/lib/parser-options'
 import type { ChunkPreviewResponse, ManualChunk } from '@/types'
@@ -30,6 +31,156 @@ const STORAGE_SEPARATOR_SETTINGS_KEY = 'mimirq_chunk_preview_separator_settings'
 const STORAGE_FOCUS_FILE_ID_KEY = 'mimirq_chunk_preview_focus_file_id'
 const STORAGE_PERF_SETTINGS_KEY = 'mimirq_chunk_preview_perf_settings'
 const STORAGE_PARENT_CHILD_SETTINGS_KEY = 'mimirq_chunk_preview_parent_child_settings'
+
+function normalizeBackendString(value: unknown): string {
+  return typeof value === 'string' && value.trim() ? value.trim() : ''
+}
+
+function makeMarkdownChunkFileItem(params: {
+  id: string
+  markdown: string
+  filename: string
+  fileType?: string | null
+  fileSize?: number | null
+  addedAt?: number
+  source: ChunkPreviewFileItem['source']
+  datasetId?: string | null
+  datasetName?: string | null
+  documentId?: string | null
+}): ChunkPreviewFileItem {
+  const originalFilename = params.filename || 'document'
+  const base = originalFilename.toLowerCase().endsWith('.md')
+    ? originalFilename
+    : originalFilename.replace(/\.[^/.]+$/, '')
+  const internalFilename = originalFilename.toLowerCase().endsWith('.md') ? originalFilename : `${base}.md`
+  const markdown = params.markdown || ''
+
+  return {
+    id: params.id,
+    file: new File([markdown], internalFilename, { type: 'text/markdown' }),
+    displayName: originalFilename,
+    originalFileType: params.fileType || originalFilename.split('.').pop()?.toLowerCase(),
+    originalFileSize: typeof params.fileSize === 'number' ? params.fileSize : markdown.length,
+    addedAt: params.addedAt || Date.now(),
+    source: params.source,
+    datasetId: params.datasetId || null,
+    datasetName: params.datasetName || null,
+    documentId: params.documentId || params.id,
+  }
+}
+
+function parsedFileToChunkFileItem(pf: ParsedFileData): ChunkPreviewFileItem | null {
+  const markdown = (pf.markdownContent || pf.originalMarkdownContent || '').trim()
+  if (!markdown) return null
+
+  return makeMarkdownChunkFileItem({
+    id: String(pf.id),
+    markdown,
+    filename: pf.filename || 'document',
+    fileType: pf.fileType,
+    fileSize: pf.fileSize,
+    addedAt: pf.parsedAt ? Date.parse(pf.parsedAt) : Date.now(),
+    source: pf.source === 'knowledge_base' ? 'knowledge_base' : 'parsing_workspace',
+    datasetId: pf.datasetId,
+    datasetName: pf.datasetName,
+    documentId: pf.id,
+  })
+}
+
+function isManualChunkFile(item: ChunkPreviewFileItem): boolean {
+  return item.source === 'local_upload' || item.source === 'example'
+}
+
+function isParsingWorkspaceDocument(doc: Awaited<ReturnType<typeof documentApi.list>>['items'][number]): boolean {
+  const meta = doc.metadata as Record<string, unknown> | undefined
+  return meta?.workspace === 'parsing'
+}
+
+async function loadKnowledgeChunkFiles(datasetId: string): Promise<ChunkPreviewFileItem[]> {
+  const response = await documentApi.list({ skip: 0, limit: 100, dataset_id: datasetId })
+  const docs = (response.items || []).filter((doc) => !isParsingWorkspaceDocument(doc))
+  const items = await Promise.all(
+    docs.map(async (doc): Promise<ChunkPreviewFileItem | null> => {
+      const id = String(doc.id || '').trim()
+      if (!id) return null
+      try {
+        const content = await documentApi.getParsedContent(id, { max_chars: 2_000_000 })
+        const markdown = (content.markdown_content || content.original_markdown_content || '').trim()
+        if (!markdown) return null
+        return makeMarkdownChunkFileItem({
+          id,
+          markdown,
+          filename: doc.filename || 'document',
+          fileType: doc.file_type,
+          fileSize: Number(doc.file_size || markdown.length),
+          addedAt: doc.updated_at ? Date.parse(String(doc.updated_at)) : Date.now(),
+          source: 'knowledge_base',
+          datasetId: doc.dataset_id || datasetId,
+          documentId: id,
+        })
+      } catch {
+        return null
+      }
+    })
+  )
+
+  return items.filter((item): item is ChunkPreviewFileItem => Boolean(item))
+}
+
+async function loadParsingWorkspaceChunkFiles(): Promise<ChunkPreviewFileItem[]> {
+  const response = await parsingApi.listDocuments({ skip: 0, limit: 100 })
+  const items = await Promise.all(
+    (response.items || []).map(async (doc): Promise<ChunkPreviewFileItem | null> => {
+      const id = String(doc.id || '').trim()
+      if (!id) return null
+      try {
+        const content = await parsingApi.getContent(id)
+        const markdown = (content.markdown_content || content.original_markdown_content || '').trim()
+        if (!markdown) return null
+        const meta = doc.metadata as Record<string, unknown> | undefined
+        return makeMarkdownChunkFileItem({
+          id,
+          markdown,
+          filename: doc.filename || 'document',
+          fileType: doc.file_type,
+          fileSize: Number(doc.file_size || markdown.length),
+          addedAt: doc.updated_at ? Date.parse(String(doc.updated_at)) : Date.now(),
+          source: 'parsing_workspace',
+          datasetId: doc.dataset_id || null,
+          datasetName: normalizeBackendString(meta?.dataset_name) || null,
+          documentId: id,
+        })
+      } catch {
+        return null
+      }
+    })
+  )
+
+  return items.filter((item): item is ChunkPreviewFileItem => Boolean(item))
+}
+
+function mergeScopedFiles(prev: ChunkPreviewFileItem[], scoped: ChunkPreviewFileItem[]): ChunkPreviewFileItem[] {
+  const manual = prev.filter(isManualChunkFile)
+  const seen = new Set<string>()
+  const merged: ChunkPreviewFileItem[] = []
+
+  for (const item of [...manual, ...scoped]) {
+    const key = `${item.source || 'unknown'}:${item.documentId || item.id}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    merged.push(item)
+  }
+
+  return merged
+}
+
+function retainScopeCompatibleFiles(prev: ChunkPreviewFileItem[], datasetId: string): ChunkPreviewFileItem[] {
+  return prev.filter((item) => {
+    if (isManualChunkFile(item)) return true
+    if (!datasetId) return item.source === 'parsing_workspace'
+    return item.source === 'knowledge_base' && item.datasetId === datasetId
+  })
+}
 
 function decodeSeparatorInput(raw: string) {
   const value = (raw || '').trim()
@@ -94,6 +245,8 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
   const [createdDocumentId, setCreatedDocumentId] = useState<string | null>(null)
 
   const [datasetId, setDatasetIdState] = useState<string>('')
+  const [scopeSyncLoading, setScopeSyncLoading] = useState(false)
+  const [scopeSyncError, setScopeSyncError] = useState<string | null>(null)
 
   const [previewData, setPreviewData] = useState<ChunkPreviewResponse | null>(null)
   const [chunkOverrides, setChunkOverrides] = useState<ChunkOverrides>({})
@@ -149,6 +302,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
   const separatorSettingsLoadedRef = useRef(false)
   const parentChildSettingsLoadedRef = useRef(false)
   const focusFileLoadedRef = useRef(false)
+  const datasetScopeLoadedRef = useRef(false)
   const deepLinkAppliedKeyRef = useRef<string>('')
   const lastSyncedChunkParamRef = useRef<string>('')
   const currentFileItem = fileList[currentFileIndex] || null
@@ -226,9 +380,13 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
 
   useEffect(() => {
     if (globalThis.window === undefined) return
+    if (datasetScopeLoadedRef.current) return
+    const inbound = (searchParams.get('dataset_id') || '').trim()
     const saved = (globalThis.window.localStorage.getItem(STORAGE_DATASET_ID_KEY) || '').trim()
-    if (saved) setDatasetIdState(saved)
-  }, [])
+    const next = inbound || saved
+    if (next) setDatasetIdState(next)
+    datasetScopeLoadedRef.current = true
+  }, [searchParams])
 
   useEffect(() => {
     if (globalThis.window === undefined) return
@@ -369,32 +527,49 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     focusFileLoadedRef.current = true
   }, [fileList])
 
-  // 初始化：从 parsedFiles 加载
+  // 初始化/切换范围：从解析工作台缓存加载。后端同步会在稍后补齐持久化内容。
   useEffect(() => {
-    if (fileList.length === 0 && parsedFiles.length > 0) {
-      const convertedFiles: ChunkPreviewFileItem[] = parsedFiles.map((pf) => {
-        const content = pf.markdownContent || ''
-        const originalFilename = pf.filename || 'document'
-
-        const base = originalFilename.toLowerCase().endsWith('.md')
-          ? originalFilename
-          : originalFilename.replace(/\.[^/.]+$/, '')
-        const internalFilename = originalFilename.toLowerCase().endsWith('.md') ? originalFilename : `${base}.md`
-
-        const fileObj = new File([content], internalFilename, { type: 'text/markdown' })
-
-        return {
-          id: pf.id || makeId(),
-          file: fileObj,
-          displayName: originalFilename,
-          originalFileType: pf.fileType,
-          originalFileSize: pf.fileSize,
-          addedAt: pf.parsedAt ? Date.parse(pf.parsedAt) : Date.now(),
-        }
+    if (parsedFiles.length === 0) return
+    const scoped = parsedFiles
+      .filter((pf) => {
+        if (datasetId) return pf.source === 'knowledge_base' && pf.datasetId === datasetId
+        return pf.source !== 'knowledge_base'
       })
-      setFileList(convertedFiles)
+      .map(parsedFileToChunkFileItem)
+      .filter((item): item is ChunkPreviewFileItem => Boolean(item))
+
+    if (scoped.length === 0) return
+    setFileList((prev) => mergeScopedFiles(prev, scoped))
+  }, [datasetId, parsedFiles])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadScopedDocuments = async () => {
+      setScopeSyncLoading(true)
+      setScopeSyncError(null)
+      setFileList((prev) => retainScopeCompatibleFiles(prev, datasetId))
+
+      try {
+        const scopedFiles = datasetId
+          ? await loadKnowledgeChunkFiles(datasetId)
+          : await loadParsingWorkspaceChunkFiles()
+
+        if (cancelled) return
+        setFileList((prev) => mergeScopedFiles(prev, scopedFiles))
+      } catch (err: unknown) {
+        if (cancelled) return
+        setScopeSyncError(formatApiError(err, '加载范围文档失败'))
+      } finally {
+        if (!cancelled) setScopeSyncLoading(false)
+      }
     }
-  }, [parsedFiles, fileList.length, makeId])
+
+    void loadScopedDocuments()
+    return () => {
+      cancelled = true
+    }
+  }, [datasetId])
 
   // 同步 pipeline options
   useEffect(() => {
@@ -452,6 +627,8 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
         originalFileType: f.name.split('.').pop()?.toLowerCase(),
         originalFileSize: f.size,
         addedAt: Date.now(),
+        source: 'local_upload' as const,
+        datasetId: datasetId || null,
       })),
     ])
     setPreviewData(null)
@@ -460,7 +637,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     setHoveredChunkIndex(null)
     setSelectedChunkIndex(null)
     setCreatedDocumentId(null)
-  }, [makeId])
+  }, [datasetId, makeId])
 
   const removeFile = useCallback((index: number) => {
     setFileList((prev) => {
@@ -550,6 +727,8 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
         originalFileType: 'md',
         originalFileSize: exampleFile.size,
         addedAt: Date.now(),
+        source: 'example',
+        datasetId: datasetId || null,
       },
     ])
     setCurrentFileIndex(0)
@@ -560,7 +739,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     setHoveredChunkIndex(null)
     setSelectedChunkIndex(null)
     setCreatedDocumentId(null)
-  }, [makeId])
+  }, [datasetId, makeId])
 
   const buildPreviewCacheKey = useCallback(() => {
     if (!file) return ''
@@ -1148,7 +1327,8 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
   }, [])
 
   const setDatasetId = useCallback((value: string) => {
-    setDatasetIdState((value || '').trim())
+    const nextDatasetId = (value || '').trim()
+    setDatasetIdState(nextDatasetId)
     setPreviewData(null)
     setChunkOverrides({})
     setError(null)
@@ -1156,7 +1336,11 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     setHoveredChunkIndex(null)
     setSelectedChunkIndex(null)
     setCreatedDocumentId(null)
-  }, [])
+    const params = new URLSearchParams(searchParams.toString())
+    if (nextDatasetId) params.set('dataset_id', nextDatasetId)
+    else params.delete('dataset_id')
+    router.replace(`/chunk-preview${params.toString() ? `?${params.toString()}` : ''}`)
+  }, [router, searchParams])
 
   // 组装 Context Value
   const value: ChunkPreviewContextType = {
@@ -1165,6 +1349,8 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     currentFileIndex,
     isDragging,
     datasetId,
+    scopeSyncLoading,
+    scopeSyncError,
     isLoading,
     isSubmitting,
     showOriginalPanel,
