@@ -30,6 +30,8 @@ import {
 } from 'recharts'
 
 import { AppFrame } from '@/components/app-frame'
+import { DatasetAnalysisPanel } from '@/components/datasets/dataset-analysis-panel'
+import { DatasetOpsPanel } from '@/components/datasets/dataset-ops-panel'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Panel } from '@/components/ui/panel'
 import { Button } from '@/components/ui/button'
@@ -97,6 +99,8 @@ function downloadBlob(blob: Blob, filename: string) {
 
 const PROFILE_SECTIONS = [
   { id: 'prof-overview', label: '概览' },
+  { id: 'prof-analysis', label: '分析闭环' },
+  { id: 'prof-operations', label: '运维导出' },
   { id: 'prof-distribution', label: '分布图表' },
   { id: 'prof-findings', label: '问题清单' },
   { id: 'prof-scan', label: '深度扫描' },
@@ -787,6 +791,14 @@ export default function DatasetProfilePage() {
 })()} color="orange" />
             </StatsGrid>
           </Panel>
+          </div>
+
+          <div id="prof-analysis">
+            <DatasetAnalysisPanel datasetId={datasetId} datasetName={dataset?.name} />
+          </div>
+
+          <div id="prof-operations">
+            <DatasetOpsPanel datasetId={datasetId} datasetName={dataset?.name} />
           </div>
 
           <div id="prof-distribution" className="grid grid-cols-1 lg:grid-cols-2 gap-4">

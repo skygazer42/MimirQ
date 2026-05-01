@@ -1,24 +1,29 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ChevronDown,
   ChevronRight,
   Hash,
   Highlighter,
+  Loader2,
   Plus,
   Search,
   Shield,
+  Sparkles,
   Tag,
   Type,
   X,
   type LucideIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { pipelineApi } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import type { AutoAnnotationRequest, AutoDocumentTag } from '@/types'
 
 export interface Annotation {
   id: string
@@ -33,10 +38,12 @@ interface DataAnnotatorProps {
   content: string
   annotations?: Annotation[]
   onAnnotate: (annotations: Annotation[]) => void
+  onDocumentTags?: (tags: string[]) => void
 }
 
 type AnnotationTypeId = Annotation['type']
 type AnnotationTone = 'info' | 'success' | 'destructive' | 'primary'
+type AutoTagProviderId = 'cpu' | 'llm' | 'compliance' | 'hybrid'
 type AnnotationTypeConfig = {
   id: AnnotationTypeId
   label: string
@@ -54,6 +61,18 @@ const ANNOTATION_TYPE_CONFIGS: Array<{
   { id: 'keyword', icon: Highlighter, tone: 'success' },
   { id: 'sensitive', icon: Shield, tone: 'destructive' },
   { id: 'custom', icon: Type, tone: 'primary' },
+]
+
+const AUTO_TAG_PROVIDER_OPTIONS: Array<{
+  id: AutoTagProviderId
+  providers: NonNullable<AutoAnnotationRequest['providers']>
+  enableLlm: boolean
+  enableSensitive: boolean
+}> = [
+  { id: 'cpu', providers: ['cpu'], enableLlm: false, enableSensitive: false },
+  { id: 'llm', providers: ['llm'], enableLlm: true, enableSensitive: false },
+  { id: 'compliance', providers: ['pii', 'secret', 'regex'], enableLlm: false, enableSensitive: true },
+  { id: 'hybrid', providers: ['cpu', 'llm', 'gliner', 'pii', 'secret'], enableLlm: true, enableSensitive: true },
 ]
 
 const TONE_STYLES: Record<
@@ -98,7 +117,49 @@ function getToneStyles(tone: AnnotationTone) {
   return TONE_STYLES[tone]
 }
 
-export function DataAnnotator({ content, annotations = [], onAnnotate }: Readonly<DataAnnotatorProps>) {
+function getSelectionRoot(): HTMLElement | null {
+  if (globalThis.document === undefined) return null
+  return globalThis.document.querySelector('[data-governance-selection-root="true"]')
+}
+
+function normalizeSelectedText(value: string): string {
+  return String(value || '').replace(/\s+/g, ' ').trim()
+}
+
+function findSelectionRange(content: string, selectedText: string): { start: number; end: number; text: string } | null {
+  const text = String(selectedText || '').trim()
+  if (!content || !text) return null
+
+  const exactStart = content.indexOf(text)
+  if (exactStart >= 0) return { start: exactStart, end: exactStart + text.length, text }
+
+  const normalizedSelection = normalizeSelectedText(text)
+  const normalizedContent = normalizeSelectedText(content)
+  const normalizedStart = normalizedContent.indexOf(normalizedSelection)
+  if (normalizedStart >= 0) {
+    return {
+      start: normalizedStart,
+      end: normalizedStart + normalizedSelection.length,
+      text: normalizedSelection,
+    }
+  }
+
+  return null
+}
+
+function dedupeAnnotations(items: Annotation[]): Annotation[] {
+  const seen = new Set<string>()
+  const out: Annotation[] = []
+  for (const item of items) {
+    const key = `${item.type}:${item.start}:${item.end}:${item.text}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(item)
+  }
+  return out
+}
+
+export function DataAnnotator({ content, annotations = [], onAnnotate, onDocumentTags }: Readonly<DataAnnotatorProps>) {
   const t = useTranslations('DataAnnotator')
   const annotationTypes = useMemo(
     () =>
@@ -114,8 +175,12 @@ export function DataAnnotator({ content, annotations = [], onAnnotate }: Readonl
   const [selectedType, setSelectedType] = useState<AnnotationTypeId>('keyword')
   const [customLabel, setCustomLabel] = useState('')
   const [isSelecting, setIsSelecting] = useState(false)
+  const [isAutoTagging, setIsAutoTagging] = useState(false)
+  const [autoTagProvider, setAutoTagProvider] = useState<AutoTagProviderId>('cpu')
   const [selection, setSelection] = useState<{ start: number; end: number; text: string } | null>(null)
   const [localAnnotations, setLocalAnnotations] = useState<Annotation[]>(annotations)
+  const [semanticSummary, setSemanticSummary] = useState<string | null>(null)
+  const [semanticTags, setSemanticTags] = useState<AutoDocumentTag[]>([])
   const [expandedTypes, setExpandedTypes] = useState<Set<AnnotationTypeId>>(new Set())
 
   const annotationsByType = useMemo(() => {
@@ -134,10 +199,17 @@ export function DataAnnotator({ content, annotations = [], onAnnotate }: Readonl
   }, [localAnnotations])
 
   const typeConfig = annotationTypes.find((type) => type.id === selectedType) ?? annotationTypes[0]
+  const selectedProviderConfig =
+    AUTO_TAG_PROVIDER_OPTIONS.find((option) => option.id === autoTagProvider) ?? AUTO_TAG_PROVIDER_OPTIONS[0]
 
   useEffect(() => {
     setLocalAnnotations(annotations)
   }, [annotations])
+
+  useEffect(() => {
+    setSemanticSummary(null)
+    setSemanticTags([])
+  }, [content])
 
   useEffect(() => {
     if (!content && selection) {
@@ -145,6 +217,43 @@ export function DataAnnotator({ content, annotations = [], onAnnotate }: Readonl
       setIsSelecting(false)
     }
   }, [content, selection])
+
+  const commitAnnotations = useCallback(
+    (updater: (prev: Annotation[]) => Annotation[]) => {
+      setLocalAnnotations((prev) => {
+        const next = dedupeAnnotations(updater(prev))
+        onAnnotate(next)
+        return next
+      })
+    },
+    [onAnnotate]
+  )
+
+  useEffect(() => {
+    if (!isSelecting) return
+
+    const captureSelection = () => {
+      const activeSelection = globalThis.getSelection?.()
+      const selectedText = activeSelection?.toString() || ''
+      if (!normalizeSelectedText(selectedText)) return
+
+      const root = getSelectionRoot()
+      const anchorNode = activeSelection?.anchorNode || null
+      const focusNode = activeSelection?.focusNode || null
+      if (root && anchorNode && !root.contains(anchorNode)) return
+      if (root && focusNode && !root.contains(focusNode)) return
+
+      const nextSelection = findSelectionRange(content, selectedText)
+      if (nextSelection) setSelection(nextSelection)
+    }
+
+    globalThis.document?.addEventListener('mouseup', captureSelection)
+    globalThis.document?.addEventListener('keyup', captureSelection)
+    return () => {
+      globalThis.document?.removeEventListener('mouseup', captureSelection)
+      globalThis.document?.removeEventListener('keyup', captureSelection)
+    }
+  }, [content, isSelecting])
 
   const handleAddAnnotation = () => {
     if (!selection || !typeConfig) return
@@ -161,11 +270,7 @@ export function DataAnnotator({ content, annotations = [], onAnnotate }: Readonl
       end: selection.end,
     }
 
-    setLocalAnnotations((prev) => {
-      const next = [...prev, nextAnnotation]
-      onAnnotate(next)
-      return next
-    })
+    commitAnnotations((prev) => [...prev, nextAnnotation])
     setSelection(null)
     setIsSelecting(false)
     if (selectedType === 'custom') {
@@ -183,11 +288,64 @@ export function DataAnnotator({ content, annotations = [], onAnnotate }: Readonl
   }
 
   const handleDeleteAnnotation = (annotationId: string) => {
-    setLocalAnnotations((prev) => {
-      const next = prev.filter((annotation) => annotation.id !== annotationId)
-      onAnnotate(next)
-      return next
-    })
+    commitAnnotations((prev) => prev.filter((annotation) => annotation.id !== annotationId))
+  }
+
+  const handleAutoAnnotate = async () => {
+    const source = String(content || '').trim()
+    if (!source) {
+      toast.warning(t('auto.empty'))
+      return
+    }
+
+    setIsAutoTagging(true)
+    try {
+      const response = await pipelineApi.autoAnnotations({
+        text: source,
+        mode: 'document_focus',
+        providers: selectedProviderConfig.providers,
+        enable_llm: selectedProviderConfig.enableLlm,
+        enable_llm_topics: selectedProviderConfig.enableLlm,
+        enable_keywords: true,
+        enable_entities: true,
+        enable_sensitive: selectedProviderConfig.enableSensitive,
+        keyword_provider: 'simple',
+        keyword_top_k: 12,
+        max_annotations: 80,
+      })
+      const nextSemanticTags = response.document_tags || []
+      setSemanticSummary(response.summary ?? null)
+      setSemanticTags(nextSemanticTags)
+      if (nextSemanticTags.length > 0) {
+        onDocumentTags?.(nextSemanticTags.map((tag) => tag.value))
+      }
+      const candidates: Annotation[] = (response.annotations || []).map((item, index) => ({
+        id:
+          globalThis.crypto?.randomUUID?.() ??
+          `auto-${item.type}-${item.start}-${item.end}-${index}`,
+        text: item.text,
+        type: item.type,
+        label: item.label || annotationTypes.find((type) => type.id === item.type)?.label || item.type,
+        start: item.start,
+        end: item.end,
+      }))
+
+      const before = localAnnotations.length
+      commitAnnotations((prev) => [...prev, ...candidates])
+      const added = dedupeAnnotations([...localAnnotations, ...candidates]).length - before
+      if (added > 0) {
+        toast.success(t('auto.success', { count: added }))
+      } else if (nextSemanticTags.length > 0) {
+        toast.info(t('auto.semanticOnly', { count: nextSemanticTags.length }))
+      } else {
+        toast.info(t('auto.noCandidates'))
+      }
+    } catch (err) {
+      console.warn('Auto annotation failed:', err)
+      toast.error(t('auto.failed'))
+    } finally {
+      setIsAutoTagging(false)
+    }
   }
 
   return (
@@ -196,6 +354,73 @@ export function DataAnnotator({ content, annotations = [], onAnnotate }: Readonl
         <Tag className="size-5 text-primary" />
         <h3 className="font-bold text-foreground">{t('header.title')}</h3>
       </div>
+
+      <div className="space-y-2">
+        <div className="text-xs font-medium text-muted-foreground">{t('auto.providerTitle')}</div>
+        <div className="grid grid-cols-2 gap-2">
+          {AUTO_TAG_PROVIDER_OPTIONS.map((option) => {
+            const selected = autoTagProvider === option.id
+            return (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => setAutoTagProvider(option.id)}
+                className={cn(
+                  'focus-ring rounded-xl border px-3 py-2 text-left transition-colors',
+                  selected
+                    ? 'border-primary/30 bg-primary/10 text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]'
+                    : 'border-border bg-card text-muted-foreground hover:bg-muted'
+                )}
+              >
+                <div className="text-xs font-semibold text-foreground">{t(`auto.providers.${option.id}.label`)}</div>
+                <div className="mt-1 text-[11px] leading-4 text-muted-foreground">{t(`auto.providers.${option.id}.description`)}</div>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      <Button
+        type="button"
+        onClick={() => void handleAutoAnnotate()}
+        disabled={isAutoTagging || !content.trim()}
+        variant="outline"
+        size="sm"
+        className="w-full gap-2 border-primary/20 bg-primary/5 text-primary hover:bg-primary/10"
+      >
+        {isAutoTagging ? (
+          <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+        ) : (
+          <Sparkles className="size-4" />
+        )}
+        {isAutoTagging ? t('auto.running') : t('auto.action')}
+      </Button>
+
+      {(semanticSummary || semanticTags.length > 0) && (
+        <div className="rounded-2xl border border-primary/15 bg-card p-4 shadow-sm shadow-primary/10">
+          <div className="mb-2 flex items-center gap-2">
+            <Sparkles className="size-4 text-primary" />
+            <div className="text-sm font-semibold text-foreground">{t('semantic.title')}</div>
+          </div>
+          {semanticSummary && (
+            <p className="mb-3 line-clamp-3 text-xs leading-5 text-muted-foreground">{semanticSummary}</p>
+          )}
+          {semanticTags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {semanticTags.slice(0, 16).map((tag) => (
+                <span
+                  key={`${tag.type}-${tag.value}`}
+                  title={`${tag.source} · ${(tag.confidence * 100).toFixed(0)}%`}
+                  className="inline-flex max-w-full items-center gap-1 rounded-full border border-primary/15 bg-background/80 px-2 py-1 text-xs text-foreground/80"
+                >
+                  <span className="text-muted-foreground">{tag.label || tag.type}</span>
+                  <span className="truncate font-medium">{tag.value}</span>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="space-y-2">
         <div className="text-xs font-medium text-muted-foreground">{t('sections.typeSelector')}</div>

@@ -19,6 +19,6 @@ describe('KnowledgeDocumentsPanel row actions', () => {
 
     // Primary "details" action should stay visible in dense table mode.
     expect(src).toContain('buildOpenInspectorHandler(doc)')
-    expect(src).toContain('className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-muted"')
+    expect(src).toContain('className="h-7 w-7 rounded-full text-muted-foreground transition-[transform,background-color,color,box-shadow] hover:scale-[1.04] hover:text-primary hover:bg-primary/8')
   })
 })

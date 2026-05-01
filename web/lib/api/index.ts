@@ -15,6 +15,8 @@ export { governanceApi } from './governance'
 export { chunkPresetApi } from './governance'
 export { kgApi } from './graph'
 export { healthApi } from './health'
+export { industryRulesApi } from './industry-rules'
+export { lineageApi } from './lineage'
 export { ltrApi } from './ltr'
 export { metaApi } from './meta'
 export { observabilityApi } from './observability'
@@ -26,11 +28,20 @@ export { ragConfigTemplateApi } from './rag'
 export { ragvizApi } from './rag'
 export { retrievalApi } from './rag'
 export { reportApi } from './reports'
+export { rtbfApi } from './rtbf'
 export { scimApi } from './scim'
 export { settingsApi } from './settings'
 export { sseApi } from './streaming'
 export { usageApi } from './usage'
 
+export type {
+  DatasetAnalysisDashboardParams,
+  DatasetAnalysisExamplesParams,
+  DatasetAnalysisFilters,
+  DatasetAnalysisGlossaryWritebackParams,
+  DatasetAnalysisResponse,
+  DatasetAnalysisRuleSuggestionParams,
+} from './datasets'
 export type {
   KGHardcaseMode,
   KGSearchDiagnosticsRequest,
@@ -46,6 +57,21 @@ export type { PromptTemplate, PromptTemplateCreate, PromptTemplateNewVersion, Pr
 export type { BackendMeta } from './meta'
 export type { TenantMember } from './access'
 export type { LTRModelInfo } from './ltr'
+export type { KGNetworkEdge, KGNetworkRequest, KGNetworkResponse } from './graph'
+export type {
+  IndustryRulesGlossaryUpdateRequest,
+  IndustryRulesIntentsUpdateRequest,
+  IndustryRulesPatternsUpdateRequest,
+  IndustryRulesRewritePreviewRequest,
+  IndustryRulesRewritePreviewResponse,
+  IndustryRulesUpdateResponse,
+  IndustryRulesetDetail,
+  IndustryRulesetDetailResponse,
+  IndustryRulesetListResponse,
+  IndustryRulesetSummary,
+} from './industry-rules'
+export type { LineageResponse } from './lineage'
+export type { RtbfCascadeResponse, RtbfRequest, RtbfStatusResponse } from './rtbf'
 export type {
   CacheConfig,
   ChatConfig,

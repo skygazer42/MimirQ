@@ -14,6 +14,7 @@ const WEB_ROOT = path.resolve(__dirname, '..')
 const IGNORE_DIRS = new Set([
   'node_modules',
   '.next',
+  '.next_3101',
   '.next_build',
   'dist',
   'build',
@@ -36,6 +37,7 @@ async function collectFiles(dirAbs: string): Promise<string[]> {
     const rel = path.relative(WEB_ROOT, abs)
 
     if (ent.isDirectory()) {
+      if (ent.name.startsWith('.next_')) continue
       if (IGNORE_DIRS.has(ent.name)) continue
       out.push(...(await collectFiles(abs)))
       continue

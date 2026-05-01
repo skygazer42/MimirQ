@@ -4,12 +4,58 @@ import uuid
 
 import langchain
 import pytest
+from fastapi import HTTPException
 
 
 @pytest.fixture(autouse=True)
 def _stub_langchain_globals(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(langchain, "debug", False, raising=False)
     monkeypatch.setattr(langchain, "verbose", False, raising=False)
+
+
+def test_retrieval_scope_rejects_empty_explicit_dataset_even_when_empty_docs_allowed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.rag as rag_api
+    import app.services.dataset_profile_service as profile_service
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True, raising=False)
+
+    class _EmptyQuery:
+        def filter(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
+            return self
+
+        def with_entities(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
+            return self
+
+        def order_by(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
+            return self
+
+        def limit(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
+            return self
+
+        def first(self):
+            return None
+
+    monkeypatch.setattr(
+        profile_service,
+        "build_dataset_documents_query",
+        lambda *_args, **_kwargs: (object(), _EmptyQuery()),
+        raising=True,
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        rag_api._enforce_non_empty_retrieval_scope(  # noqa: SLF001
+            db=object(),
+            tenant_id=uuid.uuid4(),
+            account_id="u",
+            scope_document_ids=[],
+            scope_dataset_id=uuid.uuid4(),
+        )
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail == "No accessible documents for retrieval"
 
 
 @pytest.mark.asyncio
@@ -113,6 +159,31 @@ async def test_retrieve_preview_explicit_query_image_injects_image_docs(monkeypa
     monkeypatch.setattr(rag_api.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(rag_api.DatasetService, "get_dataset", lambda *_a, **_k: object(), raising=True)
     monkeypatch.setattr(rag_api.DatasetService, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
+
+    class _NonEmptyQuery:
+        def filter(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
+            return self
+
+        def with_entities(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
+            return self
+
+        def order_by(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
+            return self
+
+        def limit(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
+            return self
+
+        def first(self):
+            return object()
+
+    import app.services.dataset_profile_service as profile_service
+
+    monkeypatch.setattr(
+        profile_service,
+        "build_dataset_documents_query",
+        lambda *_args, **_kwargs: (object(), _NonEmptyQuery()),
+        raising=True,
+    )
 
     captured_state: dict = {}
 

@@ -29,7 +29,7 @@ describe('next-intl navigation source', () => {
     expect(chatPageClient).toContain("import { useRouter } from '@/i18n/navigation'")
     expect(chatPageClient).not.toContain("import { useRouter, useSearchParams } from 'next/navigation'")
 
-    expect(historyPageClient).toContain("import { useRouter } from '@/i18n/navigation'")
+    expect(historyPageClient).toContain("import { Link, useRouter } from '@/i18n/navigation'")
     expect(historyPageClient).not.toContain("import { useRouter, useSearchParams } from 'next/navigation'")
 
     expect(localeKnowledge).toContain("export { default } from '../../knowledge/page'")

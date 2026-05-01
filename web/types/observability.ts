@@ -149,6 +149,7 @@ export interface TaskQueueObservabilitySnapshotResponse {
   heartbeat_interval_sec: number
   heartbeat_ttl_sec: number
   poll_interval_sec: number
+  recent_job_outcomes?: Array<Record<string, unknown>>
 
   error?: string | null
 }

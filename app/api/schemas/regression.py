@@ -196,6 +196,7 @@ class RagasRegressionRunCreateRequest(BaseModel):
     multi_query_count: int | None = Field(default=None, ge=1, le=8)
     multi_query_temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     multi_query_max_chars: int | None = Field(default=None, ge=0, le=2000)
+    enable_hyde: bool | None = Field(default=None, description="Enable HyDE hypothetical-document query expansion")
     enable_hierarchy_recall: bool | None = Field(default=None, description="Enable hierarchy-aware recall overlay")
     hierarchy_family_collapse: bool | None = Field(default=None, description="Collapse same-family hits after recall")
     hierarchy_family_aggregation: Literal["frequency", "score", "combined"] | None = Field(
@@ -347,6 +348,24 @@ class RagasRegressionRunCreateRequest(BaseModel):
         return self
 
 
+class RagasRegressionAblationBatchRequest(RagasRegressionRunCreateRequest):
+    grid: dict[str, list[Any]] = Field(
+        ...,
+        min_length=1,
+        description="Ablation parameter grid; values are cartesian-expanded into regression runs",
+    )
+    max_combinations: int = Field(default=50, ge=1, le=200, description="Safety cap for expanded variants")
+    ablation_label_prefix: str | None = Field(default=None, max_length=80)
+
+
+class RagasRegressionAblationBatchResponse(BaseModel):
+    ablation_id: UUID
+    total: int
+    run_ids: list[UUID] = Field(default_factory=list)
+    variants: list[dict[str, Any]] = Field(default_factory=list)
+    status: str = "queued"
+
+
 class RagasRegressionRunSchema(OrmModel):
     id: UUID
     tenant_id: UUID
@@ -441,6 +460,31 @@ class RegressionRunSliceDiff(BaseModel):
     buckets: list[RegressionRunSliceBucketDiff] = Field(default_factory=list)
 
 
+class RegressionRunCaseDiff(BaseModel):
+    case_id: str
+    question: str = ""
+    metric_diffs: list[RegressionRunMetricDiff] = Field(default_factory=list)
+    mean_delta: float | None = None
+    label: str = "无分数"
+
+
+class RegressionRunMetricSignificance(BaseModel):
+    key: str
+    compared: int = 0
+    base_mean: float | None = None
+    target_mean: float | None = None
+    delta_mean: float | None = None
+    bootstrap_ci_low: float | None = None
+    bootstrap_ci_high: float | None = None
+    p_value: float | None = None
+    p_value_method: str | None = None
+    p_value_bh: float | None = None
+    wilcoxon_p_value: float | None = None
+    mcnemar_p_value: float | None = None
+    cohen_d: float | None = None
+    significant: bool = False
+
+
 class RagasRegressionRunDiffResponse(BaseModel):
     base_run_id: UUID
     target_run_id: UUID
@@ -450,3 +494,6 @@ class RagasRegressionRunDiffResponse(BaseModel):
     metric_diffs: list[RegressionRunMetricDiff] = Field(default_factory=list)
     diff_score: RegressionRunDiffScore | None = None
     slice_diffs: dict[str, RegressionRunSliceDiff] = Field(default_factory=dict)
+    significance: list[RegressionRunMetricSignificance] = Field(default_factory=list)
+    case_diffs: list[RegressionRunCaseDiff] = Field(default_factory=list)
+    significance_summary: dict[str, Any] = Field(default_factory=dict)

@@ -102,21 +102,6 @@ function isWithinRange(value: string | undefined, range: FeedbackTimeRange): boo
   return now - ts <= days * 24 * 60 * 60 * 1000
 }
 
-function buildSparklinePath(values: number[], width = 92, height = 28): string {
-  if (!values.length) return ''
-  if (values.length === 1) return `M 0 ${height / 2} L ${width} ${height / 2}`
-  const max = Math.max(...values)
-  const min = Math.min(...values)
-  const range = max - min || 1
-  return values
-    .map((value, index) => {
-      const x = (index / (values.length - 1)) * width
-      const y = height - ((value - min) / range) * height
-      return `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`
-    })
-    .join(' ')
-}
-
 function buildConicGradient(values: number[], colors: string[]): string {
   const total = values.reduce((sum, value) => sum + value, 0)
   if (!total) return 'conic-gradient(rgba(148,163,184,0.18) 0deg 360deg)'
@@ -136,46 +121,46 @@ function FeedbackSummaryCard({
   delta,
   icon: Icon,
   tone,
-  series,
 }: Readonly<{
   label: string
   value: number
   delta: string
   icon: typeof ThumbsUp
   tone: 'indigo' | 'emerald' | 'rose' | 'blue'
-  series: number[]
 }>) {
-  const accent =
+  const iconClassName =
     tone === 'indigo'
-      ? 'text-indigo-500 border-indigo-500/10 bg-indigo-500/8'
+      ? 'border-indigo-500/12 bg-indigo-500/10 text-indigo-500'
       : tone === 'emerald'
-        ? 'text-emerald-500 border-emerald-500/10 bg-emerald-500/8'
+        ? 'border-success/20 bg-success text-success-foreground'
         : tone === 'rose'
-          ? 'text-rose-500 border-rose-500/10 bg-rose-500/8'
-          : 'text-sky-500 border-sky-500/10 bg-sky-500/8'
-  const line =
-    tone === 'indigo' ? 'stroke-indigo-500' : tone === 'emerald' ? 'stroke-emerald-500' : tone === 'rose' ? 'stroke-rose-500' : 'stroke-sky-500'
+          ? 'border-destructive/20 bg-destructive text-destructive-foreground'
+          : 'border-sky-500/12 bg-sky-500/10 text-sky-500'
+  const valueClassName =
+    tone === 'indigo'
+      ? 'text-indigo-500'
+      : tone === 'emerald'
+        ? 'text-emerald-500'
+        : tone === 'rose'
+          ? 'text-rose-500'
+          : 'text-sky-500'
+  const deltaTone = delta.trim().startsWith('-') ? 'text-slate-700' : 'text-slate-950'
 
   return (
-    <div className="rounded-[1rem] border border-border/55 bg-card px-3 py-2 shadow-[0_10px_24px_-30px_rgba(15,23,42,0.1)]">
-      <div className="flex items-start justify-between gap-3">
-        <div className="space-y-1">
-          <div className="text-[9px] font-semibold text-foreground">{label}</div>
-          <div className={cn('text-[1.12rem] font-semibold leading-none tracking-[-0.04em]', tone === 'indigo' ? 'text-indigo-500' : tone === 'emerald' ? 'text-emerald-500' : tone === 'rose' ? 'text-rose-500' : 'text-sky-500')}>
+    <div className="min-h-[112px] rounded-[1rem] border border-border/55 bg-background/96 px-8 py-6 shadow-[0_18px_38px_-28px_rgba(15,23,42,0.28)]">
+      <div className="flex items-center gap-5">
+        <div className={cn('flex size-14 shrink-0 items-center justify-center rounded-full border shadow-[0_16px_30px_-24px_currentColor]', iconClassName)}>
+          <Icon className="size-7" />
+        </div>
+        <div className="min-w-0">
+          <div className="text-[13px] font-semibold leading-none text-slate-700 dark:text-muted-foreground">{label}</div>
+          <div className={cn('mt-2 text-[2rem] font-black leading-none tracking-[-0.055em]', valueClassName)}>
             {value}
           </div>
-          <div className="text-[9px] text-muted-foreground">
-            较昨日 <span className="font-semibold">{delta}</span>
+          <div className="mt-2 text-[11px] font-semibold text-slate-600 dark:text-muted-foreground">
+            较昨日 <span className={cn('font-black', deltaTone)}>{delta}</span>
           </div>
         </div>
-        <div className={cn('flex h-6 w-6 items-center justify-center rounded-[0.8rem] border', accent)}>
-          <Icon className="size-3" />
-        </div>
-      </div>
-      <div className="mt-2 flex items-end justify-end">
-        <svg viewBox="0 0 92 24" className="h-5 w-[84px]" aria-hidden="true">
-          <path d={buildSparklinePath(series)} fill="none" className={cn('stroke-2', line)} />
-        </svg>
       </div>
     </div>
   )
@@ -659,12 +644,12 @@ export default function FeedbackTriagePage() {
 
   const summaryCards = useMemo(
     () => [
-      { label: '总反馈量', value: stats.total, delta: '+12%', icon: MessageSquare, tone: 'indigo' as const, series: trendStats.series[2].values.map((value, index) => value + index + 4) },
-      { label: '点赞', value: stats.upvotes, delta: '+8%', icon: ThumbsUp, tone: 'emerald' as const, series: trendStats.series[0].values.map((value, index) => value + index + 6) },
-      { label: '点踩', value: stats.downvotes, delta: '+21%', icon: ThumbsDown, tone: 'rose' as const, series: trendStats.series[1].values.map((value, index) => value + index + 3) },
-      { label: '中立反馈', value: stats.total - stats.upvotes - stats.downvotes, delta: '-5%', icon: Star, tone: 'blue' as const, series: trendStats.series[2].values.map((value, index) => value + index + 2) },
+      { label: '总反馈量', value: stats.total, delta: '+12%', icon: MessageSquare, tone: 'indigo' as const },
+      { label: '点赞', value: stats.upvotes, delta: '+8%', icon: ThumbsUp, tone: 'emerald' as const },
+      { label: '点踩', value: stats.downvotes, delta: '+21%', icon: ThumbsDown, tone: 'rose' as const },
+      { label: '中立反馈', value: stats.total - stats.upvotes - stats.downvotes, delta: '-5%', icon: Star, tone: 'blue' as const },
     ],
-    [stats.downvotes, stats.total, stats.upvotes, trendStats.series]
+    [stats.downvotes, stats.total, stats.upvotes]
   )
 
   return (
@@ -716,7 +701,7 @@ export default function FeedbackTriagePage() {
         }
         top={
           <div className="pt-2">
-            <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-4">
               {summaryCards.map((card) => (
                 <FeedbackSummaryCard
                   key={card.label}
@@ -725,7 +710,6 @@ export default function FeedbackTriagePage() {
                   delta={card.delta}
                   icon={card.icon}
                   tone={card.tone}
-                  series={card.series}
                 />
               ))}
             </div>
@@ -971,7 +955,7 @@ export default function FeedbackTriagePage() {
                               <CheckCheck className="mr-1.5 size-2.5 text-emerald-600" />
                               标记已处理
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-6 w-6 rounded-xl text-muted-foreground">
+                            <Button variant="ghost" size="icon" className="h-6 w-6 rounded-xl text-muted-foreground" aria-label="更多问题操作" title="更多问题操作">
                               <MoreHorizontal className="size-3" />
                             </Button>
                           </div>
@@ -1082,7 +1066,7 @@ export default function FeedbackTriagePage() {
                   <div key={item.label} className="space-y-2">
                     <div className="flex items-center justify-between gap-3 text-[13px]">
                       <div className="flex items-center gap-2">
-                        <span className={cn('inline-flex h-5 w-5 items-center justify-center rounded-md text-[11px] font-semibold text-white', index === 0 ? 'bg-rose-400' : index === 1 ? 'bg-orange-400' : 'bg-amber-400')}>
+                        <span className={cn('inline-flex h-5 w-5 items-center justify-center rounded-md text-[11px] font-semibold text-primary-foreground', index === 0 ? 'bg-rose-400' : index === 1 ? 'bg-orange-400' : 'bg-amber-400')}>
                           {index + 1}
                         </span>
                         <span className="font-medium text-foreground">{item.label}</span>

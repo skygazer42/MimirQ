@@ -46,19 +46,8 @@ describe('parsing extract panel behavior', () => {
     )
     rendered.push(view)
 
-    expect(view.container.textContent).toContain('字段名')
-    const toggleButton = Array.from(view.container.querySelectorAll('button')).find((button) =>
-      button.textContent?.includes('收起')
-    )
-    expect(toggleButton).not.toBeNull()
-
-    act(() => {
-      toggleButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    })
-
     expect(view.container.textContent).not.toContain('字段名')
     expect(view.container.textContent).toContain('展开')
-
     const expandButton = Array.from(view.container.querySelectorAll('button')).find((button) =>
       button.textContent?.includes('展开')
     )
@@ -70,6 +59,18 @@ describe('parsing extract panel behavior', () => {
 
     expect(view.container.textContent).toContain('字段名')
     expect(view.container.textContent).toContain('收起')
+
+    const collapseButton = Array.from(view.container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('收起')
+    )
+    expect(collapseButton).not.toBeNull()
+
+    act(() => {
+      collapseButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    expect(view.container.textContent).not.toContain('字段名')
+    expect(view.container.textContent).toContain('展开')
   })
 
   it('shows visual kind choices for image extraction and hides them for non-image kinds', () => {
@@ -94,6 +95,13 @@ describe('parsing extract panel behavior', () => {
       })
     )
     rendered.push(view)
+
+    const expandButton = Array.from(view.container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('展开')
+    )
+    act(() => {
+      expandButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
 
     const selects = Array.from(view.container.querySelectorAll('select'))
     expect(selects.length).toBeGreaterThanOrEqual(1)
@@ -129,6 +137,13 @@ describe('parsing extract panel behavior', () => {
       })
     )
     rendered.push(view)
+
+    const expandButton = Array.from(view.container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('展开')
+    )
+    act(() => {
+      expandButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
 
     expect(view.container.textContent).not.toContain('来源 visual kind')
   })

@@ -59,7 +59,9 @@ export function ParsingLibraryPreviewPane({
     file.filename,
     file.parserBackend || defaultParserBackend
   ).backend
+  const isKnowledgeBaseFile = file.source === 'knowledge_base'
   const pendingParseAction = (() => {
+    if (isKnowledgeBaseFile) return null
     if (!file.status || file.status === 'parsed') return null
     if (sourceStatus === 'available') {
       return {
@@ -74,11 +76,22 @@ export function ParsingLibraryPreviewPane({
       onClick: () => onRequestRebind(true),
     }
   })()
+  const sourceAction = sourceStatus === 'available'
+    ? {
+        label: t('libraryPreview.restoreSource'),
+        title: t('libraryPreview.restoreSourceTitle'),
+        onClick: () => onRestoreSource(false),
+      }
+    : {
+        label: t('libraryPreview.reupload'),
+        title: t('libraryPreview.reuploadTitle'),
+        onClick: () => onRequestRebind(false),
+      }
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
       <div className="border-b border-border/60 bg-card/80 px-6 py-2 dark:bg-background/60">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex max-w-[560px] min-w-0 items-center gap-2 rounded-xl border border-border/60 bg-background/70 px-2.5 py-1 text-sm font-semibold text-foreground dark:bg-background/20">
@@ -103,43 +116,19 @@ export function ParsingLibraryPreviewPane({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            {file.status && file.status !== 'parsed' ? (
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
+            {file.status && file.status !== 'parsed' && !isKnowledgeBaseFile ? (
               <ParserDropdown
                 value={parserValue}
                 filename={file.filename}
                 onChange={onUpdateParser}
-                className="w-full sm:w-64"
+                className="w-[180px] sm:w-[196px]"
                 compact
               />
             ) : (
               <span className="text-xs text-muted-foreground">
                 {t('libraryPreview.parserLabel')}：<span className="font-medium text-foreground/80 dark:text-muted-foreground">{file.parser || getParserLabel(parserValue)}</span>
               </span>
-            )}
-
-            {sourceStatus === 'available' ? (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 gap-1.5 rounded-full px-3 text-[11px]"
-                onClick={() => onRestoreSource(false)}
-                title={t('libraryPreview.restoreSourceTitle')}
-              >
-                <Paperclip className="h-3.5 w-3.5" />
-                {t('libraryPreview.restoreSource')}
-              </Button>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 gap-1.5 rounded-full px-3 text-[11px]"
-                onClick={() => onRequestRebind(false)}
-                title={t('libraryPreview.reuploadTitle')}
-              >
-                <Paperclip className="h-3.5 w-3.5" />
-                {t('libraryPreview.reupload')}
-              </Button>
             )}
 
             {pendingParseAction ? (
@@ -167,6 +156,15 @@ export function ParsingLibraryPreviewPane({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuItem
+                  className="cursor-pointer gap-2"
+                  onClick={sourceAction.onClick}
+                  title={sourceAction.title}
+                >
+                  <Paperclip className="h-4 w-4 text-muted-foreground" />
+                  {sourceAction.label}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem
                   className="cursor-pointer gap-2"
                   onClick={async () => {

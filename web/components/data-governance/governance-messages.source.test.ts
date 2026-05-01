@@ -37,6 +37,17 @@ describe('data governance message sources', () => {
     expect(annotatorSrc).toContain("useTranslations('DataAnnotator')")
     expect(annotatorSrc).toContain("label: t(`types.${id}.label`)")
     expect(annotatorSrc).toContain("description: t(`types.${id}.description`)")
+    expect(annotatorSrc).toContain('pipelineApi.autoAnnotations')
+    expect(annotatorSrc).toContain("mode: 'document_focus'")
+    expect(annotatorSrc).toContain('autoTagProvider')
+    expect(annotatorSrc).toContain('AUTO_TAG_PROVIDER_OPTIONS')
+    expect(annotatorSrc).toContain('providers: selectedProviderConfig.providers')
+    expect(annotatorSrc).toContain('enable_llm: selectedProviderConfig.enableLlm')
+    expect(annotatorSrc).toContain('enable_sensitive: selectedProviderConfig.enableSensitive')
+    expect(annotatorSrc).toContain("t(`auto.providers.${option.id}.label`)")
+    expect(annotatorSrc).toContain("t('auto.providerTitle')")
+    expect(annotatorSrc).toContain("t('semantic.title')")
+    expect(annotatorSrc).toContain("t('auto.action')")
 
     expect(classifierSrc).toContain("useTranslations('DataClassifier')")
     expect(classifierSrc).toContain("label: t(`categories.${id}.label`)")
@@ -51,5 +62,15 @@ describe('data governance message sources', () => {
     expect(qualitySrc).toContain("label: t(`checkItems.${id}.label`)")
     expect(qualitySrc).toContain('t("header.title")')
     expect(qualitySrc).toContain('t("actions.scan")')
+  })
+
+  it('wires manual annotation selection to the document canvas instead of the tool panel', () => {
+    const panelSrc = read('components/data-governance-panel.tsx')
+    const annotatorSrc = read('components/data-governance/data-annotator.tsx')
+
+    expect(panelSrc).toContain('data-governance-selection-root="true"')
+    expect(annotatorSrc).toContain("querySelector('[data-governance-selection-root=\"true\"]')")
+    expect(annotatorSrc).toContain("addEventListener('mouseup', captureSelection)")
+    expect(annotatorSrc).toContain('findSelectionRange(content, selectedText)')
   })
 })

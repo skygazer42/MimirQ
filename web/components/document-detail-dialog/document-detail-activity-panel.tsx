@@ -1,19 +1,22 @@
 'use client'
 
-import type { KeyboardEvent as ReactKeyboardEvent, ReactNode, RefObject } from 'react'
-
-import { Ban, Calendar, CheckCircle2, Copy, FileText, Loader2, Pencil, RefreshCw, Save, Search, X } from 'lucide-react'
+import { useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react'
+import { Ban, Calendar, CheckCircle2, Copy, FileText, GitBranch, Loader2, Pencil, RefreshCw, Save, Search, X } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import { toast } from 'sonner'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
 import { Panel } from '@/components/ui/panel'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { cn, formatDate } from '@/lib/utils'
+import { lineageApi } from '@/lib/api'
+import { formatApiError } from '@/lib/api-errors'
+import { cn, detachPromise, formatDate } from '@/lib/utils'
 import type { Document, DocumentChunk, DocumentTimelineItem, DocumentVersionList } from '@/types'
 
 const ACTIVE_PIPELINE_VALUE = '__active__'
@@ -108,6 +111,66 @@ function highlightText(text: string, query: string) {
   }
 
   return nodes
+}
+
+function prettyJson(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
+}
+
+function ChunkLineageButton({ chunkId }: Readonly<{ chunkId: string }>) {
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [payload, setPayload] = useState<unknown>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  async function loadLineage(): Promise<void> {
+    setOpen(true)
+    setLoading(true)
+    setError(null)
+    try {
+      const next = await lineageApi.getChunkLineage(chunkId)
+      setPayload(next)
+    } catch (err) {
+      const message = formatApiError(err, '加载 Chunk 血缘失败')
+      setError(message)
+      toast.error(message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <>
+      <IconButton
+        label="查看 Chunk 血缘"
+        variant="ghost"
+        className="h-9 w-9 text-muted-foreground hover:text-foreground"
+        onClick={() => detachPromise(loadLineage())}
+      >
+        {loading ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <GitBranch className="h-4 w-4" />}
+      </IconButton>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-3xl border-border bg-background/95 shadow-strong sm:rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <GitBranch className="h-4 w-4 text-info" />
+              Chunk Lineage
+            </DialogTitle>
+            <DialogDescription className="font-mono text-xs">chunk_id={chunkId}</DialogDescription>
+          </DialogHeader>
+          {error ? <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</div> : null}
+          <pre className={cn('max-h-[520px] overflow-auto rounded-lg border border-border/60 bg-muted/20 p-3 text-xs', 'whitespace-pre-wrap break-words')}>
+            {loading ? 'Loading...' : prettyJson(payload ?? { message: '暂无 Chunk 血缘数据' })}
+          </pre>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
 }
 
 export function DocumentDetailActivityPanel({
@@ -300,6 +363,7 @@ export function DocumentDetailActivityPanel({
                       >
                         <RefreshCw className="h-4 w-4" />
                       </IconButton>
+                      <ChunkLineageButton chunkId={chunk.id} />
                       <IconButton
                         label={t('chunks.actions.copy')}
                         variant="ghost"

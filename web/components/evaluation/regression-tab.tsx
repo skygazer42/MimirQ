@@ -527,6 +527,7 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
                     metricKeys={metricKeys}
                     onMetricKeysChange={setMetricKeys}
                     disabled={retrievalOnly}
+                    scope="regression"
                     className="grid gap-2"
                     itemClassName="gap-3 rounded-xl border border-slate-200/80 bg-card/90 px-2.5 py-1.5"
                     textWrapClassName="space-y-1"

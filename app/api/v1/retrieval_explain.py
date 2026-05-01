@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.chat import ChatRAGConfig, HistoryMessage
+from app.api.v1.rag import _enforce_non_empty_retrieval_scope
 from app.core.config import settings
 from app.core.database import get_db
 from app.rag.pipelines.langgraph import build_rag_state
@@ -125,6 +126,14 @@ async def explain_retrieval(
     elif not bool(getattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False)):
         raise HTTPException(status_code=400, detail="dataset_id is required when document_ids is empty")
 
+    _enforce_non_empty_retrieval_scope(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        scope_document_ids=scope_document_ids,
+        scope_dataset_id=scope_dataset_id,
+    )
+
     request_fields_set = set(getattr(body, "model_fields_set", set()) or set())
     rag_config_provided = "rag_config" in request_fields_set
     effective_rag_config = body.rag_config if rag_config_provided else ChatRAGConfig(retrieval_profile="recall50")
@@ -149,6 +158,7 @@ async def explain_retrieval(
         multi_query_count=effective_rag_config.multi_query_count,
         multi_query_temperature=effective_rag_config.multi_query_temperature,
         multi_query_max_chars=effective_rag_config.multi_query_max_chars,
+        enable_hyde=effective_rag_config.enable_hyde,
         enable_hierarchy_recall=effective_rag_config.enable_hierarchy_recall,
         hierarchy_family_collapse=effective_rag_config.hierarchy_family_collapse,
         hierarchy_family_aggregation=effective_rag_config.hierarchy_family_aggregation,

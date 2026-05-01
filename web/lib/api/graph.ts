@@ -26,6 +26,24 @@ import type {
 
 import { apiClient } from '@/lib/api/core'
 
+export type KGNetworkEdge = {
+  source: string
+  target: string
+  weight?: number
+}
+
+export type KGNetworkRequest = {
+  edges: KGNetworkEdge[]
+  start_id?: string
+  target_id?: string
+  max_hops?: number
+  top_k?: number
+  algorithm?: 'degree' | 'pagerank'
+  node_id?: string
+}
+
+export type KGNetworkResponse = Record<string, any>
+
 export const kgApi = {
   async extract(
     documentId: string,
@@ -110,7 +128,37 @@ export const kgApi = {
     return data as unknown as string
   },
 
-  async exportSnapshot(params: { pipeline_hash: string; document_ids?: string[] }): Promise<any> {
+  async getKHopNeighbors(body: KGNetworkRequest): Promise<KGNetworkResponse> {
+    const { data } = await apiClient.post('/kg/network/k_hop_neighbors', body)
+    return data
+  },
+
+  async getShortestPath(body: KGNetworkRequest): Promise<KGNetworkResponse> {
+    const { data } = await apiClient.post('/kg/network/shortest_path', body)
+    return data
+  },
+
+  async getPathsBetween(body: KGNetworkRequest): Promise<KGNetworkResponse> {
+    const { data } = await apiClient.post('/kg/network/paths_between', body)
+    return data
+  },
+
+  async getCentrality(body: KGNetworkRequest): Promise<KGNetworkResponse> {
+    const { data } = await apiClient.post('/kg/network/centrality', body)
+    return data
+  },
+
+  async getCommunityOf(body: KGNetworkRequest): Promise<KGNetworkResponse> {
+    const { data } = await apiClient.post('/kg/network/community_of', body)
+    return data
+  },
+
+  async getConnectedComponent(body: KGNetworkRequest): Promise<KGNetworkResponse> {
+    const { data } = await apiClient.post('/kg/network/connected_component', body)
+    return data
+  },
+
+  async exportSnapshot(params: { pipeline_hash: string; document_ids?: string[]; include_details?: boolean }): Promise<any> {
     const { data } = await apiClient.get('/kg/snapshots/export', { params })
     return data
   },

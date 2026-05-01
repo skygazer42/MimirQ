@@ -1,6 +1,6 @@
 'use client'
 
-import type { Document } from '@/types'
+import type { Dataset, Document } from '@/types'
 
 import { Activity, Database, Eye, Filter, Layers, Loader2, MoreVertical, RefreshCw, RotateCcw, Trash2 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
@@ -8,12 +8,12 @@ import { type SyntheticEvent, useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { motion, AnimatePresence } from 'framer-motion'
 
-import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { SearchInput } from '@/components/ui/search-input'
 import { Panel } from '@/components/ui/panel'
 import { StatusBadge, type StatusBadgeStatus } from '@/components/ui/status-badge'
+import { DocumentOperationsPanel } from '@/components/documents/document-operations-panel'
 import { DocumentTags } from '@/components/documents/document-tags'
 import { KnowledgeInspector } from '@/components/knowledge/knowledge-inspector'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -49,6 +49,7 @@ type KnowledgeDocumentsPanelProps = {
   isLoading: boolean
   documents: Document[]
   filteredDocuments: Document[]
+  datasets?: Dataset[]
   embedded?: boolean
 
   selectedDatasetId?: string
@@ -126,6 +127,28 @@ function getStatusBarColor(status: string) {
   return 'bg-muted-foreground/40'
 }
 
+function getDocumentLifecycleLabel(doc: Document) {
+  if (doc.archived_at) return '已归档'
+  if (doc.disabled_at) return '已停用'
+  return '启用中'
+}
+
+function getDocumentSourceLabel(doc: Document) {
+  const metadata = (doc.metadata || {}) as Record<string, unknown>
+  const source = typeof metadata.source === 'string' ? metadata.source.toLowerCase() : ''
+  const sourcePath = typeof metadata.source_path === 'string' ? metadata.source_path : ''
+  if (source.includes('connector') || source.includes('crawl') || source.includes('jira')) return '连接器'
+  if (source.includes('url')) return 'URL 导入'
+  if (sourcePath) return '目录上传'
+  return '手动导入'
+}
+
+function getDocumentTagSummary(tags: string[]) {
+  if (!tags.length) return '-'
+  const visible = tags.slice(0, 2).join(' / ')
+  return tags.length > 2 ? `${visible} +${tags.length - 2}` : visible
+}
+
 const contextualRevealClassName = [
   'opacity-100',
   '[@media(hover:hover)_and_(pointer:fine)]:opacity-0',
@@ -137,6 +160,7 @@ export function KnowledgeDocumentsPanel({
   isLoading,
   documents,
   filteredDocuments,
+  datasets = [],
   embedded = false,
   selectedDatasetId,
   selectedDatasetLabel,
@@ -191,6 +215,7 @@ export function KnowledgeDocumentsPanel({
   const [singleDeleteDoc, setSingleDeleteDoc] = useState<Document | null>(null)
   const [singleDeleteWorking, setSingleDeleteWorking] = useState(false)
   const [singleDeleteError, setSingleDeleteError] = useState<string | null>(null)
+  const [opsOpen, setOpsOpen] = useState(false)
 
   const docsGridColsClassName =
     docGridColumns >= 5
@@ -205,6 +230,9 @@ export function KnowledgeDocumentsPanel({
 
   const showDatasetColumn = !selectedDatasetId
   const tableColumnCount = showDatasetColumn ? 9 : 8
+  const documentListGridTemplate = showDatasetColumn
+    ? '2.25rem minmax(16rem,1.65fr) minmax(8.5rem,.78fr) minmax(5.5rem,.55fr) minmax(5rem,.5fr) 3.75rem 5rem 5.5rem 8.5rem'
+    : '2.25rem minmax(18rem,1.8fr) minmax(5.5rem,.55fr) minmax(5rem,.5fr) 3.75rem 5rem 5.5rem 8.5rem'
   const peekChunksLabel = (() => {
     const resolved = t('actions.peekChunks')
     return resolved === 'KnowledgeDocumentsPanel.actions.peekChunks' ? '查看分块' : resolved
@@ -353,8 +381,8 @@ export function KnowledgeDocumentsPanel({
               'fixed bottom-8 left-1/2 z-50 -translate-x-1/2 overflow-hidden rounded-[2.25rem] border border-border/50 bg-background/70 px-4 py-3 shadow-[0_30px_90px_-32px_rgba(15,23,42,0.88),0_18px_36px_-24px_rgba(15,23,42,0.55),inset_0_1px_0_rgba(255,255,255,0.16)] backdrop-blur-2xl supports-[backdrop-filter]:bg-background/58'
             )}
           >
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-background/95 via-background/78 to-background/95" />
-            <div className="pointer-events-none absolute inset-x-10 top-0 h-px bg-white/30 dark:bg-white/10" />
+            <div className="pointer-events-none absolute inset-0 bg-background/90" />
+            <div className="pointer-events-none absolute inset-x-10 top-0 h-px bg-card/30 dark:bg-card/10" />
             <div className="pointer-events-none absolute -left-8 top-1/2 size-28 -translate-y-1/2 rounded-full bg-primary/10 blur-3xl" />
             <div className="pointer-events-none absolute -right-6 top-2 size-24 rounded-full bg-foreground/5 blur-2xl" />
 
@@ -555,8 +583,26 @@ export function KnowledgeDocumentsPanel({
                   清空筛选
                 </Button>
               ) : null}
+
+              <Button
+                type="button"
+                variant={opsOpen ? 'default' : 'outline'}
+                size="sm"
+                className="h-9 min-w-[96px] justify-center rounded-[12px] px-3 text-[11px] font-medium"
+                aria-expanded={opsOpen}
+                onClick={() => setOpsOpen((open) => !open)}
+              >
+                <Activity className="mr-2 size-3.5" />
+                运维工具
+              </Button>
             </div>
           </div>
+
+          {opsOpen ? (
+            <div className="mt-3">
+              <DocumentOperationsPanel selectedDocumentIds={selectedDocIds} datasetId={selectedDatasetId} datasets={datasets} />
+            </div>
+          ) : null}
         </div>
 
         <div className="flex flex-1 min-h-0 flex-col">
@@ -573,43 +619,115 @@ export function KnowledgeDocumentsPanel({
             }
 
             if (showEmptyState) {
+              const emptyTitle = isDatasetEmpty
+                ? '知识货架待入库'
+                : docFilter
+                  ? '没有匹配到相关文档'
+                  : '当前筛选无结果'
+              const emptyDescription = isDatasetEmpty
+                ? '使用右上角「导入/新增」上传文档或创建连接器后，资产列表会在这里形成可检索的文档货架。'
+                : '当前筛选条件没有命中文档，可以放宽范围、清空搜索，或切回全部数据集重新查看。'
+
               return (
                 <div className="px-5 py-5">
-                  <EmptyState
-                    icon={Filter}
-                    title={isDatasetEmpty ? '当前知识库还没有文档' : docFilter ? '没有匹配到相关文档' : '当前筛选无结果'}
-                    description={
-                      isDatasetEmpty
-                        ? '使用右上角上传文档或创建连接器后，资产列表会在这里集中展示。'
-                        : '可以修改左侧筛选条件，或者清空搜索后重新查看全部文档。'
-                    }
-                    className="min-h-[360px] rounded-[22px] border-dashed border-border/70 bg-muted/[0.16]"
+                  <div
+                    data-knowledge-empty-shelf="true"
+                    className="relative min-h-[390px] overflow-hidden rounded-[26px] border border-dashed border-blue-500/20 bg-[radial-gradient(circle_at_50%_0%,rgba(59,130,246,0.16),transparent_46%)]"
                   >
-                    {!isDatasetEmpty ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-10 rounded-[14px] border-border/70 bg-background px-4"
-                        onClick={onClearFilters}
-                      >
-                        <RotateCcw className="mr-2 size-3.5" />
-                        清空所有筛选
-                      </Button>
-                    ) : null}
+                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(59,130,246,0.055)_1px,transparent_1px),linear-gradient(90deg,rgba(59,130,246,0.055)_1px,transparent_1px)] bg-[size:34px_34px]" />
+                    <div className="pointer-events-none absolute -left-12 top-16 size-44 rounded-full bg-blue-500/10 blur-3xl" />
+                    <div className="pointer-events-none absolute -right-10 bottom-8 size-52 rounded-full bg-info/10 blur-3xl" />
+                    <div className="relative mx-auto flex max-w-5xl flex-col items-center px-5 py-9 text-center">
+                      <div className="relative mb-5 flex h-24 w-32 items-end justify-center">
+                        <div className="absolute bottom-0 h-16 w-28 rounded-[24px] border border-blue-500/20 bg-background/80 shadow-[0_22px_48px_-34px_rgba(37,99,235,0.7)]" />
+                        <div className="absolute bottom-5 h-14 w-20 rounded-[18px] border border-blue-500/20 bg-blue-500/10" />
+                        <div className="absolute bottom-8 flex size-14 items-center justify-center rounded-[20px] border border-blue-500/20 bg-background text-blue-600 shadow-[0_16px_28px_-20px_rgba(37,99,235,0.6)]">
+                          {isDatasetEmpty ? <Database className="size-7" /> : <Filter className="size-7" />}
+                        </div>
+                        <span className="absolute left-5 top-2 size-2 rounded-full bg-blue-400/50" />
+                        <span className="absolute right-4 top-8 size-1.5 rounded-full bg-info/50" />
+                      </div>
 
-                    {!selectedDatasetId && hasActiveFilters ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-10 rounded-[14px] px-4 text-[12px] font-medium"
-                        onClick={onSwitchToAllDatasets}
-                      >
-                        回到全部数据集
-                      </Button>
-                    ) : null}
-                  </EmptyState>
+                      <div className="inline-flex items-center rounded-full border border-blue-500/15 bg-background/78 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-blue-700/70 dark:text-blue-300/78">
+                        Asset Shelf
+                      </div>
+                      <h3 className="mt-3 text-[22px] font-semibold tracking-[-0.04em] text-foreground">
+                        {emptyTitle}
+                      </h3>
+                      <p className="mt-2 max-w-2xl text-[13px] leading-6 text-muted-foreground/78">
+                        {emptyDescription}
+                      </p>
+
+                      <div className="mt-7 grid w-full gap-3 md:grid-cols-3">
+                        <div className="rounded-[18px] border border-border/70 bg-background/82 p-4 text-left shadow-[0_14px_28px_-26px_rgba(15,23,42,0.35)]">
+                          <div className="flex items-center gap-2 text-[12px] font-semibold text-foreground">
+                            <Database className="size-4 text-blue-600" />
+                            导入路径
+                          </div>
+                          <p className="mt-2 text-[11px] leading-5 text-muted-foreground/74">
+                            从右上角「导入/新增」上传文件、批量 URL 或连接器任务，文档会自动绑定当前数据集。
+                          </p>
+                        </div>
+                        <div className="rounded-[18px] border border-border/70 bg-background/82 p-4 text-left shadow-[0_14px_28px_-26px_rgba(15,23,42,0.35)]">
+                          <div className="flex items-center gap-2 text-[12px] font-semibold text-foreground">
+                            <Filter className="size-4 text-blue-600" />
+                            筛选路径
+                          </div>
+                          <p className="mt-2 text-[11px] leading-5 text-muted-foreground/74">
+                            当前左侧范围会影响列表结果；如果误选生命周期或状态，可以先清空筛选。
+                          </p>
+                        </div>
+                        <div className="rounded-[18px] border border-border/70 bg-background/82 p-4 text-left shadow-[0_14px_28px_-26px_rgba(15,23,42,0.35)]">
+                          <div className="flex items-center gap-2 text-[12px] font-semibold text-foreground">
+                            <Layers className="size-4 text-blue-600" />
+                            质量路径
+                          </div>
+                          <p className="mt-2 text-[11px] leading-5 text-muted-foreground/74">
+                            文档入库后可在这里查看分块数量、解析状态、健康卡和后续检索测试入口。
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+                        {!isDatasetEmpty ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-10 rounded-[14px] border-border/70 bg-background px-4"
+                            onClick={onClearFilters}
+                          >
+                            <RotateCcw className="mr-2 size-3.5" />
+                            清空所有筛选
+                          </Button>
+                        ) : null}
+
+                        {selectedDatasetId && onSwitchToAllDatasets ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-10 rounded-[14px] px-4 text-[12px] font-medium"
+                            onClick={onSwitchToAllDatasets}
+                          >
+                            回到全部数据集
+                          </Button>
+                        ) : null}
+
+                        {!selectedDatasetId && hasActiveFilters ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-10 rounded-[14px] px-4 text-[12px] font-medium"
+                            onClick={onSwitchToAllDatasets}
+                          >
+                            回到全部数据集
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )
             }
@@ -675,46 +793,33 @@ export function KnowledgeDocumentsPanel({
                     </colgroup>
                     <thead className="border-b border-border/60 bg-muted/[0.16] text-[11px] uppercase text-muted-foreground/78">
                       <tr>
-                        <th className="sticky top-0 z-10 w-9 bg-background/95 px-2.5 py-2 font-medium">
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 rounded border-border/60 text-primary focus-ring"
-                            checked={allVisibleSelected}
-                            onChange={toggleSelectAllVisible}
-                            aria-label={t('table.selectAllVisible')}
-                          />
-                        </th>
-                        <th className="sticky top-0 z-10 bg-background/95 px-2.5 py-2 font-medium">
-                          {t('table.columns.name')}
-                        </th>
-                        {showDatasetColumn ? (
-                            <th className="sticky top-0 z-10 bg-background/95 px-2.5 py-2 font-medium">
-                            {t('table.columns.dataset')}
-                          </th>
-                        ) : null}
-                        <th className="sticky top-0 z-10 bg-background/95 px-2.5 py-2 font-medium">
-                          {t('table.columns.tags')}
-                        </th>
-                        <th className="sticky top-0 z-10 bg-background/95 px-2.5 py-2 font-medium">
-                          {t('table.columns.status')}
-                        </th>
-                        {/* className="sticky top-0 z-10 bg-card/95 px-3 py-2.5 font-medium text-right tabular-nums">{t('table.columns.chunks')}</th> */}
-                        <th className="sticky top-0 z-10 bg-background/95 px-2.5 py-2 text-right font-medium tabular-nums">
-                          {t('table.columns.chunks')}
-                        </th>
-                        {/* className="sticky top-0 z-10 bg-card/95 px-3 py-2.5 font-medium text-right tabular-nums">{t('table.columns.size')}</th> */}
-                        <th className="sticky top-0 z-10 bg-background/95 px-2.5 py-2 text-right font-medium tabular-nums">
-                          {t('table.columns.size')}
-                        </th>
-                        <th className="sticky top-0 z-10 bg-background/95 px-2.5 py-2 font-medium">
-                          {t('table.columns.uploadedAt')}
-                        </th>
-                        <th className="sticky top-0 z-10 bg-background/95 px-2.5 py-2 text-right font-medium">
-                          {t('table.columns.actions')}
+                        <th colSpan={tableColumnCount} className="sticky top-0 z-10 bg-background/95 px-3 py-2 font-medium">
+                          <div
+                            className="grid items-center gap-3"
+                            style={{ gridTemplateColumns: documentListGridTemplate }}
+                          >
+                            <div className="flex items-center justify-center">
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 rounded border-border/60 text-primary focus-ring"
+                                checked={allVisibleSelected}
+                                onChange={toggleSelectAllVisible}
+                                aria-label={t('table.selectAllVisible')}
+                              />
+                            </div>
+                            <div>{t('table.columns.name')}</div>
+                            {showDatasetColumn ? <div>{t('table.columns.dataset')}</div> : null}
+                            <div>{t('table.columns.tags')}</div>
+                            <div>{t('table.columns.status')}</div>
+                            <div className="text-right tabular-nums">{t('table.columns.chunks')}</div>
+                            <div className="text-right tabular-nums">{t('table.columns.size')}</div>
+                            <div>{t('table.columns.uploadedAt')}</div>
+                            <div className="text-right">{t('table.columns.actions')}</div>
+                          </div>
                         </th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-border/60">
+                    <tbody className="bg-card/95">
                       {docsTablePaddingTop > 0 ? (
                         <tr>
                           <td colSpan={tableColumnCount} className="p-0" style={{ height: `${docsTablePaddingTop}px` }} />
@@ -726,126 +831,153 @@ export function KnowledgeDocumentsPanel({
                         if (!doc) return null
                         const badge = getStatusBadge(doc.status, t)
                         const tags = getUserTagsFromDocument(doc)
+                        const fileType = getFileTypeMeta(doc)
+                        const TypeIcon = fileType.icon
+                        const datasetLabel = datasetLabelById?.[doc.dataset_id || ''] || '-'
+                        const metadataItems = [
+                          { label: '数据集', value: datasetLabel },
+                          { label: '标签', value: getDocumentTagSummary(tags) },
+                          { label: '生命周期', value: getDocumentLifecycleLabel(doc) },
+                          { label: '来源', value: getDocumentSourceLabel(doc) },
+                          { label: '更新时间', value: formatDate(doc.updated_at || doc.created_at) },
+                        ]
 
                         return (
-                          <tr key={doc.id} className="group/row transition-[background-color,transform] duration-150 hover:bg-muted/35">
-                            <td className="px-2.5 py-2">
-                              <input
-                                type="checkbox"
-                                className="h-4 w-4 rounded border-border/60 text-primary focus-ring"
-                                checked={selectedSet.has(doc.id)}
-                                onChange={() => toggleDocSelection(doc.id)}
-                                aria-label={t('table.selectDocument', { filename: doc.filename })}
-                              />
-                            </td>
-                            <td className="min-w-0 px-2.5 py-2">
-                              <div className="flex items-center gap-3">
-                                <div className={cn('flex size-7 shrink-0 items-center justify-center rounded-lg border transition-transform duration-150 group-hover/row:scale-[1.03]', iconShellClassName, getFileTypeMeta(doc).bg, getFileTypeMeta(doc).border, getFileTypeMeta(doc).color)}>
-                                  <span className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[linear-gradient(135deg,rgba(255,255,255,0.28),transparent_52%)] opacity-75" />
-                                  {(() => {
-                                    const Icon = getFileTypeMeta(doc).icon
-                                    return <Icon className="size-4" />
-                                  })()}
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <div className="mb-0.5 max-w-[320px] truncate text-[13px] font-normal tracking-[-0.01em] leading-none text-foreground/88 xl:max-w-[360px]" title={doc.filename}>
-                                    {doc.filename}
-                                  </div>
-                                  <div className="max-w-[320px] truncate font-mono text-[11px] uppercase tracking-tight text-muted-foreground/50 xl:max-w-[360px]">
-                                    {doc.id}
-                                  </div>
-                                </div>
-                              </div>
-                            </td>
-                            {showDatasetColumn ? (
-                              <td className="px-2.5 py-2">
-                                <div className="max-w-[150px] truncate text-xs font-normal text-muted-foreground/82">
-                                  {datasetLabelById?.[doc.dataset_id || ''] || '-'}
-                                </div>
-                              </td>
-                            ) : null}
-                            <td className="px-2.5 py-2">
-                              {tags.length ? (
-                                <DocumentTags tags={tags} max={2} dense />
-                              ) : (
-                                <span className="text-muted-foreground/30">—</span>
-                              )}
-                            </td>
-                            <td className="px-2.5 py-2">
-                              <StatusBadge status={badge.status} label={badge.label} dense />
-                            </td>
-                            <td className="px-2.5 py-2 text-right align-middle text-[11px] font-medium font-mono tabular-nums text-foreground/70">
-                              {doc.chunk_count ?? '0'}
-                            </td>
-                            <td className="px-2.5 py-2 text-right align-middle text-[11px] font-mono tabular-nums text-muted-foreground">
-                              {/* className="px-3 py-2.5 align-middle text-right text-xs font-mono tabular-nums text-muted-foreground" */}
-                              {formatFileSize(doc.file_size)}
-                            </td>
-                            <td className="px-2.5 py-2">
-                              <div className="whitespace-nowrap font-mono text-[11px] tabular-nums text-muted-foreground">
-                                {formatDate(doc.created_at)}
-                              </div>
-                            </td>
-                            <td className="px-2.5 py-2 text-right">
-                              <div className="flex items-center justify-end gap-1">
-                                {/* className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-muted" */}
-                                <IconButton
-                                  label="查看详情"
-                                  variant="ghost"
-                                  className="h-7 w-7 rounded-full text-muted-foreground transition-[transform,background-color,color,box-shadow] hover:scale-[1.04] hover:text-primary hover:bg-primary/8 hover:shadow-[0_8px_18px_-12px_rgba(37,99,235,0.45)]"
-                                  onClick={buildOpenInspectorHandler(doc)}
+                          <tr
+                            key={doc.id}
+                            data-index={virtualRow.index}
+                            ref={docsTableVirtualizer.measureElement}
+                            className="group/row"
+                          >
+                            <td colSpan={tableColumnCount} className="px-3 py-1.5">
+                              <div className="rounded-[18px] border border-border/70 bg-background shadow-[0_14px_30px_-28px_rgba(15,23,42,0.32)] transition-[border-color,box-shadow,transform] duration-150 group-hover/row:-translate-y-px group-hover/row:border-primary/20 group-hover/row:shadow-[0_20px_34px_-28px_rgba(37,99,235,0.32)]">
+                                <div
+                                  className="grid min-h-[64px] items-center gap-3 px-3 py-3"
+                                  style={{ gridTemplateColumns: documentListGridTemplate }}
                                 >
-                                  <Eye className="h-3.5 w-3.5" />
-                                </IconButton>
+                                  <div className="flex items-center justify-center">
+                                    <input
+                                      type="checkbox"
+                                      className="h-4 w-4 rounded border-border/60 text-primary focus-ring"
+                                      checked={selectedSet.has(doc.id)}
+                                      onChange={() => toggleDocSelection(doc.id)}
+                                      aria-label={t('table.selectDocument', { filename: doc.filename })}
+                                    />
+                                  </div>
 
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 rounded-full px-2.5 text-[10px] font-medium text-primary hover:bg-primary/10"
-                                  onClick={(event) => {
-                                    event.stopPropagation()
-                                    if (onPeek) onPeek(doc.id)
-                                    else globalThis.window.open(`/chunk-preview?docId=${doc.id}`, '_blank')
-                                  }}
-                                >
-                                  <Layers className="mr-1 size-3" />
-                                  {peekChunksLabel}
-                                </Button>
+                                  <div className="min-w-0">
+                                    <div className="flex min-w-0 items-center gap-3">
+                                      <div className={cn('flex size-8 shrink-0 items-center justify-center rounded-[10px] border transition-transform duration-150 group-hover/row:scale-[1.03]', iconShellClassName, fileType.bg, fileType.border, fileType.color)}>
+                                        <span className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[linear-gradient(135deg,rgba(255,255,255,0.28),transparent_52%)] opacity-75" />
+                                        <TypeIcon className="size-4.5" />
+                                      </div>
+                                      <div className="min-w-0 flex-1">
+                                        <div className="mb-1 max-w-[360px] truncate text-[13px] font-semibold tracking-[-0.02em] leading-none text-foreground/90 xl:max-w-[440px]" title={doc.filename}>
+                                          {doc.filename}
+                                        </div>
+                                        <div className="max-w-[360px] truncate font-mono text-[10px] uppercase tracking-[0.04em] text-muted-foreground/48 xl:max-w-[440px]">
+                                          {doc.id}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
 
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
+                                  {showDatasetColumn ? (
+                                    <div className="min-w-0 text-[12px] leading-5 text-muted-foreground/82">
+                                      <span className="line-clamp-2">{datasetLabel}</span>
+                                    </div>
+                                  ) : null}
+
+                                  <div className="min-w-0">
+                                    {tags.length ? (
+                                      <DocumentTags tags={tags} max={2} dense />
+                                    ) : (
+                                      <span className="text-[12px] text-muted-foreground/32">—</span>
+                                    )}
+                                  </div>
+
+                                  <div className="min-w-0">
+                                    <StatusBadge status={badge.status} label={badge.label} dense className="rounded-full bg-muted/50" />
+                                  </div>
+
+                                  <div className="text-right font-mono text-[11px] font-semibold tabular-nums text-foreground/70">
+                                    {doc.chunk_count ?? '0'}
+                                  </div>
+                                  <div className="text-right font-mono text-[11px] tabular-nums text-muted-foreground">
+                                    {formatFileSize(doc.file_size)}
+                                  </div>
+                                  <div className="whitespace-nowrap font-mono text-[11px] tabular-nums text-muted-foreground">
+                                    {formatDate(doc.created_at)}
+                                  </div>
+                                  <div className="flex items-center justify-end gap-1">
                                     <IconButton
-                                      label={t('actions.moreActions')}
+                                      label="查看详情"
                                       variant="ghost"
-                                      className="h-7 w-7 rounded-full text-muted-foreground transition-[transform,background-color,color] hover:scale-[1.04] hover:text-foreground hover:bg-muted/70"
+                                      className="h-7 w-7 rounded-full text-muted-foreground transition-[transform,background-color,color,box-shadow] hover:scale-[1.04] hover:text-primary hover:bg-primary/8 hover:shadow-[0_8px_18px_-12px_rgba(37,99,235,0.45)]"
+                                      onClick={buildOpenInspectorHandler(doc)}
                                     >
-                                      <MoreVertical className="h-3.5 w-3.5" />
+                                      <Eye className="h-3.5 w-3.5" />
                                     </IconButton>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end" className="w-56 rounded-xl border-border/60 shadow-strong/10">
-                                    <DropdownMenuItem onSelect={() => detachPromise(copyText(doc.id, t('toasts.copyDocumentId')))}>
-                                      {t('actions.copyDocumentId')}
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onSelect={() => detachPromise(copyText(doc.filename, t('toasts.copyFilename')))}>
-                                      {t('actions.copyFilename')}
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem asChild>
-                                      <Link href={`/knowledge/${doc.id}/health`} className="flex items-center">
-                                        <Activity className="mr-2 h-4 w-4" />
-                                        {t('actions.healthCard')}
-                                      </Link>
-                                    </DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem
-                                      className="text-destructive focus:text-destructive"
-                                      onSelect={() => requestSingleDelete(doc)}
+
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 rounded-full px-2.5 text-[10px] font-medium text-primary hover:bg-primary/10"
+                                      onClick={(event) => {
+                                        event.stopPropagation()
+                                        if (onPeek) onPeek(doc.id)
+                                        else globalThis.window.open(`/chunk-preview?docId=${doc.id}`, '_blank')
+                                      }}
                                     >
-                                      <Trash2 className="mr-2 h-4 w-4" />
-                                      {t('actions.deleteDocument')}
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
+                                      <Layers className="mr-1 size-3" />
+                                      {peekChunksLabel}
+                                    </Button>
+
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <IconButton
+                                          label={t('actions.moreActions')}
+                                          variant="ghost"
+                                          className="h-7 w-7 rounded-full text-muted-foreground transition-[transform,background-color,color] hover:scale-[1.04] hover:text-foreground hover:bg-muted/70"
+                                        >
+                                          <MoreVertical className="h-3.5 w-3.5" />
+                                        </IconButton>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align="end" className="w-56 rounded-xl border-border/60 shadow-strong/10">
+                                        <DropdownMenuItem onSelect={() => detachPromise(copyText(doc.id, t('toasts.copyDocumentId')))}>
+                                          {t('actions.copyDocumentId')}
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onSelect={() => detachPromise(copyText(doc.filename, t('toasts.copyFilename')))}>
+                                          {t('actions.copyFilename')}
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem asChild>
+                                          <Link href={`/knowledge/${doc.id}/health`} className="flex items-center">
+                                            <Activity className="mr-2 h-4 w-4" />
+                                            {t('actions.healthCard')}
+                                          </Link>
+                                        </DropdownMenuItem>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
+                                          className="text-destructive focus:text-destructive"
+                                          onSelect={() => requestSingleDelete(doc)}
+                                        >
+                                          <Trash2 className="mr-2 h-4 w-4" />
+                                          {t('actions.deleteDocument')}
+                                        </DropdownMenuItem>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
+                                  </div>
+                                </div>
+
+                                <div className="mx-3 mb-3 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-[12px] border border-border/60 bg-muted/[0.18] px-3 py-2 text-[11px] text-muted-foreground/76">
+                                  {metadataItems.map((item, index) => (
+                                    <div key={item.label} className={cn('flex min-w-0 items-center gap-2', index > 0 && 'border-l border-border/60 pl-3')}>
+                                      <span className="shrink-0 text-muted-foreground/56">{item.label}</span>
+                                      <span className="min-w-0 truncate text-foreground/66">{item.value}</span>
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
                             </td>
                           </tr>
@@ -977,7 +1109,7 @@ function DocumentCard({
                 className="absolute -bottom-1 -right-1 size-6 rounded-full bg-background border border-border/60 flex items-center justify-center shadow-sm"
                 title={`解析质量: ${qualityPercent}%`}
               >
-                <div className={cn("text-[8px] font-semibold font-mono tabular-nums tracking-tighter", qualityColor)}>
+                <div className={cn("text-[8px] font-semibold font-mono tabular-nums ", qualityColor)}>
                   {qualityPercent}
                 </div>
               </div>
@@ -985,7 +1117,7 @@ function DocumentCard({
           </div>
           <div className="flex flex-col items-end gap-1.5">
             <StatusBadge status={statusBadge.status} label={statusBadge.label} dense />
-            <div className={cn('px-2 py-0.5 rounded-full text-[11px] font-bold uppercase border tracking-wider', fileType.bg, fileType.color, fileType.border)}>
+            <div className={cn('px-2 py-0.5 rounded-full text-[11px] font-bold uppercase border ', fileType.bg, fileType.color, fileType.border)}>
               {fileType.label}
             </div>
           </div>
@@ -999,11 +1131,11 @@ function DocumentCard({
 
         <div className="grid grid-cols-2 gap-3 mt-auto pt-4 border-t border-border/40">
           <div className="space-y-0.5">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/50">{t('row.size')}</p>
+            <p className="text-[11px] font-bold uppercase  text-muted-foreground/50">{t('row.size')}</p>
             <p className="text-xs font-semibold font-mono tabular-nums text-foreground/80">{formatFileSize(doc.file_size)}</p>
           </div>
           <div className="space-y-0.5">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/50">{t('row.chunks')}</p>
+            <p className="text-[11px] font-bold uppercase  text-muted-foreground/50">{t('row.chunks')}</p>
             <p className="text-xs font-semibold font-mono tabular-nums text-foreground/80">{doc.chunk_count ?? '-'}</p>
           </div>
         </div>
@@ -1013,7 +1145,7 @@ function DocumentCard({
         'px-6 py-3.5 bg-muted/30 border-t border-border/40 flex items-center justify-between transition-all duration-300',
         contextualRevealClassName
       )}>
-        <span className="text-[11px] text-muted-foreground/60 font-bold uppercase tracking-widest truncate max-w-[100px]">
+        <span className="text-[11px] text-muted-foreground/60 font-bold uppercase  truncate max-w-[100px]">
           {parserLabel || t('row.parserAuto')}
         </span>
         <div className="flex items-center gap-1.5">

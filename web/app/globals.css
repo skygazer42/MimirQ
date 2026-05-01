@@ -49,15 +49,15 @@
     --accent-foreground: 0 0% 100%;
 
     /* Destructive - Refined Red (desaturated) */
-    --destructive: 0 72% 58%;
+    --destructive: 0 72% 50%;
     --destructive-foreground: 0 0% 100%;
 
     /* Semantic - Status colors (desaturated for calmer UI) */
-    --success: 142 62% 38%;
+    --success: 142 62% 30%;
     --success-foreground: 0 0% 100%;
     --warning: 38 82% 50%;
     --warning-foreground: 222.2 84% 4.9%;
-    --info: 217 78% 56%;
+    --info: 217 78% 50%;
     --info-foreground: 0 0% 100%;
 
     /* Extended palette tokens for richer stat cards and badges */

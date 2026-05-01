@@ -186,6 +186,11 @@ export interface ChatRequest {
     enable_reranker?: boolean
     reranker_provider?: string
     reranker_top_n?: number
+    enable_multi_query?: boolean
+    multi_query_count?: number | null
+    multi_query_temperature?: number | null
+    multi_query_max_chars?: number | null
+    enable_hyde?: boolean | null
     use_graph?: boolean
     metadata_filter?: JsonObject
   }

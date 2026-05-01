@@ -295,6 +295,9 @@ export function ParsingActiveFilePane({
   const qualityGrade = getQualityGateGrade(activeQualityGate)
   const qualityReasons = getQualityGateReasons(activeQualityGate)
   const qualityEvidenceSummary = buildQualityEvidenceSummary(activeQualityGate, activePdfQuality)
+  const qualityEvidenceItems = qualityEvidenceSummary
+    ? qualityEvidenceSummary.split(' · ').map((item) => item.trim()).filter(Boolean)
+    : []
   const layoutEntries = useMemo(() => buildParsingLayoutEntries(activeBlocksWithPositions), [activeBlocksWithPositions])
   const elementOverlayItems = useMemo(() => {
     return (activeElements || [])
@@ -619,12 +622,15 @@ export function ParsingActiveFilePane({
 
       <>
         {parsedStatItems.length > 0 || activeQualityGate || activeElementSummaryItems.length > 0 ? (
-          <div className="border-b border-border/60 bg-background/80 px-5 py-2.5 dark:bg-background/50">
+          <div className="border-b border-border/60 bg-[linear-gradient(180deg,hsl(var(--background)/0.96),hsl(var(--muted)/0.35))] px-5 py-3 dark:bg-background/50">
             {parsedStatItems.length > 0 ? (
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+              <div className="flex flex-wrap items-center gap-1.5">
                 {parsedStatItems.map(({ icon: Icon, label, value }) => (
-                  <div key={label} className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                    <Icon className="h-3.5 w-3.5 text-muted-foreground/80" />
+                  <div
+                    key={label}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-border/55 bg-card/88 px-2.5 py-1 text-[11px] text-muted-foreground shadow-[0_1px_0_hsl(var(--background))] dark:bg-background/70"
+                  >
+                    <Icon className="h-3.5 w-3.5 text-primary/65" />
                     <span>{label}</span>
                     <span className="font-mono text-[12px] font-semibold tabular-nums text-foreground">
                       {value}
@@ -634,7 +640,7 @@ export function ParsingActiveFilePane({
               </div>
             ) : null}
             {activeQualityGate ? (
-              <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border/50 pt-2">
+              <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-border/50 pt-2">
                 <div className="flex items-center gap-2">
                   <span
                     className={cn(
@@ -649,9 +655,14 @@ export function ParsingActiveFilePane({
                     {qualityReasons.length ? qualityReasons.join(' · ') : '无明显风险信号'}
                   </div>
                 </div>
-                {qualityEvidenceSummary ? (
-                  <div className="font-mono text-[11px] text-muted-foreground/90">{qualityEvidenceSummary}</div>
-                ) : null}
+                {qualityEvidenceItems.map((item) => (
+                  <span
+                    key={item}
+                    className="rounded-full border border-border/50 bg-background/78 px-2 py-0.5 font-mono text-[11px] text-muted-foreground/90"
+                  >
+                    {item}
+                  </span>
+                ))}
               </div>
             ) : null}
             {activeElementSummaryItems.length > 0 ? (
@@ -667,7 +678,7 @@ export function ParsingActiveFilePane({
                 {activeElementSummaryItems.map((item) => (
                   <span
                     key={item.kind}
-                    className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/88 px-2 py-0.5 text-[11px] text-muted-foreground"
+                    className="inline-flex items-center gap-1 rounded-full border border-border/55 bg-background/80 px-2 py-0.5 text-[11px] text-muted-foreground"
                   >
                     <span>{item.label}</span>
                     <span className="font-mono font-semibold text-foreground">{item.count}</span>
@@ -723,7 +734,7 @@ export function ParsingActiveFilePane({
           </div>
         ) : null}
 
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border/60 bg-background/88 px-5 py-2.5 dark:bg-background/75">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border/60 bg-card/96 px-5 py-3 shadow-[0_8px_18px_-18px_rgba(15,23,42,0.32)] dark:bg-background/75">
           <div className="flex min-w-0 flex-wrap items-center gap-2.5">
             <span className="max-w-[260px] truncate text-[13px] font-semibold text-foreground dark:text-foreground">
               {activeFile.file.name}
@@ -858,7 +869,7 @@ export function ParsingActiveFilePane({
                       {copied ? '已复制' : '复制'}
                     </Button>
 
-                    <Button variant="outline" size="sm" onClick={onDownloadMarkdown} className="h-8 gap-1.5 rounded-lg px-2.5 text-xs">
+                    <Button size="sm" onClick={onDownloadMarkdown} className="h-8 gap-1.5 rounded-lg bg-primary px-2.5 text-xs text-primary-foreground hover:bg-primary/90">
                       <Download className="h-4 w-4" />
                       下载
                     </Button>
@@ -901,19 +912,8 @@ export function ParsingActiveFilePane({
           </div>
         </div>
 
-         <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar">
-          {activeFile.status === 'parsed' ? (
-           <ParsingExtractPanel
-              documentId={activeFile.libraryId || null}
-              activeElements={activeElements}
-              onSelectEvidence={handleSelectExtractEvidence}
-            />
-          ) : null}
-          {activeFile.status === 'parsed' ? (
-            <ParsingElementsPanel elements={activeElements} onSelectElement={handleSelectElement} />
-          ) : null}
-
-           {activeFile.status === 'pending' ? (
+        <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar">
+          {activeFile.status === 'pending' ? (
             <div className="flex h-full items-center justify-center">
               <div className="text-center">
                 <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-xl bg-sky-100 dark:bg-sky-900/30">
@@ -1026,15 +1026,15 @@ export function ParsingActiveFilePane({
                   />
                 </div>
               ) : (
-                <div className="flex h-full min-h-[520px] flex-col lg:flex-row">
+                <div className="flex h-full min-h-[560px] flex-col bg-[radial-gradient(circle_at_30%_0%,hsl(var(--primary)/0.04),transparent_34%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.22))] lg:flex-row">
                   {isPdf ? (
-                    <div className="relative flex h-full min-h-0 w-full flex-col border-b border-border/70 bg-muted/70 dark:border-border/60 dark:bg-background/40 lg:w-1/2 lg:border-b-0 lg:border-r">
+                    <div className="relative flex h-full min-h-0 w-full flex-col border-b border-border/70 bg-muted/55 dark:border-border/60 dark:bg-background/40 lg:flex-[1.42] lg:border-b-0 lg:border-r">
                       {layoutEntries.length > 0 ? (
-                        <div className="border-b border-border/60 bg-background/88 px-4 py-2.5 dark:bg-background/72">
+                        <div className="border-b border-border/60 bg-card/92 px-4 py-3 shadow-[0_8px_18px_-20px_rgba(15,23,42,0.28)] dark:bg-background/72">
                           <div className="flex flex-wrap items-start justify-between gap-2.5">
                             <div className="min-w-0">
                               <div className="text-[11px] font-semibold tracking-[0.06em] text-foreground/78">
-                                原始版面
+                                版面视图
                               </div>
                               <div className="mt-0.5 text-[11px] leading-5 text-muted-foreground/78">
                                 <span className="font-medium text-foreground/72">版面图例</span>
@@ -1048,7 +1048,7 @@ export function ParsingActiveFilePane({
                                 return (
                                   <span
                                     key={kind}
-                                    className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/85 px-2 py-1 text-[11px] font-medium text-muted-foreground"
+                                    className="inline-flex items-center gap-1.5 rounded-full border border-border/55 bg-background/82 px-2 py-1 text-[11px] font-medium text-muted-foreground shadow-[0_1px_0_hsl(var(--background))]"
                                   >
                                     <span className={cn('h-1.5 w-1.5 rounded-full', meta.dotClassName)} />
                                     {meta.shortLabel}
@@ -1074,11 +1074,11 @@ export function ParsingActiveFilePane({
                       </div>
                     </div>
                   ) : null}
-                  <div className={isPdf ? 'w-full lg:w-1/2' : 'w-full'}>
+                  <div className={isPdf ? 'w-full lg:flex-[0.92]' : 'w-full'}>
                     {rightPanelMode === 'blocks' && layoutEntries.length > 0 ? (
-                      <ParsingRightPanel className="h-full no-scrollbar p-4 lg:p-5">
-                        <div className="overflow-hidden rounded-xl border border-border/60 bg-card/95">
-                          <div className="border-b border-border/60 bg-background/82 px-4 py-3 dark:bg-background/72">
+                      <ParsingRightPanel className="h-full no-scrollbar p-4 lg:p-4">
+                        <div className="overflow-hidden rounded-2xl border border-border/55 bg-card/95 shadow-[0_18px_42px_-34px_rgba(15,23,42,0.42)]">
+                          <div className="border-b border-border/60 bg-[linear-gradient(180deg,hsl(var(--background)/0.92),hsl(var(--muted)/0.36))] px-4 py-3 dark:bg-background/72">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <div className="min-w-0">
                                 <div className="text-[11px] font-semibold tracking-[0.06em] text-foreground/78">
@@ -1088,12 +1088,12 @@ export function ParsingActiveFilePane({
                                   左侧显示原页框选，右侧按定位片段连续审阅
                                 </div>
                               </div>
-                              <div className="font-mono text-[11px] text-muted-foreground">
+                              <div className="rounded-full border border-border/50 bg-background/78 px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
                                 {layoutEntries.length} segments
                               </div>
                             </div>
                           </div>
-                          <div className="divide-y divide-border/50">
+                          <div className="space-y-2.5 bg-muted/20 p-3">
                             {layoutEntries.map((entry, index) => {
                               const layoutMeta = getParsingLayoutMeta(entry.kind)
                               const isActive = entry.id === activeBlockId
@@ -1105,12 +1105,14 @@ export function ParsingActiveFilePane({
                                   onMouseEnter={() => onHoveredBlockIdChange(entry.id)}
                                   onMouseLeave={() => onHoveredBlockIdChange(null)}
                                   className={cn(
-                                    'group w-full px-4 py-3 text-left transition',
-                                    isActive ? 'bg-primary/5' : 'hover:bg-accent/25'
+                                    'group w-full rounded-xl border px-3.5 py-3 text-left transition',
+                                    isActive
+                                      ? 'border-primary/55 bg-primary/[0.06] shadow-[0_14px_28px_-24px_rgba(37,99,235,0.75)] ring-1 ring-primary/[0.12]'
+                                      : 'border-border/48 bg-card/86 hover:border-primary/[0.24] hover:bg-card'
                                   )}
                                 >
                                   <div className="flex items-start gap-3">
-                                    <span className={cn('mt-1.5 h-1.5 w-1.5 flex-none rounded-full', layoutMeta.dotClassName)} />
+                                    <span className={cn('mt-2 h-2 w-2 flex-none rounded-full shadow-[0_0_0_3px_hsl(var(--background))]', layoutMeta.dotClassName)} />
                                     <div className="min-w-0 flex-1">
                                       <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
                                         <span
@@ -1142,7 +1144,7 @@ export function ParsingActiveFilePane({
                                         <span
                                           className={cn(
                                             'absolute bottom-1 left-0 top-1 w-px rounded-full transition-colors',
-                                            isActive ? 'bg-primary/45' : 'bg-border/50 group-hover:bg-border/70'
+                                            isActive ? 'bg-primary/55' : 'bg-border/45 group-hover:bg-border/70'
                                           )}
                                         />
                                         <div className="prose prose-slate prose-sm max-w-none prose-headings:mb-1 prose-headings:mt-0 prose-headings:text-foreground prose-p:my-0 prose-p:text-foreground/82 prose-a:text-sky-700 prose-code:rounded prose-code:bg-sky-500/10 prose-code:px-1 prose-code:py-0.5 prose-code:text-sky-700 prose-pre:my-1 prose-pre:bg-slate-900 prose-table:my-1 prose-table:border-collapse prose-td:border prose-td:border-sky-200 prose-td:p-2 prose-th:border prose-th:border-sky-200 prose-th:bg-sky-500/10 prose-th:p-2 dark:prose-invert dark:prose-headings:text-foreground dark:prose-p:text-muted-foreground dark:prose-a:text-sky-300 dark:prose-code:bg-muted dark:prose-code:text-sky-300 dark:prose-th:border-sky-500/30 dark:prose-th:bg-sky-500/20 dark:prose-td:border-sky-500/30">
@@ -1189,6 +1191,17 @@ export function ParsingActiveFilePane({
                   </div>
                 </div>
               )}
+              {!isEditing ? (
+                <div className="border-t border-border/60 bg-background/88">
+                  <ParsingExtractPanel
+                    documentId={activeFile.libraryId || null}
+                    activeElements={activeElements}
+                    onSelectEvidence={handleSelectExtractEvidence}
+                    className="bg-background/82"
+                  />
+                  <ParsingElementsPanel elements={activeElements} onSelectElement={handleSelectElement} />
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>

@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from 'react'
 
-import { useParsedFiles } from '@/store/use-parsed-files-store'
+import { ROOT_FOLDER_ID, useParsedFiles } from '@/store/use-parsed-files-store'
 import { useParsingEditorActions } from '@/components/parsing/use-parsing-editor-actions'
 import { useParsingLibraryActions } from '@/components/parsing/use-parsing-library-actions'
 import { useParsingPageState } from '@/components/parsing/use-parsing-page-state'
@@ -80,6 +80,7 @@ export default function ParsingPage() {
     mapBackendStatusToLibraryStatus,
     mountLibraryFileToQueue,
     rehydratedFolderIdsRef: pageState.rehydratedFolderIdsRef,
+    selectedDatasetId: pageState.selectedDatasetId,
     setActiveFileId: pageState.setActiveFileId,
     setActiveLibrarySourceStatus: pageState.setActiveLibrarySourceStatus,
     setIsQueueRehydrating: pageState.setIsQueueRehydrating,
@@ -172,6 +173,7 @@ export default function ParsingPage() {
       activeLibraryFileId={pageState.activeLibraryFileId}
       activeLibrarySourceStatus={pageState.activeLibrarySourceStatus}
       activeMarkdown={viewState.activeMarkdown}
+      availableDatasets={viewState.availableDatasets}
       activeElements={viewState.activeElements}
       activePdfQuality={viewState.activePdfQuality}
       activeQualityGate={viewState.activeQualityGate}
@@ -237,6 +239,13 @@ export default function ParsingPage() {
       setQueueFileParserBackend={pageState.setQueueFileParserBackend}
       setQueueOpen={pageState.setQueueOpen}
       setRightPanelMode={pageState.setRightPanelMode}
+      selectedDatasetId={pageState.selectedDatasetId}
+      onDatasetScopeChange={(datasetId) => {
+        pageState.setSelectedDatasetId(datasetId)
+        pageState.setActiveFileId(null)
+        pageState.setActiveLibraryFileId(null)
+        setActiveFolderId(ROOT_FOLDER_ID)
+      }}
       tocEnabled={viewState.tocEnabled}
       updateParsedFile={updateParsedFile}
       visibleLibraryOnlyFiles={viewState.visibleLibraryOnlyFiles}

@@ -62,7 +62,7 @@ export function BulkActionBar({
               <div className="mt-0.5 text-[0.92rem] font-medium tracking-[-0.01em] text-foreground">选中 {selectionCount} 项</div>
             </div>
           </div>
-          <Button variant="ghost" size="sm" className="h-8 rounded-full px-3 text-xs text-muted-foreground hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10" onClick={onClear}>
+          <Button variant="ghost" size="sm" className="h-8 rounded-full px-3 text-xs text-muted-foreground hover:bg-black/5 hover:text-foreground dark:hover:bg-card/10" onClick={onClear}>
             清空
           </Button>
         </div>
@@ -142,7 +142,7 @@ function ActionTile({
         toneClass
       )}
     >
-      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/88 ring-1 ring-sky-200/55 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:bg-white/10 dark:ring-white/10">
+      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-card/88 ring-1 ring-sky-200/55 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:bg-card/10 dark:ring-white/10">
         <Icon className="h-3.5 w-3.5" />
       </span>
       {label}

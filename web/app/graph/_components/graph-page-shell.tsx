@@ -188,6 +188,9 @@ export function GraphPageShell({
           statsNodeCount={displayFilters.graphRenderData.nodes.length}
           statsLinkCount={displayFilters.graphRenderData.links.length}
           statsEntityTypeCount={displayFilters.availableEntityTypes.length}
+          networkAnalysisNodes={displayFilters.displayGraphData.nodes}
+          networkAnalysisLinks={displayFilters.displayGraphData.links}
+          networkAnalysisSelectedNodeId={state.selectedNode?.id ?? null}
           floatingControlsProps={{
             viewMode: state.viewMode,
             isExplainMode: state.isExplainMode,

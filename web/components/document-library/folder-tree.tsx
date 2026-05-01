@@ -44,6 +44,7 @@ export type DocumentTreeFileItem = {
   duration?: number
   pageCount?: number
   isActive?: boolean
+  readOnly?: boolean
 }
 
 const TREE_INDENT_STEP = 14
@@ -554,7 +555,7 @@ export function DocumentFolderTree({
         file.progress == null || !Number.isFinite(Number(file.progress))
           ? null
           : Math.max(0, Math.min(100, Number(file.progress)))
-      const hasInlineActions = Boolean(onRetryFile || onRemoveFile)
+      const hasInlineActions = !file.readOnly && Boolean(onRetryFile || onRemoveFile)
 
       return (
         <div
@@ -580,8 +581,8 @@ export function DocumentFolderTree({
               setActiveFolderId(parentFolderId || ROOT_FOLDER_ID)
               onSelectFile?.(file.id)
             }}
-            draggable={Boolean(onFileDragStart)}
-            onDragStart={onFileDragStart ? (event) => onFileDragStart(event, file.id) : undefined}
+            draggable={Boolean(onFileDragStart) && !file.readOnly}
+            onDragStart={!file.readOnly && onFileDragStart ? (event) => onFileDragStart(event, file.id) : undefined}
           >
             {getFileIcon(file.name, 'h-5 w-5 rounded')}
             <div className="flex min-w-0 flex-1 items-center gap-1.5">
@@ -600,7 +601,7 @@ export function DocumentFolderTree({
             </div>
           </button>
 
-          {(onRetryFile || onRemoveFile) ? (
+          {hasInlineActions ? (
             <div className="pointer-events-none absolute right-1 top-1 flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/file:pointer-events-auto group-hover/file:opacity-100">
               {isError && onRetryFile ? (
                 <button

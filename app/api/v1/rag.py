@@ -50,7 +50,7 @@ def _enforce_non_empty_retrieval_scope(
     scope_document_ids: list[UUID],
     scope_dataset_id: UUID | None,
 ) -> None:
-    if bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True)):
+    if bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True)) and scope_dataset_id is None:
         return
     if scope_document_ids:
         return
@@ -362,6 +362,7 @@ async def retrieve_preview(
         multi_query_count=effective_rag_config.multi_query_count,
         multi_query_temperature=effective_rag_config.multi_query_temperature,
         multi_query_max_chars=effective_rag_config.multi_query_max_chars,
+        enable_hyde=effective_rag_config.enable_hyde,
         enable_hierarchy_recall=effective_rag_config.enable_hierarchy_recall,
         hierarchy_family_collapse=effective_rag_config.hierarchy_family_collapse,
         hierarchy_family_aggregation=effective_rag_config.hierarchy_family_aggregation,
@@ -680,6 +681,7 @@ async def retrieve_evidence(
         multi_query_count=effective_rag_config.multi_query_count,
         multi_query_temperature=effective_rag_config.multi_query_temperature,
         multi_query_max_chars=effective_rag_config.multi_query_max_chars,
+        enable_hyde=effective_rag_config.enable_hyde,
         enable_hierarchy_recall=effective_rag_config.enable_hierarchy_recall,
         hierarchy_family_collapse=effective_rag_config.hierarchy_family_collapse,
         hierarchy_family_aggregation=effective_rag_config.hierarchy_family_aggregation,
@@ -1096,6 +1098,7 @@ async def prompt_preview(
         multi_query_count=effective_rag_config.multi_query_count,
         multi_query_temperature=effective_rag_config.multi_query_temperature,
         multi_query_max_chars=effective_rag_config.multi_query_max_chars,
+        enable_hyde=effective_rag_config.enable_hyde,
         enable_hierarchy_recall=effective_rag_config.enable_hierarchy_recall,
         hierarchy_family_collapse=effective_rag_config.hierarchy_family_collapse,
         hierarchy_family_aggregation=effective_rag_config.hierarchy_family_aggregation,

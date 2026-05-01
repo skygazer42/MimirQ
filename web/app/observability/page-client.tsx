@@ -17,6 +17,7 @@ import { observabilityApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, detachPromise } from '@/lib/utils'
 import { toast } from 'sonner'
+import { ObservabilityOpsPanel } from '@/components/observability/observability-ops-panel'
 import {
   BarChart3,
   RefreshCw,
@@ -289,6 +290,8 @@ export default function ObservabilityPage() {
             </div>
           }
         >
+          <ObservabilityOpsPanel />
+
           <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)} className="space-y-4">
             <TabsList className="rounded-xl bg-muted/40">
               <TabsTrigger value="summary" className="rounded-lg text-xs">

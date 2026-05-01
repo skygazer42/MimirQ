@@ -381,6 +381,13 @@ export const documentApi = {
     return data
   },
 
+  async cleanDocx(documentId: string): Promise<Blob> {
+    const { data } = await apiClient.get(`/documents/${documentId}/clean-docx`, {
+      responseType: 'blob',
+    })
+    return data as Blob
+  },
+
   async getStatus(documentId: string): Promise<DocumentStatus> {
     return openapiRequest({
       path: '/api/v1/documents/{document_id}/status',

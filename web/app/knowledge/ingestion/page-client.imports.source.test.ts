@@ -22,6 +22,7 @@ describe('knowledge ingestion page imports', () => {
     expect(src).toContain('getDocumentKind')
     expect(src).toContain('getDocumentKindAccent')
     expect(src).toContain('observabilityApi.getIngestionDashboardSummary')
+    expect(src).toContain('observabilityApi.getTaskQueueSnapshot')
     expect(src).toContain('datasetApi.listPrecheckScanRuns')
     expect(src).toContain('datasetApi.getPrecheckSummary')
     expect(src).toContain('datasetApi.getPrecheckSamples')

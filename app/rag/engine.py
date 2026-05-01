@@ -800,6 +800,7 @@ Requirements:
         multi_query_count = rag_config.multi_query_count
         multi_query_temperature = rag_config.multi_query_temperature
         multi_query_max_chars = rag_config.multi_query_max_chars
+        enable_hyde = rag_config.enable_hyde
         enable_hierarchy_recall = rag_config.enable_hierarchy_recall
         hierarchy_family_collapse = rag_config.hierarchy_family_collapse
         hierarchy_family_aggregation = rag_config.hierarchy_family_aggregation
@@ -1507,7 +1508,8 @@ Requirements:
             hyde_text = ""
             hyde_max_chars = max(0, int(settings.HYDE_MAX_CHARS or 0))
             retrieval_mode_norm = (mode_used or "hybrid").lower()
-            if bool(settings.ENABLE_HYDE) and retrieval_mode_norm not in ("keyword",) and hyde_max_chars > 0 and len(query_for_retrieval) <= hyde_max_chars:
+            hyde_enabled = bool(settings.ENABLE_HYDE) if enable_hyde is None else bool(enable_hyde)
+            if hyde_enabled and retrieval_mode_norm not in ("keyword",) and hyde_max_chars > 0 and len(query_for_retrieval) <= hyde_max_chars:
                 hyde_llm = self.models.get("fast") or llm
                 hyde_model_used = getattr(hyde_llm, "model_name", None) or getattr(hyde_llm, "model", None)
                 try:
@@ -3226,7 +3228,7 @@ Requirements:
                     "kg_query_expansion_query_count": int(len(kg_query_expansion_queries)),
                     "kg_query_expansion_elapsed_sec": round(float(kg_query_expansion_elapsed), 3),
                     "kg_query_expansion_error": kg_query_expansion_error,
-                    "hyde_enabled": bool(settings.ENABLE_HYDE),
+                    "hyde_enabled": bool(hyde_enabled),
                     "hyde_used": bool(hyde_used),
                     "hyde_elapsed_sec": round(hyde_elapsed, 3),
                     "hyde_model_used": hyde_model_used,
@@ -4140,7 +4142,7 @@ Requirements:
                         "kg_query_expansion_query_count": int(len(kg_query_expansion_queries)),
                         "kg_query_expansion_elapsed_sec": round(float(kg_query_expansion_elapsed), 3),
                         "kg_query_expansion_error": kg_query_expansion_error,
-                        "hyde_enabled": bool(settings.ENABLE_HYDE),
+                        "hyde_enabled": bool(hyde_enabled),
                         "hyde_used": bool(hyde_used),
                         "hyde_elapsed_sec": round(hyde_elapsed, 3),
                         "hyde_model_used": hyde_model_used,

@@ -26,6 +26,8 @@ import {
 import { AppFrame } from '@/components/app-frame'
 import { ChatMessageItem } from '@/components/chat/message-item'
 import { DocumentViewerPanel } from '@/components/document-viewer-panel'
+import { ConversationOpsPanel } from '@/components/history/conversation-ops-panel'
+import { AnswerLineageAction } from '@/components/history/answer-lineage-action'
 import { RagTraceDialog } from '@/components/rag-trace/rag-trace-dialog'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
@@ -109,6 +111,7 @@ function HistoryPageContent({
 
   const [conversations, setConversations] = useState<Conversation[]>(initialConversations)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const [isWideHistoryViewport, setIsWideHistoryViewport] = useState(false)
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(initialSelectedConversation)
   const [messages, setMessages] = useState<Message[]>(initialMessages)
   const [isLoadingList, setIsLoadingList] = useState(!initialConversationsLoaded)
@@ -133,6 +136,15 @@ function HistoryPageContent({
     selectedConversationIdRef.current = selectedConversation?.id ?? null
     messagesLengthRef.current = messages.length
   }, [selectedConversation?.id, messages.length])
+
+  useEffect(() => {
+    const media = window.matchMedia('(min-width: 1280px)')
+    const updateViewportWidth = () => setIsWideHistoryViewport(media.matches)
+
+    updateViewportWidth()
+    media.addEventListener('change', updateViewportWidth)
+    return () => media.removeEventListener('change', updateViewportWidth)
+  }, [])
 
   // define handlers first to avoid ReferenceError
   const loadConversations = useCallback(async () => {
@@ -346,6 +358,7 @@ function HistoryPageContent({
       setIsLoadingOlder(false)
     }
   }, [selectedConversation, hasMoreMessages, isLoadingMessages, isLoadingOlder, oldestMessageId, t])
+  const sidebarExpandedWidth = isWideHistoryViewport ? '20.75rem' : '19.5rem'
 
   return (
     <AppFrame rightPanel={<DocumentViewerPanel />} withDocumentViewerPadding mainClassName="overflow-hidden">
@@ -368,7 +381,7 @@ function HistoryPageContent({
             <motion.aside 
               initial={false}
               animate={{ 
-                width: isSidebarCollapsed ? 0 : (globalThis.window?.innerWidth >= 1280 ? '20.75rem' : '19.5rem'),
+                width: isSidebarCollapsed ? 0 : sidebarExpandedWidth,
                 opacity: isSidebarCollapsed ? 0 : 1,
                 borderRightWidth: isSidebarCollapsed ? 0 : 1
               }}
@@ -384,7 +397,7 @@ function HistoryPageContent({
                     <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/10">
                       <History className="size-4" />
                     </div>
-                    <h2 className="text-sm font-medium text-foreground tracking-tight uppercase">历史记录</h2>
+                    <h2 className="text-sm font-medium text-foreground  uppercase">历史记录</h2>
                   </div>
                   <div className="flex items-center gap-1">
                     <Button
@@ -535,7 +548,7 @@ function HistoryPageContent({
                             "min-w-0 flex flex-col justify-center transition-all duration-500",
                             isSidebarCollapsed ? "ml-12" : "ml-0"
                           )}>
-                            <h2 className="truncate text-base font-medium text-foreground/92 tracking-tight leading-tight md:text-lg">
+                            <h2 className="truncate text-base font-medium text-foreground/92  leading-tight md:text-lg">
                               {selectedConversation.title || t("untitledConversation")}
                             </h2>
                             <div className="flex items-center gap-1 mt-0.5 tabular-nums">
@@ -626,8 +639,9 @@ function HistoryPageContent({
                             isSidebarCollapsed ? "max-w-6xl" : "max-w-5xl"
                           )}
                         >
+                          <ConversationOpsPanel conversationId={selectedConversation.id} />
                           {hasMoreMessages ? (<div className="flex justify-center mb-4">
-                              <Button variant="ghost" size="sm" onClick={loadOlderMessages} disabled={isLoadingOlder} className="rounded-full text-[11px] font-bold uppercase tracking-widest text-muted-foreground/60 hover:text-foreground">
+                              <Button variant="ghost" size="sm" onClick={loadOlderMessages} disabled={isLoadingOlder} className="rounded-full text-[11px] font-bold uppercase  text-muted-foreground/60 hover:text-foreground">
                                 {isLoadingOlder ? t('loading') : t('loadOlderMessages')}
                               </Button>
                             </div>) : null}
@@ -741,7 +755,7 @@ function ConversationItem({
         whileHover={{ scale: 1.01, y: -0.5 }}
         whileTap={{ scale: 0.99 }}
         className={cn(
-          'w-full flex flex-col gap-0.5 px-3 py-1.5 text-left transition-all duration-200 rounded-xl relative overflow-hidden border border-transparent focus-visible:outline-none focus-visible:ring-0',
+          'w-full flex flex-col gap-0.5 px-3 py-1.5 text-left transition-all duration-200 rounded-xl relative overflow-hidden border border-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
           isSelected 
             ? 'bg-primary/10 text-primary border-primary/10 shadow-[0_2px_12px_-3px_rgba(var(--primary),0.1)]' 
             : 'bg-transparent text-foreground/80 hover:bg-muted/60 hover:text-foreground'
@@ -757,19 +771,19 @@ function ConversationItem({
 
         <div className="flex items-start justify-between gap-3">
           <span className={cn(
-            'flex-1 truncate text-[13.5px] font-normal leading-snug tracking-normal',
+            'flex-1 truncate text-[13.5px] font-normal leading-snug ',
             isSelected ? 'text-primary' : 'text-foreground/88'
           )}>
             {conversation.title || t('untitledConversation')}
           </span>
-          <span className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/30 pt-1.5 tabular-nums group-hover:text-muted-foreground/50 transition-colors shrink-0">
+          <span className="text-[9px] font-medium uppercase  text-muted-foreground/30 pt-1.5 tabular-nums group-hover:text-muted-foreground/50 transition-colors shrink-0">
             {formatRelativeTime(conversation.last_message_at || conversation.updated_at, locale, t('justNow'))}
           </span>
         </div>
         <div className="flex items-center gap-2 text-[11px] font-normal text-muted-foreground/40 tabular-nums">
           <span className="shrink-0">{t('messageCount', { count: conversation.message_count })}</span>
           <span className="text-muted-foreground/20">/</span>
-          <p className="truncate flex-1 font-normal tracking-normal text-muted-foreground/50 lowercase">
+          <p className="truncate flex-1 font-normal  text-muted-foreground/50 lowercase">
             {conversation.last_message || t('noMessage')}
           </p>
         </div>
@@ -836,6 +850,7 @@ function HistoryMessageEntry({
   locale: string
 }>) {
   const isUser = message.role === 'user'
+  const requestId = isUser ? '' : extractMessageRequestId(message)
 
   return (
     <motion.div 
@@ -852,10 +867,29 @@ function HistoryMessageEntry({
         "w-full max-w-4xl",
         isUser ? "flex justify-end" : "flex justify-start"
       )}>
-        <ChatMessageItem message={message} variant="minimal" />
+        <div className={cn('flex min-w-0 flex-col gap-1', isUser ? 'items-end' : 'items-start')}>
+          <ChatMessageItem message={message} variant="minimal" />
+          {requestId ? <AnswerLineageAction requestId={requestId} /> : null}
+        </div>
       </div>
     </motion.div>
   )
+}
+
+function extractMessageRequestId(message: Message): string {
+  const metadata = message.message_metadata
+  if (!metadata || typeof metadata !== 'object') return ''
+
+  const direct = metadata.request_id
+  if (typeof direct === 'string' && direct.trim()) return direct.trim()
+
+  const metrics = metadata.metrics
+  if (metrics && typeof metrics === 'object' && !Array.isArray(metrics)) {
+    const metricRequestId = (metrics as Record<string, unknown>).request_id
+    if (typeof metricRequestId === 'string' && metricRequestId.trim()) return metricRequestId.trim()
+  }
+
+  return ''
 }
 
 function HistoryMessageRoleBadge({

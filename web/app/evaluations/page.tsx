@@ -41,6 +41,7 @@ import { cn } from '@/lib/utils'
 import { RegressionTestTab } from '@/components/evaluation/regression-tab'
 import { QuerysetHealthTab } from '@/components/evaluation/queryset-health-tab'
 import { RagasMetricSelector, ragasMetricLabel } from '@/components/evaluation/ragas-metric-selector'
+import { EvaluationDataOpsPanel } from '@/components/evaluation/evaluation-data-ops-panel'
 
 type TabType = 'conversation' | 'regression' | 'queryset_health'
 
@@ -428,6 +429,10 @@ function EvaluationsPageContent() {
             <p className="mt-1.5 text-[12px] leading-5 text-muted-foreground">{activeTabMeta.description}</p>
           </div>
 
+          <div className="border-t border-slate-200/80 p-3">
+            <EvaluationDataOpsPanel />
+          </div>
+
           {activeTab === 'conversation' ? (
             <div className="border-t border-slate-200/80">
             <div className={cn('grid min-h-[660px]', conversationLayoutColumns)}>
@@ -500,6 +505,7 @@ function EvaluationsPageContent() {
                         <RagasMetricSelector
                           metricKeys={metricKeys}
                           onMetricKeysChange={setMetricKeys}
+                          scope="conversation"
                           className="space-y-2"
                           itemClassName="rounded-lg border border-slate-200/80 bg-card px-2.5 py-1.5"
                         />

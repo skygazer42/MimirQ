@@ -664,6 +664,22 @@ export function DataGovernancePanel() {
     }))
   }, [selectedFileId])
 
+  const handleDocumentTags = useCallback((tags: string[]) => {
+    if (!selectedFileId) return
+    setGovernanceStates((prev) => {
+      const current = prev[selectedFileId]
+      const mergedTags = Array.from(new Set([...(current.tags || []), ...tags.filter(Boolean)]))
+      return {
+        ...prev,
+        [selectedFileId]: {
+          ...current,
+          tags: mergedTags,
+          isModified: true,
+        },
+      }
+    })
+  }, [selectedFileId])
+
   // 鍒嗙被瀹屾垚鍥炶皟
   const handleClassify = useCallback((category: string, tags: string[]) => {
     if (!selectedFileId) return
@@ -1330,7 +1346,9 @@ export function DataGovernancePanel() {
                         </div>
                       )}
 
-	                      {contentBody}
+                      <div data-governance-selection-root="true">
+                        {contentBody}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1421,6 +1439,7 @@ export function DataGovernancePanel() {
                       content={governanceState.cleanedContent}
                       annotations={governanceState.annotations}
                       onAnnotate={handleAnnotate}
+                      onDocumentTags={handleDocumentTags}
                     />
                   )}
                   {activeTab === 'classify' && (

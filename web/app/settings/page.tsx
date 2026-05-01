@@ -16,6 +16,7 @@ import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { FeatureFlagsSection } from './_sections/feature-flags-section'
 import { FrontendPreferencesSection } from './_sections/frontend-preferences-section'
 import { GovernanceSection } from './_sections/governance-section'
+import { IndustryRulesSection } from './_sections/industry-rules-section'
 import { LtrModelRegistrySection } from './_sections/ltr-model-registry-section'
 import { ModelProvidersSection } from './_sections/model-providers-section'
 import { ObservabilitySection } from './_sections/observability-section'
@@ -45,6 +46,7 @@ const SETTINGS_SECTIONS = [
   { id: 'sec-rag', label: 'RAG 配置' },
   { id: 'sec-url', label: 'URL 采集' },
   { id: 'sec-governance', label: '数据治理' },
+  { id: 'sec-industry-rules', label: '行业规则' },
   { id: 'sec-observability', label: '可观测性' },
   { id: 'sec-runtime', label: '运行时控制' },
 ] as const
@@ -338,6 +340,10 @@ function SettingsContent({ state, parserBackend, setParserBackend, chunkStrategy
             isQuarantineOnDropEnabled={state.isQuarantineOnDropEnabled}
             updateGovernance={state.updateGovernance}
           />
+        </div>
+
+        <div id="sec-industry-rules" className="scroll-mt-24">
+          <IndustryRulesSection />
         </div>
 
         <div id="sec-observability" className="scroll-mt-24">

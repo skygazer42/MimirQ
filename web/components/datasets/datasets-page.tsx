@@ -703,20 +703,20 @@ export default function DatasetsPage() {
             </aside>
 
             <section className="min-w-0">
-              <div className="flex h-full min-h-0 flex-col rounded-[22px] border border-border/60 bg-background/88 shadow-[0_18px_36px_-28px_rgba(15,23,42,0.12)]">
-                <div className="flex items-center justify-between gap-3 border-b border-border/60 px-3.5 py-2.5">
+              <div className="flex h-full min-h-0 flex-col rounded-[24px] border border-border/60 bg-background/88 shadow-[0_18px_36px_-28px_rgba(15,23,42,0.12)]">
+                <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
                   <div className="min-w-0">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary/70">Dataset Catalog</div>
-                    <div className="mt-1 flex items-center gap-2 text-[12px] font-semibold text-foreground">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary/70">Dataset Catalog</div>
+                    <div className="mt-1 flex items-center gap-2 text-[13px] font-semibold text-foreground">
                       <span className="truncate">{selectedCategoryId ? '当前分类数据集' : '全部数据集'}</span>
-                      <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                      <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-semibold text-muted-foreground">
                         {displayedItems.length}
                       </span>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <Select value="updated_desc" onValueChange={() => {}}>
-                      <SelectTrigger className="h-8 w-[118px] rounded-xl border-border/60 bg-background px-2.5 text-[10px] font-medium">
+                      <SelectTrigger className="h-9 w-[132px] rounded-xl border-border/60 bg-background px-3 text-[11px] font-medium">
                         <SelectValue placeholder="按更新时间" />
                       </SelectTrigger>
                       <SelectContent>
@@ -724,13 +724,13 @@ export default function DatasetsPage() {
                         <SelectItem value="name_asc">按名称</SelectItem>
                       </SelectContent>
                     </Select>
-                    <Button variant="outline" size="icon" className="size-7 rounded-xl border-border/60 bg-background">
-                      <Table2 className="size-3.5" />
+                    <Button variant="outline" size="icon" className="size-8 rounded-xl border-border/60 bg-background" aria-label="切换表格视图" title="切换表格视图">
+                      <Table2 className="size-4" />
                     </Button>
                   </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-3 py-2.5">
+                <div className="flex-1 overflow-y-auto px-3.5 py-3">
                   {displayedItems.length === 0 && !isLoading ? (
                     <EmptyState
                       icon={Layers}
@@ -743,7 +743,7 @@ export default function DatasetsPage() {
                       initial="hidden"
                       animate="visible"
                       variants={{ hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.04 } } }}
-                      className="space-y-2.5"
+                      className="space-y-3"
                     >
                       {pagedItems.map((dataset) => {
                         const stats = statsByDatasetId[dataset.id]
@@ -755,43 +755,50 @@ export default function DatasetsPage() {
                         const anomalyCount = getDatasetAnomalyCount(stats)
 
                         return (
-                          <motion.button
+                          <motion.div
                             key={dataset.id}
                             variants={{ hidden: { opacity: 0, y: 10 }, visible: { opacity: 1, y: 0 } }}
-                            type="button"
+                            role="button"
+                            tabIndex={0}
                             onClick={() => setSelectedDatasetId(dataset.id)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault()
+                                setSelectedDatasetId(dataset.id)
+                              }
+                            }}
                             whileHover={{ y: -2 }}
                             className={cn(
-                              'group w-full rounded-[18px] border px-3 py-2.5 text-left transition-all duration-200 active:scale-[0.998]',
+                              'focus-ring group w-full cursor-pointer rounded-[20px] border px-4 py-3 text-left transition-all duration-200 active:scale-[0.998]',
                               isActive
                                 ? 'border-blue-300/80 bg-blue-50/50 shadow-[0_14px_26px_-20px_rgba(37,99,235,0.22)] ring-2 ring-blue-200/70'
                                 : 'border-border/60 bg-background/80 shadow-[0_10px_18px_-18px_rgba(15,23,42,0.1)] hover:border-slate-300/80 hover:bg-background hover:shadow-[0_16px_28px_-22px_rgba(15,23,42,0.12)]'
                             )}
                           >
                             <div className={cn(
-                              'grid gap-2.5 xl:items-start',
+                              'grid gap-3 xl:items-start',
                               isActive && 'xl:grid-cols-[minmax(0,1fr)_auto]'
                             )}>
-                              <div className="flex min-w-0 items-start gap-3">
+                              <div className="flex min-w-0 items-start gap-3.5">
                                 <div
                                   className={cn(
-                                    'flex size-9 shrink-0 items-center justify-center rounded-[12px] border',
+                                    'flex size-10 shrink-0 items-center justify-center rounded-[14px] border',
                                     isActive
                                       ? statusIcon.activeClassName
                                       : statusIcon.defaultClassName
                                   )}
                                 >
-                                  <Layers className="size-3.5" />
+                                  <Layers className="size-4" />
                                 </div>
                                 <div className="min-w-0">
-                                  <div className="flex flex-wrap items-center gap-1.5">
-                                    <div className="truncate text-[12px] font-semibold text-foreground">{dataset.name}</div>
-                                    <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold', statusBadge.className)}>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <div className="truncate text-[13px] font-semibold text-foreground">{dataset.name}</div>
+                                    <span className={cn('inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold', statusBadge.className)}>
                                       <span className={cn('size-1.5 rounded-full', statusBadge.dotClassName)} />
                                       {statusBadge.label}
                                     </span>
                                   </div>
-                                  <div className="mt-0.5 text-[10px] leading-[1.1rem] text-muted-foreground/72">
+                                  <div className="mt-1 text-[11px] leading-[1.25rem] text-muted-foreground/72">
                                     {dataset.description || '暂无描述。可在右侧继续配置预检、画像与入库策略。'}
                                   </div>
                                 </div>
@@ -805,7 +812,7 @@ export default function DatasetsPage() {
                                       e.stopPropagation()
                                       setSelectedDatasetId(dataset.id)
                                     }}
-                                    className="rounded-full bg-white px-2 py-0.5 text-[10px] font-medium text-blue-600 shadow-sm transition-all duration-200 hover:bg-blue-50 hover:text-blue-700 active:scale-[0.98]"
+                                    className="rounded-full bg-card px-2.5 py-1 text-[11px] font-medium text-blue-600 shadow-sm transition-all duration-200 hover:bg-blue-50 hover:text-blue-700 active:scale-[0.98]"
                                   >
                                     详情
                                   </button>
@@ -815,13 +822,13 @@ export default function DatasetsPage() {
                                       e.stopPropagation()
                                       router.push(`/knowledge?tab=retrieval&dataset=${dataset.id}`)
                                     }}
-                                    className="rounded-full bg-white px-2 py-0.5 text-[10px] font-medium text-blue-600 shadow-sm transition-all duration-200 hover:bg-blue-50 hover:text-blue-700 active:scale-[0.98]"
+                                    className="rounded-full bg-card px-2.5 py-1 text-[11px] font-medium text-blue-600 shadow-sm transition-all duration-200 hover:bg-blue-50 hover:text-blue-700 active:scale-[0.98]"
                                   >
                                     检索
                                   </button>
                                   <Button
                                     size="sm"
-                                    className="h-7 rounded-full bg-blue-600 px-2.5 text-[10px] font-medium text-white shadow-[0_10px_20px_-14px_rgba(37,99,235,0.65)] transition-transform duration-200 hover:bg-blue-700 active:scale-[0.98]"
+                                    className="h-8 rounded-full bg-blue-600 px-3 text-[11px] font-medium text-primary-foreground shadow-[0_10px_20px_-14px_rgba(37,99,235,0.65)] transition-transform duration-200 hover:bg-blue-700 active:scale-[0.98]"
                                     onClick={(e) => {
                                       e.stopPropagation()
                                       router.push(`/datasets/${dataset.id}/ingestion`)
@@ -832,19 +839,21 @@ export default function DatasetsPage() {
                                   <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="size-7 rounded-full bg-white/90 transition-all duration-200 hover:bg-white hover:shadow-sm active:scale-[0.96]"
+                                    aria-label="编辑数据集"
+                                    title="编辑数据集"
+                                    className="size-8 rounded-full bg-card/90 transition-all duration-200 hover:bg-card hover:shadow-sm active:scale-[0.96]"
                                     onClick={(e) => {
                                       e.stopPropagation()
                                       openEdit(dataset)
                                     }}
                                   >
-                                    <MoreHorizontal className="size-3" />
+                                    <MoreHorizontal className="size-3.5" />
                                   </Button>
                                 </div>
                               ) : null}
                             </div>
 
-                            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/50 pt-1.5">
+                            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-border/50 pt-2">
                               <DatasetMetaPill icon={Database} label="ID" value={dataset.id.slice(0, 8)} className="font-mono text-violet-600" valueClassName="text-violet-600" />
                               <DatasetMetaPill icon={Clock3} label="更新" value={formatRelativeTime(stats?.last_processed_at)} />
                               <DatasetMetaPill icon={FileSearch} label="文档" value={String(Number(stats?.total_documents || 0))} />
@@ -852,14 +861,14 @@ export default function DatasetsPage() {
                               <DatasetMetaPill icon={AlertCircle} label="异常" value={String(anomalyCount)} className={anomalyCount > 0 ? 'text-red-500' : undefined} />
                               <DatasetMetaPill icon={Users} label="成员" value={memberCount > 0 ? String(memberCount) : '0'} />
                             </div>
-                          </motion.button>
+                          </motion.div>
                         )
                       })}
                     </motion.div>
                   )}
                 </div>
 
-                <div className="flex items-center justify-between border-t border-border/60 px-3.5 py-2.5 text-[10px] text-muted-foreground/72">
+                <div className="flex items-center justify-between border-t border-border/60 px-4 py-3 text-[11px] text-muted-foreground/72">
                   <span>共 {displayedItems.length} 条 · 共 {totalPages} 页</span>
                   <div className="flex items-center gap-2">
                     <Select
@@ -869,7 +878,7 @@ export default function DatasetsPage() {
                         setCurrentPage(1)
                       }}
                     >
-                      <SelectTrigger className="h-7 w-[88px] rounded-[10px] border border-slate-200/80 bg-slate-50/80 px-2 text-[10px] font-medium shadow-none transition-all duration-200 hover:border-slate-300 hover:bg-white">
+                      <SelectTrigger className="h-8 w-[98px] rounded-[11px] border border-slate-200/80 bg-slate-50/80 px-2.5 text-[11px] font-medium shadow-none transition-all duration-200 hover:border-slate-300 hover:bg-card">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -883,18 +892,18 @@ export default function DatasetsPage() {
                         type="button"
                         disabled={currentPage <= 1}
                         onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-                        className="size-7 rounded-[10px] border border-slate-200/80 bg-slate-50/80 text-muted-foreground/50 transition-all duration-200 hover:border-slate-300 hover:bg-white hover:text-foreground active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-45"
+                        className="size-8 rounded-[11px] border border-slate-200/80 bg-slate-50/80 text-muted-foreground/50 transition-all duration-200 hover:border-slate-300 hover:bg-card hover:text-foreground active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-45"
                       >
                         ‹
                       </button>
-                      <span className="inline-flex min-w-[54px] items-center justify-center rounded-[10px] bg-primary px-2 text-[10px] font-semibold text-primary-foreground shadow-[0_10px_18px_-16px_rgba(37,99,235,0.6)]">
+                      <span className="inline-flex min-w-[60px] items-center justify-center rounded-[11px] bg-primary px-2.5 text-[11px] font-semibold text-primary-foreground shadow-[0_10px_18px_-16px_rgba(37,99,235,0.6)]">
                         {totalPages === 0 ? '0 / 0' : `${currentPage} / ${totalPages}`}
                       </span>
                       <button
                         type="button"
                         disabled={totalPages === 0 || currentPage >= totalPages}
                         onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
-                        className="size-7 rounded-[10px] border border-slate-200/80 bg-slate-50/80 text-muted-foreground/50 transition-all duration-200 hover:border-slate-300 hover:bg-white hover:text-foreground active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-45"
+                        className="size-8 rounded-[11px] border border-slate-200/80 bg-slate-50/80 text-muted-foreground/50 transition-all duration-200 hover:border-slate-300 hover:bg-card hover:text-foreground active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-45"
                       >
                         ›
                       </button>
@@ -904,7 +913,7 @@ export default function DatasetsPage() {
               </div>
             </section>
 
-            <aside className="min-h-0 overflow-hidden rounded-[22px] border border-border/60 bg-background/88 p-2.5 shadow-[0_18px_36px_-28px_rgba(15,23,42,0.12)]">
+            <aside className="min-h-0 overflow-hidden rounded-[24px] border border-border/60 bg-background/88 p-3 shadow-[0_18px_36px_-28px_rgba(15,23,42,0.12)]">
               <AnimatePresence mode="wait" initial={false}>
                 {selectedDataset ? (
                   <motion.div
@@ -921,10 +930,10 @@ export default function DatasetsPage() {
                         <div className="mt-0.5 text-[11px] font-semibold text-foreground">当前选中数据集</div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="icon" className="size-7 rounded-full border border-slate-200/80 bg-slate-50 text-slate-500 transition-all duration-200 hover:border-slate-300 hover:bg-white hover:text-foreground active:scale-[0.96]" onClick={() => openEdit(selectedDataset)}>
+                        <Button variant="ghost" size="icon" aria-label="编辑数据集" title="编辑数据集" className="size-7 rounded-full border border-slate-200/80 bg-slate-50 text-slate-500 transition-all duration-200 hover:border-slate-300 hover:bg-card hover:text-foreground active:scale-[0.96]" onClick={() => openEdit(selectedDataset)}>
                           <Pencil className="size-3" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="size-7 rounded-full border border-destructive/20 bg-red-50 text-destructive/70 transition-all duration-200 hover:border-destructive/30 hover:bg-red-100 active:scale-[0.96]" onClick={() => setDeleteTarget(selectedDataset)}>
+                        <Button variant="ghost" size="icon" aria-label="删除数据集" title="删除数据集" className="size-7 rounded-full border border-destructive/20 bg-red-50 text-destructive/70 transition-all duration-200 hover:border-destructive/30 hover:bg-red-100 active:scale-[0.96]" onClick={() => setDeleteTarget(selectedDataset)}>
                           <Trash2 className="size-3" />
                         </Button>
                       </div>
@@ -1175,13 +1184,13 @@ function DatasetMetaPill({
 }>) {
   const tone = getDatasetIconTone(Icon)
   return (
-    <div className={cn('inline-flex min-w-0 items-start gap-1 px-0 py-0 text-[9px]', className)}>
-      <div className={cn('mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-md border', tone.containerClassName)}>
-        <Icon className="size-[7px]" />
+    <div className={cn('inline-flex min-w-0 items-start gap-1.5 px-0 py-0 text-[10px]', className)}>
+      <div className={cn('mt-0.5 flex size-[18px] shrink-0 items-center justify-center rounded-md border', tone.containerClassName)}>
+        <Icon className="size-2" />
       </div>
       <div className="min-w-0">
-        <div className="truncate text-[7px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/50">{label}</div>
-        <div className={cn('truncate text-[9px] font-medium leading-none text-foreground/82', valueClassName)}>{value}</div>
+        <div className="truncate text-[8px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/50">{label}</div>
+        <div className={cn('truncate text-[10px] font-medium leading-none text-foreground/82', valueClassName)}>{value}</div>
       </div>
     </div>
   )
@@ -1259,7 +1268,7 @@ function DatasetFilterButton({
       </span>
       <span className={cn(
         'rounded-full px-1.5 py-0.5 text-[9px] font-semibold',
-        active ? 'bg-white text-primary shadow-sm' : 'bg-background/80 text-foreground/76'
+        active ? 'bg-card text-primary shadow-sm' : 'bg-background/80 text-foreground/76'
       )}>
         {count}
       </span>
@@ -1294,7 +1303,7 @@ function DatasetShortcutButton({
       )}
       onClick={onClick}
     >
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/[0.05] via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+      <div className="absolute inset-0 bg-primary/[0.05] opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
 
       <div className={cn(
         'relative flex shrink-0 items-center justify-center rounded-xl transition-all duration-200 group-hover:scale-[1.04]',
@@ -1307,7 +1316,7 @@ function DatasetShortcutButton({
       </div>
 
       <div className="relative min-w-0 flex-1 flex flex-col justify-center text-left">
-        <div className="mb-0.5 text-[12px] font-semibold tracking-tight text-foreground transition-colors group-hover:text-primary">
+        <div className="mb-0.5 text-[12px] font-semibold  text-foreground transition-colors group-hover:text-primary">
           {title}
         </div>
         <div
@@ -1346,14 +1355,14 @@ function DatasetInspectorMetric({
   const tone = getDatasetIconTone(Icon)
   if (variant === 'stat') {
     return (
-      <div className="flex flex-col items-center justify-center gap-0.5 rounded-xl border border-slate-200/80 bg-slate-50/80 p-2 transition-all duration-200 hover:border-primary/15 hover:bg-primary/[0.03] hover:shadow-[0_12px_22px_-18px_rgba(15,23,42,0.14)]">
-        <div className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground/50 transition-colors">
-          <span className={cn('flex size-4 items-center justify-center rounded-md border', tone.containerClassName)}>
-            <Icon className="size-2.5" />
+      <div className="flex flex-col items-center justify-center gap-1 rounded-xl border border-slate-200/80 bg-slate-50/80 p-2.5 transition-all duration-200 hover:border-primary/15 hover:bg-primary/[0.03] hover:shadow-[0_12px_22px_-18px_rgba(15,23,42,0.14)]">
+        <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase  text-muted-foreground/50 transition-colors">
+          <span className={cn('flex size-[18px] items-center justify-center rounded-md border', tone.containerClassName)}>
+            <Icon className="size-3" />
           </span>
           <span className="truncate">{label}</span>
         </div>
-        <div className={cn("text-[12px] font-bold tracking-tight text-foreground/90 text-center", valueClassName)}>
+        <div className={cn("text-[13px] font-bold  text-foreground/90 text-center", valueClassName)}>
           {value}
         </div>
       </div>
@@ -1361,18 +1370,18 @@ function DatasetInspectorMetric({
   }
 
   return (
-    <div className="flex items-center justify-between py-1 group/metric px-1.5 -mx-0.5 rounded-lg transition-colors hover:bg-slate-50/80">
+    <div className="flex items-center justify-between py-1.5 group/metric px-1.5 -mx-0.5 rounded-lg transition-colors hover:bg-slate-50/80">
       <div className="flex min-w-0 items-center gap-2">
-        <span className={cn('flex size-4 items-center justify-center rounded-md border', tone.containerClassName)}>
-          <Icon className="size-2.5" />
+        <span className={cn('flex size-[18px] items-center justify-center rounded-md border', tone.containerClassName)}>
+          <Icon className="size-3" />
         </span>
-        <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground/60 group-hover/metric:text-muted-foreground transition-colors truncate">
+        <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground/60 group-hover/metric:text-muted-foreground transition-colors truncate">
           {label}
         </span>
       </div>
       <div className={cn(
-        'ml-auto min-w-0 truncate rounded-md border border-slate-200/70 bg-white px-2 py-0.5 text-right text-[10px] font-semibold text-foreground/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.92)]',
-        mono && 'font-mono tabular-nums tracking-tighter',
+        'ml-auto min-w-0 truncate rounded-md border border-slate-200/70 bg-card px-2.5 py-0.5 text-right text-[11px] font-semibold text-foreground/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.92)]',
+        mono && 'font-mono tabular-nums ',
         valueClassName
       )}>
         {value}
@@ -1486,7 +1495,7 @@ function DetailStat({
   tone: 'success' | 'warning' | 'danger' | 'neutral'
 }>) {
   return (
-    <div className="rounded-[12px] border border-slate-200/80 bg-slate-50/80 px-2 py-1.5 transition-colors duration-200 hover:border-slate-300 hover:bg-white">
+    <div className="rounded-[12px] border border-slate-200/80 bg-slate-50/80 px-2 py-1.5 transition-colors duration-200 hover:border-slate-300 hover:bg-card">
       <div className="flex items-center gap-1">
         <span
           className={cn(

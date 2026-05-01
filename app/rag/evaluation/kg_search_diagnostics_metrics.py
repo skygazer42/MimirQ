@@ -7,6 +7,7 @@ requiring a full backend runtime (DB, Milvus, LLM config, etc.).
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 
@@ -32,6 +33,8 @@ def compute_kg_hit_metrics(*, events: list[dict[str, Any]], evidence_chunk_ids: 
             "hit_at_k": False,
             "mrr": 0.0,
             "recall": 0.0,
+            "ndcg": 0.0,
+            "map": 0.0,
             "matched_evidence_chunks": 0,
             "total_evidence_chunks": 0,
             "k": kk,
@@ -39,6 +42,8 @@ def compute_kg_hit_metrics(*, events: list[dict[str, Any]], evidence_chunk_ids: 
 
     matched: set[str] = set()
     first_rank: int | None = None
+    dcg = 0.0
+    average_precision_acc = 0.0
 
     for idx, ev in enumerate((events or [])[:kk], 1):
         if not isinstance(ev, dict):
@@ -52,16 +57,24 @@ def compute_kg_hit_metrics(*, events: list[dict[str, Any]], evidence_chunk_ids: 
         matched.add(cid)
         if first_rank is None:
             first_rank = int(idx)
+        dcg += 1.0 / math.log2(float(idx) + 1.0)
+        average_precision_acc += float(len(matched)) / float(idx)
 
     hit = bool(matched)
     mrr = 1.0 / float(first_rank) if first_rank is not None and first_rank > 0 else 0.0
     recall = float(len(matched)) / float(total) if total > 0 else 0.0
+    ideal_hits = min(total, kk)
+    ideal_dcg = sum(1.0 / math.log2(float(rank) + 1.0) for rank in range(1, ideal_hits + 1))
+    ndcg = float(dcg / ideal_dcg) if ideal_dcg > 0 else 0.0
+    mean_average_precision = float(average_precision_acc / float(total)) if total > 0 else 0.0
 
     # Keep stable precision in JSON responses.
     return {
         "hit_at_k": hit,
         "mrr": round(float(mrr), 4),
         "recall": round(float(recall), 4),
+        "ndcg": round(float(ndcg), 4),
+        "map": round(float(mean_average_precision), 4),
         "matched_evidence_chunks": int(len(matched)),
         "total_evidence_chunks": int(total),
         "k": kk,
@@ -69,4 +82,3 @@ def compute_kg_hit_metrics(*, events: list[dict[str, Any]], evidence_chunk_ids: 
 
 
 __all__ = ["compute_kg_hit_metrics"]
-

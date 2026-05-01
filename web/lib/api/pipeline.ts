@@ -1,4 +1,6 @@
 import type {
+  AutoAnnotationRequest,
+  AutoAnnotationResponse,
   CleanPreviewRequest,
   CleanPreviewResponse,
   CleanRulesResponse,
@@ -249,6 +251,37 @@ export const pipelineApi = {
     const body = { text: params.text, provider: params.provider ?? 'jieba', top_k: params.top_k ?? 10 }
     const data = await openapiRequest({ path: '/api/v1/pipeline/extract-keywords', method: 'post', body })
     return { ...data, keywords: data.keywords ?? [] }
+  },
+
+  async autoAnnotations(params: AutoAnnotationRequest): Promise<AutoAnnotationResponse> {
+    const body = {
+      text: params.text,
+      mode: params.mode ?? 'document_focus',
+      providers: params.providers ?? ['cpu'],
+      enable_llm: params.enable_llm ?? false,
+      enable_llm_topics: params.enable_llm_topics ?? false,
+      llm_model: params.llm_model ?? null,
+      enable_keywords: params.enable_keywords ?? true,
+      enable_entities: params.enable_entities ?? true,
+      enable_sensitive: params.enable_sensitive ?? false,
+      keyword_provider: params.keyword_provider ?? 'simple',
+      keyword_top_k: params.keyword_top_k ?? 12,
+      max_chars: params.max_chars ?? 20_000,
+      max_annotations: params.max_annotations ?? 80,
+    }
+    const data = await openapiRequest({
+      path: '/api/v1/pipeline/auto-annotations',
+      method: 'post',
+      body,
+      timeoutMs: API_LONG_TIMEOUT_MS,
+    })
+    return {
+      ...data,
+      annotations: data.annotations ?? [],
+      document_tags: data.document_tags ?? [],
+      providers_used: data.providers_used ?? [],
+      warnings: data.warnings ?? [],
+    }
   },
 
   async getCleanRules(): Promise<CleanRulesResponse> {

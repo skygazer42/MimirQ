@@ -7,8 +7,9 @@ describe('KnowledgeDocumentsPanel numeric column alignment', () => {
   it('aligns numeric headers with their right-aligned values for scannable B-end tables', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'knowledge-documents-panel.tsx'), 'utf8')
 
-    expect(src).toContain("className=\"sticky top-0 z-10 bg-card/95 px-3 py-2.5 font-medium text-right tabular-nums\">{t('table.columns.chunks')}</th>")
-    expect(src).toContain("className=\"sticky top-0 z-10 bg-card/95 px-3 py-2.5 font-medium text-right tabular-nums\">{t('table.columns.size')}</th>")
-    expect(src).toContain('className="px-3 py-2.5 align-middle text-right text-xs font-mono tabular-nums text-muted-foreground"')
+    expect(src).toContain("<div className=\"text-right tabular-nums\">{t('table.columns.chunks')}</div>")
+    expect(src).toContain("<div className=\"text-right tabular-nums\">{t('table.columns.size')}</div>")
+    expect(src).toContain('className="text-right font-mono text-[11px] font-semibold tabular-nums text-foreground/70"')
+    expect(src).toContain('className="text-right font-mono text-[11px] tabular-nums text-muted-foreground"')
   })
 })

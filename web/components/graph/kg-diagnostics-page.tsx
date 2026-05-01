@@ -56,14 +56,16 @@ function formatMetricValue(value: unknown): string {
   return prettyJson(value)
 }
 
-function extractBaselineMetrics(item: any): { hit_at_k: boolean; mrr: number; recall: number } | null {
+function extractBaselineMetrics(item: any): { hit_at_k: boolean; mrr: number; recall: number; ndcg: number; map: number } | null {
   const baseline = item?.baseline
   const metrics = baseline?.metrics
   const hit = Boolean(metrics?.hit_at_k)
   const mrr = toNumber(metrics?.mrr)
   const recall = toNumber(metrics?.recall)
+  const ndcg = toNumber(metrics?.ndcg)
+  const meanAveragePrecision = toNumber(metrics?.map)
   if (mrr === null || recall === null) return null
-  return { hit_at_k: hit, mrr, recall }
+  return { hit_at_k: hit, mrr, recall, ndcg: ndcg ?? 0, map: meanAveragePrecision ?? 0 }
 }
 
 function caseKey(item: any): string | null {
@@ -340,7 +342,18 @@ export function KGDiagnosticsPage() {
     const aSummary = a.run?.summary && typeof a.run.summary === 'object' ? a.run.summary : {}
     const bSummary = b.run?.summary && typeof b.run.summary === 'object' ? b.run.summary : {}
 
-    const keys = ['baseline_hit_rate', 'baseline_mrr', 'baseline_recall', 'hardcase_hit_rate', 'hardcase_mrr', 'hardcase_recall']
+    const keys = [
+      'baseline_hit_rate',
+      'baseline_mrr',
+      'baseline_recall',
+      'baseline_ndcg',
+      'baseline_map',
+      'hardcase_hit_rate',
+      'hardcase_mrr',
+      'hardcase_recall',
+      'hardcase_ndcg',
+      'hardcase_map',
+    ]
     const summaryDelta: Record<string, any> = {}
     for (const key of keys) {
       const av = toNumber(aSummary[key])
@@ -832,7 +845,7 @@ export function KGDiagnosticsPage() {
               <TabsContent value="run" className="mt-0 min-h-0 flex-1">
                 <div className="flex h-full min-h-0 flex-col">
                   <div className="border-b border-border/70 px-4 py-4">
-                    <div className="grid gap-3 lg:grid-cols-4">
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
                       <DiagnosticsMetricTile
                         label={t('summary.baselineHitRate')}
                         value={formatMetricValue(summary?.baseline_hit_rate)}
@@ -850,6 +863,18 @@ export function KGDiagnosticsPage() {
                         value={formatMetricValue(summary?.baseline_recall)}
                         caption="看召回覆盖是否足够"
                         accent="emerald"
+                      />
+                      <DiagnosticsMetricTile
+                        label={t('summary.baselineNdcg')}
+                        value={formatMetricValue(summary?.baseline_ndcg)}
+                        caption="兼顾命中位置与整体排序质量"
+                        accent="sky"
+                      />
+                      <DiagnosticsMetricTile
+                        label={t('summary.baselineMap')}
+                        value={formatMetricValue(summary?.baseline_map)}
+                        caption="多证据平均精度"
+                        accent="violet"
                       />
                       <DiagnosticsMetricTile
                         label={t('summary.hardcasesGenerated')}

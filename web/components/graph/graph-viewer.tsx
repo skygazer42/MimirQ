@@ -7,6 +7,7 @@ import { useResizeObserver } from '@/hooks/use-resize-observer'
 import { getCssHslColor, getCssHslaColor } from '@/lib/css-vars'
 import { decorateLinksForDisplay } from '@/lib/graph-edge-display'
 import { buildGraphLinkProvenanceTooltipHtml } from '@/lib/graph-provenance'
+import { buildGraphViewportLod, type GraphViewportLod, type GraphViewportRect } from '@/lib/graph-viewport-lod'
 import { GraphMinimap } from './graph-minimap'
 import { Loader2 } from 'lucide-react'
 
@@ -38,6 +39,34 @@ function getLinkConfidence(link: any): number | null {
   const raw = link?.meta?.confidence ?? link?.confidence ?? link?.weight
   const num = Number(raw)
   return Number.isFinite(num) ? num : null
+}
+
+function getStableLinkId(link: any, index?: number): string {
+  if (typeof link?.id === 'string' && link.id.trim()) return link.id
+  if (typeof link?.id === 'number') return String(link.id)
+  if (typeof link?.index === 'number' && Number.isFinite(link.index)) return `link-${link.index}`
+  if (typeof index === 'number' && Number.isFinite(index)) return `link-${index}`
+  return ''
+}
+
+function areStringSetsEqual(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
+  if (left.size !== right.size) return false
+  for (const value of left) {
+    if (!right.has(value)) return false
+  }
+  return true
+}
+
+function areViewportLodsEqual(left: GraphViewportLod | null, right: GraphViewportLod | null): boolean {
+  if (left === right) return true
+  if (!left || !right) return false
+  return (
+    left.tier === right.tier &&
+    left.hiddenNodeCount === right.hiddenNodeCount &&
+    left.hiddenLinkCount === right.hiddenLinkCount &&
+    areStringSetsEqual(left.visibleNodeIds, right.visibleNodeIds) &&
+    areStringSetsEqual(left.visibleLinkIds, right.visibleLinkIds)
+  )
 }
 
 function confidenceToWidth(confidence: number | null, opts: { isLargeGraph: boolean }): number {
@@ -264,6 +293,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
   const [hoveredLinkId, setHoveredLinkId] = useState<string | null>(null)
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const [isCanvasPanning, setIsCanvasPanning] = useState(false)
+  const [viewportLod, setViewportLod] = useState<GraphViewportLod | null>(null)
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
   const canvasColors = useMemo(() => {
@@ -329,8 +359,9 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
       return { ...rest }
     })
 
-    const links = data.links.map(link => ({
+    const links = data.links.map((link, index) => ({
       ...link,
+      id: link.id ?? getStableLinkId(link, index),
       // Reset source/target to IDs if they are objects (from previous d3 simulation)
       source: (typeof link.source === 'object' && link.source !== null && 'id' in link.source)
         ? (link.source).id
@@ -359,6 +390,44 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
   const cooldownTime = isLargeGraph ? 4000 : 8000
   const graphRenderResetKey = `${sanitizedData.nodes.length}:${sanitizedData.links.length}:${layoutMode}`
   const graphCursor = isCanvasPanning ? 'grabbing' : (hoveredNodeId || hoveredLinkId ? 'pointer' : 'grab')
+  const viewportPinnedNodeIds = useMemo(() => {
+    const pinned = new Set<string>(highlightedNodeIds)
+    if (selectedNodeId) pinned.add(selectedNodeId)
+    return pinned
+  }, [highlightedNodeIds, selectedNodeId])
+  const viewportLodTier = viewportLod?.tier ?? 'detail'
+
+  const updateViewportLod = useCallback((transform?: { k?: number }) => {
+    const graph = fgRef.current
+    if (!isLargeGraph || !graph || width <= 0 || height <= 0) {
+      setViewportLod((current) => (current == null ? current : null))
+      return
+    }
+
+    const topLeft = graph.screen2GraphCoords?.(0, 0)
+    const bottomRight = graph.screen2GraphCoords?.(width, height)
+    if (!topLeft || !bottomRight) return
+
+    const viewport: GraphViewportRect = {
+      minX: Math.min(Number(topLeft.x), Number(bottomRight.x)),
+      minY: Math.min(Number(topLeft.y), Number(bottomRight.y)),
+      maxX: Math.max(Number(topLeft.x), Number(bottomRight.x)),
+      maxY: Math.max(Number(topLeft.y), Number(bottomRight.y)),
+    }
+    if (!Object.values(viewport).every(Number.isFinite)) return
+
+    const zoom = Number(transform?.k ?? graph.zoom?.() ?? 1)
+    const next = buildGraphViewportLod({
+      nodes: sanitizedData.nodes,
+      links: sanitizedData.links,
+      viewport,
+      globalScale: Number.isFinite(zoom) ? zoom : 1,
+      totalNodeCount: sanitizedData.nodes.length,
+      selectedNodeIds: viewportPinnedNodeIds,
+    })
+
+    setViewportLod((current) => (areViewportLodsEqual(current, next) ? current : next))
+  }, [height, isLargeGraph, sanitizedData.links, sanitizedData.nodes, viewportPinnedNodeIds, width])
 
   // Debug: Log dimensions
   useEffect(() => {
@@ -540,6 +609,11 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
     }
   }, [layoutMode])
 
+  useEffect(() => {
+    if (!mounted) return
+    updateViewportLod()
+  }, [mounted, updateViewportLod])
+
   const handleNodeClick = useCallback((node: any) => {
     if (fgRef.current) {
       fgRef.current.centerAt(node.x, node.y, 400)
@@ -570,6 +644,20 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
 
     return NODE_COLOR_PALETTE[hashTypeToIndex(node.id || '')]
   }, [highlightedNodeIds, typeColorMap, canvasColors.nodeDim])
+
+  const isNodeVisibleForViewport = useCallback((node: any) => {
+    if (!isLargeGraph || !viewportLod) return true
+    const nodeId = String(node?.id ?? '')
+    if (!nodeId) return false
+    return viewportLod.visibleNodeIds.has(nodeId) || viewportPinnedNodeIds.has(nodeId)
+  }, [isLargeGraph, viewportLod, viewportPinnedNodeIds])
+
+  const isLinkVisibleForViewport = useCallback((link: any) => {
+    if (!isLargeGraph || !viewportLod) return true
+    const linkId = getStableLinkId(link)
+    if (linkId && highlightedLinkIds.has(linkId)) return true
+    return Boolean(linkId && viewportLod.visibleLinkIds.has(linkId))
+  }, [highlightedLinkIds, isLargeGraph, viewportLod])
 
   // Determine DAG mode based on layoutMode
   const getDagMode = () => {
@@ -604,6 +692,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
               backgroundColor="rgba(0,0,0,0)"
               showPointerCursor={false}
               nodeLabel="label"
+              nodeVisibility={isNodeVisibleForViewport}
               nodeColor={getNodeColor}
               nodeRelSize={nodeRelSize}
               // Layout Config
@@ -620,7 +709,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
                 return typeof v === 'number' && Number.isFinite(v) ? v : 0
               }}
               linkColor={(link: any) => {
-                 const linkId = link.id || (link.index === undefined ? null : `link-${link.index}`)
+                 const linkId = getStableLinkId(link)
                  const linkKind = getLinkKind(link)
                  const baseColor = EDGE_KIND_COLORS[linkKind] || canvasColors.nodeDim
                  const baseLineColor = withAlpha(baseColor, isLargeGraph ? 0.22 : 0.32)
@@ -651,7 +740,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
                   return baseLineColor
                }}
               linkWidth={(link: any) => {
-                 const linkId = link.id || (link.index === undefined ? null : `link-${link.index}`)
+                  const linkId = getStableLinkId(link)
                  const confidence = getLinkConfidence(link)
                  const baseWidth = confidenceToWidth(confidence, { isLargeGraph })
                   if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) {
@@ -672,8 +761,11 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
               linkDirectionalArrowLength={(link: any) => (link?.isSelfLoop ? 0 : arrowLength)}
               linkDirectionalArrowRelPos={1}
               linkLabel={(link: any) => buildGraphLinkProvenanceTooltipHtml(link)}
+              linkVisibility={isLinkVisibleForViewport}
               cooldownTicks={cooldownTicks}
               cooldownTime={cooldownTime}
+              onZoomEnd={updateViewportLod}
+              onEngineStop={updateViewportLod}
               onNodeClick={handleNodeClick}
               onNodeRightClick={(node: any, event: MouseEvent) => {
                 onNodeRightClick?.(node, event)
@@ -692,7 +784,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
                 setHoveredNodeId((prev) => (prev === id ? prev : id))
               }}
               onLinkHover={(link: any) => {
-                const linkId = link?.id || (link?.index === undefined ? null : `link-${link.index}`)
+                const linkId = getStableLinkId(link)
                 setHoveredLinkId((prev) => (prev === linkId ? prev : linkId))
               }}
               onNodeDragEnd={(node: any) => {
@@ -800,7 +892,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
 
                 const shouldShowLabel =
                   emphasis
-                  || (!isLargeGraph && (
+                  || ((viewportLodTier === 'detail' || !isLargeGraph) && (
                     globalScale > 1.7
                     || (degree >= 4 && globalScale > 1.2)
                     || (degree >= 7 && globalScale > 1.02)
@@ -861,7 +953,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
 
                 if (typeof start !== 'object' || typeof end !== 'object') return
 
-                const linkId = link.id || (link.index === undefined ? null : `link-${link.index}`)
+                const linkId = getStableLinkId(link)
                 const isPathLink = highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)
                 const isHoveredLink = hoveredLinkId != null && linkId === hoveredLinkId
                 const isAccent = isPathLink || isHoveredLink
@@ -933,6 +1025,11 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
                 ctx.restore()
               }}
             />
+            {isLargeGraph && viewportLod ? (
+              <div className="pointer-events-none absolute left-5 top-5 z-10 rounded-full border border-border/70 bg-card/82 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-soft backdrop-blur-md">
+                LOD {viewportLod.tier} · 隐藏 {viewportLod.hiddenNodeCount} 节点 / {viewportLod.hiddenLinkCount} 连线
+              </div>
+            ) : null}
             {showMinimap && !isLargeGraph && sanitizedData.nodes.length > 0 && (
               <div className="absolute bottom-24 right-6 z-10">
                 <GraphMinimap

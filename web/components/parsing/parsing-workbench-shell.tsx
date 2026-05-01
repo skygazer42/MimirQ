@@ -50,6 +50,7 @@ type ParsingWorkbenchShellProps = {
   activeLibraryFileId: string | null
   activeLibrarySourceStatus: ParsingLibrarySourceStatus
   activeMarkdown: string
+  availableDatasets: DatasetScopeOption[]
   activeElements: ParsingElement[]
   activePdfQuality: unknown
   activeQualityGate: unknown
@@ -115,10 +116,17 @@ type ParsingWorkbenchShellProps = {
   setQueueOpen: (open: boolean) => void
   setQueueFileParserBackend: (params: { fileId: string; filename: string; backend: string }) => void
   setRightPanelMode: (mode: 'blocks' | 'markdown') => void
+  selectedDatasetId: string | null
+  onDatasetScopeChange: (datasetId: string | null) => void
   tocEnabled: boolean
   updateParsedFile: (id: string, updates: Partial<Omit<ParsedFileData, 'id'>>) => void
   visibleLibraryOnlyFiles: ParsedFileData[]
   visibleQueueFiles: ParsedFile[]
+}
+
+type DatasetScopeOption = {
+  id: string
+  name: string
 }
 
 export function ParsingWorkbenchShell({
@@ -131,6 +139,7 @@ export function ParsingWorkbenchShell({
   activeLibraryFileId,
   activeLibrarySourceStatus,
   activeMarkdown,
+  availableDatasets,
   activeElements,
   activePdfQuality,
   activeQualityGate,
@@ -196,6 +205,8 @@ export function ParsingWorkbenchShell({
   setQueueOpen,
   setQueueFileParserBackend,
   setRightPanelMode,
+  selectedDatasetId,
+  onDatasetScopeChange,
   tocEnabled,
   updateParsedFile,
   visibleLibraryOnlyFiles,
@@ -206,7 +217,9 @@ export function ParsingWorkbenchShell({
   const pendingCount = visibleQueueFiles.filter((file) => file.status === 'pending').length
   const parsingCount = visibleQueueFiles.filter((file) => file.status === 'parsing').length
   const parsedCount = visibleQueueFiles.filter((file) => file.status === 'parsed').length
-  const parseableCount = visibleQueueFiles.filter((file) => file.status === 'pending' || file.status === 'error').length
+  const parseableCount = visibleQueueFiles.filter(
+    (file) => file.librarySource !== 'knowledge_base' && (file.status === 'pending' || file.status === 'error')
+  ).length
   const queueCountLabel = visibleQueueFiles.length === 0 ? '0' : `${parsedCount}/${visibleQueueFiles.length}`
   const currentFolderFileCount = visibleQueueFiles.length + visibleLibraryOnlyFiles.length
 
@@ -216,10 +229,14 @@ export function ParsingWorkbenchShell({
   const activeLibraryFolderName = (activeLibraryFolderPathLabel.split('/').pop() || '').trim() || activeLibraryFolderPathLabel
   const activeLibraryStatusBadge = activeLibraryFile?.status ? getLibraryStatusBadge(activeLibraryFile.status, t) : null
   const filename = String(activeLibraryFile?.filename || '')
+  const activeLibraryMarkdownAvailable = Boolean(
+    (activeLibraryFile?.markdownContent || activeLibraryFile?.originalMarkdownContent || '').trim()
+  )
   const shouldAutoRestoreLibraryPdf =
     !activeFile &&
     activeLibraryFile &&
     activeLibraryFile.status === 'parsed' &&
+    activeLibraryMarkdownAvailable &&
     filename.toLowerCase().endsWith('.pdf')
 
   useEffect(() => {
@@ -228,9 +245,29 @@ export function ParsingWorkbenchShell({
 
     detachPromise(restoreLibraryFileFromCache(activeLibraryFile.id, false))
   }, [activeFile, activeLibraryFile, restoreLibraryFileFromCache, shouldAutoRestoreLibraryPdf])
+  const datasetDocumentCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const file of libraryFiles) {
+      if (file.source !== 'knowledge_base' || !file.datasetId) continue
+      counts.set(file.datasetId, (counts.get(file.datasetId) || 0) + 1)
+    }
+    return counts
+  }, [libraryFiles])
+  const datasetOptions = useMemo(
+    () =>
+      availableDatasets.map((dataset) => ({
+        ...dataset,
+        count: datasetDocumentCounts.get(dataset.id) || 0,
+      })),
+    [availableDatasets, datasetDocumentCounts]
+  )
   const sidebarFileItems = useMemo<DocumentTreeFileItem[]>(() => {
-    const queueLibraryIds = new Set(files.map((file) => file.libraryId).filter((value): value is string => Boolean(value)))
-    const merged: DocumentTreeFileItem[] = files.map((file) => ({
+    const queueFiles = selectedDatasetId ? [] : files
+    const libraryFilesForScope = selectedDatasetId
+      ? libraryFiles.filter((file) => file.source === 'knowledge_base' && file.datasetId === selectedDatasetId)
+      : libraryFiles
+    const queueLibraryIds = new Set(queueFiles.map((file) => file.libraryId).filter((value): value is string => Boolean(value)))
+    const merged: DocumentTreeFileItem[] = queueFiles.map((file) => ({
       id: file.id,
       name: file.name,
       folderId: file.folderId || ROOT_FOLDER_ID,
@@ -244,21 +281,23 @@ export function ParsingWorkbenchShell({
       isActive: activeFileId === file.id,
     }))
 
-    for (const file of libraryFiles) {
+    for (const file of libraryFilesForScope) {
       if (queueLibraryIds.has(file.id)) continue
       merged.push({
         id: file.id,
         name: file.filename,
         folderId: file.folderId || ROOT_FOLDER_ID,
+        sourcePath: file.sourcePath || file.datasetName || undefined,
         status: file.status || 'parsed',
         parser: file.parser,
         duration: file.durationSec,
         isActive: activeLibraryFileId === file.id,
+        readOnly: file.source === 'knowledge_base',
       })
     }
 
     return merged
-  }, [activeFileId, activeLibraryFileId, files, libraryFiles])
+  }, [activeFileId, activeLibraryFileId, files, libraryFiles, selectedDatasetId])
 
   return (
     <AppFrame>
@@ -326,6 +365,9 @@ export function ParsingWorkbenchShell({
               activeFolderPathLabel={activeFolderPathLabel}
               currentFolderId={currentFolderId}
               currentFolderFileCount={currentFolderFileCount}
+              datasetOptions={datasetOptions}
+              selectedDatasetId={selectedDatasetId}
+              onDatasetScopeChange={onDatasetScopeChange}
               pendingCount={pendingCount}
               parsingCount={parsingCount}
               parsedCount={parsedCount}

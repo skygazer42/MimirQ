@@ -577,10 +577,14 @@ async def run_kg_search_diagnostics(
     baseline_hits: list[float] = []
     baseline_mrrs: list[float] = []
     baseline_recalls: list[float] = []
+    baseline_ndcgs: list[float] = []
+    baseline_maps: list[float] = []
 
     hardcase_hits: list[float] = []
     hardcase_mrrs: list[float] = []
     hardcase_recalls: list[float] = []
+    hardcase_ndcgs: list[float] = []
+    hardcase_maps: list[float] = []
     hardcases_generated = 0
 
     failed_for_hardcase: list[tuple[RagasRegressionCase, dict[str, Any]]] = []
@@ -883,6 +887,8 @@ async def run_kg_search_diagnostics(
         baseline_hits.append(1.0 if metrics.hit_at_k else 0.0)
         baseline_mrrs.append(float(metrics.mrr))
         baseline_recalls.append(float(metrics.recall))
+        baseline_ndcgs.append(float(metrics.ndcg))
+        baseline_maps.append(float(metrics.map))
 
         if (
             hardcase_mode == "deterministic"
@@ -935,6 +941,8 @@ async def run_kg_search_diagnostics(
                 hardcase_hits.append(1.0 if metrics2.hit_at_k else 0.0)
                 hardcase_mrrs.append(float(metrics2.mrr))
                 hardcase_recalls.append(float(metrics2.recall))
+                hardcase_ndcgs.append(float(metrics2.ndcg))
+                hardcase_maps.append(float(metrics2.map))
 
                 run = KGSearchRunResult(
                     query=str(hc.question),
@@ -1028,6 +1036,8 @@ async def run_kg_search_diagnostics(
                     hardcase_hits.append(1.0 if metrics.hit_at_k else 0.0)
                     hardcase_mrrs.append(float(metrics.mrr))
                     hardcase_recalls.append(float(metrics.recall))
+                    hardcase_ndcgs.append(float(metrics.ndcg))
+                    hardcase_maps.append(float(metrics.map))
 
                     run = KGSearchRunResult(
                         query=str(hc.question),
@@ -1055,9 +1065,13 @@ async def run_kg_search_diagnostics(
         baseline_hit_rate=round(_mean(baseline_hits), 4),
         baseline_mrr=round(_mean(baseline_mrrs), 4),
         baseline_recall=round(_mean(baseline_recalls), 4),
+        baseline_ndcg=round(_mean(baseline_ndcgs), 4),
+        baseline_map=round(_mean(baseline_maps), 4),
         hardcase_hit_rate=(round(_mean(hardcase_hits), 4) if hardcase_hits else None),
         hardcase_mrr=(round(_mean(hardcase_mrrs), 4) if hardcase_mrrs else None),
         hardcase_recall=(round(_mean(hardcase_recalls), 4) if hardcase_recalls else None),
+        hardcase_ndcg=(round(_mean(hardcase_ndcgs), 4) if hardcase_ndcgs else None),
+        hardcase_map=(round(_mean(hardcase_maps), 4) if hardcase_maps else None),
         failure_breakdown=dict(sorted(failure_breakdown.items(), key=lambda x: (-x[1], x[0]))),
         preflight=preflight,
     )

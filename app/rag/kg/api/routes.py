@@ -1328,6 +1328,8 @@ class KGSnapshotDiffRequest(BaseModel):
 def export_kg_snapshot(
     pipeline_hash: Annotated[str, Query(min_length=1, max_length=200)],
     document_ids: Annotated[list[UUID] | None, Query()] = None,
+    include_details: Annotated[bool, Query(description="Include bounded node/edge details for exact diff")] = False,
+    detail_limit: Annotated[int, Query(ge=1, le=10000, description="Max nodes/edges per detail group")] = 1000,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1348,8 +1350,21 @@ def export_kg_snapshot(
         account_id=account_id,
         db=db,
     )
+    from app.rag.kg.snapshot import KG_SNAPSHOT_SCHEMA_V1, KG_SNAPSHOT_SCHEMA_V2, canonical_json_hash
+
     if not allowed_doc_ids:
-        return {"schema": "mimirq.kg_snapshot.v1", "pipeline_hash": pipeline_hash, "docs": 0, "events": 0, "entities": 0, "links": 0, "relations": 0, "entity_types": []}
+        return {
+            "schema": KG_SNAPSHOT_SCHEMA_V2 if include_details else KG_SNAPSHOT_SCHEMA_V1,
+            "pipeline_hash": pipeline_hash,
+            "docs": 0,
+            "events": 0,
+            "entities": 0,
+            "links": 0,
+            "relations": 0,
+            "entity_types": [],
+            "nodes": [] if include_details else None,
+            "edges": [] if include_details else None,
+        }
 
     from sqlalchemy import func
 
@@ -1432,8 +1447,8 @@ def export_kg_snapshot(
         .all()
     )
 
-    return {
-        "schema": "mimirq.kg_snapshot.v1",
+    snapshot: dict[str, Any] = {
+        "schema": KG_SNAPSHOT_SCHEMA_V2 if include_details else KG_SNAPSHOT_SCHEMA_V1,
         "pipeline_hash": str(pipeline_hash),
         "docs": int(docs_count),
         "events": int(event_count),
@@ -1444,6 +1459,141 @@ def export_kg_snapshot(
         "updated_at": updated_at,
         "elapsed_sec": round(float(time.perf_counter() - t0), 3),
     }
+    if not include_details:
+        return snapshot
+
+    event_rows = (
+        db.query(KgSourceEvent)
+        .filter(
+            KgSourceEvent.tenant_id == tenant_id,
+            KgSourceEvent.document_id.in_(allowed_doc_ids),
+            KgSourceEvent.pipeline_hash == pipeline_hash,
+        )
+        .order_by(KgSourceEvent.updated_at.desc(), KgSourceEvent.id.asc())
+        .limit(int(detail_limit))
+        .all()
+    )
+    entity_rows = (
+        db.query(KgEntity)
+        .join(KgEventEntity, KgEventEntity.entity_id == KgEntity.id)
+        .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
+        .filter(
+            KgSourceEvent.tenant_id == tenant_id,
+            KgSourceEvent.document_id.in_(allowed_doc_ids),
+            KgSourceEvent.pipeline_hash == pipeline_hash,
+        )
+        .group_by(KgEntity.id)
+        .order_by(KgEntity.type.asc(), KgEntity.name.asc(), KgEntity.id.asc())
+        .limit(int(detail_limit))
+        .all()
+    )
+    link_rows = (
+        db.query(KgEventEntity)
+        .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
+        .filter(
+            KgSourceEvent.tenant_id == tenant_id,
+            KgSourceEvent.document_id.in_(allowed_doc_ids),
+            KgSourceEvent.pipeline_hash == pipeline_hash,
+        )
+        .order_by(KgEventEntity.id.asc())
+        .limit(int(detail_limit))
+        .all()
+    )
+    relation_rows = (
+        db.query(KgRelation)
+        .filter(
+            KgRelation.tenant_id == tenant_id,
+            KgRelation.document_id.in_(allowed_doc_ids),
+            KgRelation.pipeline_hash == pipeline_hash,
+        )
+        .order_by(KgRelation.id.asc())
+        .limit(int(detail_limit))
+        .all()
+    )
+
+    nodes: list[dict[str, Any]] = []
+    for event in event_rows:
+        props = {
+            "title": event.title,
+            "summary": event.summary,
+            "document_id": str(event.document_id) if event.document_id else None,
+            "chunk_id": str(event.chunk_id) if event.chunk_id else None,
+            "extra_data": event.extra_data or {},
+        }
+        nodes.append(
+            {
+                "id": f"event:{event.id}",
+                "kind": "event",
+                "type": "event",
+                "name": event.title,
+                "props_hash": canonical_json_hash(props),
+            }
+        )
+    for entity in entity_rows:
+        props = {
+            "name": entity.name,
+            "type": entity.type,
+            "description": entity.description,
+            "normalized_name": entity.normalized_name,
+            "extra_data": entity.extra_data or {},
+        }
+        nodes.append(
+            {
+                "id": f"entity:{entity.id}",
+                "kind": "entity",
+                "type": str(entity.type or "unknown"),
+                "name": entity.name,
+                "props_hash": canonical_json_hash(props),
+            }
+        )
+
+    edges: list[dict[str, Any]] = []
+    for link in link_rows:
+        props = {
+            "role": link.role,
+            "weight": str(link.weight),
+            "extra_data": link.extra_data or {},
+        }
+        edges.append(
+            {
+                "id": f"event_entity:{link.id}",
+                "src": f"event:{link.event_id}",
+                "dst": f"entity:{link.entity_id}",
+                "kind": "event_entity",
+                "predicate": str(link.role or "mentions"),
+                "props_hash": canonical_json_hash(props),
+            }
+        )
+    for relation in relation_rows:
+        props = {
+            "predicate": relation.predicate,
+            "predicate_raw": relation.predicate_raw,
+            "confidence": str(relation.confidence),
+            "qualifiers": relation.qualifiers or {},
+            "references": relation.references or {},
+            "extra_data": relation.extra_data or {},
+        }
+        edges.append(
+            {
+                "id": f"relation:{relation.id}",
+                "src": f"entity:{relation.subject_entity_id}",
+                "dst": f"entity:{relation.object_entity_id}",
+                "kind": "relation",
+                "predicate": relation.predicate,
+                "props_hash": canonical_json_hash(props),
+            }
+        )
+
+    snapshot["nodes"] = nodes
+    snapshot["edges"] = edges
+    snapshot["detail_limits"] = {"nodes": int(detail_limit), "edges": int(detail_limit)}
+    snapshot["detail_truncated"] = {
+        "events": int(event_count) > len(event_rows),
+        "entities": int(entity_count) > len(entity_rows),
+        "links": int(link_count) > len(link_rows),
+        "relations": int(relation_count) > len(relation_rows),
+    }
+    return snapshot
 
 
 @router.post("/snapshots/diff", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -1468,6 +1618,8 @@ def compare_kg_snapshots(
     snap_a = export_kg_snapshot(
         pipeline_hash=pipeline_hash_a,
         document_ids=document_ids,
+        include_details=True,
+        detail_limit=1000,
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,
@@ -1475,6 +1627,8 @@ def compare_kg_snapshots(
     snap_b = export_kg_snapshot(
         pipeline_hash=pipeline_hash_b,
         document_ids=document_ids,
+        include_details=True,
+        detail_limit=1000,
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,

@@ -37,7 +37,7 @@ describe('knowledge workspace message sources', () => {
 
     expect(settingsSrc).toContain("useTranslations('KnowledgeSettingsPanel')")
     expect(settingsSrc).toContain("label: t(`runStatus.${value}`)")
-    expect(settingsSrc).toContain('t("header.title")')
-    expect(settingsSrc).toContain('t("connectorRuns.title")')
+    expect(settingsSrc).toContain("t('header.title')")
+    expect(settingsSrc).toContain("t('connectorRuns.title')")
   })
 })

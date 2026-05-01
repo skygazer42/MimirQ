@@ -67,6 +67,20 @@ def test_build_chat_message_metadata_embeds_rewrite_docs_and_latency() -> None:
     }
 
 
+def test_stream_chat_legacy_inputs_accept_hyde_override() -> None:
+    import app.rag.engine as engine_mod
+
+    _context, rag_config, _response_options, _prompt_selection = engine_mod._resolve_stream_chat_inputs(
+        context=None,
+        rag_config=None,
+        response_options=None,
+        prompt_selection=None,
+        legacy_overrides={"enable_hyde": False},
+    )
+
+    assert rag_config.enable_hyde is False
+
+
 @pytest.mark.asyncio
 async def test_persist_chat_stream_turn_background_accepts_options(
     monkeypatch: pytest.MonkeyPatch,

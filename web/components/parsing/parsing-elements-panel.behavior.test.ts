@@ -66,6 +66,12 @@ describe('parsing elements panel behavior', () => {
     )
     rendered.push(view)
 
+    const expandButton = Array.from(view.container.querySelectorAll('button')).find((button) => button.textContent?.trim() === '展开')
+    expect(expandButton).toBeTruthy()
+    act(() => {
+      expandButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
     expect(view.container.textContent).toContain('Revenue growth chart')
     expect(view.container.textContent).toContain('扫码二维码')
     expect(view.container.textContent).toContain('杭州测试科技有限公司')
@@ -101,6 +107,12 @@ describe('parsing elements panel behavior', () => {
       })
     )
     rendered.push(view)
+
+    const expandButton = Array.from(view.container.querySelectorAll('button')).find((button) => button.textContent?.trim() === '展开')
+    expect(expandButton).toBeTruthy()
+    act(() => {
+      expandButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
 
     expect(view.container.textContent).not.toContain('全部图片子类')
   })

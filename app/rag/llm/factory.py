@@ -3,6 +3,7 @@ Factory for LLM and embedding clients backed by the existing project settings.
 """
 import asyncio
 import json
+import os
 from typing import Any
 
 import httpx
@@ -21,6 +22,14 @@ from app.rag.llm.prompt_cache import annotate_prompt_cache_content, detect_anthr
 from app.storage.vector.milvus import milvus_store
 
 logger = get_logger("rag.llm.factory")
+
+
+def _resolve_explicit_http_proxy() -> str | None:
+    for key in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
+        value = str(os.getenv(key) or "").strip()
+        if value and not value.lower().startswith("socks"):
+            return value
+    return None
 
 
 def _message_content_to_text(content: Any) -> str:
@@ -70,10 +79,12 @@ class OpenAIChatClient(BaseLLMClient):
             base_url=str(base_url),
         )
 
+        explicit_proxy = _resolve_explicit_http_proxy() if not trust_env else None
+        client_trust_env = trust_env if explicit_proxy is None else False
         if http_client is None:
-            http_client = httpx.Client(trust_env=trust_env, timeout=timeout)
+            http_client = httpx.Client(trust_env=client_trust_env, timeout=timeout, proxy=explicit_proxy)
         if http_async_client is None:
-            http_async_client = httpx.AsyncClient(trust_env=trust_env, timeout=timeout)
+            http_async_client = httpx.AsyncClient(trust_env=client_trust_env, timeout=timeout, proxy=explicit_proxy)
         client_kwargs: dict[str, Any] = {
             "model": model_name,
             "api_key": api_key,
@@ -87,7 +98,9 @@ class OpenAIChatClient(BaseLLMClient):
         # See app.rag.llm.langchain_chat.build_chat_model_from_config: some
         # OpenAI-compatible providers fail when LangChain reuses the shared pooled
         # AsyncClient for chat completions. Default to LangChain-managed async clients.
-        if settings.LLM_USE_POOLED_ASYNC_HTTP_CLIENT:
+        # Exception: when env proxies are disabled (for example unsupported socks://),
+        # also pass the async client so LangChain/OpenAI does not read ALL_PROXY again.
+        if settings.LLM_USE_POOLED_ASYNC_HTTP_CLIENT or not trust_env:
             client_kwargs["http_async_client"] = http_async_client
         self._client = ChatOpenAI(**client_kwargs)
 

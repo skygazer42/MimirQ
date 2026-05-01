@@ -33,6 +33,7 @@ import { cn, formatFileSize } from '@/lib/utils'
 import { EmptyState } from '@/components/ui/empty-state'
 import { systemPageTokens } from '@/components/ui/system-page-tokens'
 import { SystemDataStrip } from '@/components/ui/system-data-strip'
+import { BackendInterfaceWorkbench } from '@/components/diagnostics/backend-interface-workbench'
 import type { OnlineQualitySummaryResponse, PromptPreviewResponse } from '@/types'
 
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts'
@@ -1381,6 +1382,8 @@ export default function DiagnosticsPage() {
 		            </div>
 		          </DenseCardContent>
 		        </DenseCard>
+
+        <BackendInterfaceWorkbench />
 
 		        <DenseCard>
 		          <DenseCardHeader className="flex flex-row items-center justify-between space-y-0">

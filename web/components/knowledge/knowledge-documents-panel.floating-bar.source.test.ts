@@ -9,7 +9,7 @@ describe('KnowledgeDocumentsPanel floating command bar', () => {
 
     expect(src).toContain('backdrop-blur-2xl')
     expect(src).toContain('shadow-[0_30px_90px_-32px_rgba(15,23,42,0.88)')
-    expect(src).toContain('absolute inset-0 bg-gradient-to-r from-background/95 via-background/78 to-background/95')
+    expect(src).toContain('absolute inset-0 bg-background/90')
     expect(src).toContain('absolute -left-8 top-1/2 size-28 -translate-y-1/2 rounded-full bg-primary/10 blur-3xl')
   })
 })

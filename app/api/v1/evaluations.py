@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
@@ -34,6 +35,8 @@ from app.api.schemas.kg_diagnostics import (
     KGSearchDiagnosticsRunList,
 )
 from app.api.schemas.regression import (
+    RagasRegressionAblationBatchRequest,
+    RagasRegressionAblationBatchResponse,
     RagasRegressionCaseCreateRequest,
     RagasRegressionCaseImportRequest,
     RagasRegressionCaseList,
@@ -70,6 +73,7 @@ from app.services.dataset_service import DatasetService
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 from app.services.regression_case_bundle import export_case_bundle, plan_case_import
 from app.services.regression_leaderboard import build_regression_run_leaderboard
+from app.services.regression_run_ablation_batch import expand_ablation_grid
 from app.services.regression_run_bundle import export_regression_run_bundle
 from app.services.regression_run_diff import diff_regression_run_summaries
 from app.services.regression_run_diff_html import render_regression_run_diff_html
@@ -79,6 +83,7 @@ from app.services.regression_run_scope import (
     MissingCasesError,
     validate_case_ids_belong_to_dataset,
 )
+from app.services.regression_run_significance import compare_regression_items
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -93,6 +98,79 @@ _DETAIL_KG_DISABLED = "KG is disabled (KG_ENABLED=false)"
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 logger = logging.getLogger(__name__)
+
+_REGRESSION_RUN_CONTROL_FIELDS = {
+    "case_ids",
+    "dataset_id",
+    "metrics",
+    "use_llm_judge",
+    "skip_empty_contexts",
+    "max_cases",
+}
+
+
+def _regression_rag_params_from_request(request: RagasRegressionRunCreateRequest) -> dict[str, Any]:
+    return {
+        key: getattr(request, key)
+        for key in RagasRegressionRunCreateRequest.model_fields
+        if key not in _REGRESSION_RUN_CONTROL_FIELDS
+    }
+
+
+def _jsonable_regression_rag_params(rag_params: dict[str, Any]) -> dict[str, Any]:
+    out = dict(rag_params)
+    prompt_template_id = out.get("prompt_template_id")
+    if prompt_template_id is not None:
+        out["prompt_template_id"] = str(prompt_template_id)
+    return out
+
+
+def _regression_run_params_from_request(request: RagasRegressionRunCreateRequest) -> dict[str, Any]:
+    return {
+        "case_ids": [str(x) for x in (request.case_ids or [])],
+        "dataset_id": str(request.dataset_id),
+        "skip_empty_contexts": request.skip_empty_contexts,
+        "max_cases": request.max_cases,
+        "use_llm_judge": bool(getattr(request, "use_llm_judge", False)),
+        "rag_params": _jsonable_regression_rag_params(_regression_rag_params_from_request(request)),
+    }
+
+
+def _create_regression_run_and_enqueue(
+    *,
+    request: RagasRegressionRunCreateRequest,
+    background_tasks: BackgroundTasks,
+    tenant_id: UUID,
+    account_id: str,
+    db: Session,
+) -> RagasRegressionRun:
+    rag_params = _regression_rag_params_from_request(request)
+    run = RagasRegressionRun(
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=request.dataset_id,
+        status="pending",
+        metrics=request.metrics,
+        params=_regression_run_params_from_request(request),
+    )
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+
+    background_tasks.add_task(
+        run_regression_ragas_evaluation,
+        run_id=run.id,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        case_ids=list(request.case_ids or []),
+        dataset_id=request.dataset_id,
+        metric_names=request.metrics,
+        use_llm_judge=bool(getattr(request, "use_llm_judge", False)),
+        skip_empty_contexts=request.skip_empty_contexts,
+        max_cases=request.max_cases,
+        rag_params=rag_params,
+    )
+    return run
 
 
 def _finalize_scope_document_ids(
@@ -1019,104 +1097,98 @@ async def create_ragas_regression_run(
         except DatasetMismatchError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    run = RagasRegressionRun(
+    run = _create_regression_run_and_enqueue(
+        request=request,
+        background_tasks=background_tasks,
         tenant_id=tenant_id,
         account_id=account_id,
-        dataset_id=request.dataset_id,
-        status="pending",
-        metrics=request.metrics,
-        params={
-            "case_ids": [str(x) for x in (request.case_ids or [])],
-            "dataset_id": str(request.dataset_id),
-            "skip_empty_contexts": request.skip_empty_contexts,
-            "max_cases": request.max_cases,
-            "use_llm_judge": bool(getattr(request, "use_llm_judge", False)),
-            "rag_params": {
-                "retrieval_profile": request.retrieval_profile,
-                "enable_query_alias_expansion": request.enable_query_alias_expansion,
-                "query_alias_max_queries": request.query_alias_max_queries,
-                "enable_multi_query": request.enable_multi_query,
-                "multi_query_count": request.multi_query_count,
-                "multi_query_temperature": request.multi_query_temperature,
-                "multi_query_max_chars": request.multi_query_max_chars,
-                "enable_query_rewrite": request.enable_query_rewrite,
-                "query_rewrite_strategy": request.query_rewrite_strategy,
-                "query_rewrite_temperature": request.query_rewrite_temperature,
-                "query_rewrite_max_chars": request.query_rewrite_max_chars,
-                "sparse_retrieval_enabled": request.sparse_retrieval_enabled,
-                "sparse_retrieval_provider": request.sparse_retrieval_provider,
-                "top_k": request.top_k,
-                "score_threshold": request.score_threshold,
-                "retrieval_mode": request.retrieval_mode,
-                "alpha": request.alpha,
-                "fusion_strategy": request.fusion_strategy,
-                "fusion_budgets": request.fusion_budgets,
-                "fusion_min_scores": request.fusion_min_scores,
-                "fusion_weights": request.fusion_weights,
-                "enable_weight_rerank": request.enable_weight_rerank,
-                "vector_weight": request.vector_weight,
-                "keyword_weight": request.keyword_weight,
-                "mmr_lambda": request.mmr_lambda,
-                "enable_reranker": request.enable_reranker,
-                "reranker_provider": request.reranker_provider,
-                "reranker_top_n": request.reranker_top_n,
-                "prompt_template_id": str(request.prompt_template_id) if request.prompt_template_id else None,
-                "prompt_template_key": request.prompt_template_key,
-                "prompt_ab_experiment_key": request.prompt_ab_experiment_key,
-            },
-        },
-    )
-    db.add(run)
-    db.commit()
-    db.refresh(run)
-
-    background_tasks.add_task(
-        run_regression_ragas_evaluation,
-        run_id=run.id,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        case_ids=list(request.case_ids or []),
-        dataset_id=request.dataset_id,
-        metric_names=request.metrics,
-        use_llm_judge=bool(getattr(request, "use_llm_judge", False)),
-        skip_empty_contexts=request.skip_empty_contexts,
-        max_cases=request.max_cases,
-        rag_params={
-            "retrieval_profile": request.retrieval_profile,
-            "enable_query_alias_expansion": request.enable_query_alias_expansion,
-            "query_alias_max_queries": request.query_alias_max_queries,
-            "enable_multi_query": request.enable_multi_query,
-            "multi_query_count": request.multi_query_count,
-            "multi_query_temperature": request.multi_query_temperature,
-            "multi_query_max_chars": request.multi_query_max_chars,
-            "enable_query_rewrite": request.enable_query_rewrite,
-            "query_rewrite_strategy": request.query_rewrite_strategy,
-            "query_rewrite_temperature": request.query_rewrite_temperature,
-            "query_rewrite_max_chars": request.query_rewrite_max_chars,
-            "sparse_retrieval_enabled": request.sparse_retrieval_enabled,
-            "sparse_retrieval_provider": request.sparse_retrieval_provider,
-            "top_k": request.top_k,
-            "score_threshold": request.score_threshold,
-            "retrieval_mode": request.retrieval_mode,
-            "alpha": request.alpha,
-            "fusion_strategy": request.fusion_strategy,
-            "fusion_budgets": request.fusion_budgets,
-            "fusion_min_scores": request.fusion_min_scores,
-            "fusion_weights": request.fusion_weights,
-            "enable_weight_rerank": request.enable_weight_rerank,
-            "vector_weight": request.vector_weight,
-            "keyword_weight": request.keyword_weight,
-            "mmr_lambda": request.mmr_lambda,
-            "enable_reranker": request.enable_reranker,
-            "reranker_provider": request.reranker_provider,
-            "reranker_top_n": request.reranker_top_n,
-            "prompt_template_id": request.prompt_template_id,
-            "prompt_template_key": request.prompt_template_key,
-            "prompt_ab_experiment_key": request.prompt_ab_experiment_key,
-        },
+        db=db,
     )
 
     return run
+
+
+@router.post(
+    "/ragas/regression/ablation/batch",
+    response_model=RagasRegressionAblationBatchResponse,
+    status_code=201,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
+async def create_ragas_regression_ablation_batch(
+    request: RagasRegressionAblationBatchRequest,
+    background_tasks: BackgroundTasks,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Create a bounded cartesian batch of regression runs for ablation analysis."""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    ds = DatasetService.get_dataset(db, tenant_id, request.dataset_id)
+    DatasetService.assert_dataset_readable(db, ds, account_id)
+
+    if request.case_ids:
+        rows = (
+            db.query(RagasRegressionCase.id, RagasRegressionCase.dataset_id)
+            .filter(
+                RagasRegressionCase.tenant_id == tenant_id,
+                RagasRegressionCase.id.in_(list(request.case_ids or [])),
+            )
+            .all()
+        )
+        try:
+            validate_case_ids_belong_to_dataset(dataset_id=request.dataset_id, case_ids=list(request.case_ids), rows=rows)
+        except MissingCasesError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except DatasetMismatchError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    allowed_grid_keys = set(RagasRegressionRunCreateRequest.model_fields) - _REGRESSION_RUN_CONTROL_FIELDS
+    try:
+        variants = expand_ablation_grid(
+            request.grid,
+            max_combinations=request.max_combinations,
+            allowed_keys=allowed_grid_keys,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    ablation_id = uuid4()
+    run_ids: list[UUID] = []
+    base_payload = request.model_dump(exclude={"grid", "max_combinations", "ablation_label_prefix"})
+    for index, variant in enumerate(variants):
+        try:
+            variant_request = RagasRegressionRunCreateRequest.model_validate({**base_payload, **variant})
+        except ValidationError as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid ablation variant {index + 1}: {exc}") from exc
+
+        run = _create_regression_run_and_enqueue(
+            request=variant_request,
+            background_tasks=background_tasks,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            db=db,
+        )
+        params = dict(getattr(run, "params", None) or {})
+        params["ablation_id"] = str(ablation_id)
+        params["ablation_variant_index"] = int(index)
+        params["ablation_variant"] = dict(variant)
+        if request.ablation_label_prefix:
+            params["ablation_label"] = f"{request.ablation_label_prefix}-{index + 1}"
+        run.params = params
+        db.add(run)
+        db.commit()
+        db.refresh(run)
+        run_ids.append(run.id)
+
+    return {
+        "ablation_id": ablation_id,
+        "total": len(run_ids),
+        "run_ids": run_ids,
+        "variants": variants,
+        "status": "queued",
+    }
 
 
 @router.get("/ragas/regression/runs", response_model=RagasRegressionRunList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -1372,6 +1444,11 @@ def purge_ragas_regression_runs(
 async def diff_ragas_regression_runs(
     run_id: UUID,
     base_run_id: Annotated[UUID, Query(..., description="Base run id to compare against")],
+    include_significance: Annotated[
+        bool, Query(description="Compute per-case paired significance statistics when items are available")
+    ] = True,
+    include_per_case: Annotated[bool, Query(description="Include bounded per-case metric diffs")] = False,
+    max_case_diffs: Annotated[int, Query(ge=1, le=5000, description="Max case diffs to include")] = 500,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1410,6 +1487,30 @@ async def diff_ragas_regression_runs(
         target_summary=target_summary,
         max_slice_buckets=40,
     )
+    if include_significance or include_per_case:
+        base_items = (
+            db.query(RagasRegressionItem)
+            .filter(RagasRegressionItem.run_id == base_run_id, RagasRegressionItem.tenant_id == tenant_id)
+            .order_by(RagasRegressionItem.created_at.asc())
+            .all()
+        )
+        target_items = (
+            db.query(RagasRegressionItem)
+            .filter(RagasRegressionItem.run_id == run_id, RagasRegressionItem.tenant_id == tenant_id)
+            .order_by(RagasRegressionItem.created_at.asc())
+            .all()
+        )
+        comparison = compare_regression_items(
+            base_items=base_items,
+            target_items=target_items,
+            metric_keys=[str(row.get("key")) for row in diff.get("metric_diffs", []) if isinstance(row, dict)],
+            max_case_diffs=max_case_diffs,
+        )
+        if include_significance:
+            diff["significance"] = comparison.get("significance") or []
+            diff["significance_summary"] = comparison.get("summary") or {}
+        if include_per_case:
+            diff["case_diffs"] = comparison.get("case_diffs") or []
     diff["base_params"] = dict(getattr(base, "params", None) or {})
     diff["target_params"] = dict(getattr(target, "params", None) or {})
     return RagasRegressionRunDiffResponse(**diff)

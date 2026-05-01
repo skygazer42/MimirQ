@@ -75,6 +75,8 @@ describe('KG diagnostics quality report wiring', () => {
       'summary.baselineHitRate',
       'summary.baselineMrr',
       'summary.baselineRecall',
+      'summary.baselineNdcg',
+      'summary.baselineMap',
       'summary.hardcasesGenerated',
       'summary.empty',
       'summary.runHint',

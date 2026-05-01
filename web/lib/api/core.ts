@@ -52,11 +52,18 @@ export const apiClient = axios.create({
   timeout: API_TIMEOUT_MS,
 })
 
+function shouldAvoidDevOverlayForHandledApiError(): boolean {
+  // Next dev overlay treats browser console.error as a page error. These API
+  // failures are already thrown to page-level handlers, so keep dev UX usable.
+  return globalThis.window !== undefined && process.env.NODE_ENV !== 'production'
+}
+
 function logRequestScopedError(message: string, requestId?: string, detail?: string) {
   const parts = [message]
   if (detail) parts.push(detail)
   if (requestId) parts.push(`(request_id=${requestId})`)
-  console.error(...parts)
+  const log = shouldAvoidDevOverlayForHandledApiError() ? console.warn : console.error
+  log(...parts)
 }
 
 function toFiniteNumber(value: unknown): number | undefined {
@@ -189,7 +196,7 @@ async function handleApiClientError(error: any) {
     const headers = AxiosHeaders.from(error.config?.headers)
     const requestId = headerValueToString(headers.get('X-Request-ID'))
     ;(error).requestId = requestId
-    logRequestScopedError('[API] 网络错误，请检查后端服务是否启动', requestId)
+    logRequestScopedError('[API] 网络连接中断或后端不可达，请检查后端服务 / API 地址', requestId)
   }
 
   throw error

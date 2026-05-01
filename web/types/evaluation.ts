@@ -203,10 +203,35 @@ export interface RegressionRunCreate {
   use_llm_judge?: boolean
   skip_empty_contexts?: boolean
   max_cases?: number
+  retrieval_profile?: string | null
+  enable_query_alias_expansion?: boolean | null
+  query_alias_max_queries?: number | null
+  enable_multi_query?: boolean | null
+  multi_query_count?: number | null
+  multi_query_temperature?: number | null
+  multi_query_max_chars?: number | null
+  enable_hyde?: boolean | null
+  enable_hierarchy_recall?: boolean | null
+  hierarchy_family_collapse?: boolean | null
+  hierarchy_family_aggregation?: 'frequency' | 'score' | 'combined' | null
+  hierarchy_tree_dedup?: boolean | null
+  hierarchy_parent_depth?: number | null
+  hierarchy_sibling_window?: number | null
+  hierarchy_overfetch_factor?: number | null
+  enable_query_rewrite?: boolean | null
+  query_rewrite_strategy?: string | null
+  query_rewrite_temperature?: number | null
+  query_rewrite_max_chars?: number | null
+  sparse_retrieval_enabled?: boolean | null
+  sparse_retrieval_provider?: string | null
   top_k?: number
   score_threshold?: number
   retrieval_mode?: string
   alpha?: number
+  fusion_strategy?: string | null
+  fusion_budgets?: Record<string, number> | null
+  fusion_min_scores?: Record<string, number> | null
+  fusion_weights?: Record<string, number> | null
   enable_weight_rerank?: boolean
   vector_weight?: number
   keyword_weight?: number
@@ -217,6 +242,22 @@ export interface RegressionRunCreate {
   prompt_template_id?: string
   prompt_template_key?: string
   prompt_ab_experiment_key?: string
+}
+
+export type RegressionAblationGridValue = string | number | boolean | null | JsonObject
+
+export interface RegressionAblationBatchRequest extends RegressionRunCreate {
+  grid: Record<string, RegressionAblationGridValue[]>
+  max_combinations?: number
+  ablation_label_prefix?: string | null
+}
+
+export interface RegressionAblationBatchResponse {
+  ablation_id: string
+  total: number
+  run_ids: string[]
+  variants: JsonObject[]
+  status: string
 }
 
 export interface RegressionRunList {
@@ -273,6 +314,31 @@ export interface RegressionRunSliceDiff {
   buckets: RegressionRunSliceBucketDiff[]
 }
 
+export interface RegressionRunCaseDiff {
+  case_id: string
+  question: string
+  metric_diffs: RegressionRunMetricDiff[]
+  mean_delta?: number | null
+  label: string
+}
+
+export interface RegressionRunMetricSignificance {
+  key: string
+  compared: number
+  base_mean?: number | null
+  target_mean?: number | null
+  delta_mean?: number | null
+  bootstrap_ci_low?: number | null
+  bootstrap_ci_high?: number | null
+  p_value?: number | null
+  p_value_method?: string | null
+  p_value_bh?: number | null
+  wilcoxon_p_value?: number | null
+  mcnemar_p_value?: number | null
+  cohen_d?: number | null
+  significant: boolean
+}
+
 export interface RagasRegressionRunDiffResponse {
   base_run_id: string
   target_run_id: string
@@ -282,6 +348,9 @@ export interface RagasRegressionRunDiffResponse {
   metric_diffs: RegressionRunMetricDiff[]
   diff_score?: RegressionRunDiffScore | null
   slice_diffs: Record<string, RegressionRunSliceDiff>
+  significance: RegressionRunMetricSignificance[]
+  case_diffs: RegressionRunCaseDiff[]
+  significance_summary: JsonObject
 }
 
 // ==================== RAGViz（相似度热力图） ====================

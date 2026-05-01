@@ -128,6 +128,7 @@ def _effective_config(*, rag_config: ChatRAGConfig, include_runtime_defaults: bo
         "reranker_top_n": int(rag_config.reranker_top_n or 0),
         "enable_multi_query": getattr(rag_config, "enable_multi_query", None),
         "multi_query_count": getattr(rag_config, "multi_query_count", None),
+        "enable_hyde": getattr(rag_config, "enable_hyde", None),
         "enable_query_rewrite": getattr(rag_config, "enable_query_rewrite", None),
         "query_rewrite_strategy": getattr(rag_config, "query_rewrite_strategy", None),
         "sparse_retrieval_enabled": getattr(rag_config, "sparse_retrieval_enabled", None),

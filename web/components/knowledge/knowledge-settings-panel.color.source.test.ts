@@ -11,6 +11,6 @@ describe('Knowledge settings panel colors', () => {
     expect(src).toContain('border-indigo-500/20 bg-indigo-500/[0.05]')
     expect(src).toContain('bg-primary/10 px-2.5 py-0.5 rounded-lg border border-primary/20')
     expect(src).toContain('border-border/40 bg-background/70')
-    expect(src).toContain('bg-gradient-to-r from-primary/8 via-transparent to-primary/5')
+    expect(src).toContain('bg-primary/10')
   })
 })

@@ -444,6 +444,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/{document_id}/clean-docx": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Document Clean Docx */
+        get: operations["download_document_clean_docx_api_v1_documents__document_id__clean_docx_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{document_id}/versions": {
         parameters: {
             query?: never;
@@ -2123,6 +2140,193 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/datasets/analysis/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Tenant Dataset Analysis Dashboard */
+        get: operations["get_tenant_dataset_analysis_dashboard_api_v1_datasets_analysis_dashboard_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/analysis/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Dataset Analysis Summary */
+        get: operations["get_dataset_analysis_summary_api_v1_datasets__dataset_id__analysis_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/analysis/examples": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Dataset Analysis Examples */
+        get: operations["get_dataset_analysis_examples_api_v1_datasets__dataset_id__analysis_examples_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/analysis/rule-suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Dataset Analysis Rule Suggestions */
+        get: operations["get_dataset_analysis_rule_suggestions_api_v1_datasets__dataset_id__analysis_rule_suggestions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/analysis/export.json": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Dataset Analysis Json Endpoint */
+        get: operations["export_dataset_analysis_json_endpoint_api_v1_datasets__dataset_id__analysis_export_json_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/analysis/export.jsonl": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Dataset Analysis Jsonl Endpoint */
+        get: operations["export_dataset_analysis_jsonl_endpoint_api_v1_datasets__dataset_id__analysis_export_jsonl_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/analysis/report.html": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Dataset Analysis Html Endpoint */
+        get: operations["export_dataset_analysis_html_endpoint_api_v1_datasets__dataset_id__analysis_report_html_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/analysis/glossary-writeback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Writeback Dataset Analysis Glossary Endpoint */
+        post: operations["writeback_dataset_analysis_glossary_endpoint_api_v1_datasets__dataset_id__analysis_glossary_writeback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/analysis/export.png": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Dataset Analysis Png Task Endpoint */
+        post: operations["create_dataset_analysis_png_task_endpoint_api_v1_datasets__dataset_id__analysis_export_png_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/analysis/export-tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Dataset Analysis Png Task Endpoint */
+        get: operations["get_dataset_analysis_png_task_endpoint_api_v1_datasets__dataset_id__analysis_export_tasks__task_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/analysis/export-tasks/{task_id}/result.png": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Dataset Analysis Png Task Result Endpoint */
+        get: operations["get_dataset_analysis_png_task_result_endpoint_api_v1_datasets__dataset_id__analysis_export_tasks__task_id__result_png_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/datasets/{dataset_id}/precheck/scan-runs": {
         parameters: {
             query?: never;
@@ -3040,6 +3244,108 @@ export interface paths {
          * @description Run KG search (query -> recall/expand/rerank) for the current tenant.
          */
         post: operations["run_kg_search_api_v1_kg_search_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/network/k_hop_neighbors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** K Hop Neighbors */
+        post: operations["k_hop_neighbors_api_v1_kg_network_k_hop_neighbors_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/network/shortest_path": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Shortest Path */
+        post: operations["shortest_path_api_v1_kg_network_shortest_path_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/network/paths_between": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Paths Between */
+        post: operations["paths_between_api_v1_kg_network_paths_between_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/network/centrality": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Centrality */
+        post: operations["centrality_api_v1_kg_network_centrality_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/network/community_of": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Community Of */
+        post: operations["community_of_api_v1_kg_network_community_of_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/network/connected_component": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Connected Component */
+        post: operations["connected_component_api_v1_kg_network_connected_component_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4362,6 +4668,142 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/industry-rules/rulesets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Industry Rulesets */
+        get: operations["get_industry_rulesets_api_v1_industry_rules_rulesets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/industry-rules/rulesets/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Industry Ruleset */
+        get: operations["get_industry_ruleset_api_v1_industry_rules_rulesets__name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/industry-rules/rulesets/{name}/glossary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put Industry Ruleset Glossary */
+        put: operations["put_industry_ruleset_glossary_api_v1_industry_rules_rulesets__name__glossary_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/industry-rules/rulesets/{name}/patterns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put Industry Ruleset Patterns */
+        put: operations["put_industry_ruleset_patterns_api_v1_industry_rules_rulesets__name__patterns_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/industry-rules/rulesets/{name}/intents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put Industry Ruleset Intents */
+        put: operations["put_industry_ruleset_intents_api_v1_industry_rules_rulesets__name__intents_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/industry-rules/preview-rewrite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Industry Rules Rewrite */
+        post: operations["preview_industry_rules_rewrite_api_v1_industry_rules_preview_rewrite_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lineage/chunk/{chunk_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Chunk Lineage */
+        get: operations["get_chunk_lineage_api_v1_lineage_chunk__chunk_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/lineage/answer/{request_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Answer Lineage */
+        get: operations["get_answer_lineage_api_v1_lineage_answer__request_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pipeline/capabilities": {
         parameters: {
             query?: never;
@@ -4679,6 +5121,33 @@ export interface paths {
          *     - provider=simple (lightweight regex tokenization + term frequency)
          */
         post: operations["extract_keywords_api_v1_pipeline_extract_keywords_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pipeline/auto-annotations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Auto Annotations
+         * @description Generate reviewable annotation candidates for the data-governance UI.
+         *
+         *     Default mode extracts document-focus spans for human review:
+         *     - LLM first when configured
+         *     - local keyword/rule extraction as fallback
+         *     - sensitive/compliance detectors only when explicitly requested
+         *
+         *     Results are suggestions for human confirmation, not authoritative labels.
+         */
+        post: operations["auto_annotations_api_v1_pipeline_auto_annotations_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6105,6 +6574,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/rtbf/request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request Rtbf Cascade */
+        post: operations["request_rtbf_cascade_api_v1_rtbf_request_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/rtbf/status/{ticket_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Rtbf Status */
+        get: operations["get_rtbf_status_api_v1_rtbf_status__ticket_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/audit/logs": {
         parameters: {
             query?: never;
@@ -6432,6 +6935,163 @@ export interface components {
             user: components["schemas"]["UserPublic"];
             token: components["schemas"]["TokenResponse"];
         };
+        /** AutoAnnotationItem */
+        AutoAnnotationItem: {
+            /** Text */
+            text: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "entity" | "keyword" | "sensitive" | "custom";
+            /** Label */
+            label: string;
+            /** Start */
+            start: number;
+            /** End */
+            end: number;
+            /**
+             * Confidence
+             * @default 0.5
+             */
+            confidence: number;
+            /**
+             * Source
+             * @description Detector source, e.g. keyword, regex_entity, pii, secret.
+             * @default keyword
+             */
+            source: string;
+        };
+        /** AutoAnnotationRequest */
+        AutoAnnotationRequest: {
+            /**
+             * Text
+             * @description Text to inspect for reviewable annotation candidates.
+             */
+            text: string;
+            /**
+             * Mode
+             * @description document_focus extracts important document spans; compliance exposes PII/secret/entity detectors.
+             * @default document_focus
+             * @enum {string}
+             */
+            mode: "document_focus" | "compliance";
+            /**
+             * Providers
+             * @description Optional explicit provider list. When omitted, legacy enable_* switches decide providers.
+             */
+            providers?: ("cpu" | "llm" | "gliner" | "keyword" | "entity" | "regex" | "pii" | "secret" | "sensitive")[] | null;
+            /**
+             * Enable Llm
+             * @description Use configured LLM first for document_focus mode.
+             * @default false
+             */
+            enable_llm: boolean;
+            /**
+             * Enable Llm Topics
+             * @description Return LLM document-level semantic tags when available.
+             * @default false
+             */
+            enable_llm_topics: boolean;
+            /** Llm Model */
+            llm_model?: string | null;
+            /**
+             * Enable Keywords
+             * @default true
+             */
+            enable_keywords: boolean;
+            /**
+             * Enable Entities
+             * @default true
+             */
+            enable_entities: boolean;
+            /**
+             * Enable Sensitive
+             * @default false
+             */
+            enable_sensitive: boolean;
+            /**
+             * Keyword Provider
+             * @default simple
+             */
+            keyword_provider: string;
+            /**
+             * Keyword Top K
+             * @default 12
+             */
+            keyword_top_k: number;
+            /**
+             * Max Chars
+             * @default 20000
+             */
+            max_chars: number;
+            /**
+             * Max Annotations
+             * @default 80
+             */
+            max_annotations: number;
+        };
+        /** AutoAnnotationResponse */
+        AutoAnnotationResponse: {
+            /** Annotations */
+            annotations?: components["schemas"]["AutoAnnotationItem"][];
+            /** Document Tags */
+            document_tags?: components["schemas"]["AutoDocumentTag"][];
+            /** Summary */
+            summary?: string | null;
+            /**
+             * Text Chars
+             * @default 0
+             */
+            text_chars: number;
+            /**
+             * Scanned Chars
+             * @default 0
+             */
+            scanned_chars: number;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+            /** Keyword Provider */
+            keyword_provider?: string | null;
+            /**
+             * Strategy
+             * @default rules
+             * @enum {string}
+             */
+            strategy: "llm" | "rules" | "hybrid";
+            /** Providers Used */
+            providers_used?: string[];
+            /** Warnings */
+            warnings?: string[];
+        };
+        /** AutoDocumentTag */
+        AutoDocumentTag: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "topic" | "category" | "domain" | "industry" | "doc_type" | "sensitivity" | "quality" | "keyword";
+            /** Value */
+            value: string;
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+            /**
+             * Confidence
+             * @default 0.85
+             */
+            confidence: number;
+            /**
+             * Source
+             * @default llm
+             */
+            source: string;
+        };
         /**
          * BatchFileInfo
          * @description Batch upload file info.
@@ -6515,10 +7175,7 @@ export interface components {
         };
         /** Body_import_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_import_post */
         Body_import_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_import_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Replace
@@ -6528,18 +7185,12 @@ export interface components {
         };
         /** Body_import_evidence_items_api_v1_evidence_suites__suite_id__items_import_post */
         Body_import_evidence_items_api_v1_evidence_suites__suite_id__items_import_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
         };
         /** Body_import_governance_profiles_api_v1_pipeline_governance_profiles_import_post */
         Body_import_governance_profiles_api_v1_pipeline_governance_profiles_import_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Overwrite
@@ -6549,10 +7200,7 @@ export interface components {
         };
         /** Body_ingestion_preview_api_v1_pipeline_ingestion_preview_post */
         Body_ingestion_preview_api_v1_pipeline_ingestion_preview_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Dataset Id
@@ -6571,20 +7219,14 @@ export interface components {
         };
         /** Body_parse_preview_api_v1_pipeline_parse_preview_post */
         Body_parse_preview_api_v1_pipeline_parse_preview_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /** Parser Backend */
             parser_backend?: string | null;
         };
         /** Body_preview_chunking_api_v1_documents_chunk_preview_post */
         Body_preview_chunking_api_v1_documents_chunk_preview_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Parser Backend
@@ -6692,10 +7334,7 @@ export interface components {
         };
         /** Body_preview_document_api_v1_documents_preview_post */
         Body_preview_document_api_v1_documents_preview_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Parser Backend
@@ -6736,23 +7375,18 @@ export interface components {
         Body_register_ltr_model_api_v1_ltr_models_register_post: {
             /**
              * Model File
-             * Format: binary
              * @description XGBoost model bytes (JSON)
              */
             model_file: string;
             /**
              * Manifest File
-             * Format: binary
              * @description LTR manifest JSON (validated)
              */
             manifest_file: string;
         };
         /** Body_upload_document_api_v1_documents_upload_post */
         Body_upload_document_api_v1_documents_upload_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Parser Backend
@@ -6872,10 +7506,7 @@ export interface components {
         };
         /** Body_upload_parsing_document_api_v1_parsing_documents_post */
         Body_upload_parsing_document_api_v1_parsing_documents_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Parser Backend
@@ -6885,10 +7516,7 @@ export interface components {
         };
         /** Body_upload_zip_with_images_api_v1_pipeline_upload_zip_with_images_post */
         Body_upload_zip_with_images_api_v1_pipeline_upload_zip_with_images_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /** Dataset Id */
             dataset_id: string;
@@ -7006,6 +7634,8 @@ export interface components {
          * @description RAG parameters specific to the chat endpoint.
          */
         ChatRAGConfig: {
+            /** Mode */
+            mode?: ("basic" | "contextual" | "expanded") | null;
             /** Retrieval Profile */
             retrieval_profile?: string | null;
             /** Retrieval Contract Mode */
@@ -7038,6 +7668,8 @@ export interface components {
             multi_query_temperature?: number | null;
             /** Multi Query Max Chars */
             multi_query_max_chars?: number | null;
+            /** Enable Hyde */
+            enable_hyde?: boolean | null;
             /** Enable Hierarchy Recall */
             enable_hierarchy_recall?: boolean | null;
             /** Hierarchy Family Collapse */
@@ -7869,6 +8501,11 @@ export interface components {
              * @description Image access URL
              */
             img_url?: string | null;
+            /**
+             * Clean Docx Url
+             * @description Optional URL for cleaned DOCX preview/download
+             */
+            clean_docx_url?: string | null;
         };
         /** CleanPreviewRequest */
         CleanPreviewRequest: {
@@ -8691,6 +9328,8 @@ export interface components {
             title?: string | null;
             /** Last Message */
             last_message?: string | null;
+            /** Last Message At */
+            last_message_at?: string | null;
             /** Message Count */
             message_count: number;
             /**
@@ -9821,6 +10460,12 @@ export interface components {
             secrets_samples?: components["schemas"]["DatasetPrecheckMatchSample"][];
             /** File Sha256 */
             file_sha256?: string | null;
+            /** Parse Failure Kind */
+            parse_failure_kind?: string | null;
+            /** Primary Tag */
+            primary_tag?: string | null;
+            /** Processing Paths */
+            processing_paths?: string[];
             /** Findings */
             findings?: string[];
             /** Error Message */
@@ -10215,6 +10860,10 @@ export interface components {
             enable_sampling: boolean;
             /** Sample Size */
             sample_size?: number | null;
+            /** Threshold Overrides */
+            threshold_overrides?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Reuse Unchanged Files
              * @default false
@@ -10384,6 +11033,14 @@ export interface components {
             };
             /** Risk Buckets */
             risk_buckets?: {
+                [key: string]: number;
+            };
+            /** Primary Tag Counts */
+            primary_tag_counts?: {
+                [key: string]: number;
+            };
+            /** Processing Path Counts */
+            processing_path_counts?: {
                 [key: string]: number;
             };
             near_dup_summary?: components["schemas"]["DatasetPrecheckNearDupSummary"];
@@ -10909,6 +11566,8 @@ export interface components {
             multi_query_temperature?: number | null;
             /** Multi Query Max Chars */
             multi_query_max_chars?: number | null;
+            /** Enable Hyde */
+            enable_hyde?: boolean | null;
             /** Enable Hierarchy Recall */
             enable_hierarchy_recall?: boolean | null;
             /** Hierarchy Family Collapse */
@@ -12434,6 +13093,11 @@ export interface components {
              */
             parse_fallback_min_content_chars?: number | null;
             /**
+             * Parse Fallback Min Parse Score
+             * @description Min parse-quality score before triggering PDF fallback
+             */
+            parse_fallback_min_parse_score?: number | null;
+            /**
              * Parse Fallback Max Retries
              * @description Max parse fallback retries
              */
@@ -12941,6 +13605,18 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /** EdgeIn */
+        EdgeIn: {
+            /** Source */
+            source: string;
+            /** Target */
+            target: string;
+            /**
+             * Weight
+             * @default 1
+             */
+            weight: number;
         };
         /**
          * EmbeddingConfig
@@ -13632,6 +14308,11 @@ export interface components {
         EvidenceRetrieveRequest: {
             /** Query */
             query: string;
+            /**
+             * Query Image
+             * @description Optional explicit image query routed to CLIP image retrieval
+             */
+            query_image?: string | null;
             /** History */
             history?: components["schemas"]["HistoryMessage"][];
             /** Dataset Id */
@@ -13931,6 +14612,11 @@ export interface components {
              */
             paddle_vl_enabled: boolean;
             /**
+             * Textin Enabled
+             * @default false
+             */
+            textin_enabled: boolean;
+            /**
              * Markitdown Enabled
              * @default false
              */
@@ -14106,6 +14792,13 @@ export interface components {
              */
             metadata?: {
                 [key: string]: unknown;
+            };
+        };
+        /** GlossaryUpdateRequest */
+        GlossaryUpdateRequest: {
+            /** Glossary */
+            glossary?: {
+                [key: string]: string[];
             };
         };
         /** GovernanceAnalyzeRequest */
@@ -14520,6 +15213,33 @@ export interface components {
         GovernanceRulePackListResponse: {
             /** Items */
             items?: string[];
+        };
+        /** GraphRequest */
+        GraphRequest: {
+            /** Edges */
+            edges?: components["schemas"]["EdgeIn"][];
+            /** Start Id */
+            start_id?: string | null;
+            /** Target Id */
+            target_id?: string | null;
+            /**
+             * Max Hops
+             * @default 2
+             */
+            max_hops: number;
+            /**
+             * Top K
+             * @default 10
+             */
+            top_k: number;
+            /**
+             * Algorithm
+             * @default degree
+             * @enum {string}
+             */
+            algorithm: "degree" | "pagerank";
+            /** Node Id */
+            node_id?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -15099,6 +15819,13 @@ export interface components {
             finished_at?: string | null;
             /** Documents */
             documents?: components["schemas"]["IngestionRunDocumentOut"][];
+        };
+        /** IntentsUpdateRequest */
+        IntentsUpdateRequest: {
+            /** Intents */
+            intents?: {
+                [key: string]: unknown;
+            }[];
         };
         /**
          * KGConfig
@@ -16901,7 +17628,7 @@ export interface components {
              */
             mode: "schema" | "prompt";
             /** Schema */
-            schema?: {
+            schema_?: {
                 [key: string]: components["schemas"]["ParsingExtractFieldSpec"];
             } | null;
             /** Prompt */
@@ -16956,6 +17683,13 @@ export interface components {
             evidence?: {
                 [key: string]: unknown;
             };
+        };
+        /** PatternsUpdateRequest */
+        PatternsUpdateRequest: {
+            /** Patterns */
+            patterns?: {
+                [key: string]: unknown;
+            }[];
         };
         /** PerfSuiteRunRequest */
         PerfSuiteRunRequest: {
@@ -17664,6 +18398,41 @@ export interface components {
              */
             enable_reranker: boolean;
         };
+        /** RTBFRequest */
+        RTBFRequest: {
+            /** Subject Account Id */
+            subject_account_id: string;
+            /**
+             * Dry Run
+             * @default true
+             */
+            dry_run: boolean;
+            /**
+             * Max Docs
+             * @default 100
+             */
+            max_docs: number;
+            /**
+             * Max Retries
+             * @default 1
+             */
+            max_retries: number;
+        };
+        /** RTBFStatusResponse */
+        RTBFStatusResponse: {
+            /** Ticket Id */
+            ticket_id: string;
+            /**
+             * Status
+             * @default accepted
+             */
+            status: string;
+            /**
+             * Note
+             * @default RTBF status persistence is not enabled in this scaffold
+             */
+            note: string;
+        };
         /** RagConfigTemplateCreate */
         RagConfigTemplateCreate: {
             /**
@@ -18287,6 +19056,10 @@ export interface components {
             requested_mode?: string | null;
             /** Auto Routed */
             auto_routed?: boolean | null;
+            /** Router Layers */
+            router_layers?: {
+                [key: string]: unknown;
+            } | null;
             /** Retrieval Config Hash */
             retrieval_config_hash?: string | null;
             /** Top K */
@@ -18648,6 +19421,11 @@ export interface components {
             multi_query_temperature?: number | null;
             /** Multi Query Max Chars */
             multi_query_max_chars?: number | null;
+            /**
+             * Enable Hyde
+             * @description Enable HyDE hypothetical-document query expansion
+             */
+            enable_hyde?: boolean | null;
             /**
              * Enable Hierarchy Recall
              * @description Enable hierarchy-aware recall overlay
@@ -19286,6 +20064,11 @@ export interface components {
         RetrievePreviewRequest: {
             /** Query */
             query: string;
+            /**
+             * Query Image
+             * @description Optional explicit image query routed to CLIP image retrieval
+             */
+            query_image?: string | null;
             /** History */
             history?: components["schemas"]["HistoryMessage"][];
             /** Dataset Id */
@@ -19312,6 +20095,13 @@ export interface components {
             metrics?: {
                 [key: string]: unknown;
             };
+        };
+        /** RewritePreviewRequest */
+        RewritePreviewRequest: {
+            /** Ruleset */
+            ruleset: string;
+            /** Query */
+            query: string;
         };
         /** RuntimeMeta */
         RuntimeMeta: {
@@ -19652,6 +20442,7 @@ export interface components {
             etl4llm: components["schemas"]["Etl4LlmConfig"];
             marker: components["schemas"]["MarkerConfig"];
             paddle_vl: components["schemas"]["PaddleVLConfig"];
+            textin: components["schemas"]["TextInConfig"];
             magicpdf: components["schemas"]["MagicPDFConfig"];
             observability: components["schemas"]["ObservabilityConfig"];
             safety: components["schemas"]["SafetyConfig"];
@@ -20130,6 +20921,67 @@ export interface components {
              */
             max_retries: number;
         };
+        /**
+         * TextInConfig
+         * @description TextIn xParse external document->Markdown API config.
+         */
+        TextInConfig: {
+            /**
+             * Api Url
+             * @default https://api.textin.com/ai/service/v1/pdf_to_markdown
+             */
+            api_url: string;
+            /**
+             * App Id
+             * @default
+             */
+            app_id: string;
+            /**
+             * Secret Code
+             * @default
+             */
+            secret_code: string;
+            /**
+             * Timeout Sec
+             * @default 180
+             */
+            timeout_sec: number;
+            /**
+             * Parse Mode
+             * @default auto
+             */
+            parse_mode: string;
+            /**
+             * Table Flavor
+             * @default html
+             */
+            table_flavor: string;
+            /**
+             * Apply Document Tree
+             * @default true
+             */
+            apply_document_tree: boolean;
+            /**
+             * Markdown Details
+             * @default true
+             */
+            markdown_details: boolean;
+            /**
+             * Get Image
+             * @default none
+             */
+            get_image: string;
+            /**
+             * Dpi
+             * @default 144
+             */
+            dpi: number;
+            /**
+             * Page Count
+             * @default 0
+             */
+            page_count: number;
+        };
         /** TokenResponse */
         TokenResponse: {
             /** Access Token */
@@ -20187,6 +21039,7 @@ export interface components {
             etl4llm?: components["schemas"]["Etl4LlmConfig"] | null;
             marker?: components["schemas"]["MarkerConfig"] | null;
             paddle_vl?: components["schemas"]["PaddleVLConfig"] | null;
+            textin?: components["schemas"]["TextInConfig"] | null;
             magicpdf?: components["schemas"]["MagicPDFConfig"] | null;
             observability?: components["schemas"]["ObservabilityConfig"] | null;
             safety?: components["schemas"]["SafetyConfig"] | null;
@@ -20288,6 +21141,12 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: {
+                [key: string]: unknown;
+            };
         };
         /** VectorStatus */
         VectorStatus: {
@@ -21809,6 +22668,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentParsedContentResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_document_clean_docx_api_v1_documents__document_id__clean_docx_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Bad Request */
@@ -28722,6 +29651,825 @@ export interface operations {
             };
         };
     };
+    get_tenant_dataset_analysis_dashboard_api_v1_datasets_analysis_dashboard_get: {
+        parameters: {
+            query?: {
+                from_ts?: string | null;
+                to_ts?: string | null;
+                feedback_polarity?: string | null;
+                limit?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_dataset_analysis_summary_api_v1_datasets__dataset_id__analysis_summary_get: {
+        parameters: {
+            query?: {
+                from_ts?: string | null;
+                to_ts?: string | null;
+                feedback_polarity?: string | null;
+                category?: string | null;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_dataset_analysis_examples_api_v1_datasets__dataset_id__analysis_examples_get: {
+        parameters: {
+            query?: {
+                from_ts?: string | null;
+                to_ts?: string | null;
+                feedback_polarity?: string | null;
+                category?: string | null;
+                limit?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_dataset_analysis_rule_suggestions_api_v1_datasets__dataset_id__analysis_rule_suggestions_get: {
+        parameters: {
+            query: {
+                ruleset: string;
+                from_ts?: string | null;
+                to_ts?: string | null;
+                feedback_polarity?: string | null;
+                limit?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_dataset_analysis_json_endpoint_api_v1_datasets__dataset_id__analysis_export_json_get: {
+        parameters: {
+            query?: {
+                from_ts?: string | null;
+                to_ts?: string | null;
+                feedback_polarity?: string | null;
+                category?: string | null;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_dataset_analysis_jsonl_endpoint_api_v1_datasets__dataset_id__analysis_export_jsonl_get: {
+        parameters: {
+            query?: {
+                from_ts?: string | null;
+                to_ts?: string | null;
+                feedback_polarity?: string | null;
+                category?: string | null;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_dataset_analysis_html_endpoint_api_v1_datasets__dataset_id__analysis_report_html_get: {
+        parameters: {
+            query?: {
+                from_ts?: string | null;
+                to_ts?: string | null;
+                feedback_polarity?: string | null;
+                category?: string | null;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    writeback_dataset_analysis_glossary_endpoint_api_v1_datasets__dataset_id__analysis_glossary_writeback_post: {
+        parameters: {
+            query: {
+                ruleset: string;
+                from_ts?: string | null;
+                to_ts?: string | null;
+                feedback_polarity?: string | null;
+                category?: string | null;
+                limit?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_dataset_analysis_png_task_endpoint_api_v1_datasets__dataset_id__analysis_export_png_post: {
+        parameters: {
+            query?: {
+                from_ts?: string | null;
+                to_ts?: string | null;
+                feedback_polarity?: string | null;
+                category?: string | null;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_dataset_analysis_png_task_endpoint_api_v1_datasets__dataset_id__analysis_export_tasks__task_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_dataset_analysis_png_task_result_endpoint_api_v1_datasets__dataset_id__analysis_export_tasks__task_id__result_png_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_dataset_precheck_scan_runs_api_v1_datasets__dataset_id__precheck_scan_runs_get: {
         parameters: {
             query?: {
@@ -32652,6 +34400,426 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["KGSearchResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    k_hop_neighbors_api_v1_kg_network_k_hop_neighbors_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GraphRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shortest_path_api_v1_kg_network_shortest_path_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GraphRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    paths_between_api_v1_kg_network_paths_between_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GraphRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    centrality_api_v1_kg_network_centrality_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GraphRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    community_of_api_v1_kg_network_community_of_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GraphRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    connected_component_api_v1_kg_network_connected_component_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GraphRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Bad Request */
@@ -38084,6 +40252,561 @@ export interface operations {
             };
         };
     };
+    get_industry_rulesets_api_v1_industry_rules_rulesets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_industry_ruleset_api_v1_industry_rules_rulesets__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_industry_ruleset_glossary_api_v1_industry_rules_rulesets__name__glossary_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GlossaryUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_industry_ruleset_patterns_api_v1_industry_rules_rulesets__name__patterns_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatternsUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_industry_ruleset_intents_api_v1_industry_rules_rulesets__name__intents_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntentsUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_industry_rules_rewrite_api_v1_industry_rules_preview_rewrite_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RewritePreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_chunk_lineage_api_v1_lineage_chunk__chunk_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                chunk_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_answer_lineage_api_v1_lineage_answer__request_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_pipeline_capabilities_api_v1_pipeline_capabilities_get: {
         parameters: {
             query?: never;
@@ -39314,6 +42037,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["KeywordExtractResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    auto_annotations_api_v1_pipeline_auto_annotations_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutoAnnotationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutoAnnotationResponse"];
                 };
             };
             /** @description Bad Request */
@@ -45298,6 +48093,150 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IndexDriftItemResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_rtbf_cascade_api_v1_rtbf_request_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RTBFRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_rtbf_status_api_v1_rtbf_status__ticket_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RTBFStatusResponse"];
                 };
             };
             /** @description Bad Request */

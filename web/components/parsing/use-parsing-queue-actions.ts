@@ -50,6 +50,7 @@ export function useParsingQueueActions({
     (fileId: string) => {
       const queue = files.find((file) => file.id === fileId) || null
       const libraryId = queue?.libraryId || (libraryFiles.some((file) => file.id === fileId) ? fileId : null)
+      const libraryEntry = libraryId ? libraryFiles.find((file) => file.id === libraryId) || null : null
 
       if (queue) {
         cancelParse(queue.id)
@@ -58,11 +59,17 @@ export function useParsingQueueActions({
       }
 
       if (libraryId) {
-        queryClient.setQueryData<ParsedFileData[] | null>(['parsing', 'library-documents'], (current) => {
+        if (libraryEntry?.source === 'knowledge_base') {
+          removeLibraryCaches(libraryId)
+          if (activeLibraryFileId === libraryId) setActiveLibraryFileId(null)
+          return
+        }
+
+        queryClient.setQueriesData<ParsedFileData[] | null>({ queryKey: ['parsing', 'library-documents'] }, (current) => {
           if (!Array.isArray(current)) return current
           return current.filter((file) => file.id !== libraryId)
         })
-        queryClient.removeQueries({ queryKey: ['parsing', 'library-content', libraryId], exact: true })
+        queryClient.removeQueries({ queryKey: ['parsing', 'library-content', libraryId] })
 
         void (async () => {
           try {

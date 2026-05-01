@@ -49,6 +49,33 @@ import type {
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'
 import { apiClient, openapiRequest } from '@/lib/api/core'
 
+export type DatasetAnalysisFilters = {
+  from_ts?: string
+  to_ts?: string
+  feedback_polarity?: string
+  category?: string
+}
+
+export type DatasetAnalysisDashboardParams = Omit<DatasetAnalysisFilters, 'category'> & {
+  limit?: number
+}
+
+export type DatasetAnalysisExamplesParams = DatasetAnalysisFilters & {
+  limit?: number
+}
+
+export type DatasetAnalysisRuleSuggestionParams = Omit<DatasetAnalysisFilters, 'category'> & {
+  ruleset: string
+  limit?: number
+}
+
+export type DatasetAnalysisGlossaryWritebackParams = DatasetAnalysisFilters & {
+  ruleset: string
+  limit?: number
+}
+
+export type DatasetAnalysisResponse = Record<string, any>
+
 export const datasetApi = {
   async create(params: DatasetCreate): Promise<Dataset> {
     return openapiRequest({ path: '/api/v1/datasets/', method: 'post', body: params })
@@ -85,6 +112,87 @@ export const datasetApi = {
       method: 'get',
       pathParams: { dataset_id: datasetId },
     })
+  },
+
+  async getAnalysisDashboard(params?: DatasetAnalysisDashboardParams): Promise<DatasetAnalysisResponse> {
+    const { data } = await apiClient.get('/datasets/analysis/dashboard', { params })
+    return data
+  },
+
+  async getAnalysisSummary(
+    datasetId: string,
+    params?: DatasetAnalysisFilters
+  ): Promise<DatasetAnalysisResponse> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/analysis/summary`, { params })
+    return data
+  },
+
+  async getAnalysisExamples(
+    datasetId: string,
+    params?: DatasetAnalysisExamplesParams
+  ): Promise<DatasetAnalysisResponse> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/analysis/examples`, { params })
+    return data
+  },
+
+  async getAnalysisRuleSuggestions(
+    datasetId: string,
+    params: DatasetAnalysisRuleSuggestionParams
+  ): Promise<DatasetAnalysisResponse> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/analysis/rule-suggestions`, { params })
+    return data
+  },
+
+  async exportAnalysisJson(
+    datasetId: string,
+    params?: DatasetAnalysisFilters
+  ): Promise<DatasetAnalysisResponse> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/analysis/export.json`, { params })
+    return data
+  },
+
+  async exportAnalysisJsonl(datasetId: string, params?: DatasetAnalysisFilters): Promise<string> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/analysis/export.jsonl`, {
+      params,
+      responseType: 'text',
+    })
+    return data as unknown as string
+  },
+
+  async exportAnalysisHtmlReport(datasetId: string, params?: DatasetAnalysisFilters): Promise<string> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/analysis/report.html`, {
+      params,
+      responseType: 'text',
+    })
+    return data as unknown as string
+  },
+
+  async writebackAnalysisGlossary(
+    datasetId: string,
+    params: DatasetAnalysisGlossaryWritebackParams
+  ): Promise<DatasetAnalysisResponse> {
+    const { data } = await apiClient.post(`/datasets/${datasetId}/analysis/glossary-writeback`, undefined, { params })
+    return data
+  },
+
+  async createAnalysisPngExportTask(
+    datasetId: string,
+    params?: DatasetAnalysisFilters
+  ): Promise<DatasetAnalysisResponse> {
+    const { data } = await apiClient.post(`/datasets/${datasetId}/analysis/export.png`, undefined, { params })
+    return data
+  },
+
+  async getAnalysisPngExportTask(datasetId: string, taskId: string): Promise<DatasetAnalysisResponse> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/analysis/export-tasks/${taskId}`)
+    return data
+  },
+
+  async getAnalysisPngExportResult(datasetId: string, taskId: string): Promise<Blob> {
+    const { data } = await apiClient.get(`/datasets/${datasetId}/analysis/export-tasks/${taskId}/result.png`, {
+      responseType: 'blob',
+    })
+    return data as Blob
   },
 
   async update(datasetId: string, params: DatasetUpdate): Promise<Dataset> {

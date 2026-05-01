@@ -32,7 +32,7 @@ describe('messages catalog rollout source guards', () => {
     expect(historyPage).toContain("const locale = useLocale()")
     expect(historyPage).toContain("t('loadingPage')")
     expect(historyPage).toContain("t('pageTitle')")
-    expect(historyPage).toContain("t('newConversation')")
+    expect(historyPage).toContain("t('startNewConversation')")
     expect(historyPage).toContain("t('searchPlaceholder')")
 
     expect(historyPage).not.toContain("import { messages as uiMessages } from '@/lib/messages'")

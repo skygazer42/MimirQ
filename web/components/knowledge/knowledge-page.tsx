@@ -222,7 +222,7 @@ export default function KnowledgePage() {
   const docsTableVirtualizer = useVirtualizer({
     count: filteredDocuments.length,
     getScrollElement: () => mainPaneScrollEl,
-    estimateSize: () => 52,
+    estimateSize: () => 108,
     overscan: 10,
   })
 
@@ -526,7 +526,7 @@ export default function KnowledgePage() {
 
   const layoutTransition: Transition = { type: 'spring', bounce: 0.12, duration: 0.45 }
   const toolbarSweepClassName =
-    'group/button relative overflow-hidden before:pointer-events-none before:absolute before:inset-y-0 before:left-[-24%] before:w-[28%] before:-skew-x-[18deg] before:bg-white/25 before:opacity-0 before:blur-md before:transition-[left,opacity] before:duration-500 hover:before:left-[118%] hover:before:opacity-100 active:before:opacity-70'
+    'group/button relative overflow-hidden before:pointer-events-none before:absolute before:inset-y-0 before:left-[-24%] before:w-[28%] before:-skew-x-[18deg] before:bg-card/25 before:opacity-0 before:blur-md before:transition-[left,opacity] before:duration-500 hover:before:left-[118%] hover:before:opacity-100 active:before:opacity-70'
   const iconShellBaseClassName =
     'relative overflow-hidden shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_12px_24px_-18px_rgba(15,23,42,0.24)] backdrop-blur-[6px]'
 
@@ -572,7 +572,7 @@ export default function KnowledgePage() {
         }
         top={
           activeTab === 'documents' || activeTab === 'settings' ? (
-            <div className={cn('grid md:grid-cols-2 xl:grid-cols-4', activeTab === 'settings' ? 'gap-1' : 'gap-1.5')}>
+            <div className={cn('grid md:grid-cols-2 xl:grid-cols-4', activeTab === 'settings' ? 'gap-2' : 'gap-4')}>
               {(activeTab === 'settings' ? settingsSummaryCards : summaryCards).map((card) => (
                 <motion.div
                   key={card.label}
@@ -580,38 +580,38 @@ export default function KnowledgePage() {
                   whileTap={reduceMotion ? undefined : { scale: 0.995 }}
                   transition={{ type: 'spring', stiffness: 320, damping: 24 }}
                   className={cn(
-                    'group relative overflow-hidden rounded-[16px] border border-border/70 bg-background/90 transition-shadow hover:shadow-[0_16px_24px_-24px_rgba(37,99,235,0.16)]',
+                    'group relative overflow-hidden rounded-[20px] border border-border/65 bg-background/95 transition-shadow hover:shadow-[0_22px_42px_-30px_rgba(37,99,235,0.24)]',
                     activeTab === 'settings'
-                      ? 'px-2 py-1.5 shadow-[0_8px_14px_-16px_rgba(15,23,42,0.14)]'
-                      : 'px-3 py-2.5 shadow-[0_10px_20px_-22px_rgba(15,23,42,0.2)]'
+                      ? 'min-h-[76px] px-3 py-2.5 shadow-[0_12px_22px_-22px_rgba(15,23,42,0.18)]'
+                      : 'min-h-[92px] px-5 py-4 shadow-[0_20px_40px_-34px_rgba(15,23,42,0.34)]'
                   )}
                 >
-                  <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-primary/15 via-transparent to-primary/5 opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+                  <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-primary/15 opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
                   {/* icon={CheckCircle} */}
-                  <div className="flex items-start gap-2.5">
-                    <div className="flex min-w-0 items-start gap-2.5">
+                  <div className="flex h-full items-center gap-3.5">
+                    <div className="flex min-w-0 items-center gap-3.5">
                       <div className={cn(
                         'shrink-0 border transition-transform duration-200 group-hover:scale-[1.04] group-hover:-rotate-1',
                         activeTab === 'settings'
-                          ? 'flex size-5 items-center justify-center rounded-[9px]'
-                          : 'flex size-8 items-center justify-center rounded-[10px]',
+                          ? 'flex size-8 items-center justify-center rounded-[12px]'
+                          : 'flex size-11 items-center justify-center rounded-[14px]',
                         iconShellBaseClassName,
                         card.iconShell
                       )}>
                         <span className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[linear-gradient(135deg,rgba(255,255,255,0.28),transparent_52%)] opacity-80" />
-                        <card.icon className={cn(activeTab === 'settings' ? 'size-2.5' : 'size-3.5')} />
+                        <card.icon className={cn(activeTab === 'settings' ? 'size-4' : 'size-5')} />
                       </div>
                       <div className="min-w-0">
-                        <div className={cn(activeTab === 'settings' ? 'text-[7px]' : 'text-[9px]', 'font-semibold text-muted-foreground/72')}>
+                        <div className={cn(activeTab === 'settings' ? 'text-[10px]' : 'text-[12px]', 'font-semibold text-muted-foreground/76')}>
                           {card.label}
                         </div>
                         <div className={cn(
-                          activeTab === 'settings' ? 'mt-0.5 text-[12px]' : 'mt-1 text-[16px]',
-                          'font-mono font-semibold leading-none tracking-[-0.04em] tabular-nums text-foreground'
+                          activeTab === 'settings' ? 'mt-1 text-[17px]' : 'mt-1.5 text-[22px]',
+                          'font-mono font-black leading-none tracking-[-0.055em] tabular-nums text-foreground'
                         )}>
                           {card.value}
                         </div>
-                        <div className={cn(activeTab === 'settings' ? 'mt-0.5 text-[7px]' : 'mt-1 text-[9px]', 'text-muted-foreground/74')}>{card.caption}</div>
+                        <div className={cn(activeTab === 'settings' ? 'mt-1 text-[9px]' : 'mt-1.5 text-[11px]', 'text-muted-foreground/74')}>{card.caption}</div>
                       </div>
                     </div>
                   </div>
@@ -1053,6 +1053,7 @@ export default function KnowledgePage() {
               isLoading={isLoading}
               documents={documents}
               filteredDocuments={filteredDocuments}
+              datasets={datasets}
               selectedDatasetId={selectedDatasetId}
               selectedDatasetLabel={selectedDatasetLabel}
               datasetLabelById={datasetLabelById}

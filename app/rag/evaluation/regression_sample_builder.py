@@ -45,6 +45,7 @@ def _dedup_ids(raw_items: Any, *, key: str) -> list[str]:
 
 
 _WS_RE = re.compile(r"\s+")
+_QUOTED_SPAN_RE = re.compile(r"[\"“”]([^\"“”]{4,500})[\"“”]")
 
 
 def _collapse_ws(text: Any) -> str:
@@ -164,6 +165,20 @@ def _deterministic_faithfulness(answer: str, contexts: list[Any], *, max_evidenc
     if total <= 0:
         return None
     return round(float(supported) / float(total), 4)
+
+
+def _quote_verifiability(answer: str, contexts: list[Any], *, max_quotes: int = 24) -> float | None:
+    quotes = [_collapse_ws(match.group(1)).casefold() for match in _QUOTED_SPAN_RE.finditer(str(answer or ""))]
+    quotes = [quote for quote in quotes if len(quote) >= 4][: max(1, int(max_quotes or 1))]
+    if not quotes:
+        return None
+
+    evidence = _collapse_ws("\n".join([str(c or "") for c in contexts or []])).casefold()
+    if not evidence:
+        return 0.0
+
+    verified = sum(1 for quote in quotes if quote in evidence)
+    return round(float(verified) / float(len(quotes)), 4)
 
 
 def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -365,6 +380,11 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
             if len(missed_ref_ids) >= 6:
                 break
 
+    citation_accuracy: float | None = None
+    if reference_sources and citations_ranked:
+        citation_accuracy = round(float(sum(1 for rel in relevance_flags if rel)) / float(len(citations_ranked)), 4)
+    citation_coverage = retrieval_recall
+
     top_rel = item.get("top_relevance_score")
     try:
         top_rel_f = float(top_rel) if top_rel is not None else None
@@ -380,6 +400,9 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
             break
 
     faithfulness_det = _deterministic_faithfulness(response, retrieved_contexts)
+    atomic_faithfulness = faithfulness_det
+    hallucination_rate = round(1.0 - float(faithfulness_det), 4) if faithfulness_det is not None else None
+    quote_verifiability = _quote_verifiability(response, retrieved_contexts)
 
     # Chunk-level diagnostics (P0): attribution/utilization/noise/self-knowledge.
     ref_evidence_parts: list[str] = []
@@ -445,6 +468,11 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
         "retrieval_doc_hit": retrieval_doc_hit,
         "retrieval_family_recall": retrieval_family_recall,
         "retrieval_family_hit": retrieval_family_hit,
+        "citation_accuracy": citation_accuracy,
+        "citation_coverage": citation_coverage,
+        "quote_verifiability": quote_verifiability,
+        "atomic_faithfulness": atomic_faithfulness,
+        "hallucination_rate": hallucination_rate,
         "faithfulness_det": faithfulness_det,
         "chunk_utilization": chunk_diag.get("chunk_utilization"),
         "chunk_attribution": chunk_diag.get("chunk_attribution"),
@@ -482,6 +510,10 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
             explanations["self_knowledge_ratio"] = f"correct_uncited={ccu}/{cct}"
         if meta.get("faithfulness_det") is not None and ct > 0:
             explanations["faithfulness_det"] = f"claims_supported={cs}/{ct} (deterministic)"
+        if meta.get("citation_accuracy") is not None and citations_ranked:
+            explanations["citation_accuracy"] = f"relevant_citations={sum(1 for rel in relevance_flags if rel)}/{len(citations_ranked)}"
+        if meta.get("quote_verifiability") is not None:
+            explanations["quote_verifiability"] = "quoted_spans_checked_against_retrieved_contexts"
         if retrieval_recall is not None and ref_total is not None and matched_refs is not None:
             missed = int(ref_total) - int(matched_refs)
             suffix = f", missed={missed}" if missed >= 0 else ""
@@ -552,7 +584,12 @@ def build_regression_item_meta(*, sample_kwargs: dict[str, Any] | None, item_met
         "retrieval_hit_at_5": meta.get("retrieval_hit_at_5"),
         "retrieval_hit_at_10": meta.get("retrieval_hit_at_10"),
         "retrieval_hit_at_20": meta.get("retrieval_hit_at_20"),
+        "citation_accuracy": meta.get("citation_accuracy"),
+        "citation_coverage": meta.get("citation_coverage"),
+        "quote_verifiability": meta.get("quote_verifiability"),
         # Answer-level deterministic gate signals (best-effort; may be null in retrieval-only mode).
+        "atomic_faithfulness": meta.get("atomic_faithfulness"),
+        "hallucination_rate": meta.get("hallucination_rate"),
         "faithfulness_det": meta.get("faithfulness_det"),
         "chunk_utilization": meta.get("chunk_utilization"),
         "chunk_attribution": meta.get("chunk_attribution"),

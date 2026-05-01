@@ -29,6 +29,10 @@ export interface ParsedFileData {
   durationSec?: number
   elements?: ParsingElement[]
   folderId?: string
+  datasetId?: string | null
+  datasetName?: string | null
+  source?: 'parsing_workspace' | 'knowledge_base'
+  sourcePath?: string | null
   /**
    * UI status for the document library.
    * Note: we don't persist the original File object, only metadata + parsed markdown.

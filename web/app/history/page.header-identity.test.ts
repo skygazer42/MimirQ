@@ -11,10 +11,10 @@ describe('history page selected conversation header', () => {
     expect(src).not.toContain("selectedConversation.last_message || t('noMessage')")
   })
 
-  it('suppresses the browser default focus outline on history list buttons', () => {
+  it('uses a visible token focus ring on history list buttons', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'page-client.tsx'), 'utf8')
 
     expect(src).toContain('focus-visible:outline-none')
-    expect(src).toContain('focus-visible:ring-0')
+    expect(src).toContain('focus-visible:ring-2 focus-visible:ring-primary/50')
   })
 })

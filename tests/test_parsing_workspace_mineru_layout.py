@@ -4,7 +4,7 @@ import io
 import json
 import zipfile
 
-from app.api.v1.parsing import _extract_markdown_pair_from_documents
+from app.api.v1.parsing import _extract_markdown_pair_from_documents, _sanitize_storage_value
 from app.parsing.utils.mineru_layout import extract_position_tagged_markdown_from_zip_bytes
 
 
@@ -29,6 +29,32 @@ def test_extract_markdown_pair_prefers_position_tagged_metadata_for_original() -
     assert cleaned == "# Clean heading\n\nBody paragraph\n\n## Next section"
     assert "Heading@@1\t10\t20\t30\t40##" in original
     assert "Next@@2\t11\t21\t31\t41##" in original
+
+
+def test_extract_markdown_pair_removes_nul_chars_before_storage() -> None:
+    original, cleaned = _extract_markdown_pair_from_documents(
+        [
+            {
+                "page_content": "A\x00B@@1\t10\t20\t30\t40##",
+                "metadata": {"position_tagged_markdown": "Tagged\x00Text@@1\t10\t20\t30\t40##"},
+            }
+        ]
+    )
+
+    assert "\x00" not in original
+    assert "\x00" not in cleaned
+    assert original == "TaggedText@@1\t10\t20\t30\t40##"
+    assert cleaned == "AB@@1\t10\t20\t30\t40##"
+
+
+def test_sanitize_storage_value_removes_nul_chars_recursively() -> None:
+    sanitized = _sanitize_storage_value(
+        {
+            "bad\x00key": ["ok", "bad\x00value", {"nested": "x\x00y"}],
+        }
+    )
+
+    assert sanitized == {"badkey": ["ok", "badvalue", {"nested": "xy"}]}
 
 
 def test_extract_position_tagged_markdown_from_zip_bytes_uses_content_list_bbox() -> None:

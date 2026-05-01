@@ -3,6 +3,8 @@
 import { useCallback, useEffect, type Dispatch, type SetStateAction } from 'react'
 import { useTranslations } from 'next-intl'
 
+import { toast } from 'sonner'
+
 import { parsingApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { getParserLabel } from '@/lib/parser-options'
@@ -92,6 +94,10 @@ export function useParsingRunActions({
     async (fileId: string, backendOverride?: string) => {
       const file = filesRef.current.find((item) => item.id === fileId) || null
       if (!file) return
+      if (file.librarySource === 'knowledge_base') {
+        toast.warning(t('toasts.knowledgeBaseReadOnly'))
+        return
+      }
 
       cancelParse(fileId)
       const controller = new AbortController()
@@ -162,6 +168,7 @@ export function useParsingRunActions({
             parser: requestedLabel,
             parserBackend: requestedBackend,
             folderId: file.folderId,
+            source: 'parsing_workspace',
             status: mapBackendStatusToLibraryStatus(created.status),
             error: created.error_message || undefined,
           })
@@ -330,7 +337,9 @@ export function useParsingRunActions({
   }, [autoParseFileId, parseFile, setAutoParseFileId])
 
   const parseAllPending = useCallback(async () => {
-    const targets = visibleQueueFiles.filter((file) => file.status === 'pending' || file.status === 'error')
+    const targets = visibleQueueFiles.filter(
+      (file) => file.librarySource !== 'knowledge_base' && (file.status === 'pending' || file.status === 'error')
+    )
     for (const file of targets) {
       await parseFile(file.id)
     }

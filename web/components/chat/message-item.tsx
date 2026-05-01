@@ -6,7 +6,7 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { memo, useEffect, useRef, useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
-import { BarChart3, Check, Copy, Database, Bot, Loader2, Star, TestTube2, User } from 'lucide-react'
+import { BarChart3, Check, ChevronDown, Copy, Database, Bot, Loader2, Star, TestTube2, User } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -217,12 +217,20 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   const [ratingSending, setRatingSending] = useState(false)
   const [feedbackRecord, setFeedbackRecord] = useState<MessageFeedback | null>(null)
   const [expertAction, setExpertAction] = useState<'evidence' | 'regression' | null>(null)
+  const [stepsOpen, setStepsOpen] = useState(() => isStreaming)
   const copyTimerRef = useRef<number | null>(null)
   const prefetchedCitationTargetsRef = useRef<Set<string>>(new Set())
   const { openDocument } = useDocumentView()
   const streamingLayoutTransition = reduceMotion
     ? { duration: 0 }
     : { duration: 0.24, ease: [0.16, 1, 0.3, 1] as const }
+  const stepCount = message.steps?.length ?? 0
+  const latestStep = stepCount > 0 ? message.steps?.[stepCount - 1] : ''
+  const stepsPanelId = `chat-steps-${message.id}`
+
+  useEffect(() => {
+    setStepsOpen(isStreaming)
+  }, [isStreaming, message.id])
 
   useEffect(() => {
     return () => {
@@ -459,7 +467,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 
   let renderedContent: ReactNode
   if (isUser) {
-    renderedContent = <div className="whitespace-pre-wrap font-normal text-black">{message.content}</div>
+     renderedContent = <div className="whitespace-pre-wrap font-normal text-primary-foreground [&>*]:text-inherit">{message.content}</div>
   } else if (isStreaming) {
     renderedContent = <CinematicTypewriter content={message.content} isStreaming={true} />
   } else {
@@ -588,45 +596,86 @@ export const ChatMessageItem = memo(function ChatMessageItem({
           {/* AI 消息 Header (Minimal 模式独有) */}
           {!isUser && variant === 'minimal' && (
             <div className="flex items-center gap-2 mb-2.5">
-              <span className="text-[11px] font-bold text-foreground/80 uppercase tracking-tight">MimirQ</span>
+              <span className="text-[11px] font-bold text-foreground/80 uppercase ">MimirQ</span>
               <span className="text-[9px] font-medium text-muted-foreground/40 tabular-nums">
                 {new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit' }).format(new Date(message.created_at))}
               </span>
             </div>
           )}
         {/* 思维链 / 步骤展示 */}
-	        <AnimatePresence initial={false}>
-            {!isUser && message.steps && message.steps.length > 0 ? (
-	          <motion.div
-                layout={!reduceMotion && isStreaming}
-                transition={streamingLayoutTransition}
-                initial={reduceMotion ? false : { opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
-                className="mb-4 space-y-2 motion-safe:animate-fade-in"
+        <AnimatePresence initial={false}>
+          {!isUser && message.steps && message.steps.length > 0 ? (
+            <motion.div
+              layout={!reduceMotion && isStreaming}
+              transition={streamingLayoutTransition}
+              initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
+              className="mb-4 overflow-hidden rounded-2xl border border-primary/15 bg-primary/[0.035] motion-safe:animate-fade-in"
+            >
+              <button
+                type="button"
+                aria-expanded={stepsOpen}
+                aria-controls={stepsPanelId}
+                onClick={() => setStepsOpen((open) => !open)}
+                className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-primary/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
               >
-	            <div className="flex items-center gap-2 text-[11px] font-bold text-primary/70 uppercase ">
-	              <div className="relative flex h-2 w-2">
-	                <span className="motion-safe:animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-	                <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+                <div className="relative flex h-2 w-2 shrink-0">
+                  {isStreaming ? (
+                    <span className="motion-safe:animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+                  ) : null}
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
                 </div>
-	              思考路径
-	            </div>
-	            <div className="pl-4 border-l border-primary/20 space-y-1">
-              {message.steps.map((step, idx) => (
-	                <div
-	                  key={step}
-	                  className={cn(
-	                    "text-xs transition-opacity duration-200 motion-reduce:transition-none",
-	                    idx === message.steps!.length - 1 ? "text-foreground font-medium motion-safe:animate-pulse" : "text-muted-foreground/60"
-	                  )}
-	                >
-	                  {step}
-	                </div>
-              ))}
-            </div>
-          </motion.div>
-        ) : null}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold uppercase text-primary/75">思考路径</span>
+                    <span className="rounded-full border border-primary/15 bg-background/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                      {message.steps.length} 步
+                    </span>
+                  </div>
+                  {!stepsOpen && latestStep ? (
+                    <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{latestStep}</div>
+                  ) : null}
+                </div>
+                <ChevronDown
+                  className={cn(
+                    'size-3.5 shrink-0 text-muted-foreground transition-transform duration-200 motion-reduce:transition-none',
+                    stepsOpen && 'rotate-180'
+                  )}
+                  aria-hidden="true"
+                />
+              </button>
+
+              <AnimatePresence initial={false}>
+                {stepsOpen ? (
+                  <motion.div
+                    id={stepsPanelId}
+                    initial={reduceMotion ? false : { height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={reduceMotion ? undefined : { height: 0, opacity: 0 }}
+                    transition={streamingLayoutTransition}
+                    className="overflow-hidden"
+                  >
+                    <div className="space-y-1 border-t border-primary/10 px-4 py-3">
+                      {message.steps.map((step, idx) => (
+                        <div
+                          key={`${idx}-${step}`}
+                          className={cn(
+                            'text-xs transition-opacity duration-200 motion-reduce:transition-none',
+                            idx === message.steps!.length - 1
+                              ? 'font-medium text-foreground motion-safe:animate-pulse'
+                              : 'text-muted-foreground/60'
+                          )}
+                        >
+                          {step}
+                        </div>
+                      ))}
+                    </div>
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
+            </motion.div>
+          ) : null}
         </AnimatePresence>
 
         {!isUser && message.message_metadata && (
@@ -938,7 +987,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
         <div
           className={cn(
             isUser
-              ? 'max-w-none break-words leading-relaxed text-black [&>*]:text-black'
+               ? 'max-w-none break-words leading-relaxed text-primary-foreground [&>*]:text-inherit'
               : 'prose prose-neutral dark:prose-invert max-w-none break-words leading-relaxed prose-p:my-2 prose-p:leading-7 prose-pre:bg-secondary/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-foreground prose-pre:rounded-xl prose-pre:p-4 prose-pre:my-3 prose-code:bg-[hsl(var(--code-background))] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:text-sm prose-code:font-mono prose-code:text-primary prose-code:before:content-none prose-code:after:content-none'
           )}
         >

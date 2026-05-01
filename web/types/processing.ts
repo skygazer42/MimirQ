@@ -612,6 +612,53 @@ export interface KeywordExtractResponse {
   keywords: string[]
 }
 
+export interface AutoAnnotationRequest {
+  text: string
+  mode?: 'document_focus' | 'compliance'
+  providers?: Array<'cpu' | 'llm' | 'gliner' | 'keyword' | 'entity' | 'regex' | 'pii' | 'secret' | 'sensitive'>
+  enable_llm?: boolean
+  enable_llm_topics?: boolean
+  llm_model?: string | null
+  enable_keywords?: boolean
+  enable_entities?: boolean
+  enable_sensitive?: boolean
+  keyword_provider?: string
+  keyword_top_k?: number
+  max_chars?: number
+  max_annotations?: number
+}
+
+export interface AutoAnnotationItem {
+  text: string
+  type: 'entity' | 'keyword' | 'sensitive' | 'custom'
+  label: string
+  start: number
+  end: number
+  confidence: number
+  source: string
+}
+
+export interface AutoDocumentTag {
+  type: 'topic' | 'category' | 'domain' | 'industry' | 'doc_type' | 'sensitivity' | 'quality' | 'keyword'
+  value: string
+  label: string
+  confidence: number
+  source: string
+}
+
+export interface AutoAnnotationResponse {
+  annotations: AutoAnnotationItem[]
+  document_tags: AutoDocumentTag[]
+  summary?: string | null
+  text_chars: number
+  scanned_chars: number
+  truncated: boolean
+  keyword_provider?: string | null
+  strategy: 'llm' | 'rules' | 'hybrid'
+  providers_used: string[]
+  warnings: string[]
+}
+
 export interface ZipImageInfo {
   img_id: string
   original_path: string
