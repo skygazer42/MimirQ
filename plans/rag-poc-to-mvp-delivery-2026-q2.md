@@ -844,3 +844,20 @@ Step 4: ← 才考虑微调（数据量 + 效果瓶颈满足才做）
 - `plans/enterprise-ota-maintenance.md`（OTA 维护模式）
 - `plans/product-stage1-trust-building.md`（可信度建设）
 - ~~`plans/product-stage3-enterprise-im.md`~~（当前分支不做企微 / 钉钉 / 飞书入口）
+
+---
+
+## 15. 2026-05-01 Product PASS
+
+Status: PASS - 已完成必要产品化子集,本 MD 不再作为后续执行入口.
+
+已落地:
+- 从 POC 到 MVP 的主链路已覆盖:precheck scanner、dataset profile、parsing、ingestion monitor、quarantine、feedback、evaluation、POC attribution、RAG trace、KG diagnostics.
+- 检索可信度能力已吸收到 sibling expand、metadata/tagging、rerank profiles、query/context diagnostics、feedback 与 trace 可视化.
+- 企业化基础已具备 cost/quota、semantic cache、RTBF、lineage、SCIM/SAML、audit/redteam 等可上线能力.
+
+暂缓:
+- 暂缓 Supabase 专用反馈 schema、Streamlit 迁移、DOCX 双写器、MinIO 图片映射专项和企业 IM 入口.
+- 暂缓 OTA 维护模式产品化,除非明确进入离线私有化交付场景.
+
+Directive: 本文后续不再作为交付清单;MVP 只围绕当前主产品页面和真实部署缺口继续收敛.

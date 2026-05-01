@@ -375,3 +375,21 @@ def expanded_rerank_retrieve(query, top_k_final=20):
 - `plans/rerank-expand-rerank-workflow.md`
 - `plans/internal-855-question-benchmark.md`
 - `plans/retrieval-mode-three-tier-api.md`（API 层面 Basic/Contextual/Expanded 三档）
+
+---
+
+## 14. 2026-05-01 Product PASS
+
+Status: PASS - 已完成必要产品化子集,本 MD 不再作为后续执行入口.
+
+已落地:
+- 核心工作流已落地:`app/rag/workflows/rerank_expand_rerank.py` 串起初检、扩展和二次 rerank.
+- 上下文扩展已产品化为可控策略:`app/rag/retrieval/neighbor_expand.py`,`app/rag/retrieval/sibling_expand.py`,`app/rag/retrieval/contextual_followup.py`,`app/rag/chunking/contextual_enrichment.py`.
+- 配套测试覆盖主要边界:`tests/test_rerank_expand_rerank_workflow.py`,`tests/test_neighbor_expand.py`,`tests/test_sibling_expand.py`,`tests/test_retriever_sibling_expand_route.py`,`tests/test_contextual_followup.py`,`tests/test_contextual_enrichment.py`.
+- 前端检索配置与诊断页面已能显式查看/调整相关策略,不再需要用户手写后端 ID 或 JSON 才能验证.
+
+暂缓:
+- 不做所有 query 默认扩大上下文,避免成本、延迟和噪声同时上升.
+- 不做独立 855 问公开榜单化,现阶段以内部回归集和用户 bad case 驱动即可.
+
+Directive: 后续扩展策略必须通过 retrieval profile 或实验开关进入,不得改成全局默认强扩展.

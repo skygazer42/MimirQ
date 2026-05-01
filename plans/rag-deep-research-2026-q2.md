@@ -833,3 +833,20 @@ Reasoning RAG (2025–2026)
 > 4. 最关键的一次投入是：**先建内部 benchmark（OmniDocBench / GraphRAG-Bench / Hard-Negative stress）**，再按数据决定下一步迭代方向，而不是继续堆功能。
 
 > **下一步**：Quick Wins 全部拆独立 plan 单独实施；战略项先出 RFC 再拆 plan；季度开始前更新本报告。
+
+---
+
+## 12. 2026-05-01 Product PASS
+
+Status: PASS - 已完成必要产品化子集,本 MD 不再作为后续执行入口.
+
+已落地:
+- Quick Wins 中对产品闭环有直接价值的项已吸收到现有实现:Agentic retrieval、context expansion、rerank profiles、semantic cache、cost/quota、precheck scanner、POC attribution、KG diagnostics/snapshot/visualization、safety guardrails.
+- 评测闭环已覆盖 ablation、evaluation API、bad case/feedback、POC attribution、redteam 和 KG diagnostics,可以支撑后续真实问题定位.
+- 入库前到问答后的主要链路已连成产品路径:解析/预检/入库监控/隔离/反馈/评测/KG/RAG trace 均有前后端入口.
+
+暂缓:
+- 暂缓 OmniDocBench、GraphRAG-Bench、Hard-Negative stress 的全量 benchmark runner 常驻化;没有稳定真实样本池时榜单维护成本高于收益.
+- 暂缓 ColPali、Video/Audio RAG、商业 parser/provider 矩阵和连接器生态扩张,这些属于新产品线级投入.
+
+Directive: 本文作为季度研究归档;后续不要继续按大而全清单推进,只从真实客户缺口拆小任务.

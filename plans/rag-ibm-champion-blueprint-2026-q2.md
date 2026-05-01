@@ -621,3 +621,20 @@ python ../../main.py process-questions --config gemini_thinking
 > - 第 10 份：**IBM 冠军方案工程蓝图（本文）**
 >
 > 整体覆盖：**理论对标 + 量化 benchmark + 方法论 + 工程范式 + 运营手册 + 入库前 → POC → 生产 全时间线**。
+
+---
+
+## 13. 2026-05-01 Product PASS
+
+Status: PASS - 已完成必要产品化子集,本 MD 不再作为后续执行入口.
+
+已落地:
+- 检索质量相关的可复用部分已进入产品实现:semantic chunk floor、RAPTOR、contextual enrichment、local BGE rerank、MMR、long-context rerank、retrieval profiles.
+- 路由与结构化输出方向已由 complexity classifier、system router、LLM tagger、prompt 组织和安全 guardrails 承接.
+- POC 到生产链路已由 precheck scanner、dataset analysis、POC attribution、feedback、evaluation 和 RAG trace 串联.
+
+暂缓:
+- 不复制 IBM 冠军方案的比赛专用架构,包括 one-vector-store-per-doc、完整 Docling JsonReportProcessor 复刻和只为榜单服务的参数网格.
+- 不把 Prompt-as-Code 做成独立平台;当前保持轻量 prompt module + 测试覆盖即可.
+
+Directive: 本文只保留为设计参考;后续采用其中策略必须先证明对现有 RAG 链路有可量化收益.

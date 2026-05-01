@@ -694,3 +694,20 @@ User Query
 > - `plans/kg-network-analysis-api.md`（K-hop / 路径 / centrality API）
 > - `plans/kg-lazy-indexer.md`（LazyGraphRAG 模式）
 > - `plans/kg-graphrag-bench-runner.md`（内部基准评测）
+
+---
+
+## 11. 2026-05-01 Product PASS
+
+Status: PASS - 已完成必要产品化子集,本 MD 不再作为后续执行入口.
+
+已落地:
+- KG 检索与解释核心已实现:`app/rag/kg/search/agentic_beam_search.py`,`app/rag/kg/search/pprank.py`,`app/rag/kg/search/path_verbalizer.py`,`app/rag/kg/search/plan_on_graph.py`.
+- 图谱分析与产品入口已承接到 network analysis、KG diagnostics、KG snapshot 和 KG visualization 相关 API/UI.
+- 测试覆盖核心算法与接口:`tests/test_kg_agentic_beam_search.py`,`tests/test_kg_pprank.py`,`tests/test_kg_path_verbalizer.py`,`tests/test_kg_plan_on_graph.py`,`tests/test_network_analysis_api.py`.
+
+暂缓:
+- 暂缓 SPARQL/Cypher 自动生成、图神经训练和 GraphRAG-Bench runner 常驻化.
+- 暂缓 LazyGraphRAG 大规模后台索引重构,现阶段先保留现有 KG 快照与诊断闭环.
+
+Directive: KG 后续只补真实问答链路缺口;不要为了论文路线继续扩研究型图算法.

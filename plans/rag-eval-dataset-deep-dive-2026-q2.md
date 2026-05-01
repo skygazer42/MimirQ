@@ -510,3 +510,20 @@ app/rag/evaluation/
 > - `plans/eval-dashboard-11dim.md`（Grafana dashboard 设计）
 > - `plans/eval-kg-walker-from-schema.md`（KG 路评测生成工具）
 > - `plans/eval-shadow-daily-diff.md`（生产流量 shadow eval）
+
+---
+
+## 11. 2026-05-01 Product PASS
+
+Status: PASS - 已完成必要产品化子集,本 MD 不再作为后续执行入口.
+
+已落地:
+- 评测与诊断已形成当前可用闭环:evaluation、ablation、feedback、bad case、POC attribution、KG diagnostics、RAG trace 已经有服务/API/UI 承接.
+- 关键回归入口已有测试资产覆盖,包括 contextual 评测、ablation、POC runner、KG diagnostics 和 redteam 相关测试.
+- 前端已把评测能力从纯开发接口沉到显式页面,用户可从反馈、评测、KG 与 trace 路径定位坏例.
+
+暂缓:
+- 暂缓 Grafana 11 维 dashboard、生产 shadow eval 和公开 benchmark 导入,这些需要稳定生产流量、数据治理和运维值守.
+- 暂缓把评测集团队流程写死进产品;当前以 API + 页面 + 测试集满足迭代闭环.
+
+Directive: 评测新增只能围绕真实 bad case、客户验收题或发布门禁补充,不要继续泛化搭平台.
