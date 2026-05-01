@@ -3414,6 +3414,17 @@ const zhCNMessages = {
       save: '保存',
       pushToChunkPreview: '推送到切块预览',
     },
+    scope: {
+      title: 'Dataset Scope',
+      allDatasets: '全部数据集',
+      placeholder: '选择数据集',
+      allDescription: '显示解析工作区与全部知识库文档，共 {count} 个可治理文件。',
+      selectedDescription: '当前只显示该数据集下的知识库文档，共 {count} 个可治理文件。',
+      syncing: '同步知识库文档中',
+      synced: '已同步 {count} 个文件',
+      sourceKnowledge: '知识库',
+      sourceParsing: '解析工作区',
+    },
     toasts: {
       uploadCancelled: '已取消解析',
       fileDeleted: '已删除文件',
