@@ -52,6 +52,7 @@ export default function ParsingPage() {
     libraryFiles,
     mapBackendStatusToLibraryStatus,
     parserBackend: pageState.parserBackend,
+    selectedDatasetId: pageState.selectedDatasetId,
     rebindInputRef: pageState.rebindInputRef,
     rebindTargetRef: pageState.rebindTargetRef,
     setActiveBlockId: pageState.setActiveBlockId,

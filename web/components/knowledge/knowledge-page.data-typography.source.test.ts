@@ -20,7 +20,7 @@ describe('Knowledge workspace numeric typography', () => {
     expect(docsPanelSrc).toContain("title={`解析质量: ${qualityPercent}%`}")
     expect(knowledgePageSrc).toContain('<span className="font-mono tabular-nums">{activeTasksCount}</span>')
     expect(settingsPanelSrc).toContain('font-mono text-[14px] font-semibold')
-    expect(settingsPanelSrc).toContain('text-[9px] font-bold text-muted-foreground/30 tabular-nums')
+    expect(settingsPanelSrc).toContain('text-[9px] font-medium text-muted-foreground/30 tabular-nums')
     expect(settingsPanelSrc).toContain('font-mono text-[14px] font-semibold text-foreground')
     expect(scopePanelSrc).toContain('font-mono text-[11px] transition-all tabular-nums')
   })

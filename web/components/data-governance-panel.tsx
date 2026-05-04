@@ -49,13 +49,52 @@ import { getParserLabel } from '@/lib/parser-options'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
 
 const GOVERNANCE_TAB_CONFIGS = [
-  { id: 'quality', icon: ScanLine, color: 'blue' },
-  { id: 'clean', icon: Wrench, color: 'green' },
-  { id: 'annotate', icon: Tag, color: 'purple' },
+  { id: 'quality', icon: ScanLine, color: 'info' },
+  { id: 'clean', icon: Wrench, color: 'teal' },
+  { id: 'annotate', icon: Tag, color: 'accent' },
   { id: 'classify', icon: FolderTree, color: 'orange' },
 ] as const
 
 type GovernanceTab = typeof GOVERNANCE_TAB_CONFIGS[number]['id']
+type GovernanceTabColor = typeof GOVERNANCE_TAB_CONFIGS[number]['color']
+
+// Tailwind needs literal class strings — keep this map close to the consts.
+const TAB_COLOR_CLASSES: Record<GovernanceTabColor, {
+  active: string
+  icon: string
+  ring: string
+  ringStatic: string
+  dot: string
+}> = {
+  info: {
+    active: 'bg-info/10 text-info ring-info/25',
+    icon: 'text-info',
+    ring: 'focus-visible:ring-info/30',
+    ringStatic: 'ring-info/25',
+    dot: 'bg-info',
+  },
+  teal: {
+    active: 'bg-teal/10 text-teal ring-teal/25',
+    icon: 'text-teal',
+    ring: 'focus-visible:ring-teal/30',
+    ringStatic: 'ring-teal/25',
+    dot: 'bg-teal',
+  },
+  accent: {
+    active: 'bg-accent/10 text-accent ring-accent/25',
+    icon: 'text-accent',
+    ring: 'focus-visible:ring-accent/30',
+    ringStatic: 'ring-accent/25',
+    dot: 'bg-accent',
+  },
+  orange: {
+    active: 'bg-orange/10 text-orange ring-orange/25',
+    icon: 'text-orange',
+    ring: 'focus-visible:ring-orange/30',
+    ringStatic: 'ring-orange/25',
+    dot: 'bg-orange',
+  },
+}
 type DatasetOption = {
   id: string
   name: string
@@ -269,6 +308,10 @@ export function DataGovernancePanel() {
     [availableDatasets]
   )
   const selectedDatasetName = selectedDatasetId ? datasetNameById.get(selectedDatasetId) || selectedDatasetId : null
+  const activeFolderLabel = useMemo(() => {
+    if (!activeFolderId || activeFolderId === ROOT_FOLDER_ID) return t('sidebar.allFolders')
+    return libraryFolders.find((folder) => folder.id === activeFolderId)?.name || t('sidebar.rootFolder')
+  }, [activeFolderId, libraryFolders, t])
 
   const documentSyncQuery = useQuery({
     queryKey: ['data-governance', 'library-documents', datasetNameSignature, selectedDatasetId],
@@ -1007,7 +1050,7 @@ export function DataGovernancePanel() {
 	              "group relative w-full max-w-3xl overflow-hidden rounded-3xl border border-dashed p-16 text-center transition-colors duration-200 motion-reduce:transition-none",
 	              isDragging
 	                ? "border-primary/50 bg-primary/10"
-	                : "border-border/50 bg-card/5 hover:border-primary/25 hover:bg-card/[0.07] hover:shadow-md"
+	                : "border-border/60 bg-card hover:border-primary/25 hover:bg-card/[0.07] hover:shadow-md"
 	            )}
 	            onDragOver={handleDragOver}
 	            onDragLeave={handleDragLeave}
@@ -1032,7 +1075,7 @@ export function DataGovernancePanel() {
 			                    )}
 			                  </div>
 
-                      <h3 className="text-3xl font-bold text-foreground mb-4">
+                      <h3 className="text-3xl font-medium text-foreground mb-4">
                         {uploading ? t('emptyUpload.uploadingTitle') : t('emptyUpload.idleTitle')}
                       </h3>
                       <p className="text-muted-foreground mb-10 max-w-lg mx-auto text-lg leading-relaxed">
@@ -1064,7 +1107,7 @@ export function DataGovernancePanel() {
                   <label
                     htmlFor="file-upload"
                     className={cn(
-                      "flex items-center gap-3 px-8 py-4 rounded-xl font-bold shadow-sm cursor-pointer border bg-info text-info-foreground hover:bg-info/90 border-info/25 dark:bg-info/20 dark:text-foreground dark:hover:bg-info/30 transition-colors duration-150 motion-reduce:transition-none",
+                      "flex items-center gap-3 px-8 py-4 rounded-xl font-medium shadow-sm cursor-pointer border bg-info text-info-foreground hover:bg-info/90 border-info/25 dark:bg-info/20 dark:text-foreground dark:hover:bg-info/30 transition-colors duration-150 motion-reduce:transition-none",
                       uploading && "opacity-50 cursor-not-allowed"
                     )}
                   >
@@ -1077,7 +1120,7 @@ export function DataGovernancePanel() {
                     type="button"
                     variant="outline"
                     onClick={cancelUploadAndParse}
-                    className="flex items-center gap-2 px-8 py-4 rounded-xl border-border/40 bg-card/5 hover:bg-red-500/10 dark:bg-red-500/20 hover:text-red-400 hover:border-red-500/30 transition-colors duration-150 motion-reduce:transition-none text-muted-foreground"
+                    className="flex items-center gap-2 px-8 py-4 rounded-xl border-border/40 bg-card hover:bg-destructive/10 dark:bg-destructive/20 hover:text-destructive hover:border-destructive/30 transition-colors duration-150 motion-reduce:transition-none text-muted-foreground"
                   >
                     <X className="w-5 h-5" />
                     {t('emptyUpload.cancelParsing')}
@@ -1086,13 +1129,13 @@ export function DataGovernancePanel() {
               </div>
 
               <div className="mt-12 flex items-center justify-center gap-8 text-xs font-mono text-muted-foreground uppercase ">
-                <span className="flex items-center gap-2 hover:text-sky-400 transition-colors">
+                <span className="flex items-center gap-2 hover:text-info transition-colors">
                   <FileText className="w-4 h-4" /> {t('emptyUpload.stages.parse')}
                 </span>
-                <span className="flex items-center gap-2 hover:text-sky-400 transition-colors">
+                <span className="flex items-center gap-2 hover:text-info transition-colors">
                   <ShieldCheck className="w-4 h-4" /> {t('emptyUpload.stages.quality')}
                 </span>
-                <span className="flex items-center gap-2 hover:text-sky-400 transition-colors">
+                <span className="flex items-center gap-2 hover:text-info transition-colors">
                   <Sparkles className="w-4 h-4" /> {t('emptyUpload.stages.clean')}
                 </span>
               </div>
@@ -1109,7 +1152,7 @@ export function DataGovernancePanel() {
     viewMode === 'edit' ? (
       <div className="grid grid-cols-2 gap-4 h-full">
         <div className="flex flex-col bg-muted rounded-xl border border-border shadow-sm overflow-hidden h-full">
-          <div className="px-4 py-2 bg-muted border-b border-border text-xs font-semibold text-muted-foreground">
+          <div className="px-4 py-2 bg-muted border-b border-border text-xs font-medium text-muted-foreground">
             {t('canvas.livePreview')}
           </div>
           <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-6">
@@ -1117,7 +1160,7 @@ export function DataGovernancePanel() {
           </div>
         </div>
         <div className="flex flex-col bg-card rounded-xl border border-border shadow-sm overflow-hidden h-full">
-          <div className="px-4 py-2 bg-muted border-b border-border text-xs font-semibold text-muted-foreground">
+          <div className="px-4 py-2 bg-muted border-b border-border text-xs font-medium text-muted-foreground">
             {t('canvas.sourceEditor')}
           </div>
           <textarea
@@ -1133,22 +1176,22 @@ export function DataGovernancePanel() {
         <div className="w-16 h-16 bg-muted rounded-2xl flex items-center justify-center mb-6 border border-border shadow-sm">
           <FileText className="w-8 h-8 text-muted-foreground" />
         </div>
-        <h3 className="text-lg font-bold text-foreground mb-2 truncate max-w-lg">
+        <h3 className="text-lg font-medium text-foreground mb-2 truncate max-w-lg">
           {selectedFile?.filename || t('libraryFile.unknownFile')}
         </h3>
         <div className="flex items-center gap-2 mb-8">
           <span className="px-2.5 py-1 rounded-full bg-muted text-muted-foreground text-xs font-medium border border-border">
             {t('libraryFile.badge')}
           </span>
-          <span className="px-2.5 py-1 rounded-full bg-amber-500/10 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 text-xs font-medium border border-amber-500/30 flex items-center gap-1">
-            <div className="w-1.5 h-1.5 rounded-full bg-amber-500/10 dark:bg-amber-500/20" />
+          <span className="px-2.5 py-1 rounded-full bg-warning/10 dark:bg-warning/20 text-warning dark:text-warning text-xs font-medium border border-warning/30 flex items-center gap-1">
+            <div className="w-1.5 h-1.5 rounded-full bg-warning/10 dark:bg-warning/20" />
             {t('libraryFile.pending')}
           </span>
         </div>
 
         <div className="max-w-md bg-muted rounded-xl p-5 border border-border mb-8 text-left">
           <p className="text-sm text-muted-foreground leading-relaxed flex gap-3">
-            <Info className="w-5 h-5 text-sky-500 flex-shrink-0 mt-0.5" />
+            <Info className="w-5 h-5 text-info flex-shrink-0 mt-0.5" />
             {t('libraryFile.description', { notice: libraryOnlyNotice })}
           </p>
         </div>
@@ -1184,7 +1227,7 @@ export function DataGovernancePanel() {
           >
             <Button
               variant="outline"
-              className="gap-2 bg-card hover:bg-red-500/10 dark:bg-red-500/20 text-foreground/80 hover:text-red-600 dark:text-red-300 border-border hover:border-red-500/30"
+              className="gap-2 bg-card hover:bg-destructive/10 dark:bg-destructive/20 text-foreground/80 hover:text-destructive dark:text-destructive/85 border-border hover:border-destructive/30"
               disabled={!selectedFileId}
             >
               <Trash2 className="w-4 h-4" />
@@ -1194,7 +1237,7 @@ export function DataGovernancePanel() {
         </div>
       </div>
     ) : previewFormat === 'rendered' ? (
-      <div className="prose prose-slate dark:prose-invert max-w-none prose-headings:text-foreground prose-p:text-muted-foreground prose-a:text-sky-600 dark:prose-a:text-sky-300">
+      <div className="prose prose-slate dark:prose-invert max-w-none prose-headings:text-foreground prose-p:text-muted-foreground prose-a:text-info dark:prose-a:text-info">
         <MarkdownRenderer markdown={displayContent || ''} />
       </div>
     ) : (
@@ -1208,11 +1251,11 @@ export function DataGovernancePanel() {
       title={headerTitle}
       badge={t('header.mainBadge')}
       icon={ShieldCheck}
-      iconColor="text-sky-400"
+      iconColor="text-info"
       compactHeader
       description={
         <span className="flex items-center gap-2 text-[13px] text-muted-foreground/80">
-          <span className="w-1.5 h-1.5 rounded-full bg-sky-500/10 dark:bg-sky-500/20" aria-hidden="true" />
+          <span className="w-1.5 h-1.5 rounded-full bg-info/10 dark:bg-info/20" aria-hidden="true" />
           <span>{t('header.workspaceSubtitle')}</span>
         </span>
       }
@@ -1238,7 +1281,7 @@ export function DataGovernancePanel() {
             <Save className="w-3.5 h-3.5" />
             {t('actions.save')}
           </Button>
-          <div className="w-px h-4 bg-border dark:bg-card/10 mx-1" />
+          <div className="w-px h-4 bg-border dark:bg-card mx-1" />
           <Button
             variant="default"
             size="sm"
@@ -1289,11 +1332,11 @@ export function DataGovernancePanel() {
                 <SelectTrigger className="h-9 text-xs bg-muted border-border text-foreground/80 focus:bg-card focus-ring transition-colors duration-200 motion-reduce:transition-none">
                   <div className="flex items-center gap-2 truncate">
                     <FolderTree className="w-3.5 h-3.5 text-primary" />
-                    <SelectValue placeholder={t('sidebar.folderPlaceholder')} />
+                    <span className="truncate">{activeFolderLabel}</span>
                   </div>
                 </SelectTrigger>
                 <SelectContent className="bg-card border-border text-foreground/80">
-                  <SelectItem value={ROOT_FOLDER_ID}>{t('sidebar.rootFolder')}</SelectItem>
+                  <SelectItem value={ROOT_FOLDER_ID}>{t('sidebar.allFolders')}</SelectItem>
                   {libraryFolders.map(f => (
                     <SelectItem key={f.id} value={f.id}>
                       {f.name}
@@ -1312,44 +1355,83 @@ export function DataGovernancePanel() {
               </div>
             </div>
 
-            <div className="border-b border-border/40 bg-background/82 px-3 py-2 dark:bg-background/50">
-              <div className="mb-1.5 flex items-center justify-between gap-2">
-                <span className="text-[9px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/75">
-                  {t('scope.title')}
-                </span>
-                <span className="rounded-full bg-muted/55 px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
-                  {selectedDatasetId ? t('scope.datasetScoped') : t('scope.datasetAll')}
-                </span>
+            <div className="relative border-b border-border/40">
+              <div aria-hidden className="absolute left-0 top-2 bottom-2 w-[2px] rounded-full bg-info/70" />
+              <div className="space-y-1.5 bg-gradient-to-r from-info/[0.08] via-info/[0.03] to-transparent py-2.5 pl-4 pr-3 dark:from-info/[0.14] dark:via-info/[0.05]">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-info/90 dark:text-info">
+                    {t('scope.title')}
+                  </span>
+                  <span
+                    className={cn(
+                      'rounded-full border px-1.5 py-0.5 text-[10px] font-medium tabular-nums transition-colors',
+                      selectedDatasetId
+                        ? 'border-info/30 bg-info/15 text-info'
+                        : 'border-border/60 bg-muted/60 text-muted-foreground'
+                    )}
+                  >
+                    {selectedDatasetId ? t('scope.datasetScoped') : t('scope.datasetAll')}
+                  </span>
+                </div>
+                <Select
+                  value={selectedDatasetId || ALL_DATASETS_VALUE}
+                  onValueChange={handleDatasetScopeChange}
+                >
+                  <SelectTrigger
+                    className={cn(
+                      'h-8 text-[11px] font-medium bg-card border-border/60 text-foreground transition-colors duration-200 motion-reduce:transition-none',
+                      'hover:border-info/40 focus:border-info/60 data-[state=open]:border-info/60',
+                      'focus-visible:ring-2 focus-visible:ring-info/20 focus-visible:ring-offset-0',
+                      'dark:bg-card'
+                    )}
+                  >
+                    <div className="flex items-center gap-1.5 truncate">
+                      <FolderTree className="w-3.5 h-3.5 text-info/80 flex-shrink-0" />
+                      <SelectValue placeholder={t('scope.placeholder')} />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent className="bg-card border-border/60 text-foreground">
+                    <SelectItem value={ALL_DATASETS_VALUE} className="text-[12px]">
+                      <span className="flex items-center gap-1.5">
+                        <span aria-hidden className="size-1.5 rounded-full bg-muted-foreground/50" />
+                        {t('scope.allDatasets')}
+                      </span>
+                    </SelectItem>
+                    {availableDatasets.map((dataset) => (
+                      <SelectItem key={dataset.id} value={dataset.id} className="text-[12px]">
+                        <span className="flex items-center gap-1.5">
+                          <span aria-hidden className="size-1.5 rounded-full bg-info/70" />
+                          <span className="truncate">{dataset.name}</span>
+                          <span className="ml-auto pl-2 text-[10px] tabular-nums text-muted-foreground/70">
+                            {datasetDocumentCounts.get(dataset.id) || 0}
+                          </span>
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <select
-                value={selectedDatasetId || ALL_DATASETS_VALUE}
-                onChange={(event) => handleDatasetScopeChange(event.target.value)}
-                className="h-8 w-full rounded-lg border border-border/60 bg-background/90 px-2 text-[11px] font-medium text-foreground shadow-[inset_0_1px_0_hsl(var(--background))] outline-none transition-colors focus:border-primary/45 focus:ring-2 focus:ring-primary/12 dark:bg-background/60"
-              >
-                <option value={ALL_DATASETS_VALUE}>{t('scope.allDatasets')}</option>
-                {availableDatasets.map((dataset) => (
-                  <option key={dataset.id} value={dataset.id}>
-                    {t('scope.datasetOptionWithCount', {
-                      name: dataset.name,
-                      count: datasetDocumentCounts.get(dataset.id) || 0,
-                    })}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-1 text-[10px] leading-4 text-muted-foreground/70">
-                {selectedDatasetId ? t('scope.datasetScopeSelectedHint') : t('scope.datasetScopeHint')}
-              </p>
             </div>
 
             {/* 鏂囦欢鐩綍鏍?- 鍙姌鍙犲尯鍩?*/}
-            <div className="px-3 pt-2 pb-1 border-b border-border bg-muted/50">
-              <div className="max-h-48 overflow-y-auto overscroll-contain no-scrollbar p-1">
+            {/* Folder tree section */}
+            <div className="space-y-1.5 border-b border-border/40 px-3 py-2">
+              <div className="flex items-center gap-1.5 px-1">
+                <FolderTree className="size-3 text-muted-foreground/65" />
+                <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/75">
+                  {t('sidebar.foldersHeader')}
+                </span>
+                <span className="ml-auto text-[10px] tabular-nums text-muted-foreground/60">
+                  {libraryFolders.length}
+                </span>
+              </div>
+              <div className="-mx-1 max-h-44 overflow-y-auto overscroll-contain no-scrollbar px-1">
                 <DocumentFolderTree />
               </div>
             </div>
 
-            <div className="flex items-center justify-between px-4 py-2 mt-2">
-              <h3 className="text-xs font-bold text-muted-foreground uppercase  pl-1">
+            <div className="flex items-center justify-between px-4 pt-3 pb-1.5">
+              <h3 className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/75">
                 {t('sidebar.filesTitle', { count: visibleFiles.length })}
               </h3>
             </div>
@@ -1369,57 +1451,54 @@ export function DataGovernancePanel() {
                           type="button"
                           onClick={() => handleSelectFile(file.id)}
                           className={cn(
-                            "w-full text-left p-4 rounded-xl border transition-colors transition-shadow duration-200 motion-reduce:transition-none cursor-pointer",
+                            "relative w-full text-left p-3 rounded-lg border transition-[background,border,box-shadow,transform] duration-200 motion-reduce:transition-none cursor-pointer overflow-hidden",
                             selectedFileId === file.id
-                              ? "bg-sky-500/10 dark:bg-sky-500/20 border-sky-200 shadow-md ring-1 ring-sky-100"
-                              : "bg-card border-border hover:border-sky-200 hover:shadow-sm"
+                              ? "border-info/30 bg-gradient-to-r from-info/[0.08] via-info/[0.03] to-transparent shadow-soft dark:from-info/[0.14]"
+                              : "border-border/60 bg-card hover:border-info/25 hover:bg-muted/40 hover:translate-x-[1px]"
                           )}
                           aria-label={t('a11y.openFile', { filename: file.filename })}
                         >
-	                      <div className="flex items-start gap-4">
+                          {selectedFileId === file.id ? (
+                            <span aria-hidden className="absolute left-0 top-2 bottom-2 w-[2px] rounded-full bg-info" />
+                          ) : null}
+	                      <div className="flex items-start gap-3">
 	                        {/* File Icon */}
 	                        {getFileIcon(file.filename, cn(
-	                          "size-12 rounded-xl shadow-sm border transition-colors transition-shadow mr-0 motion-reduce:transition-none",
+	                          "size-10 rounded-lg border transition-colors motion-reduce:transition-none flex-shrink-0",
                           selectedFileId === file.id
-                            ? "ring-2 ring-sky-100 ring-offset-1 border-sky-200"
-                            : "border-border group-hover:border-sky-200 group-hover:shadow-md"
+                            ? "border-info/30 ring-1 ring-info/15"
+                            : "border-border/60 group-hover:border-info/30"
                         ))}
 
                         <div className="flex-1 min-w-0">
                           {/* Row 1: Filename & Score */}
                           <div className="flex items-center justify-between mb-1">
                             <div className={cn(
-                              "text-sm font-bold truncate mr-2 transition-colors",
-                              selectedFileId === file.id ? "text-sky-600 dark:text-sky-300" : "text-foreground/80 group-hover:text-foreground"
+                              "text-sm font-medium truncate transition-colors",
+                              selectedFileId === file.id ? "text-foreground" : "text-foreground/85 group-hover:text-foreground"
                             )}>
                               {file.filename}
                             </div>
                             {score > 0 ? (
                               <span className={cn(
-                                "flex-shrink-0 text-[11px] px-2 py-0.5 rounded-full font-bold shadow-sm border",
-                                (() => {
-    if (score >= 80) {
-        return "bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-700 border-emerald-500/30";
-    }
-    else if (score >= 60) {
-            return "bg-amber-500/10 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/30";
-        }
-        else {
-            return "bg-rose-50 text-rose-700 border-rose-100";
-        }
-                                })()
+                                "flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded-md font-medium tabular-nums border",
+                                score >= 80
+                                  ? "bg-success/12 text-success border-success/25"
+                                  : score >= 60
+                                    ? "bg-warning/15 text-warning border-warning/30"
+                                    : "bg-rose/12 text-rose border-rose/25"
                               )}>
                                 {t('sidebar.scoreLabel', { score })}
                               </span>
                             ) : (
-                              <span className="flex-shrink-0 text-[11px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full border border-border font-medium">{t('sidebar.notScanned')}</span>
+                              <span className="flex-shrink-0 text-[10px] text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded-md border border-border/60 font-medium tabular-nums">{t('sidebar.notScanned')}</span>
                             )}
                           </div>
 
                           {/* Row 2: Metadata (Size & Date) */}
-                          <div className="flex items-center gap-2 text-[11px] text-muted-foreground mb-2 font-medium font-mono">
+                          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/80 mb-1.5 tabular-nums">
                             <span>{formatFileSize(file.fileSize)}</span>
-                            <span className="text-muted-foreground">|</span>
+                            <span className="text-muted-foreground/40">·</span>
                             <span>
                               {file.parsedAt ? new Date(file.parsedAt).toLocaleDateString([], {
                                 year: 'numeric',
@@ -1429,7 +1508,7 @@ export function DataGovernancePanel() {
                             </span>
                             {file.datasetName ? (
                               <>
-                                <span className="text-muted-foreground">|</span>
+                                <span className="text-muted-foreground/40">·</span>
                                 <span className="truncate">{file.datasetName}</span>
                               </>
                             ) : null}
@@ -1439,17 +1518,17 @@ export function DataGovernancePanel() {
 	                          <div className="flex items-center justify-between h-5 pr-8">
 	                            <div className="flex items-center gap-2">
                               {file.source ? (
-                                <span className="text-[9px] text-muted-foreground flex items-center gap-1 bg-muted px-1.5 py-0.5 rounded border border-border font-bold">
+                                <span className="text-[9px] text-muted-foreground flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded border border-border/60 font-medium uppercase tracking-wider">
                                   {file.source === 'knowledge_base' ? t('scope.sourceKnowledge') : t('scope.sourceParsing')}
                                 </span>
                               ) : null}
 	                              {state?.isModified && (
-	                                <span className="text-[9px] text-sky-600 dark:text-sky-300 flex items-center gap-1 bg-sky-500/10 dark:bg-sky-500/20 px-1.5 py-0.5 rounded border border-sky-500/30 font-bold">
+	                                <span className="text-[9px] text-accent flex items-center gap-1 bg-accent/10 px-1.5 py-0.5 rounded border border-accent/25 font-medium">
                                   <Sparkles className="w-2.5 h-2.5" /> {t('sidebar.cleaned')}
                                 </span>
                               )}
                               {hasIssue && (
-                                <span className="text-[9px] text-rose-600 flex items-center gap-1 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100 font-bold">
+                                <span className="text-[9px] text-rose flex items-center gap-1 bg-rose/10 px-1.5 py-0.5 rounded border border-rose/25 font-medium">
 	                                  <AlertTriangle className="w-2.5 h-2.5" /> {t('sidebar.needsAttention')}
 	                                </span>
 	                              )}
@@ -1465,7 +1544,7 @@ export function DataGovernancePanel() {
                               setDeleteFileTarget({ id: file.id, filename: file.filename })
                               setDeleteFileOpen(true)
                             }}
-                            className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 p-1 text-muted-foreground hover:text-rose-600 hover:bg-rose-50 rounded transition-opacity transition-colors duration-150 motion-reduce:transition-none"
+                            className="absolute bottom-2.5 right-2.5 opacity-0 group-hover:opacity-100 p-1 text-muted-foreground hover:text-rose hover:bg-rose/10 rounded transition-opacity transition-colors duration-150 motion-reduce:transition-none"
                             aria-label={t('a11y.deleteFile', { filename: file.filename })}
                             title={t('dialogs.deleteFile.confirm')}
                           >
@@ -1479,20 +1558,42 @@ export function DataGovernancePanel() {
             </div>
 
             {/* 搴曢儴缁熻鏍?*/}
-            <div className="mt-auto border-t border-border bg-muted/50 p-3 space-y-2 backdrop-blur-sm">
-              <div className="grid grid-cols-2 gap-2">
-                <div className="bg-card p-2 rounded-lg border border-border hover:border-sky-500/30 transition-colors">
-                  <div className="text-[11px] text-muted-foreground mb-0.5 uppercase ">{t('stats.storage')}</div>
-                  <div className="text-sm font-bold text-foreground/80 flex items-baseline gap-1 font-mono">
-                    {stats.completedFiles} <span className="text-muted-foreground font-normal text-xs">/ {stats.totalFiles}</span>
-                  </div>
-                </div>
-                <div className="bg-card p-2 rounded-lg border border-border hover:border-emerald-500/30 transition-colors">
-                  <div className="text-[11px] text-muted-foreground mb-0.5 uppercase ">{t('stats.avgScore')}</div>
-                  <div className="text-sm font-bold text-foreground/80 font-mono">
-                    {stats.avgScore > 0 ? stats.avgScore.toFixed(1) : '-'}
-                  </div>
-                </div>
+            {/* Footer KPI bar */}
+            <div className="mt-auto border-t border-border/60 bg-gradient-to-b from-muted/30 to-muted/55 backdrop-blur-sm px-3 py-2.5 space-y-1.5">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/75">
+                  {t('stats.storage')}
+                </span>
+                <span className="text-[10px] tabular-nums text-muted-foreground/80">
+                  {t('stats.processedRatio', { done: stats.completedFiles, total: stats.totalFiles })}
+                </span>
+              </div>
+              <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-muted/80 ring-1 ring-inset ring-border/50">
+                <div
+                  className={cn(
+                    "h-full rounded-full bg-gradient-to-r transition-[width] duration-500 motion-reduce:transition-none",
+                    stats.avgScore >= 80
+                      ? "from-success/80 via-success to-success"
+                      : stats.avgScore >= 60
+                        ? "from-warning/70 via-warning to-warning"
+                        : stats.avgScore > 0
+                          ? "from-rose/70 via-rose to-rose"
+                          : "from-info/40 to-info/70"
+                  )}
+                  style={{ width: stats.totalFiles > 0 ? `${Math.min(100, Math.round((stats.completedFiles / stats.totalFiles) * 100))}%` : '0%' }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-[10px] text-muted-foreground/70 tabular-nums">
+                <span>
+                  {stats.totalFiles > 0
+                    ? `${Math.round((stats.completedFiles / stats.totalFiles) * 100)}%`
+                    : '0%'}
+                </span>
+                <span>
+                  {stats.avgScore > 0
+                    ? t('stats.avgScoreInline', { score: stats.avgScore.toFixed(1) })
+                    : `${t('stats.avgScore')} —`}
+                </span>
               </div>
             </div>
           </div>
@@ -1517,36 +1618,25 @@ export function DataGovernancePanel() {
               {/* 涓棿锛氶瑙堢敾甯?*/}
               <div className="flex-1 flex flex-col overflow-hidden relative z-0">
                 {/* 鐢诲竷宸ュ叿鏍?(鎮诞鎴栭泦鎴? */}
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center bg-card/80 backdrop-blur-md border border-border shadow-sm rounded-full px-2 py-1 gap-1 transition-colors duration-150 motion-reduce:transition-none hover:bg-card hover:border-border">
-                  {/* 瑙嗗浘鍒囨崲 */}
-                  <div className="flex items-center bg-muted rounded-full p-0.5 border border-border">
-                    <button
-                      onClick={() => setViewMode('preview')}
-                      className={cn(
-                        "px-3 py-1 rounded-full text-xs font-medium transition-colors duration-150 motion-reduce:transition-none",
-                        viewMode === 'preview' ? "bg-card text-sky-600 dark:text-sky-300 shadow-sm ring-1 ring-black/5" : "text-muted-foreground hover:text-foreground/80 hover:bg-black/5"
-                      )}
-                    >
-                      {t('canvas.viewModes.preview')}
-                    </button>
-                    <button
-                      onClick={() => setViewMode('edit')}
-                      className={cn(
-                        "px-3 py-1 rounded-full text-xs font-medium transition-colors duration-150 motion-reduce:transition-none",
-                        viewMode === 'edit' ? "bg-card text-sky-600 dark:text-sky-300 shadow-sm ring-1 ring-black/5" : "text-muted-foreground hover:text-foreground/80 hover:bg-black/5"
-                      )}
-                    >
-                      {t('canvas.viewModes.edit')}
-                    </button>
-                    <button
-                      onClick={() => setViewMode('original')}
-                      className={cn(
-                        "px-3 py-1 rounded-full text-xs font-medium transition-colors duration-150 motion-reduce:transition-none",
-                        viewMode === 'original' ? "bg-card text-sky-600 dark:text-sky-300 shadow-sm ring-1 ring-black/5" : "text-muted-foreground hover:text-foreground/80 hover:bg-black/5"
-                      )}
-                    >
-                      {t('canvas.viewModes.original')}
-                    </button>
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center bg-card border border-border/60 shadow-soft rounded-full px-2 py-1 gap-1 transition-colors duration-150 motion-reduce:transition-none">
+                  {/* Segmented view-mode control */}
+                  <div className="flex items-center bg-muted/60 rounded-full p-0.5 border border-border/60">
+                    {(['preview', 'edit', 'original'] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => setViewMode(mode)}
+                        aria-pressed={viewMode === mode}
+                        className={cn(
+                          "px-3 py-1 rounded-full text-xs font-medium transition-colors duration-150 motion-reduce:transition-none focus-ring-soft",
+                          viewMode === mode
+                            ? "bg-card text-foreground shadow-sm ring-1 ring-border/60"
+                            : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]"
+                        )}
+                      >
+                        {t(`canvas.viewModes.${mode}`)}
+                      </button>
+                    ))}
                   </div>
 
                   <div className="w-px h-3 bg-border mx-1" />
@@ -1569,7 +1659,7 @@ export function DataGovernancePanel() {
 	                    variant="ghost"
 	                    size="icon"
 	                    onClick={() => setIsSidebarCollapsed(false)}
-	                    className="absolute left-4 top-4 z-20 h-8 w-8 bg-card/80 border border-border shadow-sm rounded-lg text-muted-foreground hover:text-sky-600 dark:text-sky-300 hover:bg-card backdrop-blur-md transition-colors duration-150 motion-reduce:transition-none"
+	                    className="absolute left-4 top-4 z-20 h-8 w-8 bg-card border border-border/60 shadow-soft rounded-lg text-muted-foreground hover:text-info hover:bg-card transition-colors duration-150 motion-reduce:transition-none"
 	                    aria-label={t('sidebar.expand')}
 	                    title={t('sidebar.expand')}
 	                  >
@@ -1582,7 +1672,7 @@ export function DataGovernancePanel() {
 	                    variant="ghost"
 	                    size="icon"
 	                    onClick={() => setIsPanelCollapsed(false)}
-	                    className="absolute right-4 top-4 z-20 h-8 w-8 bg-card/80 border border-border shadow-sm rounded-lg text-muted-foreground hover:text-sky-600 dark:text-sky-300 hover:bg-card backdrop-blur-md transition-colors duration-150 motion-reduce:transition-none"
+	                    className="absolute right-4 top-4 z-20 h-8 w-8 bg-card border border-border/60 shadow-soft rounded-lg text-muted-foreground hover:text-info hover:bg-card transition-colors duration-150 motion-reduce:transition-none"
 	                    aria-label={t('panel.expand')}
 	                    title={t('panel.expand')}
 	                  >
@@ -1604,7 +1694,7 @@ export function DataGovernancePanel() {
                       {/* 娌荤悊鐘舵€佹按鍗?寰界珷 */}
                       {viewMode !== 'edit' && governanceState.isModified && (
                         <div className="absolute top-0 right-0 p-4">
-                          <span className="bg-purple-500/10 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/30 text-xs px-2 py-1 rounded-md font-medium shadow-sm">
+                          <span className="bg-accent/10 dark:bg-accent/20 text-accent dark:text-accent border border-accent/30 text-xs px-2 py-1 rounded-md font-medium shadow-sm">
                             {t('canvas.modified')}
                           </span>
                         </div>
@@ -1627,13 +1717,21 @@ export function DataGovernancePanel() {
                 )}
                   style={{ width: isPanelCollapsed ? 0 : panelWidth }}
                 >
-                {/* 宸ュ叿闈㈡澘澶撮儴锛氭不鐞嗛樁娈甸€夋嫨 */}
-                <div className="flex-shrink-0 p-4 border-b border-border bg-card">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-sky-600 dark:text-sky-300" />
-                      {t('panel.title')}
-                    </h2>
+                {/* Toolbox header — compact */}
+                <div className="flex-shrink-0 border-b border-border/60 bg-card">
+                  <div className="flex items-center justify-between px-4 pt-3 pb-2 gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span
+                        aria-hidden
+                        className={cn(
+                          "size-1.5 rounded-full flex-shrink-0 transition-colors",
+                          TAB_COLOR_CLASSES[(governanceTabs.find((t) => t.id === activeTab)?.color) ?? 'info'].dot
+                        )}
+                      />
+                      <h2 className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground/85 truncate">
+                        {t('panel.title')}
+                      </h2>
+                    </div>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -1646,43 +1744,45 @@ export function DataGovernancePanel() {
                     </Button>
                   </div>
 
-                  {/* 鏂扮殑 Tab 閫夋嫨鍣?*/}
-                  <div className="grid grid-cols-4 gap-1 p-1 bg-muted rounded-lg border border-border">
-                    {governanceTabs.map((tab) => {
-                      const Icon = tab.icon
-                      const isActive = activeTab === tab.id
-                      return (
-                        <button
-                          key={tab.id}
-                          onClick={() => setActiveTab(tab.id)}
-                          className={cn(
-                            "flex flex-col items-center justify-center py-2 px-1 rounded-md transition-colors transition-shadow duration-150 motion-reduce:transition-none relative",
-                            isActive
-                              ? "bg-card text-sky-600 dark:text-sky-300 shadow-sm ring-1 ring-slate-200"
-                              : "text-muted-foreground hover:text-foreground/80 hover:bg-border/50"
-                          )}
-                          title={tab.label}
-                        >
-                          <Icon className={cn("w-4 h-4 mb-1", isActive ? "text-sky-600 dark:text-sky-300" : "")} />
-                          <span className="text-[11px] font-medium scale-90">{tab.label}</span>
-                          {/* 鐘舵€佺偣 */}
-                          {tab.id === 'clean' && governanceState.isModified && (
-                            <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-purple-500/10 dark:bg-purple-500/20 rounded-full ring-1 ring-white shadow-sm" />
-                          )}
-                        </button>
-                      )
-                    })}
-                  </div>
-
-                  {/* 褰撳墠宸ュ叿鎻忚堪 */}
-                  <div className="mt-3 text-xs text-muted-foreground bg-sky-500/10 dark:bg-sky-500/20 p-2 rounded border border-sky-500/30 flex items-start gap-2">
-                    <Info className="w-3.5 h-3.5 text-sky-500 mt-0.5 flex-shrink-0" />
-                    {governanceTabs.find(tab => tab.id === activeTab)?.desc}
+                  {/* Token-colored tab pills */}
+                  <div className="px-3 pb-2.5">
+                    <div className="flex items-center gap-1 p-0.5 bg-muted/60 rounded-lg border border-border/60">
+                      {governanceTabs.map((tab) => {
+                        const Icon = tab.icon
+                        const isActive = activeTab === tab.id
+                        const palette = TAB_COLOR_CLASSES[tab.color]
+                        return (
+                          <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id)}
+                            className={cn(
+                              "relative flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-[11px] font-medium transition-colors duration-150 motion-reduce:transition-none focus-ring-soft",
+                              isActive
+                                ? cn("ring-1 shadow-sm bg-card", palette.icon, palette.ringStatic)
+                                : "text-muted-foreground hover:text-foreground hover:bg-card/95"
+                            )}
+                            title={tab.label}
+                            aria-pressed={isActive}
+                          >
+                            <Icon className="size-3.5" />
+                            <span className="truncate">{tab.label}</span>
+                            {tab.id === 'clean' && governanceState.isModified && (
+                              <span className={cn("absolute top-1 right-1 size-1.5 rounded-full ring-1 ring-card", palette.dot)} />
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    {/* Active tool subhead — replaces the old info banner */}
+                    <p className="mt-2 px-1 text-[11px] leading-snug text-muted-foreground/80 flex items-start gap-1.5">
+                      <Info className="w-3 h-3 mt-0.5 flex-shrink-0 text-muted-foreground/50" />
+                      <span>{governanceTabs.find(tab => tab.id === activeTab)?.desc}</span>
+                    </p>
                   </div>
                 </div>
 
                 {/* 宸ュ叿鍐呭鍖?*/}
-                <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar bg-muted/30">
+                <div key={activeTab} className="flex-1 overflow-y-auto overscroll-contain no-scrollbar bg-surface-2 animate-fade-in-up">
                   {activeTab === 'quality' && (
                     <QualityChecker
                       content={governanceState.originalContent}

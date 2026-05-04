@@ -467,6 +467,17 @@ export interface GovernanceProfilePayload {
   input_formats: Array<'markdown' | 'html'>
   pipeline_patch: DocumentPipelineOptions
   regex_rules: RegexRuleModel[]
+  processing_scripts?: GovernanceProcessingScript[]
+}
+
+export interface GovernanceProcessingScript {
+  name: string
+  language: 'javascript' | 'typescript' | 'python' | 'rust'
+  stage: 'post_parse' | 'post_governance'
+  content: string
+  enabled?: boolean
+  description?: string | null
+  created_at?: string | null
 }
 
 export interface GovernanceProfileSummary {

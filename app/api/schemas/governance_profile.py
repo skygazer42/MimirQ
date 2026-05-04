@@ -21,12 +21,31 @@ class RegexRuleModel(BaseModel):
     flags: int = Field(default=0, ge=0, le=10_000)
 
 
+class GovernanceProcessingScript(BaseModel):
+    """
+    Non-executable processing script attachment.
+
+    Scripts are persisted with the profile for review/versioning only. The
+    ingestion pipeline must not execute them unless a separate sandboxed runtime
+    explicitly supports that in the future.
+    """
+
+    name: str = Field(..., min_length=1, max_length=160)
+    language: Literal["javascript", "typescript", "python", "rust"]
+    stage: Literal["post_parse", "post_governance"] = "post_governance"
+    content: str = Field(..., min_length=1, max_length=200_000)
+    enabled: bool = False
+    description: str | None = Field(default=None, max_length=500)
+    created_at: datetime | None = None
+
+
 class GovernanceProfilePayload(BaseModel):
     """
     Declarative governance script payload.
 
     - pipeline_patch: a partial DocumentPipelineOptions object to be merged by the caller.
     - regex_rules: additional cleanup rules (applied after default rules by default).
+    - processing_scripts: non-executable script attachments for review/audit.
     """
 
     version: str = Field(default="1", description="Payload schema version")
@@ -41,6 +60,7 @@ class GovernanceProfilePayload(BaseModel):
     )
     pipeline_patch: dict[str, Any] = Field(default_factory=dict)
     regex_rules: list[RegexRuleModel] = Field(default_factory=list)
+    processing_scripts: list[GovernanceProcessingScript] = Field(default_factory=list, max_length=10)
 
 
 class GovernanceProfileSummary(BaseModel):

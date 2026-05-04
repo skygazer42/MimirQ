@@ -361,27 +361,28 @@ export function OriginalPreview() {
 
   return (
     <div className="flex-1 flex flex-col min-w-0 border-b lg:border-b-0 lg:border-r border-border/60 bg-card">
-      <div className="h-10 border-b border-border/60 bg-card flex items-center justify-between px-4 shrink-0">
-        <span className="text-sm font-semibold text-foreground flex items-center gap-2 whitespace-nowrap shrink-0">
-          <FileText className="w-4 h-4 text-muted-foreground" />
-          {previewMode === 'pdf' ? t('originalPreview.titlePdf') : t('originalPreview.title')}
-          {previewMode === 'pdf' ? (
-            <span className="hidden xl:inline text-[11px] font-normal text-muted-foreground/75">
-              {t('originalPreview.hints.pdfMode')}
+      <div className="min-h-10 border-b border-border/60 bg-card px-4 py-2 shrink-0">
+        <div className="flex min-w-0 flex-col gap-2 xl:flex-row xl:items-start xl:justify-between">
+          <div className="flex min-w-0 flex-1 flex-col gap-2">
+            <span className="flex min-w-0 items-center gap-2 text-sm font-semibold text-foreground">
+              <FileText className="w-4 h-4 shrink-0 text-muted-foreground" />
+              <span className="truncate">{previewMode === 'pdf' ? t('originalPreview.titlePdf') : t('originalPreview.title')}</span>
+              {previewMode === 'pdf' ? (
+                <span className="hidden xl:inline text-[11px] font-normal text-muted-foreground/75">
+                  {t('originalPreview.hints.pdfMode')}
+                </span>
+              ) : null}
             </span>
-          ) : null}
-        </span>
-        <div className="flex items-center gap-2">
-          {previewData && (
-            <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-muted-foreground">
+            {previewData && (
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] font-mono text-muted-foreground">
               {activeChunkMeta ? (
-                <span className="inline-flex h-5 items-center rounded-md border border-primary/20 bg-primary/10 px-1.5 text-primary">
+                <span className="inline-flex h-5 max-w-full items-center rounded-md border border-primary/20 bg-primary/10 px-1.5 text-primary">
                   {activeChunkMeta.label}
                   {activeChunkMeta.page == null ? '' : ` P.${activeChunkMeta.page}`}
                   {' '}
-                  <span className="text-muted-foreground">{activeChunkMeta.range}</span>
+                  <span className="truncate text-muted-foreground">{activeChunkMeta.range}</span>
                   {activeChunkMeta.role ? (
-                    <span className="ml-1 text-[9px] uppercase  text-muted-foreground">
+                    <span className="ml-1 shrink-0 text-[9px] uppercase  text-muted-foreground">
                       {activeChunkMeta.role}
                     </span>
                   ) : null}
@@ -438,70 +439,74 @@ export function OriginalPreview() {
                   </TooltipProvider>
                 )
               })()}
-            </div>
-          )}
-          {previewMode === 'raw' && effectiveOriginalText && activeChunkIndex !== null && effectiveOriginalText.length > 20000 ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 px-2 text-[11px]"
-              onClick={() => setForceFullHighlight((v) => !v)}
-              title={
-                forceFullHighlight
-                  ? t('originalPreview.toggle.windowedTitle')
-                  : t('originalPreview.toggle.fullTitle')
-              }
-            >
-              {forceFullHighlight
-                ? t('originalPreview.toggle.windowed')
-                : t('originalPreview.toggle.full')}
-            </Button>
-          ) : null}
-          <div className="flex items-center gap-1 rounded-md border border-border/60 bg-muted/20 p-0.5">
-            <Button
-              variant={previewMode === 'raw' ? 'secondary' : 'ghost'}
-              size="sm"
-              className="h-7 px-2 text-[11px]"
-              onClick={() => setPreviewMode('raw')}
-              disabled={!effectiveOriginalText}
-            >
-              {t('originalPreview.tabs.raw')}
-            </Button>
-            <Button
-              variant={previewMode === 'rendered' ? 'secondary' : 'ghost'}
-              size="sm"
-              className="h-7 px-2 text-[11px]"
-              onClick={() => setPreviewMode('rendered')}
-              disabled={!effectiveOriginalText}
-            >
-              {t('originalPreview.tabs.rendered')}
-            </Button>
-            <Button
-              variant={previewMode === 'editor' ? 'secondary' : 'ghost'}
-              size="sm"
-              className="h-7 px-2 text-[11px]"
-              onClick={() => setPreviewMode('editor')}
-              disabled={!effectiveOriginalText}
-              title={t('originalPreview.tabs.editorTitle')}
-            >
-              {t('originalPreview.tabs.editor')}
-            </Button>
-            {isPdf ? (
+              </div>
+            )}
+          </div>
+
+          <div className="flex shrink-0 items-center gap-2 self-start xl:self-center">
+            {previewMode === 'raw' && effectiveOriginalText && activeChunkIndex !== null && effectiveOriginalText.length > 20000 ? (
               <Button
-                variant={previewMode === 'pdf' ? 'secondary' : 'ghost'}
+                variant="ghost"
                 size="sm"
                 className="h-7 px-2 text-[11px]"
-                onClick={() => setPreviewMode('pdf')}
-                disabled={!previewData || !currentFile}
+                onClick={() => setForceFullHighlight((v) => !v)}
                 title={
-                  serverTextInfo.hasPositionTags
-                    ? t('originalPreview.tabs.pdfAvailableTitle')
-                    : t('originalPreview.tabs.pdfUnavailableTitle')
+                  forceFullHighlight
+                    ? t('originalPreview.toggle.windowedTitle')
+                    : t('originalPreview.toggle.fullTitle')
                 }
               >
-                {t('originalPreview.tabs.pdf')}
+                {forceFullHighlight
+                  ? t('originalPreview.toggle.windowed')
+                  : t('originalPreview.toggle.full')}
               </Button>
             ) : null}
+            <div className="flex items-center gap-1 rounded-md border border-border/60 bg-muted/20 p-0.5">
+              <Button
+                variant={previewMode === 'raw' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-7 px-2 text-[11px]"
+                onClick={() => setPreviewMode('raw')}
+                disabled={!effectiveOriginalText}
+              >
+                {t('originalPreview.tabs.raw')}
+              </Button>
+              <Button
+                variant={previewMode === 'rendered' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-7 px-2 text-[11px]"
+                onClick={() => setPreviewMode('rendered')}
+                disabled={!effectiveOriginalText}
+              >
+                {t('originalPreview.tabs.rendered')}
+              </Button>
+              <Button
+                variant={previewMode === 'editor' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-7 px-2 text-[11px]"
+                onClick={() => setPreviewMode('editor')}
+                disabled={!effectiveOriginalText}
+                title={t('originalPreview.tabs.editorTitle')}
+              >
+                {t('originalPreview.tabs.editor')}
+              </Button>
+              {isPdf ? (
+                <Button
+                  variant={previewMode === 'pdf' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-7 px-2 text-[11px]"
+                  onClick={() => setPreviewMode('pdf')}
+                  disabled={!previewData || !currentFile}
+                  title={
+                    serverTextInfo.hasPositionTags
+                      ? t('originalPreview.tabs.pdfAvailableTitle')
+                      : t('originalPreview.tabs.pdfUnavailableTitle')
+                  }
+                >
+                  {t('originalPreview.tabs.pdf')}
+                </Button>
+              ) : null}
+            </div>
           </div>
         </div>
       </div>

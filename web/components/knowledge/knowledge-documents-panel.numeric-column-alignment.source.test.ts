@@ -9,7 +9,7 @@ describe('KnowledgeDocumentsPanel numeric column alignment', () => {
 
     expect(src).toContain("<div className=\"text-right tabular-nums\">{t('table.columns.chunks')}</div>")
     expect(src).toContain("<div className=\"text-right tabular-nums\">{t('table.columns.size')}</div>")
-    expect(src).toContain('className="text-right font-mono text-[11px] font-semibold tabular-nums text-foreground/70"')
+    expect(src).toContain('className="text-right font-mono text-[11px] tabular-nums text-foreground/70"')
     expect(src).toContain('className="text-right font-mono text-[11px] tabular-nums text-muted-foreground"')
   })
 })

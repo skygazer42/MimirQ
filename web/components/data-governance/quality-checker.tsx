@@ -343,7 +343,7 @@ export function QualityChecker({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ScanLine className="size-5 text-info" />
-            <h3 className="font-bold text-foreground">{t("header.title")}</h3>
+            <h3 className="font-medium text-foreground">{t("header.title")}</h3>
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -383,7 +383,7 @@ export function QualityChecker({
               <div>
                 <div className="mb-1 text-sm text-muted-foreground">{t('score.title')}</div>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-4xl font-bold text-foreground">{score}</span>
+                  <span className="text-4xl font-medium text-foreground">{score}</span>
                   <span className="text-sm text-muted-foreground">{t('score.outOf')}</span>
                   <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', scoreGrade.badge)}>
                     {scoreGrade.label}
@@ -401,7 +401,7 @@ export function QualityChecker({
               >
                 <span
                   className={cn(
-                    'text-2xl font-bold',
+                    'text-2xl font-medium',
                     scoreGrade.tone === 'success' && 'text-success',
                     scoreGrade.tone === 'info' && 'text-info',
                     scoreGrade.tone === 'warning' && 'text-warning',
@@ -448,7 +448,7 @@ export function QualityChecker({
               </button>
 
               {isExpanded && (
-                <div className="border-t border-border bg-muted/50 p-4 pt-0">
+                <div className="border-t border-border bg-muted/60 p-4 pt-0">
                   {item.id === 'chars' && (
                     <div className="grid grid-cols-2 gap-3">
                       <StatRow label={t('stats.totalCharacters')} value={textStats.chars.toLocaleString()} />

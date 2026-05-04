@@ -1,7 +1,7 @@
 import pytest
 
 
-def _p(*, extends=None, input_formats=None, pipeline_patch=None, regex_rules=None):
+def _p(*, extends=None, input_formats=None, pipeline_patch=None, regex_rules=None, processing_scripts=None):
     from app.api.schemas.governance_profile import GovernanceProfilePayload
 
     return GovernanceProfilePayload(
@@ -10,6 +10,7 @@ def _p(*, extends=None, input_formats=None, pipeline_patch=None, regex_rules=Non
         input_formats=input_formats or ["markdown"],
         pipeline_patch=pipeline_patch or {},
         regex_rules=regex_rules or [],
+        processing_scripts=processing_scripts or [],
     )
 
 
@@ -33,6 +34,15 @@ def test_governance_profile_inheritance_merges_patch_and_rules():
             input_formats=["markdown"],
             pipeline_patch={"governance_enabled": True, "governance_remove_noise_lines": True},
             regex_rules=[_rule("base")],
+            processing_scripts=[
+                {
+                    "name": "base.py",
+                    "language": "python",
+                    "stage": "post_governance",
+                    "content": "def transform(text):\n    return text\n",
+                    "enabled": False,
+                }
+            ],
         ),
         created_at=None,
         updated_at=None,
@@ -49,6 +59,15 @@ def test_governance_profile_inheritance_merges_patch_and_rules():
             input_formats=["html", "markdown"],
             pipeline_patch={"governance_remove_noise_lines": False, "governance_remove_boilerplate": True},
             regex_rules=[_rule("child")],
+            processing_scripts=[
+                {
+                    "name": "child.ts",
+                    "language": "typescript",
+                    "stage": "post_parse",
+                    "content": "export const transform = (text: string) => text\n",
+                    "enabled": False,
+                }
+            ],
         ),
         created_at=None,
         updated_at=None,
@@ -66,6 +85,7 @@ def test_governance_profile_inheritance_merges_patch_and_rules():
     assert resolved.effective.pipeline_patch["governance_remove_noise_lines"] is False
     assert resolved.effective.pipeline_patch["governance_remove_boilerplate"] is True
     assert [r.pattern for r in resolved.effective.regex_rules] == ["base", "child"]
+    assert [s.name for s in resolved.effective.processing_scripts] == ["base.py", "child.ts"]
     assert resolved.effective.input_formats == ["markdown", "html"]
 
 
@@ -98,4 +118,3 @@ def test_governance_profile_inheritance_detects_cycle():
 
     with pytest.raises(ValueError):
         resolve_profile_inheritance(a, fetch_by_ref=lambda ref: by_ref[ref], max_depth=10)
-

@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Copy, Download, Eye, MoreHorizontal, Plus, RefreshCw, ShieldCheck, Trash2, Upload } from 'lucide-react'
+import { Copy, Download, Eye, Layers, MoreHorizontal, Plus, RefreshCw, Search, ShieldCheck, Sparkles, Trash2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { PageScaffold } from '@/components/ui/page-scaffold'
@@ -177,14 +177,14 @@ export function GovernanceProfilesPage() {
       <PageScaffold
         title="治理配置"
         description={
-          <span data-governance-profiles-subtitle>
-            创建和管理可复用的治理模板，用于清洗规则与 pipeline_patch 编排。
+          <span className="flex items-center gap-2 text-[13px] text-muted-foreground/85">
+            <span className="size-1.5 rounded-full bg-info/40" aria-hidden />
+            <span>创建和管理可复用的治理模板，用于清洗规则与 pipeline_patch 编排。</span>
           </span>
         }
         icon={ShieldCheck}
-        iconColor="text-emerald-600 dark:text-emerald-400"
+        iconColor="text-info"
         size="7xl"
-        headerClassName="[&_h1]:font-medium [&_h1]:tracking-[-0.015em] [&_h1]:text-foreground/78 [&_[data-governance-profiles-subtitle]]:text-[13px] [&_[data-governance-profiles-subtitle]]:leading-5 [&_[data-governance-profiles-subtitle]]:text-muted-foreground/78"
         actions={
           <div className="flex items-center gap-2">
             <input
@@ -213,7 +213,26 @@ export function GovernanceProfilesPage() {
             <Button
               size="sm"
               variant="outline"
-              className="h-8 gap-1.5 rounded-xl border-border/55 bg-background/78 px-3 text-[12px] font-medium text-foreground/74 shadow-none hover:bg-muted/[0.18] hover:text-foreground"
+              className="h-8 gap-1.5 text-[12px]"
+              disabled={loading}
+              onClick={() => detachPromise(load())}
+            >
+              <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin motion-reduce:animate-none')} />
+              刷新
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 gap-1.5 text-[12px]"
+              disabled={importing}
+              onClick={() => importInputRef.current?.click()}
+            >
+              <Upload className={cn('w-3.5 h-3.5', importing && 'animate-pulse')} />
+              导入
+            </Button>
+            <Button
+              size="sm"
+              className="h-8 gap-1.5 text-[12px] bg-info text-info-foreground hover:bg-info/90 dark:bg-info/85 dark:hover:bg-info"
               onClick={() => {
                 setEditorMode('create')
                 setEditorProfileRef(null)
@@ -221,83 +240,76 @@ export function GovernanceProfilesPage() {
                 setEditorOpen(true)
               }}
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-3.5 h-3.5" />
               新建
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 gap-1.5 rounded-xl border-border/50 bg-background/74 px-3 text-[12px] font-medium text-foreground/68 shadow-none hover:bg-muted/[0.18] hover:text-foreground/78"
-              disabled={importing}
-              onClick={() => importInputRef.current?.click()}
-            >
-              <Upload className={cn('w-4 h-4', importing && 'animate-pulse')} />
-              导入
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 gap-1.5 rounded-xl border-border/50 bg-background/74 px-3 text-[12px] font-medium text-foreground/68 shadow-none hover:bg-muted/[0.18] hover:text-foreground/78"
-              disabled={loading}
-              onClick={() => detachPromise(load())}
-            >
-              <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin motion-reduce:animate-none')} />
-              刷新
             </Button>
           </div>
         }
       >
         <Panel
-          className="mt-4 overflow-hidden rounded-2xl border-border/40 bg-[linear-gradient(180deg,rgba(255,255,255,0.94)_0%,rgba(248,250,252,0.92)_100%)] shadow-none hover:shadow-none"
+          className="mt-4 overflow-hidden rounded-2xl border-border/50 bg-card shadow-none"
           padding="md"
         >
-          <div className="flex flex-col gap-1.5 lg:flex-row lg:items-center">
-            <div className="min-w-0 rounded-xl border border-border/35 bg-background/78 px-3 py-2">
-              <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/75">
-                Profile Library
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <div className="relative overflow-hidden rounded-xl border border-border/50 bg-gradient-to-br from-muted/40 via-muted/15 to-transparent px-3 py-2.5">
+              <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/75">
+                <Layers className="size-3 text-muted-foreground/60" />
+                总数
               </div>
-              <div className="mt-0.5 text-[11px] leading-4.5 text-foreground/72">
-                内置模板用于建立治理基线，自定义模板适合沉淀团队场景规则，并可继续克隆、导出或编辑。
+              <div className="mt-1.5 flex items-baseline gap-1.5">
+                <span className="text-[20px] font-semibold tracking-[-0.02em] tabular-nums text-foreground">
+                  {items.length}
+                </span>
+                <span className="text-[11px] text-muted-foreground/65">profiles</span>
               </div>
             </div>
-            <div className="grid flex-1 gap-1.5 sm:grid-cols-3">
-              <div className="rounded-xl border border-border/30 bg-background/72 px-3 py-2">
-                <div className="flex items-end justify-between gap-3">
-                  <div className="text-[11px] text-muted-foreground/75">当前展示</div>
-                  <div className="text-[16px] font-semibold tracking-[-0.02em] leading-none text-foreground/80">{items.length}</div>
-                </div>
+            <div className="relative overflow-hidden rounded-xl border border-info/20 bg-gradient-to-br from-info/[0.10] via-info/[0.04] to-transparent px-3 py-2.5">
+              <span aria-hidden className="absolute left-0 top-2 bottom-2 w-[2px] rounded-full bg-info/70" />
+              <div className="flex items-center gap-2 pl-1.5 text-[11px] font-medium uppercase tracking-[0.14em] text-info/85">
+                <ShieldCheck className="size-3 text-info" />
+                内置
               </div>
-              <div className="rounded-xl border border-border/30 bg-background/72 px-3 py-2">
-                <div className="flex items-end justify-between gap-3">
-                  <div className="text-[11px] text-muted-foreground/75">内置模板</div>
-                  <div className="text-[16px] font-semibold tracking-[-0.02em] leading-none text-foreground/80">{builtinCount}</div>
-                </div>
+              <div className="mt-1.5 flex items-baseline gap-1.5 pl-1.5">
+                <span className="text-[20px] font-semibold tracking-[-0.02em] tabular-nums text-foreground">
+                  {builtinCount}
+                </span>
+                <span className="text-[11px] text-muted-foreground/65">系统基线</span>
               </div>
-              <div className="rounded-xl border border-border/30 bg-background/72 px-3 py-2">
-                <div className="flex items-end justify-between gap-3">
-                  <div className="text-[11px] text-muted-foreground/75">自定义模板</div>
-                  <div className="text-[16px] font-semibold tracking-[-0.02em] leading-none text-foreground/80">{customCount}</div>
-                </div>
+            </div>
+            <div className="relative overflow-hidden rounded-xl border border-accent/20 bg-gradient-to-br from-accent/[0.08] via-accent/[0.03] to-transparent px-3 py-2.5">
+              <span aria-hidden className="absolute left-0 top-2 bottom-2 w-[2px] rounded-full bg-accent/70" />
+              <div className="flex items-center gap-2 pl-1.5 text-[11px] font-medium uppercase tracking-[0.14em] text-accent/85">
+                <Sparkles className="size-3 text-accent" />
+                自定义
+              </div>
+              <div className="mt-1.5 flex items-baseline gap-1.5 pl-1.5">
+                <span className="text-[20px] font-semibold tracking-[-0.02em] tabular-nums text-foreground">
+                  {customCount}
+                </span>
+                <span className="text-[11px] text-muted-foreground/65">团队沉淀</span>
               </div>
             </div>
           </div>
         </Panel>
 
-        <Panel className="mt-4 border-border/38 bg-card/90 shadow-none hover:shadow-none" padding="md">
-          <div className="flex flex-col gap-2.5 md:flex-row md:items-center">
-            <Input
-              placeholder="搜索名称、说明或 key"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="h-9 border-border/45 bg-background/80 text-[13px] shadow-none transition-colors focus-visible:border-border/70 focus-visible:ring-[rgba(148,163,184,0.14)] md:flex-1"
-            />
+        <Panel className="mt-3 border-border/50 bg-card shadow-none" padding="md">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center">
+            <div className="relative md:flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
+              <Input
+                placeholder="搜索名称、说明或 key"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="h-9 border-border/60 bg-background pl-9 text-[13px] shadow-none transition-colors hover:border-info/30 focus-visible:border-info/50 focus-visible:ring-2 focus-visible:ring-info/15"
+              />
+            </div>
             <div className="flex flex-wrap items-center gap-2">
               <label
                 className={cn(
-                  "inline-flex h-9 items-center gap-2 rounded-xl px-3 text-[12px] text-foreground/70 transition-colors",
+                  'inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border px-3 text-[12px] font-medium transition-colors duration-150 motion-reduce:transition-none',
                   includeBuiltin
-                    ? "border border-border/55 bg-background/84 hover:bg-muted/[0.18]"
-                    : "border border-border/35 bg-background/68 hover:bg-muted/[0.14]"
+                    ? 'border-info/30 bg-info/[0.08] text-info'
+                    : 'border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground'
                 )}
               >
                 <Switch checked={includeBuiltin} onCheckedChange={setIncludeBuiltin} className="scale-90" />
@@ -305,11 +317,12 @@ export function GovernanceProfilesPage() {
               </label>
               <label
                 className={cn(
-                  "inline-flex h-9 items-center gap-2 rounded-xl px-3 text-[12px] text-foreground/70 transition-colors",
+                  'inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border px-3 text-[12px] font-medium transition-colors duration-150 motion-reduce:transition-none',
                   importOverwrite
-                    ? "border border-border/55 bg-background/84 hover:bg-muted/[0.18]"
-                    : "border border-border/35 bg-background/68 hover:bg-muted/[0.14]"
+                    ? 'border-warning/35 bg-warning/[0.10] text-warning'
+                    : 'border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground'
                 )}
+                title="导入时覆盖同名 Profile"
               >
                 <Switch checked={importOverwrite} onCheckedChange={setImportOverwrite} className="scale-90" />
                 <span>导入覆盖</span>
@@ -319,186 +332,160 @@ export function GovernanceProfilesPage() {
         </Panel>
 
         {items.length ? (
-          <div className="mt-4 grid grid-cols-1 gap-3.5 lg:grid-cols-2">
-            {items.map((p) => (
-              <Panel
-                key={p.key}
-                padding="md"
-                className={cn(
-                  "group relative overflow-hidden rounded-2xl shadow-none transition-[border-color,background-color] duration-200 hover:shadow-none",
-                  p.is_system
-                    ? "border-[#aad9f2]/38 bg-[rgba(255,255,255,0.86)] hover:border-[#aad9f2]/72 hover:bg-[rgba(209,255,255,0.20)] before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-[linear-gradient(90deg,transparent,rgba(170,217,242,0.55),transparent)]"
-                    : "border-[#aad9f2]/34 bg-[rgba(255,255,255,0.88)] hover:border-[#aad9f2]/66 hover:bg-[linear-gradient(180deg,rgba(226,255,212,0.22)_0%,rgba(209,255,255,0.14)_100%)] before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-[linear-gradient(90deg,transparent,rgba(226,255,212,1),transparent)]"
-                )}
-              >
-                <div
-                  aria-hidden="true"
+          <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
+            {items.map((p) => {
+              const tone = p.is_system ? 'info' : 'accent'
+              const toneRailClass = tone === 'info' ? 'bg-info/70' : 'bg-accent/70'
+              const toneGradientClass = tone === 'info'
+                ? 'from-info/[0.06] via-info/[0.02] to-transparent dark:from-info/[0.10]'
+                : 'from-accent/[0.05] via-accent/[0.015] to-transparent dark:from-accent/[0.10]'
+              const toneHoverBorderClass = tone === 'info' ? 'hover:border-info/40' : 'hover:border-accent/40'
+              const toneBadgeClass = tone === 'info'
+                ? 'border-info/30 bg-info/[0.12] text-info'
+                : 'border-accent/30 bg-accent/[0.12] text-accent'
+              const toneDotClass = tone === 'info' ? 'bg-info' : 'bg-accent'
+              return (
+                <Panel
+                  key={p.key}
+                  padding="md"
                   className={cn(
-                    "pointer-events-none absolute right-0 top-0 h-24 w-24 rounded-full blur-2xl opacity-70 transition-all duration-200 group-hover:opacity-100",
-                    p.is_system ? "bg-[#d1ffff]/55 group-hover:bg-[#aad9f2]/45" : "bg-[#e2ffd4]/55 group-hover:bg-[#d1ffff]/45"
+                    'group relative overflow-hidden rounded-2xl border-border/60 bg-card shadow-none transition-[border-color,box-shadow,transform] duration-200 motion-reduce:transition-none',
+                    toneHoverBorderClass,
+                    'hover:shadow-soft'
                   )}
-                />
-                <div
-                  aria-hidden="true"
-                  className={cn(
-                    "pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-200 group-hover:opacity-100",
-                    p.is_system
-                      ? "bg-[radial-gradient(circle_at_top_right,rgba(209,255,255,0.34),transparent_62%)]"
-                      : "bg-[radial-gradient(circle_at_top_right,rgba(226,255,212,0.34),rgba(209,255,255,0.18),transparent_66%)]"
-                  )}
-                />
-                <div className="flex items-start justify-between gap-2.5">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex min-w-0 items-center gap-1.5">
-                      <div title={p.name} className="min-w-0 flex-1 truncate text-[14px] font-semibold tracking-[-0.01em] text-foreground/82">
-                        {p.name}
+                >
+                  <span aria-hidden className={cn('absolute left-0 top-3 bottom-3 w-[2px] rounded-full', toneRailClass)} />
+                  <div className={cn('pointer-events-none absolute inset-0 bg-gradient-to-br opacity-80', toneGradientClass)} aria-hidden />
+
+                  <div className="relative flex items-start justify-between gap-2.5">
+                    <div className="min-w-0 flex-1 pl-2">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <div title={p.name} className="min-w-0 flex-1 truncate text-[14px] font-semibold tracking-[-0.005em] text-foreground">
+                          {p.name}
+                        </div>
+                        <span className={cn(
+                          'flex-shrink-0 whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.10em]',
+                          toneBadgeClass
+                        )}>
+                          {p.is_system ? '内置' : '自定义'}
+                        </span>
                       </div>
-                      {p.is_system ? (
-                        <span className="flex-shrink-0 whitespace-nowrap rounded-full border border-[#aad9f2]/50 bg-[rgba(209,255,255,0.32)] px-2 py-0.5 text-[9px] font-medium tracking-[0.08em] text-slate-600/85">
-                          内置
-                        </span>
-                      ) : (
-                        <span className="flex-shrink-0 whitespace-nowrap rounded-full border border-[#aad9f2]/35 bg-[rgba(226,255,212,0.42)] px-2 py-0.5 text-[9px] font-medium tracking-[0.08em] text-emerald-700/85 dark:text-emerald-300/85">
-                          自定义
-                        </span>
-                      )}
+                      <div className="mt-1.5 inline-flex max-w-full items-center rounded-md border border-border/50 bg-muted/40 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+                        <span className="truncate">{p.key}</span>
+                      </div>
+                      <div className="mt-2 min-h-[2.6rem] text-[12px] leading-5 text-muted-foreground/85 line-clamp-3">
+                        {p.description || (p.is_system ? '适合作为治理基线模板，可直接查看并克隆为团队自定义配置。' : '用于沉淀团队治理经验，可继续编辑、导出或用于入库策略复用。')}
+                      </div>
                     </div>
-                    <div className="mt-1.5 inline-flex max-w-full items-center rounded-md border border-border/45 bg-muted/[0.14] px-2 py-0.5 font-mono text-[11px] text-muted-foreground/85 transition-colors duration-200 group-hover:border-[#aad9f2]/50 group-hover:bg-[rgba(209,255,255,0.26)]">
-                      <span className="truncate">{p.key}</span>
-                    </div>
-                    <div className="mt-1.5 min-h-[2.8rem] text-[12px] leading-5 text-muted-foreground/84 line-clamp-3">
-                      {p.description || (p.is_system ? '适合作为治理基线模板，可直接查看并克隆为团队自定义配置。' : '用于沉淀团队治理经验，可继续编辑、导出或用于入库策略复用。')}
-                    </div>
-                  </div>
 
-                  <div className="flex flex-shrink-0 items-center gap-1.5">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className={cn(
-                        "h-[30px] gap-1 rounded-lg px-2.5 text-[12px] text-foreground/70 shadow-none",
-                        p.is_system
-                          ? "border-[#aad9f2]/42 bg-[rgba(209,255,255,0.12)] hover:bg-[rgba(209,255,255,0.28)] hover:text-foreground"
-                          : "border-[#aad9f2]/38 bg-[rgba(226,255,212,0.16)] hover:bg-[rgba(226,255,212,0.32)] hover:text-foreground"
-                      )}
-                      onClick={() => {
-                        setEditorMode(p.is_system ? 'view' : 'edit')
-                        // IMPORTANT: custom profiles should use `id` (UUID) as ref; `key` may be "custom:<uuid>".
-                        const ref = p.is_system ? p.key : String(p.id || '').trim() || p.key
-                        setEditorSeedCreate(null)
-                        setEditorProfileRef(ref)
-                        setEditorOpen(true)
-                      }}
-                    >
-                      <Eye className="h-4 w-4" />
-                      {p.is_system ? '查看' : '编辑'}
-                    </Button>
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="ghost"
-                      className={cn(
-                        "h-[30px] w-[30px] rounded-lg text-muted-foreground/75 transition-opacity group-hover:opacity-100 md:opacity-80",
-                        p.is_system
-                          ? "hover:bg-[rgba(209,255,255,0.30)] hover:text-foreground"
-                          : "hover:bg-[rgba(226,255,212,0.30)] hover:text-foreground"
-                      )}
-                      aria-label="复制 Profile"
-                      title="复制"
-                      onClick={() =>
-                        detachPromise((async () => {
+                    <div className="flex flex-shrink-0 items-center gap-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 gap-1 rounded-md px-2 text-[12px] font-medium"
+                        onClick={() => {
+                          setEditorMode(p.is_system ? 'view' : 'edit')
+                          // IMPORTANT: custom profiles should use `id` (UUID) as ref; `key` may be "custom:<uuid>".
                           const ref = p.is_system ? p.key : String(p.id || '').trim() || p.key
-                          if (!ref) return
-                          try {
-                            const prof = await pipelineApi.getGovernanceProfile(ref)
-                            setEditorMode('create')
-                            setEditorProfileRef(null)
-                            setEditorSeedCreate(buildGovernanceProfileCreateFromExisting(prof))
-                            setEditorOpen(true)
-                          } catch (err: any) {
-                            toast.error(formatApiError(err, '复制失败'))
-                          }
-                        })())
-                      }
-                    >
-                      <Copy className="w-4 h-4" />
-                    </Button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          className={cn(
-                            "h-[30px] w-[30px] rounded-lg text-muted-foreground/75 transition-opacity group-hover:opacity-100 md:opacity-80",
-                            p.is_system
-                              ? "hover:bg-[rgba(209,255,255,0.30)] hover:text-foreground"
-                              : "hover:bg-[rgba(226,255,212,0.30)] hover:text-foreground"
-                          )}
-                          aria-label="更多操作"
-                          title="更多操作"
-                        >
-                          <MoreHorizontal className="w-4 h-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-48">
-                        <DropdownMenuItem onSelect={() => detachPromise(exportOne(p))}>
-                          <Download className="mr-2 h-4 w-4" />
-                          导出配置 JSON
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => detachPromise(exportAsIngestionPolicy(p))}>
-                          <Download className="mr-2 h-4 w-4" />
-                          导出入库策略
-                        </DropdownMenuItem>
-                        {!p.is_system ? (
-                          <>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
-                              onSelect={() => setDeleteTarget(p)}
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              删除
-                            </DropdownMenuItem>
-                          </>
-                        ) : null}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                          setEditorSeedCreate(null)
+                          setEditorProfileRef(ref)
+                          setEditorOpen(true)
+                        }}
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                        {p.is_system ? '查看' : '编辑'}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                        aria-label="复制 Profile"
+                        title="复制"
+                        onClick={() =>
+                          detachPromise((async () => {
+                            const ref = p.is_system ? p.key : String(p.id || '').trim() || p.key
+                            if (!ref) return
+                            try {
+                              const prof = await pipelineApi.getGovernanceProfile(ref)
+                              setEditorMode('create')
+                              setEditorProfileRef(null)
+                              setEditorSeedCreate(buildGovernanceProfileCreateFromExisting(prof))
+                              setEditorOpen(true)
+                            } catch (err: any) {
+                              toast.error(formatApiError(err, '复制失败'))
+                            }
+                          })())
+                        }
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                            aria-label="更多操作"
+                            title="更多操作"
+                          >
+                            <MoreHorizontal className="h-3.5 w-3.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuItem onSelect={() => detachPromise(exportOne(p))}>
+                            <Download className="mr-2 h-4 w-4" />
+                            导出配置 JSON
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => detachPromise(exportAsIngestionPolicy(p))}>
+                            <Download className="mr-2 h-4 w-4" />
+                            导出入库策略
+                          </DropdownMenuItem>
+                          {!p.is_system ? (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                onSelect={() => setDeleteTarget(p)}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                删除
+                              </DropdownMenuItem>
+                            </>
+                          ) : null}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
-                </div>
 
-                <div className="mt-3 flex items-center justify-between border-t border-border/40 pt-2.5">
-                  <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/80">
-                    <span
-                      className={cn(
-                        "h-1.5 w-1.5 rounded-full",
-                        p.is_system ? "bg-foreground/20" : "bg-emerald-500/45"
-                      )}
-                      aria-hidden="true"
-                    />
-                    <span>{p.is_system ? '系统基线模板' : '团队自定义模板'}</span>
+                  <div className="relative mt-3 flex items-center justify-between border-t border-border/50 pt-2.5 pl-2">
+                    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/85">
+                      <span aria-hidden className={cn('size-1.5 rounded-full', toneDotClass)} />
+                      <span>{p.is_system ? '系统基线模板' : '团队自定义模板'}</span>
+                    </div>
+                    <div className="text-[11px] text-muted-foreground/70">
+                      {p.is_system ? '支持克隆' : '支持编辑与导出'}
+                    </div>
                   </div>
-                  <div className="text-[11px] text-muted-foreground/70">
-                    {p.is_system ? '支持克隆为新模板' : '支持编辑与导出'}
-                  </div>
-                </div>
-              </Panel>
-            ))}
+                </Panel>
+              )
+            })}
           </div>
         ) : (
           <EmptyState
-            className="mt-6 border-border/45 bg-[linear-gradient(180deg,hsl(var(--card)/0.86)_0%,hsl(var(--muted)/0.18)_100%)]"
+            className="mt-6 border-border/60 bg-card"
             title={loading ? '正在加载…' : '暂无 Profiles'}
             description={
-              loading ? '请稍候' : '你可以创建一个自定义 Profile，或切换“包含内置”查看内置预设。'
+              loading ? '请稍候' : '你可以创建一个自定义 Profile，或切换"包含内置"查看内置预设。'
             }
             icon={ShieldCheck}
           >
             {!loading ? (
               <Button
                 size="sm"
-                className="rounded-xl"
+                className="bg-info text-info-foreground hover:bg-info/90 dark:bg-info/85 dark:hover:bg-info"
                 onClick={() => {
                   setEditorMode('create')
                   setEditorProfileRef(null)

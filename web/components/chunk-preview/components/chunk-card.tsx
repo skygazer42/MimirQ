@@ -5,11 +5,11 @@
 
 import { useCallback, useMemo } from 'react'
 import type { ReactNode } from 'react'
-import { Copy, Braces, Pin, PinOff, Quote, Pencil, Eye, EyeOff, Link2 } from 'lucide-react'
+import { Copy, Braces, Pin, PinOff, Quote, Pencil, Eye, EyeOff, Link2, CheckCircle2, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
-import { chunkNeedsReview, getChunkMetadata, getSemanticQualityMetadata, getStringValue } from '@/components/chunk-preview/utils/metadata'
+import { chunkIsReviewed, chunkNeedsReview, getChunkMetadata, getSemanticQualityMetadata, getStringValue } from '@/components/chunk-preview/utils/metadata'
 import { cn, detachPromise } from '@/lib/utils'
 import type { ChunkPreviewItem } from '@/types'
 import { getChunkSectionLabel } from '@/components/chunk-preview/utils/sections'
@@ -29,12 +29,14 @@ interface ChunkCardProps {
   overlapPrev?: number
   isEdited?: boolean
   isDisabled?: boolean
+  isReviewed?: boolean
   query?: string
   onMouseEnter: () => void
   onMouseLeave: () => void
   onToggleSelect: () => void
   onEdit?: () => void
   onToggleDisabled?: () => void
+  onToggleReviewed?: () => void
 }
 
 function highlightText(text: string, rawQuery?: string) {
@@ -91,12 +93,14 @@ export function ChunkCard({
   overlapPrev,
   isEdited,
   isDisabled,
+  isReviewed,
   query,
   onMouseEnter,
   onMouseLeave,
   onToggleSelect,
   onEdit,
   onToggleDisabled,
+  onToggleReviewed,
 }: Readonly<ChunkCardProps>) {
   const t = useTranslations('ChunkPreview')
   const rangeLabel = useMemo(() => `${chunk.start_index}-${chunk.end_index}`, [chunk.start_index, chunk.end_index])
@@ -105,6 +109,7 @@ export function ChunkCard({
   const chunkRole = getStringValue(chunkMetadata, 'chunk_role')
   const sectionLabel = useMemo(() => getChunkSectionLabel(chunk), [chunk])
   const semanticQuality = getSemanticQualityMetadata(chunk)
+  const reviewed = Boolean(isReviewed) || chunkIsReviewed(chunk)
   const needsReview = chunkNeedsReview(chunk)
   const needsReviewTitle = useMemo(() => {
     if (!needsReview) return undefined
@@ -221,7 +226,15 @@ export function ChunkCard({
               className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-destructive/10 text-destructive border border-destructive/25"
               title={needsReviewTitle}
             >
-              REVIEW
+              {t('chunkCard.needsReview')}
+            </span>
+          ) : null}
+          {reviewed ? (
+            <span
+              className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-success/10 text-success border border-success/25"
+              title={t('chunkCard.reviewedTitle')}
+            >
+              {t('chunkCard.reviewed')}
             </span>
           ) : null}
           {(() => {
@@ -268,7 +281,28 @@ export function ChunkCard({
           {chunk.page_number != null && (
             <span className="text-[11px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">P.{chunk.page_number}</span>
           )}
-          <div className={cn('flex items-center gap-1', 'opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity')}>
+          <div
+            className={cn(
+              'flex items-center gap-1 transition-opacity',
+              isSelected ? 'opacity-100' : 'opacity-100 lg:opacity-0 lg:group-hover:opacity-100'
+            )}
+          >
+            {onToggleReviewed && (needsReview || reviewed) ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onToggleReviewed()
+                }}
+                aria-label={reviewed ? t('chunkCard.restoreReview') : t('chunkCard.approveReview')}
+                title={reviewed ? t('chunkCard.restoreReview') : t('chunkCard.approveReview')}
+              >
+                {reviewed ? <RotateCcw className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+              </Button>
+            ) : null}
             {onEdit ? (
               <Button
                 type="button"
@@ -384,6 +418,9 @@ export function ChunkCard({
       <div
         className={cn(
           'text-sm font-sans leading-relaxed whitespace-pre-wrap break-words transition-colors',
+          isSelected
+            ? 'max-h-72 overflow-y-auto rounded-lg border border-border/55 bg-background/80 p-3 text-foreground shadow-inner shadow-border/20'
+            : 'line-clamp-5',
           isSelected || isHovered ? 'text-foreground' : 'text-muted-foreground'
         )}
       >
