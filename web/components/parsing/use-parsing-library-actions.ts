@@ -16,6 +16,7 @@ import { extractZipFiles, isZipFile } from '@/lib/zip'
 import { ROOT_FOLDER_ID, type FolderNode, type ParsedFileData } from '@/store/use-parsed-files-store'
 import { ZIP_ALLOWED_EXTENSIONS } from '@/lib/upload-extensions'
 import { type FileStatus } from '@/components/ui/file-queue-item'
+import type { DocumentPipelineOptions } from '@/types'
 
 import type { ParseRun, ParsedFile } from './parsing-types'
 
@@ -42,6 +43,7 @@ type UseParsingLibraryActionsOptions = {
   libraryFiles: ParsedFileData[]
   mapBackendStatusToLibraryStatus: (status?: string) => FileStatus
   parserBackend: string
+  selectedDatasetId: string | null
   rebindInputRef: RefObject<HTMLInputElement | null>
   rebindTargetRef: MutableRef<RebindTarget | null>
   setActiveBlockId: Dispatch<SetStateAction<string | null>>
@@ -58,6 +60,11 @@ type UseParsingLibraryActionsOptions = {
   upsertParsedFile: (file: ParsedFileData) => void
 }
 
+const DATASET_SCOPED_UPLOAD_PIPELINE: DocumentPipelineOptions = {
+  persist_parsed_content: true,
+  persist_parsed_content_max_chars: 2_000_000,
+}
+
 export function useParsingLibraryActions({
   activeFolderId,
   countMarkdownHeadings,
@@ -69,6 +76,7 @@ export function useParsingLibraryActions({
   libraryFiles,
   mapBackendStatusToLibraryStatus,
   parserBackend,
+  selectedDatasetId,
   rebindInputRef,
   rebindTargetRef,
   setActiveBlockId,
@@ -575,6 +583,67 @@ export function useParsingLibraryActions({
         return
       }
 
+      if (selectedDatasetId) {
+        let uploadFailed = 0
+        const uploadedLibraryIds: string[] = []
+
+        for (const queuedFile of queued) {
+          try {
+            const doc = await documentApi.upload(queuedFile.file, {
+              parser_backend: queuedFile.parserBackend,
+              dataset_id: selectedDatasetId,
+              pipeline: DATASET_SCOPED_UPLOAD_PIPELINE,
+            })
+            const libId = String(doc.id || '').trim()
+            if (!libId) throw new Error('Missing document id from backend')
+
+            const metadata = doc.metadata as Record<string, unknown> | undefined
+            const requestedBackend =
+              normalizeBackendCandidate(metadata?.parser_backend_requested) ||
+              queuedFile.parserBackend ||
+              'auto'
+
+            upsertParsedFile({
+              id: libId,
+              filename: doc.filename || queuedFile.name,
+              fileType: doc.file_type || queuedFile.name.split('.').pop()?.toLowerCase() || '',
+              fileSize: Number(doc.file_size || queuedFile.size),
+              markdownContent: '',
+              originalMarkdownContent: '',
+              parsedAt: String(doc.updated_at || doc.created_at || new Date().toISOString()),
+              parser: getParserLabel(requestedBackend),
+              parserBackend: requestedBackend,
+              folderId: queuedFile.folderId,
+              datasetId: doc.dataset_id || selectedDatasetId,
+              datasetName: null,
+              source: 'knowledge_base',
+              sourcePath:
+                (typeof metadata?.source_path === 'string' && metadata.source_path.trim()) ||
+                queuedFile.sourcePath ||
+                null,
+              status: mapBackendStatusToLibraryStatus(doc.status),
+              error: doc.error_message || undefined,
+            })
+            uploadedLibraryIds.push(libId)
+          } catch (err: unknown) {
+            uploadFailed += 1
+            console.error('Failed to upload parsing file into dataset scope:', err)
+          }
+        }
+
+        if (uploadedLibraryIds.length > 0) {
+          setActiveFileId(null)
+          setActiveLibraryFileId(uploadedLibraryIds[0])
+          setActiveBlockId(null)
+          setHoveredBlockId(null)
+          setRightPanelMode('markdown')
+          toast.success(`已上传到当前数据集：${uploadedLibraryIds.length} 个文件`)
+        }
+        if (uploadFailed > 0) toast.warning(`有 ${uploadFailed} 个文件上传失败（可稍后重试）`)
+        if (skipped > 0) toast.warning(`已跳过 ${skipped} 个不支持的文件`)
+        return
+      }
+
       const queuedWithLibrary: ParsedFile[] = []
       let uploadFailed = 0
 
@@ -631,7 +700,12 @@ export function useParsingLibraryActions({
       generateId,
       mapBackendStatusToLibraryStatus,
       parserBackend,
+      selectedDatasetId,
       setActiveFileId,
+      setActiveLibraryFileId,
+      setActiveBlockId,
+      setHoveredBlockId,
+      setRightPanelMode,
       setFiles,
       upsertParsedFile,
     ]

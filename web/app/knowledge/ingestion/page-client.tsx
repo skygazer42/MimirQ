@@ -1294,7 +1294,7 @@ type SalesPanelHeaderProps = {
 function SalesPanelHeader({
   actionLabel,
   icon: Icon,
-  iconTone = 'text-slate-400',
+  iconTone = 'text-muted-foreground/65',
   onAction,
   subtitle,
   title,
@@ -1302,7 +1302,7 @@ function SalesPanelHeader({
   return (
     <div className="flex min-h-[1.5rem] items-start justify-between gap-3">
       <div className="min-w-0">
-        <div className="flex min-h-4 items-center gap-1.5 text-[10px] font-semibold tracking-[-0.01em] text-foreground">
+        <div className="flex min-h-4 items-center gap-1.5 text-[10px] font-medium tracking-[-0.01em] text-foreground">
           <Icon className={cn('h-3 w-3 shrink-0', iconTone)} />
           <span className="truncate">{title}</span>
         </div>
@@ -1312,7 +1312,7 @@ function SalesPanelHeader({
         <button
           type="button"
           onClick={onAction}
-          className="inline-flex min-h-4 shrink-0 items-center gap-0.5 text-[8px] font-medium text-blue-500 transition-colors hover:text-blue-600"
+          className="inline-flex min-h-4 shrink-0 items-center gap-0.5 text-[8px] font-medium text-info transition-colors hover:text-info"
         >
           <span>{actionLabel}</span>
           <ChevronRight className="h-3 w-3" />
@@ -1462,10 +1462,10 @@ export default function KnowledgeIngestionPageClient() {
     return 'Broker 正常'
   }, [demoMode, taskQueueQuery.isFetching, taskQueueSnapshot])
   const taskQueueStatusTone = useMemo(() => {
-    if (demoMode || !taskQueueSnapshot) return 'border-slate-500/18 bg-slate-500/[0.08] text-slate-700'
-    if (!taskQueueSnapshot.enabled) return 'border-amber-500/18 bg-amber-500/[0.08] text-amber-700'
-    if (!taskQueueSnapshot.broker_up) return 'border-rose-500/18 bg-rose-500/[0.08] text-rose-700'
-    return 'border-emerald-500/18 bg-emerald-500/[0.08] text-emerald-700'
+    if (demoMode || !taskQueueSnapshot) return 'border-border/18 bg-muted/[0.08] text-foreground'
+    if (!taskQueueSnapshot.enabled) return 'border-warning/18 bg-warning/[0.08] text-warning'
+    if (!taskQueueSnapshot.broker_up) return 'border-rose/18 bg-rose/[0.08] text-rose'
+    return 'border-success/18 bg-success/[0.08] text-success'
   }, [demoMode, taskQueueSnapshot])
   const fallbackSalesAuditArtifacts = useMemo(
     () => buildSalesAuditFallbackArtifacts(documents, { datasetId: selectedDatasetId }),
@@ -1656,24 +1656,24 @@ export default function KnowledgeIngestionPageClient() {
 
   const executionTopStripItems = useMemo(
     () => [
-      { label: '范围', value: selectedDatasetLabel, icon: FolderOpen, tone: 'text-blue-500', detail: '全部项目' },
+      { label: '范围', value: selectedDatasetLabel, icon: FolderOpen, tone: 'text-info', detail: '全部项目' },
       {
         label: '队列深度',
         value: taskQueueSnapshot?.queue_depth == null ? '--' : `${taskQueueSnapshot.queue_depth}`,
         icon: ListTodo,
-        tone: taskQueueSnapshot?.broker_up ? 'text-emerald-500' : 'text-amber-500',
+        tone: taskQueueSnapshot?.broker_up ? 'text-success' : 'text-warning',
         detail: taskQueueSnapshot?.queue_name || 'task queue',
       },
       {
         label: '活跃 Worker',
         value: taskQueueSnapshot?.workers_active == null ? '--' : `${taskQueueSnapshot.workers_active}`,
         icon: Activity,
-        tone: taskQueueSnapshot?.workers_active ? 'text-emerald-500' : 'text-slate-500',
+        tone: taskQueueSnapshot?.workers_active ? 'text-success' : 'text-muted-foreground',
         detail: taskQueueStatusLabel,
       },
-      { label: '待人工处理', value: `${reviewQueue + manualCount}`, icon: ShieldAlert, tone: 'text-amber-500', detail: '待确认清单' },
-      { label: '当前吞吐', value: `${docsPerMinute?.toFixed(1) ?? '0.0'} docs/min`, icon: Activity, tone: 'text-violet-500', detail: '近 5 分钟均值' },
-      { label: '运行时长', value: executionRuntimeLabel, icon: Clock3, tone: 'text-emerald-500', detail: '窗口时长' },
+      { label: '待人工处理', value: `${reviewQueue + manualCount}`, icon: ShieldAlert, tone: 'text-warning', detail: '待确认清单' },
+      { label: '当前吞吐', value: `${docsPerMinute?.toFixed(1) ?? '0.0'} docs/min`, icon: Activity, tone: 'text-accent', detail: '近 5 分钟均值' },
+      { label: '运行时长', value: executionRuntimeLabel, icon: Clock3, tone: 'text-success', detail: '窗口时长' },
     ],
     [
       docsPerMinute,
@@ -1702,7 +1702,7 @@ export default function KnowledgeIngestionPageClient() {
           title: '潜在 PII 检测',
           detail: reason,
           count: Number(count),
-          tone: 'border-amber-500/18 bg-amber-500/[0.06] text-amber-600',
+          tone: 'border-warning/18 bg-warning/[0.06] text-warning',
         }
       }
       if (lower.includes('timeout')) {
@@ -1710,14 +1710,14 @@ export default function KnowledgeIngestionPageClient() {
           title: 'Parser timeout',
           detail: reason,
           count: Number(count),
-          tone: 'border-orange-500/18 bg-orange-500/[0.06] text-orange-600',
+          tone: 'border-orange/18 bg-orange/[0.06] text-orange',
         }
       }
       return {
         title: reason,
         detail: index === 0 ? '需尽快人工复核并分流' : '建议加入阻塞跟踪',
         count: Number(count),
-        tone: index === 0 ? 'border-rose-500/18 bg-rose-500/[0.06] text-rose-600' : 'border-slate-500/18 bg-slate-500/[0.05] text-slate-600',
+        tone: index === 0 ? 'border-rose/18 bg-rose/[0.06] text-rose' : 'border-border/18 bg-muted/[0.05] text-foreground/85',
       }
     })
 
@@ -1729,7 +1729,7 @@ export default function KnowledgeIngestionPageClient() {
           title: '缺敏线索待确认',
           detail: '包含待人工确认的风险项',
           count: reviewQueue,
-          tone: 'border-rose-500/18 bg-rose-500/[0.06] text-rose-600',
+          tone: 'border-rose/18 bg-rose/[0.06] text-rose',
         },
       ]
     }
@@ -1739,7 +1739,7 @@ export default function KnowledgeIngestionPageClient() {
         title: '当前无阻塞项',
         detail: '本窗口内未发现新的异常阻塞',
         count: 0,
-        tone: 'border-emerald-500/18 bg-emerald-500/[0.06] text-emerald-600',
+        tone: 'border-success/18 bg-success/[0.06] text-success',
       },
     ]
   }, [reviewQueue, summary.top_error_reasons])
@@ -1761,8 +1761,8 @@ export default function KnowledgeIngestionPageClient() {
       {
         key: 'parser',
         label: 'Parser',
-        tone: 'border-emerald-500/28 bg-emerald-500/[0.04]',
-        statusTone: 'bg-emerald-500',
+        tone: 'border-success/28 bg-success/[0.04]',
+        statusTone: 'bg-success',
         metrics: [
           ['已完成', `${parserDone}`],
           ['失败', `${parserFailures}`],
@@ -1772,8 +1772,8 @@ export default function KnowledgeIngestionPageClient() {
       {
         key: 'chunker',
         label: 'Chunker',
-        tone: 'border-blue-500/28 bg-blue-500/[0.04]',
-        statusTone: chunkerProcessing > 0 ? 'bg-blue-500' : 'bg-slate-300',
+        tone: 'border-info/28 bg-info/[0.04]',
+        statusTone: chunkerProcessing > 0 ? 'bg-info' : 'bg-muted',
         metrics: [
           ['进行中', `${chunkerProcessing}`],
           ['等待中', `${chunkerWaiting}`],
@@ -1783,8 +1783,8 @@ export default function KnowledgeIngestionPageClient() {
       {
         key: 'governance',
         label: 'Governance',
-        tone: 'border-slate-300 bg-background/75',
-        statusTone: governanceQueue > 0 ? 'bg-amber-500' : 'bg-slate-300',
+        tone: 'border-border bg-background/75',
+        statusTone: governanceQueue > 0 ? 'bg-warning' : 'bg-muted',
         metrics: [
           ['待复核', `${governanceQueue}`],
           ['已处理', `${manualCount}`],
@@ -1794,8 +1794,8 @@ export default function KnowledgeIngestionPageClient() {
       {
         key: 'export',
         label: '导出',
-        tone: 'border-slate-300 bg-background/75',
-        statusTone: exportReady > 0 ? 'bg-emerald-500' : 'bg-slate-300',
+        tone: 'border-border bg-background/75',
+        statusTone: exportReady > 0 ? 'bg-success' : 'bg-muted',
         metrics: [
           ['已处理', `${exportReady}`],
           ['待处理', `${Math.max(0, documents.length - exportReady)}`],
@@ -1818,14 +1818,14 @@ export default function KnowledgeIngestionPageClient() {
 
   const executionKpiCards = useMemo(
     () => [
-      { label: '处理效率', value: `${docsPerMinute?.toFixed(1) ?? '0.0'}`, suffix: 'docs/min', icon: Activity, tone: 'text-blue-500', detail: '近 5 分钟平均' },
-      { label: '平均处理耗时', value: executionAverageDuration.replace(' / 文件', ''), suffix: '/ 文件', icon: Clock3, tone: 'text-indigo-500', detail: '近 5 分钟平均' },
+      { label: '处理效率', value: `${docsPerMinute?.toFixed(1) ?? '0.0'}`, suffix: 'docs/min', icon: Activity, tone: 'text-info', detail: '近 5 分钟平均' },
+      { label: '平均处理耗时', value: executionAverageDuration.replace(' / 文件', ''), suffix: '/ 文件', icon: Clock3, tone: 'text-indigo', detail: '近 5 分钟平均' },
       {
         label: '队列深度',
         value: taskQueueSnapshot?.queue_depth == null ? '--' : `${taskQueueSnapshot.queue_depth}`,
         suffix: '',
         icon: ListTodo,
-        tone: taskQueueSnapshot?.broker_up ? 'text-emerald-500' : 'text-amber-500',
+        tone: taskQueueSnapshot?.broker_up ? 'text-success' : 'text-warning',
         detail: taskQueueSnapshot?.queue_name || 'task queue',
       },
       {
@@ -1833,13 +1833,13 @@ export default function KnowledgeIngestionPageClient() {
         value: taskQueueSnapshot?.workers_active == null ? '--' : `${taskQueueSnapshot.workers_active}`,
         suffix: '',
         icon: Activity,
-        tone: taskQueueSnapshot?.workers_active ? 'text-emerald-500' : 'text-slate-500',
+        tone: taskQueueSnapshot?.workers_active ? 'text-success' : 'text-muted-foreground',
         detail: taskQueueStatusLabel,
       },
-      { label: 'OCR 使用率', value: `${executionOcrUsageRate}%`, suffix: '', icon: Gauge, tone: 'text-emerald-500', detail: `${pdfDisposition.reduce((sum, item) => sum + item.count, 0)} 个 PDF` },
-      { label: '解析成功率', value: `${executionSuccessRate}%`, suffix: '', icon: CheckCircle2, tone: 'text-emerald-500', detail: `${statusCounts.completed} / ${Math.max(1, executionProcessedTotal)} 成功` },
-      { label: '失败重试率', value: `${executionRetryRate}%`, suffix: '', icon: RefreshCcw, tone: 'text-amber-500', detail: `${statusCounts.failed + statusCounts.quarantined} / ${Math.max(1, executionProcessedTotal)} 文件` },
-      { label: '队列总数', value: `${pendingQueue}`, suffix: '', icon: ListTodo, tone: 'text-violet-500', detail: '等待处理' },
+      { label: 'OCR 使用率', value: `${executionOcrUsageRate}%`, suffix: '', icon: Gauge, tone: 'text-success', detail: `${pdfDisposition.reduce((sum, item) => sum + item.count, 0)} 个 PDF` },
+      { label: '解析成功率', value: `${executionSuccessRate}%`, suffix: '', icon: CheckCircle2, tone: 'text-success', detail: `${statusCounts.completed} / ${Math.max(1, executionProcessedTotal)} 成功` },
+      { label: '失败重试率', value: `${executionRetryRate}%`, suffix: '', icon: RefreshCcw, tone: 'text-warning', detail: `${statusCounts.failed + statusCounts.quarantined} / ${Math.max(1, executionProcessedTotal)} 文件` },
+      { label: '队列总数', value: `${pendingQueue}`, suffix: '', icon: ListTodo, tone: 'text-accent', detail: '等待处理' },
     ],
     [
       docsPerMinute,
@@ -1874,7 +1874,7 @@ export default function KnowledgeIngestionPageClient() {
         id: `${jobName}-${index}`,
         stage: ok ? '队列完成' : '队列异常',
         time: formatClockSecondsLabel(finishedAt),
-        tone: ok ? 'bg-emerald-500' : 'bg-rose-500',
+        tone: ok ? 'bg-success' : 'bg-rose',
       }
     })
   }, [renderTimestamp, taskQueueSnapshot?.generated_at, taskQueueSnapshot?.recent_job_outcomes])
@@ -1901,7 +1901,7 @@ export default function KnowledgeIngestionPageClient() {
               : status === 'completed'
                 ? `解析成功：${document.filename}`
                 : `开始解析：${document.filename}`,
-          tone: status === 'failed' ? 'bg-rose-500' : status === 'completed' ? 'bg-emerald-500' : 'bg-slate-400',
+          tone: status === 'failed' ? 'bg-rose' : status === 'completed' ? 'bg-success' : 'bg-muted-foreground/40',
         }
       })
   }, [documents, recentQueueOutcomes, renderTimestamp])
@@ -2106,10 +2106,10 @@ export default function KnowledgeIngestionPageClient() {
     if (!salesAuditSummary) return []
     const countByFinding = (key: string) => Number(salesAuditSummary.findings.find((item) => item.key === key)?.count || 0)
     return [
-      { key: 'ocr', label: 'OCR 处理', count: countByFinding('pdf_scanned') + countByFinding('pdf_unknown'), tone: 'text-blue-600 bg-blue-500/8 border-blue-500/15' },
-      { key: 'table', label: '格式转换', count: countByFinding('large_spreadsheet') + countByFinding('wide_spreadsheet') + countByFinding('merged_heavy_spreadsheet'), tone: 'text-orange-600 bg-orange-500/8 border-orange-500/15' },
-      { key: 'manual', label: '人工审核', count: countByFinding('pii') + countByFinding('secrets') + countByFinding('parse_failed'), tone: 'text-rose-600 bg-rose-500/8 border-rose-500/15' },
-      { key: 'straight', label: '去重处理', count: Math.max(0, Number(salesAuditSummary.total_files || 0) - (countByFinding('pdf_scanned') + countByFinding('pdf_unknown') + countByFinding('large_spreadsheet') + countByFinding('wide_spreadsheet') + countByFinding('merged_heavy_spreadsheet') + countByFinding('pii') + countByFinding('secrets') + countByFinding('parse_failed'))), tone: 'text-emerald-600 bg-emerald-500/8 border-emerald-500/15' },
+      { key: 'ocr', label: 'OCR 处理', count: countByFinding('pdf_scanned') + countByFinding('pdf_unknown'), tone: 'text-info bg-info/8 border-info/15' },
+      { key: 'table', label: '格式转换', count: countByFinding('large_spreadsheet') + countByFinding('wide_spreadsheet') + countByFinding('merged_heavy_spreadsheet'), tone: 'text-orange bg-orange/8 border-orange/15' },
+      { key: 'manual', label: '人工审核', count: countByFinding('pii') + countByFinding('secrets') + countByFinding('parse_failed'), tone: 'text-rose bg-rose/8 border-rose/15' },
+      { key: 'straight', label: '去重处理', count: Math.max(0, Number(salesAuditSummary.total_files || 0) - (countByFinding('pdf_scanned') + countByFinding('pdf_unknown') + countByFinding('large_spreadsheet') + countByFinding('wide_spreadsheet') + countByFinding('merged_heavy_spreadsheet') + countByFinding('pii') + countByFinding('secrets') + countByFinding('parse_failed'))), tone: 'text-success bg-success/8 border-success/15' },
     ]
   }, [salesAuditSummary])
 
@@ -2130,7 +2130,7 @@ export default function KnowledgeIngestionPageClient() {
                   ? '版本冲突'
                   : '通用文档'
       const icon = firstTag === 'OCR_REQUIRED' ? CircleDashed : firstTag === 'TABLE_HEAVY' ? TableProperties : firstTag === 'PARSE_FAILED' ? CircleAlert : firstTag === 'SENSITIVE_REVIEW' ? ShieldAlert : FileDigit
-      const iconTone = firstTag === 'OCR_REQUIRED' ? 'text-blue-500' : firstTag === 'TABLE_HEAVY' ? 'text-orange-500' : firstTag === 'PARSE_FAILED' ? 'text-rose-500' : firstTag === 'SENSITIVE_REVIEW' ? 'text-amber-500' : 'text-emerald-500'
+      const iconTone = firstTag === 'OCR_REQUIRED' ? 'text-info' : firstTag === 'TABLE_HEAVY' ? 'text-orange' : firstTag === 'PARSE_FAILED' ? 'text-rose' : firstTag === 'SENSITIVE_REVIEW' ? 'text-warning' : 'text-success'
 
       return {
         id: String(file.name),
@@ -2165,7 +2165,7 @@ export default function KnowledgeIngestionPageClient() {
                   ? '版本冲突'
                   : '通用文档'
       const icon = firstTag === 'OCR_REQUIRED' ? CircleDashed : firstTag === 'TABLE_HEAVY' ? TableProperties : firstTag === 'PARSE_FAILED' ? CircleAlert : firstTag === 'SENSITIVE_REVIEW' ? ShieldAlert : FileDigit
-      const iconTone = firstTag === 'OCR_REQUIRED' ? 'text-blue-500' : firstTag === 'TABLE_HEAVY' ? 'text-orange-500' : firstTag === 'PARSE_FAILED' ? 'text-rose-500' : firstTag === 'SENSITIVE_REVIEW' ? 'text-amber-500' : 'text-emerald-500'
+      const iconTone = firstTag === 'OCR_REQUIRED' ? 'text-info' : firstTag === 'TABLE_HEAVY' ? 'text-orange' : firstTag === 'PARSE_FAILED' ? 'text-rose' : firstTag === 'SENSITIVE_REVIEW' ? 'text-warning' : 'text-success'
 
       return {
         id: String(file.name),
@@ -2553,14 +2553,14 @@ export default function KnowledgeIngestionPageClient() {
             )}
           >
             <div className="sticky top-4 space-y-3">
-              <div className="rounded-[1.45rem] border border-blue-100/80 bg-background/94 p-3 shadow-[0_22px_58px_-34px_rgba(37,99,235,0.25)] backdrop-blur-xl">
+              <div className="rounded-[1.45rem] border border-info/20 bg-background/94 p-3 shadow-[0_22px_58px_-34px_rgba(37,99,235,0.25)] backdrop-blur-xl">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="inline-flex items-center gap-1.5 text-[12px] font-black tracking-[-0.02em] text-foreground">
+                    <div className="inline-flex items-center gap-1.5 text-[12px] font-medium tracking-tight text-foreground">
                       {mode === 'sales-audit' ? '证据槽' : '预检抽样'}
-                      <Check className="h-3.5 w-3.5 text-emerald-500" />
+                      <Check className="h-3.5 w-3.5 text-success" />
                     </div>
-                    <div className="mt-1 text-[17px] font-black leading-none tracking-[-0.04em] text-foreground">{mode === 'sales-audit' ? '报价证据' : '待确认线索'}</div>
+                    <div className="mt-1 text-[17px] font-semibold leading-none tracking-tight text-foreground">{mode === 'sales-audit' ? '报价证据' : '待确认线索'}</div>
                   </div>
                   <button
                     type="button"
@@ -2573,11 +2573,11 @@ export default function KnowledgeIngestionPageClient() {
 
                 <div className="mt-3 space-y-3">
                   <div className="space-y-2">
-                    <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
+                    <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                       Dataset Scope
                     </div>
                     <Select value={datasetScope} onValueChange={setDatasetScope}>
-                      <SelectTrigger className="h-9 rounded-xl border-border/60 bg-background/80 text-[11px] font-semibold shadow-none">
+                      <SelectTrigger className="h-9 rounded-xl border-border/60 bg-background/80 text-[11px] font-medium shadow-none">
                         <SelectValue placeholder="全部项目" />
                       </SelectTrigger>
                       <SelectContent>
@@ -2591,7 +2591,7 @@ export default function KnowledgeIngestionPageClient() {
                     </Select>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-bold text-muted-foreground">
+                  <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
                     {([
                       ['all', '全部', auditRailCounts.total, 'blue'],
                       ['pending', '待确认', auditRailCounts.pending, 'emerald'],
@@ -2608,20 +2608,20 @@ export default function KnowledgeIngestionPageClient() {
                           auditDispositionFilter !== value && 'border-border/60 bg-background/70 hover:text-foreground',
                           auditDispositionFilter === value &&
                             tone === 'blue' &&
-                            'border-blue-500/30 bg-blue-500/10 text-blue-700',
+                            'border-info/30 bg-info/10 text-info',
                           auditDispositionFilter === value &&
                             tone === 'emerald' &&
-                            'border-emerald-500/30 bg-emerald-500/10 text-emerald-700',
+                            'border-success/30 bg-success/10 text-success',
                           auditDispositionFilter === value &&
                             tone === 'amber' &&
-                            'border-amber-500/30 bg-amber-500/10 text-amber-700'
+                            'border-warning/30 bg-warning/10 text-warning'
                         )}
                       >
                         {label} {count}
                       </button>
                     ))}
                     {selectedReason ? (
-                      <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-2.5 py-1 text-amber-700">
+                      <span className="rounded-full border border-warning/25 bg-warning/10 px-2.5 py-1 text-warning">
                         {selectedReason}
                       </span>
                     ) : null}
@@ -2651,35 +2651,35 @@ export default function KnowledgeIngestionPageClient() {
                                 />
                                 <div className="min-w-0 flex-1">
                                   <div className="flex flex-wrap items-center gap-1.5">
-                                    <span className="rounded-full border border-border/60 bg-muted/20 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-foreground">
+                                    <span className="rounded-full border border-border/60 bg-muted/20 px-2 py-0.5 font-mono text-[10px] font-medium uppercase text-foreground">
                                       {anonymizeEvidenceName(file.name)}
                                     </span>
                                     {tags.map((tag) => (
                                       <span
                                         key={tag}
                                         className={cn(
-                                          'rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase',
+                                          'rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase',
                                           tag === 'OCR_REQUIRED'
-                                            ? 'border-amber-500/25 bg-amber-500/10 text-amber-700'
+                                            ? 'border-warning/25 bg-warning/10 text-warning'
                                             : tag === 'PARSE_FAILED'
-                                              ? 'border-red-500/25 bg-red-500/10 text-red-700'
+                                              ? 'border-destructive/25 bg-destructive/10 text-destructive'
                                               : tag === 'SENSITIVE_REVIEW'
-                                                ? 'border-rose-500/25 bg-rose-500/10 text-rose-700'
+                                                ? 'border-rose/25 bg-rose/10 text-rose'
                                                 : tag === 'TABLE_HEAVY'
-                                                  ? 'border-slate-500/25 bg-slate-500/10 text-slate-700'
-                                                  : 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700'
+                                                  ? 'border-border/25 bg-muted/10 text-foreground'
+                                                  : 'border-success/25 bg-success/10 text-success'
                                         )}
                                       >
                                         {tag}
                                       </span>
                                     ))}
                                     {disposition ? (
-                                      <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                                      <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
                                         {disposition === 'approved' ? '已入 POC' : '已加阻断'}
                                       </span>
                                     ) : null}
                                   </div>
-                                  <div className="mt-1 text-[13px] font-semibold text-foreground">{file.file_type.toUpperCase()}</div>
+                                  <div className="mt-1 text-[13px] font-medium text-foreground">{file.file_type.toUpperCase()}</div>
                                   <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
                                     <span className="font-mono tabular-nums">{formatFileSize(file.file_size || 0)}</span>
                                     <span className="font-mono tabular-nums">{file.text_characters} chars</span>
@@ -2692,7 +2692,7 @@ export default function KnowledgeIngestionPageClient() {
                                   type="button"
                                   size="sm"
                                   variant="outline"
-                                  className="h-8 rounded-lg border-emerald-600/20 bg-emerald-600/8 px-2 text-[9px] text-emerald-700"
+                                  className="h-8 rounded-lg border-success/20 bg-success/8 px-2 text-[9px] text-success"
                                   onClick={() => handleSampleDisposition(selectionKey, 'approved')}
                                 >
                                   纳入 POC
@@ -2701,7 +2701,7 @@ export default function KnowledgeIngestionPageClient() {
                                   type="button"
                                   size="sm"
                                   variant="outline"
-                                  className="h-8 rounded-lg border-amber-600/20 bg-amber-600/8 px-2 text-[9px] text-amber-700"
+                                  className="h-8 rounded-lg border-warning/20 bg-warning/8 px-2 text-[9px] text-warning"
                                   onClick={() => handleSampleDisposition(selectionKey, 'manual')}
                                 >
                                   加入阻断
@@ -2735,10 +2735,10 @@ export default function KnowledgeIngestionPageClient() {
                             }}
                             className="relative overflow-hidden rounded-[1.15rem] border border-border/60 bg-[linear-gradient(90deg,rgba(219,234,254,0.48),rgba(255,255,255,0.92)_22%,rgba(255,255,255,0.92)_78%,rgba(226,232,240,0.5))] p-2 shadow-[0_18px_44px_-34px_rgba(15,23,42,0.28)]"
                           >
-                            <div className="absolute inset-y-0 left-0 flex w-14 items-center justify-center bg-blue-500/[0.06] text-blue-500/55">
+                            <div className="absolute inset-y-0 left-0 flex w-14 items-center justify-center bg-info/[0.06] text-info/55">
                               <Check className="h-3.5 w-3.5" />
                             </div>
-                            <div className="absolute inset-y-0 right-0 flex w-14 items-center justify-center bg-slate-500/[0.06] text-slate-500/55">
+                            <div className="absolute inset-y-0 right-0 flex w-14 items-center justify-center bg-muted/[0.06] text-muted-foreground/55">
                               <CircleAlert className="h-3.5 w-3.5" />
                             </div>
                             <div className="relative z-10 rounded-[0.95rem] bg-background/96 p-2.5">
@@ -2753,28 +2753,28 @@ export default function KnowledgeIngestionPageClient() {
                                 <div className="min-w-0 flex-1">
                                   <div className="flex items-center justify-between gap-2">
                                     <div className="flex min-w-0 items-center gap-1.5">
-                                      <span className={cn('rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase', getDocumentKindAccent(kind))}>
+                                      <span className={cn('rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase', getDocumentKindAccent(kind))}>
                                         {String(document.file_type || kind).toUpperCase()}
                                       </span>
                                     </div>
                                     {disposition ? (
                                       <span
                                         className={cn(
-                                          'shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-bold',
+                                          'shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-medium',
                                           disposition === 'approved'
-                                            ? 'border-emerald-600/20 bg-emerald-600/10 text-emerald-700'
-                                            : 'border-amber-600/25 bg-amber-600/10 text-amber-700'
+                                            ? 'border-success/20 bg-success/10 text-success'
+                                            : 'border-warning/25 bg-warning/10 text-warning'
                                         )}
                                       >
                                         {disposition === 'approved' ? '已确认' : '转人工'}
                                       </span>
                                     ) : (
-                                      <span className="shrink-0 rounded-full border border-emerald-600/20 bg-emerald-600/8 px-2 py-0.5 text-[9px] font-bold text-emerald-700">
+                                      <span className="shrink-0 rounded-full border border-success/20 bg-success/8 px-2 py-0.5 text-[9px] font-medium text-success">
                                         待确认
                                       </span>
                                     )}
                                   </div>
-                                  <div className="mt-2 truncate text-[12px] font-bold leading-4 text-foreground">{document.filename}</div>
+                                  <div className="mt-2 truncate text-[12px] font-medium leading-4 text-foreground">{document.filename}</div>
                                   <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
                                     <span className="font-mono tabular-nums">{formatFileSize(document.file_size || 0)}</span>
                                     <span>{formatDate(document.updated_at || document.created_at)}</span>
@@ -2785,14 +2785,14 @@ export default function KnowledgeIngestionPageClient() {
                                 </div>
                               </div>
                               <div className="mt-2.5 grid grid-cols-4 gap-1.5">
-                                <span className="inline-flex h-7 items-center justify-center rounded-lg border border-emerald-600/20 bg-emerald-600/8 px-2 text-[9px] font-bold text-emerald-700">
+                                <span className="inline-flex h-7 items-center justify-center rounded-lg border border-success/20 bg-success/8 px-2 text-[9px] font-medium text-success">
                                   待确认
                                 </span>
                                 <Button
                                   type="button"
                                   size="sm"
                                   variant="outline"
-                                  className="h-7 rounded-lg border-emerald-600/20 bg-emerald-600/8 px-2 text-[9px] font-bold text-emerald-700"
+                                  className="h-7 rounded-lg border-success/20 bg-success/8 px-2 text-[9px] font-medium text-success"
                                   onClick={() => handleSampleDisposition(document.id, 'approved')}
                                 >
                                   入库
@@ -2801,7 +2801,7 @@ export default function KnowledgeIngestionPageClient() {
                                   type="button"
                                   size="sm"
                                   variant="outline"
-                                  className="h-7 rounded-lg border-amber-600/20 bg-amber-600/8 px-2 text-[9px] font-bold text-amber-700"
+                                  className="h-7 rounded-lg border-warning/20 bg-warning/8 px-2 text-[9px] font-medium text-warning"
                                   onClick={() => handleSampleDisposition(document.id, 'manual')}
                                 >
                                   人工处理
@@ -2810,7 +2810,7 @@ export default function KnowledgeIngestionPageClient() {
                                   type="button"
                                   size="sm"
                                   variant="outline"
-                                  className="h-7 rounded-lg px-2 text-[9px] font-bold"
+                                  className="h-7 rounded-lg px-2 text-[9px] font-medium"
                                   onClick={() => handleOpenAuditSnapshot(document.id)}
                                 >
                                   审计快照
@@ -2826,11 +2826,11 @@ export default function KnowledgeIngestionPageClient() {
                     </div>
                   ) : null}
                   {mode === 'execution-monitor' ? (
-                    <div className="flex items-center justify-between border-t border-border/50 pt-2.5 text-[10px] font-semibold text-muted-foreground">
+                    <div className="flex items-center justify-between border-t border-border/50 pt-2.5 text-[10px] font-medium text-muted-foreground">
                       <span>共 {visibleAuditSamples.length} 项线索</span>
                       <button
                         type="button"
-                        className="text-blue-600 transition-colors hover:text-blue-700"
+                        className="text-info transition-colors hover:text-info"
                         onClick={() => {
                           setSelectedReason(null)
                           setAuditDispositionFilter('all')
@@ -2873,7 +2873,7 @@ export default function KnowledgeIngestionPageClient() {
                               type="button"
                               onClick={() => handleChangeMode(value)}
                               className={cn(
-                                'rounded-full px-2.5 py-0.5 text-[8px] font-semibold transition-colors',
+                                'rounded-full px-2.5 py-0.5 text-[8px] font-medium transition-colors',
                                 mode === value ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'
                               )}
                             >
@@ -2881,11 +2881,11 @@ export default function KnowledgeIngestionPageClient() {
                             </button>
                           ))}
                         </div>
-                        <span className="inline-flex items-center rounded-full border border-foreground/10 bg-foreground/[0.04] px-2 py-0.5 text-[7px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                        <span className="inline-flex items-center rounded-full border border-foreground/10 bg-foreground/[0.04] px-2 py-0.5 text-[7px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                           Sensitive Data Policy
                         </span>
                         {demoMode ? (
-                          <span className="inline-flex items-center rounded-full border border-sky-600/20 bg-sky-600/10 px-2 py-0.5 text-[7px] font-semibold uppercase tracking-[0.16em] text-sky-700">
+                          <span className="inline-flex items-center rounded-full border border-info/20 bg-info/10 px-2 py-0.5 text-[7px] font-medium uppercase tracking-[0.16em] text-info">
                             Demo Canvas
                           </span>
                         ) : null}
@@ -2901,11 +2901,11 @@ export default function KnowledgeIngestionPageClient() {
                         )}
                       >
                         <div className="flex flex-wrap items-center gap-2">
-                          <h1 className="text-[clamp(0.96rem,1.18vw,1.26rem)] font-black tracking-[-0.05em] text-foreground">
+                          <h1 className="text-[clamp(0.96rem,1.18vw,1.26rem)] font-semibold tracking-tight text-foreground">
                             {mode === 'sales-audit' ? '售前报价证据台' : '执行监控工作台'}
                           </h1>
                           {mode === 'execution-monitor' ? (
-                            <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[8px] font-semibold', taskQueueStatusTone)}>
+                            <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[8px] font-medium', taskQueueStatusTone)}>
                               {taskQueueStatusLabel}
                             </span>
                           ) : null}
@@ -2984,23 +2984,23 @@ export default function KnowledgeIngestionPageClient() {
                     <div className={cn('grid gap-px', mode === 'sales-audit' ? 'sm:grid-cols-4' : 'sm:grid-cols-3 xl:grid-cols-6')}>
                       {(mode === 'sales-audit'
                         ? [
-                            { label: '范围', value: selectedDatasetLabel, icon: FileSearch, tone: 'text-slate-400', detail: '' },
-                            { label: '建议报价模式', value: salesAuditProfile?.pricingMode || '待预检', icon: Workflow, tone: 'text-violet-400', detail: '' },
-                            { label: '建议 POC 样本量', value: salesAuditProfile ? `${salesAuditProfile.pocSampleCount} 份` : '待预检', icon: FileCheck2, tone: 'text-sky-400', detail: '' },
-                            { label: '复杂度', value: salesAuditProfile?.complexity || '待预检', icon: Radar, tone: 'text-amber-400', detail: '' },
+                            { label: '范围', value: selectedDatasetLabel, icon: FileSearch, tone: 'text-muted-foreground/65', detail: '' },
+                            { label: '建议报价模式', value: salesAuditProfile?.pricingMode || '待预检', icon: Workflow, tone: 'text-accent', detail: '' },
+                            { label: '建议 POC 样本量', value: salesAuditProfile ? `${salesAuditProfile.pocSampleCount} 份` : '待预检', icon: FileCheck2, tone: 'text-info', detail: '' },
+                            { label: '复杂度', value: salesAuditProfile?.complexity || '待预检', icon: Radar, tone: 'text-warning', detail: '' },
                           ]
                         : executionTopStripItems
                       ).map(({ label, value, icon: Icon, tone, detail }) => (
                         <div key={label} className={cn('relative bg-background/78 px-2.5 py-2', mode === 'sales-audit' ? 'min-h-[3.4rem]' : 'min-h-[4.2rem]')}>
                           <div className="flex items-start justify-between gap-2">
-                            <div className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                            <div className="text-[7px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
                               {label}
                             </div>
                             <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-border/45 bg-muted/30">
                               <Icon className={cn('h-2.5 w-2.5 shrink-0', tone)} />
                             </span>
                           </div>
-                          <div className="mt-1 font-mono text-[10px] font-semibold tabular-nums leading-none text-foreground">{value}</div>
+                          <div className="mt-1 font-mono text-[10px] tabular-nums leading-none text-foreground">{value}</div>
                           {detail ? <div className="mt-1 text-[7px] text-muted-foreground">{detail}</div> : null}
                         </div>
                       ))}
@@ -3016,10 +3016,10 @@ export default function KnowledgeIngestionPageClient() {
                   initial={{ opacity: 0, scaleX: 0.92 }}
                   animate={{ opacity: 1, scaleX: 1 }}
                   exit={{ opacity: 0 }}
-                  className="pointer-events-none relative mt-3 overflow-hidden rounded-[1.1rem] border border-emerald-600/15 bg-emerald-600/8 px-3 py-2.5"
+                  className="pointer-events-none relative mt-3 overflow-hidden rounded-[1.1rem] border border-success/15 bg-success/8 px-3 py-2.5"
                 >
                   <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.24),transparent_62%)]" />
-                  <div className="relative flex items-center gap-2 text-[12px] text-emerald-700">
+                  <div className="relative flex items-center gap-2 text-[12px] text-success">
                     <ShieldCheck className="h-4 w-4" />
                     审计成功反馈：当前数据集已出现健康可入库样本，可继续批量确认。
                   </div>
@@ -3052,10 +3052,10 @@ export default function KnowledgeIngestionPageClient() {
                         <div className="grid gap-1.5 xl:grid-cols-[184px_minmax(0,1fr)] xl:items-stretch">
                           <div className="rounded-[0.9rem] border border-border/50 bg-[linear-gradient(180deg,rgba(255,255,255,0.9),rgba(248,250,252,0.9))] px-2.5 py-2">
                             <div className="flex items-center justify-between gap-2">
-                              <div className="text-[7px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">报价依据</div>
-                              <FileDigit className="h-3 w-3 text-slate-400" />
+                              <div className="text-[7px] font-medium uppercase tracking-[0.18em] text-muted-foreground">报价依据</div>
+                              <FileDigit className="h-3 w-3 text-muted-foreground/65" />
                             </div>
-                            <div className="mt-1 text-[11px] font-semibold tracking-[-0.03em] text-foreground">核心摘要</div>
+                            <div className="mt-1 text-[11px] font-medium tracking-tight text-foreground">核心摘要</div>
                             <p className="mt-1 text-[9px] leading-3.5 text-muted-foreground">
                               默认输出脱敏后的客观事实，用于解释报价、POC 范围与人工阻断来源。
                             </p>
@@ -3067,17 +3067,17 @@ export default function KnowledgeIngestionPageClient() {
                           <div className="grid gap-1 sm:grid-cols-2 xl:grid-cols-4">
                             {salesCoreSummary.map(([label, value, note], index) => {
                               const Icon = index === 0 ? FileSearch : index === 1 ? Workflow : index === 2 ? CircleAlert : ShieldAlert
-                              const iconTone = index === 0 ? 'text-slate-500' : index === 1 ? 'text-violet-500' : index === 2 ? 'text-rose-500' : 'text-amber-500'
+                              const iconTone = index === 0 ? 'text-muted-foreground' : index === 1 ? 'text-accent' : index === 2 ? 'text-rose' : 'text-warning'
                               return (
                                 <div key={label} className={cn(SALES_PANEL_INSET_CLASS, 'px-1.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.58)]')}>
                                   <div className="flex items-center gap-1.5">
                                     <div className="flex h-4 w-4 items-center justify-center rounded-full bg-muted/30">
                                       <Icon className={cn('h-2.5 w-2.5', iconTone)} />
                                     </div>
-                                    <div className="text-[8px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{label}</div>
+                                    <div className="text-[8px] font-medium uppercase tracking-[0.1em] text-muted-foreground">{label}</div>
                                   </div>
-                                  <div className="mt-1 font-mono text-[11px] font-semibold leading-none text-foreground">{value}</div>
-                                  <div className={cn('mt-0.5 text-[7px] leading-3', index === 2 ? 'text-rose-500' : 'text-muted-foreground')}>
+                                  <div className="mt-1 font-mono text-[11px] font-medium leading-none text-foreground">{value}</div>
+                                  <div className={cn('mt-0.5 text-[7px] leading-3', index === 2 ? 'text-rose' : 'text-muted-foreground')}>
                                     {note}
                                   </div>
                                 </div>
@@ -3093,7 +3093,7 @@ export default function KnowledgeIngestionPageClient() {
                           <div className="mt-1 h-[9rem]">
                             <EChart option={salesPdfSplitOption} />
                           </div>
-                          <div className="mt-auto rounded-[0.75rem] border border-amber-400/15 bg-amber-400/6 px-2 py-1 text-[8px] leading-3.5 text-amber-700">
+                          <div className="mt-auto rounded-[0.75rem] border border-warning/15 bg-warning/6 px-2 py-1 text-[8px] leading-3.5 text-warning">
                             扫描型 PDF 需要先 OCR 处理，预计工期抬升较大。
                           </div>
                         </section>
@@ -3121,7 +3121,7 @@ export default function KnowledgeIngestionPageClient() {
                         </section>
 
                         <section className={cn(SALES_PANEL_CLASS, 'p-2.5')}>
-                          <SalesPanelHeader title="复杂度细节" icon={Radar} iconTone="text-violet-400" />
+                          <SalesPanelHeader title="复杂度细节" icon={Radar} iconTone="text-accent" />
                           <div className="mt-1.5 space-y-1">
                             {(salesAuditProfile?.costDrivers || []).map((driver) => (
                               <div key={driver.key} className={cn(SALES_PANEL_INSET_CLASS, 'flex items-center justify-between gap-3 px-2 py-1 text-[8px]')}>
@@ -3130,12 +3130,12 @@ export default function KnowledgeIngestionPageClient() {
                                     className={cn(
                                       'h-2 w-2 rounded-full',
                                       driver.key === 'ocr'
-                                        ? 'bg-blue-500'
+                                        ? 'bg-info'
                                         : driver.key === 'table_heavy'
-                                          ? 'bg-amber-500'
+                                          ? 'bg-warning'
                                           : driver.key === 'blocking'
-                                            ? 'bg-rose-500'
-                                            : 'bg-violet-500'
+                                            ? 'bg-rose'
+                                            : 'bg-accent'
                                     )}
                                   />
                                   <span className="text-foreground">{driver.label}</span>
@@ -3155,7 +3155,7 @@ export default function KnowledgeIngestionPageClient() {
                           <SalesPanelHeader
                             title="风险热区（按风险类型）"
                             icon={ShieldAlert}
-                            iconTone="text-rose-400"
+                            iconTone="text-rose"
                             actionLabel="查看全部"
                             onAction={() => setSelectedReason(null)}
                           />
@@ -3168,7 +3168,7 @@ export default function KnowledgeIngestionPageClient() {
                                 className={cn(SALES_PANEL_INSET_CLASS, 'px-2 py-1.5 text-left')}
                               >
                                 <div className="text-[8px] text-muted-foreground">{item.name}</div>
-                                <div className="mt-1 font-mono text-[12px] font-semibold text-foreground">{item.count.toLocaleString()}</div>
+                                <div className="mt-1 font-mono text-[12px] font-medium text-foreground">{item.count.toLocaleString()}</div>
                                 <div className="mt-0.5 text-[8px] text-muted-foreground">占比 {((item.count / Math.max(1, salesAuditSummary?.total_files || 1)) * 100).toFixed(1)}%</div>
                               </button>
                             ))}
@@ -3179,7 +3179,7 @@ export default function KnowledgeIngestionPageClient() {
                           <SalesPanelHeader
                             title="处理清单（待处理文件数）"
                             icon={Workflow}
-                            iconTone="text-sky-400"
+                            iconTone="text-info"
                             actionLabel="查看全部"
                             onAction={() => setSelectedReason(null)}
                           />
@@ -3199,7 +3199,7 @@ export default function KnowledgeIngestionPageClient() {
                           <SalesPanelHeader
                             title="建议 POC 样本（5 份）"
                             icon={FileCheck2}
-                            iconTone="text-emerald-400"
+                            iconTone="text-success"
                             subtitle="按复杂度维度覆盖主风险项"
                             actionLabel="查看全部"
                           />
@@ -3235,7 +3235,7 @@ export default function KnowledgeIngestionPageClient() {
                           <SalesPanelHeader
                             title="高风险文件（示例）"
                             icon={CircleAlert}
-                            iconTone="text-amber-400"
+                            iconTone="text-warning"
                             subtitle="优先解释高报价的归因"
                             actionLabel="查看全部"
                           />
@@ -3262,7 +3262,7 @@ export default function KnowledgeIngestionPageClient() {
                                           const file = salesEvidenceItems.find((item) => String(item.name) === row.id)
                                           if (file) setSelectedEvidenceFile(file)
                                         }}
-                                        className="text-[7px] text-blue-500 transition-colors hover:text-blue-600"
+                                        className="text-[7px] text-info transition-colors hover:text-info"
                                       >
                                         查看
                                       </button>
@@ -3303,7 +3303,7 @@ export default function KnowledgeIngestionPageClient() {
                         <div className="grid gap-4 xl:grid-cols-[0.82fr_1.18fr]">
                           <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
                             <div className="flex items-center justify-between gap-3">
-                              <div className="text-[11px] font-semibold text-foreground">风险与阻塞（需关注）</div>
+                              <div className="text-[11px] font-medium text-foreground">风险与阻塞（需关注）</div>
                               <span className="text-[9px] text-muted-foreground">
                                 {taskQueueSnapshot?.generated_at ? `队列快照 ${formatClockSecondsLabel(taskQueueSnapshot.generated_at)}` : '文档状态聚合'}
                               </span>
@@ -3317,11 +3317,11 @@ export default function KnowledgeIngestionPageClient() {
                                         <AlertTriangle className="h-4 w-4" />
                                       </span>
                                       <div>
-                                        <div className="text-[11px] font-semibold text-foreground">{item.title}</div>
+                                        <div className="text-[11px] font-medium text-foreground">{item.title}</div>
                                         <div className="mt-0.5 text-[9px] text-muted-foreground">{item.detail}</div>
                                       </div>
                                     </div>
-                                    <div className="text-[11px] font-semibold">{item.count} 项</div>
+                                    <div className="text-[11px] font-medium">{item.count} 项</div>
                                   </div>
                                 </div>
                               ))}
@@ -3330,7 +3330,7 @@ export default function KnowledgeIngestionPageClient() {
                               <span>共 {executionRiskItems.reduce((sum, item) => sum + item.count, 0)} 项阻塞</span>
                               <button
                                 type="button"
-                                className="inline-flex items-center gap-1 font-medium text-blue-500 transition-colors hover:text-blue-600"
+                                className="inline-flex items-center gap-1 font-medium text-info transition-colors hover:text-info"
                                 onClick={() => setSelectedReason(null)}
                               >
                                 <span>查看全部</span>
@@ -3341,13 +3341,13 @@ export default function KnowledgeIngestionPageClient() {
 
                           <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
                             <div className="flex items-center justify-between gap-3">
-                              <div className="text-[11px] font-semibold text-foreground">处理流水线</div>
+                              <div className="text-[11px] font-medium text-foreground">处理流水线</div>
                               <div className="flex flex-wrap items-center gap-3 text-[9px] text-muted-foreground">
                                 {[
-                                  ['完成', 'bg-emerald-500'],
-                                  ['进行中', 'bg-blue-500'],
-                                  ['等待中', 'bg-amber-500'],
-                                  ['未开始', 'bg-slate-300'],
+                                  ['完成', 'bg-success'],
+                                  ['进行中', 'bg-info'],
+                                  ['等待中', 'bg-warning'],
+                                  ['未开始', 'bg-muted'],
                                 ].map(([label, tone]) => (
                                   <span key={label} className="inline-flex items-center gap-1.5">
                                     <span className={cn('h-2.5 w-2.5 rounded-full', tone)} />
@@ -3365,13 +3365,13 @@ export default function KnowledgeIngestionPageClient() {
                                   <div className={cn('rounded-[1rem] border p-3', card.tone)}>
                                     <div className="flex items-center gap-2">
                                       <span className={cn('h-2.5 w-2.5 rounded-full', card.statusTone)} />
-                                      <span className="text-[11px] font-semibold text-foreground">{card.label}</span>
+                                      <span className="text-[11px] font-medium text-foreground">{card.label}</span>
                                     </div>
                                     <div className="mt-3 space-y-1.5">
                                       {card.metrics.map(([label, value]) => (
                                         <div key={label} className="flex items-center justify-between gap-3 text-[9px]">
                                           <span className="text-muted-foreground">{label}</span>
-                                          <span className="font-mono text-[10px] font-semibold text-foreground">{value}</span>
+                                          <span className="font-mono text-[10px] font-medium text-foreground">{value}</span>
                                         </div>
                                       ))}
                                     </div>
@@ -3380,9 +3380,9 @@ export default function KnowledgeIngestionPageClient() {
                               ))}
                             </div>
                             <div className="mt-4 flex items-center gap-3">
-                              <div className="text-[10px] font-semibold text-foreground">总体进度 {executionOverallProgress}%</div>
+                              <div className="text-[10px] font-medium text-foreground">总体进度 {executionOverallProgress}%</div>
                               <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted/60">
-                                <div className="h-full rounded-full bg-blue-500" style={{ width: `${executionOverallProgress}%` }} />
+                                <div className="h-full rounded-full bg-info" style={{ width: `${executionOverallProgress}%` }} />
                               </div>
                               <div className="text-[10px] text-muted-foreground">
                                 已处理 <span className="font-mono text-foreground">{executionProcessedTotal}</span> / 总计{documents.length}
@@ -3392,7 +3392,7 @@ export default function KnowledgeIngestionPageClient() {
                         </div>
 
                         <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
-                          <div className="text-[11px] font-semibold text-foreground">关键指标（实时）</div>
+                          <div className="text-[11px] font-medium text-foreground">关键指标（实时）</div>
                           <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
                             {executionKpiCards.map((item) => {
                               const Icon = item.icon
@@ -3418,7 +3418,7 @@ export default function KnowledgeIngestionPageClient() {
                         <div className="grid gap-4 xl:grid-cols-[1.1fr_0.8fr_0.9fr]">
                           <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
                             <div className="flex items-center justify-between gap-3">
-                              <div className="text-[11px] font-semibold text-foreground">处理吞吐趋势</div>
+                              <div className="text-[11px] font-medium text-foreground">处理吞吐趋势</div>
                               <span className="rounded-full border border-border/60 px-2 py-0.5 text-[9px] text-muted-foreground">近 1 小时</span>
                             </div>
                             <div className="mt-3 h-[12rem]">
@@ -3428,8 +3428,8 @@ export default function KnowledgeIngestionPageClient() {
 
                           <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
                             <div className="flex items-center justify-between gap-3">
-                              <div className="text-[11px] font-semibold text-foreground">OCR 成本预警雷达</div>
-                              <Radar className="h-4 w-4 text-violet-500" />
+                              <div className="text-[11px] font-medium text-foreground">OCR 成本预警雷达</div>
+                              <Radar className="h-4 w-4 text-accent" />
                             </div>
                             <div className="mt-3 h-[12rem]">
                               <EChart option={radarOption} />
@@ -3438,7 +3438,7 @@ export default function KnowledgeIngestionPageClient() {
 
                           <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
                             <div className="flex items-center justify-between gap-3">
-                              <div className="text-[11px] font-semibold text-foreground">运行日志（最近）</div>
+                              <div className="text-[11px] font-medium text-foreground">运行日志（最近）</div>
                               <span className="text-[9px] text-muted-foreground">
                                 {recentQueueOutcomes.length ? '来自任务队列' : '来自文档状态'}
                               </span>
@@ -3462,7 +3462,7 @@ export default function KnowledgeIngestionPageClient() {
 
                         <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
                           <div className="flex items-center justify-between gap-3">
-                            <div className="text-[11px] font-semibold text-foreground">任务列表</div>
+                            <div className="text-[11px] font-medium text-foreground">任务列表</div>
                             <div className="text-[9px] text-muted-foreground">{executionTaskRows.length} 个最新任务</div>
                           </div>
                           <div className="mt-3 overflow-hidden rounded-[1rem] border border-border/50">
@@ -3509,12 +3509,12 @@ export default function KnowledgeIngestionPageClient() {
                                             : String(document.status || '未开始')
                                   const statusTone =
                                     document.status === 'completed'
-                                      ? 'text-emerald-600'
+                                      ? 'text-success'
                                       : document.status === 'failed'
-                                        ? 'text-rose-600'
+                                        ? 'text-rose'
                                         : document.status === 'processing'
-                                          ? 'text-blue-600'
-                                          : 'text-slate-500'
+                                          ? 'text-info'
+                                          : 'text-muted-foreground'
 
                                   return (
                                     <tr key={document.id} className="border-t border-border/40">
@@ -3526,7 +3526,7 @@ export default function KnowledgeIngestionPageClient() {
                                       <td className="px-3 py-2">
                                         <div className="flex items-center gap-2">
                                           <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted/60">
-                                            <div className="h-full rounded-full bg-blue-500" style={{ width: `${progress}%` }} />
+                                            <div className="h-full rounded-full bg-info" style={{ width: `${progress}%` }} />
                                           </div>
                                           <span className="font-mono text-[8px] text-foreground">{progress}%</span>
                                         </div>
@@ -3535,7 +3535,7 @@ export default function KnowledgeIngestionPageClient() {
                                       <td className="px-3 py-2">
                                         <button
                                           type="button"
-                                          className="text-[9px] font-medium text-blue-500 transition-colors hover:text-blue-600"
+                                          className="text-[9px] font-medium text-info transition-colors hover:text-info"
                                           onClick={() => handleOpenAuditSnapshot(document.id)}
                                         >
                                           详情
@@ -3570,7 +3570,7 @@ export default function KnowledgeIngestionPageClient() {
             </SheetHeader>
             <div className="flex h-full min-h-0 flex-col">
               <div className="border-b border-border/60 px-6 py-5">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">审计依据</div>
+                <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">审计依据</div>
                 <div className="mt-1 text-lg font-semibold text-foreground">{anonymizeEvidenceName(selectedEvidenceFile.name)}</div>
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                   <span className="font-mono tabular-nums">{selectedEvidenceFile.file_type.toUpperCase()}</span>
@@ -3580,10 +3580,10 @@ export default function KnowledgeIngestionPageClient() {
               </div>
               <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
                 <div className="rounded-[1.3rem] border border-border/60 bg-muted/20 p-4">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">处理标签</div>
+                  <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">处理标签</div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {buildEvidenceSlotTags(selectedEvidenceFile).map((tag) => (
-                      <span key={tag} className="rounded-full border border-border/60 bg-background/86 px-2.5 py-1 text-[11px] font-semibold text-foreground">
+                      <span key={tag} className="rounded-full border border-border/60 bg-background/86 px-2.5 py-1 text-[11px] font-medium text-foreground">
                         {tag}
                       </span>
                     ))}
@@ -3591,13 +3591,13 @@ export default function KnowledgeIngestionPageClient() {
                 </div>
 
                 <div className="rounded-[1.3rem] border border-border/60 bg-background/80 p-4">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">为何复杂</div>
+                  <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">为何复杂</div>
                   <div className="mt-2 text-sm leading-6 text-foreground">{buildEvidenceSlotReason(selectedEvidenceFile)}</div>
                 </div>
 
                 {selectedEvidenceFile.pdf_pages ? (
                   <div className="rounded-[1.3rem] border border-border/60 bg-background/80 p-4">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">PDF 类型分流依据</div>
+                    <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">PDF 类型分流依据</div>
                     <div className="mt-3 grid gap-3 md:grid-cols-2">
                       <div className="rounded-[1rem] border border-border/55 bg-muted/20 px-3 py-2.5 text-sm">总页数：{selectedEvidenceFile.pdf_pages.page_count}</div>
                       <div className="rounded-[1rem] border border-border/55 bg-muted/20 px-3 py-2.5 text-sm">扫描页：{selectedEvidenceFile.pdf_pages.scanned_pages}</div>
@@ -3609,7 +3609,7 @@ export default function KnowledgeIngestionPageClient() {
 
                 {selectedEvidenceFile.pii_samples?.length ? (
                   <div className="rounded-[1.3rem] border border-border/60 bg-background/80 p-4">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">敏感信息待审核列表</div>
+                    <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">敏感信息待审核列表</div>
                     <div className="mt-3 space-y-3">
                       {selectedEvidenceFile.pii_samples.slice(0, 3).map((item, index) => (
                         <div key={`${item.kind}-${index}`} className="rounded-[1rem] border border-border/55 bg-muted/20 p-3 text-sm">
@@ -3625,7 +3625,7 @@ export default function KnowledgeIngestionPageClient() {
                 ) : null}
 
                 <div className="rounded-[1.3rem] border border-border/60 bg-background/80 p-4">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">本地复核</div>
+                  <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">本地复核</div>
                   <div className="mt-2 text-sm leading-6 text-muted-foreground">一键打开本地文件仅在本地审计模式可用；普通 Web 部署默认禁用。</div>
                   <Button className="mt-3 rounded-xl" disabled>
                     打开本地文件
@@ -3648,7 +3648,7 @@ export default function KnowledgeIngestionPageClient() {
             {activeAuditDocument ? (
               <div className="flex h-full min-h-0 flex-col">
                 <div className="border-b border-border/60 px-6 py-5">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
                     审计快照
                   </div>
                   <div className="mt-1 text-lg font-semibold text-foreground">{activeAuditDocument.filename}</div>
@@ -3659,7 +3659,7 @@ export default function KnowledgeIngestionPageClient() {
                 </div>
                 <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
                   <div className="rounded-[1.4rem] border border-border/60 bg-muted/20 p-4">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
                       Sensitive Data Policy
                     </div>
                     <div className="mt-2 text-sm leading-6 text-foreground/82">
@@ -3674,7 +3674,7 @@ export default function KnowledgeIngestionPageClient() {
                       ['风险线索', activeAuditDocument.error_message || '无明确错误，建议抽样核查'],
                     ].map(([label, value]) => (
                       <div key={label} className="rounded-[1.2rem] border border-border/60 bg-background/80 p-4">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                        <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
                           {label}
                         </div>
                         <div className="mt-2 text-sm font-medium text-foreground">{value}</div>
@@ -3682,7 +3682,7 @@ export default function KnowledgeIngestionPageClient() {
                     ))}
                   </div>
                   <div className="rounded-[1.4rem] border border-border/60 bg-background/82 p-4">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
                       建议动作
                     </div>
                     <div className="mt-3 grid gap-3 md:grid-cols-2">

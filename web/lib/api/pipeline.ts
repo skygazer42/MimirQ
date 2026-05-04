@@ -48,6 +48,7 @@ function normalizeGovernanceProfilePayload(payload: any): GovernanceProfileOut['
   const input_formats =
     Array.isArray(inputFormatsRaw) && inputFormatsRaw.length > 0 ? inputFormatsRaw : ['markdown']
   const regex_rules = Array.isArray(p.regex_rules) ? p.regex_rules.map(normalizeRegexRuleForApi) : []
+  const processing_scripts = Array.isArray(p.processing_scripts) ? p.processing_scripts : []
 
   return {
     version: typeof p.version === 'string' && p.version ? p.version : '1',
@@ -55,6 +56,7 @@ function normalizeGovernanceProfilePayload(payload: any): GovernanceProfileOut['
     input_formats,
     pipeline_patch: p.pipeline_patch ?? {},
     regex_rules,
+    processing_scripts,
   }
 }
 
@@ -158,6 +160,7 @@ export const pipelineApi = {
         input_formats: payload.payload.input_formats ?? ['markdown'],
         pipeline_patch: payload.payload.pipeline_patch ?? {},
         regex_rules: (payload.payload.regex_rules ?? []).map(normalizeRegexRuleForApi),
+        processing_scripts: payload.payload.processing_scripts ?? [],
       },
     }
     const data = await openapiRequest({
@@ -177,6 +180,7 @@ export const pipelineApi = {
             input_formats: payload.payload.input_formats ?? ['markdown'],
             pipeline_patch: payload.payload.pipeline_patch ?? {},
             regex_rules: (payload.payload.regex_rules ?? []).map(normalizeRegexRuleForApi),
+            processing_scripts: payload.payload.processing_scripts ?? [],
           },
         }
       : payload

@@ -98,7 +98,7 @@ export function KnowledgeScopePanel({
           "font-mono text-[11px] transition-all tabular-nums",
           count === 0 
             ? "opacity-20 font-medium" 
-            : "font-bold text-foreground bg-muted/40 px-1.5 py-0.5 rounded-md shadow-inner-soft"
+            : "font-medium text-foreground bg-muted/40 px-1.5 py-0.5 rounded-md shadow-inner-soft"
         )}>
           {count}
         </span>
@@ -118,7 +118,7 @@ export function KnowledgeScopePanel({
           <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-foreground/68">
             {t('header.subtitle')}
           </div>
-          <div className="mt-0.5 text-[13px] font-medium tracking-[-0.02em] text-foreground/92">
+          <div className="mt-0.5 text-[13px] font-medium tracking-tight text-foreground/92">
             导航
           </div>
           <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground/76">
@@ -152,10 +152,10 @@ export function KnowledgeScopePanel({
 
   const statusThemes: Record<DocStatusFilter, string> = {
     all: 'bg-primary/10 border-primary/40 text-primary shadow-[0_0_12px_-4px_rgba(var(--primary),0.3)]',
-    completed: 'bg-emerald-500/10 border-emerald-500/40 text-emerald-600 dark:text-emerald-400 shadow-[0_0_12px_-4px_rgba(16,185,129,0.3)]',
-    processing: 'bg-sky-500/10 border-sky-500/40 text-sky-600 dark:text-sky-400 shadow-[0_0_12px_-4px_rgba(14,165,233,0.3)]',
-    failed: 'bg-red-500/10 border-red-500/40 text-red-600 dark:text-red-400 shadow-[0_0_12px_-4px_rgba(239,68,68,0.3)]',
-    quarantined: 'bg-amber-500/10 border-amber-500/40 text-amber-600 dark:text-amber-400 shadow-[0_0_12px_-4px_rgba(245,158,11,0.3)]',
+    completed: 'bg-success/10 border-success/40 text-success dark:text-success shadow-[0_0_12px_-4px_rgba(16,185,129,0.3)]',
+    processing: 'bg-info/10 border-info/40 text-info dark:text-info shadow-[0_0_12px_-4px_rgba(14,165,233,0.3)]',
+    failed: 'bg-destructive/10 border-destructive/40 text-destructive dark:text-destructive/85 shadow-[0_0_12px_-4px_rgba(239,68,68,0.3)]',
+    quarantined: 'bg-warning/10 border-warning/40 text-warning dark:text-warning shadow-[0_0_12px_-4px_rgba(245,158,11,0.3)]',
   }
 
   const body = (
@@ -268,7 +268,7 @@ export function KnowledgeScopePanel({
                   {item.label}
                   <span className={cn(
                     "ml-1.5 font-mono tabular-nums text-[10px] transition-all",
-                    statusFilter === item.key ? "opacity-100 font-black" : "opacity-50"
+                    statusFilter === item.key ? "opacity-100 font-semibold" : "opacity-50"
                   )}>{item.count}</span>
                 </span>
               </button>

@@ -9,7 +9,7 @@ describe('KnowledgePage actions', () => {
 
     expect(src).toContain('KnowledgeWorkbenchActions')
     expect(src).toContain("{activeTab === 'documents' && (")
-    expect(src).toContain('className="h-8 rounded-xl border border-sky-500/20 bg-sky-500/8 px-4 text-[10px] font-bold text-sky-700 dark:text-sky-300 shadow-soft"')
+    expect(src).toContain('className="h-8 rounded-xl border border-info/20 bg-info/[0.08] px-4 text-[10px] font-medium text-info dark:text-info shadow-soft"')
     expect(src).toContain('onConnectorRunCreated={(run) => { setShowTaskCenter(true); setPeekingDocId(null); setActiveTab(\'documents\'); }}')
     expect(src).toContain('toolbar={')
     expect(src).not.toContain('URL_INGEST_ENABLED')

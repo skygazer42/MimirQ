@@ -248,7 +248,7 @@ export function DataClassifier({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <FolderTree className="size-5 text-primary" />
-          <h3 className="font-bold text-foreground">{t('header.title')}</h3>
+          <h3 className="font-medium text-foreground">{t('header.title')}</h3>
         </div>
         <Button
           onClick={handleAutoClassify}

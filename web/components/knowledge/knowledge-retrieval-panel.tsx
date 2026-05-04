@@ -208,10 +208,10 @@ export function KnowledgeRetrievalPanel({
   }, [hasAggregateOverview, indexAudit])
 
   const statusToneClassName = {
-    success: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
-    warning: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
-    danger: 'bg-red-500/10 text-red-600 border-red-500/20',
-    info: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+    success: 'bg-success/10 text-success border-success/20',
+    warning: 'bg-warning/10 text-warning border-warning/20',
+    danger: 'bg-destructive/10 text-destructive border-destructive/20',
+    info: 'bg-info/10 text-info border-info/20',
     neutral: 'bg-muted/30 text-muted-foreground border-border/70',
   }[auditStatus.tone]
 
@@ -226,10 +226,10 @@ export function KnowledgeRetrievalPanel({
         </div>
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-primary/40 leading-none">{t("header.badge")}</span>
-            <div className={cn("size-1 rounded-full", selectedDatasetId ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]" : "bg-muted-foreground/20")} />
+            <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-primary/40 leading-none">{t("header.badge")}</span>
+            <div className={cn("size-1 rounded-full", selectedDatasetId ? "bg-success shadow-[0_0_8px_rgba(16,185,129,0.4)]" : "bg-muted-foreground/20")} />
           </div>
-          <h4 className="text-sm font-bold text-foreground  mt-1">{t("header.title")}</h4>
+          <h4 className="text-sm font-medium text-foreground  mt-1">{t("header.title")}</h4>
         </div>
       </div>
 
@@ -237,7 +237,7 @@ export function KnowledgeRetrievalPanel({
         type="button"
         variant={indexAuditLoading ? "secondary" : "outline"}
         className={cn(
-          "h-9 rounded-xl border-border/60 bg-background/50 px-4 text-xs font-black uppercase  transition-all active:scale-[0.98]",
+          "h-9 rounded-xl border-border/60 bg-background/50 px-4 text-xs font-medium uppercase  transition-all active:scale-[0.98]",
           indexAuditLoading && "border-primary/30 text-primary"
         )}
         onClick={() => detachPromise(runIndexAudit())}
@@ -261,10 +261,10 @@ export function KnowledgeRetrievalPanel({
             <Fingerprint className="size-4" />
           </div>
           <div className="min-w-0">
-            <h4 className="text-[13px] font-bold text-foreground leading-none">{t("header.title")}</h4>
+            <h4 className="text-[13px] font-medium text-foreground leading-none">{t("header.title")}</h4>
             <div className="flex items-center gap-1.5 mt-1.5 min-w-0">
-              <span className="text-[9px] font-bold text-muted-foreground/40 uppercase  shrink-0">{t("header.currentDataset")}</span>
-              <span className="text-[10px] font-bold font-mono text-muted-foreground/80 truncate px-1.5 py-0.5 rounded bg-muted/40">
+              <span className="text-[9px] font-medium text-muted-foreground/40 uppercase  shrink-0">{t("header.currentDataset")}</span>
+              <span className="text-[10px] font-medium font-mono text-muted-foreground/80 truncate px-1.5 py-0.5 rounded bg-muted/40">
                 {selectedDatasetId || t("header.noneSelected")}
               </span>
             </div>
@@ -289,15 +289,15 @@ export function KnowledgeRetrievalPanel({
         <div className="border-b border-border/60 bg-background/72 px-4 py-4 backdrop-blur-xl">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-start gap-3">
-              <div className="relative flex size-9 shrink-0 items-center justify-center rounded-[14px] border border-blue-500/20 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.16),transparent_62%),linear-gradient(180deg,rgba(239,246,255,0.95),rgba(219,234,254,0.78))] text-blue-600 shadow-[0_14px_28px_-22px_rgba(37,99,235,0.45)]">
+              <div className="relative flex size-9 shrink-0 items-center justify-center rounded-[14px] border border-info/20 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.16),transparent_62%),linear-gradient(180deg,rgba(239,246,255,0.95),rgba(219,234,254,0.78))] text-info shadow-[0_14px_28px_-22px_rgba(37,99,235,0.45)]">
                 <span className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[linear-gradient(135deg,rgba(255,255,255,0.35),transparent_48%)] opacity-80" />
                 <Fingerprint className="size-4" />
               </div>
               <div className="min-w-0">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground/62">
+                <div className="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground/62">
                   索引审计
                 </div>
-                <div className="mt-1 text-[20px] font-semibold tracking-[-0.04em] text-foreground">
+                <div className="mt-1 text-[20px] font-semibold tracking-tight text-foreground">
                   {t("header.title")}
                 </div>
               </div>
@@ -329,7 +329,7 @@ export function KnowledgeRetrievalPanel({
             <div className="space-y-3">
               <div className="text-[12px] text-muted-foreground/64">{t("header.currentDataset")}</div>
                <div className="inline-flex items-center rounded-full border border-border/70 bg-background px-3 py-1.5 text-[13px] font-medium text-foreground">
-                 <Database className="mr-2 size-3.5 text-blue-500" />
+                 <Database className="mr-2 size-3.5 text-info" />
                  {overviewDatasetLabel}
                </div>
              </div>
@@ -353,24 +353,24 @@ export function KnowledgeRetrievalPanel({
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <div className="text-[11px] font-semibold text-muted-foreground/68">{item.label}</div>
+                        <div className="text-[11px] font-medium text-muted-foreground/68">{item.label}</div>
                         {item.estimated ? (
-                          <span className="rounded-full bg-sky-500/10 px-2 py-0.5 text-[9px] font-semibold text-sky-600">
+                          <span className="rounded-full bg-info/10 px-2 py-0.5 text-[9px] font-medium text-info">
                             估算
                           </span>
                         ) : null}
                       </div>
-                      <div className="mt-1.5 font-mono text-[14px] font-semibold tracking-[-0.03em] text-foreground">
+                      <div className="mt-1.5 font-mono text-[14px] font-semibold tracking-tight text-foreground">
                         {item.value}
                       </div>
                       <div className="mt-1 text-[10px] text-muted-foreground/58">{item.meta}</div>
                     </div>
                     <div className={cn(
                       'relative flex size-7.5 shrink-0 items-center justify-center rounded-[11px] border shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_8px_12px_-12px_rgba(15,23,42,0.18)]',
-                      item.tone === 'emerald' && 'border-emerald-500/20 bg-emerald-500/8 text-emerald-600',
-                      item.tone === 'blue' && 'border-blue-500/20 bg-blue-500/8 text-blue-600',
-                      item.tone === 'violet' && 'border-violet-500/20 bg-violet-500/8 text-violet-600',
-                      item.tone === 'sky' && 'border-sky-500/20 bg-sky-500/8 text-sky-600',
+                      item.tone === 'emerald' && 'border-success/20 bg-success/8 text-success',
+                      item.tone === 'blue' && 'border-info/20 bg-info/8 text-info',
+                      item.tone === 'violet' && 'border-accent/20 bg-accent/8 text-accent',
+                      item.tone === 'sky' && 'border-info/20 bg-info/8 text-info',
                     )}>
                       <span className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[linear-gradient(135deg,rgba(255,255,255,0.3),transparent_50%)] opacity-80" />
                       <item.icon className="size-3" />
@@ -385,7 +385,7 @@ export function KnowledgeRetrievalPanel({
               <div className="text-[14px] font-medium text-foreground">
                 {indexAudit || hasAggregateOverview ? '已完成当前数据集索引审计' : '尚未运行'}
               </div>
-              <div className="inline-flex items-center rounded-full bg-emerald-500/10 px-3 py-1 text-[12px] font-medium text-emerald-600">
+              <div className="inline-flex items-center rounded-full bg-success/10 px-3 py-1 text-[12px] font-medium text-success">
                 {indexAudit || hasAggregateOverview ? '同步成功' : '等待执行'}
               </div>
             </div>
@@ -399,8 +399,8 @@ export function KnowledgeRetrievalPanel({
                       <span
                         className={cn(
                           'flex size-5 items-center justify-center rounded-full',
-                          item.state === 'ok' && 'bg-emerald-500/10 text-emerald-600',
-                          item.state === 'warning' && 'bg-amber-500/10 text-amber-600',
+                          item.state === 'ok' && 'bg-success/10 text-success',
+                          item.state === 'warning' && 'bg-warning/10 text-warning',
                           item.state === 'pending' && 'bg-muted/30 text-muted-foreground'
                         )}
                       >
@@ -411,8 +411,8 @@ export function KnowledgeRetrievalPanel({
                     <span
                       className={cn(
                         'rounded-full px-2.5 py-1 text-[11px] font-medium',
-                        item.state === 'ok' && 'bg-emerald-500/10 text-emerald-600',
-                        item.state === 'warning' && 'bg-amber-500/10 text-amber-600',
+                        item.state === 'ok' && 'bg-success/10 text-success',
+                        item.state === 'warning' && 'bg-warning/10 text-warning',
                         item.state === 'pending' && 'bg-muted/30 text-muted-foreground'
                       )}
                     >
@@ -457,7 +457,7 @@ export function KnowledgeRetrievalPanel({
             <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="mb-6 p-4 rounded-2xl border border-destructive/20 bg-destructive/5 flex gap-3 items-start">
               <AlertTriangle className="size-4 text-destructive shrink-0 mt-0.5" />
               <div className="space-y-1">
-                <div className="text-xs font-bold text-destructive">审计执行中断</div>
+                <div className="text-xs font-medium text-destructive">审计执行中断</div>
                 <p className="text-[11px] text-destructive/80 leading-relaxed font-medium">{indexAuditError}</p>
               </div>
             </motion.div>
@@ -468,15 +468,15 @@ export function KnowledgeRetrievalPanel({
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {metricCards.map((item) => (
                  <div key={item.key} className="p-4 rounded-2xl border border-border/40 bg-background/40 hover:border-primary/20 transition-all group/metric shadow-inner-soft">
-                    <div className="text-[10px] font-black uppercase  text-muted-foreground/40 mb-2 group-hover/metric:text-primary/60 transition-colors">
+                    <div className="text-[10px] font-medium uppercase  text-muted-foreground/40 mb-2 group-hover/metric:text-primary/60 transition-colors">
                        {item.label}
                      </div>
                      <div className={cn(
-                       "text-xl font-black font-mono tabular-nums ",
-                       item.tone === 'emerald' && 'text-emerald-600',
-                       item.tone === 'blue' && 'text-blue-600',
-                       item.tone === 'violet' && 'text-violet-600',
-                       item.tone === 'sky' && 'text-sky-600',
+                       "text-xl font-semibold font-mono tabular-nums ",
+                       item.tone === 'emerald' && 'text-success',
+                       item.tone === 'blue' && 'text-info',
+                       item.tone === 'violet' && 'text-accent',
+                       item.tone === 'sky' && 'text-info',
                      )}>
                        {item.value}
                      </div>
@@ -487,7 +487,7 @@ export function KnowledgeRetrievalPanel({
               <div className="grid gap-6 md:grid-cols-2 mt-8">
                 {(indexAudit.vector_ids_missing_in_backend_sample || []).length > 0 && (
                   <div className="space-y-3">
-                    <div className="flex items-center gap-2 text-[10px] font-black uppercase  text-destructive">
+                    <div className="flex items-center gap-2 text-[10px] font-medium uppercase  text-destructive">
                       <div className="size-1.5 rounded-full bg-destructive animate-pulse" />
                       {t("samples.missingInBackend")}
                     </div>
@@ -499,7 +499,7 @@ export function KnowledgeRetrievalPanel({
 
                 {(indexAudit.milvus_orphan_ids_sample || []).length > 0 && (
                   <div className="space-y-3">
-                    <div className="flex items-center gap-2 text-[10px] font-black uppercase  text-warning">
+                    <div className="flex items-center gap-2 text-[10px] font-medium uppercase  text-warning">
                       <div className="size-1.5 rounded-full bg-warning animate-pulse" />
                       {t("samples.orphanIds")}
                     </div>
@@ -519,7 +519,7 @@ export function KnowledgeRetrievalPanel({
                 </div>
               </div>
                <div className="max-w-xs space-y-2">
-                 <h5 className="text-sm font-bold text-foreground/80">{t("empty.title")}</h5>
+                 <h5 className="text-sm font-medium text-foreground/80">{t("empty.title")}</h5>
                  <p className="text-xs text-muted-foreground/50 leading-relaxed font-medium">
                    {t("empty.description")}
                  </p>
@@ -527,13 +527,13 @@ export function KnowledgeRetrievalPanel({
               {selectedDatasetId ? (
                 <Button
                   onClick={() => detachPromise(runIndexAudit())}
-                  className="rounded-full bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 shadow-none px-6 text-xs font-bold"
+                  className="rounded-full bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 shadow-none px-6 text-xs font-medium"
                 >
                   <Activity className="size-3.5 mr-2" />
                   立即初始化审计
                 </Button>
               ) : (
-                <div className="text-[10px] font-black uppercase tracking-[0.15em] text-warning/60 bg-warning/5 px-3 py-1 rounded-full border border-warning/10">
+                <div className="text-[10px] font-medium uppercase tracking-[0.15em] text-warning/60 bg-warning/5 px-3 py-1 rounded-full border border-warning/10">
                   {t("empty.waitingForDataset")}
                 </div>
               )}

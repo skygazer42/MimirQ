@@ -286,7 +286,7 @@ export function DataCleaner({
             value={inputFormat}
             onValueChange={(value) => setInputFormat(coerceOneOf(DATA_CLEANER_INPUT_FORMAT_VALUES, value, 'markdown'))}
           >
-            <SelectTrigger className="h-8 w-[112px] rounded-lg border-border/50 bg-background/70 text-[11px] text-foreground/80 shadow-none">
+            <SelectTrigger className="h-8 w-[112px] rounded-lg border-border/60 bg-background/70 text-[11px] text-foreground/80 shadow-none">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -297,13 +297,13 @@ export function DataCleaner({
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-border/50 bg-card/90">
-        <div className="border-b border-border/50 bg-muted/20 px-3.5 py-2 text-[11px] font-medium text-muted-foreground/80">
+      <div className="overflow-hidden rounded-2xl border border-border/60 bg-card/95">
+        <div className="border-b border-border/60 bg-muted/20 px-3.5 py-2 text-[11px] font-medium text-muted-foreground/80">
           {t('rules.title')}
         </div>
         <div className="p-3.5">
           <div className="space-y-3">
-            <div className="rounded-xl border border-border/50 bg-muted/[0.16] p-2.5">
+            <div className="rounded-xl border border-border/60 bg-muted/[0.16] p-2.5">
               <div className="mb-1.5 text-[11px] font-medium text-muted-foreground/80">{t('rules.profilesTitle')}</div>
               <GovernanceProfileSelector compact={true} onApplyPatch={applyPipelinePatch} />
             </div>
@@ -331,8 +331,8 @@ export function DataCleaner({
         </Alert>
       )}
 
-      <div className="flex items-center gap-2 border-t border-border/50 pt-3.5">
-        <Button onClick={handleReset} variant="outline" size="sm" className="h-8 flex-1 gap-1.5 rounded-lg border-border/50 bg-background/70 text-foreground/75 shadow-none">
+      <div className="flex items-center gap-2 border-t border-border/60 pt-3.5">
+        <Button onClick={handleReset} variant="outline" size="sm" className="h-8 flex-1 gap-1.5 rounded-lg border-border/60 bg-background/70 text-foreground/75 shadow-none">
           <Undo className="h-3.5 w-3.5" />
           {t('actions.reset')}
         </Button>
@@ -346,7 +346,7 @@ export function DataCleaner({
         </Button>
       </div>
 
-      <div className="rounded-xl border border-border/50 bg-card/90 p-3.5">
+      <div className="rounded-xl border border-border/60 bg-card/95 p-3.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Sparkles className="size-4 text-primary/75" />
@@ -365,7 +365,7 @@ export function DataCleaner({
                 value={promptTemplateId || SELECT_DEFAULT_VALUE}
                 onValueChange={(value) => setPromptTemplateId(value === SELECT_DEFAULT_VALUE ? '' : value)}
               >
-                <SelectTrigger className="h-8 w-full rounded-lg border-border/50 bg-background/70 text-[11px] shadow-none">
+                <SelectTrigger className="h-8 w-full rounded-lg border-border/60 bg-background/70 text-[11px] shadow-none">
                   <SelectValue placeholder={t('llm.promptTemplatePlaceholder')} />
                 </SelectTrigger>
                 <SelectContent>
@@ -382,7 +382,7 @@ export function DataCleaner({
         )}
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-border/50 bg-card/90">
+      <div className="overflow-hidden rounded-xl border border-border/60 bg-card/95">
         <button
           type="button"
           onClick={() => setPreviewDiff((value) => !value)}
@@ -392,9 +392,9 @@ export function DataCleaner({
           <TextCursorInput className="size-4 text-muted-foreground" />
         </button>
         {previewDiff && (
-          <div className="max-h-80 space-y-3 overflow-y-auto border-t border-border/50 bg-muted/20 p-3.5 no-scrollbar overscroll-contain">
+          <div className="max-h-80 space-y-3 overflow-y-auto border-t border-border/60 bg-muted/20 p-3.5 no-scrollbar overscroll-contain">
             {impact ? (
-              <div className="rounded-lg border border-border/50 bg-background/40 p-3">
+              <div className="rounded-lg border border-border/60 bg-background/40 p-3">
                 <div className="mb-2 text-[11px] font-medium text-muted-foreground/80">{t('diff.impactTitle')}</div>
                 <div className="grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
                   <div className="flex items-center justify-between gap-2">

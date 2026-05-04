@@ -30,6 +30,47 @@ ODT_EXTENSION = '.odt'
 IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'}
 VIDEO_EXTENSIONS = {'.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v'}
 AUDIO_EXTENSIONS = {'.mp3', '.wav', '.m4a', '.aac', '.flac', '.ogg'}
+SOURCE_CODE_EXTENSIONS = {
+    '.astro',
+    '.bash',
+    '.c',
+    '.cc',
+    '.cjs',
+    '.cpp',
+    '.cs',
+    '.css',
+    '.cts',
+    '.cxx',
+    '.go',
+    '.h',
+    '.hpp',
+    '.java',
+    '.js',
+    '.jsx',
+    '.kt',
+    '.kts',
+    '.less',
+    '.lua',
+    '.mjs',
+    '.mts',
+    '.php',
+    '.ps1',
+    '.py',
+    '.pyi',
+    '.r',
+    '.rb',
+    '.rs',
+    '.sass',
+    '.scala',
+    '.scss',
+    '.sh',
+    '.svelte',
+    '.swift',
+    '.ts',
+    '.tsx',
+    '.vue',
+    '.zsh',
+}
 
 if TYPE_CHECKING:
     from app.parsing.parsers.audio_parser import AudioParser
@@ -75,7 +116,7 @@ class ParserFactory:
         "magicpdf",
         "colpali",
     }
-    PLAIN_TEXT_EXTENSIONS = {
+    PLAIN_TEXT_EXTENSIONS = SOURCE_CODE_EXTENSIONS | {
         ".txt",
         ".rst",
         ".adoc",

@@ -352,7 +352,7 @@ export function DataAnnotator({ content, annotations = [], onAnnotate, onDocumen
     <div className="space-y-6 p-6">
       <div className="flex items-center gap-2">
         <Tag className="size-5 text-primary" />
-        <h3 className="font-bold text-foreground">{t('header.title')}</h3>
+        <h3 className="font-medium text-foreground">{t('header.title')}</h3>
       </div>
 
       <div className="space-y-2">
@@ -372,7 +372,7 @@ export function DataAnnotator({ content, annotations = [], onAnnotate, onDocumen
                     : 'border-border bg-card text-muted-foreground hover:bg-muted'
                 )}
               >
-                <div className="text-xs font-semibold text-foreground">{t(`auto.providers.${option.id}.label`)}</div>
+                <div className="text-xs font-medium text-foreground">{t(`auto.providers.${option.id}.label`)}</div>
                 <div className="mt-1 text-[11px] leading-4 text-muted-foreground">{t(`auto.providers.${option.id}.description`)}</div>
               </button>
             )

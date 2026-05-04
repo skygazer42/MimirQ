@@ -1712,7 +1712,14 @@ async def import_governance_profiles(
         if not isinstance(payload_raw, dict):
             raise HTTPException(status_code=400, detail="payload is required and must be an object")
 
-        unknown_payload_keys = set(payload_raw.keys()) - {"version", "input_formats", "pipeline_patch", "regex_rules"}
+        unknown_payload_keys = set(payload_raw.keys()) - {
+            "version",
+            "extends",
+            "input_formats",
+            "pipeline_patch",
+            "regex_rules",
+            "processing_scripts",
+        }
         if unknown_payload_keys:
             unknown_sorted = ", ".join(sorted(map(str, unknown_payload_keys))[:20])
             raise HTTPException(status_code=400, detail=f"Unknown payload fields: {unknown_sorted}")

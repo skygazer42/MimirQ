@@ -19,7 +19,7 @@ describe('parsing active file pane source', () => {
     expect(src).not.toContain('StatsGrid')
     expect(src).not.toContain('StatCard')
     expect(src).toContain('border-b border-border/60 bg-[linear-gradient(180deg,hsl(var(--background)/0.96),hsl(var(--muted)/0.35))] px-5 py-3')
-    expect(src).toContain('rounded-full border border-border/55 bg-card/88 px-2.5 py-1')
+    expect(src).toContain('rounded-full border border-border/60 bg-card/88 px-2.5 py-1')
     expect(src).toContain('overflow-y-auto overscroll-contain no-scrollbar pl-2')
     expect(src).toContain("dragScroll={rightPanelMode === 'markdown'}")
     expect(src).toContain('scrollContainerSelector=".parsing-md-scroll"')
@@ -28,9 +28,9 @@ describe('parsing active file pane source', () => {
   it('treats the governance action footer like a floating control dock instead of a flat strip', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'parsing-active-file-pane.tsx'), 'utf8')
 
-    expect(src).toContain('border-t border-border/75 bg-background/94 px-6 py-4')
+    expect(src).toContain('border-t border-border/60 bg-card px-6 py-4')
     expect(src).toContain('shadow-[0_-10px_24px_-18px_rgba(15,23,42,0.22)]')
-    expect(src).toContain('text-[11px] leading-5 text-muted-foreground/72')
+    expect(src).toContain('text-[11px] leading-5 text-muted-foreground/78')
   })
 
   it('surfaces normalized element summaries for seals and equations in the stats rail', () => {

@@ -76,8 +76,16 @@ export function getSemanticQualityMetadata(chunk: Pick<ChunkPreviewItem, 'metada
 
 export function chunkNeedsReview(chunk: Pick<ChunkPreviewItem, 'metadata'>): boolean {
   const metadata = getChunkMetadata(chunk)
+  if (chunkIsReviewed(chunk)) return false
   if (getBooleanValue(metadata, 'needs_review') === true) return true
   return getSemanticQualityMetadata(chunk)?.needs_review === true
+}
+
+export function chunkIsReviewed(chunk: Pick<ChunkPreviewItem, 'metadata'>): boolean {
+  const metadata = getChunkMetadata(chunk)
+  const status = getStringValue(metadata, 'review_status')?.toLowerCase()
+  if (status === 'approved' || status === 'reviewed') return true
+  return getBooleanValue(metadata, 'reviewed') === true
 }
 
 export function isChunkOverrideEdited(override: ChunkOverride | undefined): boolean {

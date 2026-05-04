@@ -313,24 +313,24 @@ function getQuarantineSeverity(doc: Document): QuarantineSeverity {
 function getSeverityClassName(severity: QuarantineSeverity): string {
   switch (severity) {
     case '高':
-      return 'text-red-600'
+      return 'text-rose'
     case '中':
-      return 'text-amber-600'
+      return 'text-warning'
     case '低':
     default:
-      return 'text-emerald-600'
+      return 'text-success'
   }
 }
 
 function getSeverityBarClassName(severity: QuarantineSeverity): string {
   switch (severity) {
     case '高':
-      return 'bg-red-400'
+      return 'bg-rose/70'
     case '中':
-      return 'bg-amber-400'
+      return 'bg-warning/70'
     case '低':
     default:
-      return 'bg-emerald-400'
+      return 'bg-success/70'
   }
 }
 
@@ -442,8 +442,8 @@ function SummaryStatCard({
       />
       <div className="relative flex items-start justify-between gap-4">
         <div className="space-y-1">
-          <div className="text-[11px] font-semibold leading-none text-muted-foreground">{label}</div>
-          <div className="text-[1.55rem] font-black leading-none tracking-[-0.055em] text-slate-950 dark:text-foreground">{value}</div>
+          <div className="text-[10px] font-medium uppercase tracking-[0.14em] leading-none text-muted-foreground/80">{label}</div>
+          <div className="text-[1.55rem] font-semibold leading-none tracking-tight text-foreground">{value}</div>
         </div>
         <div
           className={cn(
@@ -465,7 +465,7 @@ function SummaryStatCard({
           {delta ? (
             <div
               className={cn(
-                'mt-1 text-[12px] font-semibold',
+                'mt-1 text-[12px] font-medium',
                 delta.tone === 'up' && 'text-red-500',
                 delta.tone === 'down' && 'text-emerald-500',
                 delta.tone === 'neutral' && 'text-muted-foreground'
@@ -513,15 +513,15 @@ function DonutSummaryCard({
 
   return (
     <div className="h-full min-h-[178px] rounded-[1.1rem] border border-border/60 bg-background/92 p-3.5 shadow-[0_18px_44px_-38px_rgba(15,23,42,0.18)] backdrop-blur-sm">
-      <div className="text-[0.9rem] font-bold tracking-[-0.03em] text-foreground">{title}</div>
+      <div className="text-[0.9rem] font-medium tracking-tight text-foreground">{title}</div>
       {subtitle ? <div className="mt-1 text-[11px] text-muted-foreground">{subtitle}</div> : null}
       <div className="mt-3.5 grid gap-3.5 md:grid-cols-[100px_minmax(0,1fr)] md:items-center">
         <div className="flex items-center justify-center">
           <div className="relative h-[86px] w-[86px] rounded-full shadow-[inset_0_0_0_1px_rgba(148,163,184,0.18)]" style={{ backgroundImage: gradient }}>
             <div className="absolute inset-[16px] rounded-full bg-background shadow-[inset_0_0_0_1px_rgba(148,163,184,0.12)]" />
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-[1.2rem] font-black leading-none tracking-[-0.05em] text-foreground">{total}</span>
-              <span className="mt-1 text-[10px] font-semibold text-muted-foreground">总量</span>
+              <span className="text-[1.2rem] font-semibold leading-none tracking-tight text-foreground">{total}</span>
+              <span className="mt-1 text-[10px] font-medium text-muted-foreground/85">总量</span>
             </div>
           </div>
         </div>
@@ -534,7 +534,7 @@ function DonutSummaryCard({
                   <span className="truncate">{item.label}</span>
                 </div>
                 <div className="shrink-0 text-right">
-                  <span className="font-mono text-[11px] font-semibold tabular-nums text-foreground">{item.value}</span>
+                  <span className="text-[12px] tabular-nums text-foreground">{item.value}</span>
                   {item.hint ? <span className="ml-1.5 text-[10px] text-muted-foreground">{item.hint}</span> : null}
                   {!item.hint && total > 0 ? (
                     <span className="ml-1.5 text-[10px] text-muted-foreground">({((item.value / total) * 100).toFixed(1)}%)</span>
@@ -570,7 +570,7 @@ function QuickActionCard({
         <Icon className="size-3.5" />
       </span>
       <span className="min-w-0">
-        <span className="block text-[12px] font-bold tracking-[-0.02em] text-foreground">{title}</span>
+        <span className="block text-[12px] font-medium tracking-tight text-foreground">{title}</span>
         <span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">{description}</span>
       </span>
     </button>
@@ -593,7 +593,7 @@ function StatusPill({ status }: Readonly<{ status: Document['status'] }>) {
 
   return (
     <span className={cn(
-      'inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold',
+      'inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium',
       status === 'completed' && 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
       status === 'failed' && 'border-red-500/20 bg-red-500/10 text-red-600 dark:text-red-300',
       status === 'quarantined' && 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300',
@@ -633,7 +633,7 @@ function QuarantineEmptyState({
         <span className="absolute right-2 top-10 size-1.5 rounded-full bg-blue-200" />
       </div>
 
-      <div className="text-[0.98rem] font-black tracking-[-0.04em] text-foreground">
+      <div className="text-[0.98rem] font-semibold tracking-tight text-foreground">
         {hasActiveFilters ? '当前筛选条件下暂无隔离记录' : '当前没有待审隔离样本'}
       </div>
       <p className="mt-1 max-w-lg text-[10px] leading-5 text-muted-foreground">
@@ -646,7 +646,7 @@ function QuarantineEmptyState({
         <Button
           type="button"
           variant="outline"
-          className="h-8 rounded-xl border-border/60 bg-background px-3.5 text-[11px] font-semibold"
+          className="h-8 rounded-xl border-border/60 bg-background px-3.5 text-[11px] font-medium"
           onClick={onResetFilters}
         >
           <RotateCcw className="size-4" />
@@ -688,8 +688,8 @@ function QuarantineDetailPanel({ selected }: Readonly<QuarantineDetailPanelProps
             { label: '切片数量', value: String(selected.chunk_count ?? 0) },
           ].map((item) => (
             <div key={item.label} className="space-y-1">
-              <div className="text-[10px] font-bold uppercase  text-muted-foreground/60">{item.label}</div>
-              <div className="break-words text-xs font-mono font-bold text-foreground/90">{item.value}</div>
+              <div className="text-[10px] font-medium uppercase  text-muted-foreground/60">{item.label}</div>
+              <div className="break-words text-xs font-mono font-medium text-foreground/90">{item.value}</div>
             </div>
           ))}
         </div>
@@ -697,7 +697,7 @@ function QuarantineDetailPanel({ selected }: Readonly<QuarantineDetailPanelProps
 
       {selected.error_message && (
         <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
-          <div className="text-[10px] font-bold uppercase  text-amber-600">隔离原因 / RISKS</div>
+          <div className="text-[10px] font-medium uppercase  text-amber-600">隔离原因 / RISKS</div>
           <div className="mt-2 break-words text-xs font-mono leading-relaxed text-amber-900/80 dark:text-amber-200/80">
             {selected.error_message}
           </div>
@@ -718,13 +718,13 @@ function QuarantineDetailPanel({ selected }: Readonly<QuarantineDetailPanelProps
 
       {getDropReasons(selected).length > 0 ? (
         <div className="rounded-xl border border-border/40 bg-muted/30 p-4">
-          <div className="text-[10px] font-bold uppercase  text-muted-foreground/60">命中规则 / RULES</div>
+          <div className="text-[10px] font-medium uppercase  text-muted-foreground/60">命中规则 / RULES</div>
           <div className="mt-3 flex flex-wrap gap-1.5">
             {getDropReasons(selected).map((reason) => (
               <Badge
                 key={reason}
                 variant="secondary"
-                className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-[10px] font-black uppercase  text-amber-700 dark:text-amber-300"
+                className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-[10px] font-medium uppercase  text-amber-700 dark:text-amber-300"
               >
                 {reasonLabel(reason)}
               </Badge>
@@ -776,10 +776,10 @@ function QuarantineReviewDrawer({
             <div className="flex items-start justify-between gap-3 pr-8">
               <div className="min-w-0">
                 <div className={TYPO_EYEBROW}>Audit Inspection</div>
-                <div className="mt-1.5 truncate text-xl font-black  text-foreground">{selected?.filename || '未选择记录'}</div>
+                <div className="mt-1.5 truncate text-xl font-semibold  text-foreground">{selected?.filename || '未选择记录'}</div>
                 {selected ? (
                   <div className="mt-1 flex items-center gap-2">
-                    <span className="font-mono text-[10px] font-black uppercase text-muted-foreground/30">{selected.id}</span>
+                    <span className="font-mono text-[10px] font-medium uppercase text-muted-foreground/45">{selected.id}</span>
                     <div className="h-1 w-1 rounded-full bg-border" />
                     <span className="font-mono text-[10px] font-medium text-muted-foreground/50">{formatDate(selected.updated_at)}</span>
                   </div>
@@ -805,7 +805,7 @@ function QuarantineReviewDrawer({
                 <div className="grid grid-cols-2 gap-2">
                   <Button
                     size="sm"
-                    className="h-10 rounded-xl bg-amber-600 font-bold text-primary-foreground shadow-sm hover:bg-amber-500"
+                    className="h-10 rounded-xl bg-amber-600 font-medium text-primary-foreground shadow-sm hover:bg-amber-500"
                     disabled={acting?.id === selected.id}
                     onClick={() => onRelease(selected)}
                   >
@@ -815,7 +815,7 @@ function QuarantineReviewDrawer({
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-10 rounded-xl border-border/40 bg-background/50 font-bold"
+                    className="h-10 rounded-xl border-border/40 bg-background/50 font-medium"
                     disabled={acting?.id === selected.id}
                     onClick={() => onRetry(selected)}
                   >
@@ -828,7 +828,7 @@ function QuarantineReviewDrawer({
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="h-9 rounded-xl text-xs font-bold"
+                    className="h-9 rounded-xl text-xs font-medium"
                     disabled={acting?.id === selected.id}
                     onClick={() => onTune(selected)}
                   >
@@ -838,7 +838,7 @@ function QuarantineReviewDrawer({
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="h-9 rounded-xl text-xs font-bold"
+                    className="h-9 rounded-xl text-xs font-medium"
                     disabled={acting?.id === selected.id}
                     onClick={() => onPreview(selected.id)}
                   >
@@ -848,7 +848,7 @@ function QuarantineReviewDrawer({
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="h-9 rounded-xl text-xs font-bold"
+                    className="h-9 rounded-xl text-xs font-medium"
                     onClick={() => onShowDetails(selected.id)}
                   >
                     <Layers className="mr-1.5 size-3.5" />
@@ -862,7 +862,7 @@ function QuarantineReviewDrawer({
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-9 flex-1 rounded-xl border-emerald-500/20 bg-emerald-500/5 text-[11px] font-black text-emerald-600 hover:bg-emerald-500/10"
+                    className="h-9 flex-1 rounded-xl border-success/25 bg-success/[0.06] text-[11px] font-medium text-success hover:bg-success/[0.12]"
                     disabled={acting?.id === selected.id || isReviewed(selected)}
                     onClick={() => onMarkReviewed(selected)}
                   >
@@ -1331,7 +1331,7 @@ export default function QuarantineQueuePage() {
                   <ShieldCheck className="size-6" />
                 </div>
                 <div className="space-y-1 pt-0.5">
-                  <div className="text-[1.32rem] font-black tracking-[-0.05em] text-slate-950 dark:text-foreground">隔离审核中心</div>
+                  <div className="text-[1.5rem] font-semibold tracking-tight text-foreground">隔离审核中心</div>
                   <p className="max-w-4xl text-[12px] leading-5 text-muted-foreground">
                     聚合命中规则，抽样预览原文，一键调参回放。这里集中处理被隔离的异常样本，帮助你快速完成复核和回放。
                   </p>
@@ -1342,7 +1342,7 @@ export default function QuarantineQueuePage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-9 gap-2 rounded-xl border-blue-500/55 bg-background px-4 text-[12px] font-bold text-blue-700 shadow-[0_16px_30px_-26px_rgba(37,99,235,0.55)] hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-950/25"
+                  className="h-9 gap-2 rounded-xl border-blue-500/55 bg-background px-4 text-[12px] font-medium text-blue-700 shadow-[0_16px_30px_-26px_rgba(37,99,235,0.55)] hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-950/25"
                   onClick={handleToggleDemoMode}
                 >
                   <Play className="size-4 fill-current" />
@@ -1351,7 +1351,7 @@ export default function QuarantineQueuePage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-9 gap-2 rounded-xl border-border/60 bg-background px-3.5 text-[12px] font-bold hover:bg-background/90"
+                  className="h-9 gap-2 rounded-xl border-border/60 bg-background px-3.5 text-[12px] font-medium hover:bg-background/90"
                   onClick={() => {
                     if (demoMode) {
                       toast.success('Demo 数据已刷新')
@@ -1365,7 +1365,7 @@ export default function QuarantineQueuePage() {
                 </Button>
 
                 <div className="flex h-9 items-center gap-2 rounded-xl border border-transparent bg-background/70 px-2.5">
-                  <span className="text-[11px] font-semibold text-muted-foreground">自动刷新</span>
+                  <span className="text-[11px] font-medium text-muted-foreground">自动刷新</span>
                   <Switch
                     checked={autoRefresh}
                     onCheckedChange={setAutoRefresh}
@@ -1418,8 +1418,8 @@ export default function QuarantineQueuePage() {
               <div className="flex flex-col gap-2.5 xl:flex-row xl:items-start xl:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-3">
-                    <div className="text-[0.98rem] font-black tracking-[-0.04em] text-foreground">异常隔离审查表</div>
-                    <span className="rounded-full border border-border/60 bg-muted/35 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                    <div className="text-[0.98rem] font-semibold tracking-tight text-foreground">异常隔离审查表</div>
+                    <span className="rounded-full border border-border/60 bg-muted/35 px-2 py-0.5 text-[10px] font-medium text-muted-foreground tabular-nums">
                       {listSummary || '当前空队列'}
                     </span>
                   </div>
@@ -1430,42 +1430,42 @@ export default function QuarantineQueuePage() {
                   {hasActiveFilters ? (
                     <div className="mt-3 flex flex-wrap gap-1.5">
                       {reviewState !== 'all' ? (
-                        <Badge variant="secondary" className="rounded-full px-2.5 py-1 text-[11px] font-semibold">
+                        <Badge variant="secondary" className="rounded-full px-2.5 py-1 text-[11px] font-medium">
                           {reviewState === 'pending' ? '仅待审核' : '仅已处理'}
                         </Badge>
                       ) : null}
                       {selectedReason !== 'all' ? (
-                        <Badge variant="secondary" className="rounded-full px-2.5 py-1 text-[11px] font-semibold">
+                        <Badge variant="secondary" className="rounded-full px-2.5 py-1 text-[11px] font-medium">
                           原因: {reasonLabel(selectedReason)}
                         </Badge>
                       ) : null}
                       {selectedDataset !== 'all' ? (
-                        <Badge variant="secondary" className="rounded-full px-2.5 py-1 text-[11px] font-semibold">
+                        <Badge variant="secondary" className="rounded-full px-2.5 py-1 text-[11px] font-medium">
                           数据集: {selectedDataset}
                         </Badge>
                       ) : null}
                       {selectedSource !== 'all' ? (
-                        <Badge variant="secondary" className="rounded-full px-2.5 py-1 text-[11px] font-semibold">
+                        <Badge variant="secondary" className="rounded-full px-2.5 py-1 text-[11px] font-medium">
                           来源: {selectedSource}
                         </Badge>
                       ) : null}
                       {selectedSeverity !== 'all' ? (
-                        <Badge variant="secondary" className="rounded-full px-2.5 py-1 text-[11px] font-semibold">
+                        <Badge variant="secondary" className="rounded-full px-2.5 py-1 text-[11px] font-medium">
                           疑似度: {selectedSeverity}
                         </Badge>
                       ) : null}
                       {search.trim() ? (
-                        <Badge variant="secondary" className="rounded-full px-2.5 py-1 text-[11px] font-semibold">
+                        <Badge variant="secondary" className="rounded-full px-2.5 py-1 text-[11px] font-medium">
                           搜索: {search.trim()}
                         </Badge>
                       ) : null}
                       {dateFrom ? (
-                        <Badge variant="secondary" className="rounded-full px-2.5 py-1 text-[11px] font-semibold">
+                        <Badge variant="secondary" className="rounded-full px-2.5 py-1 text-[11px] font-medium">
                           开始: {dateFrom}
                         </Badge>
                       ) : null}
                       {dateTo ? (
-                        <Badge variant="secondary" className="rounded-full px-2.5 py-1 text-[11px] font-semibold">
+                        <Badge variant="secondary" className="rounded-full px-2.5 py-1 text-[11px] font-medium">
                           结束: {dateTo}
                         </Badge>
                       ) : null}
@@ -1490,7 +1490,7 @@ export default function QuarantineQueuePage() {
                 <div className="grid gap-2 md:grid-cols-3 xl:min-w-0 xl:flex-1 xl:grid-cols-7">
                   <div className="min-w-0">
                     <Select value={reviewState} onValueChange={(value) => setReviewState(value as ReviewState)}>
-                      <SelectTrigger className="h-9 rounded-xl border-border/60 bg-background px-3 text-[11px] font-semibold shadow-none">
+                      <SelectTrigger className="h-9 rounded-xl border-border/60 bg-background px-3 text-[11px] font-normal shadow-none">
                         <SelectValue placeholder="处理状态" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1503,7 +1503,7 @@ export default function QuarantineQueuePage() {
 
                   <div className="min-w-0">
                     <Select value={selectedReason} onValueChange={setSelectedReason}>
-                      <SelectTrigger className="h-9 rounded-xl border-border/60 bg-background px-3 text-[11px] font-semibold shadow-none">
+                      <SelectTrigger className="h-9 rounded-xl border-border/60 bg-background px-3 text-[11px] font-normal shadow-none">
                         <SelectValue placeholder="隔离原因" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1519,7 +1519,7 @@ export default function QuarantineQueuePage() {
 
                   <div className="min-w-0">
                     <Select value={selectedSource} onValueChange={setSelectedSource}>
-                      <SelectTrigger className="h-9 rounded-xl border-border/60 bg-background px-3 text-[11px] font-semibold shadow-none">
+                      <SelectTrigger className="h-9 rounded-xl border-border/60 bg-background px-3 text-[11px] font-normal shadow-none">
                         <SelectValue placeholder="来源" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1535,7 +1535,7 @@ export default function QuarantineQueuePage() {
 
                   <div className="min-w-0">
                     <Select value={selectedSeverity} onValueChange={setSelectedSeverity}>
-                      <SelectTrigger className="h-9 rounded-xl border-border/60 bg-background px-3 text-[11px] font-semibold shadow-none">
+                      <SelectTrigger className="h-9 rounded-xl border-border/60 bg-background px-3 text-[11px] font-normal shadow-none">
                         <SelectValue placeholder="疑似度" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1549,7 +1549,7 @@ export default function QuarantineQueuePage() {
 
                   <div className="min-w-0">
                     <Select value={selectedDataset} onValueChange={setSelectedDataset}>
-                      <SelectTrigger className="h-9 rounded-xl border-border/60 bg-background px-3 text-[11px] font-semibold shadow-none">
+                      <SelectTrigger className="h-9 rounded-xl border-border/60 bg-background px-3 text-[11px] font-normal shadow-none">
                         <SelectValue placeholder="数据集" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1572,7 +1572,7 @@ export default function QuarantineQueuePage() {
                         aria-label="起始日期，格式 YYYY-MM-DD"
                         value={dateFrom}
                         onChange={(event) => setDateFrom(event.target.value)}
-                        className="h-9 rounded-xl border-border/60 bg-background px-3 text-[11px] font-semibold shadow-none placeholder:text-muted-foreground"
+                        className="h-9 rounded-xl border-border/60 bg-background px-3 text-[11px] font-normal shadow-none placeholder:text-muted-foreground"
                       />
                     </div>
                   </div>
@@ -1586,7 +1586,7 @@ export default function QuarantineQueuePage() {
                         aria-label="结束日期，格式 YYYY-MM-DD"
                         value={dateTo}
                         onChange={(event) => setDateTo(event.target.value)}
-                        className="h-9 rounded-xl border-border/60 bg-background px-3 text-[11px] font-semibold shadow-none placeholder:text-muted-foreground"
+                        className="h-9 rounded-xl border-border/60 bg-background px-3 text-[11px] font-normal shadow-none placeholder:text-muted-foreground"
                       />
                     </div>
                   </div>
@@ -1597,7 +1597,7 @@ export default function QuarantineQueuePage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="h-9 rounded-xl border-border/60 bg-background px-3.5 text-[11px] font-semibold"
+                    className="h-9 rounded-xl border-border/60 bg-background px-3.5 text-[11px] font-medium"
                     onClick={resetFilters}
                   >
                     <RotateCcw className="size-3.5" />
@@ -1607,7 +1607,7 @@ export default function QuarantineQueuePage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="h-9 rounded-xl border-border/60 bg-background px-3.5 text-[11px] font-semibold"
+                    className="h-9 rounded-xl border-border/60 bg-background px-3.5 text-[11px] font-medium"
                     onClick={() => refetch()}
                   >
                     <RefreshCw className={cn('size-3.5', isFetching ? 'animate-spin motion-reduce:animate-none' : '')} />
@@ -1630,18 +1630,18 @@ export default function QuarantineQueuePage() {
                   <col className="w-[12%]" />
                   <col className="w-[8%]" />
                 </colgroup>
-                <thead className="border-b border-border/60 bg-slate-50/70 text-[11px] font-bold text-slate-600 dark:bg-muted/20 dark:text-muted-foreground">
+                <thead className="border-b border-border/60 bg-muted/40 text-[11px] font-medium text-muted-foreground">
                   <tr>
                     <th className="w-10 px-5 py-2.5">
                       <input type="checkbox" className="h-3.5 w-3.5 rounded border-border/60" aria-label="全选隔离记录" />
                     </th>
-                    <th className="px-4 py-2.5">文件 / ID</th>
-                    <th className="px-4 py-2.5">命中规则 / 原因</th>
-                    <th className="px-4 py-2.5">状态</th>
-                    <th className="px-4 py-2.5">来源</th>
-                    <th className="px-4 py-2.5">疑似度</th>
-                    <th className="px-4 py-2.5 text-right">大小</th>
-                    <th className="px-4 py-2.5 text-right">同步时间</th>
+                    <th className="px-4 py-2.5 font-medium">文件 / ID</th>
+                    <th className="px-4 py-2.5 font-medium">命中规则 / 原因</th>
+                    <th className="px-4 py-2.5 font-medium">状态</th>
+                    <th className="px-4 py-2.5 font-medium">来源</th>
+                    <th className="px-4 py-2.5 font-medium">疑似度</th>
+                    <th className="px-4 py-2.5 font-medium text-right">大小</th>
+                    <th className="px-4 py-2.5 font-medium text-right">同步时间</th>
                     <th className="w-12 px-4 py-2.5"></th>
                   </tr>
                 </thead>
@@ -1686,7 +1686,7 @@ export default function QuarantineQueuePage() {
                                 <FileKindGlyph kind={getDocumentKind(doc.filename)} className="h-4 w-4" />
                               </div>
                               <div className="min-w-0">
-                                <span className="block truncate text-[12px] font-bold text-foreground transition-colors group-hover:text-primary">
+                                <span className="block truncate text-[12px] font-medium text-foreground transition-colors group-hover:text-primary">
                                   {doc.filename}
                                 </span>
                                 <span className="mt-0.5 block font-mono text-[9px] text-muted-foreground/70">
@@ -1700,7 +1700,7 @@ export default function QuarantineQueuePage() {
                               {reasons.map((reason) => (
                                 <span
                                   key={reason}
-                                  className="rounded-full border border-amber-500/15 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300"
+                                  className="rounded-full border border-amber-500/15 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300"
                                 >
                                   {reasonLabel(reason)}
                                 </span>
@@ -1718,7 +1718,7 @@ export default function QuarantineQueuePage() {
                           </td>
                           <td className="px-4 py-2.5">
                             <div className="flex items-center gap-2">
-                              <span className={cn('min-w-[1rem] text-[11px] font-bold', getSeverityClassName(severity))}>{severity}</span>
+                              <span className={cn('min-w-[1rem] text-[11px] font-medium', getSeverityClassName(severity))}>{severity}</span>
                               <span className="h-1.5 w-10 overflow-hidden rounded-full bg-muted/50">
                                 <span
                                   className={cn(
@@ -1732,7 +1732,7 @@ export default function QuarantineQueuePage() {
                               </span>
                             </div>
                           </td>
-                          <td className="px-4 py-2.5 text-right font-mono text-[10px] font-semibold tabular-nums text-muted-foreground/80">
+                          <td className="px-4 py-2.5 text-right font-mono text-[10px] tabular-nums text-muted-foreground/85">
                             {formatFileSize(doc.file_size)}
                           </td>
                           <td className="px-4 py-2.5 text-right font-mono text-[9px] text-muted-foreground/70">
@@ -1810,7 +1810,7 @@ export default function QuarantineQueuePage() {
                           type="button"
                           onClick={() => setPage(pageNumber)}
                           className={cn(
-                            'inline-flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-[12px] font-semibold',
+                            'inline-flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-[12px] font-medium tabular-nums',
                             page === pageNumber ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
                           )}
                         >
@@ -1824,7 +1824,7 @@ export default function QuarantineQueuePage() {
                         type="button"
                         onClick={() => setPage(totalPages)}
                         className={cn(
-                          'inline-flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-[12px] font-semibold',
+                          'inline-flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-[12px] font-medium tabular-nums',
                           page === totalPages ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
                         )}
                       >
@@ -1866,7 +1866,7 @@ export default function QuarantineQueuePage() {
             />
 
             <div className="flex h-full flex-col rounded-[1.2rem] border border-border/60 bg-background/92 p-4 shadow-[0_20px_48px_-40px_rgba(15,23,42,0.2)] backdrop-blur-sm">
-              <div className="text-[0.95rem] font-bold tracking-[-0.03em] text-foreground">快捷操作</div>
+              <div className="text-[0.95rem] font-medium tracking-tight text-foreground">快捷操作</div>
               <div className="mt-3.5 grid flex-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-2">
                 <QuickActionCard
                   title="批量审核"
@@ -1936,7 +1936,7 @@ export default function QuarantineQueuePage() {
             <div className="rounded-xl border border-border bg-muted/40 p-4">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <div className="text-sm font-bold text-foreground">推荐预设</div>
+                  <div className="text-sm font-medium text-foreground">推荐预设</div>
                   <div className="mt-1 text-xs text-muted-foreground">
                     关闭对应质量过滤器，让更多内容进入切块（仍建议人工抽检）。
                   </div>
@@ -1979,7 +1979,7 @@ export default function QuarantineQueuePage() {
               <div className="space-y-3 rounded-xl border border-border bg-card/60 p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-sm font-bold">大纲过滤</div>
+                    <div className="text-sm font-medium">大纲过滤</div>
                     <div className="text-xs text-muted-foreground">outline_only</div>
                   </div>
                   <Switch
@@ -2025,7 +2025,7 @@ export default function QuarantineQueuePage() {
               <div className="space-y-3 rounded-xl border border-border bg-card/60 p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-sm font-bold">低密度过滤</div>
+                    <div className="text-sm font-medium">低密度过滤</div>
                     <div className="text-xs text-muted-foreground">low_density</div>
                   </div>
                   <Switch
@@ -2056,7 +2056,7 @@ export default function QuarantineQueuePage() {
             <div className="space-y-3 rounded-xl border border-border bg-card/60 p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-sm font-bold">隔离策略</div>
+                  <div className="text-sm font-medium">隔离策略</div>
                   <div className="text-xs text-muted-foreground">quarantine_on_drop</div>
                 </div>
                 <Switch

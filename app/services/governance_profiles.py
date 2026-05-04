@@ -91,6 +91,9 @@ def validate_and_normalize_payload(payload: GovernanceProfilePayload) -> Governa
 
     cleaned_patch = _normalize_pipeline_patch(payload.pipeline_patch)
     cleaned_rules = _normalize_regex_rules(payload.regex_rules)
+    scripts = list(payload.processing_scripts or [])
+    if len(scripts) > 10:
+        raise ValueError("payload.processing_scripts contains too many entries (max=10)")
 
     return GovernanceProfilePayload(
         version="1",
@@ -98,6 +101,7 @@ def validate_and_normalize_payload(payload: GovernanceProfilePayload) -> Governa
         input_formats=cleaned_formats,  # type: ignore[arg-type]
         pipeline_patch=cleaned_patch,
         regex_rules=[RegexRuleModel(**r) for r in cleaned_rules],
+        processing_scripts=scripts,
     )
 
 

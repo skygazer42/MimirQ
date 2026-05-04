@@ -2,15 +2,26 @@
 
 import { diffLines } from 'diff'
 import {
+  AlertCircle,
+  ArrowRightLeft,
   BarChart3,
+  CheckCircle2,
+  CircleDashed,
   Copy,
+  Database,
   Download,
+  FileJson,
   GitCompare,
+  Hash,
+  Layers,
+  Link2,
   PanelLeftClose,
   PanelLeftOpen,
   RefreshCcw,
   ShieldAlert,
   ShieldCheck,
+  Sparkles,
+  Trash2,
 } from 'lucide-react'
 import { startTransition, useDeferredValue, useMemo, useState, type ReactNode } from 'react'
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -289,35 +300,46 @@ function tokenClassName(kind: JsonTokenKind) {
 }
 
 function SnapshotInlineStat({
+  icon,
   label,
   value,
   tone = 'muted',
   valueTitle,
   valueClassName,
 }: Readonly<{
+  icon?: ReactNode
   label: string
   value: ReactNode
-  tone?: 'muted' | 'neutral' | 'positive' | 'negative'
+  tone?: 'muted' | 'neutral' | 'positive' | 'negative' | 'warning'
   valueTitle?: string
   valueClassName?: string
 }>) {
+  const toneClasses =
+    tone === 'positive'
+      ? 'border-emerald-200/70 bg-emerald-50/70 text-emerald-700'
+      : tone === 'negative'
+        ? 'border-rose-200/70 bg-rose-50/70 text-rose-700'
+        : tone === 'warning'
+          ? 'border-amber-200/70 bg-amber-50/70 text-amber-700'
+          : tone === 'neutral'
+            ? 'border-border/70 bg-card text-foreground'
+            : 'border-border/70 bg-card text-muted-foreground'
+  const valueTone =
+    tone === 'positive'
+      ? 'text-emerald-700'
+      : tone === 'negative'
+        ? 'text-rose-700'
+        : tone === 'warning'
+          ? 'text-amber-700'
+          : tone === 'neutral'
+            ? 'text-foreground'
+            : 'text-muted-foreground'
+
   return (
-    <div className="flex items-center gap-2 rounded-full border border-border/70 bg-card/90 px-2.5 py-1">
-      <span className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{label}</span>
-      <span
-        title={valueTitle}
-        className={cn(
-          'font-mono text-[11px] tabular-nums',
-          tone === 'positive'
-            ? 'text-emerald-700'
-            : tone === 'negative'
-              ? 'text-rose-700'
-              : tone === 'neutral'
-                ? 'text-foreground'
-                : 'text-muted-foreground',
-          valueClassName
-        )}
-      >
+    <div className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1', toneClasses)}>
+      {icon ? <span className="flex h-3.5 w-3.5 items-center justify-center opacity-80">{icon}</span> : null}
+      <span className="text-[10.5px] font-medium uppercase tracking-[0.1em] opacity-80">{label}</span>
+      <span title={valueTitle} className={cn('font-mono text-[11px] font-semibold tabular-nums', valueTone, valueClassName)}>
         {value}
       </span>
     </div>
@@ -325,15 +347,25 @@ function SnapshotInlineStat({
 }
 
 function WorkspaceSection({
+  icon,
   label,
+  hint,
   children,
 }: Readonly<{
+  icon?: ReactNode
   label: string
+  hint?: string
   children: ReactNode
 }>) {
   return (
-    <section className="space-y-2.5 rounded-lg border border-border/70 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.20))] p-3">
-      <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">{label}</div>
+    <section className="space-y-2.5 rounded-xl border border-border/70 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.18))] p-3 shadow-sm">
+      <div className="flex items-center justify-between gap-2">
+        <div className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+          {icon ? <span className="flex h-3.5 w-3.5 items-center justify-center text-primary/70">{icon}</span> : null}
+          {label}
+        </div>
+        {hint ? <span className="text-[10px] text-muted-foreground/70">{hint}</span> : null}
+      </div>
       {children}
     </section>
   )
@@ -343,21 +375,61 @@ function SectionHeading({
   eyebrow,
   title,
   description,
+  icon,
   extra,
 }: Readonly<{
   eyebrow: string
   title: string
   description?: string
+  icon?: ReactNode
   extra?: ReactNode
 }>) {
   return (
     <div className="flex items-start justify-between gap-3">
-      <div className="min-w-0">
-        <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">{eyebrow}</div>
-        <div className="mt-0.5 text-sm font-semibold tracking-[-0.01em] text-foreground">{title}</div>
-        {description ? <div className="mt-1 text-[11px] leading-5 text-muted-foreground">{description}</div> : null}
+      <div className="flex min-w-0 items-start gap-3">
+        {icon ? (
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-[linear-gradient(180deg,hsl(var(--card)),hsl(var(--muted)/0.30))] text-primary shadow-sm">
+            {icon}
+          </div>
+        ) : null}
+        <div className="min-w-0">
+          <div className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{eyebrow}</div>
+          <div className="mt-0.5 text-[15px] font-semibold tracking-[-0.01em] text-foreground md:text-base">{title}</div>
+          {description ? <div className="mt-1 max-w-[640px] text-[12px] leading-5 text-muted-foreground">{description}</div> : null}
+        </div>
       </div>
       {extra ? <div className="shrink-0">{extra}</div> : null}
+    </div>
+  )
+}
+
+function DiffEmptyState({
+  title,
+  description,
+  hint,
+}: Readonly<{
+  title: string
+  description: string
+  hint?: string
+}>) {
+  return (
+    <div className="flex h-full min-h-[280px] items-center justify-center px-6 py-10">
+      <div className="flex max-w-[440px] flex-col items-center text-center">
+        <div className="relative">
+          <div className="absolute inset-0 -z-0 rounded-full bg-[radial-gradient(circle,hsl(var(--primary)/0.18),transparent_60%)] blur-xl" aria-hidden />
+          <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-border/60 bg-[linear-gradient(180deg,hsl(var(--card)),hsl(var(--muted)/0.30))] text-primary shadow-sm">
+            <ArrowRightLeft className="h-7 w-7" strokeWidth={1.5} aria-hidden="true" />
+          </div>
+        </div>
+        <h3 className="mt-4 text-[15px] font-semibold tracking-tight text-foreground">{title}</h3>
+        <p className="mt-1.5 text-[12px] leading-5 text-muted-foreground">{description}</p>
+        {hint ? (
+          <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card px-3 py-1 text-[11px] text-muted-foreground">
+            <CircleDashed className="h-3.5 w-3.5 text-primary/60" aria-hidden="true" />
+            {hint}
+          </div>
+        ) : null}
+      </div>
     </div>
   )
 }
@@ -417,35 +489,95 @@ function exactDiffSample(diff: SnapshotDiffPayload | null, key: string): Array<R
   return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object')) : []
 }
 
+function DriftCounterCluster({
+  groupIcon,
+  groupLabel,
+  added,
+  removed,
+  changed,
+}: Readonly<{
+  groupIcon: ReactNode
+  groupLabel: string
+  added: number
+  removed: number
+  changed: number
+}>) {
+  const total = added + removed + changed
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-border/70 bg-card px-3 py-2 shadow-sm">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+        {groupIcon}
+      </div>
+      <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            {groupLabel}
+          </div>
+          <div className="mt-0.5 text-[10px] text-muted-foreground/80">
+            {total > 0 ? `共 ${total} 条变更` : '暂无变更'}
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <span className="inline-flex min-w-[40px] items-center justify-center gap-0.5 rounded-md bg-emerald-50 px-1.5 py-1 font-mono text-[11px] font-semibold tabular-nums text-emerald-700 ring-1 ring-emerald-200/60">
+            <span aria-hidden className="opacity-70">+</span>
+            {added}
+          </span>
+          <span className="inline-flex min-w-[40px] items-center justify-center gap-0.5 rounded-md bg-rose-50 px-1.5 py-1 font-mono text-[11px] font-semibold tabular-nums text-rose-700 ring-1 ring-rose-200/60">
+            <span aria-hidden className="opacity-70">−</span>
+            {removed}
+          </span>
+          <span className="inline-flex min-w-[40px] items-center justify-center gap-0.5 rounded-md bg-amber-50 px-1.5 py-1 font-mono text-[11px] font-semibold tabular-nums text-amber-700 ring-1 ring-amber-200/60">
+            <span aria-hidden className="opacity-70">Δ</span>
+            {changed}
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function SnapshotExactDriftPanel({ diff }: Readonly<{ diff: SnapshotDiffPayload | null }>) {
   const nodeSummary = diff?.node_diff
   const edgeSummary = diff?.edge_diff
   const hasExactDiff = Boolean(nodeSummary || edgeSummary)
   const sampleRows = [
-    { label: '新增节点', key: 'nodes_added', tone: 'text-emerald-700' },
-    { label: '移除节点', key: 'nodes_removed', tone: 'text-rose-700' },
-    { label: '变更节点', key: 'nodes_changed', tone: 'text-amber-700' },
-    { label: '新增边', key: 'edges_added', tone: 'text-emerald-700' },
-    { label: '移除边', key: 'edges_removed', tone: 'text-rose-700' },
-    { label: '变更边', key: 'edges_changed', tone: 'text-amber-700' },
+    { label: '新增节点', key: 'nodes_added', icon: <Database className="h-3.5 w-3.5" />, tone: 'text-emerald-700', tint: 'bg-emerald-50' },
+    { label: '移除节点', key: 'nodes_removed', icon: <Database className="h-3.5 w-3.5" />, tone: 'text-rose-700', tint: 'bg-rose-50' },
+    { label: '变更节点', key: 'nodes_changed', icon: <Database className="h-3.5 w-3.5" />, tone: 'text-amber-700', tint: 'bg-amber-50' },
+    { label: '新增边', key: 'edges_added', icon: <Link2 className="h-3.5 w-3.5" />, tone: 'text-emerald-700', tint: 'bg-emerald-50' },
+    { label: '移除边', key: 'edges_removed', icon: <Link2 className="h-3.5 w-3.5" />, tone: 'text-rose-700', tint: 'bg-rose-50' },
+    { label: '变更边', key: 'edges_changed', icon: <Link2 className="h-3.5 w-3.5" />, tone: 'text-amber-700', tint: 'bg-amber-50' },
   ]
 
   return (
-    <div className="border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.12))] px-4 py-3">
+    <div className="border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.10))] px-4 py-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">精确节点/边 Diff</div>
-          <div className="mt-1 text-[11px] leading-5 text-muted-foreground">
-            {hasExactDiff ? '后端已返回 bounded nodes / edges 明细，可直接定位新增、移除和属性变化。' : '当前 diff 只有聚合计数；重新执行对比会请求 include_details=true。'}
+        <div className="min-w-0">
+          <div className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            <Sparkles className="h-3.5 w-3.5 text-primary/70" aria-hidden="true" />
+            精确节点/边 Diff
+          </div>
+          <div className="mt-1 max-w-[560px] text-[11px] leading-5 text-muted-foreground">
+            {hasExactDiff
+              ? '后端已返回 bounded nodes / edges 明细，可直接定位新增、移除和属性变化。'
+              : '当前 diff 只有聚合计数；重新执行对比会请求 include_details=true。'}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <SnapshotInlineStat label="Node +" value={exactDiffCount(nodeSummary, 'added_count')} tone="positive" />
-          <SnapshotInlineStat label="Node -" value={exactDiffCount(nodeSummary, 'removed_count')} tone="negative" />
-          <SnapshotInlineStat label="Node Δ" value={exactDiffCount(nodeSummary, 'changed_count')} tone="neutral" />
-          <SnapshotInlineStat label="Edge +" value={exactDiffCount(edgeSummary, 'added_count')} tone="positive" />
-          <SnapshotInlineStat label="Edge -" value={exactDiffCount(edgeSummary, 'removed_count')} tone="negative" />
-          <SnapshotInlineStat label="Edge Δ" value={exactDiffCount(edgeSummary, 'changed_count')} tone="neutral" />
+          <DriftCounterCluster
+            groupIcon={<Database className="h-4 w-4" />}
+            groupLabel="Node"
+            added={exactDiffCount(nodeSummary, 'added_count')}
+            removed={exactDiffCount(nodeSummary, 'removed_count')}
+            changed={exactDiffCount(nodeSummary, 'changed_count')}
+          />
+          <DriftCounterCluster
+            groupIcon={<Link2 className="h-4 w-4" />}
+            groupLabel="Edge"
+            added={exactDiffCount(edgeSummary, 'added_count')}
+            removed={exactDiffCount(edgeSummary, 'removed_count')}
+            changed={exactDiffCount(edgeSummary, 'changed_count')}
+          />
         </div>
       </div>
 
@@ -458,10 +590,15 @@ function SnapshotExactDriftPanel({ diff }: Readonly<{ diff: SnapshotDiffPayload 
               .map((item) => String(item.name || item.id || 'unknown'))
               .join(' / ')
             return (
-              <div key={row.key} className="rounded-lg border border-border/70 bg-card px-3 py-2">
+              <div key={row.key} className="rounded-lg border border-border/70 bg-card px-3 py-2 transition-shadow hover:shadow-sm">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-medium text-muted-foreground">{row.label}</span>
-                  <span className={cn('font-mono text-[11px] font-semibold', row.tone)}>{items.length}</span>
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+                    <span className={cn('flex h-5 w-5 items-center justify-center rounded-md', row.tint, row.tone)}>
+                      {row.icon}
+                    </span>
+                    {row.label}
+                  </span>
+                  <span className={cn('font-mono text-[11px] font-semibold tabular-nums', row.tone)}>{items.length}</span>
                 </div>
                 <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground" title={preview || '暂无样本'}>
                   {preview || '暂无样本'}
@@ -561,6 +698,8 @@ function JsonCodePane({
   title,
   subtitle,
   code,
+  isEmpty,
+  emptyState,
   onCopy,
   onDownload,
 }: Readonly<{
@@ -568,6 +707,8 @@ function JsonCodePane({
   title: string
   subtitle?: string
   code: string
+  isEmpty?: boolean
+  emptyState?: ReactNode
   onCopy: () => void
   onDownload: () => void
 }>) {
@@ -577,26 +718,33 @@ function JsonCodePane({
       <div className="flex h-full min-h-0 flex-col bg-card">
         <div className="flex shrink-0 items-center justify-between border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.15))] px-4 py-2.5">
         <div className="min-w-0">
-          <div className="inline-flex items-center rounded-md border border-border/70 bg-card px-2 py-0.5 text-[11px] font-semibold tracking-[0.08em] text-muted-foreground">{label}</div>
+          <div className="inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-card px-2 py-0.5 text-[10.5px] font-semibold tracking-[0.08em] text-muted-foreground">
+            <FileJson className="h-3 w-3 text-primary/70" aria-hidden="true" />
+            {label}
+          </div>
           <div className="mt-1 truncate text-[13px] font-semibold text-foreground">{title}</div>
           {subtitle ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{subtitle}</div> : null}
         </div>
         <div className="ml-4 flex shrink-0 items-center gap-1 rounded-md border border-border/70 bg-card p-0.5">
-          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" title="复制 JSON" onClick={onCopy}>
+          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" title="复制 JSON" onClick={onCopy} disabled={isEmpty}>
             <Copy className="h-4 w-4" aria-hidden="true" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" title="导出 JSON" onClick={onDownload}>
+          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" title="导出 JSON" onClick={onDownload} disabled={isEmpty}>
             <Download className="h-4 w-4" aria-hidden="true" />
           </Button>
         </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto bg-card">
-        <div className="min-w-max">
-          {lines.map((line, index) => (
-            <JsonLine key={`${title}:${index + 1}`} lineNumber={index + 1} text={line} status="single" />
-          ))}
-        </div>
+        {isEmpty && emptyState ? (
+          emptyState
+        ) : (
+          <div className="min-w-max">
+            {lines.map((line, index) => (
+              <JsonLine key={`${title}:${index + 1}`} lineNumber={index + 1} text={line} status="single" />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -611,6 +759,8 @@ function SnapshotDiffView({
   rightCode,
   diff,
   typeDrift,
+  isEmpty,
+  emptyState,
   onCopy,
   onDownload,
 }: Readonly<{
@@ -622,6 +772,8 @@ function SnapshotDiffView({
   rightCode: string
   diff: SnapshotDiffPayload | null
   typeDrift: SnapshotDiffEntityRow[]
+  isEmpty?: boolean
+  emptyState?: ReactNode
   onCopy: () => void
   onDownload: () => void
 }>) {
@@ -633,7 +785,10 @@ function SnapshotDiffView({
         <div className="min-w-0 flex-1">
           {typeDrift.length > 0 ? (
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">Type Drift</span>
+              <span className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                <Layers className="h-3.5 w-3.5 text-primary/70" aria-hidden="true" />
+                Type Drift
+              </span>
               {typeDrift.slice(0, 8).map((row) => {
                 const type = String(row.type || 'unknown')
                 const delta = Number(row.delta ?? 0)
@@ -650,13 +805,18 @@ function SnapshotDiffView({
                 )
               })}
             </div>
-          ) : null}
+          ) : (
+            <span className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              <Layers className="h-3.5 w-3.5 text-muted-foreground/60" aria-hidden="true" />
+              Type Drift · 暂无
+            </span>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" title="复制 Diff JSON" onClick={onCopy}>
+          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" title="复制 Diff JSON" onClick={onCopy} disabled={isEmpty}>
             <Copy className="h-4 w-4" aria-hidden="true" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" title="导出 Diff JSON" onClick={onDownload}>
+          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" title="导出 Diff JSON" onClick={onDownload} disabled={isEmpty}>
             <Download className="h-4 w-4" aria-hidden="true" />
           </Button>
         </div>
@@ -665,27 +825,31 @@ function SnapshotDiffView({
       <SnapshotExactDriftPanel diff={diff} />
 
       <div className="min-h-0 flex-1 overflow-auto bg-card">
-        <div className="min-w-[980px]">
-          <div className="sticky top-0 z-10 grid grid-cols-[52px_minmax(0,1fr)_52px_minmax(0,1fr)] border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.10))] text-[12px] backdrop-blur">
-            <div className="border-r border-border/70 px-3 py-2 text-right font-mono text-muted-foreground">#</div>
-            <div className="border-r border-border/70 px-3 py-2">
-              <div className="text-[12px] font-semibold tracking-[-0.01em] text-foreground">{titleA}</div>
-              {subtitleA ? <div className="truncate text-[11px] text-muted-foreground">{subtitleA}</div> : null}
+        {isEmpty && emptyState ? (
+          emptyState
+        ) : (
+          <div className="min-w-[980px]">
+            <div className="sticky top-0 z-10 grid grid-cols-[52px_minmax(0,1fr)_52px_minmax(0,1fr)] border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.10))] text-[12px] backdrop-blur">
+              <div className="border-r border-border/70 px-3 py-2 text-right font-mono text-muted-foreground">#</div>
+              <div className="border-r border-border/70 px-3 py-2">
+                <div className="text-[12px] font-semibold tracking-[-0.01em] text-foreground">{titleA}</div>
+                {subtitleA ? <div className="truncate text-[11px] text-muted-foreground">{subtitleA}</div> : null}
+              </div>
+              <div className="border-r border-border/70 px-3 py-2 text-right font-mono text-muted-foreground">#</div>
+              <div className="px-3 py-2">
+                <div className="text-[12px] font-semibold tracking-[-0.01em] text-foreground">{titleB}</div>
+                {subtitleB ? <div className="truncate text-[11px] text-muted-foreground">{subtitleB}</div> : null}
+              </div>
             </div>
-            <div className="border-r border-border/70 px-3 py-2 text-right font-mono text-muted-foreground">#</div>
-            <div className="px-3 py-2">
-              <div className="text-[12px] font-semibold tracking-[-0.01em] text-foreground">{titleB}</div>
-              {subtitleB ? <div className="truncate text-[11px] text-muted-foreground">{subtitleB}</div> : null}
-            </div>
-          </div>
 
-          {rows.map((row, index) => (
-            <div key={`diff-row:${index}`} className="grid grid-cols-[52px_minmax(0,1fr)_52px_minmax(0,1fr)]">
-              <JsonDiffCell cell={row.left} side="left" />
-              <JsonDiffCell cell={row.right} side="right" />
-            </div>
-          ))}
-        </div>
+            {rows.map((row, index) => (
+              <div key={`diff-row:${index}`} className="grid grid-cols-[52px_minmax(0,1fr)_52px_minmax(0,1fr)]">
+                <JsonDiffCell cell={row.left} side="left" />
+                <JsonDiffCell cell={row.right} side="right" />
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -713,6 +877,7 @@ function SnapshotAuditPanel({
   const severityMeta = auditSeverityMeta(severity)
   const chartRows = includeZeroDeltas ? deltaRows : deltaRows.filter((row) => row.delta !== 0)
   const shownDriftRows = compactRows ? typeDriftRows.slice(0, 14) : typeDriftRows
+  const driftScoreTone: 'positive' | 'warning' | 'negative' = severity === 'healthy' ? 'positive' : severity === 'notice' ? 'warning' : 'negative'
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -721,6 +886,7 @@ function SnapshotAuditPanel({
           eyebrow="Audit"
           title="效果面板"
           description="快速查看快照差异强度、类型漂移与整体风险等级。"
+          icon={<BarChart3 className="h-5 w-5" aria-hidden="true" />}
           extra={
             <Badge variant={severityMeta.variant} className="inline-flex items-center gap-1.5 font-mono text-[11px]">
               {severityMeta.icon}
@@ -729,16 +895,34 @@ function SnapshotAuditPanel({
           }
         />
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <SnapshotInlineStat label="Drift Score" value={driftScore.toFixed(2)} tone="neutral" />
-          <SnapshotInlineStat label="Type Drift" value={typeDriftRows.length} tone={typeDriftRows.length > 0 ? 'positive' : 'muted'} />
-          <SnapshotInlineStat label="Delta Keys" value={deltaRows.filter((row) => row.delta !== 0).length} tone="neutral" />
+          <SnapshotInlineStat
+            icon={<Sparkles className="h-3.5 w-3.5" />}
+            label="Drift Score"
+            value={driftScore.toFixed(2)}
+            tone={driftScoreTone}
+          />
+          <SnapshotInlineStat
+            icon={<Layers className="h-3.5 w-3.5" />}
+            label="Type Drift"
+            value={typeDriftRows.length}
+            tone={typeDriftRows.length > 0 ? 'positive' : 'muted'}
+          />
+          <SnapshotInlineStat
+            icon={<ArrowRightLeft className="h-3.5 w-3.5" />}
+            label="Delta Keys"
+            value={deltaRows.filter((row) => row.delta !== 0).length}
+            tone="neutral"
+          />
         </div>
       </div>
 
       <div className="grid min-h-0 flex-1 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         <div className="min-h-0 border-b border-border/70 xl:border-b-0 xl:border-r">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 px-4 py-2.5">
-            <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">Delta Distribution</div>
+            <div className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              <BarChart3 className="h-3.5 w-3.5 text-primary/70" aria-hidden="true" />
+              Delta Distribution
+            </div>
             <div className="flex items-center gap-4">
               <label className="inline-flex items-center gap-2 text-[11px] text-muted-foreground">
                 <Switch checked={includeZeroDeltas} onCheckedChange={onIncludeZeroDeltasChange} />
@@ -756,7 +940,7 @@ function SnapshotAuditPanel({
                 <Tooltip cursor={{ fill: 'rgba(148, 163, 184, 0.08)' }} content={<SnapshotChartTooltip />} />
                 <Bar dataKey="delta" radius={[6, 6, 0, 0]}>
                   {chartRows.map((row) => (
-                    <Cell key={`delta:${row.key}`} fill={row.delta > 0 ? '#0ea5e9' : row.delta < 0 ? '#f43f5e' : '#94a3b8'} />
+                    <Cell key={`delta:${row.key}`} fill={row.delta > 0 ? '#10b981' : row.delta < 0 ? '#f43f5e' : '#94a3b8'} />
                   ))}
                 </Bar>
               </BarChart>
@@ -766,7 +950,10 @@ function SnapshotAuditPanel({
 
         <div className="min-h-0 flex flex-col">
           <div className="flex items-center justify-between gap-2 border-b border-border/70 px-4 py-2.5">
-            <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">Type Drift Rows</div>
+            <div className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              <Layers className="h-3.5 w-3.5 text-primary/70" aria-hidden="true" />
+              Type Drift Rows
+            </div>
             <label className="inline-flex items-center gap-2 text-[11px] text-muted-foreground">
               <Switch checked={compactRows} onCheckedChange={onCompactRowsChange} />
               紧凑模式
@@ -779,6 +966,8 @@ function SnapshotAuditPanel({
                 const type = String(row.type || 'unknown')
                 const delta = Number(row.delta ?? 0)
                 const sign = delta > 0 ? '+' : ''
+                const tone = delta > 0 ? 'text-emerald-700' : delta < 0 ? 'text-rose-700' : 'text-muted-foreground'
+                const tint = delta > 0 ? 'bg-emerald-50 ring-emerald-200/60' : delta < 0 ? 'bg-rose-50 ring-rose-200/60' : 'bg-muted/40 ring-border'
                 return (
                   <button
                     key={`drift:${type}:${index}`}
@@ -787,18 +976,28 @@ function SnapshotAuditPanel({
                     title={`${type} Δ ${sign}${delta}`}
                   >
                     <span className="truncate font-mono text-[12px] text-foreground">{type}</span>
-                    <Badge variant="outline" className="font-mono text-[11px] text-muted-foreground">
+                    <span className={cn('inline-flex min-w-[52px] items-center justify-center rounded-md px-2 py-0.5 font-mono text-[11px] font-semibold tabular-nums ring-1', tint, tone)}>
                       Δ {sign}
                       {delta}
-                    </Badge>
-                    <Badge variant={delta > 0 ? 'soft' : delta < 0 ? 'destructive' : 'outline'} className="font-mono text-[11px]">
+                    </span>
+                    <Badge variant={delta > 0 ? 'soft' : delta < 0 ? 'destructive' : 'outline'} className="font-mono text-[10.5px]">
                       {delta > 0 ? 'increase' : delta < 0 ? 'decrease' : 'flat'}
                     </Badge>
                   </button>
                 )
               })
             ) : (
-              <div className="px-4 py-8 text-[12px] text-muted-foreground">暂无 entity_types_delta 数据。</div>
+              <div className="flex h-full items-center justify-center px-4 py-12">
+                <div className="flex max-w-[320px] flex-col items-center text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-card text-muted-foreground/70 shadow-sm">
+                    <Layers className="h-5 w-5" aria-hidden="true" />
+                  </div>
+                  <div className="mt-3 text-[13px] font-semibold text-foreground">暂无类型漂移</div>
+                  <div className="mt-1 text-[11px] leading-5 text-muted-foreground">
+                    entity_types_delta 为空：A / B 之间的实体类型构成保持一致。
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         </div>
@@ -947,7 +1146,6 @@ export function KGSnapshotsPage() {
   const hashBTitle = hashBValue || '未设置'
   const hashPairStatus = hasHashA && hasHashB ? '已就绪' : hasHashA || hasHashB ? '待补全' : '未设置'
   const hashPairTitle = `A: ${hashAValue || '未填写'}\nB: ${hashBValue || '未填写'}`
-  const hashPairTone: 'muted' | 'neutral' | 'positive' = hasHashA && hasHashB ? 'positive' : hasHashA || hasHashB ? 'neutral' : 'muted'
   const diffBaseName = sanitizeFilename(`kg_snapshot_${hashAValue || 'A'}_vs_${hashBValue || 'B'}`) || 'kg_snapshot'
   const snapshotAFileName = sanitizeFilename(`kg_snapshot_${hashAValue || 'A'}`) || 'kg_snapshot_A'
   const snapshotBFileName = sanitizeFilename(`kg_snapshot_${hashBValue || 'B'}`) || 'kg_snapshot_B'
@@ -980,20 +1178,58 @@ export function KGSnapshotsPage() {
   return (
     <AppFrame showBackground={false}>
       <div className="flex h-full min-h-0 flex-col bg-[radial-gradient(1200px_460px_at_12%_-18%,rgba(37,99,235,0.08),transparent_58%),radial-gradient(960px_420px_at_88%_-24%,rgba(14,165,233,0.06),transparent_56%)] bg-background">
-        <header className="shrink-0 border-b border-border/70 bg-background backdrop-blur">
+        <header className="shrink-0 border-b border-border/70 bg-background/80 backdrop-blur">
           <div className="px-4 py-3 md:px-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <SectionHeading
                 eyebrow="Graph"
                 title="KG Snapshots"
                 description="对比 pipeline hash 生成的轻量 KG 快照，并在 Audit 面板快速判断波动强度。"
+                icon={<GitCompare className="h-5 w-5" aria-hidden="true" />}
+                extra={
+                  <div className="flex items-center gap-2">
+                    {hasHashA && hasHashB ? (
+                      <SnapshotInlineStat
+                        icon={<CheckCircle2 className="h-3.5 w-3.5" />}
+                        label="A/B"
+                        value={hashPairStatus}
+                        valueTitle={hashPairTitle}
+                        tone="positive"
+                      />
+                    ) : hasHashA || hasHashB ? (
+                      <SnapshotInlineStat
+                        icon={<AlertCircle className="h-3.5 w-3.5" />}
+                        label="A/B"
+                        value={hashPairStatus}
+                        valueTitle={hashPairTitle}
+                        tone="warning"
+                      />
+                    ) : (
+                      <SnapshotInlineStat
+                        icon={<CircleDashed className="h-3.5 w-3.5" />}
+                        label="A/B"
+                        value={hashPairStatus}
+                        valueTitle={hashPairTitle}
+                        tone="muted"
+                      />
+                    )}
+                    {typeof latencyMs === 'number' ? (
+                      <SnapshotInlineStat
+                        icon={<Sparkles className="h-3.5 w-3.5" />}
+                        label="Latency"
+                        value={`${latencyMs} ms`}
+                        tone="neutral"
+                      />
+                    ) : null}
+                  </div>
+                }
               />
 
               <div className="flex shrink-0 items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-9 gap-2 rounded-lg border-border/70 bg-card text-xs"
+                  className="h-9 gap-2 rounded-lg border-border/70 bg-card text-xs font-medium"
                   title={hashAValue && hashBValue ? '重新导出并刷新 A/B 对比结果' : '先填写 Hash A / Hash B'}
                   disabled={isRunning || !hashAValue || !hashBValue}
                   onClick={() => detachPromise(runCompare())}
@@ -1005,7 +1241,7 @@ export function KGSnapshotsPage() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-9 w-9 rounded-lg"
+                  className="h-9 w-9 rounded-lg text-muted-foreground hover:text-foreground"
                   title="清空"
                   onClick={() => {
                     setSnapA(null)
@@ -1019,8 +1255,10 @@ export function KGSnapshotsPage() {
                     toast.message('已清空')
                   }}
                 >
-                  <RefreshCcw className="h-4 w-4" aria-hidden="true" />
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
                 </Button>
+
+                <div className="mx-1 h-5 w-px bg-border/70" aria-hidden />
 
                 <Button
                   variant="outline"
@@ -1047,52 +1285,82 @@ export function KGSnapshotsPage() {
           >
             <div className="flex h-full min-h-0 flex-col">
               <div className="shrink-0 border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.20))] px-4 py-3">
-                <div className="inline-flex rounded-lg border border-border/70 bg-card p-0.5">
+                <div className="grid grid-cols-2 gap-1 rounded-xl border border-border/70 bg-card p-1 shadow-sm">
                   <button
                     type="button"
                     className={cn(
-                      'h-8 rounded-md px-3 text-xs font-medium transition-colors',
-                      workspaceTab === 'studio' ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-muted/30'
+                      'inline-flex h-8 items-center justify-center gap-1.5 rounded-lg text-[12px] font-medium transition-colors',
+                      workspaceTab === 'studio'
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground'
                     )}
                     onClick={() => {
                       startTransition(() => setWorkspaceTab('studio'))
                     }}
                   >
+                    <FileJson className="h-3.5 w-3.5" aria-hidden="true" />
                     Studio
                   </button>
                   <button
                     type="button"
                     className={cn(
-                      'h-8 rounded-md px-3 text-xs font-medium transition-colors',
-                      workspaceTab === 'audit' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted/30'
+                      'inline-flex h-8 items-center justify-center gap-1.5 rounded-lg text-[12px] font-medium transition-colors',
+                      workspaceTab === 'audit'
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground'
                     )}
                     onClick={() => {
                       startTransition(() => setWorkspaceTab('audit'))
                     }}
                   >
+                    <BarChart3 className="h-3.5 w-3.5" aria-hidden="true" />
                     Audit
                   </button>
                 </div>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
+                <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                  {hasHashA && hasHashB ? (
+                    <SnapshotInlineStat
+                      icon={<CheckCircle2 className="h-3.5 w-3.5" />}
+                      label="A/B"
+                      value={hashPairStatus}
+                      valueTitle={hashPairTitle}
+                      tone="positive"
+                    />
+                  ) : hasHashA || hasHashB ? (
+                    <SnapshotInlineStat
+                      icon={<AlertCircle className="h-3.5 w-3.5" />}
+                      label="A/B"
+                      value={hashPairStatus}
+                      valueTitle={hashPairTitle}
+                      tone="warning"
+                    />
+                  ) : (
+                    <SnapshotInlineStat
+                      icon={<CircleDashed className="h-3.5 w-3.5" />}
+                      label="A/B"
+                      value={hashPairStatus}
+                      valueTitle={hashPairTitle}
+                      tone="muted"
+                    />
+                  )}
                   {typeof latencyMs === 'number' ? (
-                    <SnapshotInlineStat label="Latency" value={`${latencyMs} ms`} tone="neutral" />
+                    <SnapshotInlineStat
+                      icon={<Sparkles className="h-3.5 w-3.5" />}
+                      label="Latency"
+                      value={`${latencyMs} ms`}
+                      tone="neutral"
+                    />
                   ) : null}
-                  <SnapshotInlineStat
-                    label="A/B"
-                    value={hashPairStatus}
-                    valueTitle={hashPairTitle}
-                    valueClassName="inline-block min-w-[48px] text-center"
-                    tone={hashPairTone}
-                  />
                 </div>
               </div>
 
               <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-                <div className="space-y-5">
-                  <WorkspaceSection label="对比参数">
+                <div className="space-y-3">
+                  <WorkspaceSection icon={<Hash className="h-3.5 w-3.5" />} label="对比参数" hint="pipeline hash">
                     <div className="space-y-3">
                       <div className="space-y-1.5">
-                        <Label htmlFor="pipeline-hash-a" className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                        <Label htmlFor="pipeline-hash-a" className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                          <span className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-emerald-50 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200/60">A</span>
                           Hash A
                         </Label>
                         <Input
@@ -1105,7 +1373,8 @@ export function KGSnapshotsPage() {
                       </div>
 
                       <div className="space-y-1.5">
-                        <Label htmlFor="pipeline-hash-b" className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                        <Label htmlFor="pipeline-hash-b" className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                          <span className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-sky-50 text-[10px] font-bold text-sky-700 ring-1 ring-sky-200/60">B</span>
                           Hash B
                         </Label>
                         <Input
@@ -1119,9 +1388,9 @@ export function KGSnapshotsPage() {
                     </div>
                   </WorkspaceSection>
 
-                  <WorkspaceSection label="作用范围">
+                  <WorkspaceSection icon={<Layers className="h-3.5 w-3.5" />} label="作用范围" hint="document_ids">
                     <div className="space-y-1.5">
-                      <Label htmlFor="document-ids" className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                      <Label htmlFor="document-ids" className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                         document_ids
                       </Label>
                       <Textarea
@@ -1135,53 +1404,69 @@ export function KGSnapshotsPage() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
-                      <SnapshotInlineStat label="Docs" value={documentIds.length || 'All'} tone="neutral" />
-                      <SnapshotInlineStat label="Mode" value="PII-safe" tone="muted" />
+                      <SnapshotInlineStat
+                        icon={<Database className="h-3.5 w-3.5" />}
+                        label="Docs"
+                        value={documentIds.length || 'All'}
+                        tone={documentIds.length ? 'neutral' : 'muted'}
+                      />
+                      <SnapshotInlineStat
+                        icon={<ShieldCheck className="h-3.5 w-3.5" />}
+                        label="Mode"
+                        value="PII-safe"
+                        tone="muted"
+                      />
                     </div>
                   </WorkspaceSection>
                 </div>
               </div>
 
-              <div className="shrink-0 border-t border-border/70 bg-background px-4 py-4 backdrop-blur">
+              <div className="shrink-0 border-t border-border/70 bg-background/95 px-4 py-4 backdrop-blur">
                 <div className="grid grid-cols-2 gap-2">
                   <Button
                     variant="outline"
-                    className="h-10 rounded-lg border-border/70 bg-card text-xs"
+                    className="h-10 gap-1.5 rounded-lg border-border/70 bg-card text-xs font-medium"
                     onClick={() => detachPromise(runExport('a'))}
                     disabled={isRunning}
                   >
+                    <Download className="h-3.5 w-3.5" aria-hidden="true" />
                     导出 A
                   </Button>
                   <Button
                     variant="outline"
-                    className="h-10 rounded-lg border-border/70 bg-card text-xs"
+                    className="h-10 gap-1.5 rounded-lg border-border/70 bg-card text-xs font-medium"
                     onClick={() => detachPromise(runExport('b'))}
                     disabled={isRunning}
                   >
+                    <Download className="h-3.5 w-3.5" aria-hidden="true" />
                     导出 B
                   </Button>
                 </div>
 
                 <Button
-                  className="mt-2 h-11 w-full rounded-xl bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--info)))] text-sm text-primary-foreground shadow-sm"
+                  className="mt-2.5 h-11 w-full gap-2 rounded-xl bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--info)))] text-sm font-semibold text-primary-foreground shadow-md transition-shadow hover:shadow-lg"
                   onClick={() => detachPromise(runCompare())}
                   disabled={isRunning}
                 >
-                  <GitCompare className="mr-2 h-4 w-4" aria-hidden="true" />
+                  {isRunning ? (
+                    <RefreshCcw className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <GitCompare className="h-4 w-4" aria-hidden="true" />
+                  )}
                   {isRunning ? '对比中…' : '开始对比'}
                 </Button>
 
                 <Button
                   variant="outline"
-                  className="mt-2 h-10 w-full rounded-xl border-border/70 bg-card text-xs font-semibold"
+                  className="mt-2 h-10 w-full gap-1.5 rounded-xl border-border/70 bg-card text-xs font-medium"
                   onClick={() => detachPromise(runBackendCompare())}
                   disabled={isRunning}
                 >
-                  <GitCompare className="mr-2 h-4 w-4" aria-hidden="true" />
+                  <ArrowRightLeft className="h-3.5 w-3.5" aria-hidden="true" />
                   后端对比
                 </Button>
 
-                <p className="mt-3 text-[11px] leading-5 text-muted-foreground">
+                <p className="mt-3 text-[11px] leading-5 text-muted-foreground/85">
                   默认请求 bounded 明细：节点、边、属性 hash 都会参与 diff；完整溯源仍可结合 KG diagnostics 或 traces 排查。
                 </p>
               </div>
@@ -1201,28 +1486,41 @@ export function KGSnapshotsPage() {
                   <div className="px-4 py-3">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                        <div className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                          <FileJson className="h-3.5 w-3.5 text-primary/70" aria-hidden="true" />
                           Snapshot Studio
                         </div>
-                        <div className="mt-0.5 truncate text-sm font-semibold text-foreground">
+                        <div className="mt-0.5 truncate text-[15px] font-semibold text-foreground">
                           {tabLabelForView(activeView)}
                         </div>
                       </div>
 
-                      <TabsList className="h-9 justify-start gap-4 rounded-none border-none bg-transparent p-0">
-                        <TabsTrigger value="diff" className="h-9 rounded-none border-b-2 border-transparent px-0 text-xs data-[state=active]:border-primary data-[state=active]:bg-transparent">
+                      <TabsList className="h-9 gap-1 rounded-xl border border-border/70 bg-card p-1 shadow-sm">
+                        <TabsTrigger
+                          value="diff"
+                          className="inline-flex h-7 items-center gap-1.5 rounded-lg px-3 text-[12px] font-medium text-muted-foreground transition-colors data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm hover:text-foreground"
+                        >
+                          <ArrowRightLeft className="h-3.5 w-3.5" aria-hidden="true" />
                           Diff 对比
                         </TabsTrigger>
-                        <TabsTrigger value="a" className="h-9 rounded-none border-b-2 border-transparent px-0 text-xs data-[state=active]:border-primary data-[state=active]:bg-transparent">
+                        <TabsTrigger
+                          value="a"
+                          className="inline-flex h-7 items-center gap-1.5 rounded-lg px-3 text-[12px] font-medium text-muted-foreground transition-colors data-[state=active]:bg-emerald-500 data-[state=active]:text-white data-[state=active]:shadow-sm hover:text-foreground"
+                        >
+                          <span className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-emerald-50 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200/60 data-[state=active]:bg-emerald-700 data-[state=active]:text-white data-[state=active]:ring-0">A</span>
                           视图 A
                         </TabsTrigger>
-                        <TabsTrigger value="b" className="h-9 rounded-none border-b-2 border-transparent px-0 text-xs data-[state=active]:border-primary data-[state=active]:bg-transparent">
+                        <TabsTrigger
+                          value="b"
+                          className="inline-flex h-7 items-center gap-1.5 rounded-lg px-3 text-[12px] font-medium text-muted-foreground transition-colors data-[state=active]:bg-sky-500 data-[state=active]:text-white data-[state=active]:shadow-sm hover:text-foreground"
+                        >
+                          <span className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-sky-50 text-[10px] font-bold text-sky-700 ring-1 ring-sky-200/60 data-[state=active]:bg-sky-700 data-[state=active]:text-white data-[state=active]:ring-0">B</span>
                           视图 B
                         </TabsTrigger>
                       </TabsList>
                     </div>
 
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <div className="mt-2.5 flex flex-wrap items-center gap-2">
                       {diffDelta.delta ? (
                         deltaRows.map((row) => {
                           const sign = row.delta > 0 ? '+' : ''
@@ -1236,15 +1534,10 @@ export function KGSnapshotsPage() {
                           )
                         })
                       ) : (
-                        <>
-                          <SnapshotInlineStat
-                            label="A/B"
-                            value={hashPairStatus}
-                            valueTitle={hashPairTitle}
-                            valueClassName="inline-block min-w-[48px] text-center"
-                            tone={hashPairTone}
-                          />
-                        </>
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-border/70 bg-card/60 px-2.5 py-1 text-[11px] text-muted-foreground">
+                          <CircleDashed className="h-3.5 w-3.5 text-primary/60" aria-hidden="true" />
+                          填写 A / B Hash 后点击「开始对比」即可查看 docs / events / entities / links / relations 增量
+                        </span>
                       )}
                     </div>
                   </div>
@@ -1260,6 +1553,14 @@ export function KGSnapshotsPage() {
                     rightCode={snapBJson}
                     diff={diff}
                     typeDrift={auditDriftRows}
+                    isEmpty={!diff}
+                    emptyState={
+                      <DiffEmptyState
+                        title="还没有对比结果"
+                        description="填写左侧的 Hash A / Hash B，可以选择 document_ids 圈定范围，然后点击「开始对比」生成 side-by-side diff 与节点/边精确变更。"
+                        hint={hasHashA && hasHashB ? '已就绪：直接点击「开始对比」' : '提示：A / B Hash 二者皆需填写'}
+                      />
+                    }
                     onCopy={() => detachPromise(copyToClipboard(diffJson, 'diff JSON'))}
                     onDownload={() => {
                       downloadJson(diff ?? {}, `${diffBaseName}.diff.json`)
@@ -1272,7 +1573,16 @@ export function KGSnapshotsPage() {
                   <JsonCodePane
                     label="A 视图"
                     title="快照内容"
+                    subtitle={hashAValue ? `Hash · ${hashAValue}` : '尚未导出'}
                     code={snapAJson}
+                    isEmpty={!snapA}
+                    emptyState={
+                      <DiffEmptyState
+                        title="A 视图为空"
+                        description="先在左侧填写 Hash A，然后点击「导出 A」即可在此查看 bounded 快照 JSON。"
+                        hint={hasHashA ? '已填写 Hash A，可点击「导出 A」' : '请先填写 Hash A'}
+                      />
+                    }
                     onCopy={() => detachPromise(copyToClipboard(snapAJson, 'snapshot A JSON'))}
                     onDownload={() => {
                       downloadJson(snapA ?? {}, `${snapshotAFileName}.json`)
@@ -1285,7 +1595,16 @@ export function KGSnapshotsPage() {
                   <JsonCodePane
                     label="B 视图"
                     title="快照内容"
+                    subtitle={hashBValue ? `Hash · ${hashBValue}` : '尚未导出'}
                     code={snapBJson}
+                    isEmpty={!snapB}
+                    emptyState={
+                      <DiffEmptyState
+                        title="B 视图为空"
+                        description="先在左侧填写 Hash B，然后点击「导出 B」即可在此查看 bounded 快照 JSON。"
+                        hint={hasHashB ? '已填写 Hash B，可点击「导出 B」' : '请先填写 Hash B'}
+                      />
+                    }
                     onCopy={() => detachPromise(copyToClipboard(snapBJson, 'snapshot B JSON'))}
                     onDownload={() => {
                       downloadJson(snapB ?? {}, `${snapshotBFileName}.json`)

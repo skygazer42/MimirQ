@@ -5,6 +5,7 @@ Profiles are declarative payloads that can optionally extend another profile via
 `payload.extends`. Resolution produces an "effective" payload where:
   - pipeline_patch is merged (parent -> child; child keys override)
   - regex_rules are concatenated (parent first, child last)
+  - processing_scripts are concatenated for review/audit (never executed here)
   - input_formats are unioned in order (parent first)
 
 This module is intentionally light-weight so it can be used by both API and
@@ -94,6 +95,7 @@ def resolve_profile_inheritance(
     input_formats: list[str] = []
     pipeline_patch: dict = {}
     regex_rules: list[RegexRuleModel] = []
+    processing_scripts: list = []
 
     for prof in chain:
         for fmt in (getattr(prof.payload, "input_formats", None) or []):
@@ -111,12 +113,15 @@ def resolve_profile_inheritance(
             elif isinstance(r, dict):
                 regex_rules.append(RegexRuleModel(**r))
 
+        processing_scripts.extend(list(getattr(prof.payload, "processing_scripts", None) or []))
+
     effective = GovernanceProfilePayload(
         version="1",
         extends=None,
         input_formats=input_formats or ["markdown"],  # type: ignore[arg-type]
         pipeline_patch=pipeline_patch,
         regex_rules=regex_rules,
+        processing_scripts=processing_scripts[:10],
     )
 
     return ResolvedGovernanceProfile(
@@ -195,4 +200,3 @@ __all__ = [
     "resolve_governance_profile_ref_effective",
     "resolve_profile_inheritance",
 ]
-

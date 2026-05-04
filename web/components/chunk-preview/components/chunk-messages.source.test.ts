@@ -5,14 +5,27 @@ import { describe, expect, it } from 'vitest'
 
 describe('chunk preview message wiring', () => {
   it('moves owned chunk-preview copy behind next-intl lookups', () => {
+    const entrySrc = fs.readFileSync(path.resolve(__dirname, '../index.tsx'), 'utf8')
     const emptyStateSrc = fs.readFileSync(path.resolve(__dirname, 'empty-state.tsx'), 'utf8')
     const chunkCardSrc = fs.readFileSync(path.resolve(__dirname, 'chunk-card.tsx'), 'utf8')
     const presetPanelSrc = fs.readFileSync(path.resolve(__dirname, 'chunk-preset-panel.tsx'), 'utf8')
     const helpDialogSrc = fs.readFileSync(path.resolve(__dirname, 'chunking-help-dialog.tsx'), 'utf8')
     const workbenchSrc = fs.readFileSync(path.resolve(__dirname, 'workbench/index.tsx'), 'utf8')
 
+    expect(entrySrc).not.toContain("from './components/empty-state'")
+    expect(entrySrc).not.toContain('fileList.length === 0')
+    expect(entrySrc).toContain('<Workbench />')
+
     expect(emptyStateSrc).toContain("useTranslations('ChunkPreview')")
     expect(chunkCardSrc).toContain("useTranslations('ChunkPreview')")
+    expect(chunkCardSrc).toContain("isSelected ? 'opacity-100'")
+    expect(chunkCardSrc).toContain("isSelected")
+    expect(chunkCardSrc).toContain("'max-h-72 overflow-y-auto")
+    expect(chunkCardSrc).toContain("'line-clamp-5'")
+    expect(chunkCardSrc).toContain("t('chunkCard.needsReview')")
+    expect(chunkCardSrc).toContain("t('chunkCard.approveReview')")
+    expect(chunkCardSrc).toContain("t('chunkCard.restoreReview')")
+    expect(chunkCardSrc).toContain("t('chunkCard.reviewed')")
     expect(presetPanelSrc).toContain("useTranslations('ChunkPreview')")
     expect(helpDialogSrc).toContain("useTranslations('ChunkPreview')")
     expect(workbenchSrc).toContain("useTranslations('ChunkPreview')")

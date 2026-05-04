@@ -388,39 +388,39 @@ export function KnowledgeDocumentsPanel({
 
             <div className="relative flex items-center gap-4">
               <div className="flex items-center gap-3 pr-4 border-r border-border/40">
-                <div className="flex size-7 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold font-mono tabular-nums shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]">
+                <div className="flex size-7 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-medium font-mono tabular-nums shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]">
                   {selectedDocIds.length}
                 </div>
-                <span className="text-[13px] font-bold text-foreground/90 whitespace-nowrap">
+                <span className="text-[13px] font-medium text-foreground/90 whitespace-nowrap">
                   {t('selection.selectedCount', { count: selectedDocIds.length })}
                 </span>
               </div>
 
               <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 pr-0.5">
-                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-bold hover:bg-muted/60" onClick={toggleSelectAllVisible}>
+                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-medium hover:bg-muted/60" onClick={toggleSelectAllVisible}>
                   {allVisibleSelected ? t('selection.clearSelectAll') : t('selection.selectAllVisible')}
                 </Button>
-                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-bold hover:bg-muted/60" onClick={() => setSelectedDocIds([])}>
+                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-medium hover:bg-muted/60" onClick={() => setSelectedDocIds([])}>
                   {t('actions.clearSelection')}
                 </Button>
                 <div className="w-px h-4 bg-border/40 mx-1" />
-                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-bold hover:bg-muted/60 text-primary" onClick={() => detachPromise(runBatchReingest())} disabled={batchDeleting || batchLifecycleWorking || batchReingestWorking}>
+                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-medium hover:bg-muted/60 text-primary" onClick={() => detachPromise(runBatchReingest())} disabled={batchDeleting || batchLifecycleWorking || batchReingestWorking}>
                   {batchReingestWorking ? <Loader2 className="size-3 animate-spin mr-1.5" /> : <RefreshCw className="size-3 mr-1.5" />}
                   {batchReingestWorking ? t('actions.reingesting') : t('actions.reingest')}
                 </Button>
-                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-bold hover:bg-muted/60" onClick={() => detachPromise(runBatchLifecycle('disable'))} disabled={batchDeleting || batchLifecycleWorking || !anySelectedEnabled}>
+                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-medium hover:bg-muted/60" onClick={() => detachPromise(runBatchLifecycle('disable'))} disabled={batchDeleting || batchLifecycleWorking || !anySelectedEnabled}>
                   {t('actions.disable')}
                 </Button>
-                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-bold hover:bg-muted/60" onClick={() => detachPromise(runBatchLifecycle('enable'))} disabled={batchDeleting || batchLifecycleWorking || !anySelectedDisabled}>
+                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-medium hover:bg-muted/60" onClick={() => detachPromise(runBatchLifecycle('enable'))} disabled={batchDeleting || batchLifecycleWorking || !anySelectedDisabled}>
                   {t('actions.enable')}
                 </Button>
-                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-bold hover:bg-muted/60" onClick={() => detachPromise(runBatchLifecycle('archive'))} disabled={batchDeleting || batchLifecycleWorking || !anySelectedNotArchived}>
+                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-medium hover:bg-muted/60" onClick={() => detachPromise(runBatchLifecycle('archive'))} disabled={batchDeleting || batchLifecycleWorking || !anySelectedNotArchived}>
                   {t('actions.archive')}
                 </Button>
-                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-bold hover:bg-muted/60" onClick={() => detachPromise(runBatchLifecycle('unarchive'))} disabled={batchDeleting || batchLifecycleWorking || !anySelectedArchived}>
+                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-medium hover:bg-muted/60" onClick={() => detachPromise(runBatchLifecycle('unarchive'))} disabled={batchDeleting || batchLifecycleWorking || !anySelectedArchived}>
                   {t('actions.unarchive')}
                 </Button>
-                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-bold bg-destructive/5 text-destructive hover:bg-destructive/15" onClick={() => setBatchDeleteOpen(true)} disabled={batchDeleting || batchLifecycleWorking}>
+                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-medium bg-destructive/5 text-destructive hover:bg-destructive/15" onClick={() => setBatchDeleteOpen(true)} disabled={batchDeleting || batchLifecycleWorking}>
                   <Trash2 className="size-3 mr-1.5" />
                   {t('actions.batchDelete')}
                 </Button>
@@ -452,7 +452,7 @@ export function KnowledgeDocumentsPanel({
       <Dialog open={Boolean(activeDrawerDoc)} onOpenChange={handleDrawerOpenChange}>
         <DialogContent className="left-auto right-0 top-0 h-dvh w-[min(480px,100vw)] max-w-[480px] translate-x-0 translate-y-0 rounded-none p-0 overflow-hidden">
           <DialogHeader className="border-b border-border/70 px-5 py-4 text-left">
-            <DialogTitle className="text-[15px] font-semibold tracking-[-0.02em] text-foreground">
+            <DialogTitle className="text-[15px] font-semibold tracking-tight text-foreground">
               文档审查视图
             </DialogTitle>
             <DialogDescription className="text-[12px] text-muted-foreground/76">
@@ -482,7 +482,7 @@ export function KnowledgeDocumentsPanel({
                 </div>
                 Document Inventory
               </div>
-              <div className="text-[18px] font-medium tracking-[-0.02em] text-foreground/92">
+              <div className="text-[18px] font-medium tracking-tight text-foreground/92">
                 {selectedDatasetLabel || '全部知识库文档总览'}
               </div>
               <div className="max-w-3xl text-[12px] leading-5 text-muted-foreground/76">
@@ -500,7 +500,7 @@ export function KnowledgeDocumentsPanel({
                 <div className="text-[8px] font-medium uppercase tracking-[0.12em] text-muted-foreground/68">
                   当前可见
                 </div>
-                <div className="mt-0.5 font-mono text-[14px] font-medium tabular-nums text-foreground transition-transform duration-200 group-hover:scale-[1.02]">
+                <div className="mt-0.5 font-mono text-[14px] tabular-nums text-foreground transition-transform duration-200 group-hover:scale-[1.02]">
                   {visibleDocumentsCount}
                 </div>
                 <div className="mt-0.5 text-[9px] text-muted-foreground/72">当前列表结果</div>
@@ -514,7 +514,7 @@ export function KnowledgeDocumentsPanel({
                 <div className="text-[8px] font-medium uppercase tracking-[0.12em] text-muted-foreground/68">
                   已选择
                 </div>
-                <div className="mt-0.5 font-mono text-[14px] font-medium tabular-nums text-foreground transition-transform duration-200 group-hover:scale-[1.02]">
+                <div className="mt-0.5 font-mono text-[14px] tabular-nums text-foreground transition-transform duration-200 group-hover:scale-[1.02]">
                   {selectedDocIds.length}
                 </div>
                 <div className="mt-0.5 text-[9px] text-muted-foreground/72">批量操作范围</div>
@@ -632,26 +632,26 @@ export function KnowledgeDocumentsPanel({
                 <div className="px-5 py-5">
                   <div
                     data-knowledge-empty-shelf="true"
-                    className="relative min-h-[390px] overflow-hidden rounded-[26px] border border-dashed border-blue-500/20 bg-[radial-gradient(circle_at_50%_0%,rgba(59,130,246,0.16),transparent_46%)]"
+                    className="relative min-h-[390px] overflow-hidden rounded-[26px] border border-dashed border-info/20 bg-[radial-gradient(circle_at_50%_0%,rgba(59,130,246,0.16),transparent_46%)]"
                   >
                     <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(59,130,246,0.055)_1px,transparent_1px),linear-gradient(90deg,rgba(59,130,246,0.055)_1px,transparent_1px)] bg-[size:34px_34px]" />
-                    <div className="pointer-events-none absolute -left-12 top-16 size-44 rounded-full bg-blue-500/10 blur-3xl" />
+                    <div className="pointer-events-none absolute -left-12 top-16 size-44 rounded-full bg-info/10 blur-3xl" />
                     <div className="pointer-events-none absolute -right-10 bottom-8 size-52 rounded-full bg-info/10 blur-3xl" />
                     <div className="relative mx-auto flex max-w-5xl flex-col items-center px-5 py-9 text-center">
                       <div className="relative mb-5 flex h-24 w-32 items-end justify-center">
-                        <div className="absolute bottom-0 h-16 w-28 rounded-[24px] border border-blue-500/20 bg-background/80 shadow-[0_22px_48px_-34px_rgba(37,99,235,0.7)]" />
-                        <div className="absolute bottom-5 h-14 w-20 rounded-[18px] border border-blue-500/20 bg-blue-500/10" />
-                        <div className="absolute bottom-8 flex size-14 items-center justify-center rounded-[20px] border border-blue-500/20 bg-background text-blue-600 shadow-[0_16px_28px_-20px_rgba(37,99,235,0.6)]">
+                        <div className="absolute bottom-0 h-16 w-28 rounded-[24px] border border-info/20 bg-background/80 shadow-[0_22px_48px_-34px_rgba(37,99,235,0.7)]" />
+                        <div className="absolute bottom-5 h-14 w-20 rounded-[18px] border border-info/20 bg-info/10" />
+                        <div className="absolute bottom-8 flex size-14 items-center justify-center rounded-[20px] border border-info/20 bg-background text-info shadow-[0_16px_28px_-20px_rgba(37,99,235,0.6)]">
                           {isDatasetEmpty ? <Database className="size-7" /> : <Filter className="size-7" />}
                         </div>
-                        <span className="absolute left-5 top-2 size-2 rounded-full bg-blue-400/50" />
+                        <span className="absolute left-5 top-2 size-2 rounded-full bg-info/50" />
                         <span className="absolute right-4 top-8 size-1.5 rounded-full bg-info/50" />
                       </div>
 
-                      <div className="inline-flex items-center rounded-full border border-blue-500/15 bg-background/78 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-blue-700/70 dark:text-blue-300/78">
+                      <div className="inline-flex items-center rounded-full border border-info/15 bg-background/78 px-3 py-1 text-[10px] font-medium uppercase tracking-[0.22em] text-info/70 dark:text-info/78">
                         Asset Shelf
                       </div>
-                      <h3 className="mt-3 text-[22px] font-semibold tracking-[-0.04em] text-foreground">
+                      <h3 className="mt-3 text-[22px] font-semibold tracking-tight text-foreground">
                         {emptyTitle}
                       </h3>
                       <p className="mt-2 max-w-2xl text-[13px] leading-6 text-muted-foreground/78">
@@ -660,8 +660,8 @@ export function KnowledgeDocumentsPanel({
 
                       <div className="mt-7 grid w-full gap-3 md:grid-cols-3">
                         <div className="rounded-[18px] border border-border/70 bg-background/82 p-4 text-left shadow-[0_14px_28px_-26px_rgba(15,23,42,0.35)]">
-                          <div className="flex items-center gap-2 text-[12px] font-semibold text-foreground">
-                            <Database className="size-4 text-blue-600" />
+                          <div className="flex items-center gap-2 text-[12px] font-medium text-foreground">
+                            <Database className="size-4 text-info" />
                             导入路径
                           </div>
                           <p className="mt-2 text-[11px] leading-5 text-muted-foreground/74">
@@ -669,8 +669,8 @@ export function KnowledgeDocumentsPanel({
                           </p>
                         </div>
                         <div className="rounded-[18px] border border-border/70 bg-background/82 p-4 text-left shadow-[0_14px_28px_-26px_rgba(15,23,42,0.35)]">
-                          <div className="flex items-center gap-2 text-[12px] font-semibold text-foreground">
-                            <Filter className="size-4 text-blue-600" />
+                          <div className="flex items-center gap-2 text-[12px] font-medium text-foreground">
+                            <Filter className="size-4 text-info" />
                             筛选路径
                           </div>
                           <p className="mt-2 text-[11px] leading-5 text-muted-foreground/74">
@@ -678,8 +678,8 @@ export function KnowledgeDocumentsPanel({
                           </p>
                         </div>
                         <div className="rounded-[18px] border border-border/70 bg-background/82 p-4 text-left shadow-[0_14px_28px_-26px_rgba(15,23,42,0.35)]">
-                          <div className="flex items-center gap-2 text-[12px] font-semibold text-foreground">
-                            <Layers className="size-4 text-blue-600" />
+                          <div className="flex items-center gap-2 text-[12px] font-medium text-foreground">
+                            <Layers className="size-4 text-info" />
                             质量路径
                           </div>
                           <p className="mt-2 text-[11px] leading-5 text-muted-foreground/74">
@@ -872,7 +872,7 @@ export function KnowledgeDocumentsPanel({
                                         <TypeIcon className="size-4.5" />
                                       </div>
                                       <div className="min-w-0 flex-1">
-                                        <div className="mb-1 max-w-[360px] truncate text-[13px] font-semibold tracking-[-0.02em] leading-none text-foreground/90 xl:max-w-[440px]" title={doc.filename}>
+                                        <div className="mb-1 max-w-[360px] truncate text-[13px] font-medium tracking-tight leading-none text-foreground/90 xl:max-w-[440px]" title={doc.filename}>
                                           {doc.filename}
                                         </div>
                                         <div className="max-w-[360px] truncate font-mono text-[10px] uppercase tracking-[0.04em] text-muted-foreground/48 xl:max-w-[440px]">
@@ -900,7 +900,7 @@ export function KnowledgeDocumentsPanel({
                                     <StatusBadge status={badge.status} label={badge.label} dense className="rounded-full bg-muted/50" />
                                   </div>
 
-                                  <div className="text-right font-mono text-[11px] font-semibold tabular-nums text-foreground/70">
+                                  <div className="text-right font-mono text-[11px] tabular-nums text-foreground/70">
                                     {doc.chunk_count ?? '0'}
                                   </div>
                                   <div className="text-right font-mono text-[11px] tabular-nums text-muted-foreground">
@@ -1008,7 +1008,7 @@ export function KnowledgeDocumentsPanel({
                       >
                         ‹
                       </button>
-                      <span className="inline-flex h-9 min-w-9 items-center justify-center rounded-[12px] bg-primary px-3 text-[12px] font-semibold text-primary-foreground">
+                      <span className="inline-flex h-9 min-w-9 items-center justify-center rounded-[12px] bg-primary px-3 text-[12px] font-medium text-primary-foreground">
                         1
                       </span>
                       <button
@@ -1065,7 +1065,7 @@ function DocumentCard({
   // 计算质量百分比和颜色
   const qualityPercent = parseScore !== null ? Math.round(parseScore * 100) : null
   const qualityColor = qualityPercent !== null
-    ? qualityPercent > 80 ? 'text-emerald-500' : qualityPercent > 50 ? 'text-amber-500' : 'text-rose-500'
+    ? qualityPercent > 80 ? 'text-success' : qualityPercent > 50 ? 'text-warning' : 'text-rose'
     : 'text-muted-foreground/20'
 
   return (
@@ -1109,7 +1109,7 @@ function DocumentCard({
                 className="absolute -bottom-1 -right-1 size-6 rounded-full bg-background border border-border/60 flex items-center justify-center shadow-sm"
                 title={`解析质量: ${qualityPercent}%`}
               >
-                <div className={cn("text-[8px] font-semibold font-mono tabular-nums ", qualityColor)}>
+                <div className={cn("text-[8px] font-medium font-mono tabular-nums ", qualityColor)}>
                   {qualityPercent}
                 </div>
               </div>
@@ -1117,13 +1117,13 @@ function DocumentCard({
           </div>
           <div className="flex flex-col items-end gap-1.5">
             <StatusBadge status={statusBadge.status} label={statusBadge.label} dense />
-            <div className={cn('px-2 py-0.5 rounded-full text-[11px] font-bold uppercase border ', fileType.bg, fileType.color, fileType.border)}>
+            <div className={cn('px-2 py-0.5 rounded-full text-[11px] font-medium uppercase border ', fileType.bg, fileType.color, fileType.border)}>
               {fileType.label}
             </div>
           </div>
         </div>
 
-        <h3 className="text-sm font-medium tracking-[-0.01em] text-foreground leading-snug line-clamp-2 mb-3 min-h-[2.5rem] group-hover:text-primary transition-colors" title={doc.filename}>
+        <h3 className="text-sm font-medium tracking-tight text-foreground leading-snug line-clamp-2 mb-3 min-h-[2.5rem] group-hover:text-primary transition-colors" title={doc.filename}>
           {doc.filename}
         </h3>
 
@@ -1131,12 +1131,12 @@ function DocumentCard({
 
         <div className="grid grid-cols-2 gap-3 mt-auto pt-4 border-t border-border/40">
           <div className="space-y-0.5">
-            <p className="text-[11px] font-bold uppercase  text-muted-foreground/50">{t('row.size')}</p>
-            <p className="text-xs font-semibold font-mono tabular-nums text-foreground/80">{formatFileSize(doc.file_size)}</p>
+            <p className="text-[11px] font-medium uppercase  text-muted-foreground/50">{t('row.size')}</p>
+            <p className="text-xs font-medium font-mono tabular-nums text-foreground/80">{formatFileSize(doc.file_size)}</p>
           </div>
           <div className="space-y-0.5">
-            <p className="text-[11px] font-bold uppercase  text-muted-foreground/50">{t('row.chunks')}</p>
-            <p className="text-xs font-semibold font-mono tabular-nums text-foreground/80">{doc.chunk_count ?? '-'}</p>
+            <p className="text-[11px] font-medium uppercase  text-muted-foreground/50">{t('row.chunks')}</p>
+            <p className="text-xs font-medium font-mono tabular-nums text-foreground/80">{doc.chunk_count ?? '-'}</p>
           </div>
         </div>
       </div>
@@ -1145,7 +1145,7 @@ function DocumentCard({
         'px-6 py-3.5 bg-muted/30 border-t border-border/40 flex items-center justify-between transition-all duration-300',
         contextualRevealClassName
       )}>
-        <span className="text-[11px] text-muted-foreground/60 font-bold uppercase  truncate max-w-[100px]">
+        <span className="text-[11px] text-muted-foreground/60 font-medium uppercase  truncate max-w-[100px]">
           {parserLabel || t('row.parserAuto')}
         </span>
         <div className="flex items-center gap-1.5">
@@ -1153,7 +1153,7 @@ function DocumentCard({
             type="button"
             variant="ghost"
             size="sm"
-            className="h-8 rounded-full px-3 text-[11px] font-bold text-primary hover:bg-primary/10"
+            className="h-8 rounded-full px-3 text-[11px] font-medium text-primary hover:bg-primary/10"
             onClick={(e) => {
               e.stopPropagation()
               if (onPeek) onPeek(doc.id)
