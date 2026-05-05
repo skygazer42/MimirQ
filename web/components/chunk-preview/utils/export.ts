@@ -9,7 +9,6 @@ import type {
 import { toPrimitiveString, toSingleLinePrimitiveString } from '@/lib/primitive-text'
 import { sanitizeFilename } from '@/lib/sanitize'
 import type { ChunkOverride, ChunkOverrides } from '../types'
-import { computeCoverageSignals, computeDuplicateIndices, computeShortIndices, fnv1a32, roughEstimateTokens } from './review-signals'
 
 export { sanitizeFilename } from '@/lib/sanitize'
 
@@ -139,7 +138,7 @@ export function applyChunkOverridesToPreview(
       content,
       metadata: exportMetadata,
       length: content.length,
-      tokens_est: roughEstimateTokens(content),
+      tokens_est: override.content !== undefined ? undefined : chunk.tokens_est,
     })
     return acc
   }, [])
@@ -149,6 +148,37 @@ export function applyChunkOverridesToPreview(
     chunks,
     total_chunks: chunks.length,
   }
+}
+
+function emptyReviewSignals(): ChunkPreviewReviewSignals {
+  return {
+    basis: 'all',
+    short_indices: [],
+    duplicate_indices: [],
+    gap_indices: [],
+    overlap_indices: [],
+    gap_before_by_index: {},
+    overlap_prev_by_index: {},
+  }
+}
+
+function toIndexSet(indices: number[] | undefined): Set<number> {
+  const out = new Set<number>()
+  for (const value of indices || []) {
+    const n = Number(value)
+    if (Number.isFinite(n)) out.add(Math.trunc(n))
+  }
+  return out
+}
+
+function toSignalValueMap(values: Record<string, number> | Record<number, number> | undefined): Map<number, number> {
+  const out = new Map<number, number>()
+  for (const [key, value] of Object.entries(values || {})) {
+    const index = Number(key)
+    const signalValue = Number(value)
+    if (Number.isFinite(index) && Number.isFinite(signalValue)) out.set(Math.trunc(index), Math.trunc(signalValue))
+  }
+  return out
 }
 
 function csvEscape(value: unknown) {
@@ -241,30 +271,21 @@ export function chunkPreviewToReviewReport(
     if (v?.content !== undefined || v?.metadata !== undefined) editedIndices.add(idx)
   }
 
-  const duplicateIndices = computeDuplicateIndices(mergedAll.chunks || [])
-  const shortIndices = computeShortIndices(mergedAll.chunks || [], unit)
-  const coverage = computeCoverageSignals(mergedAll.chunks || [], { strategy: mergedAll.chunk_strategy })
-
-  const reviewSignals: ChunkPreviewReviewSignals =
-    mergedAll.review_signals ??
-    {
-      basis: coverage.basis,
-      short_indices: Array.from(shortIndices).sort((a, b) => a - b),
-      duplicate_indices: Array.from(duplicateIndices).sort((a, b) => a - b),
-      gap_indices: Array.from(coverage.gapIndices).sort((a, b) => a - b),
-      overlap_indices: Array.from(coverage.overlapIndices).sort((a, b) => a - b),
-      gap_before_by_index: Object.fromEntries(Array.from(coverage.gapBeforeByIndex.entries()).map(([k, v]) => [String(k), v])),
-      overlap_prev_by_index: Object.fromEntries(Array.from(coverage.overlapPrevByIndex.entries()).map(([k, v]) => [String(k), v])),
-    }
+  const reviewSignals: ChunkPreviewReviewSignals = mergedAll.review_signals ?? emptyReviewSignals()
+  const shortIndices = toIndexSet(reviewSignals.short_indices)
+  const duplicateIndices = toIndexSet(reviewSignals.duplicate_indices)
+  const gapIndices = toIndexSet(reviewSignals.gap_indices)
+  const overlapIndices = toIndexSet(reviewSignals.overlap_indices)
+  const gapBeforeByIndex = toSignalValueMap(reviewSignals.gap_before_by_index)
+  const overlapPrevByIndex = toSignalValueMap(reviewSignals.overlap_prev_by_index)
 
   const chunks: ChunkPreviewReviewReportChunk[] = (merged.chunks || []).map((c) => {
     const idx = Number(c.index)
     const meta = getChunkMetadata(c)
     const raw = String(c.content || '')
-    const trimmed = raw.trim()
 
-    const gapBefore = coverage.gapBeforeByIndex.get(idx) || 0
-    const overlapPrev = coverage.overlapPrevByIndex.get(idx) || 0
+    const gapBefore = gapBeforeByIndex.get(idx) || 0
+    const overlapPrev = overlapPrevByIndex.get(idx) || 0
 
     const override = overrides?.[idx]
     const isDisabled = Boolean(override?.disabled) || Boolean(meta.__mimirq_skip)
@@ -284,12 +305,12 @@ export function chunkPreviewToReviewReport(
       flags: {
         short: shortIndices.has(idx),
         duplicate: duplicateIndices.has(idx),
-        gap: coverage.gapIndices.has(idx),
-        overlap: coverage.overlapIndices.has(idx),
+        gap: gapIndices.has(idx),
+        overlap: overlapIndices.has(idx),
       },
       gap_before: gapBefore,
       overlap_prev: overlapPrev,
-      content_hash: trimmed ? fnv1a32(trimmed) : null,
+      content_hash: null,
       content_preview: raw.length > 220 ? `${raw.slice(0, 220)}...` : raw,
     }
   })
@@ -326,10 +347,10 @@ export function chunkPreviewToReviewReport(
       issue_counts: {
         short: shortIndices.size,
         duplicate: duplicateIndices.size,
-        gap: coverage.gapIndices.size,
-        overlap: coverage.overlapIndices.size,
+        gap: gapIndices.size,
+        overlap: overlapIndices.size,
       },
-      coverage_basis: coverage.basis,
+      coverage_basis: reviewSignals.basis ?? 'all',
     },
     chunks,
   }

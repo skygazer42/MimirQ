@@ -15,6 +15,7 @@ export type ChunkPreviewRequestParams = {
   dataset_id?: string
   include_original_text?: boolean
   include_chunks?: boolean
+  include_review_signals?: boolean
   original_text_max_chars?: number
   max_chunks?: number
   use_parse_cache?: boolean
@@ -62,6 +63,8 @@ export function buildChunkPreviewQueryParams(params: ChunkPreviewRequestParams) 
     include_original_text:
       typeof params.include_original_text === 'boolean' ? params.include_original_text : undefined,
     include_chunks: typeof params.include_chunks === 'boolean' ? params.include_chunks : undefined,
+    include_review_signals:
+      typeof params.include_review_signals === 'boolean' ? params.include_review_signals : undefined,
     original_text_max_chars:
       typeof params.original_text_max_chars === 'number' ? params.original_text_max_chars : undefined,
     max_chunks: typeof params.max_chunks === 'number' ? params.max_chunks : undefined,

@@ -186,8 +186,12 @@ export function OriginalPreview() {
 
   const canLoadFromFile = useMemo(() => canReadFileAsText(currentFile), [currentFile])
   const effectiveOriginalText = serverTextInfo.displayText ?? localOriginalText ?? null
+  const backendTotalCharacters = useMemo(() => {
+    const total = Number(previewData?.total_characters)
+    return Number.isFinite(total) ? Math.max(0, Math.trunc(total)) : 0
+  }, [previewData?.total_characters])
   const originalTextSource = (() => {
-    if (previewData?.original_text) {
+    if (previewData?.original_text_included || previewData?.original_text || previewData?.original_text_cleaned) {
         return 'server';
     }
     else if (localOriginalText) {
@@ -390,13 +394,11 @@ export function OriginalPreview() {
               ) : null}
               <span className="inline-flex h-5 items-center rounded-md border border-border/60 bg-muted/35 px-1.5 tabular-nums">
                 {t('originalPreview.charCount', {
-                  count: (effectiveOriginalText?.length ?? previewData.total_characters).toLocaleString(),
+                  count: backendTotalCharacters.toLocaleString(),
                 })}
               </span>
               <CoverageHeatmapMini
-                chunks={displayChunks}
-                totalChars={effectiveOriginalText?.length ?? previewData.total_characters}
-                strategy={previewData.chunk_strategy}
+                stats={previewData.stats}
                 className="hidden lg:flex"
               />
               {originalTextSource ? (

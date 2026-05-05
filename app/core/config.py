@@ -448,6 +448,9 @@ class Settings(BaseSettings):
     PREVIEW_PARSE_CACHE_MAX_DOC_CHARS: int = 2_000_000
     # Manual cache-bust key for preview parse cache (include parser changes, model changes, etc.).
     PREVIEW_PARSE_CACHE_VERSION: str = "v1"
+    # Fast path for already-textual preview uploads (.md/.txt/source code). Heavy formats still
+    # use subprocess isolation so parser hangs remain cancellable.
+    PREVIEW_INLINE_TEXT_PARSE_ENABLED: bool = True
     # Persisted parse cache for document ingest/retry flows.
     # Disabled by default; enable only when MinIO is configured and you want cross-run reuse.
     PARSE_CACHE_ENABLED: bool = False

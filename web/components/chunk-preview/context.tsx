@@ -91,6 +91,16 @@ function isManualChunkFile(item: ChunkPreviewFileItem): boolean {
   return item.source === 'local_upload' || item.source === 'example'
 }
 
+function isChunkPreviewFileInScope(item: ChunkPreviewFileItem, datasetId: string): boolean {
+  const scopedDatasetId = (datasetId || '').trim()
+  if (isManualChunkFile(item)) {
+    const itemDatasetId = (item.datasetId || '').trim()
+    return scopedDatasetId ? itemDatasetId === scopedDatasetId : !itemDatasetId
+  }
+  if (!scopedDatasetId) return item.source === 'parsing_workspace'
+  return item.source === 'knowledge_base' && item.datasetId === scopedDatasetId
+}
+
 function isParsingWorkspaceDocument(doc: Awaited<ReturnType<typeof documentApi.list>>['items'][number]): boolean {
   const meta = doc.metadata as Record<string, unknown> | undefined
   return meta?.workspace === 'parsing'
@@ -159,8 +169,12 @@ async function loadParsingWorkspaceChunkFiles(): Promise<ChunkPreviewFileItem[]>
   return items.filter((item): item is ChunkPreviewFileItem => Boolean(item))
 }
 
-function mergeScopedFiles(prev: ChunkPreviewFileItem[], scoped: ChunkPreviewFileItem[]): ChunkPreviewFileItem[] {
-  const manual = prev.filter(isManualChunkFile)
+function mergeScopedFiles(
+  prev: ChunkPreviewFileItem[],
+  scoped: ChunkPreviewFileItem[],
+  datasetId: string
+): ChunkPreviewFileItem[] {
+  const manual = prev.filter((item) => isManualChunkFile(item) && isChunkPreviewFileInScope(item, datasetId))
   const seen = new Set<string>()
   const merged: ChunkPreviewFileItem[] = []
 
@@ -175,11 +189,7 @@ function mergeScopedFiles(prev: ChunkPreviewFileItem[], scoped: ChunkPreviewFile
 }
 
 function retainScopeCompatibleFiles(prev: ChunkPreviewFileItem[], datasetId: string): ChunkPreviewFileItem[] {
-  return prev.filter((item) => {
-    if (isManualChunkFile(item)) return true
-    if (!datasetId) return item.source === 'parsing_workspace'
-    return item.source === 'knowledge_base' && item.datasetId === datasetId
-  })
+  return prev.filter((item) => isChunkPreviewFileInScope(item, datasetId))
 }
 
 function decodeSeparatorInput(raw: string) {
@@ -539,7 +549,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
       .filter((item): item is ChunkPreviewFileItem => Boolean(item))
 
     if (scoped.length === 0) return
-    setFileList((prev) => mergeScopedFiles(prev, scoped))
+    setFileList((prev) => mergeScopedFiles(prev, scoped, datasetId))
   }, [datasetId, parsedFiles])
 
   useEffect(() => {
@@ -556,7 +566,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
           : await loadParsingWorkspaceChunkFiles()
 
         if (cancelled) return
-        setFileList((prev) => mergeScopedFiles(prev, scopedFiles))
+        setFileList((prev) => mergeScopedFiles(prev, scopedFiles, datasetId))
       } catch (err: unknown) {
         if (cancelled) return
         setScopeSyncError(formatApiError(err, '加载范围文档失败'))
@@ -796,6 +806,10 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
   // Actions: 执行预览
   const runPreview = useCallback(async (options?: { force?: boolean }) => {
     if (!file) return
+    if (!currentFileItem || !isChunkPreviewFileInScope(currentFileItem, datasetId)) {
+      setError(datasetId ? '当前数据集暂无可预览文档，请先在该数据集完成入库。' : '当前范围暂无可预览文档。')
+      return
+    }
     const effectiveOverlap = chunkStrategy === 'separator' ? 0 : chunkOverlap
     if (effectiveOverlap >= chunkSize) {
       setError('重叠长度必须小于切块长度')
@@ -871,6 +885,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     chunk_size: chunkSize,
     chunk_overlap: effectiveOverlap,
     include_original_text: includeOriginalText,
+    include_review_signals: true,
     original_text_max_chars: originalTextMaxChars,
     max_chunks: maxChunks,
     use_parse_cache: useParseCache,
@@ -955,6 +970,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     }
   }, [
     file,
+    currentFileItem,
     chunkSize,
     chunkOverlap,
     parserBackend,
@@ -1283,10 +1299,11 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
 
   // 自动触发预览
   useEffect(() => {
-    if (autoPreviewEnabled && file && !previewData && !isLoading && !isSubmitting && !error) {
+    const fileInScope = currentFileItem ? isChunkPreviewFileInScope(currentFileItem, datasetId) : false
+    if (autoPreviewEnabled && file && fileInScope && !scopeSyncLoading && !previewData && !isLoading && !isSubmitting && !error) {
       runPreview()
     }
-  }, [autoPreviewEnabled, file, previewData, isLoading, isSubmitting, error, runPreview])
+  }, [autoPreviewEnabled, currentFileItem, datasetId, file, scopeSyncLoading, previewData, isLoading, isSubmitting, error, runPreview])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {

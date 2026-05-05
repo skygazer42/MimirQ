@@ -37,8 +37,8 @@ import { useChunkPreview } from '@/components/chunk-preview/context'
 import { ChunkCard } from '../../chunk-card'
 import { ChunkInspectorDialog } from '../../chunk-inspector-dialog'
 import { chunkIsReviewed, chunkNeedsReview, isChunkOverrideDisabled, isChunkOverrideEdited, isJsonObject } from '@/components/chunk-preview/utils/metadata'
-import type { ChunkPreviewItem, JsonObject } from '@/types'
-import { computeCoverageSignals, computeRoleIndices, fnv1a32, roughEstimateTokens } from '@/components/chunk-preview/utils/review-signals'
+import type { ChunkPreviewItem, ChunkPreviewReviewSignals, JsonObject } from '@/types'
+import { computeRoleIndices, roughEstimateTokens } from '@/components/chunk-preview/utils/review-signals'
 import { getChunkSectionPath } from '@/components/chunk-preview/utils/sections'
 import { buildChunkSearchIndex, searchChunkIndex, type ChunkSearchResult } from '@/components/chunk-preview/utils/retrieval-search'
 import { rerankChunkSearchResults, type RerankedChunkSearchResult } from '@/components/chunk-preview/utils/reranker-sim'
@@ -84,6 +84,25 @@ function isEditableTarget(target: EventTarget | null) {
   const tag = (el.tagName || '').toLowerCase()
   if (tag === 'input' || tag === 'textarea' || tag === 'select') return true
   return el.isContentEditable
+}
+
+function toSignalSet(values: readonly number[] | undefined): Set<number> {
+  const out = new Set<number>()
+  for (const value of values || []) {
+    const idx = Number(value)
+    if (Number.isFinite(idx)) out.add(idx)
+  }
+  return out
+}
+
+function toSignalMap(values: ChunkPreviewReviewSignals['gap_before_by_index']): Map<number, number> {
+  const out = new Map<number, number>()
+  for (const [key, value] of Object.entries(values || {})) {
+    const idx = Number(key)
+    const n = Number(value)
+    if (Number.isFinite(idx) && Number.isFinite(n)) out.set(idx, n)
+  }
+  return out
 }
 
 export function ChunkList() {
@@ -290,39 +309,34 @@ export function ChunkList() {
     return rerankChunkSearchResults(retrievalResults, retrieveQuery, effectiveChunks, { alpha: rerankAlphaPct / 100 })
   }, [rerankEnabled, retrievalResults, retrieveQuery, effectiveChunks, rerankAlphaPct])
 
-  const duplicateIndices = useMemo(() => {
-    const dups = new Set<number>()
-    const seen = new Map<string, number>()
-    for (const c of effectiveChunks) {
-      const trimmed = String(c?.content ?? '').trim()
-      if (!trimmed) continue
-      const key = fnv1a32(trimmed)
-      const prev = seen.get(key)
-      if (prev == null) {
-        seen.set(key, Number(c.index))
-      } else {
-        dups.add(prev)
-        dups.add(Number(c.index))
-      }
-    }
-    return dups
-  }, [effectiveChunks])
+  const reviewSignals = previewData?.review_signals ?? null
+  const duplicateIndices = useMemo(
+    () => toSignalSet(reviewSignals?.duplicate_indices),
+    [reviewSignals?.duplicate_indices]
+  )
 
-  const shortIndices = useMemo(() => {
-    const threshold = unit === 'tokens' ? 40 : 120
-    const out = new Set<number>()
-    for (const c of effectiveChunks) {
-      const len = unit === 'tokens' ? Number(c.tokens_est || 0) : Number(c.length || 0)
-      if (len > 0 && len < threshold) out.add(Number(c.index))
-    }
-    return out
-  }, [effectiveChunks, unit])
+  const shortIndices = useMemo(
+    () => toSignalSet(reviewSignals?.short_indices),
+    [reviewSignals?.short_indices]
+  )
 
   const roleIndices = useMemo(() => computeRoleIndices(effectiveChunks), [effectiveChunks])
 
   const coverageSignals = useMemo(
-    () => computeCoverageSignals(effectiveChunks, { strategy: previewData?.chunk_strategy }),
-    [effectiveChunks, previewData?.chunk_strategy]
+    () => ({
+      basis: reviewSignals?.basis === 'child' ? 'child' as const : 'all' as const,
+      gapIndices: toSignalSet(reviewSignals?.gap_indices),
+      overlapIndices: toSignalSet(reviewSignals?.overlap_indices),
+      gapBeforeByIndex: toSignalMap(reviewSignals?.gap_before_by_index),
+      overlapPrevByIndex: toSignalMap(reviewSignals?.overlap_prev_by_index),
+    }),
+    [
+      reviewSignals?.basis,
+      reviewSignals?.gap_indices,
+      reviewSignals?.overlap_indices,
+      reviewSignals?.gap_before_by_index,
+      reviewSignals?.overlap_prev_by_index,
+    ]
   )
 
   const needsReviewIndices = useMemo(() => {
@@ -717,21 +731,75 @@ export function ChunkList() {
     viewMode,
   ])
 
-  const hasVisibleQualitySignal =
-    shortIndices.size > 0 ||
-    duplicateIndices.size > 0 ||
-    coverageSignals.gapIndices.size > 0 ||
-    coverageSignals.overlapIndices.size > 0 ||
-    needsReviewIndices.size > 0 ||
-    editedIndices.size > 0 ||
-    disabledIndices.size > 0 ||
-    onlyShort ||
-    onlyDuplicate ||
-    onlyGap ||
-    onlyOverlap ||
-    onlyNeedsReview ||
-    onlyEdited ||
-    onlyDisabled
+  const qualitySummaryItems = [
+    {
+      key: 'short',
+      count: shortIndices.size,
+      active: onlyShort,
+      label: t('chunkList.filters.shortLabel', { count: shortIndices.size }),
+      title: t('chunkList.filters.onlyShortTitle'),
+      icon: AlertCircle,
+      toggle: () => setOnlyShort((v) => !v),
+    },
+    {
+      key: 'duplicate',
+      count: duplicateIndices.size,
+      active: onlyDuplicate,
+      label: t('chunkList.filters.duplicateLabel', { count: duplicateIndices.size }),
+      title: t('chunkList.filters.onlyDuplicateTitle'),
+      icon: Copy,
+      toggle: () => setOnlyDuplicate((v) => !v),
+    },
+    {
+      key: 'gap',
+      count: coverageSignals.gapIndices.size,
+      active: onlyGap,
+      label: t('chunkList.filters.gapLabel', { count: coverageSignals.gapIndices.size }),
+      title: coverageSignals.basis === 'child'
+        ? t('chunkList.filters.onlyGapTitleChildCoverage')
+        : t('chunkList.filters.onlyGapTitle'),
+      toggle: () => setOnlyGap((v) => !v),
+    },
+    {
+      key: 'overlap',
+      count: coverageSignals.overlapIndices.size,
+      active: onlyOverlap,
+      label: t('chunkList.filters.overlapLabel', { count: coverageSignals.overlapIndices.size }),
+      title: coverageSignals.basis === 'child'
+        ? t('chunkList.filters.onlyOverlapTitleChildCoverage')
+        : t('chunkList.filters.onlyOverlapTitle'),
+      toggle: () => setOnlyOverlap((v) => !v),
+    },
+    {
+      key: 'review',
+      count: needsReviewIndices.size,
+      active: onlyNeedsReview,
+      label: t('chunkList.filters.reviewLabel', { count: needsReviewIndices.size }),
+      title: t('chunkList.filters.onlyNeedsReviewTitle'),
+      icon: Code2,
+      toggle: () => setOnlyNeedsReview((v) => !v),
+    },
+    {
+      key: 'edited',
+      count: editedIndices.size,
+      active: onlyEdited,
+      label: t('chunkList.filters.editedLabel', { count: editedIndices.size }),
+      title: t('chunkList.filters.onlyEditedTitle'),
+      icon: Pencil,
+      toggle: () => setOnlyEdited((v) => !v),
+    },
+    {
+      key: 'skipped',
+      count: disabledIndices.size,
+      active: onlyDisabled,
+      label: t('chunkList.filters.skippedLabel', { count: disabledIndices.size }),
+      title: t('chunkList.filters.onlySkippedTitle'),
+      icon: EyeOff,
+      toggle: () => setOnlyDisabled((v) => !v),
+    },
+  ]
+  const activeQualitySummaryItems = qualitySummaryItems.filter((item) => item.count > 0 || item.active)
+  const healthyQualitySummaryCount = Math.max(0, qualitySummaryItems.length - activeQualitySummaryItems.length)
 
   const filterButtonLabel = filterActiveCount > 0
     ? t('chunkList.toolbar.filtersWithCount', { count: filterActiveCount })
@@ -906,100 +974,29 @@ export function ChunkList() {
 
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/45 bg-muted/15 px-2 py-1.5">
             <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-              {hasVisibleQualitySignal ? (
+              {effectiveChunks.length > 0 ? (
                 <>
-                  {shortIndices.size > 0 || onlyShort ? (
+                  {activeQualitySummaryItems.map((item) => {
+                  const Icon = item.icon
+                  return (
                     <Button
+                      key={item.key}
                       type="button"
-                      variant={onlyShort ? 'secondary' : 'ghost'}
+                      variant={item.active ? 'secondary' : 'ghost'}
                       size="sm"
                       className="h-6 rounded-md px-1.5 text-[10px]"
-                      onClick={() => setOnlyShort((v) => !v)}
-                      title={t('chunkList.filters.onlyShortTitle')}
+                      onClick={item.toggle}
+                      title={item.title}
                     >
-                      <AlertCircle className="h-3 w-3 mr-1" />
-                      {t('chunkList.filters.shortLabel', { count: shortIndices.size })}
+                      {Icon ? <Icon className="mr-1 h-3 w-3" /> : null}
+                      {item.label}
                     </Button>
-                  ) : null}
-                  {duplicateIndices.size > 0 || onlyDuplicate ? (
-                    <Button
-                      type="button"
-                      variant={onlyDuplicate ? 'secondary' : 'ghost'}
-                      size="sm"
-                      className="h-6 rounded-md px-1.5 text-[10px]"
-                      onClick={() => setOnlyDuplicate((v) => !v)}
-                      title={t('chunkList.filters.onlyDuplicateTitle')}
-                    >
-                      <Copy className="h-3 w-3 mr-1" />
-                      {t('chunkList.filters.duplicateLabel', { count: duplicateIndices.size })}
-                    </Button>
-                  ) : null}
-                  {coverageSignals.gapIndices.size > 0 || onlyGap ? (
-                    <Button
-                      type="button"
-                      variant={onlyGap ? 'secondary' : 'ghost'}
-                      size="sm"
-                      className="h-6 rounded-md px-1.5 text-[10px]"
-                      onClick={() => setOnlyGap((v) => !v)}
-                      title={coverageSignals.basis === 'child'
-                        ? t('chunkList.filters.onlyGapTitleChildCoverage')
-                        : t('chunkList.filters.onlyGapTitle')}
-                    >
-                      {t('chunkList.filters.gapLabel', { count: coverageSignals.gapIndices.size })}
-                    </Button>
-                  ) : null}
-                  {coverageSignals.overlapIndices.size > 0 || onlyOverlap ? (
-                    <Button
-                      type="button"
-                      variant={onlyOverlap ? 'secondary' : 'ghost'}
-                      size="sm"
-                      className="h-6 rounded-md px-1.5 text-[10px]"
-                      onClick={() => setOnlyOverlap((v) => !v)}
-                      title={coverageSignals.basis === 'child'
-                        ? t('chunkList.filters.onlyOverlapTitleChildCoverage')
-                        : t('chunkList.filters.onlyOverlapTitle')}
-                    >
-                      {t('chunkList.filters.overlapLabel', { count: coverageSignals.overlapIndices.size })}
-                    </Button>
-                  ) : null}
-                  {needsReviewIndices.size > 0 || onlyNeedsReview ? (
-                    <Button
-                      type="button"
-                      variant={onlyNeedsReview ? 'secondary' : 'ghost'}
-                      size="sm"
-                      className="h-6 rounded-md px-1.5 text-[10px]"
-                      onClick={() => setOnlyNeedsReview((v) => !v)}
-                      title={t('chunkList.filters.onlyNeedsReviewTitle')}
-                    >
-                      <Code2 className="h-3 w-3 mr-1" />
-                      {t('chunkList.filters.reviewLabel', { count: needsReviewIndices.size })}
-                    </Button>
-                  ) : null}
-                  {editedIndices.size > 0 || onlyEdited ? (
-                    <Button
-                      type="button"
-                      variant={onlyEdited ? 'secondary' : 'ghost'}
-                      size="sm"
-                      className="h-6 rounded-md px-1.5 text-[10px]"
-                      onClick={() => setOnlyEdited((v) => !v)}
-                      title={t('chunkList.filters.onlyEditedTitle')}
-                    >
-                      <Pencil className="h-3 w-3 mr-1" />
-                      {t('chunkList.filters.editedLabel', { count: editedIndices.size })}
-                    </Button>
-                  ) : null}
-                  {disabledIndices.size > 0 || onlyDisabled ? (
-                    <Button
-                      type="button"
-                      variant={onlyDisabled ? 'secondary' : 'ghost'}
-                      size="sm"
-                      className="h-6 rounded-md px-1.5 text-[10px]"
-                      onClick={() => setOnlyDisabled((v) => !v)}
-                      title={t('chunkList.filters.onlySkippedTitle')}
-                    >
-                      <EyeOff className="h-3 w-3 mr-1" />
-                      {t('chunkList.filters.skippedLabel', { count: disabledIndices.size })}
-                    </Button>
+                  )
+                  })}
+                  {healthyQualitySummaryCount > 0 ? (
+                    <span className="inline-flex h-6 items-center rounded-md border border-emerald-500/15 bg-emerald-500/8 px-1.5 text-[10px] text-emerald-700 dark:text-emerald-300">
+                      {t('chunkList.filters.healthySummary', { count: healthyQualitySummaryCount })}
+                    </span>
                   ) : null}
                 </>
               ) : (
