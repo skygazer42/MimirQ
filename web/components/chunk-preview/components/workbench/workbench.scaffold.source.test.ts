@@ -8,6 +8,8 @@ describe('Chunk preview workbench scaffold', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'index.tsx'), 'utf8')
 
     expect(src).toContain('WorkbenchScaffold')
+    expect(src).toContain('function ChunkPreviewWorkbenchHeader')
+    expect(src).toContain('header={<ChunkPreviewWorkbenchHeader />}')
+    expect(src).toContain("t('workbench.header.eyebrow')")
   })
 })
-

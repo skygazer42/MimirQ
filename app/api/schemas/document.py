@@ -996,6 +996,7 @@ class ChunkPreviewStats(BaseModel):
     median: int = 0
     p10: int = 0
     p90: int = 0
+    p95: int = 0
     total_tokens_est: int = 0
     short_count: int = 0
     duplicate_count: int = 0

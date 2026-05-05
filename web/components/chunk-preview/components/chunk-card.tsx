@@ -186,23 +186,23 @@ export function ChunkCard({
           </span>
           {isDisabled ? (
             <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-muted/60 text-muted-foreground border border-border/60">
-              SKIP
+              {t('chunkCard.badges.skipped')}
             </span>
           ) : null}
 
           {isEdited ? (
             <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-info/10 text-info border border-info/25">
-              EDIT
+              {t('chunkCard.badges.edited')}
             </span>
           ) : null}
           {isDuplicate ? (
             <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/25">
-              DUP
+              {t('chunkCard.badges.duplicate')}
             </span>
           ) : null}
           {isShort ? (
             <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/25">
-              SHORT
+              {t('chunkCard.badges.short')}
             </span>
           ) : null}
           {isGap ? (
@@ -210,7 +210,7 @@ export function ChunkCard({
               className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-destructive/10 text-destructive border border-destructive/25"
               title={typeof gapBefore === 'number' ? `gap_before: ${gapBefore}` : undefined}
             >
-              GAP
+              {t('chunkCard.badges.gap')}
             </span>
           ) : null}
           {isOverlap ? (
@@ -218,7 +218,7 @@ export function ChunkCard({
               className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/25"
               title={typeof overlapPrev === 'number' ? `overlap_prev: ${overlapPrev}` : undefined}
             >
-              OVR
+              {t('chunkCard.badges.overlap')}
             </span>
           ) : null}
           {needsReview ? (
@@ -240,12 +240,12 @@ export function ChunkCard({
           {(() => {
     if (chunkRole === 'parent') {
         return (<span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/25">
-              PARENT
+              {t('chunkCard.badges.parent')}
             </span>);
     }
     else if (chunkRole === 'child') {
             return (<span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-muted/60 text-muted-foreground border border-border/60">
-              CHILD
+              {t('chunkCard.badges.child')}
             </span>);
         }
         else {

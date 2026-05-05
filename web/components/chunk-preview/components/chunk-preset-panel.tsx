@@ -1,7 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Bookmark, Download, Loader2, Save, Upload } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Bookmark, Loader2, RefreshCw, Save } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
@@ -21,7 +21,6 @@ import { chunkPresetApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { useChunkPreview } from '@/components/chunk-preview/context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
-import { downloadTextFile, sanitizeFilename } from '@/components/chunk-preview/utils/export'
 import type { ChunkPreset, DocumentPipelineOptions, JsonObject } from '@/types'
 
 function clampInt(value: number, min: number, max: number) {
@@ -55,15 +54,8 @@ function isRecord(value: unknown): value is JsonObject {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
-function getErrorMessage(error: unknown, fallback: string) {
-  if (error instanceof Error && error.message.trim()) return error.message.trim()
-  const text = String(error || '').trim()
-  return text || fallback
-}
-
 export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>) {
   const pipelineCtx = usePipelineOptions()
-  const importRef = useRef<HTMLInputElement>(null)
   const t = useTranslations('ChunkPreview')
   const commonT = useTranslations('Common')
 
@@ -205,6 +197,8 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
 
   const onSave = async () => {
     if (!selectedPreset) {
+      setSaveAsName('')
+      setSaveAsDescription('')
       setSaveAsOpen(true)
       return
     }
@@ -243,7 +237,7 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
       await refresh()
       setSelectedId(created.id)
       setSaveAsOpen(false)
-      toast.success(t('chunkPresetPanel.created'))
+      toast.success(t('chunkPresetPanel.createdAndSelected'))
     } catch (error: unknown) {
       toast.error(formatApiError(error, t('chunkPresetPanel.createFailed')))
     } finally {
@@ -252,26 +246,43 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
   }
 
   return (
-    <div className={cn('space-y-2 rounded-lg border border-border/60 bg-background/95 p-2.5 shadow-sm', className)}>
+    <div
+      className={cn(
+        'space-y-2.5 rounded-xl border border-border/55 bg-[linear-gradient(180deg,hsl(var(--background)/0.96),hsl(var(--muted)/0.18))] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]',
+        className
+      )}
+    >
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5">
-          <Bookmark className="h-3.5 w-3.5 text-primary/80" />
-          <div className="text-[10.5px] font-medium text-foreground/78">{t('chunkPresetPanel.title')}</div>
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-violet-200/70 bg-violet-50/90 text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/35 dark:text-violet-200">
+            <Bookmark className="h-3.5 w-3.5" />
+          </span>
+          <div className="min-w-0">
+            <div className="truncate text-[11px] font-semibold text-foreground/84">{t('chunkPresetPanel.title')}</div>
+            <div className="truncate text-[9.5px] text-muted-foreground/72">
+              {selectedPreset ? t('chunkPresetPanel.statusActive', { name: selectedPreset.name }) : t('chunkPresetPanel.statusIdle')}
+            </div>
+          </div>
         </div>
         <Button
           type="button"
           size="sm"
           variant="ghost"
-          className="h-6 px-2 text-[11px] text-muted-foreground"
+          className="h-7 w-7 shrink-0 rounded-lg p-0 text-muted-foreground hover:bg-background/80"
           onClick={() => detachPromise(refresh())}
           disabled={loading || saving}
           aria-label={t('chunkPresetPanel.refreshAria')}
+          title={t('chunkPresetPanel.refresh')}
         >
-          {loading ? <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" /> : t('chunkPresetPanel.refresh')}
+          {loading ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+          ) : (
+            <RefreshCw className="h-3.5 w-3.5" />
+          )}
         </Button>
       </div>
 
-      <div className="space-y-2">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
         <Select
           value={selectedId || '__none__'}
           onValueChange={(value) => {
@@ -284,7 +295,7 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
             }
           }}
         >
-          <SelectTrigger className="h-8 bg-background text-[11px]">
+          <SelectTrigger className="h-8 rounded-lg border-border/55 bg-background/88 text-[11px] shadow-[inset_0_1px_0_rgba(255,255,255,0.62)]">
             <SelectValue placeholder={t('chunkPresetPanel.select')} />
           </SelectTrigger>
           <SelectContent>
@@ -297,77 +308,38 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
           </SelectContent>
         </Select>
 
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex shrink-0 rounded-lg border border-border/50 bg-background/75 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.62)]">
           <Button
             type="button"
             size="sm"
-            className="h-7 px-2.5 text-[11px]"
+            variant="outline"
+            className="h-7 rounded-md border-violet-200/70 bg-violet-50/90 px-2.5 text-[11px] font-medium text-violet-700 shadow-none hover:bg-violet-100/90 hover:text-violet-800 dark:border-violet-900/60 dark:bg-violet-950/35 dark:text-violet-200 dark:hover:bg-violet-950/50"
             onClick={() => detachPromise(onSave())}
             disabled={saving}
           >
-            {saving ? <Loader2 className="mr-1.5 h-3 w-3 animate-spin motion-reduce:animate-none" /> : <Save className="mr-1.5 h-3 w-3" />}
-            {commonT('save')}
+            {saving ? (
+              <Loader2 className="mr-1.5 h-3 w-3 animate-spin motion-reduce:animate-none" />
+            ) : (
+              <Save className="mr-1.5 h-3 w-3 text-violet-600 dark:text-violet-200" />
+            )}
+            {selectedPreset ? t('chunkPresetPanel.updatePreset') : t('chunkPresetPanel.savePreset')}
           </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="h-7 px-2.5 text-[11px]"
-            onClick={() => {
-              setSaveAsName(selectedPreset?.name ? `${selectedPreset.name} ${t('chunkPresetPanel.copySuffix')}` : '')
-              setSaveAsDescription(selectedPreset?.description || '')
-              setSaveAsOpen(true)
-            }}
-            disabled={saving}
-          >
-            {t('chunkPresetPanel.saveAs')}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="h-7 px-2.5 text-[11px]"
-            disabled={saving}
-            onClick={() => {
-              const payload = buildPayload()
-              const filename = `${sanitizeFilename(selectedPreset?.name || 'chunk-preset')}.json`
-              downloadTextFile(filename, JSON.stringify(payload, null, 2), 'application/json;charset=utf-8')
-              toast.success(t('chunkPresetPanel.exportedJson'))
-            }}
-          >
-            <Download className="mr-1.5 h-3 w-3" />
-            {t('chunkPresetPanel.export')}
-          </Button>
-          <input
-            ref={importRef}
-            type="file"
-            accept="application/json"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0]
-              e.target.value = ''
-              if (!file) return
-              file
-                .text()
-                .then(async (text) => {
-                  const data: unknown = JSON.parse(text || '{}')
-                  await applyPayload(data)
-                  toast.success(t('chunkPresetPanel.importedJson'))
-                })
-                .catch((error: unknown) => toast.error(getErrorMessage(error, t('chunkPresetPanel.importFailed'))))
-            }}
-          />
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="h-7 px-2.5 text-[11px]"
-            disabled={saving}
-            onClick={() => importRef.current?.click()}
-          >
-            <Upload className="mr-1.5 h-3 w-3" />
-            {t('chunkPresetPanel.import')}
-          </Button>
+          {selectedPreset ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-7 rounded-md px-2.5 text-[11px] text-muted-foreground hover:bg-muted/55 hover:text-foreground"
+              onClick={() => {
+                setSaveAsName(`${selectedPreset.name} ${t('chunkPresetPanel.copySuffix')}`)
+                setSaveAsDescription(selectedPreset.description || '')
+                setSaveAsOpen(true)
+              }}
+              disabled={saving}
+            >
+              {t('chunkPresetPanel.saveAs')}
+            </Button>
+          ) : null}
         </div>
       </div>
 

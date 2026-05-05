@@ -71,6 +71,7 @@ describe('chunk list messages source', () => {
     expect(src).toContain('chunkList.filters.reviewLabel')
     expect(src).toContain('chunkList.filters.editedLabel')
     expect(src).toContain('chunkList.filters.skippedLabel')
+    expect(src).toContain('chunkList.filters.healthySummary')
 
     expect(src).toContain("t('chunkList.actions.clearSelection')")
     expect(src).toContain("t('chunkList.actions.restorePdfDockTitle')")

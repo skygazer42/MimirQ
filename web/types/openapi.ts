@@ -8345,6 +8345,11 @@ export interface components {
              */
             p90: number;
             /**
+             * P95
+             * @default 0
+             */
+            p95: number;
+            /**
              * Total Tokens Est
              * @default 0
              */

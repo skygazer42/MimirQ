@@ -170,6 +170,7 @@ export interface ChunkPreviewStats {
   median?: number
   p10?: number
   p90?: number
+  p95?: number
   total_tokens_est?: number
   short_count?: number
   duplicate_count?: number

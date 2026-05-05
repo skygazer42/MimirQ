@@ -42,12 +42,15 @@ def _build_client(  # noqa: ANN001
     duplicate_page_meta: bool = False,
     duplicate_page_content: bool = False,
     start_char_overrides: list[int] | None = None,
+    inline_text_parse_enabled: bool = False,
 ):
     import app.api.v1.documents as documents_module
+    from app.core.config import settings
     from app.api.v1.documents import preview_chunking, preview_chunking_by_sha
     from app.rag.chunking.factory import chunker_factory
     from app.services.dataset_service import DatasetService
 
+    monkeypatch.setattr(settings, "PREVIEW_INLINE_TEXT_PARSE_ENABLED", inline_text_parse_enabled, raising=False)
     monkeypatch.setattr(DatasetService, "ensure_member", lambda _db, _tenant_id, _account_id: None, raising=True)
     monkeypatch.setattr(chunker_factory, "resolve_strategy", lambda s: s, raising=True)
 
@@ -94,6 +97,28 @@ def _build_client(  # noqa: ANN001
     app.post("/api/v1/documents/chunk-preview")(preview_chunking)
     app.post("/api/v1/documents/chunk-preview/by-sha")(preview_chunking_by_sha)
     return TestClient(app)
+
+
+def test_documents_chunk_preview_markdown_uses_inline_parse_not_subprocess(monkeypatch):  # noqa: ANN001
+    import app.api.v1.documents as documents_module
+
+    client = _build_client(monkeypatch, inline_text_parse_enabled=True)
+
+    async def _fail_run_subprocess_worker(**_kwargs):  # noqa: ANN202
+        raise AssertionError("markdown preview should not start subprocess worker")
+
+    monkeypatch.setattr(documents_module, "run_subprocess_worker", _fail_run_subprocess_worker, raising=True)
+
+    res = client.post(
+        "/api/v1/documents/chunk-preview?chunk_size=100&chunk_overlap=10",
+        data={"parser_backend": "auto", "chunk_strategy": "langchain_recursive"},
+        files={"file": ("doc.md", b"# Title\n\nhello world", "text/markdown")},
+    )
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["parser_backend"] == "markdown"
+    assert body["chunks"]
 
 
 def test_documents_chunk_preview_returns_tokens_est_and_original_text_flags(monkeypatch):  # noqa: ANN001

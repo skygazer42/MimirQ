@@ -10044,6 +10044,32 @@ class ChunkPreviewByShaFileFields:
     file_size: int | None = Form(None)
 
 
+def _should_inline_preview_parse(file_ext: str) -> bool:
+    """Use in-process parsing for already-textual preview files to avoid worker cold-start."""
+    if not bool(getattr(settings, "PREVIEW_INLINE_TEXT_PARSE_ENABLED", True)):
+        return False
+    ext = str(file_ext or "").strip().lower()
+    return ext == ".md" or ext in parser_factory.PLAIN_TEXT_EXTENSIONS
+
+
+def _serialize_preview_parse_documents(documents: list[Document]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for doc in documents or []:
+        metadata = getattr(doc, "metadata", None) or {}
+        try:
+            safe_metadata = json.loads(json.dumps(metadata, ensure_ascii=False, default=str))
+        except Exception:
+            safe_metadata = {}
+        out.append(
+            {
+                "page_content": str(getattr(doc, "page_content", "") or ""),
+                "metadata": safe_metadata if isinstance(safe_metadata, dict) else {},
+                "id": str(getattr(doc, "id", "") or "") or None,
+            }
+        )
+    return out
+
+
 @router.post("/chunk-preview", response_model=ChunkPreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def preview_chunking(
     request: Request,
@@ -10368,6 +10394,37 @@ async def preview_chunking(
             cache_max_doc_chars = int(getattr(settings, "PREVIEW_PARSE_CACHE_MAX_DOC_CHARS", 0) or 0)
             cache_version = str(getattr(settings, "PREVIEW_PARSE_CACHE_VERSION", "v1") or "v1").strip() or "v1"
 
+            async def _parse_uncached_preview_documents() -> tuple[list[dict[str, Any]], str]:
+                nonlocal parse_duration_ms
+                _parse_started = time.perf_counter()
+                if _should_inline_preview_parse(file_ext):
+                    parsed_documents, backend, _provenance = parser_factory.parse_with_provenance(
+                        temp_path,
+                        parser_backend=parser_backend,
+                        tenant_id=str(tenant_id),
+                    )
+                    parsed_documents = _materialize_extracted_images_for_preview(parsed_documents, tenant_id=tenant_id)
+                    parsed_documents = _materialize_local_images_for_preview(parsed_documents, tenant_id=tenant_id)
+                    parse_duration_ms = int(max(0.0, (time.perf_counter() - _parse_started) * 1000.0))
+                    return _serialize_preview_parse_documents(parsed_documents), str(backend or parser_backend)
+
+                parsed = await run_subprocess_worker(
+                    tenant_id=tenant_id,
+                    payload={
+                        "action": "parse_documents",
+                        "tenant_id": str(tenant_id),
+                        "file_path": str(temp_path),
+                        "parser_backend": parser_backend,
+                        "mode": "preview",
+                    },
+                    disconnect_check=request.is_disconnected,
+                    timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
+                )
+                parse_duration_ms = int(max(0.0, (time.perf_counter() - _parse_started) * 1000.0))
+                return [
+                    item for item in (parsed.get("documents") or []) if isinstance(item, dict)
+                ], str(parsed.get("resolved_backend") or parser_backend)
+
             cache_key: str | None = None
             if (
                 cache_enabled
@@ -10402,24 +10459,7 @@ async def preview_chunking(
                             parse_duration_ms = 0
 
                         if parsed_docs_payload is None:
-                            _parse_started = time.perf_counter()
-                            parsed = await run_subprocess_worker(
-                                tenant_id=tenant_id,
-                                payload={
-                                    "action": "parse_documents",
-                                    "tenant_id": str(tenant_id),
-                                    "file_path": str(temp_path),
-                                    "parser_backend": parser_backend,
-                                    "mode": "preview",
-                                },
-                                disconnect_check=request.is_disconnected,
-                                timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
-                            )
-                            parse_duration_ms = int(max(0.0, (time.perf_counter() - _parse_started) * 1000.0))
-                            parsed_docs_payload = [
-                                item for item in (parsed.get("documents") or []) if isinstance(item, dict)
-                            ]
-                            resolved_backend = str(parsed.get("resolved_backend") or parser_backend)
+                            parsed_docs_payload, resolved_backend = await _parse_uncached_preview_documents()
 
                             if cache_key and cache_enabled and bool(use_parse_cache) and cache_ttl_sec > 0 and cache_max_entries > 0:
                                 total_chars = sum(len(str(it.get("page_content") or "")) for it in (parsed_docs_payload or []))
@@ -10439,24 +10479,7 @@ async def preview_chunking(
                                         max_entries=cache_max_entries,
                                     )
                 else:
-                    _parse_started = time.perf_counter()
-                    parsed = await run_subprocess_worker(
-                        tenant_id=tenant_id,
-                        payload={
-                            "action": "parse_documents",
-                            "tenant_id": str(tenant_id),
-                            "file_path": str(temp_path),
-                            "parser_backend": parser_backend,
-                            "mode": "preview",
-                        },
-                        disconnect_check=request.is_disconnected,
-                        timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
-                    )
-                    parse_duration_ms = int(max(0.0, (time.perf_counter() - _parse_started) * 1000.0))
-                    parsed_docs_payload = [
-                        item for item in (parsed.get("documents") or []) if isinstance(item, dict)
-                    ]
-                    resolved_backend = str(parsed.get("resolved_backend") or parser_backend)
+                    parsed_docs_payload, resolved_backend = await _parse_uncached_preview_documents()
 
                     if cache_key and cache_enabled and bool(use_parse_cache) and cache_ttl_sec > 0 and cache_max_entries > 0:
                         total_chars = sum(len(str(it.get("page_content") or "")) for it in (parsed_docs_payload or []))
@@ -10816,6 +10839,7 @@ async def preview_chunking(
                 median=_pct(50),
                 p10=_pct(10),
                 p90=_pct(90),
+                p95=_pct(95),
                 total_tokens_est=int(total_tokens_est),
                 short_count=int(short_count),
                 duplicate_count=int(duplicate_count),
@@ -11535,6 +11559,7 @@ async def preview_chunking_by_sha(
             median=_pct(50),
             p10=_pct(10),
             p90=_pct(90),
+            p95=_pct(95),
             total_tokens_est=int(total_tokens_est),
             short_count=int(short_count),
             duplicate_count=int(duplicate_count),
