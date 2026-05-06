@@ -22,4 +22,19 @@ describe('graph viewer source', () => {
     expect(src).toContain('onZoomEnd={updateViewportLod}')
     expect(src).toContain('onEngineStop={updateViewportLod}')
   })
+
+  it('defers viewport LOD state updates outside force-graph render callbacks', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'graph-viewer.tsx'), 'utf8')
+
+    expect(src).toContain('const viewportLodFrameRef = useRef<number | null>(null)')
+    expect(src).toContain('const viewportLodTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)')
+    expect(src).toContain('const pendingViewportLodRef = useRef<GraphViewportLod | null>(null)')
+    expect(src).toContain('scheduleViewportLodUpdate')
+    expect(src).toContain('requestAnimationFrame(() => {')
+    expect(src).toContain('setTimeout(() => {')
+    expect(src).toContain('cancelAnimationFrame(viewportLodFrameRef.current)')
+    expect(src).toContain('clearTimeout(viewportLodTimeoutRef.current)')
+    expect(src).not.toContain('setViewportLod((current) => (current == null ? current : null))')
+    expect(src).not.toContain("if (typeof globalThis.window === 'undefined') {\n      setViewportLod")
+  })
 })
