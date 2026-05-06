@@ -5,23 +5,40 @@ import {
   AlertCircle,
   ArrowRightLeft,
   BarChart3,
+  Box,
+  Brain,
+  ChevronRight,
   CheckCircle2,
   CircleDashed,
   Copy,
   Database,
   Download,
   FileJson,
+  Filter,
+  FolderOpen,
   GitCompare,
+  Hand,
   Hash,
   Layers,
   Link2,
+  Maximize2,
+  MessageSquare,
+  Network,
   PanelLeftClose,
   PanelLeftOpen,
   RefreshCcw,
+  Search,
   ShieldAlert,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
+  Star,
+  Table2,
   Trash2,
+  User,
+  X,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react'
 import { startTransition, useDeferredValue, useMemo, useState, type ReactNode } from 'react'
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -65,6 +82,7 @@ type SnapshotExactDiffSummary = {
 
 type SnapshotView = 'diff' | 'a' | 'b'
 type WorkspaceTab = 'studio' | 'audit'
+type StudioCanvasView = 'graph' | 'table' | 'stats'
 type DiffCellStatus = 'same' | 'added' | 'removed' | 'empty'
 type JsonTokenKind = 'plain' | 'key' | 'string' | 'number' | 'boolean' | 'null' | 'punctuation'
 type AuditSeverity = 'healthy' | 'notice' | 'warning'
@@ -92,7 +110,225 @@ type SnapshotChartTooltipProps = {
   payload?: Array<{ payload?: SnapshotDeltaRow }>
 }
 
+type SnapshotStudioNode = {
+  id: string
+  label: string
+  type: string
+  kind: string
+  description: string
+  x: number
+  y: number
+  tone: 'blue' | 'green' | 'orange' | 'purple' | 'rose' | 'amber' | 'teal'
+  icon: ReactNode
+  occurrences: number
+  status: '一致' | '新增' | '移除' | '变化'
+  relations: Array<{ label: string; target: string }>
+}
+
+type SnapshotStudioLink = {
+  source: string
+  target: string
+  label: string
+  strength: 'weak' | 'medium' | 'strong'
+}
+
 const DIFF_KEYS = ['docs', 'events', 'entities', 'links', 'relations'] as const
+
+const SNAPSHOT_STUDIO_NODES: SnapshotStudioNode[] = [
+  {
+    id: 'concept_knowledge_graph',
+    label: '知识图谱',
+    type: '概念',
+    kind: 'Concept',
+    description: '通过实体与关系的结构化表达，组织和连接领域知识。',
+    x: 66,
+    y: 34,
+    tone: 'blue',
+    icon: <Network className="h-5 w-5" aria-hidden="true" />,
+    occurrences: 24,
+    status: '一致',
+    relations: [
+      { label: '构建', target: '语义搜索' },
+      { label: '包含', target: '实体' },
+      { label: '依赖', target: '实体识别' },
+      { label: '增强', target: 'LLM' },
+      { label: '来源', target: '文档' },
+      { label: '评估', target: '评估反馈' },
+    ],
+  },
+  {
+    id: 'semantic_search',
+    label: '语义搜索',
+    type: '概念',
+    kind: 'Concept',
+    description: '以向量语义召回为核心，连接文档、向量数据库与回答链路。',
+    x: 48,
+    y: 34,
+    tone: 'blue',
+    icon: <Search className="h-5 w-5" aria-hidden="true" />,
+    occurrences: 32,
+    status: '一致',
+    relations: [
+      { label: '构建', target: '知识图谱' },
+      { label: '存储', target: '向量数据库' },
+      { label: '增强', target: 'LLM' },
+    ],
+  },
+  {
+    id: 'document',
+    label: '文档',
+    type: '流程',
+    kind: 'Document',
+    description: '快照对比的来源资产，解析后生成实体、关系与向量内容。',
+    x: 34,
+    y: 24,
+    tone: 'orange',
+    icon: <FolderOpen className="h-5 w-5" aria-hidden="true" />,
+    occurrences: 18,
+    status: '一致',
+    relations: [{ label: '解析', target: '文档解析' }],
+  },
+  {
+    id: 'parser',
+    label: '文档解析',
+    type: '流程',
+    kind: 'Pipeline',
+    description: '从原始文件提取正文结构，为 KG snapshot 生成提供输入。',
+    x: 32,
+    y: 42,
+    tone: 'amber',
+    icon: <Sparkles className="h-5 w-5" aria-hidden="true" />,
+    occurrences: 14,
+    status: '变化',
+    relations: [{ label: '解析', target: '文档' }],
+  },
+  {
+    id: 'vector_db',
+    label: '向量数据库',
+    type: '数据',
+    kind: 'Storage',
+    description: '承载向量索引与语义召回结果，影响快照中的链接密度。',
+    x: 30,
+    y: 58,
+    tone: 'rose',
+    icon: <Database className="h-5 w-5" aria-hidden="true" />,
+    occurrences: 12,
+    status: '一致',
+    relations: [{ label: '存储', target: '语义搜索' }],
+  },
+  {
+    id: 'embedding',
+    label: '向量嵌入',
+    type: '技术',
+    kind: 'Technology',
+    description: '负责文本向量化，决定跨快照语义连接的稳定性。',
+    x: 49,
+    y: 20,
+    tone: 'green',
+    icon: <Box className="h-5 w-5" aria-hidden="true" />,
+    occurrences: 20,
+    status: '一致',
+    relations: [{ label: '使用', target: '语义搜索' }],
+  },
+  {
+    id: 'llm',
+    label: 'LLM',
+    type: '模型',
+    kind: 'Model',
+    description: '参与实体解释、回答生成与关系补全。',
+    x: 54,
+    y: 54,
+    tone: 'purple',
+    icon: <Brain className="h-5 w-5" aria-hidden="true" />,
+    occurrences: 16,
+    status: '变化',
+    relations: [{ label: '生成', target: '回答' }],
+  },
+  {
+    id: 'answer',
+    label: '回答',
+    type: '应用',
+    kind: 'Application',
+    description: '最终面向用户的问答结果，可回流反馈质检。',
+    x: 53,
+    y: 68,
+    tone: 'blue',
+    icon: <MessageSquare className="h-5 w-5" aria-hidden="true" />,
+    occurrences: 28,
+    status: '一致',
+    relations: [{ label: '评估', target: '评估反馈' }],
+  },
+  {
+    id: 'user',
+    label: '用户',
+    type: '人员',
+    kind: 'Person',
+    description: '提交问题并触发问答链路的交互主体。',
+    x: 41,
+    y: 72,
+    tone: 'green',
+    icon: <User className="h-5 w-5" aria-hidden="true" />,
+    occurrences: 9,
+    status: '一致',
+    relations: [{ label: '提问', target: '回答' }],
+  },
+  {
+    id: 'feedback',
+    label: '评估反馈',
+    type: '评价',
+    kind: 'Feedback',
+    description: '来自人工或系统的质量信号，用于定位快照漂移影响。',
+    x: 67,
+    y: 73,
+    tone: 'amber',
+    icon: <Star className="h-5 w-5" aria-hidden="true" />,
+    occurrences: 11,
+    status: '一致',
+    relations: [{ label: '评估', target: '回答' }],
+  },
+  {
+    id: 'entity',
+    label: '实体',
+    type: '概念',
+    kind: 'Entity',
+    description: 'KG 中的基础节点，连接识别、关系抽取与知识表达。',
+    x: 68,
+    y: 24,
+    tone: 'purple',
+    icon: <Network className="h-5 w-5" aria-hidden="true" />,
+    occurrences: 36,
+    status: '一致',
+    relations: [{ label: '包含', target: '知识图谱' }],
+  },
+  {
+    id: 'entity_recognition',
+    label: '实体识别',
+    type: '技术',
+    kind: 'Technology',
+    description: '识别文档中的候选实体，是节点新增/删除的主要来源。',
+    x: 72,
+    y: 56,
+    tone: 'teal',
+    icon: <Sparkles className="h-5 w-5" aria-hidden="true" />,
+    occurrences: 21,
+    status: '新增',
+    relations: [{ label: '依赖', target: '知识图谱' }],
+  },
+]
+
+const SNAPSHOT_STUDIO_LINKS: SnapshotStudioLink[] = [
+  { source: 'document', target: 'parser', label: '解析', strength: 'medium' },
+  { source: 'parser', target: 'semantic_search', label: '策略', strength: 'weak' },
+  { source: 'vector_db', target: 'semantic_search', label: '存储', strength: 'medium' },
+  { source: 'embedding', target: 'semantic_search', label: '使用', strength: 'strong' },
+  { source: 'semantic_search', target: 'concept_knowledge_graph', label: '构建', strength: 'strong' },
+  { source: 'semantic_search', target: 'llm', label: '增强', strength: 'weak' },
+  { source: 'llm', target: 'answer', label: '生成', strength: 'medium' },
+  { source: 'user', target: 'answer', label: '提问', strength: 'medium' },
+  { source: 'answer', target: 'feedback', label: '评估', strength: 'medium' },
+  { source: 'entity', target: 'concept_knowledge_graph', label: '包含', strength: 'medium' },
+  { source: 'concept_knowledge_graph', target: 'entity_recognition', label: '依赖', strength: 'weak' },
+]
 
 function prettyJson(value: unknown): string {
   try {
@@ -343,6 +579,438 @@ function SnapshotInlineStat({
         {value}
       </span>
     </div>
+  )
+}
+
+function snapshotToneClassName(tone: SnapshotStudioNode['tone'], selected: boolean) {
+  const base =
+    tone === 'green'
+      ? 'from-emerald-400 to-teal-500 ring-emerald-200'
+      : tone === 'orange'
+        ? 'from-orange-400 to-rose-500 ring-orange-200'
+        : tone === 'purple'
+          ? 'from-violet-400 to-indigo-500 ring-violet-200'
+          : tone === 'rose'
+            ? 'from-rose-400 to-pink-500 ring-rose-200'
+            : tone === 'amber'
+              ? 'from-amber-400 to-orange-500 ring-amber-200'
+              : tone === 'teal'
+                ? 'from-teal-400 to-cyan-500 ring-teal-200'
+                : 'from-blue-500 to-sky-500 ring-blue-200'
+  return cn(base, selected ? 'ring-4 ring-offset-4 ring-offset-background' : 'ring-1')
+}
+
+function SnapshotStudioToolbar({
+  searchValue,
+  nodeType,
+  relationType,
+  layout,
+  studioView,
+  activeSnapshotView,
+  onSearchChange,
+  onNodeTypeChange,
+  onRelationTypeChange,
+  onLayoutChange,
+  onStudioViewChange,
+  onSnapshotViewChange,
+  onDiffClick,
+  isRunning,
+}: Readonly<{
+  searchValue: string
+  nodeType: string
+  relationType: string
+  layout: string
+  studioView: StudioCanvasView
+  activeSnapshotView: SnapshotView
+  onSearchChange: (value: string) => void
+  onNodeTypeChange: (value: string) => void
+  onRelationTypeChange: (value: string) => void
+  onLayoutChange: (value: string) => void
+  onStudioViewChange: (value: StudioCanvasView) => void
+  onSnapshotViewChange: (value: SnapshotView) => void
+  onDiffClick: () => void
+  isRunning: boolean
+}>) {
+  const nodeTypes = useMemo(() => Array.from(new Set(SNAPSHOT_STUDIO_NODES.map((node) => node.type))), [])
+  const relationTypes = useMemo(() => Array.from(new Set(SNAPSHOT_STUDIO_LINKS.map((link) => link.label))), [])
+  const selectClassName =
+    'h-8 rounded-xl border border-border/70 bg-card px-2 text-[11.5px] font-medium text-foreground shadow-sm outline-none transition-colors hover:bg-muted/30 focus:ring-2 focus:ring-primary/20'
+
+  return (
+    <div className="shrink-0 border-b border-border/70 bg-background/92 px-4 py-3 backdrop-blur">
+      <div className="flex items-center justify-between gap-2 overflow-x-auto">
+        <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-2">
+          <div className="relative min-w-[210px] max-w-[280px] flex-[1_1_230px]">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" aria-hidden="true" />
+            <Input
+              value={searchValue}
+              onChange={(event) => onSearchChange(event.target.value)}
+              placeholder="搜索节点 / 关系"
+              className="h-8 rounded-xl border-border/70 bg-card pl-9 text-[11.5px] shadow-sm"
+            />
+          </div>
+
+          <select aria-label="节点类型" value={nodeType} onChange={(event) => onNodeTypeChange(event.target.value)} className={cn(selectClassName, 'w-[92px]')}>
+            <option value="all">节点类型</option>
+            {nodeTypes.map((type) => (
+              <option key={type} value={type}>
+                {type}
+              </option>
+            ))}
+          </select>
+
+          <select aria-label="关系类型" value={relationType} onChange={(event) => onRelationTypeChange(event.target.value)} className={cn(selectClassName, 'w-[92px]')}>
+            <option value="all">关系类型</option>
+            {relationTypes.map((type) => (
+              <option key={type} value={type}>
+                {type}
+              </option>
+            ))}
+          </select>
+
+          <Button variant="outline" size="sm" className="h-8 gap-1.5 rounded-xl border-border/70 bg-card px-2.5 text-[11.5px] font-medium">
+            <Filter className="h-3.5 w-3.5" aria-hidden="true" />
+            筛选
+          </Button>
+
+          <select aria-label="布局" value={layout} onChange={(event) => onLayoutChange(event.target.value)} className={cn(selectClassName, 'w-[76px]')}>
+            <option value="force">布局</option>
+            <option value="radial">径向</option>
+            <option value="layered">分层</option>
+          </select>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+          <div className="grid h-8 grid-cols-3 gap-1 rounded-xl border border-border/70 bg-card p-1 shadow-sm">
+            {[
+              { value: 'graph', label: '图谱视图', icon: <Network className="h-3.5 w-3.5" aria-hidden="true" /> },
+              { value: 'table', label: '表格视图', icon: <Table2 className="h-3.5 w-3.5" aria-hidden="true" /> },
+              { value: 'stats', label: '统计视图', icon: <BarChart3 className="h-3.5 w-3.5" aria-hidden="true" /> },
+            ].map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                className={cn(
+                  'inline-flex items-center justify-center gap-1 rounded-lg px-2 text-[11.5px] font-semibold transition-colors',
+                  studioView === item.value
+                    ? 'bg-foreground text-background shadow-sm'
+                    : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                )}
+                onClick={() => onStudioViewChange(item.value as StudioCanvasView)}
+              >
+                <span className="hidden 2xl:inline-flex">{item.icon}</span>
+                {item.label}
+              </button>
+            ))}
+          </div>
+
+          <Button
+            className="h-8 gap-1.5 rounded-xl bg-foreground px-3 text-[11.5px] font-semibold text-background hover:bg-foreground/90"
+            onClick={onDiffClick}
+            disabled={isRunning}
+          >
+            <ArrowRightLeft className={cn('h-3.5 w-3.5', isRunning && 'animate-spin')} aria-hidden="true" />
+            Diff 对比
+          </Button>
+
+          <div className="grid h-8 grid-cols-2 gap-1 rounded-xl border border-border/70 bg-card p-1 shadow-sm">
+            <button
+              type="button"
+              className={cn(
+                'inline-flex items-center justify-center gap-1 rounded-lg px-2 text-[11.5px] font-medium transition-colors',
+                activeSnapshotView === 'a' ? 'bg-emerald-50 text-emerald-700' : 'text-muted-foreground hover:bg-muted/50'
+              )}
+              onClick={() => onSnapshotViewChange('a')}
+            >
+              <span className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-full bg-emerald-100 text-[10px] font-bold text-emerald-700">A</span>
+              视图 A
+            </button>
+            <button
+              type="button"
+              className={cn(
+                'inline-flex items-center justify-center gap-1 rounded-lg px-2 text-[11.5px] font-medium transition-colors',
+                activeSnapshotView === 'b' ? 'bg-sky-50 text-sky-700' : 'text-muted-foreground hover:bg-muted/50'
+              )}
+              onClick={() => onSnapshotViewChange('b')}
+            >
+              <span className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-full bg-sky-100 text-[10px] font-bold text-sky-700">B</span>
+              视图 B
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SnapshotGraphCanvas({
+  selectedNodeId,
+  searchValue,
+  nodeType,
+  relationType,
+  nodeCount,
+  relationCount,
+  onSelectNode,
+}: Readonly<{
+  selectedNodeId: string
+  searchValue: string
+  nodeType: string
+  relationType: string
+  nodeCount: number
+  relationCount: number
+  onSelectNode: (nodeId: string) => void
+}>) {
+  const normalizedSearch = searchValue.trim().toLowerCase()
+  const nodeById = useMemo(() => new Map(SNAPSHOT_STUDIO_NODES.map((node) => [node.id, node])), [])
+  const filteredNodeIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const node of SNAPSHOT_STUDIO_NODES) {
+      const matchesType = nodeType === 'all' || node.type === nodeType
+      const matchesSearch =
+        !normalizedSearch ||
+        node.label.toLowerCase().includes(normalizedSearch) ||
+        node.type.toLowerCase().includes(normalizedSearch) ||
+        node.description.toLowerCase().includes(normalizedSearch)
+      if (matchesType && matchesSearch) ids.add(node.id)
+    }
+    return ids
+  }, [nodeType, normalizedSearch])
+  const filteredLinks = useMemo(() => {
+    return SNAPSHOT_STUDIO_LINKS.filter((link) => {
+      const matchesRelation = relationType === 'all' || link.label === relationType
+      const matchesSearch = !normalizedSearch || link.label.toLowerCase().includes(normalizedSearch)
+      return matchesRelation && matchesSearch
+    })
+  }, [normalizedSearch, relationType])
+  const hasFilter = Boolean(normalizedSearch) || nodeType !== 'all' || relationType !== 'all'
+
+  return (
+    <div
+      data-testid="kg-snapshot-graph-canvas"
+      className="relative min-h-0 flex-1 overflow-hidden bg-[radial-gradient(circle_at_center,rgba(37,99,235,0.05),transparent_44%),radial-gradient(circle_at_70%_20%,rgba(14,165,233,0.04),transparent_28%)]"
+    >
+      <div className="absolute inset-0 opacity-[0.42] [background-image:radial-gradient(circle,hsl(var(--muted-foreground)/0.26)_1px,transparent_1px)] [background-size:14px_14px]" aria-hidden />
+
+      <div className="absolute left-7 top-7 z-20 rounded-2xl border border-border/70 bg-card/90 p-3 shadow-lg backdrop-blur">
+        <div className="grid grid-cols-[auto_auto] gap-x-4 gap-y-1 text-[12px]">
+          <span className="text-muted-foreground">节点</span>
+          <span className="font-mono font-semibold tabular-nums text-foreground">{nodeCount}</span>
+          <span className="text-muted-foreground">关系</span>
+          <span className="font-mono font-semibold tabular-nums text-foreground">{relationCount}</span>
+        </div>
+      </div>
+
+      <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <marker id="snapshot-arrow" viewBox="0 0 10 10" refX="7.5" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="rgb(148 163 184)" opacity="0.72" />
+          </marker>
+        </defs>
+        {filteredLinks.map((link) => {
+          const source = nodeById.get(link.source)
+          const target = nodeById.get(link.target)
+          if (!source || !target) return null
+          const sourceVisible = filteredNodeIds.has(source.id)
+          const targetVisible = filteredNodeIds.has(target.id)
+          const opacity = hasFilter && (!sourceVisible || !targetVisible) ? 0.08 : link.strength === 'strong' ? 0.56 : link.strength === 'medium' ? 0.38 : 0.24
+          const midX = (source.x + target.x) / 2
+          const midY = (source.y + target.y) / 2
+          const curve = source.x < target.x ? -6 : 6
+          return (
+            <g key={`${link.source}:${link.target}:${link.label}`}>
+              <path
+                d={`M ${source.x} ${source.y} C ${midX} ${midY + curve}, ${midX} ${midY - curve}, ${target.x} ${target.y}`}
+                fill="none"
+                stroke="rgb(148 163 184)"
+                strokeWidth={link.strength === 'strong' ? 0.36 : 0.24}
+                strokeDasharray={link.strength === 'weak' ? '1.1 1.1' : undefined}
+                opacity={opacity}
+                markerEnd="url(#snapshot-arrow)"
+              />
+              <text
+                x={midX}
+                y={midY - 1.2}
+                textAnchor="middle"
+                className="fill-slate-400 text-[1.55px] font-normal tracking-[0.03em]"
+                opacity={Math.max(opacity * 0.9, 0.16)}
+              >
+                {link.label}
+              </text>
+            </g>
+          )
+        })}
+      </svg>
+
+      {SNAPSHOT_STUDIO_NODES.map((node) => {
+        const selected = selectedNodeId === node.id
+        const matches = filteredNodeIds.has(node.id)
+        const muted = hasFilter && !matches
+        return (
+          <button
+            key={node.id}
+            type="button"
+            className={cn(
+              'absolute z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-2 text-center transition-all duration-200',
+              muted ? 'scale-95 opacity-25' : 'opacity-100 hover:scale-105'
+            )}
+            style={{ left: `${node.x}%`, top: `${node.y}%` }}
+            onClick={() => onSelectNode(node.id)}
+            aria-label={`选择节点 ${node.label}`}
+          >
+            <span className={cn('flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br text-white shadow-xl shadow-slate-900/10', snapshotToneClassName(node.tone, selected))}>
+              {node.icon}
+            </span>
+            <span className="rounded-full bg-background/78 px-2 py-0.5 text-[12px] font-semibold text-foreground shadow-sm backdrop-blur">
+              {node.label}
+            </span>
+          </button>
+        )
+      })}
+
+      <div className="absolute bottom-7 left-7 z-20 h-[144px] w-[196px] rounded-2xl border border-border/70 bg-card/88 p-4 shadow-lg backdrop-blur">
+        <div className="absolute inset-4 rounded-md border border-blue-300 bg-blue-50/50" aria-hidden />
+        <div className="absolute left-9 top-9 h-4 w-5 rounded bg-blue-200/70" aria-hidden />
+        <div className="absolute left-14 top-10 h-4 w-6 rounded bg-amber-200/70" aria-hidden />
+        <div className="absolute right-12 top-8 h-4 w-5 rounded bg-emerald-200/70" aria-hidden />
+        <div className="absolute bottom-5 left-7 h-3 w-7 rounded bg-violet-200/70" aria-hidden />
+        <div className="absolute bottom-5 left-16 h-3 w-4 rounded bg-pink-200/70" aria-hidden />
+      </div>
+
+      <div className="absolute right-6 top-[52%] z-20 flex -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/90 shadow-lg backdrop-blur">
+        {[
+          { label: '拖动画布', icon: <Hand className="h-4 w-4" aria-hidden="true" /> },
+          { label: '框选', icon: <Maximize2 className="h-4 w-4" aria-hidden="true" /> },
+          { label: '放大', icon: <ZoomIn className="h-4 w-4" aria-hidden="true" /> },
+          { label: '缩小', icon: <ZoomOut className="h-4 w-4" aria-hidden="true" /> },
+          { label: '重置', icon: <SlidersHorizontal className="h-4 w-4" aria-hidden="true" /> },
+        ].map((item) => (
+          <button key={item.label} type="button" title={item.label} className="flex h-11 w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground">
+            {item.icon}
+          </button>
+        ))}
+      </div>
+
+      <button
+        type="button"
+        title="导出当前视图"
+        className="absolute bottom-7 right-6 z-20 flex h-11 w-11 items-center justify-center rounded-2xl border border-border/70 bg-card/90 text-muted-foreground shadow-lg backdrop-blur transition-colors hover:text-foreground"
+      >
+        <Download className="h-4 w-4" aria-hidden="true" />
+      </button>
+
+      <div className="absolute bottom-7 left-1/2 z-20 flex -translate-x-1/2 items-center gap-5 rounded-2xl border border-border/70 bg-card/92 px-5 py-2.5 text-[12px] text-muted-foreground shadow-lg backdrop-blur">
+        <span className="font-medium text-foreground">图例:</span>
+        {[
+          ['概念', 'bg-blue-500'],
+          ['技术', 'bg-emerald-500'],
+          ['数据', 'bg-rose-500'],
+          ['流程', 'bg-orange-500'],
+          ['人员', 'bg-teal-500'],
+          ['评价', 'bg-amber-500'],
+        ].map(([label, color]) => (
+          <span key={label} className="inline-flex items-center gap-1.5">
+            <span className={cn('h-2 w-2 rounded-full', color)} aria-hidden />
+            {label}
+          </span>
+        ))}
+        <span className="ml-4 inline-flex items-center gap-2">
+          关系强度:
+          <span className="h-px w-10 bg-slate-300" aria-hidden />
+          弱
+          <span className="h-0.5 w-14 bg-slate-500" aria-hidden />
+          强
+        </span>
+      </div>
+    </div>
+  )
+}
+
+function SnapshotNodeDetailsRail({
+  selectedNode,
+  diffOverview,
+}: Readonly<{
+  selectedNode: SnapshotStudioNode
+  diffOverview: Array<{ label: string; value: number; tone: string }>
+}>) {
+  return (
+    <aside className="hidden min-h-0 w-[332px] shrink-0 flex-col border-l border-border/70 bg-background xl:flex">
+      <div className="flex shrink-0 items-center justify-between border-b border-border/70 px-4 py-4">
+        <div className="text-[14px] font-semibold text-foreground">节点详情</div>
+        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-muted-foreground" title="收起详情">
+          <X className="h-4 w-4" aria-hidden="true" />
+        </Button>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div className="flex items-start gap-3">
+          <div className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br text-white shadow-lg', snapshotToneClassName(selectedNode.tone, false))}>
+            {selectedNode.icon}
+          </div>
+          <div className="min-w-0">
+            <div className="truncate text-[16px] font-semibold text-foreground">{selectedNode.label}</div>
+            <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
+              <span>ID: {selectedNode.id}</span>
+              <Badge variant="soft" className="text-[10px]">
+                {selectedNode.type}
+              </Badge>
+            </div>
+          </div>
+        </div>
+
+        <section className="mt-5 rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
+          <div className="text-[12px] font-semibold text-foreground">属性</div>
+          <div className="mt-3 space-y-3 text-[12px]">
+            {[
+              ['名称', selectedNode.label],
+              ['类型', selectedNode.type],
+              ['描述', selectedNode.description],
+              ['出现次数', String(selectedNode.occurrences)],
+              ['A/B 状态', selectedNode.status],
+            ].map(([label, value]) => (
+              <div key={label} className="grid grid-cols-[64px_minmax(0,1fr)] gap-3">
+                <span className="text-muted-foreground">{label}</span>
+                <span className="min-w-0 text-foreground">{value}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="mt-4 rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div className="text-[12px] font-semibold text-foreground">关联关系 ({selectedNode.relations.length})</div>
+          </div>
+          <div className="mt-3 divide-y divide-border/60">
+            {selectedNode.relations.map((relation) => (
+              <button key={`${relation.label}:${relation.target}`} type="button" className="flex w-full items-center justify-between gap-3 py-2 text-left text-[12px] transition-colors hover:text-primary">
+                <span className="inline-flex items-center gap-2 text-muted-foreground">
+                  <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+                  {relation.label}
+                </span>
+                <span className="truncate font-medium text-foreground">{relation.target}</span>
+              </button>
+            ))}
+          </div>
+          <Button variant="link" className="mt-2 h-auto p-0 text-[12px] font-semibold">
+            查看全部 →
+          </Button>
+        </section>
+
+        <section className="mt-4 rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
+          <div className="text-[12px] font-semibold text-foreground">Diff 概览</div>
+          <div className="mt-3 space-y-2">
+            {diffOverview.map((item) => (
+              <div key={item.label} className="flex items-center justify-between gap-3 text-[12px]">
+                <span className="inline-flex items-center gap-2 text-muted-foreground">
+                  <span className={cn('h-2.5 w-2.5 rounded-full', item.tone)} aria-hidden />
+                  {item.label}
+                </span>
+                <span className="font-mono font-semibold tabular-nums text-foreground">{item.value}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+    </aside>
   )
 }
 
@@ -1012,6 +1680,12 @@ export function KGSnapshotsPage() {
   const [documentIdsRaw, setDocumentIdsRaw] = useState('')
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('studio')
   const [activeView, setActiveView] = useState<SnapshotView>('diff')
+  const [studioCanvasView, setStudioCanvasView] = useState<StudioCanvasView>('graph')
+  const [studioSearch, setStudioSearch] = useState('')
+  const [studioNodeType, setStudioNodeType] = useState('all')
+  const [studioRelationType, setStudioRelationType] = useState('all')
+  const [studioLayout, setStudioLayout] = useState('force')
+  const [selectedStudioNodeId, setSelectedStudioNodeId] = useState('concept_knowledge_graph')
   const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false)
   const [includeZeroDeltas, setIncludeZeroDeltas] = useState(true)
   const [compactAuditRows, setCompactAuditRows] = useState(true)
@@ -1172,6 +1846,31 @@ export function KGSnapshotsPage() {
   const auditDriftRows = useMemo(() => {
     return [...deferredEntityTypesDelta].sort((a, b) => Math.abs(Number(b.delta ?? 0)) - Math.abs(Number(a.delta ?? 0)))
   }, [deferredEntityTypesDelta])
+  const selectedStudioNode = useMemo(() => {
+    return SNAPSHOT_STUDIO_NODES.find((node) => node.id === selectedStudioNodeId) ?? SNAPSHOT_STUDIO_NODES[0]
+  }, [selectedStudioNodeId])
+  const studioGraphStats = useMemo(() => {
+    const nodes = Number(snapB?.entities ?? snapA?.entities ?? 128)
+    const relations = Number(snapB?.relations ?? snapA?.relations ?? 256)
+    return {
+      nodes: Number.isFinite(nodes) && nodes > 0 ? nodes : 128,
+      relations: Number.isFinite(relations) && relations > 0 ? relations : 256,
+    }
+  }, [snapA, snapB])
+  const diffOverview = useMemo(() => {
+    const nodeAdded = exactDiffCount(diff?.node_diff, 'added_count')
+    const nodeRemoved = exactDiffCount(diff?.node_diff, 'removed_count')
+    const nodeChanged = exactDiffCount(diff?.node_diff, 'changed_count')
+    const edgeAdded = exactDiffCount(diff?.edge_diff, 'added_count')
+    const edgeRemoved = exactDiffCount(diff?.edge_diff, 'removed_count')
+    return [
+      { label: '节点变化', value: nodeAdded + nodeRemoved + nodeChanged, tone: 'bg-slate-400' },
+      { label: '属性变化', value: nodeChanged, tone: 'bg-emerald-400' },
+      { label: '新增关系', value: edgeAdded, tone: 'bg-rose-400' },
+      { label: '删除关系', value: edgeRemoved, tone: 'bg-red-400' },
+      { label: '重要变化', value: driftScore >= 0.35 ? 1 : 0, tone: 'bg-amber-400' },
+    ]
+  }, [diff, driftScore])
   const formInputClassName = 'h-10 rounded-lg border-border/70 bg-card font-mono text-xs shadow-none'
   const formTextareaClassName = 'min-h-[108px] resize-none rounded-lg border-border/70 bg-card font-mono text-xs shadow-none'
 
@@ -1184,45 +1883,8 @@ export function KGSnapshotsPage() {
               <SectionHeading
                 eyebrow="Graph"
                 title="KG Snapshots"
-                description="对比 pipeline hash 生成的轻量 KG 快照，并在 Audit 面板快速判断波动强度。"
+                description="对比流水线哈希生成的轻量 KG 快照，并在 Audit 面板快速判断波动强度。"
                 icon={<GitCompare className="h-5 w-5" aria-hidden="true" />}
-                extra={
-                  <div className="flex items-center gap-2">
-                    {hasHashA && hasHashB ? (
-                      <SnapshotInlineStat
-                        icon={<CheckCircle2 className="h-3.5 w-3.5" />}
-                        label="A/B"
-                        value={hashPairStatus}
-                        valueTitle={hashPairTitle}
-                        tone="positive"
-                      />
-                    ) : hasHashA || hasHashB ? (
-                      <SnapshotInlineStat
-                        icon={<AlertCircle className="h-3.5 w-3.5" />}
-                        label="A/B"
-                        value={hashPairStatus}
-                        valueTitle={hashPairTitle}
-                        tone="warning"
-                      />
-                    ) : (
-                      <SnapshotInlineStat
-                        icon={<CircleDashed className="h-3.5 w-3.5" />}
-                        label="A/B"
-                        value={hashPairStatus}
-                        valueTitle={hashPairTitle}
-                        tone="muted"
-                      />
-                    )}
-                    {typeof latencyMs === 'number' ? (
-                      <SnapshotInlineStat
-                        icon={<Sparkles className="h-3.5 w-3.5" />}
-                        label="Latency"
-                        value={`${latencyMs} ms`}
-                        tone="neutral"
-                      />
-                    ) : null}
-                  </div>
-                }
               />
 
               <div className="flex shrink-0 items-center gap-2">
@@ -1230,7 +1892,7 @@ export function KGSnapshotsPage() {
                   variant="outline"
                   size="sm"
                   className="h-9 gap-2 rounded-lg border-border/70 bg-card text-xs font-medium"
-                  title={hashAValue && hashBValue ? '重新导出并刷新 A/B 对比结果' : '先填写 Hash A / Hash B'}
+                  title={hashAValue && hashBValue ? '重新导出并刷新 A/B 对比结果' : '先填写快照 A / 快照 B'}
                   disabled={isRunning || !hashAValue || !hashBValue}
                   onClick={() => detachPromise(runCompare())}
                 >
@@ -1251,6 +1913,7 @@ export function KGSnapshotsPage() {
                     startTransition(() => {
                       setWorkspaceTab('studio')
                       setActiveView('diff')
+                      setStudioCanvasView('graph')
                     })
                     toast.message('已清空')
                   }}
@@ -1346,7 +2009,7 @@ export function KGSnapshotsPage() {
                   {typeof latencyMs === 'number' ? (
                     <SnapshotInlineStat
                       icon={<Sparkles className="h-3.5 w-3.5" />}
-                      label="Latency"
+                        label="耗时"
                       value={`${latencyMs} ms`}
                       tone="neutral"
                     />
@@ -1356,16 +2019,16 @@ export function KGSnapshotsPage() {
 
               <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
                 <div className="space-y-3">
-                  <WorkspaceSection icon={<Hash className="h-3.5 w-3.5" />} label="对比参数" hint="pipeline hash">
+                  <WorkspaceSection icon={<Hash className="h-3.5 w-3.5" />} label="对比参数" hint="流水线哈希">
                     <div className="space-y-3">
                       <div className="space-y-1.5">
                         <Label htmlFor="pipeline-hash-a" className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                           <span className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-emerald-50 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200/60">A</span>
-                          Hash A
+                          快照 A
                         </Label>
                         <Input
                           id="pipeline-hash-a"
-                          placeholder="ph_a..."
+                          placeholder="输入 A 快照哈希"
                           value={pipelineHashA}
                           onChange={(e) => setPipelineHashA(e.target.value)}
                           className={formInputClassName}
@@ -1375,11 +2038,11 @@ export function KGSnapshotsPage() {
                       <div className="space-y-1.5">
                         <Label htmlFor="pipeline-hash-b" className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                           <span className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-sky-50 text-[10px] font-bold text-sky-700 ring-1 ring-sky-200/60">B</span>
-                          Hash B
+                          快照 B
                         </Label>
                         <Input
                           id="pipeline-hash-b"
-                          placeholder="ph_b..."
+                          placeholder="输入 B 快照哈希"
                           value={pipelineHashB}
                           onChange={(e) => setPipelineHashB(e.target.value)}
                           className={formInputClassName}
@@ -1388,14 +2051,14 @@ export function KGSnapshotsPage() {
                     </div>
                   </WorkspaceSection>
 
-                  <WorkspaceSection icon={<Layers className="h-3.5 w-3.5" />} label="作用范围" hint="document_ids">
+                  <WorkspaceSection icon={<Layers className="h-3.5 w-3.5" />} label="作用范围" hint="文档范围">
                     <div className="space-y-1.5">
                       <Label htmlFor="document-ids" className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                        document_ids
+                        文档范围
                       </Label>
                       <Textarea
                         id="document-ids"
-                        placeholder="按逗号或换行填写。留空表示使用默认可访问文档集合。"
+                        placeholder="按逗号或换行填写文档编号；留空表示使用默认可访问文档集合。"
                         value={documentIdsRaw}
                         onChange={(e) => setDocumentIdsRaw(e.target.value)}
                         rows={5}
@@ -1406,14 +2069,14 @@ export function KGSnapshotsPage() {
                     <div className="flex flex-wrap items-center gap-2">
                       <SnapshotInlineStat
                         icon={<Database className="h-3.5 w-3.5" />}
-                        label="Docs"
-                        value={documentIds.length || 'All'}
+                        label="文档"
+                        value={documentIds.length || '全部'}
                         tone={documentIds.length ? 'neutral' : 'muted'}
                       />
                       <SnapshotInlineStat
                         icon={<ShieldCheck className="h-3.5 w-3.5" />}
-                        label="Mode"
-                        value="PII-safe"
+                        label="模式"
+                        value="脱敏"
                         tone="muted"
                       />
                     </div>
@@ -1473,8 +2136,61 @@ export function KGSnapshotsPage() {
             </div>
           </aside>
 
+          <div className="flex min-w-0 flex-1 bg-card">
           <section className="min-w-0 flex-1 bg-card">
             {workspaceTab === 'studio' ? (
+              <div className="flex h-full min-h-0 flex-col">
+                <SnapshotStudioToolbar
+                  searchValue={studioSearch}
+                  nodeType={studioNodeType}
+                  relationType={studioRelationType}
+                  layout={studioLayout}
+                  studioView={studioCanvasView}
+                  activeSnapshotView={activeView}
+                  onSearchChange={setStudioSearch}
+                  onNodeTypeChange={setStudioNodeType}
+                  onRelationTypeChange={setStudioRelationType}
+                  onLayoutChange={setStudioLayout}
+                  onStudioViewChange={(value) => {
+                    startTransition(() => setStudioCanvasView(value))
+                  }}
+                  onSnapshotViewChange={(value) => {
+                    startTransition(() => {
+                      setActiveView(value)
+                      setStudioCanvasView('table')
+                    })
+                  }}
+                  onDiffClick={() => {
+                    startTransition(() => {
+                      setActiveView('diff')
+                      setStudioCanvasView('table')
+                    })
+                    detachPromise(runCompare())
+                  }}
+                  isRunning={isRunning}
+                />
+                {studioCanvasView === 'graph' ? (
+                  <SnapshotGraphCanvas
+                    selectedNodeId={selectedStudioNode.id}
+                    searchValue={studioSearch}
+                    nodeType={studioNodeType}
+                    relationType={studioRelationType}
+                    nodeCount={studioGraphStats.nodes}
+                    relationCount={studioGraphStats.relations}
+                    onSelectNode={setSelectedStudioNodeId}
+                  />
+                ) : studioCanvasView === 'stats' ? (
+                  <SnapshotAuditPanel
+                    deltaRows={deltaRows}
+                    typeDriftRows={auditDriftRows}
+                    severity={auditSeverity}
+                    driftScore={driftScore}
+                    includeZeroDeltas={includeZeroDeltas}
+                    compactRows={compactAuditRows}
+                    onIncludeZeroDeltasChange={setIncludeZeroDeltas}
+                    onCompactRowsChange={setCompactAuditRows}
+                  />
+                ) : (
               <Tabs
                 value={activeView}
                 onValueChange={(value) => {
@@ -1482,13 +2198,13 @@ export function KGSnapshotsPage() {
                 }}
                 className="flex h-full min-h-0 flex-col"
               >
-                <div className="shrink-0 border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.15))]">
+                <div className="hidden">
                   <div className="px-4 py-3">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div className="min-w-0">
                         <div className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                           <FileJson className="h-3.5 w-3.5 text-primary/70" aria-hidden="true" />
-                          Snapshot Studio
+                          快照工作台
                         </div>
                         <div className="mt-0.5 truncate text-[15px] font-semibold text-foreground">
                           {tabLabelForView(activeView)}
@@ -1547,8 +2263,8 @@ export function KGSnapshotsPage() {
                   <SnapshotDiffView
                     titleA={`Snapshot A · ${hashATitle}`}
                     titleB={`Snapshot B · ${hashBTitle}`}
-                    subtitleA={documentIds.length ? `${documentIds.length} 个 document_ids` : '默认可访问范围'}
-                    subtitleB={documentIds.length ? `${documentIds.length} 个 document_ids` : '默认可访问范围'}
+                    subtitleA={documentIds.length ? `${documentIds.length} 个文档范围` : '默认可访问范围'}
+                    subtitleB={documentIds.length ? `${documentIds.length} 个文档范围` : '默认可访问范围'}
                     leftCode={snapAJson}
                     rightCode={snapBJson}
                     diff={diff}
@@ -1557,7 +2273,7 @@ export function KGSnapshotsPage() {
                     emptyState={
                       <DiffEmptyState
                         title="还没有对比结果"
-                        description="填写左侧的 Hash A / Hash B，可以选择 document_ids 圈定范围，然后点击「开始对比」生成 side-by-side diff 与节点/边精确变更。"
+                        description="填写左侧的快照 A / 快照 B，可以选择文档范围，然后点击「开始对比」生成左右差异与节点/边精确变更。"
                         hint={hasHashA && hasHashB ? '已就绪：直接点击「开始对比」' : '提示：A / B Hash 二者皆需填写'}
                       />
                     }
@@ -1579,8 +2295,8 @@ export function KGSnapshotsPage() {
                     emptyState={
                       <DiffEmptyState
                         title="A 视图为空"
-                        description="先在左侧填写 Hash A，然后点击「导出 A」即可在此查看 bounded 快照 JSON。"
-                        hint={hasHashA ? '已填写 Hash A，可点击「导出 A」' : '请先填写 Hash A'}
+                        description="先在左侧填写快照 A，然后点击「导出 A」即可在此查看明细快照 JSON。"
+                        hint={hasHashA ? '已填写快照 A，可点击「导出 A」' : '请先填写快照 A'}
                       />
                     }
                     onCopy={() => detachPromise(copyToClipboard(snapAJson, 'snapshot A JSON'))}
@@ -1601,8 +2317,8 @@ export function KGSnapshotsPage() {
                     emptyState={
                       <DiffEmptyState
                         title="B 视图为空"
-                        description="先在左侧填写 Hash B，然后点击「导出 B」即可在此查看 bounded 快照 JSON。"
-                        hint={hasHashB ? '已填写 Hash B，可点击「导出 B」' : '请先填写 Hash B'}
+                        description="先在左侧填写快照 B，然后点击「导出 B」即可在此查看明细快照 JSON。"
+                        hint={hasHashB ? '已填写快照 B，可点击「导出 B」' : '请先填写快照 B'}
                       />
                     }
                     onCopy={() => detachPromise(copyToClipboard(snapBJson, 'snapshot B JSON'))}
@@ -1613,6 +2329,8 @@ export function KGSnapshotsPage() {
                   />
                 </TabsContent>
               </Tabs>
+                )}
+              </div>
             ) : (
               <SnapshotAuditPanel
                 deltaRows={deltaRows}
@@ -1626,6 +2344,8 @@ export function KGSnapshotsPage() {
               />
             )}
           </section>
+          <SnapshotNodeDetailsRail selectedNode={selectedStudioNode} diffOverview={diffOverview} />
+          </div>
         </div>
       </div>
     </AppFrame>

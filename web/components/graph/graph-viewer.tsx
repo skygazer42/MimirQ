@@ -294,6 +294,9 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const [isCanvasPanning, setIsCanvasPanning] = useState(false)
   const [viewportLod, setViewportLod] = useState<GraphViewportLod | null>(null)
+  const viewportLodFrameRef = useRef<number | null>(null)
+  const viewportLodTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingViewportLodRef = useRef<GraphViewportLod | null>(null)
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
   const canvasColors = useMemo(() => {
@@ -397,10 +400,37 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
   }, [highlightedNodeIds, selectedNodeId])
   const viewportLodTier = viewportLod?.tier ?? 'detail'
 
+  const flushViewportLodUpdate = useCallback(() => {
+    viewportLodFrameRef.current = null
+    viewportLodTimeoutRef.current = null
+    const pending = pendingViewportLodRef.current
+    setViewportLod((current) => (areViewportLodsEqual(current, pending) ? current : pending))
+  }, [])
+
+  const scheduleViewportLodUpdate = useCallback((next: GraphViewportLod | null) => {
+    pendingViewportLodRef.current = next
+
+    if (viewportLodFrameRef.current !== null || viewportLodTimeoutRef.current !== null) return
+
+    if (
+      typeof globalThis.window !== 'undefined' &&
+      typeof globalThis.window.requestAnimationFrame === 'function'
+    ) {
+      viewportLodFrameRef.current = globalThis.window.requestAnimationFrame(() => {
+        flushViewportLodUpdate()
+      })
+      return
+    }
+
+    viewportLodTimeoutRef.current = setTimeout(() => {
+      flushViewportLodUpdate()
+    }, 0)
+  }, [flushViewportLodUpdate])
+
   const updateViewportLod = useCallback((transform?: { k?: number }) => {
     const graph = fgRef.current
     if (!isLargeGraph || !graph || width <= 0 || height <= 0) {
-      setViewportLod((current) => (current == null ? current : null))
+      scheduleViewportLodUpdate(null)
       return
     }
 
@@ -426,8 +456,8 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
       selectedNodeIds: viewportPinnedNodeIds,
     })
 
-    setViewportLod((current) => (areViewportLodsEqual(current, next) ? current : next))
-  }, [height, isLargeGraph, sanitizedData.links, sanitizedData.nodes, viewportPinnedNodeIds, width])
+    scheduleViewportLodUpdate(next)
+  }, [height, isLargeGraph, sanitizedData.links, sanitizedData.nodes, scheduleViewportLodUpdate, viewportPinnedNodeIds, width])
 
   // Debug: Log dimensions
   useEffect(() => {
@@ -439,6 +469,19 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
 
   useEffect(() => {
     setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (viewportLodFrameRef.current !== null && typeof globalThis.window !== 'undefined') {
+        globalThis.window.cancelAnimationFrame(viewportLodFrameRef.current)
+        viewportLodFrameRef.current = null
+      }
+      if (viewportLodTimeoutRef.current !== null) {
+        clearTimeout(viewportLodTimeoutRef.current)
+        viewportLodTimeoutRef.current = null
+      }
+    }
   }, [])
 
   useEffect(() => {

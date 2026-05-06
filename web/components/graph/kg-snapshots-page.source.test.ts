@@ -11,8 +11,8 @@ describe('KG snapshots page layout', () => {
     expect(src).toContain('视图 A')
     expect(src).toContain('视图 B')
     expect(src).toContain('buildSideBySideDiffRows')
-    expect(src).toContain('Snapshot Studio')
-    expect(src).toContain('Hash A')
+    expect(src).toContain('快照工作台')
+    expect(src).toContain('快照 A')
     expect(src).not.toContain('左右分屏对比')
   })
 
@@ -20,10 +20,38 @@ describe('KG snapshots page layout', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'kg-snapshots-page.tsx'), 'utf8')
 
     expect(src).toContain('对比参数')
+    expect(src).toContain('流水线哈希')
+    expect(src).toContain('快照 B')
     expect(src).toContain('作用范围')
+    expect(src).toContain('文档范围')
+    expect(src).toContain('label="文档"')
+    expect(src).toContain('label="模式"')
     expect(src).toContain('导出 A')
     expect(src).toContain('导出 B')
     expect(src).toContain('开始对比')
+  })
+
+  it('keeps graph relation labels visually close to the design reference', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'kg-snapshots-page.tsx'), 'utf8')
+
+    expect(src).toContain('className="fill-slate-400 text-[1.55px] font-normal tracking-[0.03em]"')
+    expect(src).not.toContain('text-[2.2px] font-medium')
+  })
+
+  it('renders the graph-studio canvas, toolbar, and node detail rail from the reference design', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'kg-snapshots-page.tsx'), 'utf8')
+
+    expect(src).toContain('SNAPSHOT_STUDIO_NODES')
+    expect(src).toContain('SNAPSHOT_STUDIO_LINKS')
+    expect(src).toContain('SnapshotGraphCanvas')
+    expect(src).toContain('data-testid="kg-snapshot-graph-canvas"')
+    expect(src).toContain('搜索节点 / 关系')
+    expect(src).toContain('图谱视图')
+    expect(src).toContain('表格视图')
+    expect(src).toContain('统计视图')
+    expect(src).toContain('节点详情')
+    expect(src).toContain('关联关系 ({selectedNode.relations.length})')
+    expect(src).toContain('Diff 概览')
   })
 
   it('surfaces exact node and edge drift instead of only JSON line diff', () => {
