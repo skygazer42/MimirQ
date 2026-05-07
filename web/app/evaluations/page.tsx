@@ -299,6 +299,7 @@ function DashboardStatCard({
   helper,
   tone = 'blue',
   sparkline = false,
+  valueClassName,
 }: Readonly<{
   icon: LucideIcon
   label: string
@@ -306,6 +307,7 @@ function DashboardStatCard({
   helper?: ReactNode
   tone?: 'blue' | 'green' | 'red' | 'slate'
   sparkline?: boolean
+  valueClassName?: string
 }>) {
   const toneClass = {
     blue: 'bg-blue-50 text-blue-600 ring-blue-100',
@@ -328,7 +330,7 @@ function DashboardStatCard({
         ) : null}
         <div className="min-w-0">
           <div className="text-[12px] font-medium text-slate-600">{label}</div>
-          <div className="mt-0.5 whitespace-nowrap text-[16px] font-semibold leading-tight tracking-tight text-slate-950">{value}</div>
+          <div className={cn('mt-0.5 whitespace-nowrap text-[16px] font-semibold leading-tight tracking-tight text-slate-950', valueClassName)}>{value}</div>
           {helper ? <div className="mt-1 text-[11px] text-slate-500">{helper}</div> : null}
         </div>
       </div>
@@ -756,7 +758,7 @@ function EvaluationsPageContent() {
           <header className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div className="min-w-0">
               <div className="text-[12px] font-medium text-slate-500">评测中心 · 统一工作台</div>
-              <h1 className="mt-1 text-[24px] font-semibold tracking-tight text-slate-950">{activeTabMeta.title}</h1>
+              <h1 className="mt-1 text-[22px] font-semibold tracking-tight text-slate-950">{activeTabMeta.title}</h1>
               <p className="mt-1 text-[13px] leading-5 text-slate-500">选择评测指标及参数，在同一工作区完成参数配置、运行快捷与结果评估。</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -790,7 +792,13 @@ function EvaluationsPageContent() {
           </nav>
 
           <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-8">
-            <DashboardStatCard icon={MessageSquare} label="模式" value={activeTab === 'conversation' ? '实时会话' : activeTabMeta.label} helper="当前模式" />
+            <DashboardStatCard
+              icon={MessageSquare}
+              label="模式"
+              value={activeTab === 'conversation' ? '实时会话' : activeTabMeta.label}
+              helper="当前模式"
+              valueClassName="text-[15px] font-medium tracking-normal"
+            />
             <DashboardStatCard icon={Database} label="会话数" value={conversations.length} helper="近 7 天" tone="slate" />
             <DashboardStatCard icon={ListChecks} label="运行数" value={runs.length} helper="近 7 天" tone="slate" />
             <DashboardStatCard icon={CheckCircle2} label="完成" value={runStatusCounts.completed} helper={formatPercentValue(completedRate)} tone="green" />
