@@ -74,13 +74,14 @@ export const kgApi = {
     return data
   },
 
-  async getStats(params?: { document_ids?: string[]; pipeline_hash?: string }): Promise<KGStatsResponse> {
+  async getStats(params?: { document_ids?: string[]; dataset_id?: string; pipeline_hash?: string }): Promise<KGStatsResponse> {
     const { data } = await apiClient.get('/kg/stats', { params })
     return data
   },
 
   async getGraph(params?: {
     document_ids?: string[]
+    dataset_id?: string
     pipeline_hash?: string
     max_events?: number
     max_entities?: number
@@ -97,6 +98,7 @@ export const kgApi = {
   async expandGraph(params: {
     node_id: string
     document_ids?: string[]
+    dataset_id?: string
     pipeline_hash?: string
     max_events?: number
     max_entities?: number
@@ -112,6 +114,7 @@ export const kgApi = {
 
   async exportGraphML(params?: {
     document_ids?: string[]
+    dataset_id?: string
     pipeline_hash?: string
     max_events?: number
     max_entities?: number
@@ -158,7 +161,12 @@ export const kgApi = {
     return data
   },
 
-  async exportSnapshot(params: { pipeline_hash: string; document_ids?: string[]; include_details?: boolean }): Promise<any> {
+  async exportSnapshot(params: {
+    pipeline_hash: string
+    document_ids?: string[]
+    dataset_id?: string
+    include_details?: boolean
+  }): Promise<any> {
     const { data } = await apiClient.get('/kg/snapshots/export', { params })
     return data
   },
@@ -172,6 +180,7 @@ export const kgApi = {
     pipeline_hash_a: string
     pipeline_hash_b: string
     document_ids?: string[]
+    dataset_id?: string
   }): Promise<any> {
     const { data } = await apiClient.get('/kg/snapshots/compare', { params })
     return data
@@ -179,7 +188,7 @@ export const kgApi = {
 
   async getEvent(
     eventId: string,
-    params?: { document_ids?: string[]; pipeline_hash?: string }
+    params?: { document_ids?: string[]; dataset_id?: string; pipeline_hash?: string }
   ): Promise<KGEventDetailResponse> {
     const { data } = await apiClient.get(`/kg/events/${eventId}`, { params })
     return data
@@ -187,7 +196,13 @@ export const kgApi = {
 
   async getEntity(
     entityId: string,
-    params?: { document_ids?: string[]; pipeline_hash?: string; max_events?: number; max_neighbors?: number }
+    params?: {
+      document_ids?: string[]
+      dataset_id?: string
+      pipeline_hash?: string
+      max_events?: number
+      max_neighbors?: number
+    }
   ): Promise<KGEntityDetailResponse> {
     const { data } = await apiClient.get(`/kg/entities/${entityId}`, { params })
     return data

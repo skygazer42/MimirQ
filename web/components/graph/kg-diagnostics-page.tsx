@@ -1,27 +1,88 @@
 'use client'
 
-import { Activity, Download, GitCompare, PlayCircle, RefreshCcw } from 'lucide-react'
-import { useMemo, useState, type ReactNode } from 'react'
+import {
+  Activity,
+  ChevronRight,
+  ClipboardList,
+  CircleAlert,
+  Download,
+  FileStack,
+  History,
+  Info,
+  Minus,
+  PlayCircle,
+  Plus,
+  RefreshCcw,
+  Sparkles,
+  Target,
+  TrendingUp,
+  Waypoints,
+} from 'lucide-react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { formatApiError } from '@/lib/api-errors'
-import { evaluationApi, type KGHardcaseMode, type KGSearchDiagnosticsResponse, type KGSearchDiagnosticsRunDetail } from '@/lib/api'
+import { datasetApi, evaluationApi, type KGHardcaseMode, type KGSearchDiagnosticsResponse, type KGSearchDiagnosticsRunDetail } from '@/lib/api'
 import { coerceOneOf } from '@/lib/one-of'
 import { sanitizeFilename } from '@/lib/sanitize'
 import { cn } from '@/lib/utils'
 
 const KG_EXTRACT_MODE_VALUES = ['auto', 'on', 'off'] as const
+const DIAGNOSTICS_SECTION_TITLE_CLASS = 'text-[14px] font-medium leading-5 tracking-normal text-foreground/85'
+const DIAGNOSTICS_SECTION_DESCRIPTION_CLASS = 'text-[12px] font-normal leading-5 text-muted-foreground'
+const DIAGNOSTICS_FIELD_LABEL_CLASS = 'text-[12px] font-normal leading-5 tracking-normal text-muted-foreground'
+const DIAGNOSTICS_FIELD_VALUE_CLASS = 'text-[14px] font-normal text-foreground/90'
+const DIAGNOSTICS_METRIC_LABELS: Record<string, string> = {
+  baseline_hit_rate: '基线命中率',
+  baseline_mrr: 'Baseline MRR',
+  baseline_recall: 'Baseline Recall',
+  baseline_ndcg: 'Baseline NDCG@K',
+  baseline_map: 'Baseline MAP@K',
+  hardcase_hit_rate: '难例命中率',
+  hardcase_mrr: 'Hardcase MRR',
+  hardcase_recall: 'Hardcase Recall',
+  hardcase_ndcg: 'Hardcase NDCG@K',
+  hardcase_map: 'Hardcase MAP@K',
+  hardcases_generated: '生成难例数',
+  documents: '文档数',
+  events: '事件数',
+  entities: '实体数',
+  relations: '关系数',
+  event_entity_links: '事件实体关联数',
+  avg_relations_per_entity: '平均每实体关系数',
+  isolated_entities: '孤立实体数',
+  isolated_entity_ratio: '孤立实体占比',
+  nodes: '节点数',
+  edges: '边数',
+  components: '连通分量数',
+  largest_component_ratio: '最大连通分量占比',
+  relations_total: '关系总数',
+  low_confidence_threshold: '低置信阈值',
+  low_confidence_relations: '低置信关系数',
+  missing_references_relations: '缺少引用的关系数',
+  missing_chunk_relations: '缺少切片的关系数',
+  relation_edges_truncated: '关系边已截断',
+  relation_edges_limit: '关系边上限',
+  dataset_id: '数据集',
+  documents_sampled: '抽样文档数',
+  documents_allowed: '有权限文档数',
+}
 
 type DiagnosticsView = 'run' | 'quality' | 'compare'
+type DiagnosticsDatasetOption = {
+  id?: string
+  name?: string | null
+}
 
 function prettyJson(value: unknown): string {
   try {
@@ -54,6 +115,10 @@ function formatMetricValue(value: unknown): string {
     return String(value)
   }
   return prettyJson(value)
+}
+
+function formatDiagnosticsMetricLabel(key: string): string {
+  return DIAGNOSTICS_METRIC_LABELS[key] ?? key.replaceAll('_', ' ')
 }
 
 function extractBaselineMetrics(item: any): { hit_at_k: boolean; mrr: number; recall: number; ndcg: number; map: number } | null {
@@ -104,6 +169,95 @@ function DiagnosticsInlineStat({
   )
 }
 
+function DiagnosticsInfoTooltip({
+  label,
+  children,
+  side = 'right',
+}: Readonly<{
+  label: string
+  children: ReactNode
+  side?: 'top' | 'right' | 'bottom' | 'left'
+}>) {
+  return (
+    <TooltipProvider delayDuration={120}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label={label}
+            className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-sky-50 hover:text-sky-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+          >
+            <Info className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side={side} align="center" className="max-w-[260px] text-[11px] leading-5">
+          {children}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
+function DiagnosticsHeaderPill({
+  label,
+  value,
+  icon,
+  children,
+  className,
+}: Readonly<{
+  label: string
+  value?: ReactNode
+  icon?: ReactNode
+  children?: ReactNode
+  className?: string
+}>) {
+  return (
+    <div className={cn('inline-flex h-9 items-center gap-2.5 rounded-lg border border-border/70 bg-card/95 px-3 shadow-sm', className)}>
+      {icon ? <span className="flex h-5 w-5 items-center justify-center text-muted-foreground">{icon}</span> : null}
+      <span className="text-[10.5px] font-medium uppercase tracking-[0.12em] text-muted-foreground">{label}</span>
+      <div className="min-w-0 flex-1">{children ?? <span className={cn('block truncate', DIAGNOSTICS_FIELD_VALUE_CLASS)}>{value}</span>}</div>
+    </div>
+  )
+}
+
+function DiagnosticsStepper({
+  value,
+  min,
+  max,
+  onChange,
+}: Readonly<{
+  value: number
+  min: number
+  max: number
+  onChange: (value: number) => void
+}>) {
+  return (
+    <div className="flex h-9 items-center rounded-lg border border-border/70 bg-card/95 shadow-sm">
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-full w-10 rounded-r-none text-muted-foreground"
+        onClick={() => onChange(Math.max(min, value - 1))}
+      >
+        <Minus className="h-4 w-4" aria-hidden="true" />
+      </Button>
+      <div className="flex flex-1 items-center justify-center border-x border-border/70 text-[15px] font-medium tabular-nums text-foreground/90">
+        {value}
+      </div>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-full w-10 rounded-l-none text-muted-foreground"
+        onClick={() => onChange(Math.min(max, value + 1))}
+      >
+        <Plus className="h-4 w-4" aria-hidden="true" />
+      </Button>
+    </div>
+  )
+}
+
 function DiagnosticsSection({
   label,
   description,
@@ -118,8 +272,8 @@ function DiagnosticsSection({
   return (
     <section className={cn('space-y-2.5 rounded-lg border border-border/70 bg-card px-3.5 py-3', className)}>
       <div className="space-y-1">
-        <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">{label}</div>
-        {description ? <p className="text-[11px] leading-5 text-muted-foreground">{description}</p> : null}
+        <div className={DIAGNOSTICS_SECTION_TITLE_CLASS}>{label}</div>
+        {description ? <p className={DIAGNOSTICS_SECTION_DESCRIPTION_CLASS}>{description}</p> : null}
       </div>
       {children}
     </section>
@@ -132,45 +286,47 @@ function DiagnosticsMetricTile({
   caption,
   tone = 'neutral',
   accent = 'neutral',
+  icon,
 }: Readonly<{
   label: string
   value: ReactNode
   caption?: ReactNode
   tone?: 'neutral' | 'positive' | 'negative' | 'muted'
   accent?: 'neutral' | 'sky' | 'violet' | 'emerald' | 'amber'
+  icon?: ReactNode
 }>) {
   const accentClasses =
     accent === 'sky'
       ? {
-          surface: 'border-sky-200/80 bg-sky-50/80',
+          surface: 'border-border/70 bg-background',
           label: 'text-sky-700',
           dot: 'bg-sky-400',
-          value: 'text-sky-900',
-          caption: 'text-sky-800/80',
+          value: 'text-foreground',
+          caption: 'text-muted-foreground',
         }
       : accent === 'violet'
         ? {
-            surface: 'border-violet-200/80 bg-violet-50/80',
+            surface: 'border-border/70 bg-background',
             label: 'text-violet-700',
             dot: 'bg-violet-400',
-            value: 'text-violet-900',
-            caption: 'text-violet-800/80',
+            value: 'text-foreground',
+            caption: 'text-muted-foreground',
           }
         : accent === 'emerald'
           ? {
-              surface: 'border-emerald-200/80 bg-emerald-50/75',
+              surface: 'border-border/70 bg-background',
               label: 'text-emerald-700',
               dot: 'bg-emerald-400',
-              value: 'text-emerald-900',
-              caption: 'text-emerald-800/80',
+              value: 'text-foreground',
+              caption: 'text-muted-foreground',
             }
           : accent === 'amber'
             ? {
-                surface: 'border-amber-200/80 bg-amber-50/75',
+                surface: 'border-border/70 bg-background',
                 label: 'text-amber-700',
                 dot: 'bg-amber-400',
-                value: 'text-amber-900',
-                caption: 'text-amber-800/80',
+                value: 'text-foreground',
+                caption: 'text-muted-foreground',
               }
             : {
                 surface: 'border-border/70 bg-background',
@@ -188,15 +344,22 @@ function DiagnosticsMetricTile({
         : tone === 'muted'
           ? 'text-muted-foreground'
           : accentClasses.value
+  const isPending = value === '-'
 
   return (
-    <div className={cn('rounded-lg border px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]', accentClasses.surface)}>
-      <div className={cn('flex items-center gap-1.5 text-[11px] uppercase tracking-[0.08em]', accentClasses.label)}>
-        <span className={cn('h-1.5 w-1.5 rounded-full', accentClasses.dot)} aria-hidden="true" />
+    <div className={cn('flex min-h-[112px] flex-col items-center justify-center rounded-xl border px-3.5 py-3 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]', accentClasses.surface)}>
+      <div className={cn('flex items-center justify-center gap-1.5 text-[12px] font-semibold tracking-normal', accentClasses.label)}>
+        {icon ? <span className="flex h-4 w-4 items-center justify-center">{icon}</span> : <span className={cn('h-1.5 w-1.5 rounded-full', accentClasses.dot)} aria-hidden="true" />}
         <span>{label}</span>
       </div>
-      <div className={cn('mt-2 text-lg font-semibold tracking-[-0.02em] tabular-nums', valueClass)}>{value}</div>
-      {caption ? <div className={cn('mt-1 text-[11px] leading-5', accentClasses.caption)}>{caption}</div> : null}
+      <div className={cn('mt-3 text-[17px] font-semibold tracking-normal tabular-nums', valueClass)}>
+        {isPending ? (
+          <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-600">待评测</span>
+        ) : (
+          value
+        )}
+      </div>
+      {caption ? <div className={cn('mt-2 text-[11px] leading-5', accentClasses.caption)}>{isPending ? '运行后显示' : caption}</div> : null}
     </div>
   )
 }
@@ -222,37 +385,35 @@ function DiagnosticsToggleCard({
     tone === 'sky'
       ? {
           surface: 'border-border/70 bg-background',
-          box: 'border-sky-200/80 bg-card text-sky-600',
           badge: 'text-sky-700',
           dot: 'bg-sky-400',
         }
       : {
           surface: 'border-border/70 bg-background',
-          box: 'border-emerald-200/80 bg-card text-emerald-600',
           badge: 'text-emerald-700',
           dot: 'bg-emerald-400',
         }
 
   return (
-    <label className={cn('block cursor-pointer select-none rounded-lg border px-3 py-2.5 transition-colors', toneClasses.surface)}>
+    <label className={cn('block cursor-pointer select-none rounded-lg border px-3 py-1.5 transition-colors', toneClasses.surface)}>
       <div className="flex items-start gap-3">
-        <div className={cn('mt-0.5 flex h-7 w-7 items-center justify-center rounded-lg border shadow-sm', toneClasses.box)}>
-          <Checkbox checked={checked} onCheckedChange={(value) => onCheckedChange(Boolean(value))} />
-        </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <div className={cn('flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.12em]', toneClasses.badge)}>
+              <div className={cn('flex items-center gap-1.5 text-[10.5px] font-normal tracking-normal', toneClasses.badge)}>
                 <span className={cn('h-1.5 w-1.5 rounded-full', toneClasses.dot)} />
                 <span>{badge}</span>
               </div>
-              <div className="mt-1 text-[13px] font-semibold leading-4 text-foreground">{title}</div>
+              <div className="mt-0.5 text-[13px] font-medium leading-4 text-foreground/90">{title}</div>
             </div>
-            <span className="inline-flex shrink-0 items-center rounded-full border border-border/70 bg-card/90 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-              {stateLabel}
-            </span>
+            <div className="flex shrink-0 items-center gap-2">
+              <span className="inline-flex items-center rounded-full border border-border/70 bg-card/90 px-2 py-0.5 text-[11px] font-normal text-muted-foreground">
+                {stateLabel}
+              </span>
+              <Switch checked={checked} onCheckedChange={onCheckedChange} />
+            </div>
           </div>
-          {description ? <p className="mt-1.5 text-[11px] leading-5 text-muted-foreground">{description}</p> : null}
+          {description ? <p className="mt-0.5 truncate text-[11px] font-normal leading-5 text-muted-foreground">{description}</p> : null}
         </div>
       </div>
     </label>
@@ -262,14 +423,243 @@ function DiagnosticsToggleCard({
 function DiagnosticsEmptyState({
   title,
   description,
+  icon,
+  className,
 }: Readonly<{
   title: string
   description: string
+  icon?: ReactNode
+  className?: string
 }>) {
   return (
-    <div className="rounded-lg border border-dashed border-border/70 bg-background px-5 py-12 text-center">
-      <div className="text-sm font-medium text-foreground">{title}</div>
-      <p className="mx-auto mt-2 max-w-xl text-[12px] leading-6 text-muted-foreground">{description}</p>
+    <div className={cn('rounded-lg border border-dashed border-border/70 bg-background px-5 py-6 text-center', className)}>
+      {icon ? (
+        <div className="mb-3 flex justify-center text-sky-300">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-sky-100 bg-sky-50/80 shadow-sm">
+            <div className="scale-90">{icon}</div>
+          </div>
+        </div>
+      ) : null}
+      <div className="text-[13px] font-medium text-foreground">{title}</div>
+      <p className="mx-auto mt-1.5 max-w-xl text-[11px] leading-5 text-muted-foreground">{description}</p>
+    </div>
+  )
+}
+
+function DiagnosticsRunHeroPanel({
+  summary,
+  emptyTitle,
+  emptyDescription,
+}: Readonly<{
+  summary: Record<string, any> | null
+  emptyTitle: string
+  emptyDescription: string
+}>) {
+  if (summary) {
+    return (
+    <div className="min-h-[160px] rounded-xl border border-border/70 bg-background px-6 py-5 shadow-sm">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="text-[11px] font-medium tracking-[0.12em] text-sky-600">最新结果</div>
+            <h3 className="mt-1 text-[22px] font-semibold tracking-[-0.03em] text-foreground">本轮评测已完成</h3>
+            <p className="mt-1.5 text-[12px] leading-5 text-muted-foreground">优先查看上方核心指标，再结合下方失败样本和运行记录判断这次检索质量是否稳定。</p>
+          </div>
+          <div className="hidden h-14 w-14 items-center justify-center rounded-[18px] border border-sky-100 bg-sky-50 text-sky-500 shadow-sm md:flex">
+            <ClipboardList className="h-6 w-6" aria-hidden="true" />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const steps = [
+    { index: '1', title: '选择评测参数', description: '设置评测范围、基线等参数' },
+    { index: '2', title: '开始评测', description: '系统将自动执行评测流程' },
+    { index: '3', title: '查看结果与分析', description: '指标趋势、分析与改进' },
+  ]
+
+  return (
+    <div className="min-h-[280px] rounded-xl border border-border/70 bg-background px-6 py-5 shadow-sm">
+      <div className="flex items-center justify-center gap-10 text-left">
+        <div className="relative flex h-[128px] w-[160px] shrink-0 items-center justify-center text-sky-300">
+          <div className="absolute inset-5 rounded-[30px] bg-sky-100/70 blur-2xl" aria-hidden="true" />
+          <div className="relative flex h-[96px] w-[96px] items-center justify-center rounded-[24px] border border-sky-100 bg-sky-50/90 shadow-sm">
+            <ClipboardList className="h-11 w-11" aria-hidden="true" />
+          </div>
+        </div>
+        <div className="min-w-0 text-center md:text-left">
+          <h3 className="text-[21px] font-semibold tracking-normal text-foreground">{emptyTitle}</h3>
+          <p className="mt-2 max-w-[520px] text-[12px] leading-5 text-muted-foreground">{emptyDescription}</p>
+        </div>
+      </div>
+
+      <div className="mx-auto mt-5 flex w-full max-w-[720px] items-center justify-center rounded-xl border border-border/70 bg-card/90 px-5 py-3.5 shadow-sm">
+        {steps.map((step, index) => (
+          <div key={step.index} className="flex items-center gap-4">
+            <div className="min-w-[140px] text-left">
+              <div className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-sky-200 bg-sky-50 px-1.5 text-[11px] font-semibold text-sky-700">
+                {step.index}
+              </div>
+              <div className="mt-1 text-[12px] font-semibold text-foreground">{step.title}</div>
+              <div className="mt-0.5 text-[10.5px] leading-[18px] text-muted-foreground">{step.description}</div>
+            </div>
+            {index < steps.length - 1 ? <ChevronRight className="h-4 w-4 text-muted-foreground/60" aria-hidden="true" /> : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function DiagnosticsFailuresPanel({
+  failedCases,
+  activeTab,
+  onTabChange,
+}: Readonly<{
+  failedCases: Array<{ case_id: string; question: string; recall: number; mrr: number }>
+  activeTab: 'failures' | 'distribution'
+  onTabChange: (value: 'failures' | 'distribution') => void
+}>) {
+  return (
+    <div className="rounded-xl border border-border/70 bg-background shadow-sm">
+      <div className="border-b border-border/70 px-5 py-3">
+        <div className="flex items-center gap-2 text-[13px] font-semibold text-foreground">
+          <span>失败样本 / 错误分析</span>
+          <DiagnosticsInfoTooltip label="查看失败样本与错误分析说明">
+            展示本轮未命中的评测样本，以及后续错误分布汇总；优先排查这些样本通常最有效。
+          </DiagnosticsInfoTooltip>
+        </div>
+        <div className="mt-2.5 flex items-center gap-5">
+          <button
+            type="button"
+            className={cn(
+              'border-b-2 pb-2 text-[13px] font-medium transition-colors',
+              activeTab === 'failures' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'
+            )}
+            onClick={() => onTabChange('failures')}
+          >
+            失败样本
+          </button>
+          <button
+            type="button"
+            className={cn(
+              'border-b-2 pb-2 text-[13px] font-medium transition-colors',
+              activeTab === 'distribution' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'
+            )}
+            onClick={() => onTabChange('distribution')}
+          >
+            错误分布
+          </button>
+        </div>
+      </div>
+
+      <div className="px-5 py-3.5">
+        {activeTab === 'failures' ? (
+          failedCases.length ? (
+            <div className="space-y-2">
+              {failedCases.map((item) => (
+                <div key={`${item.case_id}:${item.question}`} className="rounded-xl border border-border/70 bg-card/90 px-3.5 py-3">
+                  <div className="text-[11px] font-mono text-muted-foreground">{item.case_id || '--------'}</div>
+                  <div className="mt-1.5 text-[13px] leading-6 text-foreground">{item.question || '（无问题文本）'}</div>
+                  <div className="mt-2 text-[11px] tabular-nums text-muted-foreground">
+                    Recall {String(item.recall)} · MRR {String(item.mrr)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <DiagnosticsEmptyState
+              title="暂无失败样本"
+              description="运行评测后，这里会显示失败样本详情，帮助你定位问题。"
+              icon={<CircleAlert className="h-8 w-8" aria-hidden="true" />}
+            />
+          )
+        ) : (
+          <DiagnosticsEmptyState
+            title="暂无错误分布"
+            description="执行评测后，这里会汇总常见错误类型和分布情况。"
+            icon={<Waypoints className="h-8 w-8" aria-hidden="true" />}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
+function DiagnosticsRunRecordsPanel({
+  runs,
+  runRespJson,
+}: Readonly<{
+  runs: any[]
+  runRespJson: string
+}>) {
+  return (
+    <div className="rounded-xl border border-border/70 bg-background shadow-sm">
+      <div className="border-b border-border/70 px-5 py-3">
+        <div className="flex items-center gap-2 text-[13px] font-semibold text-foreground">
+          <span>原始结果 / 运行记录</span>
+          <DiagnosticsInfoTooltip label="查看原始结果与运行记录说明">
+            显示最近保存的评测运行记录，并可展开查看本次评测接口返回的原始数据。
+          </DiagnosticsInfoTooltip>
+        </div>
+      </div>
+
+      <div className="px-5 py-3">
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-left text-[12px]">
+            <thead className="text-muted-foreground">
+              <tr className="border-b border-border/70">
+                <th className="px-2 py-2 font-medium">运行 ID</th>
+                <th className="px-2 py-2 font-medium">开始时间</th>
+                <th className="px-2 py-2 font-medium">数据集</th>
+                <th className="px-2 py-2 font-medium">样本数</th>
+                <th className="px-2 py-2 font-medium">TOP-K</th>
+                <th className="px-2 py-2 font-medium">主要指标（MRR / Recall）</th>
+                <th className="px-2 py-2 font-medium">状态</th>
+                <th className="px-2 py-2 font-medium">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {runs.length ? (
+                runs.slice(0, 8).map((run) => {
+                  const summary = run?.summary && typeof run.summary === 'object' ? run.summary : {}
+                  return (
+                    <tr key={String(run.id)} className="border-b border-border/60">
+                      <td className="px-2 py-3 font-mono text-foreground">{String(run.id || '').slice(0, 8)}</td>
+                      <td className="px-2 py-3 text-muted-foreground">{String(run.created_at || '').slice(0, 16) || '-'}</td>
+                      <td className="px-2 py-3 text-muted-foreground">{String(run.dataset_id || '').slice(0, 8) || '-'}</td>
+                      <td className="px-2 py-3 text-muted-foreground">{String(run.max_cases ?? '-')}</td>
+                      <td className="px-2 py-3 text-muted-foreground">{String(run.k ?? '-')}</td>
+                      <td className="px-2 py-3 text-muted-foreground">
+                        {String(summary?.baseline_mrr ?? '-')} / {String(summary?.baseline_recall ?? '-')}
+                      </td>
+                      <td className="px-2 py-3 text-muted-foreground">{run.persisted ? '已保存' : '临时'}</td>
+                      <td className="px-2 py-3 text-muted-foreground">-</td>
+                    </tr>
+                  )
+                })
+              ) : (
+                <tr>
+                  <td colSpan={8} className="py-10">
+                    <DiagnosticsEmptyState
+                      title="暂无运行记录"
+                      description="保存评测结果后，这里会列出历史运行记录，便于对比效果变化。"
+                      icon={<FileStack className="h-8 w-8" aria-hidden="true" />}
+                    />
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <details className="mt-3 rounded-xl border border-border/70 bg-card/90 px-4 py-3">
+          <summary className="cursor-pointer select-none text-[12px] font-medium text-muted-foreground transition-colors hover:text-foreground">
+            查看原始数据
+          </summary>
+          <Textarea value={runRespJson} readOnly rows={12} className="mt-3 resize-none border-border/70 bg-background font-mono text-xs" />
+        </details>
+      </div>
     </div>
   )
 }
@@ -290,7 +680,7 @@ function DiagnosticsJsonPanel({
       </div>
       <details className="px-4 py-3">
         <summary className="cursor-pointer select-none text-xs font-medium text-muted-foreground transition-colors hover:text-foreground">
-          展开 JSON
+          展开原始数据
         </summary>
         <Textarea value={value} readOnly rows={rows} className="mt-3 resize-none border-border/70 bg-background font-mono text-xs" />
       </details>
@@ -301,6 +691,8 @@ function DiagnosticsJsonPanel({
 export function KGDiagnosticsPage() {
   const t = useTranslations('KGDiagnosticsPage')
   const [datasetId, setDatasetId] = useState('')
+  const [datasets, setDatasets] = useState<DiagnosticsDatasetOption[]>([])
+  const [datasetsLoading, setDatasetsLoading] = useState(false)
   const [activeView, setActiveView] = useState<DiagnosticsView>('run')
 
   const [qualityDocLimit, setQualityDocLimit] = useState(200)
@@ -322,6 +714,7 @@ export function KGDiagnosticsPage() {
   const [maxFailedForHardcase, setMaxFailedForHardcase] = useState(20)
   const [llmTemperature, setLlmTemperature] = useState(0.2)
   const [persistRun, setPersistRun] = useState(true)
+  const [runAnalysisTab, setRunAnalysisTab] = useState<'failures' | 'distribution'>('failures')
 
   const [running, setRunning] = useState(false)
   const [runResp, setRunResp] = useState<KGSearchDiagnosticsResponse | null>(null)
@@ -333,6 +726,32 @@ export function KGDiagnosticsPage() {
   const [selectedRunB, setSelectedRunB] = useState<string>('')
   const [detailA, setDetailA] = useState<KGSearchDiagnosticsRunDetail | null>(null)
   const [detailB, setDetailB] = useState<KGSearchDiagnosticsRunDetail | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setDatasetsLoading(true)
+    datasetApi.list({ limit: 200 })
+      .then((response) => {
+        if (cancelled) return
+        const items = Array.isArray(response.items) ? response.items : []
+        setDatasets(items)
+        setDatasetId((current) => {
+          if (current.trim()) return current
+          const firstDatasetId = String(items[0]?.id || '').trim()
+          return firstDatasetId || current
+        })
+      })
+      .catch(() => {
+        if (!cancelled) setDatasets([])
+      })
+      .finally(() => {
+        if (!cancelled) setDatasetsLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const diff = useMemo(() => {
     if (!detailA?.run || !detailB?.run) return null
@@ -532,7 +951,11 @@ export function KGDiagnosticsPage() {
   const summary = runResp?.summary && typeof runResp.summary === 'object' ? runResp.summary : null
   const runItems = useMemo(() => (Array.isArray(runResp?.items) ? runResp.items : []), [runResp?.items])
   const runIdShort = String(runResp?.run_id || '').slice(0, 8)
-  const datasetLabel = datasetId.trim() || '未选择'
+  const selectedDataset = useMemo(() => {
+    const selectedId = datasetId.trim()
+    return datasets.find((dataset) => String(dataset.id || '').trim() === selectedId) ?? null
+  }, [datasetId, datasets])
+  const datasetLabel = selectedDataset?.name || datasetId.trim() || '未选择'
   const qualityObject = qualityReport && typeof qualityReport === 'object' ? (qualityReport as Record<string, unknown>) : null
   const qualityHighlights = useMemo(() => {
     if (!qualityObject) return []
@@ -564,388 +987,345 @@ export function KGDiagnosticsPage() {
         ? t('workspace.qualityIntro')
         : t('workspace.compareIntro')
 
+  function handleDatasetChange(nextDatasetId: string): void {
+    setDatasetId(nextDatasetId)
+    setRunResp(null)
+    setQualityReport(null)
+    setQualityPipelineHash('')
+    setRuns([])
+    setSelectedRunA('')
+    setSelectedRunB('')
+    setDetailA(null)
+    setDetailB(null)
+    setActiveView('run')
+  }
+
   return (
     <AppFrame showBackground={false}>
-      <div className="flex h-full min-h-0 flex-col bg-background">
-        <header className="shrink-0 border-b border-border/70 bg-background backdrop-blur">
-          <div className="flex min-h-[72px] items-center justify-between gap-4 px-4 py-3 md:px-6">
-            <div className="min-w-0">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border/70 bg-card text-sky-600 shadow-sm">
-                  <Activity className="h-4 w-4" aria-hidden="true" />
-                </div>
+      <div className="h-full bg-[linear-gradient(180deg,#f8fbff_0%,#ffffff_32%)] p-2">
+        <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[18px] border border-border/70 bg-background/95 shadow-sm">
+            <header className="shrink-0 border-b border-border/70 px-6 py-5">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                 <div className="min-w-0">
-                  <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">Graph Evaluation</div>
-                  <h1 className="truncate text-base font-semibold tracking-[-0.02em] text-foreground">{t('page.title')}</h1>
-                  <p className="truncate text-[12px] text-muted-foreground">{t('page.description')}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="hidden shrink-0 flex-wrap items-center gap-2 xl:flex">
-              <DiagnosticsInlineStat label={t('runConfig.datasetId')} value={datasetLabel} tone="neutral" />
-              <DiagnosticsInlineStat label={t('runConfig.k')} value={k} />
-              <DiagnosticsInlineStat label={t('runs.title')} value={runs.length} />
-              {runIdShort ? <DiagnosticsInlineStat label="Run" value={runIdShort} tone="neutral" /> : null}
-            </div>
-          </div>
-        </header>
-
-        <div className="flex min-h-0 flex-1">
-          <aside className="w-[304px] shrink-0 border-r border-border/70 bg-background">
-            <div className="flex h-full min-h-0 flex-col">
-              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-                <div className="space-y-4">
-                  <DiagnosticsSection
-                    label={t('runConfig.title')}
-                    description={t('workspace.sidebarIntro')}
-                    className="bg-background"
-                  >
-                    <div className="space-y-1.5">
-                      <Label htmlFor="dataset-id" className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
-                        {t('runConfig.datasetId')}
-                      </Label>
-                      <Input
-                        id="dataset-id"
-                        value={datasetId}
-                        onChange={(e) => setDatasetId(e.target.value)}
-                        placeholder={t('runConfig.datasetPlaceholder')}
-                        className="h-9 rounded-lg border-border/70 bg-card/95 font-mono text-xs shadow-none"
-                      />
+                  <div className="flex items-center gap-3.5">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[linear-gradient(180deg,#2D8CFF_0%,#1768FF_100%)] text-white shadow-[0_10px_20px_rgba(23,104,255,0.18)]">
+                      <ClipboardList className="h-5 w-5" aria-hidden="true" />
                     </div>
-                  </DiagnosticsSection>
-
-                  <DiagnosticsSection
-                    label={t('workspace.coreParams')}
-                    description={t('workspace.coreParamsHint')}
-                    className="bg-background"
-                  >
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <div className="space-y-1">
-                        <Label className="min-h-[30px] text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{t('runConfig.maxCases')}</Label>
-                        <Input
-                          type="number"
-                          value={String(maxCases)}
-                          onChange={(e) => setMaxCases(Number(e.target.value || 0))}
-                          min={1}
-                          max={200}
-                          className="h-9 rounded-lg border-border/70 bg-card/95 text-sm shadow-none"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="min-h-[30px] text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{t('runConfig.k')}</Label>
-                        <Input
-                          type="number"
-                          value={String(k)}
-                          onChange={(e) => setK(Number(e.target.value || 0))}
-                          min={1}
-                          max={50}
-                          className="h-9 rounded-lg border-border/70 bg-card/95 text-sm shadow-none"
-                        />
-                      </div>
-                      <div className="space-y-1 md:col-span-2">
-                        <Label className="min-h-[18px] text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{t('runConfig.hardcaseMode')}</Label>
-                        <Select value={hardcaseMode} onValueChange={(v) => setHardcaseMode(v as KGHardcaseMode)}>
-                          <SelectTrigger className="h-9 rounded-lg border-border/70 bg-card/95 text-sm shadow-none">
-                            <SelectValue placeholder={t('runConfig.hardcaseModePlaceholder')} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="off">关闭</SelectItem>
-                            <SelectItem value="deterministic">规则生成</SelectItem>
-                            <SelectItem value="llm">LLM 生成</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="flex min-h-[42px] items-end text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
-                          {t('runConfig.hardcasesPerFailedCase')}
-                        </Label>
-                        <Input
-                          type="number"
-                          value={String(hardcasesPerFailed)}
-                          onChange={(e) => setHardcasesPerFailed(Number(e.target.value || 0))}
-                          min={0}
-                          max={20}
-                          className="h-9 rounded-lg border-border/70 bg-card/95 text-sm shadow-none"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="flex min-h-[42px] items-end text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
-                          {t('runConfig.maxFailedCasesForHardcase')}
-                        </Label>
-                        <Input
-                          type="number"
-                          value={String(maxFailedForHardcase)}
-                          onChange={(e) => setMaxFailedForHardcase(Number(e.target.value || 0))}
-                          min={0}
-                          max={200}
-                          className="h-9 rounded-lg border-border/70 bg-card/95 text-sm shadow-none"
-                        />
-                      </div>
-                      <div className="space-y-1 md:col-span-2">
-                        <Label className="min-h-[18px] text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{t('runConfig.llmTemperature')}</Label>
-                        <Input
-                          type="number"
-                          value={String(llmTemperature)}
-                          onChange={(e) => setLlmTemperature(Number(e.target.value || 0))}
-                          min={0}
-                          max={2}
-                          step={0.1}
-                          className="h-9 rounded-lg border-border/70 bg-card/95 text-sm shadow-none"
-                        />
-                      </div>
+                    <div className="min-w-0">
+                      <h1 className="truncate text-[23px] font-semibold leading-tight tracking-normal text-foreground">{t('page.title')}</h1>
+                      <p className="mt-0.5 text-[12px] leading-5 text-muted-foreground">{t('page.description')}</p>
                     </div>
-                  </DiagnosticsSection>
-
-                  <DiagnosticsSection
-                    label={t('workspace.extractionOptions')}
-                    description={t('workspace.extractionHint')}
-                    className="bg-background"
-                  >
-                    <div className="space-y-2.5">
-                      <div className="space-y-1">
-                        <Label className="min-h-[18px] text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{t('runConfig.extractSkills')}</Label>
-                        <Select
-                          value={extractSkills}
-                          onValueChange={(value) => setExtractSkills(coerceOneOf(KG_EXTRACT_MODE_VALUES, value, 'auto'))}
-                        >
-                          <SelectTrigger className="h-9 rounded-lg border-border/70 bg-card/95 text-sm shadow-none">
-                            <SelectValue placeholder={t('runConfig.extractModePlaceholder')} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="auto">自动</SelectItem>
-                            <SelectItem value="on">开启</SelectItem>
-                            <SelectItem value="off">关闭</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-1">
-                        <Label className="min-h-[18px] text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{t('runConfig.extractRelations')}</Label>
-                        <Select
-                          value={extractRelations}
-                          onValueChange={(value) => setExtractRelations(coerceOneOf(KG_EXTRACT_MODE_VALUES, value, 'auto'))}
-                        >
-                          <SelectTrigger className="h-9 rounded-lg border-border/70 bg-card/95 text-sm shadow-none">
-                            <SelectValue placeholder={t('runConfig.extractModePlaceholder')} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="auto">自动</SelectItem>
-                            <SelectItem value="on">开启</SelectItem>
-                            <SelectItem value="off">关闭</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <DiagnosticsToggleCard
-                        title={t('runConfig.autoExtractKg')}
-                        description={t('workspace.autoExtractHint')}
-                        badge={t('workspace.autoExtractBadge')}
-                        checked={autoExtractKg}
-                        onCheckedChange={setAutoExtractKg}
-                        tone="sky"
-                        stateLabel={autoExtractKg ? t('workspace.enabled') : t('workspace.disabled')}
-                      />
-
-                      <DiagnosticsToggleCard
-                        title={t('runConfig.persistRun')}
-                        description={t('runs.hint')}
-                        badge={t('workspace.persistRunBadge')}
-                        checked={persistRun}
-                        onCheckedChange={setPersistRun}
-                        tone="emerald"
-                        stateLabel={persistRun ? t('workspace.enabled') : t('workspace.disabled')}
-                      />
-                    </div>
-                  </DiagnosticsSection>
-                </div>
-              </div>
-
-              <div className="shrink-0 border-t border-border/70 bg-background px-4 py-3 backdrop-blur">
-                <div className="flex flex-wrap items-center gap-2">
-                  <DiagnosticsInlineStat label="Cases" value={maxCases} />
-                  <DiagnosticsInlineStat label="Top-K" value={k} />
-                  <DiagnosticsInlineStat label="Persist" value={persistRun ? 'ON' : 'OFF'} tone={persistRun ? 'neutral' : 'muted'} />
+                  </div>
                 </div>
 
-                <Button
-                  className="mt-2.5 h-10 w-full rounded-lg text-sm shadow-none"
-                  onClick={runDiagnostics}
-                  disabled={running}
-                >
-                  <PlayCircle className="mr-2 h-4 w-4" aria-hidden="true" />
-                  {running ? `${t('page.actions.run')}…` : t('page.actions.run')}
-                </Button>
-
-                <div className="mt-2 grid grid-cols-2 gap-2">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <DiagnosticsHeaderPill label={t('runConfig.datasetId')} className="min-w-[220px]">
+                    <Select value={datasetId || undefined} onValueChange={handleDatasetChange} disabled={datasetsLoading || !datasets.length}>
+                      <SelectTrigger
+                        aria-label={t('runConfig.datasetId')}
+                        className="h-auto min-h-0 border-0 bg-transparent px-0 py-0 text-right text-[13px] font-medium shadow-none focus:ring-0 focus-visible:ring-0 [&>svg]:ml-2 [&>svg]:h-3.5 [&>svg]:w-3.5"
+                      >
+                        <SelectValue placeholder={datasetsLoading ? '加载中...' : t('runConfig.datasetPlaceholder')} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {datasets.map((dataset) => {
+                          const id = String(dataset.id || '').trim()
+                          if (!id) return null
+                          return (
+                            <SelectItem key={id} value={id}>
+                              {dataset.name || id}
+                            </SelectItem>
+                          )
+                        })}
+                      </SelectContent>
+                    </Select>
+                  </DiagnosticsHeaderPill>
+                  <DiagnosticsHeaderPill label={t('runConfig.k')} className="min-w-[112px]">
+                    <Input
+                      type="number"
+                      value={String(k)}
+                      onChange={(e) => setK(Number(e.target.value || 0))}
+                      min={1}
+                      max={50}
+                      className="h-auto border-0 bg-transparent px-0 py-0 text-right text-[13px] font-medium shadow-none focus-visible:ring-0"
+                    />
+                  </DiagnosticsHeaderPill>
                   <Button
                     variant="outline"
-                    className="h-9 rounded-lg border-border/70 bg-card/95 text-xs"
-                    onClick={refreshRuns}
-                    disabled={runsLoading}
-                  >
-                    <RefreshCcw className="mr-1.5 h-4 w-4" aria-hidden="true" />
-                    {t('page.actions.refreshRuns')}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="h-9 rounded-lg border-border/70 bg-card/95 text-xs"
+                    className="h-9 rounded-lg border-border/70 bg-card/95 px-3.5 text-[13px] shadow-sm"
                     onClick={() => {
-                      const base = sanitizeFilename(`kg_diagnostics_${datasetId.trim() || 'dataset'}`)
-                      downloadJson(runResp ?? {}, `${base}.json`)
-                      toast.success(t('toasts.runExported'))
+                      setActiveView('compare')
+                      if (datasetId.trim()) void refreshRuns()
                     }}
-                    disabled={!runResp}
                   >
-                    <Download className="mr-1.5 h-4 w-4" aria-hidden="true" />
-                    {t('page.actions.exportRun')}
+                    <History className="mr-2 h-4 w-4" aria-hidden="true" />
+                    {t('runs.title')}
                   </Button>
                 </div>
-
-                <p className="mt-3 text-[11px] leading-5 text-muted-foreground">{t('summary.runHint')}</p>
               </div>
-            </div>
-          </aside>
+            </header>
 
-          <section className="min-w-0 flex-1 bg-card">
-            <Tabs value={activeView} onValueChange={(value) => setActiveView(value as DiagnosticsView)} className="flex h-full min-h-0 flex-col">
-              <div className="shrink-0 border-b border-border/70 bg-card">
-                <div className="flex flex-col gap-3 px-4 py-3">
-                  <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                    <div>
-                      <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">Evaluation Workspace</div>
-                      <div className="mt-0.5 text-sm font-semibold text-foreground">
-                        {activeView === 'run' ? t('summary.title') : activeView === 'quality' ? t('qualityReport.title') : t('compare.title')}
-                      </div>
-                      <p className="mt-1 text-[11px] leading-5 text-muted-foreground">{viewDescription}</p>
-                    </div>
-
-                    <TabsList className="h-10 justify-start gap-1 rounded-none border-none p-0">
-                      <TabsTrigger value="run" className="rounded-lg border-b-0 px-3 data-[state=active]:bg-muted/60 data-[state=active]:border-transparent">
-                        {t('summary.title')}
-                      </TabsTrigger>
-                      <TabsTrigger value="quality" className="rounded-lg border-b-0 px-3 data-[state=active]:bg-muted/60 data-[state=active]:border-transparent">
-                        {t('qualityReport.title')}
-                      </TabsTrigger>
-                      <TabsTrigger value="compare" className="rounded-lg border-b-0 px-3 data-[state=active]:bg-muted/60 data-[state=active]:border-transparent">
-                        {t('compare.title')}
-                      </TabsTrigger>
-                    </TabsList>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <DiagnosticsInlineStat label={t('runConfig.datasetId')} value={datasetLabel} tone="neutral" />
-                    <DiagnosticsInlineStat label={t('runConfig.maxCases')} value={maxCases} />
-                    <DiagnosticsInlineStat label={t('runConfig.k')} value={k} />
-                    {runIdShort ? <DiagnosticsInlineStat label="Run" value={runIdShort} tone="neutral" /> : null}
-                  </div>
-                </div>
-              </div>
-
-              <TabsContent value="run" className="mt-0 min-h-0 flex-1">
-                <div className="flex h-full min-h-0 flex-col">
-                  <div className="border-b border-border/70 px-4 py-4">
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-                      <DiagnosticsMetricTile
-                        label={t('summary.baselineHitRate')}
-                        value={formatMetricValue(summary?.baseline_hit_rate)}
-                        caption="整体是否命中的基础指标"
-                        accent="sky"
-                      />
-                      <DiagnosticsMetricTile
-                        label={t('summary.baselineMrr')}
-                        value={formatMetricValue(summary?.baseline_mrr)}
-                        caption="命中位置越靠前越高"
-                        accent="violet"
-                      />
-                      <DiagnosticsMetricTile
-                        label={t('summary.baselineRecall')}
-                        value={formatMetricValue(summary?.baseline_recall)}
-                        caption="看召回覆盖是否足够"
-                        accent="emerald"
-                      />
-                      <DiagnosticsMetricTile
-                        label={t('summary.baselineNdcg')}
-                        value={formatMetricValue(summary?.baseline_ndcg)}
-                        caption="兼顾命中位置与整体排序质量"
-                        accent="sky"
-                      />
-                      <DiagnosticsMetricTile
-                        label={t('summary.baselineMap')}
-                        value={formatMetricValue(summary?.baseline_map)}
-                        caption="多证据平均精度"
-                        accent="violet"
-                      />
-                      <DiagnosticsMetricTile
-                        label={t('summary.hardcasesGenerated')}
-                        value={formatMetricValue(summary?.hardcases_generated)}
-                        caption="这轮额外生成的难例数量"
-                        accent="amber"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
-                    {summary ? (
-                      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_420px]">
-                        <div className="space-y-4">
-                          <div className="rounded-lg border border-border/70 bg-card">
-                            <div className="border-b border-border/70 px-4 py-3">
-                              <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">{t('workspace.runStateTitle')}</div>
+            <div className="min-h-0 flex-1 overflow-hidden px-5 pb-4 pt-4">
+              <div className="grid h-full min-h-0 gap-4 xl:grid-cols-[356px_minmax(0,1fr)]">
+                <aside className="min-h-0 rounded-xl border border-border/70 bg-background shadow-sm">
+                  <div className="flex h-full min-h-0 flex-col">
+                    <div className="min-h-0 flex-1 overflow-y-auto p-3">
+                      <div className="space-y-2.5">
+                        <DiagnosticsSection label={t('runConfig.title')} className="rounded-xl px-3.5 py-2.5">
+                          <div className="space-y-2.5">
+                            <div className="space-y-1">
+                              <div className={cn('flex items-center gap-1', DIAGNOSTICS_FIELD_LABEL_CLASS)}>
+                                <span>阈值设置</span>
+                                <DiagnosticsInfoTooltip label="查看阈值设置说明">
+                                  控制本轮最多抽取多少条评测样本。数值越大覆盖越充分，但评测耗时也会更长。
+                                </DiagnosticsInfoTooltip>
+                              </div>
+                              <DiagnosticsStepper value={maxCases} min={1} max={200} onChange={setMaxCases} />
                             </div>
-                            <div className="grid gap-3 px-4 py-4 md:grid-cols-3">
-                              <DiagnosticsMetricTile
-                                label="Run ID"
-                                value={runIdShort || '-'}
-                                caption={persistRun ? t('workspace.runPersisted') : t('workspace.runTransient')}
-                                tone="neutral"
-                              />
-                              <DiagnosticsMetricTile
-                                label={t('workspace.itemsLabel')}
-                                value={runItems.length}
-                                caption={t('workspace.itemsHint')}
-                              />
-                              <DiagnosticsMetricTile
-                                label={t('workspace.failuresLabel')}
-                                value={failedCases.length}
-                                caption={t('workspace.failuresHint')}
-                                tone={failedCases.length > 0 ? 'negative' : 'positive'}
-                              />
-                            </div>
-                          </div>
 
-                          <div className="rounded-lg border border-border/70 bg-card">
-                            <div className="border-b border-border/70 px-4 py-3">
-                              <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">{t('workspace.failuresPanelTitle')}</div>
-                            </div>
-                            <div className="px-4 py-4">
-                              {failedCases.length ? (
-                                <div className="grid gap-2">
-                                  {failedCases.map((item) => (
-                                    <div key={`${item.case_id}:${item.question}`} className="rounded-lg border border-border/70 bg-background px-3 py-3">
-                                      <div className="text-[11px] font-mono text-muted-foreground">{item.case_id || '--------'}</div>
-                                      <div className="mt-1 text-sm text-foreground">{item.question || t('compare.noQuestion')}</div>
-                                      <div className="mt-2 text-[11px] tabular-nums text-muted-foreground">
-                                        recall {String(item.recall)} · mrr {String(item.mrr)}
-                                      </div>
-                                    </div>
+                            <div className="space-y-1">
+                              <Label className={DIAGNOSTICS_FIELD_LABEL_CLASS}>{t('runConfig.llmTemperature')}</Label>
+                              <Select value={String(llmTemperature)} onValueChange={(value) => setLlmTemperature(Number(value))}>
+                                <SelectTrigger className={cn('h-9 rounded-lg border-border/70 bg-card/95 shadow-none', DIAGNOSTICS_FIELD_VALUE_CLASS)}>
+                                  <SelectValue placeholder="0.2" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {['0', '0.1', '0.2', '0.3', '0.5', '0.7', '1.0'].map((value) => (
+                                    <SelectItem key={value} value={value}>
+                                      {value}
+                                    </SelectItem>
                                   ))}
-                                </div>
-                              ) : (
-                                <DiagnosticsEmptyState title={t('workspace.failuresEmptyTitle')} description={t('workspace.failuresEmptyDescription')} />
-                              )}
+                                </SelectContent>
+                              </Select>
                             </div>
+
+                            <div className="space-y-1">
+                              <Label
+                                title={t('runConfig.extractSkills')}
+                                className={DIAGNOSTICS_FIELD_LABEL_CLASS}
+                              >
+                                智能裁度
+                              </Label>
+                              <Select
+                                value={extractSkills}
+                                onValueChange={(value) => setExtractSkills(coerceOneOf(KG_EXTRACT_MODE_VALUES, value, 'auto'))}
+                              >
+                                <SelectTrigger className={cn('h-9 rounded-lg border-border/70 bg-card/95 shadow-none', DIAGNOSTICS_FIELD_VALUE_CLASS)}>
+                                  <SelectValue placeholder={t('runConfig.extractModePlaceholder')} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="auto">自动</SelectItem>
+                                  <SelectItem value="on">开启</SelectItem>
+                                  <SelectItem value="off">关闭</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+
+                            <div className="space-y-1">
+                              <Label title={t('runConfig.extractRelations')} className={DIAGNOSTICS_FIELD_LABEL_CLASS}>基线模式</Label>
+                              <Select
+                                value={extractRelations}
+                                onValueChange={(value) => setExtractRelations(coerceOneOf(KG_EXTRACT_MODE_VALUES, value, 'auto'))}
+                              >
+                                <SelectTrigger className={cn('h-9 rounded-lg border-border/70 bg-card/95 shadow-none', DIAGNOSTICS_FIELD_VALUE_CLASS)}>
+                                  <SelectValue placeholder={t('runConfig.extractModePlaceholder')} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="auto">自动</SelectItem>
+                                  <SelectItem value="on">开启</SelectItem>
+                                  <SelectItem value="off">关闭</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+
+                            <details className="rounded-lg border border-dashed border-border/60 bg-card/45 px-3 py-1.5">
+                              <summary className="cursor-pointer select-none text-[11.5px] font-normal leading-5 text-muted-foreground">高级参数</summary>
+                              <div className="mt-3 space-y-3">
+                                <div className="space-y-1">
+                                  <Label className={DIAGNOSTICS_FIELD_LABEL_CLASS}>{t('runConfig.hardcaseMode')}</Label>
+                                  <Select value={hardcaseMode} onValueChange={(v) => setHardcaseMode(v as KGHardcaseMode)}>
+                                    <SelectTrigger className={cn('h-9 rounded-lg border-border/70 bg-background shadow-none', DIAGNOSTICS_FIELD_VALUE_CLASS)}>
+                                      <SelectValue placeholder={t('runConfig.hardcaseModePlaceholder')} />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="off">关闭</SelectItem>
+                                      <SelectItem value="deterministic">规则生成</SelectItem>
+                                      <SelectItem value="llm">LLM 生成</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="grid gap-3 md:grid-cols-2">
+                                  <div className="space-y-1">
+                                    <Label className={DIAGNOSTICS_FIELD_LABEL_CLASS}>{t('runConfig.hardcasesPerFailedCase')}</Label>
+                                    <Input
+                                      type="number"
+                                      value={String(hardcasesPerFailed)}
+                                      onChange={(e) => setHardcasesPerFailed(Number(e.target.value || 0))}
+                                      min={0}
+                                      max={20}
+                                      className={cn('h-9 rounded-lg border-border/70 bg-background shadow-none', DIAGNOSTICS_FIELD_VALUE_CLASS)}
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className={DIAGNOSTICS_FIELD_LABEL_CLASS}>{t('runConfig.maxFailedCasesForHardcase')}</Label>
+                                    <Input
+                                      type="number"
+                                      value={String(maxFailedForHardcase)}
+                                      onChange={(e) => setMaxFailedForHardcase(Number(e.target.value || 0))}
+                                      min={0}
+                                      max={200}
+                                      className={cn('h-9 rounded-lg border-border/70 bg-background shadow-none', DIAGNOSTICS_FIELD_VALUE_CLASS)}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            </details>
                           </div>
+                        </DiagnosticsSection>
+
+                        <DiagnosticsSection label={t('workspace.extractionOptions')} description={t('workspace.extractionHint')} className="rounded-xl px-3.5 py-2.5">
+                          <div className="space-y-2">
+                            <DiagnosticsToggleCard
+                              title={t('runConfig.autoExtractKg')}
+                              description={t('workspace.autoExtractHint')}
+                              badge={t('workspace.autoExtractBadge')}
+                              checked={autoExtractKg}
+                              onCheckedChange={setAutoExtractKg}
+                              tone="sky"
+                              stateLabel={autoExtractKg ? t('workspace.enabled') : t('workspace.disabled')}
+                            />
+                            <DiagnosticsToggleCard
+                              title={t('runConfig.persistRun')}
+                              description={t('runs.hint')}
+                              badge={t('workspace.persistRunBadge')}
+                              checked={persistRun}
+                              onCheckedChange={setPersistRun}
+                              tone="emerald"
+                              stateLabel={persistRun ? t('workspace.enabled') : t('workspace.disabled')}
+                            />
+                          </div>
+                        </DiagnosticsSection>
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 border-t border-border/70 px-4 py-3.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <DiagnosticsInlineStat label="样本" value={maxCases} />
+                        <DiagnosticsInlineStat label="TOP-K" value={k} />
+                        <DiagnosticsInlineStat label="保存" value={persistRun ? '开启' : '关闭'} tone={persistRun ? 'neutral' : 'muted'} />
+                      </div>
+
+                      <Button className="mt-2 h-9 w-full rounded-lg text-[13px] font-medium shadow-none" onClick={runDiagnostics} disabled={running}>
+                        <PlayCircle className="mr-2 h-4 w-4" aria-hidden="true" />
+                        {running ? `${t('page.actions.run')}…` : t('page.actions.run')}
+                      </Button>
+
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        <Button variant="outline" className="h-8 rounded-lg border-border/70 bg-card/95 text-[11.5px]" onClick={refreshRuns} disabled={runsLoading}>
+                          <RefreshCcw className="mr-1.5 h-4 w-4" aria-hidden="true" />
+                          {t('page.actions.refreshRuns')}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="h-8 rounded-lg border-border/70 bg-card/95 text-[11.5px]"
+                          onClick={() => {
+                            const base = sanitizeFilename(`kg_diagnostics_${datasetId.trim() || 'dataset'}`)
+                            downloadJson(runResp ?? {}, `${base}.json`)
+                            toast.success(t('toasts.runExported'))
+                          }}
+                          disabled={!runResp}
+                        >
+                          <Download className="mr-1.5 h-4 w-4" aria-hidden="true" />
+                          {t('page.actions.exportRun')}
+                        </Button>
+                      </div>
+
+                      <p className="mt-2 text-[10.5px] leading-5 text-muted-foreground">{t('summary.runHint')}</p>
+                    </div>
+                  </div>
+                </aside>
+
+                <section className="min-w-0 min-h-0 rounded-xl border border-border/70 bg-background shadow-sm">
+                  <Tabs value={activeView} onValueChange={(value) => setActiveView(value as DiagnosticsView)} className="flex h-full min-h-0 flex-col">
+                    <div className="shrink-0 border-b border-border/70 px-5 pt-4">
+                      <TabsList className="h-auto justify-start gap-7 rounded-none border-none bg-transparent p-0">
+                        <TabsTrigger value="run" className="rounded-none border-b-2 border-transparent px-0 pb-3 pt-0 text-[13px] font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-none">
+                          {t('summary.title')}
+                        </TabsTrigger>
+                        <TabsTrigger
+                          value="quality"
+                          title={t('qualityReport.title')}
+                          className="rounded-none border-b-2 border-transparent px-0 pb-3 pt-0 text-[13px] font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                        >
+                          抽取数据
+                        </TabsTrigger>
+                        <TabsTrigger value="compare" className="rounded-none border-b-2 border-transparent px-0 pb-3 pt-0 text-[13px] font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-none">
+                          {t('compare.title')}
+                        </TabsTrigger>
+                      </TabsList>
+
+                      <div className="flex flex-wrap items-center gap-3 py-4">
+                        <DiagnosticsHeaderPill label={t('runConfig.datasetId')} value={datasetLabel} className="min-w-[148px]" />
+                        <DiagnosticsHeaderPill label={t('runConfig.maxCases')} value={maxCases} className="min-w-[132px]" />
+                        <DiagnosticsHeaderPill label={t('runConfig.k')} value={k} className="min-w-[112px]" />
+                      </div>
+                    </div>
+
+                    <TabsContent value="run" className="mt-0 min-h-0 flex-1 overflow-auto px-5 py-3.5">
+                      <div className="space-y-3.5">
+                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+                          <DiagnosticsMetricTile
+                            label={t('summary.baselineHitRate')}
+                            value={formatMetricValue(summary?.baseline_hit_rate)}
+                            caption="整体是否命中参考基础指标"
+                            accent="sky"
+                            icon={<Target className="h-4 w-4" aria-hidden="true" />}
+                          />
+                          <DiagnosticsMetricTile
+                            label={t('summary.baselineMrr')}
+                            value={formatMetricValue(summary?.baseline_mrr)}
+                            caption="命中位置越靠前越好"
+                            accent="violet"
+                            icon={<TrendingUp className="h-4 w-4" aria-hidden="true" />}
+                          />
+                          <DiagnosticsMetricTile
+                            label={t('summary.baselineRecall')}
+                            value={formatMetricValue(summary?.baseline_recall)}
+                            caption="召回覆盖越高越好"
+                            accent="emerald"
+                            icon={<RefreshCcw className="h-4 w-4" aria-hidden="true" />}
+                          />
+                          <DiagnosticsMetricTile
+                            label={t('summary.baselineNdcg')}
+                            value={formatMetricValue(summary?.baseline_ndcg)}
+                            caption="兼顾命中位置与排序质量"
+                            accent="sky"
+                            icon={<Activity className="h-4 w-4" aria-hidden="true" />}
+                          />
+                          <DiagnosticsMetricTile
+                            label={t('summary.baselineMap')}
+                            value={formatMetricValue(summary?.baseline_map)}
+                            caption="多位置平均精度"
+                            accent="violet"
+                            icon={<Waypoints className="h-4 w-4" aria-hidden="true" />}
+                          />
+                          <DiagnosticsMetricTile
+                            label={t('summary.hardcasesGenerated')}
+                            value={formatMetricValue(summary?.hardcases_generated)}
+                            caption="深挖样本生成的案例数量"
+                            accent="amber"
+                            icon={<Sparkles className="h-4 w-4" aria-hidden="true" />}
+                          />
                         </div>
 
-                        <DiagnosticsJsonPanel label={t('workspace.rawRunJson')} value={runRespJson} rows={18} />
+                        <DiagnosticsRunHeroPanel summary={summary} emptyTitle={t('summary.empty')} emptyDescription={t('summary.runHint')} />
+
+                        <div className="grid gap-4 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+                          <DiagnosticsFailuresPanel failedCases={failedCases} activeTab={runAnalysisTab} onTabChange={setRunAnalysisTab} />
+                          <DiagnosticsRunRecordsPanel runs={runs} runRespJson={runRespJson} />
+                        </div>
                       </div>
-                    ) : (
-                      <DiagnosticsEmptyState title={t('summary.empty')} description={t('summary.runHint')} />
-                    )}
-                  </div>
-                </div>
-              </TabsContent>
+                    </TabsContent>
 
               <TabsContent value="quality" className="mt-0 min-h-0 flex-1">
                 <div className="flex h-full min-h-0 flex-col">
@@ -1006,7 +1386,7 @@ export function KGDiagnosticsPage() {
                                 caption={qualityPipelineHash.trim() || t('workspace.currentPipelineLabel')}
                               />
                               {qualityHighlights.map(([key, value]) => (
-                                <DiagnosticsMetricTile key={key} label={key} value={formatMetricValue(value)} tone="neutral" />
+                                <DiagnosticsMetricTile key={key} label={formatDiagnosticsMetricLabel(key)} value={formatMetricValue(value)} tone="neutral" />
                               ))}
                             </div>
                           </div>
@@ -1133,7 +1513,7 @@ export function KGDiagnosticsPage() {
                                       <div className="text-[11px] font-mono text-muted-foreground">{String(r.case_id).slice(0, 8)}</div>
                                       <div className="mt-1 text-sm text-foreground">{r.question || t('compare.noQuestion')}</div>
                                       <div className="mt-2 text-[11px] leading-5 tabular-nums text-muted-foreground">
-                                        hit {String(r.a_hit)} → {String(r.b_hit)} · recall {String(r.a_recall)} → {String(r.b_recall)} · Δ{' '}
+                                        命中 {String(r.a_hit)} → {String(r.b_hit)} · Recall {String(r.a_recall)} → {String(r.b_recall)} · 变化{' '}
                                         {String(r.delta_recall)}
                                       </div>
                                     </div>
@@ -1159,7 +1539,7 @@ export function KGDiagnosticsPage() {
                                     const delta = Number(row.delta ?? 0)
                                     return (
                                       <div key={key} className="rounded-lg border border-border/70 bg-background px-3 py-3">
-                                        <div className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">{key}</div>
+                                        <div className="text-[11px] tracking-[0.08em] text-muted-foreground">{formatDiagnosticsMetricLabel(key)}</div>
                                         <div className="mt-1 text-sm font-medium tabular-nums text-foreground">
                                           {String(row.a ?? '-')} → {String(row.b ?? '-')}
                                         </div>
@@ -1193,6 +1573,8 @@ export function KGDiagnosticsPage() {
             </Tabs>
           </section>
         </div>
+      </div>
+          </div>
       </div>
     </AppFrame>
   )

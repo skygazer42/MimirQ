@@ -59,4 +59,12 @@ describe('navbar source', () => {
     expect(src).toContain('t(section.titleKey)')
     expect(src).toContain("t('command.triggerLabel')")
   })
+
+  it('keeps the expanded sidebar width aligned with the 2048px dashboard layout reference', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'navbar.tsx'), 'utf8')
+
+    expect(src).toContain('w-[264px] translate-x-0')
+    expect(src).toContain('w-[264px] -translate-x-full')
+    expect(src).toContain('left-[264px]')
+  })
 })

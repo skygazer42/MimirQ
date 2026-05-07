@@ -68,17 +68,15 @@ function getCanvasBackdropStyle(isDark: boolean) {
   }
 
   return {
-    backgroundColor: '#fffef9',
+    backgroundColor: '#f8faff',
     backgroundImage: [
-      'radial-gradient(circle at 14% 12%, rgba(255, 255, 255, 0.82), transparent 24%)',
-      'radial-gradient(circle at 82% 18%, rgba(232, 223, 210, 0.18), transparent 28%)',
-      'linear-gradient(rgba(120, 102, 84, 0.038) 1px, transparent 1px)',
-      'linear-gradient(90deg, rgba(120, 102, 84, 0.038) 1px, transparent 1px)',
-      'linear-gradient(rgba(120, 102, 84, 0.082) 1px, transparent 1px)',
-      'linear-gradient(90deg, rgba(120, 102, 84, 0.082) 1px, transparent 1px)',
+      'radial-gradient(circle at 44% 38%, rgba(96, 165, 250, 0.105), transparent 34%)',
+      'radial-gradient(circle at 72% 18%, rgba(139, 92, 246, 0.055), transparent 30%)',
+      'radial-gradient(circle at 22% 18%, rgba(255, 255, 255, 0.92), transparent 28%)',
+      'linear-gradient(180deg, rgba(250, 252, 255, 0.98) 0%, rgba(245, 248, 253, 0.98) 100%)',
     ].join(','),
-    backgroundSize: '100% 100%, 100% 100%, 22px 22px, 22px 22px, 110px 110px, 110px 110px',
-    backgroundPosition: '0 0, 0 0, -1px -1px, -1px -1px, -1px -1px, -1px -1px',
+    backgroundSize: '100% 100%, 100% 100%, 100% 100%, 100% 100%',
+    backgroundPosition: '0 0, 0 0, 0 0, 0 0',
   } as const
 }
 
@@ -583,7 +581,7 @@ export function GraphCanvas({
         className="absolute inset-0 z-0"
         style={getCanvasBackdropStyle(isDark)}
       />
-      <div className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_center,transparent_46%,rgba(15,23,42,0.04)_100%)] dark:bg-[radial-gradient(circle_at_center,transparent_42%,rgba(2,6,23,0.36)_100%)]" />
+      <div className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_center,transparent_52%,rgba(59,130,246,0.025)_100%)] dark:bg-[radial-gradient(circle_at_center,transparent_42%,rgba(2,6,23,0.36)_100%)]" />
 
       {graphRenderData.nodes.length > 0 ? (
         <>
@@ -603,6 +601,7 @@ export function GraphCanvas({
                 highlightedNodeIds={highlightedNodeIds}
                 highlightedLinkIds={highlightedLinkIds}
                 selectedNodeId={selectedNodeId}
+                showEdgeLabels={showEdgeLabels}
                 layoutMode={layoutMode}
               />
             ) : (

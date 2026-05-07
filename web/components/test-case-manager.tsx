@@ -1,8 +1,8 @@
 /**
- * 测试用例管理组件
+ * Golden 评测集管理组件
  * 
  * 功能：
- * - 列表展示测试用例
+ * - 列表展示数据集级 Golden 评测样本
  * - 搜索和筛选
  * - 编辑、删除操作
  * - 批量选择和操作
@@ -128,7 +128,7 @@ function TestCaseRow({
 
           {caseItem.expected_answer ? (
             <div className={cn('text-muted-foreground line-clamp-2', dense ? 'mb-1.5 text-[11px]' : 'mb-2 text-xs')}>
-              期望: {caseItem.expected_answer}
+              标准答案: {caseItem.expected_answer}
             </div>
           ) : null}
 
@@ -160,6 +160,12 @@ function TestCaseRow({
                 {caseItem.document_ids.length} 文档
               </span>
             ) : null}
+            {caseItem.reference_sources?.length ? (
+              <span className="flex items-center gap-1">
+                <Star className="w-3 h-3" />
+                标准证据 {caseItem.reference_sources.length}
+              </span>
+            ) : null}
           </div>
         </button>
 
@@ -171,8 +177,8 @@ function TestCaseRow({
               'text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none',
               isGolden && 'text-amber-600 hover:text-amber-700'
             )}
-            aria-label={isGolden ? '取消 Golden 标记' : '标记为 Golden'}
-            title={isGolden ? '取消 Golden' : '标记为 Golden'}
+            aria-label={isGolden ? '移出 Golden 评测集' : '纳入 Golden 评测集'}
+            title={isGolden ? '移出 Golden 评测集' : '纳入 Golden 评测集'}
           >
             <Star className="w-4 h-4" fill={isGolden ? 'currentColor' : 'none'} />
           </button>
@@ -276,11 +282,27 @@ export function TestCaseManager({
   const goldenCount = useMemo(() => {
     return (cases || []).filter((c) => Array.isArray(c.tags) && c.tags.includes(GOLDEN_TAG)).length
   }, [cases])
+  const standardAnswerCount = useMemo(() => {
+    return (cases || []).filter((c) => typeof c.expected_answer === 'string' && c.expected_answer.trim().length > 0).length
+  }, [cases])
+  const referenceSourceCount = useMemo(() => {
+    return (cases || []).reduce((total, c) => total + (Array.isArray(c.reference_sources) ? c.reference_sources.length : 0), 0)
+  }, [cases])
+  const goldenCaseIds = useMemo(() => {
+    return (cases || [])
+      .filter((c) => Array.isArray(c.tags) && c.tags.includes(GOLDEN_TAG))
+      .map((c) => c.id)
+  }, [cases])
 
   // 过滤用例
   const filteredCases = cases.filter((c) => {
-    const q = String(c.question || '').toLowerCase()
-    if (!q.includes(searchQuery.toLowerCase())) return false
+    const query = searchQuery.toLowerCase()
+    const searchable = [
+      c.question,
+      c.expected_answer,
+      ...(Array.isArray(c.tags) ? c.tags : []),
+    ].join(' ').toLowerCase()
+    if (!searchable.includes(query)) return false
     if (!goldenOnly) return true
     return Array.isArray(c.tags) && c.tags.includes(GOLDEN_TAG)
   })
@@ -381,6 +403,7 @@ export function TestCaseManager({
       const firstChunkId = toTrimmedPrimitiveString(citations?.[0]?.chunk_id)
       setEvidenceSelectedChunkIds(firstChunkId ? new Set([firstChunkId]) : new Set())
 
+      setIsCreating(false)
       setEvidenceDialogOpen(true)
     } catch (error) {
       console.error('检索预览失败:', error)
@@ -498,7 +521,7 @@ export function TestCaseManager({
         dataset_id: ds,
         expected_answer: evidenceExpectedAnswer?.trim() ? evidenceExpectedAnswer.trim() : undefined,
         reference_sources: refs,
-        tags: [sourceTag],
+        tags: [GOLDEN_TAG, sourceTag],
         extra: {
           evidence_pack_exported_at: evidencePack?.exported_at || null,
           query_for_retrieval: evidencePack?.query_for_retrieval || null,
@@ -511,7 +534,7 @@ export function TestCaseManager({
         },
       }
       await evaluationApi.createRegressionCase(payload)
-      toast.success('已创建回归用例')
+      toast.success('已创建 Golden 评测样本')
       setEvidenceDialogOpen(false)
       setEvidencePack(null)
       setEvidenceSelectedChunkIds(new Set())
@@ -545,20 +568,36 @@ export function TestCaseManager({
         setSelectedCase(updated)
         onCaseSelected?.(updated.id)
       }
-      toast.success(hasGolden ? '已取消 Golden 标记' : '已标记为 Golden')
+      toast.success(hasGolden ? '已移出 Golden 评测集' : '已纳入 Golden 评测集')
     } catch (error) {
       console.error('Failed to toggle golden tag:', error)
       toast.error(formatApiError(error, '更新 Golden 标记失败'))
     }
   }
 
-  // 运行选中的测试
-  const handleRunSelected = () => {
-    if (selectedCaseIds.size === 0) {
-      toast.error('请先选择测试用例')
+  const handleRunCaseIds = (caseIds: string[], emptyMessage: string) => {
+    if (!datasetId) {
+      toast.error('请先选择数据集')
       return
     }
-    onRunTests?.(Array.from(selectedCaseIds))
+    if (caseIds.length === 0) {
+      toast.error(emptyMessage)
+      return
+    }
+    onRunTests?.(caseIds)
+  }
+
+  // 运行选中的测试
+  const handleRunSelected = () => {
+    handleRunCaseIds(Array.from(selectedCaseIds), '请先选择评测样本')
+  }
+
+  const handleRunGolden = () => {
+    handleRunCaseIds(goldenCaseIds, '当前数据集暂无 Golden 样本')
+  }
+
+  const handleRunAll = () => {
+    handleRunCaseIds(cases.map((caseItem) => caseItem.id), '当前数据集暂无评测样本')
   }
 
   let caseListContent: ReactNode
@@ -569,13 +608,79 @@ export function TestCaseManager({
       </div>
     )
   } else if (filteredCases.length === 0) {
-    const emptyMessage = !datasetId
-      ? '请先选择数据集'
-      : searchQuery
-        ? '没有找到匹配的用例'
-        : '暂无测试用例'
+    const emptyTitle = !datasetId
+      ? '先选择数据集'
+      : searchQuery || goldenOnly
+        ? '没有匹配的评测样本'
+        : '暂无 Golden 评测样本'
+    const emptyDescription = !datasetId
+      ? 'Golden 评测集绑定到数据集，选择知识库后才能创建标准问答和标准证据。'
+      : searchQuery || goldenOnly
+        ? '当前筛选条件没有命中样本，可以清空筛选或新增一条可复用标准问答。'
+        : '为当前数据集添加标准问题、标准答案和标准证据，用它作为评估 RAG pipeline 的固定标尺。'
 
-    caseListContent = <div className="text-center py-8 text-muted-foreground">{emptyMessage}</div>
+    caseListContent = (
+      <div className={cn('flex h-full min-h-[420px] items-center justify-center px-6 text-center', dense ? 'py-12' : 'py-10')}>
+        <div className="max-w-md">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl border border-slate-200/80 bg-[radial-gradient(circle_at_30%_20%,rgba(37,99,235,0.16),transparent_45%),linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] shadow-sm">
+            <FileText className="h-7 w-7 text-blue-600" />
+          </div>
+          <div className="mt-4 text-base font-semibold text-foreground">{emptyTitle}</div>
+          <div className="mt-2 text-[13px] leading-6 text-muted-foreground">{emptyDescription}</div>
+
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+            {(searchQuery || goldenOnly) && datasetId ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className={cn(dense && 'h-8 rounded-lg border-slate-200/80 bg-card/90 px-2.5 text-[11px]')}
+                onClick={() => {
+                  setSearchQuery('')
+                  setGoldenOnly(false)
+                }}
+              >
+                清空筛选
+              </Button>
+            ) : null}
+            <Button
+              size="sm"
+              className={cn('gap-2', dense && 'h-8 rounded-lg px-2.5 text-[11px]')}
+              onClick={() => setIsCreating(true)}
+              disabled={!datasetId}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              新增标准问答
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className={cn('gap-2', dense && 'h-8 rounded-lg border-slate-200/80 bg-card/90 px-2.5 text-[11px]')}
+              onClick={handleChooseEvidencePack}
+              disabled={!datasetId}
+            >
+              <Upload className="h-3.5 w-3.5" />
+              导入 Evidence Pack
+            </Button>
+          </div>
+
+          {datasetId ? (
+            <div className="mt-6 grid grid-cols-3 gap-2 text-left">
+              {[
+                ['1', '标准问题', '固定 RAG 输入'],
+                ['2', '标准证据', '标定 ground truth'],
+                ['3', '差距评分', '追踪回归结果'],
+              ].map(([step, title, desc]) => (
+                <div key={step} className="rounded-2xl border border-slate-200/80 bg-white/90 p-2.5">
+                  <div className="text-[10px] font-semibold text-blue-600">STEP {step}</div>
+                  <div className="mt-1 text-[11px] font-semibold text-foreground">{title}</div>
+                  <div className="mt-0.5 text-[10px] leading-4 text-muted-foreground">{desc}</div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    )
   } else {
     caseListContent = (
       <>
@@ -626,10 +731,44 @@ export function TestCaseManager({
       <div className={cn('border-b', dense ? 'border-slate-200/80 bg-[#fffef9] px-3 py-3' : 'border-border p-4')}>
         <div className={cn('flex items-center justify-between', dense ? 'mb-2.5' : 'mb-3')}>
           <div>
-            <h3 className={cn('font-semibold text-foreground', dense ? 'text-[13px]' : 'text-sm')}>测试用例库</h3>
-            {dense ? <div className="mt-0.5 text-[11px] text-muted-foreground">检索预览、沉淀样例并批量发起回归。</div> : null}
+            <h3 className={cn('font-semibold text-foreground', dense ? 'text-[13px]' : 'text-sm')}>Golden 评测集</h3>
+            <p className={cn('mt-1 text-muted-foreground', dense ? 'text-[11px] leading-4' : 'text-xs')}>
+              数据集级固定标尺：问题、标准答案、标准证据。
+            </p>
+            {dense ? (
+              <div aria-label="Golden 评测集统计" className="mt-2 flex flex-wrap items-center gap-1.5">
+                <span className="rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-muted-foreground">样本 {cases.length}</span>
+                <span className="rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700">Golden {goldenCount}</span>
+                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] text-emerald-700">标准答案 {standardAnswerCount}</span>
+                <span className="rounded-full border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[10px] text-sky-700">标准证据 {referenceSourceCount}</span>
+                <span className="rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-700">已选 {selectedCaseIds.size}</span>
+              </div>
+            ) : null}
           </div>
           <div className={cn('flex items-center', dense ? 'gap-1.5' : 'gap-2')}>
+            {cases.length > 0 && (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className={cn('gap-2', dense && 'h-8 rounded-lg border-amber-200/80 bg-amber-50/80 px-2.5 text-[11px] text-amber-700 hover:bg-amber-50')}
+                  onClick={handleRunGolden}
+                  disabled={!datasetId || goldenCaseIds.length === 0}
+                >
+                  <Star className="w-3.5 h-3.5" />
+                  运行 Golden
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className={cn('gap-2', dense && 'h-8 rounded-lg border-slate-200/80 bg-card/90 px-2.5 text-[11px]')}
+                  onClick={handleRunAll}
+                  disabled={!datasetId || cases.length === 0}
+                >
+                  运行全部
+                </Button>
+              </>
+            )}
             {selectedCaseIds.size > 0 && (
               <>
                 <Button
@@ -680,10 +819,10 @@ export function TestCaseManager({
             <Button
               size="sm"
               className={cn('gap-2', dense && 'h-8 rounded-lg px-2.5 text-[11px]')}
-              onClick={() => setIsCreating(!isCreating)}
+              onClick={() => setIsCreating(true)}
             >
               <Plus className="w-3.5 h-3.5" />
-              新建
+              新增标准问答
             </Button>
           </div>
         </div>
@@ -693,14 +832,14 @@ export function TestCaseManager({
           <Search className={cn('absolute top-1/2 -translate-y-1/2 text-muted-foreground', dense ? 'left-2.5 h-3.5 w-3.5' : 'left-3 h-4 w-4')} />
           <Input
             type="text"
-            placeholder="搜索问题..."
+            placeholder="搜索问题、关键词或标签..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className={cn(dense ? 'h-9 rounded-xl border-slate-200/80 bg-card/95 pl-8 text-[13px]' : 'pl-10')}
           />
         </div>
 
-        <div className={cn('flex items-center justify-between gap-3', dense ? 'mt-2.5' : 'mt-3')}>
+        <div className={cn('flex items-center justify-start gap-3', dense ? 'mt-2.5' : 'mt-3')}>
           <Button
             size="sm"
             variant={goldenOnly ? 'default' : 'outline'}
@@ -714,41 +853,41 @@ export function TestCaseManager({
               setSelectedCaseIds(new Set())
             }}
             disabled={!datasetId}
-            title={datasetId ? '只显示标记为 golden 的用例' : '请先选择数据集'}
+            title={datasetId ? '只显示纳入 Golden 评测集的样本' : '请先选择数据集'}
           >
             <Star className="w-3.5 h-3.5" fill={goldenOnly ? 'currentColor' : 'none'} />
-            Golden
+            只看 Golden
           </Button>
-          <div className={cn('text-muted-foreground', dense ? 'text-[11px]' : 'text-[11px]')}>
-            golden {goldenCount} / {cases.length}
-          </div>
         </div>
       </div>
 
-      {/* 创建表单 */}
-      {isCreating && (
-        <div className={cn('border-b', dense ? 'border-slate-200/80 bg-slate-50/70 px-3 py-3' : 'border-border bg-muted/30 p-4')}>
+      <Dialog open={isCreating} onOpenChange={setIsCreating}>
+        <DialogContent className={cn('max-w-2xl', dense && 'max-h-[min(82vh,720px)] overflow-y-auto')}>
+          <DialogHeader>
+            <DialogTitle>新增标准问答</DialogTitle>
+          </DialogHeader>
+
           <div className={cn(dense ? 'space-y-2.5' : 'space-y-3')}>
             <div>
               <div className={cn('block font-medium text-muted-foreground', dense ? 'mb-1 text-[11px]' : 'mb-1 text-xs')}>
-                问题 *
+                标准问题 *
               </div>
               <Textarea
                 value={newQuestion}
                 onChange={(e) => setNewQuestion(e.target.value)}
-                placeholder="输入测试问题..."
-                className={cn('resize-none', dense ? 'min-h-[64px] rounded-xl border-slate-200/80 bg-card/95 text-[13px]' : 'min-h-[72px]')}
+                placeholder="输入用于评估 RAG 的标准问题..."
+                className={cn('resize-none', dense ? 'min-h-[72px] rounded-xl border-slate-200/80 bg-card/95 text-[13px]' : 'min-h-[72px]')}
               />
             </div>
             <div>
               <div className={cn('block font-medium text-muted-foreground', dense ? 'mb-1 text-[11px]' : 'mb-1 text-xs')}>
-                期望答案（可选）
+                标准答案（推荐）
               </div>
               <Textarea
                 value={newExpectedAnswer}
                 onChange={(e) => setNewExpectedAnswer(e.target.value)}
-                placeholder="输入期望答案..."
-                className={cn('resize-none', dense ? 'min-h-[64px] rounded-xl border-slate-200/80 bg-card/95 text-[13px]' : 'min-h-[72px]')}
+                placeholder="输入可比对的标准答案..."
+                className={cn('resize-none', dense ? 'min-h-[72px] rounded-xl border-slate-200/80 bg-card/95 text-[13px]' : 'min-h-[72px]')}
               />
             </div>
             <div className="flex items-center gap-2">
@@ -764,7 +903,7 @@ export function TestCaseManager({
                     检索中…
                   </>
                 ) : (
-                  '检索预览'
+                  '检索并选择标准证据'
                 )}
               </Button>
               <Button
@@ -780,18 +919,18 @@ export function TestCaseManager({
                 取消
               </Button>
             </div>
-            <div className={cn('text-muted-foreground', dense ? 'text-[11px] leading-5' : 'text-[11px]')}>
+            <div className={cn('rounded-xl border border-amber-200/80 bg-amber-50/70 px-3 py-2 text-muted-foreground', dense ? 'text-[11px] leading-5' : 'text-[11px]')}>
               提示：后端要求每个用例必须提供至少 1 条 <span className="font-mono">reference_sources</span>。
-              点击“检索预览”或“导入 Evidence Pack”选择 Ground Truth 证据引用后再创建。
+              点击“检索并选择标准证据”或“导入 Evidence Pack”选择 Ground Truth 证据引用后再创建。
             </div>
           </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={evidenceDialogOpen} onOpenChange={setEvidenceDialogOpen}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>证据选择 → 回归用例</DialogTitle>
+            <DialogTitle>标准证据选择 → Golden 评测样本</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
@@ -813,20 +952,20 @@ export function TestCaseManager({
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
-                <div className="text-xs font-medium text-muted-foreground mb-1">问题</div>
+                <div className="text-xs font-medium text-muted-foreground mb-1">标准问题</div>
                 <Textarea
                   value={evidenceQuestion}
                   onChange={(e) => setEvidenceQuestion(e.target.value)}
-                  placeholder="问题（将写入 regression case）"
+                  placeholder="问题（将写入 Golden 评测样本）"
                   className="min-h-[84px] resize-none"
                 />
               </div>
               <div>
-                <div className="text-xs font-medium text-muted-foreground mb-1">期望答案（可选）</div>
+                <div className="text-xs font-medium text-muted-foreground mb-1">标准答案（推荐）</div>
                 <Textarea
                   value={evidenceExpectedAnswer}
                   onChange={(e) => setEvidenceExpectedAnswer(e.target.value)}
-                  placeholder="可选：期望答案"
+                  placeholder="可选：标准答案"
                   className="min-h-[84px] resize-none"
                 />
               </div>
@@ -834,7 +973,7 @@ export function TestCaseManager({
 
             <div className="rounded-lg border border-border overflow-hidden">
               <div className="px-3 py-2 border-b border-border bg-card flex items-center justify-between">
-                <div className="text-xs font-semibold text-foreground">选择 Ground Truth 证据（reference_sources）</div>
+                <div className="text-xs font-semibold text-foreground">选择标准证据（reference_sources）</div>
                 <div className="text-[11px] text-muted-foreground">
                   已选 {evidenceSelectedChunkIds.size} / {evidenceCitations.length}
                 </div>
@@ -894,7 +1033,7 @@ export function TestCaseManager({
                     创建中…
                   </>
                 ) : (
-                  '创建回归用例'
+                  '创建 Golden 样本'
                 )}
               </Button>
             </div>
@@ -903,17 +1042,19 @@ export function TestCaseManager({
       </Dialog>
 
       {/* 用例列表 */}
-      <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar">
+      <div className="flex-1 overflow-y-auto overscroll-contain custom-scrollbar">
         {caseListContent}
       </div>
 
       {/* 底部统计 */}
-      <div className={cn('border-t', dense ? 'border-slate-200/80 bg-[#fffef9] px-3 py-2.5' : 'border-border bg-muted/30 p-3')}>
-        <div className={cn('text-center text-muted-foreground', dense ? 'text-[11px]' : 'text-xs')}>
-          共 {filteredCases.length} 个测试用例
-          {selectedCaseIds.size > 0 && ` · 已选择 ${selectedCaseIds.size} 个`}
+      {filteredCases.length > 0 || selectedCaseIds.size > 0 ? (
+        <div className={cn('border-t', dense ? 'border-slate-200/80 bg-[#fffef9] px-3 py-2.5' : 'border-border bg-muted/30 p-3')}>
+          <div className={cn('text-center text-muted-foreground', dense ? 'text-[11px]' : 'text-xs')}>
+            已显示 {filteredCases.length} 个测试用例
+            {selectedCaseIds.size > 0 && ` · 已选择 ${selectedCaseIds.size} 个`}
+          </div>
         </div>
-      </div>
+      ) : null}
     </div>
   )
 }

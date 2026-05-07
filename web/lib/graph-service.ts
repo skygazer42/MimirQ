@@ -30,21 +30,122 @@ function seededIndex(seed: string, size: number): number {
 
 export class GraphService {
   static getMockGraph(): GraphData {
+    const typeMeta = {
+      concept: { label: '概念 / Concept', color: '#4f7cff', group: 1 },
+      technology: { label: '技术 / Technology', color: '#19b8c6', group: 2 },
+      method: { label: '方法 / Method', color: '#8b5cf6', group: 3 },
+      model: { label: '模型 / Model', color: '#a78bfa', group: 4 },
+      application: { label: '应用 / Application', color: '#f472b6', group: 5 },
+      domain: { label: '领域 / Domain', color: '#22c55e', group: 6 },
+    } as const
+
+    const createNode = (
+      id: string,
+      label: string,
+      type: keyof typeof typeMeta,
+      val: number
+    ): GraphNode => {
+      const meta = typeMeta[type]
+      return {
+        id,
+        label,
+        type: meta.label,
+        group: meta.group,
+        val,
+        color: meta.color,
+        meta: {
+          type: meta.label,
+          domain: 'AI Knowledge Demo',
+        },
+      }
+    }
+
     const nodes: GraphNode[] = [
-      { id: '1', label: 'Artificial Intelligence', group: 1, val: 20 },
-      { id: '2', label: 'Machine Learning', group: 1, val: 15 },
-      { id: '3', label: 'Deep Learning', group: 1, val: 10 },
-      { id: '4', label: 'NLP', group: 2, val: 12 },
-      { id: '5', label: 'Computer Vision', group: 3, val: 12 },
-      { id: '6', label: 'Reinforcement Learning', group: 1, val: 10 },
+      createNode('ai', 'Artificial Intelligence', 'concept', 34),
+      createNode('machine-learning', 'Machine Learning', 'concept', 24),
+      createNode('deep-learning', 'Deep Learning', 'model', 24),
+      createNode('nlp', 'NLP', 'technology', 23),
+      createNode('computer-vision', 'Computer Vision', 'technology', 23),
+      createNode('reinforcement-learning', 'Reinforcement Learning', 'application', 22),
+
+      createNode('supervised-learning', 'Supervised Learning', 'method', 12),
+      createNode('unsupervised-learning', 'Unsupervised Learning', 'method', 12),
+      createNode('feature-engineering', 'Feature Engineering', 'method', 11),
+      createNode('model-evaluation', 'Model Evaluation', 'method', 11),
+
+      createNode('neural-networks', 'Neural Networks', 'model', 13),
+      createNode('cnn', 'Convolutional Neural Network', 'model', 11),
+      createNode('rnn', 'Recurrent Neural Network', 'model', 11),
+
+      createNode('named-entity-recognition', 'Named Entity Recognition', 'technology', 11),
+      createNode('text-generation', 'Text Generation', 'technology', 11),
+      createNode('sentiment-analysis', 'Sentiment Analysis', 'technology', 10),
+      createNode('machine-translation', 'Machine Translation', 'technology', 10),
+      createNode('text-classification', 'Text Classification', 'technology', 10),
+
+      createNode('image-recognition', 'Image Recognition', 'domain', 11),
+      createNode('object-detection', 'Object Detection', 'domain', 11),
+      createNode('face-recognition', 'Face Recognition', 'domain', 10),
+      createNode('image-segmentation', 'Image Segmentation', 'domain', 10),
+
+      createNode('q-learning', 'Q-Learning', 'application', 10),
+      createNode('policy-gradient', 'Policy Gradient', 'application', 10),
+      createNode('deep-q-network', 'Deep Q-Network', 'application', 10),
     ]
 
+    const createLink = (
+      source: string,
+      target: string,
+      label: string,
+      color: string,
+      confidence = 0.86
+    ): GraphLink => ({
+      source,
+      target,
+      label,
+      color,
+      confidence,
+      kind: 'entity_relation',
+      meta: {
+        kind: 'entity_relation',
+        label,
+        confidence,
+      },
+    })
+
     const links: GraphLink[] = [
-      { source: '1', target: '2', label: 'includes' },
-      { source: '2', target: '3', label: 'includes' },
-      { source: '1', target: '4', label: 'application' },
-      { source: '1', target: '5', label: 'application' },
-      { source: '2', target: '6', label: 'includes' },
+      createLink('ai', 'machine-learning', '子领域', '#4f7cff', 0.96),
+      createLink('ai', 'deep-learning', '子领域', '#8b5cf6', 0.94),
+      createLink('ai', 'nlp', '子领域', '#19b8c6', 0.93),
+      createLink('ai', 'computer-vision', '子领域', '#22c55e', 0.93),
+      createLink('ai', 'reinforcement-learning', '子领域', '#f472b6', 0.91),
+
+      createLink('machine-learning', 'supervised-learning', '包含', '#8b5cf6'),
+      createLink('machine-learning', 'unsupervised-learning', '包含', '#8b5cf6'),
+      createLink('machine-learning', 'feature-engineering', '依赖', '#8b5cf6', 0.78),
+      createLink('machine-learning', 'model-evaluation', '评估', '#8b5cf6', 0.82),
+
+      createLink('deep-learning', 'neural-networks', '基础', '#a78bfa', 0.92),
+      createLink('deep-learning', 'cnn', '算法', '#a78bfa'),
+      createLink('deep-learning', 'rnn', '算法', '#a78bfa'),
+
+      createLink('nlp', 'named-entity-recognition', '应用于', '#19b8c6'),
+      createLink('nlp', 'text-generation', '应用于', '#19b8c6'),
+      createLink('nlp', 'sentiment-analysis', '应用于', '#19b8c6'),
+      createLink('nlp', 'machine-translation', '应用于', '#19b8c6'),
+      createLink('nlp', 'text-classification', '应用于', '#19b8c6'),
+
+      createLink('computer-vision', 'image-recognition', '应用于', '#22c55e'),
+      createLink('computer-vision', 'object-detection', '应用于', '#22c55e'),
+      createLink('computer-vision', 'face-recognition', '应用于', '#22c55e'),
+      createLink('computer-vision', 'image-segmentation', '应用于', '#22c55e'),
+
+      createLink('reinforcement-learning', 'q-learning', '算法', '#f472b6'),
+      createLink('reinforcement-learning', 'policy-gradient', '算法', '#f472b6'),
+      createLink('reinforcement-learning', 'deep-q-network', '算法', '#f472b6'),
+
+      createLink('deep-learning', 'computer-vision', '应用于', '#60a5fa', 0.76),
+      createLink('deep-learning', 'nlp', '应用于', '#60a5fa', 0.76),
     ]
 
     return cloneGraphData({ nodes, links })

@@ -115,6 +115,64 @@ def test_get_kg_stats_counts(monkeypatch: pytest.MonkeyPatch):
     ]
 
 
+def test_get_kg_stats_accepts_dataset_scope(monkeypatch: pytest.MonkeyPatch):
+    import app.rag.kg.api.routes as routes_mod
+    from app.core import config as config_mod
+    from app.rag.kg.api.routes import get_kg_stats
+
+    monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
+
+    called: dict[str, object] = {}
+
+    def _fake_resolve_allowed_documents(**kwargs):  # noqa: ANN001
+        called.update(kwargs)
+        return []
+
+    monkeypatch.setattr(routes_mod, "_resolve_allowed_documents", _fake_resolve_allowed_documents, raising=True)
+
+    out = get_kg_stats(
+        document_ids=None,
+        dataset_id=UUID(int=7),
+        tenant_id=UUID(int=1),
+        account_id="u",
+        db=object(),
+    )
+
+    assert called["dataset_id"] == UUID(int=7)
+    assert out.events == 0
+
+
+def test_compare_kg_snapshots_passes_dataset_scope(monkeypatch: pytest.MonkeyPatch):
+    import app.rag.kg.api.routes as routes_mod
+    from app.rag.kg.api.routes import compare_kg_snapshots
+
+    calls: list[dict[str, object]] = []
+
+    def _fake_export_kg_snapshot(**kwargs):  # noqa: ANN001
+        calls.append(dict(kwargs))
+        return {"pipeline_hash": kwargs["pipeline_hash"]}
+
+    monkeypatch.setattr(routes_mod, "export_kg_snapshot", _fake_export_kg_snapshot, raising=True)
+    monkeypatch.setattr(
+        "app.rag.kg.snapshot.diff_kg_snapshots",
+        lambda a, b: {"a": a["pipeline_hash"], "b": b["pipeline_hash"]},
+        raising=True,
+    )
+
+    out = compare_kg_snapshots(
+        pipeline_hash_a="ph-a",
+        pipeline_hash_b="ph-b",
+        document_ids=None,
+        dataset_id=UUID(int=7),
+        tenant_id=UUID(int=1),
+        account_id="u",
+        db=object(),
+    )
+
+    assert out == {"a": "ph-a", "b": "ph-b"}
+    assert [call["dataset_id"] for call in calls] == [UUID(int=7), UUID(int=7)]
+
+
 def test_export_kg_graph_graphml(monkeypatch: pytest.MonkeyPatch):
     import app.rag.kg.api.routes as routes_mod
     from app.core import config as config_mod

@@ -66,6 +66,7 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 KG_ENTITY_NOT_FOUND_DETAIL = "KG entity not found"
 PIPELINE_VERSION_FILTER_DESC = "Optional pipeline version filter (defaults to active pipeline per document)"
+DATASET_SCOPE_FILTER_DESC = "Optional dataset scope resolved server-side to accessible documents"
 INCLUDE_ENTITY_LINKS_DESC = "Include entity-entity co-occurrence links"
 INCLUDE_RELATION_LINKS_DESC = "Include entity-entity relation links (triples)"
 KG_API_GRAPH_METRIC = "kg.api.graph"
@@ -299,6 +300,7 @@ def _apply_relation_pipeline_scope(query, *, pipeline_hash: str | None):  # noqa
 def _resolve_allowed_documents(
     *,
     document_ids: list[UUID] | None,
+    dataset_id: UUID | None,
     tenant_id: UUID,
     account_id: str,
     db: Session,
@@ -317,12 +319,20 @@ def _resolve_allowed_documents(
             raise HTTPException(status_code=400, detail=f"Too many document_ids (max {eff_limit})")
 
         return filter_allowed_document_ids(db, tenant_id, account_id, deduped)
-    return list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=eff_limit)
+    return list_accessible_document_ids(
+        db,
+        tenant_id,
+        account_id,
+        dataset_id=dataset_id,
+        status="completed",
+        limit=eff_limit,
+    )
 
 
 @router.get("/graph", response_model=KGGraphResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_kg_graph(
     document_ids: Annotated[list[UUID] | None, Query()] = None,
+    dataset_id: Annotated[UUID | None, Query(description=DATASET_SCOPE_FILTER_DESC)] = None,
     pipeline_hash: Annotated[str | None, Query(
         min_length=1,
         max_length=200,
@@ -354,6 +364,7 @@ def get_kg_graph(
     allowed_doc_ids: list[UUID]
     allowed_doc_ids = _resolve_allowed_documents(
         document_ids=document_ids,
+        dataset_id=dataset_id,
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,
@@ -660,6 +671,7 @@ def get_kg_graph(
 def expand_kg_graph(
     node_id: Annotated[UUID, Query(description="Center node id (KgSourceEvent.id or KgEntity.id)")],
     document_ids: Annotated[list[UUID] | None, Query()] = None,
+    dataset_id: Annotated[UUID | None, Query(description=DATASET_SCOPE_FILTER_DESC)] = None,
     pipeline_hash: Annotated[str | None, Query(
         min_length=1,
         max_length=200,
@@ -688,6 +700,7 @@ def expand_kg_graph(
 
     allowed_doc_ids = _resolve_allowed_documents(
         document_ids=document_ids,
+        dataset_id=dataset_id,
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,
@@ -1089,6 +1102,7 @@ def search_kg_graph_nodes(
     kind: Annotated[str, Query(description="entity | event | all")] = "all",
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     document_ids: Annotated[list[UUID] | None, Query()] = None,
+    dataset_id: Annotated[UUID | None, Query(description=DATASET_SCOPE_FILTER_DESC)] = None,
     pipeline_hash: Annotated[str | None, Query(
         min_length=1,
         max_length=200,
@@ -1106,6 +1120,7 @@ def search_kg_graph_nodes(
 
     allowed_doc_ids = _resolve_allowed_documents(
         document_ids=document_ids,
+        dataset_id=dataset_id,
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,
@@ -1205,6 +1220,7 @@ def search_kg_graph_nodes(
 @router.get("/stats", response_model=KGStatsResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_kg_stats(
     document_ids: Annotated[list[UUID] | None, Query()] = None,
+    dataset_id: Annotated[UUID | None, Query(description=DATASET_SCOPE_FILTER_DESC)] = None,
     pipeline_hash: Annotated[str | None, Query(
         min_length=1,
         max_length=200,
@@ -1226,6 +1242,7 @@ def get_kg_stats(
 
     allowed_doc_ids = _resolve_allowed_documents(
         document_ids=document_ids,
+        dataset_id=dataset_id,
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,
@@ -1328,6 +1345,7 @@ class KGSnapshotDiffRequest(BaseModel):
 def export_kg_snapshot(
     pipeline_hash: Annotated[str, Query(min_length=1, max_length=200)],
     document_ids: Annotated[list[UUID] | None, Query()] = None,
+    dataset_id: Annotated[UUID | None, Query(description=DATASET_SCOPE_FILTER_DESC)] = None,
     include_details: Annotated[bool, Query(description="Include bounded node/edge details for exact diff")] = False,
     detail_limit: Annotated[int, Query(ge=1, le=10000, description="Max nodes/edges per detail group")] = 1000,
     *,
@@ -1346,6 +1364,7 @@ def export_kg_snapshot(
 
     allowed_doc_ids = _resolve_allowed_documents(
         document_ids=document_ids,
+        dataset_id=dataset_id,
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,
@@ -1608,6 +1627,7 @@ def compare_kg_snapshots(
     pipeline_hash_a: Annotated[str, Query(min_length=1, max_length=200)],
     pipeline_hash_b: Annotated[str, Query(min_length=1, max_length=200)],
     document_ids: Annotated[list[UUID] | None, Query()] = None,
+    dataset_id: Annotated[UUID | None, Query(description=DATASET_SCOPE_FILTER_DESC)] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1618,6 +1638,7 @@ def compare_kg_snapshots(
     snap_a = export_kg_snapshot(
         pipeline_hash=pipeline_hash_a,
         document_ids=document_ids,
+        dataset_id=dataset_id,
         include_details=True,
         detail_limit=1000,
         tenant_id=tenant_id,
@@ -1627,6 +1648,7 @@ def compare_kg_snapshots(
     snap_b = export_kg_snapshot(
         pipeline_hash=pipeline_hash_b,
         document_ids=document_ids,
+        dataset_id=dataset_id,
         include_details=True,
         detail_limit=1000,
         tenant_id=tenant_id,
@@ -1639,6 +1661,7 @@ def compare_kg_snapshots(
 @router.get("/graph/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_kg_graph(
     document_ids: Annotated[list[UUID] | None, Query()] = None,
+    dataset_id: Annotated[UUID | None, Query(description=DATASET_SCOPE_FILTER_DESC)] = None,
     pipeline_hash: Annotated[str | None, Query(
         min_length=1,
         max_length=200,
@@ -1666,6 +1689,7 @@ def export_kg_graph(
     t0 = time.perf_counter()
     graph = get_kg_graph(
         document_ids=document_ids,
+        dataset_id=dataset_id,
         pipeline_hash=pipeline_hash,
         max_events=max_events,
         max_entities=max_entities,
@@ -1773,6 +1797,7 @@ def export_kg_graph(
 def get_kg_event_detail(
     event_id: UUID,
     document_ids: Annotated[list[UUID] | None, Query()] = None,
+    dataset_id: Annotated[UUID | None, Query(description=DATASET_SCOPE_FILTER_DESC)] = None,
     pipeline_hash: Annotated[str | None, Query(
         min_length=1,
         max_length=200,
@@ -1788,6 +1813,7 @@ def get_kg_event_detail(
 
     allowed_doc_ids = _resolve_allowed_documents(
         document_ids=document_ids,
+        dataset_id=dataset_id,
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,
@@ -1851,6 +1877,7 @@ def get_kg_event_detail(
 def get_kg_entity_detail(
     entity_id: UUID,
     document_ids: Annotated[list[UUID] | None, Query()] = None,
+    dataset_id: Annotated[UUID | None, Query(description=DATASET_SCOPE_FILTER_DESC)] = None,
     pipeline_hash: Annotated[str | None, Query(
         min_length=1,
         max_length=200,
@@ -1871,6 +1898,7 @@ def get_kg_entity_detail(
 
     allowed_doc_ids = _resolve_allowed_documents(
         document_ids=document_ids,
+        dataset_id=dataset_id,
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,
@@ -3466,6 +3494,7 @@ async def run_kg_search(
     if payload.document_ids:
         allowed_doc_ids = _resolve_allowed_documents(
             document_ids=payload.document_ids,
+            dataset_id=None,
             tenant_id=tenant_id,
             account_id=account_id,
             db=db,

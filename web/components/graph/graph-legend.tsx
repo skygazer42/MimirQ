@@ -64,9 +64,9 @@ export function GraphLegend({ nodes, links = [], activeTypeFilters = [], onToggl
     }
 
     const labels: Record<string, string> = {
-      entity_relation: 'Entity Relation',
-      event_entity: 'Event ↔ Entity',
-      entity_entity: 'Entity ↔ Entity',
+      entity_relation: '有向关系 / Directed Edge',
+      event_entity: '事件实体 / Event Edge',
+      entity_entity: '实体关系 / Entity Edge',
     }
 
     const entries: EdgeKindEntry[] = []
@@ -91,7 +91,7 @@ export function GraphLegend({ nodes, links = [], activeTypeFilters = [], onToggl
             onClick={() => setCollapsed(prev => !prev)}
             className="w-full flex items-center justify-between px-3.5 py-2.5 text-[11px] font-semibold uppercase text-muted-foreground hover:text-foreground transition-colors"
           >
-            <span>Legend</span>
+            <span>图例</span>
             <span className="flex items-center gap-1.5">
               <span className="text-[11px] font-normal normal-case opacity-70">
                 {entityTypes.length}{edgeKinds.length ? ` / ${edgeKinds.length}` : ''}
@@ -103,7 +103,7 @@ export function GraphLegend({ nodes, links = [], activeTypeFilters = [], onToggl
           <div className="px-3.5 pb-3 pt-0.5 space-y-3 max-h-[180px] overflow-y-auto overscroll-contain no-scrollbar">
             {entityTypes.length > 0 && (
               <div>
-                <div className="text-[11px] font-medium text-muted-foreground mb-2 uppercase">Entity Types</div>
+                <div className="text-[11px] font-medium text-muted-foreground mb-2 uppercase">节点类型</div>
                 <div className="flex flex-wrap gap-x-4 gap-y-2">
                   {entityTypes.map(({ type, color, count }) => {
                     const isActive = activeTypeFilters.length === 0 || activeTypeFilters.includes(type)
@@ -132,7 +132,7 @@ export function GraphLegend({ nodes, links = [], activeTypeFilters = [], onToggl
             )}
             {edgeKinds.length > 0 && (
               <div>
-                <div className="text-[11px] font-medium text-muted-foreground mb-2 uppercase">Edge Types</div>
+                <div className="text-[11px] font-medium text-muted-foreground mb-2 uppercase">关系类型</div>
                 <div className="flex flex-wrap gap-x-4 gap-y-2">
                   {edgeKinds.map(({ kind, label, color, count }) => (
                     <div key={kind} className="flex items-center gap-1.5 text-xs" title={`${kind} (${count})`}>

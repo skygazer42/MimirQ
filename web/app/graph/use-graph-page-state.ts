@@ -192,7 +192,7 @@ export function useGraphPageState() {
   const [predicateQuery, setPredicateQuery] = useState('')
 
   const [searchTerm, setSearchTerm] = useState('')
-  const [showEdgeLabels, setShowEdgeLabels] = useState(true)
+  const [showEdgeLabels, setShowEdgeLabels] = useState(false)
   const [highlightedNodeIds, setHighlightedNodeIds] = useState<Set<string>>(() => new Set())
   const [highlightedLinkIds, setHighlightedLinkIds] = useState<Set<string>>(() => new Set())
 

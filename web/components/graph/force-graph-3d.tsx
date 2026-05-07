@@ -12,14 +12,7 @@ import {
 import dynamic from "next/dynamic"
 import { useTheme } from "next-themes"
 import {
-  BufferGeometry,
-  Float32BufferAttribute,
   Group,
-  Line,
-  LineBasicMaterial,
-  Mesh,
-  MeshBasicMaterial,
-  SphereGeometry,
 } from "three"
 import SpriteText from "three-spritetext"
 
@@ -115,6 +108,7 @@ interface ForceGraph3DProps {
   readonly highlightedNodeIds?: Set<string>
   readonly highlightedLinkIds?: Set<string>
   readonly selectedNodeId?: string | null
+  readonly showEdgeLabels?: boolean
   readonly layoutMode?: LayoutMode
   readonly width?: number
   readonly height?: number
@@ -133,6 +127,7 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
       highlightedNodeIds = new Set(),
       highlightedLinkIds = new Set(),
       selectedNodeId = null,
+      showEdgeLabels = false,
       layoutMode = "force",
       width,
       height,
@@ -153,17 +148,6 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
     }, [])
 
     const typeColorMap = useMemo(() => buildTypeColorMap(data.nodes), [data.nodes])
-    const nodeDegreeMap = useMemo(() => {
-      const map = new Map<string, number>()
-      for (const link of data.links || []) {
-        const src = typeof link.source === "object" ? link.source?.id : link.source
-        const tgt = typeof link.target === "object" ? link.target?.id : link.target
-        map.set(String(src), (map.get(String(src)) || 0) + 1)
-        map.set(String(tgt), (map.get(String(tgt)) || 0) + 1)
-      }
-      return map
-    }, [data.links])
-
     const neighborSet = useMemo(() => {
       if (!selectedNodeId) return null
       const set = new Set<string>()
@@ -183,7 +167,14 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
     const labelBgColor = isDark ? "rgba(2, 6, 23, 0.84)" : "rgba(255, 254, 249, 0.92)"
     const labelStrokeColor = isDark ? "rgba(15, 23, 42, 0.72)" : "rgba(255, 255, 255, 0.96)"
     const graphCursor = isCanvasPanning ? "grabbing" : (hoveredNodeId || hoveredLinkId ? "pointer" : "grab")
-    const unitSphereGeometry = useMemo(() => new SphereGeometry(1, 18, 18), [])
+    const isLargeGraph = data.nodes.length > 180 || data.links.length > 360
+    const useCustomNodeObjects = !isLargeGraph && data.nodes.length <= 36
+    const allowLinkLabelSprites =
+      showEdgeLabels && !isLargeGraph && data.links.length <= 40
+    const cooldownTicks = isLargeGraph ? 35 : 90
+    const cooldownTime = isLargeGraph ? 2500 : 6500
+    const nodeRelSize = isLargeGraph ? 3.8 : GRAPH_3D_NODE_REL_SIZE
+    const nodeResolution = isLargeGraph ? 8 : 16
 
     const dagMode = useMemo(() => {
       switch (layoutMode) {
@@ -209,12 +200,6 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
     }, [height, mounted, width])
 
     useEffect(() => {
-      return () => {
-        unitSphereGeometry.dispose()
-      }
-    }, [unitSphereGeometry])
-
-    useEffect(() => {
       if (!mounted) return
 
       const root = containerRef.current
@@ -223,9 +208,7 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
       const resetPanning = () => setIsCanvasPanning(false)
       const handleMouseDown = (event: MouseEvent) => {
         if (!(event.target instanceof HTMLCanvasElement)) return
-        if (event.button === 1 || event.button === 2) {
-          setIsCanvasPanning(true)
-        }
+        setIsCanvasPanning(true)
       }
 
       root.addEventListener("mousedown", handleMouseDown)
@@ -419,6 +402,8 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
           showNavInfo={false}
           showPointerCursor={false}
           dagMode={dagMode}
+          cooldownTicks={cooldownTicks}
+          cooldownTime={cooldownTime}
 
         // Node styling
         nodeLabel="label"
@@ -426,15 +411,16 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
           const color = getNodeColor(node)
           return mixHexColors(color, isDark ? "#dbeafe" : "#fffef9", isDark ? 0.04 : 0.18)
         }}
-        nodeRelSize={GRAPH_3D_NODE_REL_SIZE}
+        nodeVal="val"
+        nodeRelSize={nodeRelSize}
         nodeOpacity={0.96}
-        nodeResolution={20}
+        nodeResolution={nodeResolution}
 
         // Link styling
         linkColor={(link: any) => {
           const linkId = link?.id || (link?.index === undefined ? null : `link-${link.index}`)
           const kind = getLinkKind(link)
-          const base = EDGE_KIND_COLORS[kind] || linkColorBase
+          const base = String(link?.color || '').trim() || EDGE_KIND_COLORS[kind] || linkColorBase
           const baseLineColor = withAlpha(base, isDark ? 0.3 : 0.24)
           const activeLineColor = withAlpha(base, isDark ? 0.68 : 0.56)
           if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) return "#f59e0b"
@@ -487,6 +473,42 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
         }}
         linkDirectionalParticleSpeed={0.0036}
         linkLabel={(link: any) => buildGraphLinkProvenanceTooltipHtml(link)}
+        linkThreeObjectExtend={allowLinkLabelSprites}
+        linkThreeObject={
+          allowLinkLabelSprites
+            ? (link: any) => {
+                const label = String(link?.label ?? link?.predicate ?? link?.type ?? '').trim()
+                if (!label) return new Group()
+
+                const kind = getLinkKind(link)
+                const color = String(link?.color || '').trim() || EDGE_KIND_COLORS[kind] || hoverLinkColor
+                const sprite = new SpriteText(label)
+                sprite.color = isDark ? '#dbeafe' : '#334155'
+                sprite.textHeight = 1.75
+                sprite.fontFace = '-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif'
+                sprite.fontWeight = '700'
+                sprite.backgroundColor = withAlpha(mixHexColors(color, isDark ? '#0f172a' : '#fffef9', isDark ? 0.72 : 0.86), isDark ? 0.8 : 0.74)
+                sprite.borderColor = withAlpha(color, 0.5)
+                sprite.borderWidth = 0.55
+                sprite.borderRadius = 3
+                sprite.padding = [1.5, 0.75]
+                sprite.material.depthWrite = false
+                sprite.material.depthTest = false
+                return sprite
+              }
+            : undefined
+        }
+        linkPositionUpdate={
+          allowLinkLabelSprites
+            ? (sprite: any, { start, end }: { start: any; end: any }) => {
+                const x = start.x + (end.x - start.x) * 0.5
+                const y = start.y + (end.y - start.y) * 0.5
+                const z = start.z + (end.z - start.z) * 0.5
+                sprite.position.set(x, y, z)
+                return true
+              }
+            : undefined
+        }
 
         // Interaction
         onNodeClick={handleNodeClick}
@@ -504,97 +526,41 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
           setHoveredLinkId((prev) => (prev === linkId ? prev : linkId))
         }}
 
-        enableNodeDrag={true}
+        enableNodeDrag={!isLargeGraph}
         enableNavigationControls={true}
 
         // Text sprites
-        nodeThreeObject={(node: any) => {
+        nodeThreeObject={useCustomNodeObjects ? (node: any) => {
           const { id, isDimmed, isHighlighted, isHovered, isSelected } = getNodeDecorationState(node)
           const emphasis = isSelected || isHighlighted || isHovered
-          const degree = nodeDegreeMap.get(id) || 0
           const color = getNodeColor(node)
-          const shellScale = 3.2 + Math.min(degree * 0.08, 0.7) + (isSelected ? 0.55 : isHighlighted ? 0.3 : isHovered ? 0.2 : 0)
           const labelDirection = Number(node?.x ?? 0) >= 0 ? 1 : -1
-          const showLabelChip = data.nodes.length <= 36 || emphasis
 
           const group = new Group()
 
-          const shell = new Mesh(
-            unitSphereGeometry,
-            new MeshBasicMaterial({
-              color,
-              transparent: true,
-              opacity: isDimmed ? 0.05 : isSelected ? 0.18 : isHovered ? 0.13 : 0.09,
-              depthWrite: false,
-            })
-          )
-          shell.scale.setScalar(shellScale)
-          group.add(shell)
-
-          const wireframeShell = new Mesh(
-            unitSphereGeometry,
-            new MeshBasicMaterial({
-              color,
-              transparent: true,
-              opacity: isDimmed ? 0.08 : isSelected ? 0.3 : isHighlighted ? 0.22 : 0.14,
-              wireframe: true,
-              depthWrite: false,
-            })
-          )
-          wireframeShell.scale.setScalar(shellScale + 0.48)
-          group.add(wireframeShell)
-
-          if (showLabelChip) {
-            const label = new SpriteText(truncateGraphLabel(node.label ?? node.id, 24))
-            label.color = isDimmed ? mutedFgColor : (isDark ? "#e5eefc" : "#334155")
-            label.textHeight = emphasis ? GRAPH_3D_LABEL_TEXT_HEIGHT + 0.15 : GRAPH_3D_LABEL_TEXT_HEIGHT
-            label.fontFace = "-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
-            label.fontWeight = emphasis ? "700" : "600"
-            label.backgroundColor = emphasis
-              ? withAlpha(mixHexColors(color, isDark ? "#0f172a" : "#fffef9", isDark ? 0.74 : 0.84), isDark ? 0.92 : 0.9)
-              : labelBgColor
-            label.borderColor = withAlpha(color, emphasis ? 0.72 : 0.38)
-            label.borderWidth = 0.85
-            label.borderRadius = 4
-            label.padding = [2.6, 1.15]
-            label.strokeWidth = isDark ? 0.82 : 0.58
-            label.strokeColor = labelStrokeColor
-            label.center.set(labelDirection === 1 ? 0 : 1, 0.5)
-            label.position.set(labelDirection * GRAPH_3D_LABEL_X_OFFSET, GRAPH_3D_LABEL_Y_OFFSET, 0)
-            label.material.depthWrite = false
-            label.material.depthTest = false
-            group.add(label)
-
-            const leaderGeometry = new BufferGeometry()
-            leaderGeometry.setAttribute(
-              "position",
-              new Float32BufferAttribute(
-                [
-                  0,
-                  shellScale * 0.62,
-                  0,
-                  labelDirection * (GRAPH_3D_LABEL_X_OFFSET - 0.9),
-                  GRAPH_3D_LABEL_Y_OFFSET - 0.55,
-                  0,
-                ],
-                3
-              )
-            )
-            const leader = new Line(
-              leaderGeometry,
-              new LineBasicMaterial({
-                color,
-                transparent: true,
-                opacity: isDimmed ? 0.14 : emphasis ? 0.48 : 0.26,
-                depthWrite: false,
-              })
-            )
-            group.add(leader)
-          }
+          const label = new SpriteText(truncateGraphLabel(node.label ?? node.id, 24))
+          label.color = isDimmed ? mutedFgColor : (isDark ? "#e5eefc" : "#334155")
+          label.textHeight = emphasis ? GRAPH_3D_LABEL_TEXT_HEIGHT + 0.15 : GRAPH_3D_LABEL_TEXT_HEIGHT
+          label.fontFace = "-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+          label.fontWeight = emphasis ? "700" : "600"
+          label.backgroundColor = emphasis
+            ? withAlpha(mixHexColors(color, isDark ? "#0f172a" : "#fffef9", isDark ? 0.74 : 0.84), isDark ? 0.92 : 0.9)
+            : labelBgColor
+          label.borderColor = withAlpha(color, emphasis ? 0.72 : 0.38)
+          label.borderWidth = 0.85
+          label.borderRadius = 4
+          label.padding = [2.6, 1.15]
+          label.strokeWidth = isDark ? 0.82 : 0.58
+          label.strokeColor = labelStrokeColor
+          label.center.set(labelDirection === 1 ? 0 : 1, 0.5)
+          label.position.set(labelDirection * GRAPH_3D_LABEL_X_OFFSET, GRAPH_3D_LABEL_Y_OFFSET, 0)
+          label.material.depthWrite = false
+          label.material.depthTest = false
+          group.add(label)
 
           return group
-        }}
-        nodeThreeObjectExtend={true}
+        } : undefined}
+        nodeThreeObjectExtend={useCustomNodeObjects}
         />
       </div>
     )

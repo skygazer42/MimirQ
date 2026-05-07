@@ -99,7 +99,7 @@ export function useGraphDataLoading({
   resetConnectMode,
   resetExplainMode,
 }: UseGraphDataLoadingParams): UseGraphDataLoadingResult {
-  const [scopeAutoLoaded, setScopeAutoLoaded] = useState(false)
+  const [autoLoadedGraphKey, setAutoLoadedGraphKey] = useState<string | null>(null)
   const graphParserWorkerRef = useRef<Worker | null>(null)
   const graphParserApiRef = useRef<Remote<GraphParserWorkerApi> | null>(null)
   const graphParserWorkerDisabledRef = useRef(false)
@@ -148,6 +148,7 @@ export function useGraphDataLoading({
         })
 
         setGraphData(data)
+        setViewMode('3d')
         setDataSource(source)
         setTraceReplay(null)
         setFileName(
@@ -196,17 +197,21 @@ export function useGraphDataLoading({
       setIsLoading,
       setKgStats,
       setTraceReplay,
+      setViewMode,
     ]
   )
 
   useEffect(() => {
-    if (scopeAutoLoaded) return
-    if (!scope.hasScope) return
-    if (scope.datasetId && scope.directDocIds.length === 0 && scopedDocumentIds === null) return
+    const autoLoadKey = scope.hasScope
+      ? `live:${scope.datasetId || ''}:${scope.pipelineHash || ''}:${scope.directDocIds.join(',')}:${scopedDocumentIds?.join(',') || ''}`
+      : 'default-mock-3d'
+    if (autoLoadedGraphKey === autoLoadKey) return
 
-    setScopeAutoLoaded(true)
-    void loadInitialData('live')
-  }, [loadInitialData, scope, scopeAutoLoaded, scopedDocumentIds])
+    if (scope.hasScope && scope.datasetId && scope.directDocIds.length === 0 && scopedDocumentIds === null) return
+
+    setAutoLoadedGraphKey(autoLoadKey)
+    void loadInitialData(scope.hasScope ? 'live' : 'mock')
+  }, [autoLoadedGraphKey, loadInitialData, scope, scopedDocumentIds])
 
   useEffect(() => {
     return () => {
