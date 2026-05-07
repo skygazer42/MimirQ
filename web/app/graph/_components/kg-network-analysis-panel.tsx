@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState, type ReactNode } from 'react'
-import { Activity, GitBranch, Network } from 'lucide-react'
+import { Activity, BarChart3, Filter, GitBranch, MousePointer2, Network, PanelRightClose, PanelRightOpen } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -50,8 +50,46 @@ function toNetworkEdges(links: GraphData['links']): KGNetworkEdge[] {
   return edges
 }
 
+function getNodeType(node: GraphData['nodes'][number]): string {
+  return String(node?.meta?.type ?? node?.type ?? '').trim() || '未知类型'
+}
+
+function getLinkType(link: GraphData['links'][number]): string {
+  return String(link?.label ?? link?.predicate ?? link?.meta?.label ?? link?.kind ?? '').trim() || '关系'
+}
+
 export function KgNetworkAnalysisPanel({ nodes, links, selectedNodeId }: KgNetworkAnalysisPanelProps) {
   const edges = useMemo(() => toNetworkEdges(links), [links])
+  const selectedNode = useMemo(
+    () => nodes.find((node) => String(node?.id ?? '') === String(selectedNodeId || '')) ?? null,
+    [nodes, selectedNodeId]
+  )
+  const nodeTypeStats = useMemo(() => {
+    const countMap = new Map<string, { count: number; color: string }>()
+    for (const node of nodes) {
+      const label = getNodeType(node)
+      const color = String(node?.color || '').trim() || '#94a3b8'
+      const entry = countMap.get(label)
+      countMap.set(label, { count: (entry?.count ?? 0) + 1, color: entry?.color || color })
+    }
+    return [...countMap.entries()]
+      .map(([label, value]) => ({ label, ...value }))
+      .sort((left, right) => right.count - left.count)
+      .slice(0, 6)
+  }, [nodes])
+  const relationStats = useMemo(() => {
+    const countMap = new Map<string, { count: number; color: string }>()
+    for (const link of links) {
+      const label = getLinkType(link)
+      const color = String(link?.color || '').trim() || '#3b82f6'
+      const entry = countMap.get(label)
+      countMap.set(label, { count: (entry?.count ?? 0) + 1, color: entry?.color || color })
+    }
+    return [...countMap.entries()]
+      .map(([label, value]) => ({ label, ...value }))
+      .sort((left, right) => right.count - left.count)
+      .slice(0, 6)
+  }, [links])
   const firstNodeId = nodes[0]?.id || ''
   const secondNodeId = nodes[1]?.id || firstNodeId
   const [startId, setStartId] = useState(selectedNodeId || firstNodeId)
@@ -62,6 +100,7 @@ export function KgNetworkAnalysisPanel({ nodes, links, selectedNodeId }: KgNetwo
   const [topK, setTopK] = useState(10)
   const [runningKey, setRunningKey] = useState<string | null>(null)
   const [result, setResult] = useState<ResultState | null>(null)
+  const [collapsed, setCollapsed] = useState(false)
 
   const request: KGNetworkRequest = {
     edges,
@@ -89,14 +128,106 @@ export function KgNetworkAnalysisPanel({ nodes, links, selectedNodeId }: KgNetwo
     }
   }
 
+  if (collapsed) {
+    return (
+      <div className="absolute right-[6.75rem] top-24 z-20">
+        <Button
+          type="button"
+          variant="outline"
+          className="h-10 gap-2 rounded-full border-border/60 bg-card/90 px-3 text-xs font-semibold shadow-soft backdrop-blur-md"
+          aria-label="展开图谱统计栏"
+          aria-expanded="false"
+          aria-controls="kg-network-analysis-panel"
+          onClick={() => setCollapsed(false)}
+        >
+          <PanelRightOpen className="h-4 w-4 text-blue-500" />
+          <span>统计</span>
+          <span className="rounded-full bg-muted/60 px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+            {nodes.length}/{links.length}
+          </span>
+        </Button>
+      </div>
+    )
+  }
+
   return (
-    <div className="absolute right-8 top-24 z-20">
+    <div id="kg-network-analysis-panel" className="absolute right-[6.75rem] top-24 z-20 w-[286px] space-y-3">
+      <section className="rounded-2xl border border-border/60 bg-card/92 p-4 shadow-soft backdrop-blur-md">
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm">
+              <BarChart3 className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-foreground">统计信息</div>
+              <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">数据概览与交互信息</p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0 rounded-xl text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+            aria-label="收起图谱统计栏"
+            aria-expanded="true"
+            aria-controls="kg-network-analysis-panel"
+            onClick={() => setCollapsed(true)}
+          >
+            <PanelRightClose className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <div className="rounded-xl border border-dashed border-border/70 bg-background/72 p-3">
+          <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-foreground">
+            <MousePointer2 className="h-3.5 w-3.5 text-blue-500" />
+            选中单元
+          </div>
+          {selectedNode ? (
+            <div className="space-y-1">
+              <div className="truncate text-sm font-semibold text-foreground" title={selectedNode.label || selectedNode.id}>
+                {selectedNode.label || selectedNode.id}
+              </div>
+              <div className="text-[11px] text-muted-foreground">{getNodeType(selectedNode)}</div>
+            </div>
+          ) : (
+            <div className="flex min-h-[92px] items-center justify-center rounded-lg bg-muted/30 px-3 text-center text-xs leading-5 text-muted-foreground">
+              点击任意图谱节点后，在这里查看节点类型、关系和后续分析入口。
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-border/60 bg-card/92 p-4 shadow-soft backdrop-blur-md">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            <div className="text-sm font-semibold text-foreground">筛选器控制</div>
+          </div>
+          <div className="rounded-full bg-muted/55 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+            {nodes.length} / {links.length}
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <MetricGroup title={`节点类型 ${nodeTypeStats.length}`}>
+            {nodeTypeStats.map((entry) => (
+              <MetricRow key={entry.label} color={entry.color} label={entry.label} count={entry.count} />
+            ))}
+          </MetricGroup>
+          <MetricGroup title={`关系类型 ${relationStats.length}`}>
+            {relationStats.map((entry) => (
+              <MetricRow key={entry.label} color={entry.color} label={entry.label} count={entry.count} />
+            ))}
+          </MetricGroup>
+        </div>
+      </section>
+
       <Popover>
         <PopoverTrigger asChild>
           <Button
             type="button"
             variant="outline"
-            className="h-9 gap-2 rounded-xl border-border/60 bg-card/92 text-xs font-semibold shadow-soft backdrop-blur-sm"
+            className="h-9 w-full gap-2 rounded-xl border-border/60 bg-card/92 text-xs font-semibold shadow-soft backdrop-blur-sm"
             disabled={edges.length === 0}
           >
             <Network className="h-4 w-4" />
@@ -186,6 +317,29 @@ export function KgNetworkAnalysisPanel({ nodes, links, selectedNodeId }: KgNetwo
           </div>
         </PopoverContent>
       </Popover>
+    </div>
+  )
+}
+
+function MetricGroup({ title, children }: Readonly<{ title: string; children: ReactNode }>) {
+  return (
+    <div>
+      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{title}</div>
+      <div className="space-y-1.5">{children}</div>
+    </div>
+  )
+}
+
+function MetricRow({ color, label, count }: Readonly<{ color: string; label: string; count: number }>) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-xs">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="h-2.5 w-2.5 flex-none rounded-full ring-2 ring-white/80" style={{ backgroundColor: color }} />
+        <span className="truncate text-foreground/80" title={label}>
+          {label}
+        </span>
+      </div>
+      <span className="font-mono text-[11px] text-muted-foreground">{count}</span>
     </div>
   )
 }

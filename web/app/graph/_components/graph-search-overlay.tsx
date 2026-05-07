@@ -29,8 +29,8 @@ export function GraphSearchOverlay({
           ref={inputRef}
           value={searchTerm}
           onValueChange={onSearchTermChange}
-          placeholder="搜索实体节点..."
-          aria-label="搜索实体节点"
+          placeholder="搜索实体节点、关系、路径..."
+          aria-label="搜索实体节点、关系、路径"
           inputClassName="h-10 rounded-full bg-muted/60 shadow-sm pr-16"
         />
         <div className="pointer-events-none absolute right-11 top-1/2 flex -translate-y-1/2 items-center gap-2 text-xs text-muted-foreground">

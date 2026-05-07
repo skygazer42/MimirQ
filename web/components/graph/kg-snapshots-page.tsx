@@ -14,7 +14,6 @@ import {
   Database,
   Download,
   FileJson,
-  Filter,
   FolderOpen,
   GitCompare,
   Hand,
@@ -22,7 +21,6 @@ import {
   Layers,
   Link2,
   Maximize2,
-  MessageSquare,
   Network,
   PanelLeftClose,
   PanelLeftOpen,
@@ -40,7 +38,9 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react'
-import { startTransition, useDeferredValue, useMemo, useState, type ReactNode } from 'react'
+import { startTransition, useDeferredValue, useEffect, useMemo, useState, type ReactNode } from 'react'
+
+import { useSearchParams } from 'next/navigation'
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { toast } from 'sonner'
 
@@ -53,9 +53,11 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { formatApiError } from '@/lib/api-errors'
+import { datasetApi } from '@/lib/api/datasets'
 import { kgApi } from '@/lib/api/graph'
 import { sanitizeFilename } from '@/lib/sanitize'
 import { cn, detachPromise } from '@/lib/utils'
+import type { Dataset, KGGraphLink, KGGraphNode, KGGraphResponse } from '@/types'
 
 type SnapshotPayload = Record<string, unknown>
 
@@ -134,202 +136,6 @@ type SnapshotStudioLink = {
 
 const DIFF_KEYS = ['docs', 'events', 'entities', 'links', 'relations'] as const
 
-const SNAPSHOT_STUDIO_NODES: SnapshotStudioNode[] = [
-  {
-    id: 'concept_knowledge_graph',
-    label: '知识图谱',
-    type: '概念',
-    kind: 'Concept',
-    description: '通过实体与关系的结构化表达，组织和连接领域知识。',
-    x: 66,
-    y: 34,
-    tone: 'blue',
-    icon: <Network className="h-5 w-5" aria-hidden="true" />,
-    occurrences: 24,
-    status: '一致',
-    relations: [
-      { label: '构建', target: '语义搜索' },
-      { label: '包含', target: '实体' },
-      { label: '依赖', target: '实体识别' },
-      { label: '增强', target: 'LLM' },
-      { label: '来源', target: '文档' },
-      { label: '评估', target: '评估反馈' },
-    ],
-  },
-  {
-    id: 'semantic_search',
-    label: '语义搜索',
-    type: '概念',
-    kind: 'Concept',
-    description: '以向量语义召回为核心，连接文档、向量数据库与回答链路。',
-    x: 48,
-    y: 34,
-    tone: 'blue',
-    icon: <Search className="h-5 w-5" aria-hidden="true" />,
-    occurrences: 32,
-    status: '一致',
-    relations: [
-      { label: '构建', target: '知识图谱' },
-      { label: '存储', target: '向量数据库' },
-      { label: '增强', target: 'LLM' },
-    ],
-  },
-  {
-    id: 'document',
-    label: '文档',
-    type: '流程',
-    kind: 'Document',
-    description: '快照对比的来源资产，解析后生成实体、关系与向量内容。',
-    x: 34,
-    y: 24,
-    tone: 'orange',
-    icon: <FolderOpen className="h-5 w-5" aria-hidden="true" />,
-    occurrences: 18,
-    status: '一致',
-    relations: [{ label: '解析', target: '文档解析' }],
-  },
-  {
-    id: 'parser',
-    label: '文档解析',
-    type: '流程',
-    kind: 'Pipeline',
-    description: '从原始文件提取正文结构，为 KG snapshot 生成提供输入。',
-    x: 32,
-    y: 42,
-    tone: 'amber',
-    icon: <Sparkles className="h-5 w-5" aria-hidden="true" />,
-    occurrences: 14,
-    status: '变化',
-    relations: [{ label: '解析', target: '文档' }],
-  },
-  {
-    id: 'vector_db',
-    label: '向量数据库',
-    type: '数据',
-    kind: 'Storage',
-    description: '承载向量索引与语义召回结果，影响快照中的链接密度。',
-    x: 30,
-    y: 58,
-    tone: 'rose',
-    icon: <Database className="h-5 w-5" aria-hidden="true" />,
-    occurrences: 12,
-    status: '一致',
-    relations: [{ label: '存储', target: '语义搜索' }],
-  },
-  {
-    id: 'embedding',
-    label: '向量嵌入',
-    type: '技术',
-    kind: 'Technology',
-    description: '负责文本向量化，决定跨快照语义连接的稳定性。',
-    x: 49,
-    y: 20,
-    tone: 'green',
-    icon: <Box className="h-5 w-5" aria-hidden="true" />,
-    occurrences: 20,
-    status: '一致',
-    relations: [{ label: '使用', target: '语义搜索' }],
-  },
-  {
-    id: 'llm',
-    label: 'LLM',
-    type: '模型',
-    kind: 'Model',
-    description: '参与实体解释、回答生成与关系补全。',
-    x: 54,
-    y: 54,
-    tone: 'purple',
-    icon: <Brain className="h-5 w-5" aria-hidden="true" />,
-    occurrences: 16,
-    status: '变化',
-    relations: [{ label: '生成', target: '回答' }],
-  },
-  {
-    id: 'answer',
-    label: '回答',
-    type: '应用',
-    kind: 'Application',
-    description: '最终面向用户的问答结果，可回流反馈质检。',
-    x: 53,
-    y: 68,
-    tone: 'blue',
-    icon: <MessageSquare className="h-5 w-5" aria-hidden="true" />,
-    occurrences: 28,
-    status: '一致',
-    relations: [{ label: '评估', target: '评估反馈' }],
-  },
-  {
-    id: 'user',
-    label: '用户',
-    type: '人员',
-    kind: 'Person',
-    description: '提交问题并触发问答链路的交互主体。',
-    x: 41,
-    y: 72,
-    tone: 'green',
-    icon: <User className="h-5 w-5" aria-hidden="true" />,
-    occurrences: 9,
-    status: '一致',
-    relations: [{ label: '提问', target: '回答' }],
-  },
-  {
-    id: 'feedback',
-    label: '评估反馈',
-    type: '评价',
-    kind: 'Feedback',
-    description: '来自人工或系统的质量信号，用于定位快照漂移影响。',
-    x: 67,
-    y: 73,
-    tone: 'amber',
-    icon: <Star className="h-5 w-5" aria-hidden="true" />,
-    occurrences: 11,
-    status: '一致',
-    relations: [{ label: '评估', target: '回答' }],
-  },
-  {
-    id: 'entity',
-    label: '实体',
-    type: '概念',
-    kind: 'Entity',
-    description: 'KG 中的基础节点，连接识别、关系抽取与知识表达。',
-    x: 68,
-    y: 24,
-    tone: 'purple',
-    icon: <Network className="h-5 w-5" aria-hidden="true" />,
-    occurrences: 36,
-    status: '一致',
-    relations: [{ label: '包含', target: '知识图谱' }],
-  },
-  {
-    id: 'entity_recognition',
-    label: '实体识别',
-    type: '技术',
-    kind: 'Technology',
-    description: '识别文档中的候选实体，是节点新增/删除的主要来源。',
-    x: 72,
-    y: 56,
-    tone: 'teal',
-    icon: <Sparkles className="h-5 w-5" aria-hidden="true" />,
-    occurrences: 21,
-    status: '新增',
-    relations: [{ label: '依赖', target: '知识图谱' }],
-  },
-]
-
-const SNAPSHOT_STUDIO_LINKS: SnapshotStudioLink[] = [
-  { source: 'document', target: 'parser', label: '解析', strength: 'medium' },
-  { source: 'parser', target: 'semantic_search', label: '策略', strength: 'weak' },
-  { source: 'vector_db', target: 'semantic_search', label: '存储', strength: 'medium' },
-  { source: 'embedding', target: 'semantic_search', label: '使用', strength: 'strong' },
-  { source: 'semantic_search', target: 'concept_knowledge_graph', label: '构建', strength: 'strong' },
-  { source: 'semantic_search', target: 'llm', label: '增强', strength: 'weak' },
-  { source: 'llm', target: 'answer', label: '生成', strength: 'medium' },
-  { source: 'user', target: 'answer', label: '提问', strength: 'medium' },
-  { source: 'answer', target: 'feedback', label: '评估', strength: 'medium' },
-  { source: 'entity', target: 'concept_knowledge_graph', label: '包含', strength: 'medium' },
-  { source: 'concept_knowledge_graph', target: 'entity_recognition', label: '依赖', strength: 'weak' },
-]
-
 function prettyJson(value: unknown): string {
   try {
     return JSON.stringify(value, null, 2)
@@ -371,6 +177,125 @@ function parseDocumentIds(raw: string): string[] {
     .split(/[,\n]/g)
     .map((s) => s.trim())
     .filter(Boolean)
+}
+
+function getDatasetLabel(dataset: Dataset | null | undefined): string {
+  return String(dataset?.name || dataset?.id || '').trim()
+}
+
+function getLinkEndpointId(value: unknown): string {
+  if (typeof value === 'string' || typeof value === 'number') return String(value)
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    return String(record.id ?? record.name ?? record.label ?? '').trim()
+  }
+  return ''
+}
+
+function getNodeMetaValue(node: KGGraphNode, ...keys: string[]): unknown {
+  const meta = node.meta && typeof node.meta === 'object' ? node.meta : {}
+  for (const key of keys) {
+    const direct = (node as any)[key]
+    if (direct != null && direct !== '') return direct
+    const metaValue = (meta as Record<string, unknown>)[key]
+    if (metaValue != null && metaValue !== '') return metaValue
+  }
+  return undefined
+}
+
+function getNodeType(node: KGGraphNode): string {
+  return String(getNodeMetaValue(node, 'type', 'entity_type', 'kind', 'node_type') || '节点')
+}
+
+function toneForNodeType(type: string): SnapshotStudioNode['tone'] {
+  const normalized = type.toLowerCase()
+  if (normalized.includes('event') || normalized.includes('事件')) return 'orange'
+  if (normalized.includes('document') || normalized.includes('文档')) return 'amber'
+  if (normalized.includes('model') || normalized.includes('模型')) return 'purple'
+  if (normalized.includes('person') || normalized.includes('用户') || normalized.includes('人员')) return 'green'
+  if (normalized.includes('feedback') || normalized.includes('评价')) return 'rose'
+  if (normalized.includes('technology') || normalized.includes('技术')) return 'teal'
+  return 'blue'
+}
+
+function iconForNodeType(type: string): ReactNode {
+  const normalized = type.toLowerCase()
+  if (normalized.includes('event') || normalized.includes('事件')) return <Sparkles className="h-5 w-5" aria-hidden="true" />
+  if (normalized.includes('document') || normalized.includes('文档')) return <FolderOpen className="h-5 w-5" aria-hidden="true" />
+  if (normalized.includes('model') || normalized.includes('模型')) return <Brain className="h-5 w-5" aria-hidden="true" />
+  if (normalized.includes('person') || normalized.includes('用户') || normalized.includes('人员')) return <User className="h-5 w-5" aria-hidden="true" />
+  if (normalized.includes('feedback') || normalized.includes('评价')) return <Star className="h-5 w-5" aria-hidden="true" />
+  if (normalized.includes('technology') || normalized.includes('技术')) return <Box className="h-5 w-5" aria-hidden="true" />
+  return <Network className="h-5 w-5" aria-hidden="true" />
+}
+
+function strengthForWeight(weight: unknown): SnapshotStudioLink['strength'] {
+  const value = Number(weight ?? 1)
+  if (!Number.isFinite(value)) return 'medium'
+  if (value >= 0.75 || value >= 3) return 'strong'
+  if (value <= 0.25) return 'weak'
+  return 'medium'
+}
+
+function buildSnapshotStudioGraphFromKgGraph(graph: KGGraphResponse | null): {
+  nodes: SnapshotStudioNode[]
+  links: SnapshotStudioLink[]
+} {
+  const rawNodes = Array.isArray(graph?.nodes) ? graph.nodes : []
+  const rawLinks = Array.isArray(graph?.links) ? graph.links : []
+  const total = Math.max(rawNodes.length, 1)
+  const radiusX = 31
+  const radiusY = 25
+
+  const nodes: SnapshotStudioNode[] = rawNodes.map((node, index): SnapshotStudioNode => {
+    const type = getNodeType(node)
+    const angle = (index / total) * Math.PI * 2 - Math.PI / 2
+    const id = String(node.id || node.label || `node-${index}`)
+    const occurrences = Number(getNodeMetaValue(node, 'occurrences', 'count', 'event_count', 'degree', 'val') ?? node.val ?? 0)
+    return {
+      id,
+      label: String(node.label || id),
+      type,
+      kind: String(getNodeMetaValue(node, 'kind', 'node_type', 'source') || type),
+      description: String(getNodeMetaValue(node, 'description', 'summary', 'content') || '来自 KG 图谱接口的真实节点。'),
+      x: Math.round((50 + Math.cos(angle) * radiusX) * 10) / 10,
+      y: Math.round((50 + Math.sin(angle) * radiusY) * 10) / 10,
+      tone: toneForNodeType(type),
+      icon: iconForNodeType(type),
+      occurrences: Number.isFinite(occurrences) ? Math.max(0, occurrences) : 0,
+      status: '一致' as const,
+      relations: [],
+    }
+  })
+
+  const nodeById = new Map(nodes.map((node) => [node.id, node]))
+  const links = rawLinks
+    .map((link) => {
+      const source = getLinkEndpointId((link as KGGraphLink).source)
+      const target = getLinkEndpointId((link as KGGraphLink).target)
+      if (!source || !target || !nodeById.has(source) || !nodeById.has(target)) return null
+      const label = String((link as any).label || (link as any).predicate || (link as any).relation || (link as any).type || '关联')
+      return {
+        source,
+        target,
+        label,
+        strength: strengthForWeight((link as any).weight ?? (link as any).confidence ?? (link as any).score),
+      } satisfies SnapshotStudioLink
+    })
+    .filter((link): link is SnapshotStudioLink => Boolean(link))
+
+  for (const link of links) {
+    const source = nodeById.get(link.source)
+    const target = nodeById.get(link.target)
+    if (source && target) source.relations.push({ label: link.label, target: target.label })
+    if (target && source) target.relations.push({ label: link.label, target: source.label })
+  }
+
+  for (const node of nodes) {
+    node.relations = node.relations.slice(0, 8)
+  }
+
+  return { nodes, links }
 }
 
 function splitCodeLines(value: string): string[] {
@@ -604,6 +529,8 @@ function SnapshotStudioToolbar({
   searchValue,
   nodeType,
   relationType,
+  nodeTypes,
+  relationTypes,
   layout,
   studioView,
   activeSnapshotView,
@@ -619,6 +546,8 @@ function SnapshotStudioToolbar({
   searchValue: string
   nodeType: string
   relationType: string
+  nodeTypes: string[]
+  relationTypes: string[]
   layout: string
   studioView: StudioCanvasView
   activeSnapshotView: SnapshotView
@@ -631,16 +560,14 @@ function SnapshotStudioToolbar({
   onDiffClick: () => void
   isRunning: boolean
 }>) {
-  const nodeTypes = useMemo(() => Array.from(new Set(SNAPSHOT_STUDIO_NODES.map((node) => node.type))), [])
-  const relationTypes = useMemo(() => Array.from(new Set(SNAPSHOT_STUDIO_LINKS.map((link) => link.label))), [])
   const selectClassName =
     'h-8 rounded-xl border border-border/70 bg-card px-2 text-[11.5px] font-medium text-foreground shadow-sm outline-none transition-colors hover:bg-muted/30 focus:ring-2 focus:ring-primary/20'
 
   return (
     <div className="shrink-0 border-b border-border/70 bg-background/92 px-4 py-3 backdrop-blur">
-      <div className="flex items-center justify-between gap-2 overflow-x-auto">
-        <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-2">
-          <div className="relative min-w-[210px] max-w-[280px] flex-[1_1_230px]">
+      <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          <div className="relative min-w-[210px] flex-[1_1_240px] sm:max-w-[320px]">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" aria-hidden="true" />
             <Input
               value={searchValue}
@@ -650,38 +577,35 @@ function SnapshotStudioToolbar({
             />
           </div>
 
-          <select aria-label="节点类型" value={nodeType} onChange={(event) => onNodeTypeChange(event.target.value)} className={cn(selectClassName, 'w-[92px]')}>
-            <option value="all">节点类型</option>
-            {nodeTypes.map((type) => (
-              <option key={type} value={type}>
-                {type}
-              </option>
-            ))}
-          </select>
+          <div className="inline-flex shrink-0 items-center gap-2">
+            <select aria-label="节点类型" value={nodeType} onChange={(event) => onNodeTypeChange(event.target.value)} className={cn(selectClassName, 'w-[92px] shrink-0')}>
+              <option value="all">节点类型</option>
+              {nodeTypes.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
 
-          <select aria-label="关系类型" value={relationType} onChange={(event) => onRelationTypeChange(event.target.value)} className={cn(selectClassName, 'w-[92px]')}>
-            <option value="all">关系类型</option>
-            {relationTypes.map((type) => (
-              <option key={type} value={type}>
-                {type}
-              </option>
-            ))}
-          </select>
+            <select aria-label="关系类型" value={relationType} onChange={(event) => onRelationTypeChange(event.target.value)} className={cn(selectClassName, 'w-[92px] shrink-0')}>
+              <option value="all">关系类型</option>
+              {relationTypes.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
+          </div>
 
-          <Button variant="outline" size="sm" className="h-8 gap-1.5 rounded-xl border-border/70 bg-card px-2.5 text-[11.5px] font-medium">
-            <Filter className="h-3.5 w-3.5" aria-hidden="true" />
-            筛选
-          </Button>
-
-          <select aria-label="布局" value={layout} onChange={(event) => onLayoutChange(event.target.value)} className={cn(selectClassName, 'w-[76px]')}>
+          <select aria-label="布局" value={layout} onChange={(event) => onLayoutChange(event.target.value)} className={cn(selectClassName, 'w-[76px] shrink-0')}>
             <option value="force">布局</option>
             <option value="radial">径向</option>
             <option value="layered">分层</option>
           </select>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
-          <div className="grid h-8 grid-cols-3 gap-1 rounded-xl border border-border/70 bg-card p-1 shadow-sm">
+        <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+          <div className="grid h-8 shrink-0 grid-cols-3 gap-1 rounded-xl border border-border/70 bg-card p-1 shadow-sm">
             {[
               { value: 'graph', label: '图谱视图', icon: <Network className="h-3.5 w-3.5" aria-hidden="true" /> },
               { value: 'table', label: '表格视图', icon: <Table2 className="h-3.5 w-3.5" aria-hidden="true" /> },
@@ -705,7 +629,7 @@ function SnapshotStudioToolbar({
           </div>
 
           <Button
-            className="h-8 gap-1.5 rounded-xl bg-foreground px-3 text-[11.5px] font-semibold text-background hover:bg-foreground/90"
+            className="h-8 shrink-0 gap-1.5 rounded-xl bg-foreground px-3 text-[11.5px] font-semibold text-background hover:bg-foreground/90"
             onClick={onDiffClick}
             disabled={isRunning}
           >
@@ -713,7 +637,7 @@ function SnapshotStudioToolbar({
             Diff 对比
           </Button>
 
-          <div className="grid h-8 grid-cols-2 gap-1 rounded-xl border border-border/70 bg-card p-1 shadow-sm">
+          <div className="grid h-8 shrink-0 grid-cols-2 gap-1 rounded-xl border border-border/70 bg-card p-1 shadow-sm">
             <button
               type="button"
               className={cn(
@@ -744,27 +668,35 @@ function SnapshotStudioToolbar({
 }
 
 function SnapshotGraphCanvas({
+  nodes,
+  links,
   selectedNodeId,
   searchValue,
   nodeType,
   relationType,
   nodeCount,
   relationCount,
+  isLoading,
+  emptyMessage,
   onSelectNode,
 }: Readonly<{
+  nodes: SnapshotStudioNode[]
+  links: SnapshotStudioLink[]
   selectedNodeId: string
   searchValue: string
   nodeType: string
   relationType: string
   nodeCount: number
   relationCount: number
+  isLoading: boolean
+  emptyMessage?: string
   onSelectNode: (nodeId: string) => void
 }>) {
   const normalizedSearch = searchValue.trim().toLowerCase()
-  const nodeById = useMemo(() => new Map(SNAPSHOT_STUDIO_NODES.map((node) => [node.id, node])), [])
+  const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes])
   const filteredNodeIds = useMemo(() => {
     const ids = new Set<string>()
-    for (const node of SNAPSHOT_STUDIO_NODES) {
+    for (const node of nodes) {
       const matchesType = nodeType === 'all' || node.type === nodeType
       const matchesSearch =
         !normalizedSearch ||
@@ -774,15 +706,32 @@ function SnapshotGraphCanvas({
       if (matchesType && matchesSearch) ids.add(node.id)
     }
     return ids
-  }, [nodeType, normalizedSearch])
+  }, [nodeType, nodes, normalizedSearch])
   const filteredLinks = useMemo(() => {
-    return SNAPSHOT_STUDIO_LINKS.filter((link) => {
+    return links.filter((link) => {
       const matchesRelation = relationType === 'all' || link.label === relationType
       const matchesSearch = !normalizedSearch || link.label.toLowerCase().includes(normalizedSearch)
       return matchesRelation && matchesSearch
     })
-  }, [normalizedSearch, relationType])
+  }, [links, normalizedSearch, relationType])
   const hasFilter = Boolean(normalizedSearch) || nodeType !== 'all' || relationType !== 'all'
+  const isEmpty = nodes.length === 0
+  const legendRows = useMemo(() => {
+    const colorByTone: Record<SnapshotStudioNode['tone'], string> = {
+      blue: 'bg-blue-500',
+      green: 'bg-emerald-500',
+      orange: 'bg-orange-500',
+      purple: 'bg-violet-500',
+      rose: 'bg-rose-500',
+      amber: 'bg-amber-500',
+      teal: 'bg-teal-500',
+    }
+    const seen = new Map<string, string>()
+    for (const node of nodes) {
+      if (!seen.has(node.type)) seen.set(node.type, colorByTone[node.tone])
+    }
+    return Array.from(seen.entries()).slice(0, 8)
+  }, [nodes])
 
   return (
     <div
@@ -799,6 +748,25 @@ function SnapshotGraphCanvas({
           <span className="font-mono font-semibold tabular-nums text-foreground">{relationCount}</span>
         </div>
       </div>
+
+      {isLoading || isEmpty ? (
+        <div className="absolute inset-0 z-10 flex items-center justify-center px-8">
+          <div className="flex max-w-[460px] flex-col items-center text-center">
+            <div className="relative">
+              <div className="absolute inset-0 rounded-full bg-primary/10 blur-2xl" aria-hidden />
+              <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-border/70 bg-card text-primary shadow-sm">
+                {isLoading ? <RefreshCcw className="h-7 w-7 animate-spin" aria-hidden="true" /> : <Network className="h-7 w-7" aria-hidden="true" />}
+              </div>
+            </div>
+            <div className="mt-4 text-[15px] font-semibold text-foreground">
+              {isLoading ? '正在读取真实 KG 图谱' : '暂无图谱节点'}
+            </div>
+            <div className="mt-1.5 text-[12px] leading-5 text-muted-foreground">
+              {isLoading ? '系统会按当前数据集、文档范围和 pipeline hash 请求后端接口。' : emptyMessage || '当前作用域没有返回 KG 节点，请先完成文档入库或 KG 抽取。'}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
         <defs>
@@ -841,7 +809,7 @@ function SnapshotGraphCanvas({
         })}
       </svg>
 
-      {SNAPSHOT_STUDIO_NODES.map((node) => {
+      {nodes.map((node) => {
         const selected = selectedNodeId === node.id
         const matches = filteredNodeIds.has(node.id)
         const muted = hasFilter && !matches
@@ -867,15 +835,6 @@ function SnapshotGraphCanvas({
         )
       })}
 
-      <div className="absolute bottom-7 left-7 z-20 h-[144px] w-[196px] rounded-2xl border border-border/70 bg-card/88 p-4 shadow-lg backdrop-blur">
-        <div className="absolute inset-4 rounded-md border border-blue-300 bg-blue-50/50" aria-hidden />
-        <div className="absolute left-9 top-9 h-4 w-5 rounded bg-blue-200/70" aria-hidden />
-        <div className="absolute left-14 top-10 h-4 w-6 rounded bg-amber-200/70" aria-hidden />
-        <div className="absolute right-12 top-8 h-4 w-5 rounded bg-emerald-200/70" aria-hidden />
-        <div className="absolute bottom-5 left-7 h-3 w-7 rounded bg-violet-200/70" aria-hidden />
-        <div className="absolute bottom-5 left-16 h-3 w-4 rounded bg-pink-200/70" aria-hidden />
-      </div>
-
       <div className="absolute right-6 top-[52%] z-20 flex -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/90 shadow-lg backdrop-blur">
         {[
           { label: '拖动画布', icon: <Hand className="h-4 w-4" aria-hidden="true" /> },
@@ -900,19 +859,12 @@ function SnapshotGraphCanvas({
 
       <div className="absolute bottom-7 left-1/2 z-20 flex -translate-x-1/2 items-center gap-5 rounded-2xl border border-border/70 bg-card/92 px-5 py-2.5 text-[12px] text-muted-foreground shadow-lg backdrop-blur">
         <span className="font-medium text-foreground">图例:</span>
-        {[
-          ['概念', 'bg-blue-500'],
-          ['技术', 'bg-emerald-500'],
-          ['数据', 'bg-rose-500'],
-          ['流程', 'bg-orange-500'],
-          ['人员', 'bg-teal-500'],
-          ['评价', 'bg-amber-500'],
-        ].map(([label, color]) => (
+        {legendRows.length ? legendRows.map(([label, color]) => (
           <span key={label} className="inline-flex items-center gap-1.5">
             <span className={cn('h-2 w-2 rounded-full', color)} aria-hidden />
             {label}
           </span>
-        ))}
+        )) : <span>暂无类型</span>}
         <span className="ml-4 inline-flex items-center gap-2">
           关系强度:
           <span className="h-px w-10 bg-slate-300" aria-hidden />
@@ -929,7 +881,7 @@ function SnapshotNodeDetailsRail({
   selectedNode,
   diffOverview,
 }: Readonly<{
-  selectedNode: SnapshotStudioNode
+  selectedNode: SnapshotStudioNode | null
   diffOverview: Array<{ label: string; value: number; tone: string }>
 }>) {
   return (
@@ -942,58 +894,70 @@ function SnapshotNodeDetailsRail({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        <div className="flex items-start gap-3">
-          <div className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br text-white shadow-lg', snapshotToneClassName(selectedNode.tone, false))}>
-            {selectedNode.icon}
-          </div>
-          <div className="min-w-0">
-            <div className="truncate text-[16px] font-semibold text-foreground">{selectedNode.label}</div>
-            <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
-              <span>ID: {selectedNode.id}</span>
-              <Badge variant="soft" className="text-[10px]">
-                {selectedNode.type}
-              </Badge>
+        {selectedNode ? (
+          <>
+            <div className="flex items-start gap-3">
+              <div className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br text-white shadow-lg', snapshotToneClassName(selectedNode.tone, false))}>
+                {selectedNode.icon}
+              </div>
+              <div className="min-w-0">
+                <div className="truncate text-[16px] font-semibold text-foreground">{selectedNode.label}</div>
+                <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
+                  <span>ID: {selectedNode.id}</span>
+                  <Badge variant="soft" className="text-[10px]">
+                    {selectedNode.type}
+                  </Badge>
+                </div>
+              </div>
+            </div>
+
+            <section className="mt-5 rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
+              <div className="text-[12px] font-semibold text-foreground">属性</div>
+              <div className="mt-3 space-y-3 text-[12px]">
+                {[
+                  ['名称', selectedNode.label],
+                  ['类型', selectedNode.type],
+                  ['描述', selectedNode.description],
+                  ['出现次数', String(selectedNode.occurrences)],
+                  ['A/B 状态', selectedNode.status],
+                ].map(([label, value]) => (
+                  <div key={label} className="grid grid-cols-[64px_minmax(0,1fr)] gap-3">
+                    <span className="text-muted-foreground">{label}</span>
+                    <span className="min-w-0 text-foreground">{value}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="mt-4 rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div className="text-[12px] font-semibold text-foreground">关联关系 ({selectedNode.relations.length})</div>
+              </div>
+              <div className="mt-3 divide-y divide-border/60">
+                {selectedNode.relations.map((relation) => (
+                  <button key={`${relation.label}:${relation.target}`} type="button" className="flex w-full items-center justify-between gap-3 py-2 text-left text-[12px] transition-colors hover:text-primary">
+                    <span className="inline-flex items-center gap-2 text-muted-foreground">
+                      <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+                      {relation.label}
+                    </span>
+                    <span className="truncate font-medium text-foreground">{relation.target}</span>
+                  </button>
+                ))}
+              </div>
+              <Button variant="link" className="mt-2 h-auto p-0 text-[12px] font-semibold">
+                查看全部 →
+              </Button>
+            </section>
+          </>
+        ) : (
+          <div className="flex min-h-[220px] flex-col items-center justify-center rounded-2xl border border-dashed border-border/70 bg-card/60 px-4 text-center">
+            <Network className="h-8 w-8 text-muted-foreground/50" aria-hidden="true" />
+            <div className="mt-3 text-[13px] font-semibold text-foreground">未选中节点</div>
+            <div className="mt-1 text-[11px] leading-5 text-muted-foreground">
+              图谱返回节点后，点击任一节点即可查看真实属性和关联关系。
             </div>
           </div>
-        </div>
-
-        <section className="mt-5 rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
-          <div className="text-[12px] font-semibold text-foreground">属性</div>
-          <div className="mt-3 space-y-3 text-[12px]">
-            {[
-              ['名称', selectedNode.label],
-              ['类型', selectedNode.type],
-              ['描述', selectedNode.description],
-              ['出现次数', String(selectedNode.occurrences)],
-              ['A/B 状态', selectedNode.status],
-            ].map(([label, value]) => (
-              <div key={label} className="grid grid-cols-[64px_minmax(0,1fr)] gap-3">
-                <span className="text-muted-foreground">{label}</span>
-                <span className="min-w-0 text-foreground">{value}</span>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="mt-4 rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div className="text-[12px] font-semibold text-foreground">关联关系 ({selectedNode.relations.length})</div>
-          </div>
-          <div className="mt-3 divide-y divide-border/60">
-            {selectedNode.relations.map((relation) => (
-              <button key={`${relation.label}:${relation.target}`} type="button" className="flex w-full items-center justify-between gap-3 py-2 text-left text-[12px] transition-colors hover:text-primary">
-                <span className="inline-flex items-center gap-2 text-muted-foreground">
-                  <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
-                  {relation.label}
-                </span>
-                <span className="truncate font-medium text-foreground">{relation.target}</span>
-              </button>
-            ))}
-          </div>
-          <Button variant="link" className="mt-2 h-auto p-0 text-[12px] font-semibold">
-            查看全部 →
-          </Button>
-        </section>
+        )}
 
         <section className="mt-4 rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
           <div className="text-[12px] font-semibold text-foreground">Diff 概览</div>
@@ -1675,9 +1639,21 @@ function SnapshotAuditPanel({
 }
 
 export function KGSnapshotsPage() {
+  const searchParams = useSearchParams()
+  const scopeParamKey = searchParams.toString()
+  const datasetIdFromUrl = useMemo(() => {
+    return (new URLSearchParams(scopeParamKey).get('dataset_id') || '').trim()
+  }, [scopeParamKey])
+
   const [pipelineHashA, setPipelineHashA] = useState('')
   const [pipelineHashB, setPipelineHashB] = useState('')
   const [documentIdsRaw, setDocumentIdsRaw] = useState('')
+  const [datasets, setDatasets] = useState<Dataset[]>([])
+  const [datasetsLoading, setDatasetsLoading] = useState(false)
+  const [selectedDatasetId, setSelectedDatasetId] = useState(datasetIdFromUrl)
+  const [liveGraph, setLiveGraph] = useState<KGGraphResponse | null>(null)
+  const [liveGraphLoading, setLiveGraphLoading] = useState(false)
+  const [liveGraphError, setLiveGraphError] = useState<string | null>(null)
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('studio')
   const [activeView, setActiveView] = useState<SnapshotView>('diff')
   const [studioCanvasView, setStudioCanvasView] = useState<StudioCanvasView>('graph')
@@ -1685,7 +1661,7 @@ export function KGSnapshotsPage() {
   const [studioNodeType, setStudioNodeType] = useState('all')
   const [studioRelationType, setStudioRelationType] = useState('all')
   const [studioLayout, setStudioLayout] = useState('force')
-  const [selectedStudioNodeId, setSelectedStudioNodeId] = useState('concept_knowledge_graph')
+  const [selectedStudioNodeId, setSelectedStudioNodeId] = useState('')
   const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false)
   const [includeZeroDeltas, setIncludeZeroDeltas] = useState(true)
   const [compactAuditRows, setCompactAuditRows] = useState(true)
@@ -1697,6 +1673,44 @@ export function KGSnapshotsPage() {
   const [isRunning, setIsRunning] = useState(false)
 
   const documentIds = useMemo(() => parseDocumentIds(documentIdsRaw), [documentIdsRaw])
+  const selectedDataset = useMemo(
+    () => datasets.find((dataset) => dataset.id === selectedDatasetId) ?? null,
+    [datasets, selectedDatasetId]
+  )
+  const scopeDatasetId = selectedDatasetId || undefined
+  const scopeDocumentIds = documentIds.length > 0 ? documentIds : undefined
+  const scopeDocumentIdsKey = scopeDocumentIds?.join(',') ?? ''
+  const selectedDatasetLabel = selectedDataset ? getDatasetLabel(selectedDataset) : selectedDatasetId ? selectedDatasetId : '全部数据集'
+  const scopeDocumentCountLabel = documentIds.length
+    ? `${documentIds.length} 个文档`
+    : selectedDatasetId
+      ? '后端解析'
+      : '全局范围'
+
+  useEffect(() => {
+    setSelectedDatasetId(datasetIdFromUrl)
+  }, [datasetIdFromUrl])
+
+  useEffect(() => {
+    let cancelled = false
+    setDatasetsLoading(true)
+    ;(async () => {
+      try {
+        const result = await datasetApi.list({ skip: 0, limit: 200 })
+        if (!cancelled) {
+          setDatasets(Array.isArray(result.items) ? result.items : [])
+        }
+      } catch {
+        if (!cancelled) setDatasets([])
+      } finally {
+        if (!cancelled) setDatasetsLoading(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const snapAJson = useMemo(() => prettyJson(snapA ?? { hint: '点击左侧“导出 A”生成快照。' }), [snapA])
   const snapBJson = useMemo(() => prettyJson(snapB ?? { hint: '点击左侧“导出 B”生成快照。' }), [snapB])
@@ -1720,7 +1734,8 @@ export function KGSnapshotsPage() {
     try {
       const snapshot = await kgApi.exportSnapshot({
         pipeline_hash: pipelineHash,
-        document_ids: documentIds.length ? documentIds : undefined,
+        dataset_id: scopeDatasetId,
+        document_ids: scopeDocumentIds,
         include_details: true,
       })
       if (which === 'a') {
@@ -1757,12 +1772,14 @@ export function KGSnapshotsPage() {
       const [snapshotA, snapshotB] = await Promise.all([
         kgApi.exportSnapshot({
           pipeline_hash: a,
-          document_ids: documentIds.length ? documentIds : undefined,
+          dataset_id: scopeDatasetId,
+          document_ids: scopeDocumentIds,
           include_details: true,
         }),
         kgApi.exportSnapshot({
           pipeline_hash: b,
-          document_ids: documentIds.length ? documentIds : undefined,
+          dataset_id: scopeDatasetId,
+          document_ids: scopeDocumentIds,
           include_details: true,
         }),
       ])
@@ -1799,7 +1816,8 @@ export function KGSnapshotsPage() {
       const result = await kgApi.compareSnapshots({
         pipeline_hash_a: a,
         pipeline_hash_b: b,
-        document_ids: documentIds.length ? documentIds : undefined,
+        dataset_id: scopeDatasetId,
+        document_ids: scopeDocumentIds,
       })
       setLatencyMs(Math.max(0, Date.now() - start))
       setDiff(result)
@@ -1814,6 +1832,7 @@ export function KGSnapshotsPage() {
 
   const hashAValue = pipelineHashA.trim()
   const hashBValue = pipelineHashB.trim()
+  const liveGraphPipelineHash = hashBValue || hashAValue || undefined
   const hasHashA = Boolean(hashAValue)
   const hasHashB = Boolean(hashBValue)
   const hashATitle = hashAValue || '未设置'
@@ -1823,6 +1842,62 @@ export function KGSnapshotsPage() {
   const diffBaseName = sanitizeFilename(`kg_snapshot_${hashAValue || 'A'}_vs_${hashBValue || 'B'}`) || 'kg_snapshot'
   const snapshotAFileName = sanitizeFilename(`kg_snapshot_${hashAValue || 'A'}`) || 'kg_snapshot_A'
   const snapshotBFileName = sanitizeFilename(`kg_snapshot_${hashBValue || 'B'}`) || 'kg_snapshot_B'
+  useEffect(() => {
+    let cancelled = false
+    setLiveGraphLoading(true)
+    setLiveGraphError(null)
+    ;(async () => {
+      try {
+        const graph = await kgApi.getGraph({
+          dataset_id: scopeDatasetId,
+          document_ids: scopeDocumentIds,
+          pipeline_hash: liveGraphPipelineHash,
+          max_events: 80,
+          max_entities: 80,
+          max_links: 160,
+          include_entity_links: true,
+          include_relation_links: true,
+          min_shared_events: 1,
+          max_entity_links: 160,
+        })
+        if (!cancelled) setLiveGraph(graph)
+      } catch (err) {
+        if (!cancelled) {
+          setLiveGraph({ nodes: [], links: [] })
+          setLiveGraphError(formatApiError(err, 'KG 图谱读取失败'))
+        }
+      } finally {
+        if (!cancelled) setLiveGraphLoading(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    liveGraphPipelineHash,
+    selectedDatasetId,
+    scopeDatasetId,
+    scopeDocumentIds,
+    scopeDocumentIdsKey,
+  ])
+
+  const studioGraph = useMemo(() => buildSnapshotStudioGraphFromKgGraph(liveGraph), [liveGraph])
+  const nodeTypes = useMemo(() => Array.from(new Set(studioGraph.nodes.map((node) => node.type))), [studioGraph.nodes])
+  const relationTypes = useMemo(() => Array.from(new Set(studioGraph.links.map((link) => link.label))), [studioGraph.links])
+  const selectedStudioNode = useMemo(() => {
+    return studioGraph.nodes.find((node) => node.id === selectedStudioNodeId) ?? studioGraph.nodes[0] ?? null
+  }, [selectedStudioNodeId, studioGraph.nodes])
+  useEffect(() => {
+    if (studioGraph.nodes.length === 0) {
+      if (selectedStudioNodeId) setSelectedStudioNodeId('')
+      return
+    }
+    if (!studioGraph.nodes.some((node) => node.id === selectedStudioNodeId)) {
+      setSelectedStudioNodeId(studioGraph.nodes[0]?.id ?? '')
+    }
+  }, [selectedStudioNodeId, studioGraph.nodes])
+
   const deltaRows = useMemo<SnapshotDeltaRow[]>(() => {
     return DIFF_KEYS.map((key) => {
       const a = Number(snapA?.[key] ?? 0)
@@ -1846,17 +1921,6 @@ export function KGSnapshotsPage() {
   const auditDriftRows = useMemo(() => {
     return [...deferredEntityTypesDelta].sort((a, b) => Math.abs(Number(b.delta ?? 0)) - Math.abs(Number(a.delta ?? 0)))
   }, [deferredEntityTypesDelta])
-  const selectedStudioNode = useMemo(() => {
-    return SNAPSHOT_STUDIO_NODES.find((node) => node.id === selectedStudioNodeId) ?? SNAPSHOT_STUDIO_NODES[0]
-  }, [selectedStudioNodeId])
-  const studioGraphStats = useMemo(() => {
-    const nodes = Number(snapB?.entities ?? snapA?.entities ?? 128)
-    const relations = Number(snapB?.relations ?? snapA?.relations ?? 256)
-    return {
-      nodes: Number.isFinite(nodes) && nodes > 0 ? nodes : 128,
-      relations: Number.isFinite(relations) && relations > 0 ? relations : 256,
-    }
-  }, [snapA, snapB])
   const diffOverview = useMemo(() => {
     const nodeAdded = exactDiffCount(diff?.node_diff, 'added_count')
     const nodeRemoved = exactDiffCount(diff?.node_diff, 'removed_count')
@@ -2009,7 +2073,7 @@ export function KGSnapshotsPage() {
                   {typeof latencyMs === 'number' ? (
                     <SnapshotInlineStat
                       icon={<Sparkles className="h-3.5 w-3.5" />}
-                        label="耗时"
+                      label="耗时"
                       value={`${latencyMs} ms`}
                       tone="neutral"
                     />
@@ -2051,27 +2115,58 @@ export function KGSnapshotsPage() {
                     </div>
                   </WorkspaceSection>
 
-                  <WorkspaceSection icon={<Layers className="h-3.5 w-3.5" />} label="作用范围" hint="文档范围">
+                  <WorkspaceSection icon={<Layers className="h-3.5 w-3.5" />} label="作用范围" hint="数据集绑定">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="snapshot-dataset" className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                        数据集
+                      </Label>
+                      <select
+                        id="snapshot-dataset"
+                        value={selectedDatasetId}
+                        onChange={(event) => setSelectedDatasetId(event.target.value)}
+                        className="h-10 w-full rounded-lg border border-border/70 bg-card px-3 text-xs font-medium text-foreground shadow-none outline-none transition-colors hover:bg-muted/20 focus:ring-2 focus:ring-primary/20"
+                      >
+                        <option value="">{datasetsLoading ? '正在加载数据集…' : '全部数据集'}</option>
+                        {datasets.map((dataset) => (
+                          <option key={dataset.id} value={dataset.id}>
+                            {getDatasetLabel(dataset)}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="text-[11px] leading-5 text-muted-foreground">
+                        {selectedDatasetId
+                          ? '后端会按数据集解析可访问文档范围；文档覆盖仅用于排查单文件或子集。'
+                          : '全部数据集表示直接请求后端 KG 全局范围，不使用演示数据。'}
+                      </div>
+                    </div>
+
                     <div className="space-y-1.5">
                       <Label htmlFor="document-ids" className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                        文档范围
+                        文档覆盖
                       </Label>
                       <Textarea
                         id="document-ids"
-                        placeholder="按逗号或换行填写文档编号；留空表示使用默认可访问文档集合。"
+                        placeholder="按逗号或换行填写文档编号；留空使用后端按数据集解析的文档范围。"
                         value={documentIdsRaw}
                         onChange={(e) => setDocumentIdsRaw(e.target.value)}
-                        rows={5}
-                        className={formTextareaClassName}
+                        rows={4}
+                        className={cn(formTextareaClassName, 'min-h-[88px]')}
                       />
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
                       <SnapshotInlineStat
                         icon={<Database className="h-3.5 w-3.5" />}
-                        label="文档"
-                        value={documentIds.length || '全部'}
-                        tone={documentIds.length ? 'neutral' : 'muted'}
+                        label="数据集"
+                        value={selectedDatasetLabel}
+                        valueClassName="max-w-[118px] truncate"
+                        tone={selectedDatasetId ? 'neutral' : 'muted'}
+                      />
+                      <SnapshotInlineStat
+                        icon={<FolderOpen className="h-3.5 w-3.5" />}
+                        label="文档范围"
+                        value={documentIds.length ? `${documentIds.length} 覆盖` : scopeDocumentCountLabel}
+                        tone={scopeDocumentIds?.length ? 'neutral' : 'muted'}
                       />
                       <SnapshotInlineStat
                         icon={<ShieldCheck className="h-3.5 w-3.5" />}
@@ -2144,6 +2239,8 @@ export function KGSnapshotsPage() {
                   searchValue={studioSearch}
                   nodeType={studioNodeType}
                   relationType={studioRelationType}
+                  nodeTypes={nodeTypes}
+                  relationTypes={relationTypes}
                   layout={studioLayout}
                   studioView={studioCanvasView}
                   activeSnapshotView={activeView}
@@ -2171,12 +2268,21 @@ export function KGSnapshotsPage() {
                 />
                 {studioCanvasView === 'graph' ? (
                   <SnapshotGraphCanvas
-                    selectedNodeId={selectedStudioNode.id}
+                    nodes={studioGraph.nodes}
+                    links={studioGraph.links}
+                    selectedNodeId={selectedStudioNode?.id ?? ''}
                     searchValue={studioSearch}
                     nodeType={studioNodeType}
                     relationType={studioRelationType}
-                    nodeCount={studioGraphStats.nodes}
-                    relationCount={studioGraphStats.relations}
+                    nodeCount={studioGraph.nodes.length}
+                    relationCount={studioGraph.links.length}
+                    isLoading={liveGraphLoading}
+                    emptyMessage={
+                      liveGraphError ||
+                      (selectedDatasetId
+                        ? '当前数据集没有返回 KG 节点，请确认文档已完成入库且已开启 KG 抽取。'
+                        : '当前后端 KG 图谱接口没有返回节点。')
+                    }
                     onSelectNode={setSelectedStudioNodeId}
                   />
                 ) : studioCanvasView === 'stats' ? (
@@ -2263,8 +2369,20 @@ export function KGSnapshotsPage() {
                   <SnapshotDiffView
                     titleA={`Snapshot A · ${hashATitle}`}
                     titleB={`Snapshot B · ${hashBTitle}`}
-                    subtitleA={documentIds.length ? `${documentIds.length} 个文档范围` : '默认可访问范围'}
-                    subtitleB={documentIds.length ? `${documentIds.length} 个文档范围` : '默认可访问范围'}
+                    subtitleA={
+                      scopeDocumentIds?.length
+                        ? `${scopeDocumentIds.length} 个文档范围`
+                        : scopeDatasetId
+                          ? `${selectedDatasetLabel} · 数据集范围`
+                          : '后端全局范围'
+                    }
+                    subtitleB={
+                      scopeDocumentIds?.length
+                        ? `${scopeDocumentIds.length} 个文档范围`
+                        : scopeDatasetId
+                          ? `${selectedDatasetLabel} · 数据集范围`
+                          : '后端全局范围'
+                    }
                     leftCode={snapAJson}
                     rightCode={snapBJson}
                     diff={diff}

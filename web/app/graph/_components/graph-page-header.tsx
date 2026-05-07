@@ -23,6 +23,7 @@ type GraphFilterOption = Readonly<{
 type GraphPageHeaderProps = Readonly<{
   fileName: string | null
   dataSource: 'live' | 'mock' | 'file'
+  viewMode: '2d' | '3d'
   kgStats: KGStatsResponse | null
   graphNodeCount: number
   graphLinkCount: number
@@ -82,6 +83,7 @@ type GraphPageHeaderProps = Readonly<{
 export function GraphPageHeader({
   fileName,
   dataSource,
+  viewMode,
   kgStats,
   graphNodeCount,
   graphLinkCount,
@@ -140,8 +142,11 @@ export function GraphPageHeader({
   return (
     <header className="absolute top-0 left-0 right-0 z-20 flex h-16 items-center justify-between border-b border-border/50 bg-card px-6 pointer-events-none">
       <div className="flex items-center gap-3 pointer-events-auto">
-        <div>
+        <div className="flex items-center gap-2">
           <h1 className="text-3xl font-bold text-foreground">知识图谱</h1>
+          <span className="rounded-full border border-blue-500/25 bg-blue-500/10 px-2.5 py-1 text-[11px] font-semibold text-blue-600 shadow-sm dark:text-blue-300">
+            {viewMode === '3d' ? '3D 图谱' : '2D 图谱'}
+          </span>
         </div>
       </div>
 

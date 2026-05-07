@@ -26,7 +26,8 @@ describe('similarity workbench source', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'similarity-workbench.tsx'), 'utf8')
 
     expect(src).toContain('选中单元')
-    expect(src).toContain('点击热力图任意单元后，在这里查看坐标和值。')
+    expect(src).toContain('点击热力图任意单元后，在这里查看坐标、相似度和 Top 相关项。')
+    expect(src).toContain('Top 相关')
     expect(src).toContain('plotly_click')
     expect(src).toContain('当前显示')
   })
@@ -68,10 +69,10 @@ describe('similarity workbench source', () => {
   it('uses token-based muted shells for the expert workbench surfaces', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'similarity-workbench.tsx'), 'utf8')
 
-    expect(src).toContain('w-12 border-r border-sidebar-border/70 bg-muted flex flex-col items-center py-2')
-    expect(src).toContain('relative h-full border-r border-sidebar-border/70 bg-muted flex flex-col')
-    expect(src).toContain('rounded-2xl border border-sidebar-border/70 bg-muted/50 p-3 shadow-soft')
-    expect(src).toContain('rounded-xl border border-sidebar-border/70 bg-muted/40 p-4 shadow-soft')
+    expect(src).toContain('flex w-12 flex-col items-center border-r border-sidebar-border/70 bg-background/82 py-2')
+    expect(src).toContain('relative flex h-full flex-col overflow-hidden border-r border-sidebar-border/70 bg-background/78')
+    expect(src).toContain('rounded-[28px] border border-sidebar-border/70 bg-card shadow-soft')
+    expect(src).toContain('rounded-2xl border border-sidebar-border/70 bg-card p-3 shadow-soft')
     expect(src).toContain("rounded-xl border border-sidebar-border/70 bg-muted/40', compact ? 'p-3' : 'p-4'")
   })
 })

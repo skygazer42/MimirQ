@@ -32,7 +32,9 @@ import {
   Lock,
   Minus,
   Plus,
+  Play,
   RefreshCw,
+  Target,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -51,6 +53,10 @@ type PlotlyTrace = {
   colorscale: string
   zmin: number
   zmax: number
+  text?: string[][]
+  texttemplate?: string
+  textfont?: { color: string; size: number }
+  showscale?: boolean
   hovertemplate: string
 }
 
@@ -65,6 +71,7 @@ type PlotlyLayout = {
 type PlotlyConfig = {
   responsive: boolean
   displaylogo: boolean
+  displayModeBar?: boolean
 }
 
 type PlotlyLike = {
@@ -158,8 +165,8 @@ export function RagvizSimilarityWorkbench() {
   const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(false)
   const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(false)
 
-  const [leftWidth, setLeftWidth] = useState<number>(320)
-  const [rightWidth, setRightWidth] = useState<number>(320)
+  const [leftWidth, setLeftWidth] = useState<number>(312)
+  const [rightWidth, setRightWidth] = useState<number>(248)
   const [leftTopHeight, setLeftTopHeight] = useState<number | null>(null)
   const [rightTopHeight, setRightTopHeight] = useState<number | null>(null)
 
@@ -808,7 +815,7 @@ export function RagvizSimilarityWorkbench() {
         isLeftSidebarCollapsed,
         isRightSidebarCollapsed,
       }
-      localStorage.setItem('ragviz_similarity_layout_v1', JSON.stringify(payload))
+      localStorage.setItem('ragviz_similarity_layout_v2', JSON.stringify(payload))
     } catch {
       // ignore
     }
@@ -816,7 +823,7 @@ export function RagvizSimilarityWorkbench() {
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem('ragviz_similarity_layout_v1')
+      const raw = localStorage.getItem('ragviz_similarity_layout_v2')
       if (!raw) return
       const parsed = JSON.parse(raw)
       if (typeof parsed.leftWidth === 'number') setLeftWidth(parsed.leftWidth)
@@ -889,11 +896,48 @@ export function RagvizSimilarityWorkbench() {
     globalThis.window.addEventListener('mouseup', onUp)
   }
 
+  const heatmapSummaryMetrics = useMemo(() => {
+    if (!primaryEntry) return []
+
+    const rowCount = primaryEntry.result.y_data.length
+    const colCount = primaryEntry.result.x_data.length
+    const stats = primaryEntry.result.stats
+    const totalPairs = Math.max(0, Number(stats?.total_pairs || rowCount * colCount || 0))
+    const highCount = Math.max(0, Number(stats?.high_similarity_count || 0))
+    const highRatio = totalPairs > 0 ? highCount / totalPairs : 0
+
+    return [
+      { label: '矩阵规模', value: `${rowCount} × ${colCount}` },
+      { label: '平均相似度', value: formatHeatmapValue(stats?.avg_similarity ?? null) },
+      { label: '最高相似度', value: formatHeatmapValue(stats?.max_similarity ?? null), tone: 'danger' as const },
+      { label: '高相似占比', value: formatPercent(highRatio) },
+    ]
+  }, [primaryEntry])
+
+  const selectedCellNeighbors = useMemo(() => {
+    if (!selectedCellDetails || !displayMatrix || !displayLabels) return null
+
+    const selectedRow = displayMatrix[selectedCellDetails.rowIndex] || []
+    const topX = selectedRow
+      .map((value, index) => ({ label: displayLabels.xLabels[index] || `X${index + 1}`, value, index }))
+      .filter((item) => item.index !== selectedCellDetails.colIndex && Number.isFinite(item.value))
+      .sort((left, right) => right.value - left.value)
+      .slice(0, 5)
+
+    const topY = displayMatrix
+      .map((row, index) => ({ label: displayLabels.yLabels[index] || `Y${index + 1}`, value: row[selectedCellDetails.colIndex], index }))
+      .filter((item) => item.index !== selectedCellDetails.rowIndex && Number.isFinite(item.value))
+      .sort((left, right) => right.value - left.value)
+      .slice(0, 5)
+
+    return { topX, topY }
+  }, [displayLabels, displayMatrix, selectedCellDetails])
+
   return (
-    <div className="h-full w-full flex overflow-hidden">
+    <div className="flex h-full w-full overflow-hidden bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.36))]">
       {/* Left section */}
       <div className="flex h-full">
-        <div className="w-12 border-r border-sidebar-border/70 bg-muted flex flex-col items-center py-2">
+        <div className="flex w-12 flex-col items-center border-r border-sidebar-border/70 bg-background/82 py-2 shadow-[8px_0_24px_-24px_rgba(15,23,42,0.45)]">
           <div className="flex flex-col gap-1">
             <IconBtn
               active={!isLeftSidebarCollapsed && leftTopPanel === 'dataSource'}
@@ -927,7 +971,7 @@ export function RagvizSimilarityWorkbench() {
         <div
           ref={leftSidebarRef}
           className={cn(
-            'relative h-full border-r border-sidebar-border/70 bg-muted flex flex-col overflow-hidden transition-[width,opacity] duration-200 ease-out',
+            'relative flex h-full flex-col overflow-hidden border-r border-sidebar-border/70 bg-background/78 backdrop-blur-xl transition-[width,opacity] duration-200 ease-out',
             isLeftSidebarCollapsed ? 'opacity-0' : 'opacity-100'
           )}
           style={{ width: isLeftSidebarCollapsed ? 0 : leftWidth }}
@@ -943,37 +987,35 @@ export function RagvizSimilarityWorkbench() {
           )}
 
           <div className="flex flex-col overflow-hidden">
-            <div className="p-3 border-b border-sidebar-border/70" style={leftTopStyle}>
-	              {leftTopPanel === 'dataSource' ? (
-	                <Panel title="数据源配置" rightSlot={
+            <div className="border-b border-sidebar-border/70 bg-background/72 p-4" style={leftTopStyle}>
+              {leftTopPanel === 'dataSource' ? (
+                <Panel title="数据源配置" subtitle="选择横/纵坐标 collections，计算两侧相似度。" rightSlot={
 	                  <Button variant="ghost" size="icon" onClick={loadCollections} disabled={collectionsLoading} title="刷新" aria-label="刷新">
 	                    <RefreshCw className={cn('size-4', collectionsLoading && 'animate-spin motion-reduce:animate-none')} />
 	                  </Button>
 	                }>
-                  <div className="space-y-2.5">
-                    <div className="rounded-2xl border border-sidebar-border/70 bg-card p-2.5 shadow-soft">
-                      <div className="flex items-start gap-2.5">
+                  <div className="overflow-hidden rounded-2xl border border-sidebar-border/70 bg-card shadow-soft">
+                    <div className="border-b border-sidebar-border/70 p-4">
+                      <div className="flex items-start gap-3">
                         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-primary/10 bg-primary/10 text-primary">
                           <Grid3X3 className="size-4" />
                         </div>
                         <div className="min-w-0">
-                          <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                          <div className="text-[12px] font-medium text-muted-foreground">
                             Matrix Setup
                           </div>
-                          <p className="mt-0.5 text-[11px] leading-5 text-muted-foreground">
-                            选择横/纵坐标 collections，计算相似度矩阵。
-                          </p>
+                          <div className="mt-0.5 text-[15px] font-semibold text-foreground">矩阵设置</div>
                         </div>
                       </div>
                     </div>
 
                     {collectionsError ? (
-                      <div className="rounded-2xl border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                      <div className="m-4 rounded-2xl border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
                         {collectionsError}
                       </div>
                     ) : null}
 
-                    <div className="space-y-2.5">
+                    <div>
                       <AxisConfigCard
                         eyebrow="X Axis"
                         title="横坐标 Collection"
@@ -1007,13 +1049,16 @@ export function RagvizSimilarityWorkbench() {
                       </AxisConfigCard>
                     </div>
 
-                    <Button
-                      className="h-10 w-full rounded-2xl shadow-soft"
-                      onClick={calculateSimilarity}
-                      disabled={isCalculating}
-                    >
-                      {isCalculating && calcProgress ? `计算中... (${calcProgress.done}/${calcProgress.total})` : '计算相似度'}
-                    </Button>
+                    <div className="p-4 pt-2">
+                      <Button
+                        className="h-10 w-full rounded-xl bg-[linear-gradient(180deg,#3f6df6,#1f55e8)] text-white shadow-soft hover:bg-primary"
+                        onClick={calculateSimilarity}
+                        disabled={isCalculating}
+                      >
+                        {isCalculating ? null : <Play className="mr-2 size-3.5 fill-current" />}
+                        {isCalculating && calcProgress ? `计算中... (${calcProgress.done}/${calcProgress.total})` : '计算相似度'}
+                      </Button>
+                    </div>
                   </div>
                 </Panel>
               ) : (
@@ -1084,14 +1129,19 @@ export function RagvizSimilarityWorkbench() {
               onMouseDown={(e) => startResizeSplit('left', e)}
             />
 
-            <div className="p-3 overflow-auto overscroll-contain no-scrollbar">
+            <div className="overflow-auto overscroll-contain bg-background/72 p-4 no-scrollbar">
               <Panel title="图表选择与控制">
                 {results.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-sidebar-border/60 bg-muted/30 px-4 py-5 text-center">
+                  <div className="rounded-2xl border border-sidebar-border/70 bg-card p-4 text-center shadow-subtle">
                     <div className="text-sm font-medium text-foreground">等待矩阵结果</div>
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">
                       先在上方选择两个 collections，再生成热力图并在这里切换主图、筛选器和独占模式。
                     </p>
+                    <div className="mt-4 grid grid-cols-3 gap-2">
+                      <EmptyControlTile icon={<Grid3X3 className="size-5" />} label="主图" />
+                      <EmptyControlTile icon={<Filter className="size-5" />} label="筛选器" />
+                      <EmptyControlTile icon={<Target className="size-5" />} label="独占模式" />
+                    </div>
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -1183,15 +1233,15 @@ export function RagvizSimilarityWorkbench() {
       </div>
 
       {/* Main content */}
-      <div className="flex-1 h-full overflow-hidden bg-background">
+      <div className="h-full flex-1 overflow-hidden bg-background">
         <div className="h-full w-full flex flex-col">
-          <div className="border-b border-sidebar-border/70 bg-muted/20 px-4 py-3">
+          <div className="bg-background px-8 pb-3 pt-6">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <div>
-                <div className="text-sm font-semibold">
+                <div className="text-[24px] font-semibold tracking-tight text-foreground">
                   {mainView === 'diagnostics' ? '向量诊断' : '跨集合相似度热力图'}
                 </div>
-                <p className="mt-1 text-[11px] text-muted-foreground">
+                <p className="mt-1.5 text-[13px] leading-5 text-muted-foreground">
                   {mainView === 'diagnostics'
                     ? '基于当前相似度矩阵重建局部向量邻域，帮助识别高分但支撑不足的干扰项。'
                     : '使用当前主图矩阵和筛选器观察不同集合之间的相似度分布。'}
@@ -1199,10 +1249,11 @@ export function RagvizSimilarityWorkbench() {
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
-                <div className="inline-flex items-center rounded-lg border border-border bg-card p-1">
+                <div className="inline-flex items-center rounded-2xl border border-border/70 bg-card p-1 shadow-subtle">
                   <Button
                     variant={mainView === 'heatmap' ? 'default' : 'outline'}
                     size="sm"
+                    className={cn('rounded-xl', mainView === 'heatmap' && 'bg-slate-950 text-white hover:bg-slate-900')}
                     onClick={() => setMainView('heatmap')}
                   >
                     热力图
@@ -1210,6 +1261,7 @@ export function RagvizSimilarityWorkbench() {
                   <Button
                     variant={mainView === 'diagnostics' ? 'default' : 'outline'}
                     size="sm"
+                    className="rounded-xl"
                     onClick={() => setMainView('diagnostics')}
                     disabled={!primaryEntry || !displayLabels || isDifferenceMode}
                     title={isDifferenceMode ? '差值模式暂不支持向量诊断' : '查看向量诊断'}
@@ -1220,14 +1272,14 @@ export function RagvizSimilarityWorkbench() {
 
                 {mainView === 'heatmap' ? (
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">配色方案：</span>
+                    <span className="text-xs font-medium text-muted-foreground">配色方案：</span>
                     <div className="flex items-center gap-1">
                       {COLOR_SCHEMES.map((scheme) => (
                         <button
                           key={scheme.key}
                           type="button"
                           className={cn(
-                            'h-3 w-7 rounded border transition',
+                            'h-3 w-7 rounded-full border transition',
                             scheme.key === colorScheme ? 'border-primary' : 'border-border hover:border-primary/50'
                           )}
                           title={scheme.label}
@@ -1236,6 +1288,7 @@ export function RagvizSimilarityWorkbench() {
                         />
                       ))}
                     </div>
+                    <ChevronDown className="size-3.5 text-muted-foreground" />
                   </div>
                 ) : (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -1247,6 +1300,27 @@ export function RagvizSimilarityWorkbench() {
                 )}
               </div>
             </div>
+
+            {heatmapSummaryMetrics.length > 0 ? (
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {heatmapSummaryMetrics.map((metric) => (
+                  <div
+                    key={metric.label}
+                    className="rounded-2xl border border-sidebar-border/70 bg-card px-4 py-3 text-center shadow-subtle"
+                  >
+                    <div className="text-[11px] font-medium text-muted-foreground">{metric.label}</div>
+                    <div
+                      className={cn(
+                        'mt-1 text-2xl font-semibold tracking-tight tabular-nums',
+                        metric.tone === 'danger' ? 'text-destructive' : 'text-foreground'
+                      )}
+                    >
+                      {metric.value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
           <div className="flex-1 overflow-hidden">
             {primaryEntry && displayMatrix && displayLabels ? (
@@ -1264,22 +1338,40 @@ export function RagvizSimilarityWorkbench() {
                   </div>
                 )
               ) : (
-                <div className="h-full w-full">
-                  <PlotlyHeatmap
-                    matrix={maskedMatrix || displayMatrix}
-                    xLabels={displayLabels.xLabels}
-                    yLabels={displayLabels.yLabels}
-                    colorScheme={colorScheme}
-                    isDifference={isDifferenceMode}
-                    onCellSelect={handleHeatmapCellSelect}
-                  />
+                <div className="h-full overflow-auto p-4">
+                  <section className="flex min-h-[560px] flex-col overflow-hidden rounded-[28px] border border-sidebar-border/70 bg-card shadow-soft">
+                    <div className="flex items-center justify-between gap-3 border-b border-sidebar-border/70 px-4 py-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-foreground">
+                          {primaryEntry.xCollectionLabel}（X 轴）
+                        </div>
+                        <div className="mt-0.5 text-[11px] text-muted-foreground">
+                          {displayLabels.xLabels.length} 项 × {displayLabels.yLabels.length} 项
+                        </div>
+                      </div>
+                      <div className="rounded-full border border-border/70 bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                        点击单元格查看右侧统计
+                      </div>
+                    </div>
+
+                    <div className="min-h-0 flex-1 p-3">
+                      <PlotlyHeatmap
+                        matrix={maskedMatrix || displayMatrix}
+                        xLabels={displayLabels.xLabels}
+                        yLabels={displayLabels.yLabels}
+                        colorScheme={colorScheme}
+                        isDifference={isDifferenceMode}
+                        onCellSelect={handleHeatmapCellSelect}
+                      />
+                    </div>
+
+                    <HeatmapScaleLegend isDifference={isDifferenceMode} />
+                  </section>
                 </div>
               )
             ) : (
-              <div className="flex h-full items-center justify-center px-6">
-                <div className="rounded-2xl border border-dashed border-sidebar-border/60 bg-muted/30 px-6 py-8 text-center text-sm text-muted-foreground">
-                  请先计算相似度矩阵并选择“应用数据”。
-                </div>
+              <div className="flex h-full items-start justify-center px-8 pb-14 pt-0">
+                <SimilarityEmptyState />
               </div>
             )}
           </div>
@@ -1288,7 +1380,7 @@ export function RagvizSimilarityWorkbench() {
 
       {/* Right section */}
       <div className="flex h-full">
-        <div className="w-12 border-l border-sidebar-border/70 bg-muted flex flex-col items-center py-2">
+        <div className="flex w-12 flex-col items-center border-l border-sidebar-border/70 bg-background/82 py-2 shadow-[-8px_0_24px_-24px_rgba(15,23,42,0.45)]">
           <div className="flex flex-col gap-1">
             <IconBtn
               active={!isRightSidebarCollapsed && rightTopPanel === 'statistics'}
@@ -1316,7 +1408,7 @@ export function RagvizSimilarityWorkbench() {
         <div
           ref={rightSidebarRef}
           className={cn(
-            'relative h-full border-l border-sidebar-border/70 bg-muted flex flex-col overflow-hidden transition-[width,opacity] duration-200 ease-out',
+            'relative flex h-full flex-col overflow-hidden border-l border-sidebar-border/70 bg-background/78 backdrop-blur-xl transition-[width,opacity] duration-200 ease-out',
             isRightSidebarCollapsed ? 'opacity-0' : 'opacity-100'
           )}
           style={{ width: isRightSidebarCollapsed ? 0 : rightWidth }}
@@ -1332,12 +1424,12 @@ export function RagvizSimilarityWorkbench() {
           )}
 
           <div className="flex flex-col overflow-hidden">
-            <div className="p-3 border-b border-sidebar-border/70" style={rightTopStyle}>
+            <div className="border-b border-sidebar-border/70 bg-background p-4" style={rightTopStyle}>
               {rightTopPanel === 'statistics' ? (
-                <Panel title="统计信息">
+                <Panel title="统计信息" subtitle="数据概览与交互信息">
                   {(() => {
     if (!primaryEntry || !effectiveMask) {
-        return (<p className="text-xs text-muted-foreground">请先选择一个主图矩阵。</p>);
+        return <RightEmptyInfoCard title="选中单元" icon={<Grid3X3 className="size-5" />} description="点击热力图任意单元后，在这里查看坐标、相似度和 Top 相关项。" />;
     }
     else if (isDifferenceMode && differenceStats) {
             return (<StatsGrid>
@@ -1361,7 +1453,7 @@ export function RagvizSimilarityWorkbench() {
             }
 })()}
 
-                  {mainView === 'heatmap' ? (
+                  {mainView === 'heatmap' && primaryEntry ? (
                     <div className="mt-4 border-t border-sidebar-border/60 pt-4">
                       <div className="mb-2 flex items-center justify-between gap-2">
                         <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
@@ -1376,12 +1468,34 @@ export function RagvizSimilarityWorkbench() {
 
                       {selectedCellDetails ? (
                         <div className="space-y-2">
-                          <div className="rounded-xl border border-sidebar-border/70 bg-muted/40 p-3 shadow-soft">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0 space-y-1">
-                                <div className="text-[11px] text-muted-foreground">横轴</div>
-                                <div className="truncate text-sm font-medium text-foreground">
+                          <div className="rounded-2xl border border-sidebar-border/70 bg-card p-3 shadow-soft">
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="min-w-0">
+                                <div className="text-[11px] font-medium text-muted-foreground">X（列）</div>
+                                <div className="mt-1 truncate text-sm font-semibold text-foreground">
                                   {selectedCellDetails.xLabel}
+                                </div>
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-[11px] font-medium text-muted-foreground">Y（行）</div>
+                                <div className="mt-1 truncate text-sm font-semibold text-foreground">
+                                  {selectedCellDetails.yLabel}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="mt-4 grid grid-cols-[1fr_auto] items-end gap-3">
+                              <div>
+                                <div className="text-[11px] font-medium text-muted-foreground">
+                                  {isDifferenceMode ? '差值' : '相似度'}
+                                </div>
+                                <div
+                                  className={cn(
+                                    'mt-1 text-3xl font-semibold tracking-tight tabular-nums',
+                                    selectedCellDetails.rawValue >= 0.8 ? 'text-destructive' : 'text-foreground'
+                                  )}
+                                >
+                                  {formatHeatmapValue(selectedCellDetails.rawValue)}
                                 </div>
                               </div>
                               <div
@@ -1395,21 +1509,9 @@ export function RagvizSimilarityWorkbench() {
                                 {selectedCellDetails.isVisible ? '显示中' : '已过滤'}
                               </div>
                             </div>
-
-                            <div className="mt-3 min-w-0">
-                              <div className="text-[11px] text-muted-foreground">纵轴</div>
-                              <div className="truncate text-sm font-medium text-foreground">
-                                {selectedCellDetails.yLabel}
-                              </div>
-                            </div>
                           </div>
 
                           <div className="grid grid-cols-2 gap-2">
-                            <StatsItem
-                              label={isDifferenceMode ? '差值' : '相似度'}
-                              value={formatHeatmapValue(selectedCellDetails.rawValue)}
-                              tone={selectedCellDetails.isVisible ? 'info' : 'muted'}
-                            />
                             <StatsItem
                               label="当前显示"
                               value={
@@ -1422,11 +1524,24 @@ export function RagvizSimilarityWorkbench() {
                             <StatsItem label="行索引" value={selectedCellDetails.rowIndex + 1} tone="muted" />
                             <StatsItem label="列索引" value={selectedCellDetails.colIndex + 1} tone="muted" />
                           </div>
+
+                          {selectedCellNeighbors ? (
+                            <div className="space-y-2 pt-1">
+                              <RelatedListCard
+                                title={`Top 相关（Y 轴 · ${selectedCellDetails.yLabel}）`}
+                                items={selectedCellNeighbors.topX}
+                              />
+                              <RelatedListCard
+                                title={`Top 相关（X 轴 · ${selectedCellDetails.xLabel}）`}
+                                items={selectedCellNeighbors.topY}
+                              />
+                            </div>
+                          ) : null}
                         </div>
                       ) : (
-                        <p className="text-xs text-muted-foreground">
-                          点击热力图任意单元后，在这里查看坐标和值。
-                        </p>
+                        <div className="rounded-2xl border border-dashed border-sidebar-border/70 bg-card/70 p-4 text-xs leading-5 text-muted-foreground">
+                          点击热力图任意单元后，在这里查看坐标、相似度和 Top 相关项。
+                        </div>
                       )}
                     </div>
                   ) : null}
@@ -1443,7 +1558,7 @@ export function RagvizSimilarityWorkbench() {
               onMouseDown={(e) => startResizeSplit('right', e)}
             />
 
-            <div className="p-3 overflow-auto overscroll-contain no-scrollbar">
+            <div className="overflow-auto overscroll-contain bg-background p-4 no-scrollbar">
               {rightBottomPanel === 'filters' ? (
                 <Panel title="筛选器控制">
                   {primaryEntry ? (
@@ -1592,7 +1707,7 @@ export function RagvizSimilarityWorkbench() {
                       </div>
                     </div>
                   ) : (
-                    <p className="text-xs text-muted-foreground">请先选择一个主图矩阵。</p>
+                    <RightEmptyInfoCard title="" icon={<Filter className="size-5" />} description="请先生成相似度矩阵后，在这里选择一个主图矩阵。" />
                   )}
                 </Panel>
               ) : (
@@ -1623,8 +1738,10 @@ function IconBtn({
       title={title}
       onClick={onClick}
       className={cn(
-        'h-9 w-9 rounded-lg flex items-center justify-center border transition-colors',
-        active ? 'bg-primary text-primary-foreground border-primary/40' : 'bg-background hover:bg-muted border-border'
+        'flex h-9 w-9 items-center justify-center rounded-xl border shadow-subtle transition-colors',
+        active
+          ? 'border-slate-950 bg-slate-950 text-white'
+          : 'border-sidebar-border/70 bg-card text-muted-foreground hover:border-primary/25 hover:text-primary'
       )}
     >
       {icon}
@@ -1632,20 +1749,163 @@ function IconBtn({
   )
 }
 
+function EmptyControlTile({ icon, label }: Readonly<{ icon: ReactNode; label: string }>) {
+  return (
+    <div className="flex min-h-[84px] flex-col items-center justify-center rounded-xl border border-sidebar-border/70 bg-background text-muted-foreground">
+      <div className="text-primary/70">{icon}</div>
+      <div className="mt-2 text-[12px] font-medium text-foreground">{label}</div>
+    </div>
+  )
+}
+
+function RightEmptyInfoCard({
+  title,
+  icon,
+  description,
+}: Readonly<{
+  title: string
+  icon: ReactNode
+  description: string
+}>) {
+  return (
+    <section className="rounded-2xl border border-sidebar-border/70 bg-card p-4 shadow-subtle">
+      {title ? <div className="mb-3 text-[15px] font-semibold text-foreground">{title}</div> : null}
+      <div className={cn('flex flex-col items-center justify-center rounded-2xl border border-dashed border-sidebar-border/70 bg-background/70 px-5 text-center', title ? 'min-h-[188px]' : 'min-h-[160px]')}>
+        <div className="flex size-12 items-center justify-center rounded-full border border-primary/15 bg-primary/[0.04] text-primary/65">
+          {icon}
+        </div>
+        <p className="mt-4 text-[13px] leading-6 text-muted-foreground">{description}</p>
+      </div>
+    </section>
+  )
+}
+
+function SimilarityEmptyState() {
+  return (
+    <section className="flex h-full w-full max-w-[920px] flex-col items-center justify-center overflow-hidden rounded-[30px] border border-sidebar-border/70 bg-card px-10 py-8 text-center shadow-soft">
+      <div className="relative h-48 w-72">
+        <div className="absolute left-1/2 top-4 h-36 w-36 -translate-x-1/2 rounded-full border border-blue-300/35" />
+        <div className="absolute left-1/2 top-0 h-48 w-48 -translate-x-1/2 rounded-full border border-blue-200/35" />
+        <div className="absolute left-[88px] top-[48px] h-24 w-32 rotate-[-9deg] rounded-[22px] border border-blue-200/80 bg-[linear-gradient(145deg,#ffffff,#eef4ff)] shadow-[0_24px_60px_-34px_rgba(37,99,235,0.55)]">
+          <div className="grid grid-cols-5 gap-1 p-5">
+            {Array.from({ length: 20 }).map((_, index) => (
+              <span
+                key={index}
+                className={cn(
+                  'h-4 rounded-[4px]',
+                  index % 4 === 0 ? 'bg-blue-500/80' : index % 3 === 0 ? 'bg-blue-400/55' : 'bg-blue-200/80'
+                )}
+              />
+            ))}
+          </div>
+        </div>
+        <div className="absolute right-12 top-7 flex size-14 rotate-[12deg] items-center justify-center rounded-2xl bg-blue-50 text-blue-300 shadow-subtle">
+          <BarChart3 className="size-7" />
+        </div>
+        <span className="absolute left-12 top-12 size-2 rounded-full border border-blue-300/70" />
+        <span className="absolute left-7 top-28 size-3 rounded-full bg-blue-200/80" />
+        <span className="absolute right-16 top-28 size-2 rounded-full bg-blue-300/70" />
+      </div>
+
+      <h2 className="mt-1 text-[28px] font-semibold tracking-tight text-foreground">等待相似度矩阵</h2>
+      <p className="mt-3 max-w-[520px] text-[15px] leading-7 text-muted-foreground">
+        请先在左侧选择横/纵坐标 Collection，点「计算相似度」后在这里查看热力图。
+      </p>
+
+      <div className="mt-8 flex w-full max-w-[560px] items-start justify-between">
+        <EmptyStep index={1} title="选择 X Collection" description="从下拉框选择横坐标 Collection" />
+        <EmptyStepConnector />
+        <EmptyStep index={2} title="选择 Y Collection" description="从下拉框选择纵坐标 Collection" />
+        <EmptyStepConnector />
+        <EmptyStep index={3} title="计算相似度" description="点击“计算相似度”生成矩阵" />
+      </div>
+
+      <div className="mt-7 w-full max-w-[520px] rounded-2xl border border-sidebar-border/70 bg-background/80 px-8 py-5">
+        <div className="grid grid-cols-[56px_1fr] gap-3">
+          <div className="space-y-2 pt-5">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <div key={index} className="h-2 rounded-full bg-muted" />
+            ))}
+          </div>
+          <div className="space-y-1.5">
+            <div className="grid grid-cols-8 gap-1.5">
+              {Array.from({ length: 8 }).map((_, index) => (
+                <div key={index} className="h-2 rounded-full bg-muted" />
+              ))}
+            </div>
+            <div className="grid grid-cols-8 gap-1.5">
+              {Array.from({ length: 56 }).map((_, index) => (
+                <span
+                  key={index}
+                  className={cn(
+                  'h-4 rounded-[3px]',
+                  index % 9 === 0 ? 'bg-blue-500/70' : index % 5 === 0 ? 'bg-blue-300/75' : 'bg-blue-100'
+                )}
+              />
+            ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-6 flex w-full max-w-[780px] items-center justify-between rounded-2xl border border-sidebar-border/70 bg-background/88 px-5 py-3 text-[13px] text-muted-foreground shadow-subtle">
+        <div className="flex items-center gap-2">
+          <span className="flex size-5 items-center justify-center rounded-full border border-primary/20 text-primary">i</span>
+          支持切换主图、筛选器和独占模式，进一步探索和聚焦数据
+        </div>
+        <div className="flex items-center gap-4 text-primary/70">
+          <Grid3X3 className="size-5" />
+          <Filter className="size-5" />
+          <Target className="size-5" />
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function EmptyStep({
+  index,
+  title,
+  description,
+}: Readonly<{
+  index: number
+  title: string
+  description: string
+}>) {
+  return (
+    <div className="flex w-36 flex-col items-center">
+      <div className="flex size-8 items-center justify-center rounded-full bg-primary/55 text-sm font-semibold text-white shadow-subtle">
+        {index}
+      </div>
+      <div className="mt-3 text-[13px] font-semibold text-foreground">{title}</div>
+      <div className="mt-1 text-[12px] leading-5 text-muted-foreground">{description}</div>
+    </div>
+  )
+}
+
+function EmptyStepConnector() {
+  return <div className="mt-4 h-px flex-1 border-t border-dashed border-primary/20" />
+}
+
 function Panel({
   title,
   children,
   rightSlot,
+  subtitle,
 }: Readonly<{
   title: string
   children: ReactNode
   rightSlot?: ReactNode
+  subtitle?: string
 }>) {
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center justify-between gap-2 mb-2">
-        <div className="text-sm font-semibold">{title}</div>
-        {rightSlot}
+      <div className="relative mb-2.5 min-h-8 pr-9">
+        <div>
+          <div className="text-[15px] font-semibold tracking-tight text-foreground">{title}</div>
+          {subtitle ? <div className="mt-1 text-[12px] text-muted-foreground">{subtitle}</div> : null}
+        </div>
+        {rightSlot ? <div className="absolute right-0 top-0">{rightSlot}</div> : null}
       </div>
       <div className="flex-1">{children}</div>
     </div>
@@ -1790,6 +2050,63 @@ function LegendPill({ className, children }: Readonly<{ className?: string; chil
   return <span className={cn('rounded-full border px-2 py-0.5', className)}>{children}</span>
 }
 
+function HeatmapScaleLegend({ isDifference }: Readonly<{ isDifference: boolean }>) {
+  return (
+    <div className="border-t border-sidebar-border/70 px-4 py-3">
+      <div className="flex max-w-md items-center gap-3 text-xs font-medium text-foreground">
+        <span>{isDifference ? '差值' : '相似度'}</span>
+        <span className="font-mono text-[11px] text-muted-foreground tabular-nums">{isDifference ? '-1' : '0'}</span>
+        <div
+          className={cn(
+            'h-3 flex-1 rounded-full border border-border/50',
+            isDifference
+              ? 'bg-[linear-gradient(90deg,#2563eb,#f8fafc,#dc2626)]'
+              : 'bg-[linear-gradient(90deg,#3b82f6,#5eead4,#facc15,#fb923c,#dc2626)]'
+          )}
+        />
+        <span className="font-mono text-[11px] text-muted-foreground tabular-nums">1</span>
+      </div>
+    </div>
+  )
+}
+
+function RelatedListCard({
+  title,
+  items,
+}: Readonly<{
+  title: string
+  items: Array<{ label: string; value: number; index: number }>
+}>) {
+  return (
+    <section className="rounded-2xl border border-sidebar-border/70 bg-card p-3 shadow-subtle">
+      <div className="mb-2 text-[12px] font-semibold text-foreground">{title}</div>
+      {items.length === 0 ? (
+        <div className="text-xs text-muted-foreground">暂无可比较项</div>
+      ) : (
+        <div className="space-y-2">
+          {items.map((item, index) => (
+            <div key={`${item.label}-${item.index}`} className="grid grid-cols-[18px_minmax(0,1fr)_44px] items-center gap-2">
+              <span className="text-[11px] font-medium text-muted-foreground">{index + 1}</span>
+              <div className="min-w-0">
+                <div className="truncate text-[12px] font-medium text-foreground">{item.label}</div>
+                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-[linear-gradient(90deg,#fb923c,#ef4444)]"
+                    style={{ width: `${Math.max(4, Math.min(100, item.value * 100))}%` }}
+                  />
+                </div>
+              </div>
+              <span className="text-right font-mono text-[11px] font-semibold tabular-nums text-foreground">
+                {formatHeatmapValue(item.value)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
 function DiagnosticMetricCard({
   label,
   value,
@@ -1830,10 +2147,10 @@ function AxisConfigCard({
   children: ReactNode
 }>) {
   return (
-    <section className="rounded-2xl border border-sidebar-border/70 bg-muted/40 p-2.5 shadow-soft">
+    <section className="border-b border-sidebar-border/70 px-4 py-4 last:border-b-0">
       <div className="mb-2.5 flex items-start justify-between gap-2.5">
         <div className="min-w-0">
-          <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{eyebrow}</div>
+          <div className="text-[12px] font-semibold text-primary">{eyebrow}</div>
           <div className="mt-0.5 text-sm font-semibold text-foreground">{title}</div>
         </div>
         <span
@@ -2105,12 +2422,16 @@ function PlotlyHeatmap({
       colorscale,
       zmin,
       zmax,
-      hovertemplate: 'x=%{x}<br>y=%{y}<br>value=%{z:.4f}<extra></extra>',
+      text: matrix.map((row) => row.map((value) => formatHeatmapValue(value))),
+      texttemplate: '%{text}',
+      textfont: { color: '#0f172a', size: 11 },
+      showscale: false,
+      hovertemplate: '<b>%{z:.3f}</b><br>X: %{x}<br>Y: %{y}<extra></extra>',
     }
 
     const layout: PlotlyLayout = {
-      margin: { l: 120, r: 30, t: 30, b: 120 },
-      xaxis: { automargin: true, tickangle: 45 },
+      margin: { l: 108, r: 20, t: 36, b: 96 },
+      xaxis: { automargin: true, tickangle: -28 },
       yaxis: { automargin: true, autorange: 'reversed' },
       paper_bgcolor: 'transparent',
       plot_bgcolor: 'transparent',
@@ -2119,6 +2440,7 @@ function PlotlyHeatmap({
     const config: PlotlyConfig = {
       responsive: true,
       displaylogo: false,
+      displayModeBar: false,
     }
 
     plotly.react(containerRef.current, [trace], layout, config)
@@ -2414,7 +2736,7 @@ function StatsItem({
 })()
 
   return (
-    <div className={cn('rounded-lg border p-2', toneClass)}>
+    <div className={cn('rounded-xl border p-2.5 shadow-subtle', toneClass)}>
       <div className="text-[11px] font-medium opacity-90">{label}</div>
       <div className="text-sm font-semibold mt-1">{value}</div>
     </div>

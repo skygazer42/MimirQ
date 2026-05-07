@@ -4,6 +4,15 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 describe('graph data loading source', () => {
+  it('opens the unscoped graph page directly in the 3D sample graph', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'use-graph-data-loading.ts'), 'utf8')
+
+    expect(src).toContain("const [autoLoadedGraphKey, setAutoLoadedGraphKey] = useState<string | null>(null)")
+    expect(src).toContain("scope.hasScope ? 'live' : 'mock'")
+    expect(src).toContain("'default-mock-3d'")
+    expect(src).toContain("setViewMode('3d')")
+  })
+
   it('moves GraphML file parsing into a worker-backed pipeline with explicit main-thread fallback', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'use-graph-data-loading.ts'), 'utf8')
 

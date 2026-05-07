@@ -15,14 +15,16 @@ import type { Dataset, RegressionRun, RegressionRunCreate, RegressionRunDetail }
 import { Button } from '@/components/ui/button'
 import { TestCaseManager } from '@/components/test-case-manager'
 import { TestGenerationDialog } from '@/components/test-generation-dialog'
-import { Sparkles, Loader2, BarChart3, CheckCircle2, XCircle, Clock3, ChevronRight } from 'lucide-react'
+import { Sparkles, Loader2, BarChart3, CheckCircle2, XCircle, Clock3, ChevronDown, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn, detachPromise } from '@/lib/utils'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { formatApiError } from '@/lib/api-errors'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { RagasMetricSelector, RAGAS_METRIC_OPTIONS, ragasMetricLabel } from '@/components/evaluation/ragas-metric-selector'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { RAGAS_METRIC_OPTIONS, ragasMetricLabel } from '@/components/evaluation/ragas-metric-selector'
 
 function RegressionInlineStat({
   label,
@@ -79,6 +81,36 @@ function EmbeddedSection({
   )
 }
 
+function EmbeddedCollapsibleSection({
+  summary,
+  description,
+  badge,
+  children,
+  className,
+}: Readonly<{
+  summary: string
+  description?: string
+  badge?: ReactNode
+  children: ReactNode
+  className?: string
+}>) {
+  return (
+    <details className={cn('group overflow-hidden rounded-2xl border border-slate-200/80 bg-card', className)}>
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-2.5 py-2.5 [&::-webkit-details-marker]:hidden">
+        <div className="min-w-0">
+          <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">{summary}</div>
+          {description ? <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-muted-foreground">{description}</p> : null}
+        </div>
+        <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium text-slate-600">
+          {badge}
+          <ChevronDown className="h-3 w-3 transition-transform group-open:rotate-180" />
+        </span>
+      </summary>
+      <div className="border-t border-slate-200/80 bg-white/80 p-2.5">{children}</div>
+    </details>
+  )
+}
+
 function EmbeddedToggleCard({
   title,
   description,
@@ -100,6 +132,201 @@ function EmbeddedToggleCard({
           <div className="mt-1 text-[11px] leading-4 text-muted-foreground">{description}</div>
         </div>
         <Switch checked={checked} disabled={disabled} onCheckedChange={onCheckedChange} />
+      </div>
+    </div>
+  )
+}
+
+const REGRESSION_CORE_METRIC_KEYS = ['faithfulness', 'response_relevancy', 'context_precision']
+
+function RegressionMetricPicker({
+  disabled = false,
+  metricKeys,
+  onMetricKeysChange,
+}: Readonly<{
+  disabled?: boolean
+  metricKeys: string[]
+  onMetricKeysChange: (nextKeys: string[]) => void
+}>) {
+  const regressionMetrics = RAGAS_METRIC_OPTIONS.filter((metric) => metric.scopes.includes('regression'))
+  const coreMetrics = regressionMetrics.filter((metric) => REGRESSION_CORE_METRIC_KEYS.includes(metric.key))
+  const advancedMetrics = regressionMetrics.filter((metric) => !REGRESSION_CORE_METRIC_KEYS.includes(metric.key))
+  const selectedAdvancedMetrics = advancedMetrics.filter((metric) => metricKeys.includes(metric.key))
+
+  const setMetricChecked = (key: string, checked: boolean) => {
+    if (checked) {
+      if (metricKeys.includes(key)) return
+      onMetricKeysChange([...metricKeys, key])
+      return
+    }
+    onMetricKeysChange(metricKeys.filter((item) => item !== key))
+  }
+
+  return (
+    <TooltipProvider delayDuration={120}>
+      <div className={cn('space-y-2', disabled && 'opacity-60')}>
+        <div className="grid gap-1.5">
+          {coreMetrics.map((metric) => (
+            <RegressionMetricOption
+              key={metric.key}
+              compact
+              checked={metricKeys.includes(metric.key)}
+              disabled={disabled}
+              metric={metric}
+              onCheckedChange={(checked) => setMetricChecked(metric.key, checked)}
+            />
+          ))}
+        </div>
+
+        <details className="group overflow-hidden rounded-xl border border-slate-200/80 bg-slate-50/60">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-2.5 py-2 [&::-webkit-details-marker]:hidden">
+            <div className="min-w-0">
+              <div className="text-[12px] font-semibold text-foreground">高级程序化指标</div>
+              <div className="mt-0.5 line-clamp-1 text-[11px] text-muted-foreground">
+                默认收起，按需要补充引用归因、上下文利用与鲁棒性指标。
+              </div>
+              {selectedAdvancedMetrics.length ? (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {selectedAdvancedMetrics.slice(0, 3).map((metric) => (
+                    <span key={metric.key} className="rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[9px] font-medium text-blue-700">
+                      {metric.label}
+                    </span>
+                  ))}
+                  {selectedAdvancedMetrics.length > 3 ? (
+                    <span className="rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[9px] font-medium text-blue-700">
+                      +{selectedAdvancedMetrics.length - 3}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium text-slate-600">
+              {selectedAdvancedMetrics.length ? `${selectedAdvancedMetrics.length} 已选` : `${advancedMetrics.length} 项`}
+              <ChevronDown className="h-3 w-3 transition-transform group-open:rotate-180" />
+            </span>
+          </summary>
+          <div className="grid gap-1.5 border-t border-slate-200/80 bg-white p-2 md:grid-cols-2">
+            {advancedMetrics.map((metric) => (
+              <RegressionMetricOption
+                key={metric.key}
+                compact
+                checked={metricKeys.includes(metric.key)}
+                disabled={disabled}
+                metric={metric}
+                onCheckedChange={(checked) => setMetricChecked(metric.key, checked)}
+              />
+            ))}
+          </div>
+        </details>
+      </div>
+    </TooltipProvider>
+  )
+}
+
+function RegressionMetricOption({
+  checked,
+  compact = false,
+  disabled,
+  metric,
+  onCheckedChange,
+}: Readonly<{
+  checked: boolean
+  compact?: boolean
+  disabled: boolean
+  metric: (typeof RAGAS_METRIC_OPTIONS)[number]
+  onCheckedChange: (checked: boolean) => void
+}>) {
+  const detailLabel = `${metric.label}，${metric.kind}，${metric.category}，${metric.cost}。${metric.hint}`
+
+  const metricText = (
+    <>
+      <span className={cn('flex flex-wrap items-center gap-1.5 font-medium text-foreground', compact ? 'text-[11px]' : 'text-[12px]')}>
+        <span className="truncate">{metric.label}</span>
+        <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-slate-500">{metric.kind}</span>
+        {!compact ? (
+          <>
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-medium text-slate-500">{metric.category}</span>
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-medium text-slate-500">{metric.cost}</span>
+          </>
+        ) : null}
+      </span>
+      <span className={cn('block text-muted-foreground', compact ? 'mt-0.5 line-clamp-1 text-[10px] leading-3' : 'mt-1 text-[11px] leading-4')}>
+        {metric.hint}
+      </span>
+    </>
+  )
+
+  return (
+    <label
+      className={cn('flex items-start gap-2 rounded-xl border border-slate-200/80 bg-card/95 shadow-sm', compact ? 'px-2 py-1.5' : 'px-2.5 py-2', disabled && 'cursor-not-allowed')}
+    >
+      <Checkbox checked={checked} disabled={disabled} onCheckedChange={(value) => onCheckedChange(value === true)} />
+      <span className="min-w-0 flex-1">
+        {compact ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span aria-label={detailLabel} className="block cursor-help outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30" tabIndex={disabled ? -1 : 0}>
+                {metricText}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent
+              align="start"
+              className="max-w-[320px] rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-slate-700 shadow-xl"
+              side="right"
+              sideOffset={8}
+            >
+              <div className="text-[12px] font-semibold leading-5 text-slate-950">{metric.label}</div>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {[metric.kind, metric.category, metric.cost].map((item) => (
+                  <span key={item} className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-medium text-slate-500">
+                    {item}
+                  </span>
+                ))}
+              </div>
+              <div className="mt-2 text-[11px] leading-5 text-slate-600">{metric.hint}</div>
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          metricText
+        )}
+      </span>
+    </label>
+  )
+}
+
+const REGRESSION_METRIC_GUIDE = [
+  ['命中率', '命中目标样本的比例，越高越好'],
+  ['MRR', '首个命中位置的倒数，越高越好'],
+  ['Recall', '检索到的相关项占比，越高越好'],
+  ['NDCG@K', '综合考虑相关性与排序质量'],
+  ['MAP@K', '多查询平均精度'],
+]
+
+function RegressionMetricGuideCard() {
+  const tones = [
+    'bg-blue-50 text-blue-600 border-blue-100',
+    'bg-violet-50 text-violet-600 border-violet-100',
+    'bg-emerald-50 text-emerald-600 border-emerald-100',
+    'bg-green-50 text-green-600 border-green-100',
+    'bg-rose-50 text-rose-600 border-rose-100',
+  ]
+
+  return (
+    <div className="shrink-0 rounded-[28px] border border-slate-200/80 bg-card p-2">
+      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">Metric Guide</div>
+      <div className="mt-1 text-sm font-semibold text-foreground">评测维度速览</div>
+      <div className="mt-2 space-y-1.5">
+        {REGRESSION_METRIC_GUIDE.map(([label, description], index) => (
+          <div key={label} className="flex items-start gap-2">
+            <span className={cn('mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[9px] font-semibold', tones[index])}>
+              {index + 1}
+            </span>
+            <span className="min-w-0">
+              <span className="block text-[12px] font-semibold text-foreground">{label}</span>
+              <span className="mt-0.5 block text-[10px] leading-3 text-muted-foreground">{description}</span>
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   )
@@ -228,7 +455,7 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
       return
     }
     if (caseIds.length === 0) {
-      toast.error('请至少选择一个测试用例')
+      toast.error('请至少选择一个评测样本')
       return
     }
 
@@ -239,16 +466,16 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
         metrics: retrievalOnly ? [] : metricKeys,
         use_llm_judge: Boolean(!retrievalOnly && useLlmJudge),
         skip_empty_contexts: true,
-        max_cases: 50,
+        max_cases: Math.min(Math.max(caseIds.length, 1), 500),
       }
 
       const run = await evaluationApi.createRegressionRun(params)
-      toast.success('开始运行回归测试')
+      toast.success('开始运行 Golden 评测')
       await loadRuns()
       setSelectedRunId(run.id)
     } catch (error) {
-      console.error('运行测试失败:', error)
-      toast.error(formatApiError(error, '运行测试失败'))
+      console.error('运行 Golden 评测失败:', error)
+      toast.error(formatApiError(error, '运行 Golden 评测失败'))
     }
   }
 
@@ -266,15 +493,13 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
   const displayMetrics = Object.entries(summary)
     .filter(([k, v]) => !['items', 'total_tokens', 'total_cost'].includes(k) && typeof v === 'number')
     .map(([k, v]) => ({ key: k, value: Number(v) }))
+  const answerComparisonStatus = displayMetrics.some((m) => ['answer_correctness', 'factual_correctness'].includes(m.key)) ? '有' : '待返回'
+  const evidenceRecall = typeof (summary as any)?.retrieval_recall === 'number' ? Number((summary as any).retrieval_recall).toFixed(3) : '待返回'
 
   const runStatus = runDetail?.run?.status
-  const selectedDataset = useMemo(
-    () => datasets.find((dataset) => dataset.id === selectedDatasetId) || null,
-    [datasets, selectedDatasetId]
-  )
   const embeddedGridCols = isConfigPanelCollapsed
-    ? 'xl:grid-cols-[0px_minmax(0,1fr)_360px] 2xl:grid-cols-[0px_minmax(0,1fr)_400px]'
-    : 'xl:grid-cols-[300px_minmax(0,1fr)_360px] 2xl:grid-cols-[320px_minmax(0,1fr)_400px]'
+    ? 'xl:grid-cols-[0px_minmax(0,1fr)_300px] 2xl:grid-cols-[0px_minmax(0,1fr)_310px]'
+    : 'xl:grid-cols-[320px_minmax(0,1fr)_300px] 2xl:grid-cols-[330px_minmax(0,1fr)_310px]'
   const statusBadge = runStatus ? (
     (() => {
     if (runStatus === 'completed') {
@@ -299,15 +524,15 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
 	  ) : null
 
   return (
-    <div className={cn("flex-1 flex flex-col overflow-hidden", embedded && "overflow-visible")}>
+    <div className="flex-1 flex flex-col overflow-hidden">
       {/* Inline header (when embedded in a parent PageScaffold) */}
       {!embedded ? (
         <header className="px-8 py-6 border-b border-border bg-card">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <h2 className="text-xl font-semibold text-foreground">回归测试</h2>
+              <h2 className="text-xl font-semibold text-foreground">Golden 评测集</h2>
               <p className="text-sm text-muted-foreground mt-1">
-                管理测试用例，批量运行回归测试，跟踪性能变化
+                维护数据集级标准问答和标准证据，批量运行当前 RAG pipeline 并跟踪差距。
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -406,7 +631,7 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
 
       {/* 主内容区 */}
       <div
-        className={embedded ? `flex-1 overflow-hidden grid p-0 ${isConfigPanelCollapsed ? 'gap-0' : 'gap-2.5'} ${embeddedGridCols}` : 'flex-1 overflow-hidden flex gap-6 p-6'}
+        className={embedded ? `min-h-0 flex-1 grid p-0 ${isConfigPanelCollapsed ? 'gap-0' : 'gap-2.5'} ${embeddedGridCols}` : 'flex-1 overflow-hidden flex gap-6 p-6'}
       >
         {embedded ? (
           isConfigPanelCollapsed ? (
@@ -426,17 +651,17 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
             </aside>
           ) : (
             <aside className="flex min-h-0 flex-col overflow-hidden rounded-[28px] border border-slate-200/80 bg-card shadow-[0_16px_40px_rgba(15,23,42,0.04)]">
-              <div className="shrink-0 border-b border-slate-200/80 bg-primary/[0.12] px-3 py-2.5">
+              <div className="shrink-0 border-b border-slate-200/80 bg-[radial-gradient(circle_at_15%_0%,rgba(37,99,235,0.14),transparent_30%),linear-gradient(180deg,rgba(248,251,255,0.98)_0%,rgba(255,255,255,0.94)_100%)] px-3 py-3">
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">Regression Studio</div>
-                    <div className="mt-1 text-sm font-semibold text-foreground">回归配置</div>
-                    <p className="mt-1 text-[11px] leading-4 text-muted-foreground">固定数据集后，配置评测模式与评分维度，再到测试用例库批量发起回归。</p>
+                    <div className="mt-1 text-sm font-semibold text-foreground">Golden 评测配置</div>
+                    <p className="mt-1 text-[11px] leading-4 text-muted-foreground">先锁定数据集，再维护 Golden 评测集并运行当前 RAG pipeline。</p>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <Button variant="outline" size="sm" className="h-7 gap-1.5 rounded-lg border-slate-200/80 bg-card/90 px-2 text-[11px]" onClick={() => setShowGenerationDialog(true)}>
+                    <Button variant="outline" size="sm" className="h-7 gap-1.5 rounded-lg border-slate-200/80 bg-white/90 px-2 text-[11px]" onClick={() => setShowGenerationDialog(true)}>
                       <Sparkles className="h-3.5 w-3.5" />
-                      AI 生成问题
+                      生成候选
                     </Button>
                     <Button
                       type="button"
@@ -449,22 +674,16 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
                     </Button>
                   </div>
                 </div>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <RegressionInlineStat label="数据集" value={selectedDataset?.name || '未选择'} />
-                  <RegressionInlineStat label="运行数" value={visibleRuns.length} />
-                  <RegressionInlineStat label="模式" value={retrievalOnly ? '仅检索' : 'RAGAS'} tone={retrievalOnly ? 'info' : 'neutral'} />
-                  <RegressionInlineStat label="评委" value={useLlmJudge && !retrievalOnly ? '开启' : '关闭'} tone={useLlmJudge && !retrievalOnly ? 'success' : 'neutral'} />
-                </div>
-              </div>
 
-              <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain p-2.5 no-scrollbar">
-                <EmbeddedSection
-                  title="数据集"
-                  description="回归 case 和 runs 都是数据集作用域；先把目标数据集固定下来。"
-                  className="bg-[linear-gradient(180deg,rgba(245,251,255,0.96)_0%,rgba(255,255,255,0.94)_100%)]"
-                >
+                <div className="mt-3 rounded-2xl border border-slate-200/80 bg-white/90 p-2.5 shadow-sm">
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-medium text-muted-foreground">数据集</span>
+                    <span className={cn('rounded-full border px-1.5 py-0.5 text-[9px] font-medium', selectedDatasetId ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700')}>
+                      {selectedDatasetId ? '已绑定' : '未绑定'}
+                    </span>
+                  </div>
                   <Select value={selectedDatasetId} onValueChange={setSelectedDatasetId} disabled={isLoadingDatasets || !datasets.length}>
-                    <SelectTrigger className="h-9 rounded-xl border-slate-200/80 bg-card/95">
+                    <SelectTrigger className="h-9 rounded-xl border-slate-200/80 bg-card/95 text-[13px]">
                       <SelectValue placeholder={isLoadingDatasets ? '加载中...' : '选择数据集'} />
                     </SelectTrigger>
                     <SelectContent>
@@ -475,28 +694,30 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
                       ))}
                     </SelectContent>
                   </Select>
-
-                  <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                    <RegressionInlineStat label="状态" value={selectedDataset ? '就绪' : '未选'} tone={selectedDataset ? 'success' : 'warning'} />
-                    <RegressionInlineStat label="样例范围" value={selectedDatasetId ? '已绑定' : '未绑定'} tone={selectedDatasetId ? 'info' : 'warning'} />
-                  </div>
-
                   {!datasets.length ? (
-                    <div className="mt-2.5 text-[11px] leading-4 text-muted-foreground">
-                      未加载到数据集。你仍可查看历史 runs，但创建/运行测试前需要先选一个数据集。
+                    <div className="mt-2 text-[11px] leading-4 text-muted-foreground">
+                      未加载到数据集。可查看历史 runs，创建 Golden 样本前需先选择数据集。
                     </div>
                   ) : null}
-                </EmbeddedSection>
+                </div>
 
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <RegressionInlineStat label="runs" value={visibleRuns.length} />
+                  <RegressionInlineStat label="metrics" value={retrievalOnly ? '检索-only' : metricKeys.length} tone={retrievalOnly ? 'info' : 'neutral'} />
+                  <RegressionInlineStat label="judge" value={useLlmJudge && !retrievalOnly ? 'ON' : 'OFF'} tone={useLlmJudge && !retrievalOnly ? 'success' : 'neutral'} />
+                </div>
+              </div>
+
+              <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain p-2.5 pb-6 custom-scrollbar">
                 <EmbeddedSection
-                  title="模式与判定"
-                  description="先决定是否只做检索评测，再决定要不要引入 LLM 评委。"
+                  title="运行当前 RAG"
+                  description="当前数据集的标准问答会作为固定标尺，问题重新走 RAG 后再和标准答案、标准证据比较。"
                   className="bg-[linear-gradient(180deg,rgba(247,255,250,0.96)_0%,rgba(255,255,255,0.94)_100%)]"
                 >
                   <div className="space-y-2">
                     <EmbeddedToggleCard
                       title="仅检索评测"
-                      description="开启后 `metrics=[]`，只计算 recall、hit@k、MRR、NDCG 与 abstain_rate。"
+                      description="开启后 `metrics=[]`，只看标准证据命中：recall、hit@k、MRR、NDCG 与 abstain_rate。"
                       checked={retrievalOnly}
                       onCheckedChange={(checked) => {
                         setRetrievalOnly(checked)
@@ -510,7 +731,7 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
                     />
                     <EmbeddedToggleCard
                       title="LLM-as-Judge"
-                      description="为每个 case 额外生成 score、reason 和 evidence quotes；检索-only 模式不可用。"
+                      description="为每个样本额外生成 score、reason 和 evidence quotes；检索-only 模式不可用。"
                       checked={useLlmJudge}
                       disabled={retrievalOnly}
                       onCheckedChange={(checked) => setUseLlmJudge(Boolean(checked))}
@@ -518,22 +739,18 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
                   </div>
                 </EmbeddedSection>
 
-                <EmbeddedSection
-                  title="回归评分维度"
-                  description="仅作用于回归测试；默认推荐保留忠实度与相关性，如需更强约束再叠加 context precision。"
+                <EmbeddedCollapsibleSection
+                  summary="评分维度"
+                  description="默认收起，展开后选择 RAGAS 与程序化指标。"
+                  badge={retrievalOnly ? '检索-only' : `${metricKeys.length} 已选`}
                   className="bg-[linear-gradient(180deg,rgba(250,252,255,0.96)_0%,rgba(255,255,255,0.94)_100%)]"
                 >
-                  <RagasMetricSelector
+                  <RegressionMetricPicker
                     metricKeys={metricKeys}
                     onMetricKeysChange={setMetricKeys}
                     disabled={retrievalOnly}
-                    scope="regression"
-                    className="grid gap-2"
-                    itemClassName="gap-3 rounded-xl border border-slate-200/80 bg-card/90 px-2.5 py-1.5"
-                    textWrapClassName="space-y-1"
-                    labelClassName="text-sm"
                   />
-                </EmbeddedSection>
+                </EmbeddedCollapsibleSection>
               </div>
             </aside>
           )
@@ -552,7 +769,7 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
         </div>
 
         {/* 右侧：运行结果 */}
-        <div className={cn("flex-1 flex flex-col gap-2.5", embedded && "min-w-0")}>
+        <div className={cn("flex-1 flex flex-col gap-2.5", embedded && "min-w-0 overflow-y-auto overscroll-contain pr-1 custom-scrollbar")}>
           {/* 运行历史列表 */}
           <div className={cn("bg-card border border-border rounded-2xl overflow-hidden", embedded && "rounded-[28px] border-slate-200/80 bg-card")}>
             <div className={cn("p-3 border-b border-border flex items-center justify-between", embedded && "border-slate-200/80 bg-[#fffef9]")}>
@@ -564,7 +781,7 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
                 {visibleRuns.length} 次{selectedDatasetId ? '（按数据集过滤）' : ''}
               </div>
             </div>
-		            <div className={cn("overflow-y-auto overscroll-contain no-scrollbar", embedded ? "max-h-[200px]" : "max-h-40")}>
+            <div className={cn("overflow-y-auto overscroll-contain custom-scrollbar", embedded ? "max-h-[190px]" : "max-h-40")}>
 			              {(() => {
     if (isLoadingRuns) {
         return (<div className="flex items-center justify-center py-8">
@@ -572,8 +789,13 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
 		                </div>);
     }
     else if (visibleRuns.length === 0) {
-            return (<div className="text-center py-8 text-muted-foreground text-sm">
-	                  暂无运行记录
+            return (<div className="flex min-h-[128px] flex-col items-center justify-center px-3 py-5 text-center">
+                    <Button variant="outline" size="sm" className="mb-3 h-7 rounded-full border-slate-200 bg-white px-3 text-[11px] text-slate-600" disabled>
+                      <Clock3 className="mr-1.5 h-3.5 w-3.5" />
+                      查看全部历史
+                    </Button>
+	                  <div className="text-sm font-medium text-foreground">暂无运行记录</div>
+                    <div className="mt-1 text-[11px] leading-4 text-muted-foreground">运行后这里会保留 Golden 历史 run。</div>
 	                </div>);
         }
         else {
@@ -607,11 +829,12 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
 	          </div>
 
 	          {/* 运行详情 */}
-	          <div className={cn("flex-1 bg-card border border-border rounded-2xl p-2.5 overflow-y-auto overscroll-contain no-scrollbar", embedded && "rounded-[28px] border-slate-200/80 bg-card")}>
+	          <div className={cn("flex-1 bg-card border border-border rounded-2xl p-2.5 overflow-y-auto overscroll-contain custom-scrollbar", embedded && "min-h-[180px] rounded-[28px] border-slate-200/80 bg-card")}>
 	            <div className="flex items-center justify-between mb-3">
 	              <div>
-	                <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">Run Detail</div>
-	                <div className="mt-1 text-sm font-semibold text-foreground">运行详情</div>
+	                <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">Golden Run Detail</div>
+	                <div className="mt-1 text-sm font-semibold text-foreground">差距分析</div>
+	                <div className="mt-0.5 text-[11px] text-muted-foreground">实际回答、召回上下文与 Golden 标尺的评分结果。</div>
 	              </div>
 	              {statusBadge}
 	            </div>
@@ -631,6 +854,8 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
 		                </StatsGrid>
 		                <div className="mt-3 flex flex-wrap items-center gap-2">
 		                  <RegressionInlineStat label="样本" value={summaryItems} />
+		                  <RegressionInlineStat label="标准答案对比" value={answerComparisonStatus} tone="info" />
+		                  <RegressionInlineStat label="标准证据命中" value={evidenceRecall} tone="success" />
 		                  <RegressionInlineStat label="Token" value={summaryTokens} />
 		                  <RegressionInlineStat label="费用" value={summaryCost} />
 		                </div>
@@ -693,12 +918,12 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
                   })()}
 	              </div>
 	            ) : (
-	              <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-[#fcfcfa] px-4 py-8 text-center">
+	              <div className="mt-3 rounded-2xl border border-dashed border-slate-200 bg-[#fcfcfa] px-3 py-5 text-center">
 	                <div className="text-sm font-medium text-foreground">
 	                  {selectedRunId ? '当前还没有可展示分数' : '先选一个运行记录'}
 	                </div>
-	                <div className="mt-2 text-[12px] leading-6 text-muted-foreground">
-	                  {selectedRunId ? '这条 run 可能仍在处理中，或后端尚未返回 summary 指标。' : '右上方的运行历史里选中一条 run 后，这里会显示状态、指标与质量切片。'}
+	                <div className="mt-1.5 text-[11px] leading-5 text-muted-foreground">
+	                  {selectedRunId ? '这条 run 可能仍在处理中，或后端尚未返回 summary 指标。' : '右上方的运行历史里选中一条 run 后，这里会显示标准答案对比、标准证据命中与质量切片。'}
 	                </div>
 	              </div>
 	            )}
@@ -707,7 +932,7 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
 	            {runDetail?.items && runDetail.items.length > 0 && (
 	              <div className="mt-6">
 		                <div className="text-sm font-semibold text-foreground mb-3">
-		                  测试明细 ({runDetail.items.length})
+		                  样本明细 ({runDetail.items.length})
 		                </div>
 		                <div className="space-y-2">
 	                  {runDetail.items.map((item, index: number) => (
@@ -716,7 +941,7 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
 	                        {index + 1}. {item.question}
 	                      </div>
 	                      <div className="text-xs text-muted-foreground mt-2">
-	                        <span className="font-medium">回答:</span> {item.response?.slice(0, 100)}...
+	                        <span className="font-medium">实际回答:</span> {item.response?.slice(0, 100)}...
 	                      </div>
 	                      {item.scores && Object.keys(item.scores).length > 0 && (
 	                        <div className="flex gap-2 mt-2">
@@ -808,8 +1033,9 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
                   ))}
                 </div>
               </div>
-            )}
-          </div>
+	            )}
+	          </div>
+          {embedded ? <RegressionMetricGuideCard /> : null}
         </div>
       </div>
 

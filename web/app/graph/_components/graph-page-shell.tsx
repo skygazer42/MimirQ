@@ -58,6 +58,7 @@ export function GraphPageShell({
         <GraphPageHeader
           fileName={state.fileName}
           dataSource={state.dataSource}
+          viewMode={state.viewMode}
           kgStats={state.kgStats}
           graphNodeCount={displayFilters.displayGraphData.nodes.length}
           graphLinkCount={displayFilters.displayGraphData.links.length}

@@ -23,10 +23,14 @@ import { formatApiError } from '@/lib/api-errors'
 import type { Conversation } from '@/types'
 import {
   BarChart3,
-  ChevronRight,
+  ChevronDown,
+  CheckCircle2,
   Clock3,
+  CircleDollarSign,
   Database,
   Filter,
+  Gauge,
+  Info,
   Loader2,
   ListChecks,
   PlayCircle,
@@ -35,13 +39,15 @@ import {
   Sparkles,
   MessageSquare,
   TestTube2,
+  TrendingUp,
+  XCircle,
 } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { RegressionTestTab } from '@/components/evaluation/regression-tab'
 import { QuerysetHealthTab } from '@/components/evaluation/queryset-health-tab'
 import { RagasMetricSelector, ragasMetricLabel } from '@/components/evaluation/ragas-metric-selector'
-import { EvaluationDataOpsPanel } from '@/components/evaluation/evaluation-data-ops-panel'
 
 type TabType = 'conversation' | 'regression' | 'queryset_health'
 
@@ -61,9 +67,9 @@ const TAB_META: Array<{
   },
   {
     id: 'regression',
-    label: '回归测试',
-    title: '批量样例回归',
-    description: '面向固定测试集持续回归，观察版本变更前后的质量波动。',
+    label: 'Golden 评测集',
+    title: 'Golden 回归评测',
+    description: '用数据集级标准问答和标准证据持续评估当前 RAG pipeline。',
     icon: TestTube2,
   },
   {
@@ -79,12 +85,10 @@ function metricLabel(key: string): string {
   return ragasMetricLabel(key)
 }
 
-function formatCurrency(value: unknown): string {
-  const n = Number(value)
-  if (!Number.isFinite(n)) return '-'
-  if (n === 0) return '$0'
-  if (Math.abs(n) < 0.01) return `$${n.toFixed(4)}`
-  return `$${n.toFixed(2)}`
+function parseEvaluationTab(value: string | null | undefined): TabType | null {
+  const tab = (value || '').trim().toLowerCase()
+  if (tab === 'regression' || tab === 'conversation' || tab === 'queryset_health') return tab as TabType
+  return null
 }
 
 function formatCompactCount(value: unknown): string {
@@ -93,35 +97,112 @@ function formatCompactCount(value: unknown): string {
   return Intl.NumberFormat('zh-CN', { notation: 'compact', maximumFractionDigits: 1 }).format(n)
 }
 
-function EvaluationModePill({
-  active,
-  icon: Icon,
-  label,
-  title,
-  onClick,
-}: Readonly<{
-  active: boolean
-  icon: typeof MessageSquare
-  label: string
-  title: string
-  onClick: () => void
-}>) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      className={cn(
-        'inline-flex min-h-[34px] items-center gap-2 rounded-md border px-2.5 text-[12px] font-medium transition-all duration-200',
-        active
-          ? 'border-primary/25 bg-primary/[0.12] text-foreground shadow-[0_1px_0_rgba(2,132,199,0.14)]'
-          : 'border-transparent bg-card text-muted-foreground hover:border-slate-300 hover:bg-slate-50 hover:text-foreground'
-      )}
-    >
-      <Icon className="h-3 w-3" aria-hidden="true" />
-      <span>{label}</span>
-    </button>
-  )
+function formatMoney(value: unknown): string {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return '-'
+  if (n === 0) return '¥0'
+  if (Math.abs(n) < 0.01) return `¥${n.toFixed(4)}`
+  return `¥${n.toFixed(2)}`
+}
+
+function formatPercentValue(value: number | null | undefined, digits = 1): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '-'
+  return `${(value * 100).toFixed(digits)}%`
+}
+
+function formatDateTime(value: string | undefined): string {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toLocaleString('zh-CN', { hour12: false })
+}
+
+function formatRunDuration(run: RagasRun): string {
+  const started = new Date(run.started_at || run.created_at).getTime()
+  const finished = new Date(run.finished_at || '').getTime()
+  if (!Number.isFinite(started) || !Number.isFinite(finished) || finished < started) return '-'
+  const seconds = Math.max(1, Math.round((finished - started) / 1000))
+  return `${seconds} 秒`
+}
+
+function shortConversationTitle(conversation: Conversation | null, fallbackId?: string): string {
+  if (conversation?.title) return conversation.title
+  if (fallbackId) return `对话 ${String(fallbackId).slice(0, 8)}…`
+  return '未选择'
+}
+
+function runStatusLabel(status: string | undefined): string {
+  if (status === 'completed') return '完成'
+  if (status === 'failed') return '失败'
+  if (status === 'pending') return '待运行'
+  return '运行中'
+}
+
+function runStatusTone(status: string | undefined): 'completed' | 'failed' | 'processing' {
+  if (status === 'completed') return 'completed'
+  if (status === 'failed') return 'failed'
+  return 'processing'
+}
+
+function numericSummaryValue(run: RagasRun | null | undefined, key: string): number | null {
+  const value = run?.summary?.[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function averageCost(runs: RagasRun[]): number | null {
+  const costs = runs
+    .map((run) => numericSummaryValue(run, 'total_cost'))
+    .filter((value): value is number => typeof value === 'number')
+  if (!costs.length) return null
+  return costs.reduce((sum, value) => sum + value, 0) / costs.length
+}
+
+function totalCost(runs: RagasRun[]): number | null {
+  const costs = runs
+    .map((run) => numericSummaryValue(run, 'total_cost'))
+    .filter((value): value is number => typeof value === 'number')
+  if (!costs.length) return null
+  return costs.reduce((sum, value) => sum + value, 0)
+}
+
+function percentile(values: number[], percentileValue: number): number | null {
+  if (!values.length) return null
+  const sorted = [...values].sort((a, b) => a - b)
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((percentileValue / 100) * sorted.length) - 1))
+  return sorted[index]
+}
+
+function scoreRowsFor(detail: RagasRunDetail | null, summary: Record<string, any>) {
+  const metrics = detail?.run?.metrics?.length
+    ? detail.run.metrics
+    : Object.entries(summary)
+      .filter(([, value]) => typeof value === 'number')
+      .map(([key]) => key)
+      .filter((key) => !['items', 'total_tokens', 'total_cost'].includes(key))
+
+  return metrics.map((key) => {
+    const itemValues = (detail?.items || [])
+      .map((item) => item.scores?.[key])
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+    const mean = itemValues.length ? itemValues.reduce((sum, value) => sum + value, 0) / itemValues.length : Number(summary[key])
+    const passCount = itemValues.filter((value) => value >= 0.8).length
+
+    return {
+      key,
+      label: metricLabel(key),
+      mean: Number.isFinite(mean) ? mean : null,
+      p50: percentile(itemValues, 50),
+      p90: percentile(itemValues, 90),
+      passRate: itemValues.length ? passCount / itemValues.length : null,
+    }
+  })
+}
+
+function itemHasLowScore(item: RagasRunDetail['items'][number], metricKeys: string[]): boolean {
+  return metricKeys.some((key) => {
+    const value = item.scores?.[key]
+    return typeof value === 'number' && value < 0.8
+  })
 }
 
 function EvaluationConfigSection({
@@ -138,7 +219,7 @@ function EvaluationConfigSection({
   icon?: typeof MessageSquare
 }>) {
   return (
-    <section className={cn('border-b border-slate-200/80 px-3.5 py-3.5 last:border-b-0', className)}>
+    <section className={cn('border-b border-slate-200/80 px-3 py-2.5 last:border-b-0', className)}>
       <div className="flex items-start gap-2.5">
         {Icon ? (
           <span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-md border border-sky-200/60 bg-sky-100/70 text-sky-700">
@@ -150,7 +231,7 @@ function EvaluationConfigSection({
           {description ? <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{description}</p> : null}
         </div>
       </div>
-      <div className="mt-2.5">{children}</div>
+      <div className="mt-2">{children}</div>
     </section>
   )
 }
@@ -170,18 +251,276 @@ function EvaluationInlineStat({
   )
 }
 
-function EvaluationEmptyState({
+function EvaluationHeroEmptyState({
   title,
   description,
+  density = 'default',
 }: Readonly<{
   title: string
   description: string
+  density?: 'default' | 'compact'
+}>) {
+  const compact = density === 'compact'
+
+  return (
+    <div
+      className={cn(
+        'flex rounded-xl border border-dashed border-slate-200 bg-slate-50/55',
+        compact
+          ? 'min-h-[148px] flex-row items-center justify-start gap-3 px-3 py-2.5 text-left'
+          : 'min-h-[188px] flex-col items-center justify-center px-6 py-8 text-center'
+      )}
+    >
+      {compact ? (
+        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-blue-100 bg-white text-blue-600 shadow-[0_8px_20px_rgba(37,99,235,0.10)]">
+          <BarChart3 className="h-4 w-4" aria-hidden="true" />
+        </span>
+      ) : (
+        <div className="relative mb-3 h-16 w-20">
+          <div className="absolute left-5 top-1 h-14 w-12 rounded-xl border border-blue-100 bg-white shadow-[0_10px_28px_rgba(37,99,235,0.12)]" />
+          <div className="absolute left-8 top-0 h-4 w-6 rounded-md bg-blue-100 ring-1 ring-blue-200" />
+          <div className="absolute left-9 top-9 h-3 w-2 rounded-sm bg-blue-300" />
+          <div className="absolute left-12 top-7 h-5 w-2 rounded-sm bg-blue-400" />
+          <div className="absolute left-[60px] top-5 h-7 w-2 rounded-sm bg-blue-500" />
+        </div>
+      )}
+      <div className={cn(compact && 'min-w-0')}>
+        <div className={cn('font-semibold text-slate-950', compact ? 'text-[13px]' : 'text-[14px]')}>{title}</div>
+        <p className={cn('max-w-xl text-[12px] text-slate-500', compact ? 'mt-1 leading-4' : 'mt-2 leading-5')}>{description}</p>
+      </div>
+    </div>
+  )
+}
+
+function DashboardStatCard({
+  icon: Icon,
+  label,
+  value,
+  helper,
+  tone = 'blue',
+  sparkline = false,
+}: Readonly<{
+  icon: LucideIcon
+  label: string
+  value: ReactNode
+  helper?: ReactNode
+  tone?: 'blue' | 'green' | 'red' | 'slate'
+  sparkline?: boolean
+}>) {
+  const toneClass = {
+    blue: 'bg-blue-50 text-blue-600 ring-blue-100',
+    green: 'bg-emerald-50 text-emerald-600 ring-emerald-100',
+    red: 'bg-rose-50 text-rose-600 ring-rose-100',
+    slate: 'bg-slate-100 text-slate-600 ring-slate-200',
+  }[tone]
+
+  return (
+    <div className="relative min-h-[76px] rounded-xl border border-slate-200 bg-white p-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="flex items-start gap-1.5">
+        <span className={cn('inline-flex h-6 w-6 items-center justify-center rounded-full ring-1', toneClass)}>
+          <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+        </span>
+        {sparkline ? (
+          <svg className="absolute right-2.5 top-8 h-6 w-14 text-blue-300" viewBox="0 0 64 28" aria-hidden="true">
+            <path d="M2 20 C 9 20, 9 10, 15 14 S 25 24, 32 12 S 42 6, 48 13 S 55 24, 62 17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            <path d="M2 22 C 9 22, 9 12, 15 16 S 25 26, 32 14 S 42 8, 48 15 S 55 26, 62 19 L62 28 L2 28 Z" fill="currentColor" opacity="0.16" />
+          </svg>
+        ) : null}
+        <div className="min-w-0">
+          <div className="text-[12px] font-medium text-slate-600">{label}</div>
+          <div className="mt-0.5 whitespace-nowrap text-[16px] font-semibold leading-tight tracking-tight text-slate-950">{value}</div>
+          {helper ? <div className="mt-1 text-[11px] text-slate-500">{helper}</div> : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function RunRecordCard({
+  active,
+  conversation,
+  run,
+  onClick,
+}: Readonly<{
+  active: boolean
+  conversation: Conversation | null
+  run: RagasRun
+  onClick: () => void
+}>) {
+  const samples = run.summary?.items ?? run.params?.max_turns ?? '-'
+  const metrics = run.metrics?.length || '-'
+  const progress = run.status === 'running' || run.status === 'pending' ? 60 : null
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'w-full rounded-xl border bg-white p-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all hover:border-blue-200 hover:bg-blue-50/25 focus-ring',
+        active ? 'border-blue-300 ring-1 ring-blue-100' : 'border-slate-200'
+      )}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 text-[12px] font-semibold text-slate-950">
+          <div className="truncate">{shortConversationTitle(conversation, run.conversation_id)}</div>
+        </div>
+        <StatusBadge status={runStatusTone(run.status)} label={runStatusLabel(run.status)} dense />
+      </div>
+      <div className="mt-2 space-y-1 text-[11px] leading-4 text-slate-500">
+        <div>运行时间：{formatDateTime(run.created_at)}</div>
+        <div className="flex items-center gap-5">
+          <span>轮次：{samples}</span>
+          <span>指标：{metrics}</span>
+        </div>
+      </div>
+      {progress !== null ? (
+        <div className="mt-3 flex items-center gap-2">
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+            <div className="h-full rounded-full bg-blue-600" style={{ width: `${progress}%` }} />
+          </div>
+          <span className="text-[11px] tabular-nums text-slate-500">{progress}%</span>
+        </div>
+      ) : null}
+      {run.status === 'failed' && run.error_message ? (
+        <div className="mt-2 line-clamp-1 text-[11px] font-medium text-rose-600">错误：{run.error_message}</div>
+      ) : (
+        <div className="mt-2 text-right text-[11px] text-slate-500">耗时：{formatRunDuration(run)}</div>
+      )}
+    </button>
+  )
+}
+
+function ScoreDetailsCard({
+  rows,
+}: Readonly<{
+  rows: ReturnType<typeof scoreRowsFor>
 }>) {
   return (
-    <div className="rounded-lg border border-dashed border-slate-200/80 bg-background px-6 py-12 text-center">
-      <div className="text-sm font-medium text-foreground">{title}</div>
-      <p className="mx-auto mt-2 max-w-xl text-[12px] leading-6 text-muted-foreground">{description}</p>
-    </div>
+    <section className="rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="flex items-center gap-2 border-b border-slate-200 px-3 py-2">
+        <div className="text-[13px] font-semibold text-slate-950">评分明细</div>
+        <Info className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
+      </div>
+      {rows.length ? (
+        <div className="overflow-auto">
+          <table className="w-full text-left text-[12px]">
+            <thead className="bg-slate-50 text-slate-500">
+              <tr>
+                <th className="px-3 py-1.5 font-medium">指标</th>
+                <th className="px-3 py-1.5 font-medium">平均分</th>
+                <th className="px-3 py-1.5 font-medium">P50</th>
+                <th className="px-3 py-1.5 font-medium">P90</th>
+                <th className="px-3 py-1.5 font-medium">通过率（≥0.8）</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {rows.map((row) => (
+                <tr key={row.key}>
+                  <td className="px-3 py-1.5 font-medium text-slate-900">{row.label}</td>
+                  <td className="px-3 py-1.5 tabular-nums text-slate-700">{row.mean === null ? '-' : row.mean.toFixed(3)}</td>
+                  <td className="px-3 py-1.5 tabular-nums text-slate-700">{row.p50 === null ? '-' : row.p50.toFixed(3)}</td>
+                  <td className="px-3 py-1.5 tabular-nums text-slate-700">{row.p90 === null ? '-' : row.p90.toFixed(3)}</td>
+                  <td className="px-3 py-1.5 tabular-nums text-slate-700">{formatPercentValue(row.passRate)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="px-3 py-2.5">
+          <EvaluationHeroEmptyState density="compact" title="暂无评分数据" description="运行完成后将在此处展示各指标的汇总得分与统计。" />
+        </div>
+      )}
+    </section>
+  )
+}
+
+function IterationDetailsCard({
+  items,
+  metricKeys,
+  onlyFailures,
+  onOnlyFailuresChange,
+  onExport,
+}: Readonly<{
+  items: RagasRunDetail['items']
+  metricKeys: string[]
+  onlyFailures: boolean
+  onOnlyFailuresChange: (checked: boolean) => void
+  onExport: () => void
+}>) {
+  const visibleItems = onlyFailures ? items.filter((item) => itemHasLowScore(item, metricKeys)) : items
+
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-2">
+        <div className="flex items-center gap-2">
+          <div className="text-[13px] font-semibold text-slate-950">逐轮明细</div>
+          <Info className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="inline-flex items-center gap-2 text-[12px] text-slate-500">
+            仅看异常
+            <Checkbox checked={onlyFailures} onCheckedChange={(value) => onOnlyFailuresChange(value === true)} />
+          </label>
+          <Button variant="outline" className="h-7 rounded-lg border-slate-200 bg-white px-2.5 text-[12px]" disabled={!items.length} onClick={onExport}>
+            导出
+          </Button>
+        </div>
+      </div>
+      {visibleItems.length ? (
+        <div className="max-h-[276px] overflow-auto">
+          <table aria-label="逐轮评分明细" className="w-full min-w-[760px] text-left text-[12px]">
+            <thead className="sticky top-0 z-10 bg-slate-50 text-slate-500">
+              <tr>
+                <th className="w-16 px-3 py-1.5 font-medium">轮次</th>
+                <th className="min-w-[160px] px-3 py-1.5 font-medium">问题</th>
+                <th className="min-w-[180px] px-3 py-1.5 font-medium">答案摘要</th>
+                {metricKeys.map((metricKey) => (
+                  <th key={metricKey} className="w-28 px-3 py-1.5 font-medium">
+                    {metricLabel(metricKey)}
+                  </th>
+                ))}
+                <th className="w-20 px-3 py-1.5 font-medium">状态</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {visibleItems.map((item) => {
+                const anomaly = itemHasLowScore(item, metricKeys)
+                return (
+                  <tr key={item.id} className="align-top hover:bg-slate-50/80">
+                    <td className="px-3 py-1.5 tabular-nums text-slate-500">{item.turn_index}</td>
+                    <td className="px-3 py-1.5">
+                      <div className="line-clamp-2 text-slate-800">{item.user_input}</div>
+                    </td>
+                    <td className="px-3 py-1.5">
+                      <div className="line-clamp-2 text-slate-600">{item.response}</div>
+                    </td>
+                    {metricKeys.map((metricKey) => {
+                      const value = item.scores?.[metricKey]
+                      const isNum = typeof value === 'number' && Number.isFinite(value)
+                      return (
+                        <td key={metricKey} className="px-3 py-1.5 tabular-nums text-slate-700">
+                          {isNum ? value.toFixed(3) : '-'}
+                        </td>
+                      )
+                    })}
+                    <td className="px-3 py-1.5">
+                      <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', anomaly ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600')}>
+                        {anomaly ? '异常' : '正常'}
+                      </span>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="px-3 py-2.5">
+          <EvaluationHeroEmptyState density="compact" title="暂无轮次数据" description="运行完成后将按轮展示详细评分。" />
+        </div>
+      )}
+    </section>
   )
 }
 
@@ -203,7 +542,7 @@ function EvaluationsLoading() {
 
 function EvaluationsPageContent() {
   const searchParams = useSearchParams()
-  const [activeTab, setActiveTab] = useState<TabType>('conversation')
+  const [activeTab, setActiveTab] = useState<TabType>(() => parseEvaluationTab(searchParams.get('tab')) || 'conversation')
   const isActiveTab = (tab: TabType) => activeTab === tab
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [selectedConversationId, setSelectedConversationId] = useState<string>('')
@@ -218,8 +557,8 @@ function EvaluationsPageContent() {
   ])
   const [maxTurns, setMaxTurns] = useState(20)
   const [skipEmptyContexts, setSkipEmptyContexts] = useState(true)
-  const [isSetupPanelCollapsed, setIsSetupPanelCollapsed] = useState(false)
-  const [isTimelinePanelCollapsed, setIsTimelinePanelCollapsed] = useState(false)
+  const [onlyFailureItems, setOnlyFailureItems] = useState(false)
+  const [isRunRecordsCollapsed, setIsRunRecordsCollapsed] = useState(false)
 
   const [isLoading, setIsLoading] = useState(false)
   const [isStarting, setIsStarting] = useState(false)
@@ -232,10 +571,8 @@ function EvaluationsPageContent() {
 
   // Support deep-linking: /evaluations?tab=regression|conversation
   useEffect(() => {
-    const tab = (searchParams.get('tab') || '').trim().toLowerCase()
-    if (tab === 'regression' || tab === 'conversation' || tab === 'queryset_health') {
-      setActiveTab(tab as TabType)
-    }
+    const tab = parseEvaluationTab(searchParams.get('tab'))
+    if (tab) setActiveTab(tab)
   }, [searchParams])
 
   const loadConversations = useCallback(async () => {
@@ -255,7 +592,6 @@ function EvaluationsPageContent() {
         conversation_id: conversationId || undefined,
       })
       setRuns(res.items || [])
-      setSelectedRunId((prev) => prev || res.items?.[0]?.id || '')
     } catch (e) {
       console.error('Failed to load runs', e)
     }
@@ -267,13 +603,12 @@ function EvaluationsPageContent() {
     Promise.all([loadConversations(), loadRuns()]).finally(() => setIsLoading(false))
   }, [loadConversations, loadRuns])
 
-  // When switching conversation, focus run list on that conversation
+  // When switching conversation, reset the detail area but keep the right rail on real recent runs.
   useEffect(() => {
     if (!selectedConversationId) return
     setSelectedRunId('')
     setRunDetail(null)
-    loadRuns(selectedConversationId)
-  }, [loadRuns, selectedConversationId])
+  }, [selectedConversationId])
 
   // Poll run detail
   useEffect(() => {
@@ -320,7 +655,7 @@ function EvaluationsPageContent() {
         skip_empty_contexts: skipEmptyContexts,
         include_contexts_in_response: false,
       })
-      await loadRuns(selectedConversationId)
+      await loadRuns()
       setSelectedRunId(run.id)
     } catch (e) {
       console.error('Failed to start evaluation', e)
@@ -362,14 +697,6 @@ function EvaluationsPageContent() {
   const activeTabMeta = TAB_META.find((item) => item.id === activeTab) || TAB_META[0]
   const ActiveTabIcon = activeTabMeta.icon
   const selectedConversation = conversations.find((conversation) => conversation.id === selectedConversationId) || null
-  const conversationLayoutColumns =
-    isSetupPanelCollapsed && isTimelinePanelCollapsed
-      ? 'xl:grid-cols-[0px_0px_minmax(0,1fr)]'
-      : isSetupPanelCollapsed
-        ? 'xl:grid-cols-[0px_272px_minmax(0,1fr)]'
-        : isTimelinePanelCollapsed
-          ? 'xl:grid-cols-[304px_0px_minmax(0,1fr)]'
-          : 'xl:grid-cols-[304px_272px_minmax(0,1fr)]'
   const runStatusCounts = useMemo(() => {
     return runs.reduce(
       (acc, run) => {
@@ -381,9 +708,38 @@ function EvaluationsPageContent() {
       { completed: 0, failed: 0, running: 0 }
     )
   }, [runs])
+  const selectedRun = runDetail?.run || runs.find((run) => run.id === selectedRunId) || null
+  const scoreRows = useMemo(() => scoreRowsFor(runDetail, summary), [runDetail, summary])
+  const detailMetricKeys = runDetail?.run?.metrics?.length ? runDetail.run.metrics : metricKeys
+  const visibleRuns = runs
+  const topAverageCost = averageCost(runs)
+  const topTotalCost = totalCost(runs)
+  const completedRate = runs.length ? runStatusCounts.completed / runs.length : null
+  const runningRate = runs.length ? runStatusCounts.running / runs.length : null
+  const failedRate = runs.length ? runStatusCounts.failed / runs.length : null
+  const selectedRunConversation = selectedRun?.conversation_id
+    ? conversations.find((conversation) => conversation.id === selectedRun.conversation_id) || null
+    : selectedConversation
+  const selectedRunTitle = shortConversationTitle(selectedRunConversation, selectedRun?.conversation_id || selectedConversationId)
+
+  const handleConversationChange = (conversationId: string) => {
+    setSelectedConversationId(conversationId)
+    setSelectedRunId('')
+    setRunDetail(null)
+  }
+
+  const handleExportItems = () => {
+    const blob = new Blob([JSON.stringify(runDetail?.items || [], null, 2)], { type: 'application/json;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `ragas-run-items.${selectedRunId || 'latest'}.json`
+    anchor.click()
+    globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
 
   return (
-    <div className="relative flex flex-1 flex-col overflow-hidden">
+    <div className="relative flex flex-1 flex-col overflow-hidden bg-slate-50/70">
       <AnalysisPageShell
         title="评测中心"
         description="把实时会话评测、回归测试与检索集健康度放到同一个工作台里，减少来回切页。"
@@ -396,401 +752,309 @@ function EvaluationsPageContent() {
         bodyClassName="!pb-0"
         bodyContainerClassName="max-w-none"
       >
-        <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_22%)] shadow-[0_1px_0_rgba(15,23,42,0.04)]">
-          <div className="flex flex-col gap-2.5 border-b border-slate-200/80 bg-muted/35 px-4 py-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto px-5 py-2">
+          <header className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div className="min-w-0">
-              <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">评测中心 · 统一工作台</div>
-              <div className="mt-1 flex items-center gap-2 text-sm font-semibold tracking-[-0.01em] text-foreground"><span className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-sky-200/70 bg-card/85 text-sky-700"><ActiveTabIcon className="h-3.5 w-3.5" aria-hidden="true" /></span>{activeTabMeta.title}</div>
-              <p className="mt-1 text-[12px] leading-4 text-muted-foreground">选择评测模式后，在同一工作区完成参数配置、运行触发与结果排查。</p>
+              <div className="text-[12px] font-medium text-slate-500">评测中心 · 统一工作台</div>
+              <h1 className="mt-1 text-[24px] font-semibold tracking-tight text-slate-950">{activeTabMeta.title}</h1>
+              <p className="mt-1 text-[13px] leading-5 text-slate-500">选择评测指标及参数，在同一工作区完成参数配置、运行快捷与结果评估。</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <EvaluationInlineStat label="模式" value={activeTabMeta.label} />
+              <span className="inline-flex h-8 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-[12px] font-semibold text-blue-700">
+                <ActiveTabIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                {activeTabMeta.label}
+              </span>
               <EvaluationInlineStat label="会话" value={conversations.length} />
-              <EvaluationInlineStat label="运行" value={runs.length} />
+              <EvaluationInlineStat label="运行中" value={runStatusCounts.running} />
               <EvaluationInlineStat label="完成" value={runStatusCounts.completed} />
-              <EvaluationInlineStat label="进行中" value={runStatusCounts.running} />
-              {activeTab === 'conversation' ? <EvaluationInlineStat label="指标" value={metricKeys.length} /> : null}
+              <EvaluationInlineStat label="失败" value={runStatusCounts.failed} />
             </div>
-          </div>
+          </header>
 
-          <div className="border-t border-slate-200/80 px-3 py-2.5">
-            <div className="inline-flex w-full flex-wrap items-center gap-1 rounded-lg border border-slate-200 bg-card/85 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
-              {TAB_META.map((tab) => (
-                <EvaluationModePill
-                  key={tab.id}
-                  active={isActiveTab(tab.id)}
-                  icon={tab.icon}
-                  label={tab.label}
-                  title={tab.title}
-                  onClick={() => setActiveTab(tab.id)}
-                />
-              ))}
-            </div>
-            <p className="mt-1.5 text-[12px] leading-5 text-muted-foreground">{activeTabMeta.description}</p>
-          </div>
+          <nav className="flex items-center gap-6 border-b border-slate-200">
+            {TAB_META.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  'relative inline-flex h-10 items-center gap-2 text-[13px] font-medium transition-colors',
+                  isActiveTab(tab.id) ? 'text-blue-700' : 'text-slate-500 hover:text-slate-900'
+                )}
+              >
+                <tab.icon className="h-3.5 w-3.5" aria-hidden="true" />
+                {tab.label}
+                {isActiveTab(tab.id) ? <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-blue-600" /> : null}
+              </button>
+            ))}
+          </nav>
 
-          <div className="border-t border-slate-200/80 p-3">
-            <EvaluationDataOpsPanel />
+          <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-8">
+            <DashboardStatCard icon={MessageSquare} label="模式" value={activeTab === 'conversation' ? '实时会话' : activeTabMeta.label} helper="当前模式" />
+            <DashboardStatCard icon={Database} label="会话数" value={conversations.length} helper="近 7 天" tone="slate" />
+            <DashboardStatCard icon={ListChecks} label="运行数" value={runs.length} helper="近 7 天" tone="slate" />
+            <DashboardStatCard icon={CheckCircle2} label="完成" value={runStatusCounts.completed} helper={formatPercentValue(completedRate)} tone="green" />
+            <DashboardStatCard icon={Gauge} label="运行中" value={runStatusCounts.running} helper={formatPercentValue(runningRate)} />
+            <DashboardStatCard icon={XCircle} label="失败" value={runStatusCounts.failed} helper={formatPercentValue(failedRate)} tone="red" />
+            <DashboardStatCard icon={TrendingUp} label="平均开销" value={`${formatMoney(topAverageCost)}/轮`} helper="按返回 runs 计算" sparkline />
+            <DashboardStatCard icon={CircleDollarSign} label="LLM 成本" value={formatMoney(topTotalCost)} helper="近 7 天" tone="slate" />
           </div>
 
           {activeTab === 'conversation' ? (
-            <div className="border-t border-slate-200/80">
-            <div className={cn('grid min-h-[660px]', conversationLayoutColumns)}>
-              <aside className="flex min-h-0 flex-col border-b border-slate-200/80 bg-slate-50/60 xl:border-b-0 xl:border-r">
-                {isSetupPanelCollapsed ? (
-                  <div className="group relative flex h-full items-center justify-center px-1 py-4">
-                    <button
-                      type="button"
-                      className="focus-ring relative h-full w-2.5 rounded-full transition-colors hover:bg-slate-200/70"
-                      onClick={() => setIsSetupPanelCollapsed(false)}
-                      title="展开参数侧栏"
-                      aria-label="展开参数侧栏"
-                    >
-                      <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/70" aria-hidden="true" />
-                      <span className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-slate-200/80 bg-card/95 p-1 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-                        <ChevronRight className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
-                      </span>
-                    </button>
+            <div className="grid min-h-[650px] gap-3 xl:grid-cols-[270px_minmax(0,1fr)_280px]">
+              <aside className="flex min-h-0 max-h-[calc(100vh-282px)] flex-col rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2.5">
+                  <div className="inline-flex items-center gap-2 text-[14px] font-semibold text-slate-950">
+                    <SlidersHorizontal className="h-4 w-4 text-slate-500" aria-hidden="true" />
+                    参数设置
                   </div>
-                ) : (
-                  <>
-                    <div className="shrink-0 border-b border-slate-200/80 bg-primary/[0.12] px-3 py-2.5">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-sky-700"><SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />参数设置</div>
-                          <div className="mt-1 text-sm font-semibold text-foreground">对话评测参数</div>
-                          <p className="mt-1 text-[11px] leading-4 text-muted-foreground">先选会话，再设指标与过滤范围，最后一键触发评测。</p>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 rounded-md px-2.5 text-[11px] text-muted-foreground hover:bg-slate-100 hover:text-foreground"
-                          onClick={() => setIsSetupPanelCollapsed(true)}
-                        >
-                          收起侧栏
-                        </Button>
-                      </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 rounded-md px-2 text-[11px] text-slate-500"
+                    onClick={() => {
+                      setMetricKeys(['faithfulness', 'response_relevancy'])
+                      setMaxTurns(20)
+                      setSkipEmptyContexts(true)
+                    }}
+                  >
+                    <RefreshCw className="mr-1 h-3.5 w-3.5" />
+                    重置
+                  </Button>
+                </div>
+
+                <div className="min-h-0 flex-1 divide-y divide-slate-200 overflow-y-auto">
+                  <EvaluationConfigSection
+                    icon={Database}
+                    title="对话来源"
+                    description="从已有会话里选一条对话，评测会按用户-助手轮次重建上下文。"
+                  >
+                    <Select value={selectedConversationId} onValueChange={handleConversationChange}>
+                      <SelectTrigger className="h-9 rounded-lg border-slate-200 bg-white text-xs">
+                        <SelectValue placeholder="请选择会话或查询" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {conversations.map((conversation) => (
+                          <SelectItem key={conversation.id} value={conversation.id}>
+                            {conversation.title || conversation.id}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <EvaluationInlineStat label="已选" value={selectedConversation ? '1' : '0'} />
+                      <EvaluationInlineStat label="总数" value={conversations.length} />
                     </div>
+                  </EvaluationConfigSection>
 
-                    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-                      <EvaluationConfigSection
-                        icon={Database}
-                        title="对话来源"
-                        description="从已有会话里选一条对话，评测会按用户-助手轮次重建上下文。"
-                      >
-                        <Select value={selectedConversationId} onValueChange={setSelectedConversationId}>
-                          <SelectTrigger className="h-9 rounded-lg border-slate-200/80 bg-card/95 text-xs">
-                            <SelectValue placeholder="选择对话" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {conversations.map((conversation) => (
-                              <SelectItem key={conversation.id} value={conversation.id}>
-                                {conversation.title || conversation.id}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <div className="mt-3 flex flex-wrap items-center gap-2">
-                          <EvaluationInlineStat label="已选" value={selectedConversation ? '1' : '0'} />
-                          <EvaluationInlineStat label="总数" value={conversations.length} />
-                        </div>
-                      </EvaluationConfigSection>
+                  <EvaluationConfigSection
+                    icon={Sparkles}
+                    title="评测指标（至少选择 1 项）"
+                    description="指标越多，耗时与 token 成本越高。默认保留最核心两项。"
+                  >
+                    <RagasMetricSelector
+                      metricKeys={metricKeys}
+                      onMetricKeysChange={setMetricKeys}
+                      scope="conversation"
+                      className="space-y-1.5"
+                      itemClassName="rounded-lg border border-slate-200 bg-white px-2 py-1 shadow-sm"
+                      labelClassName="text-[11px]"
+                      hintClassName="text-[10px] leading-3"
+                    />
+                  </EvaluationConfigSection>
 
-                      <EvaluationConfigSection
-                        icon={Sparkles}
-                        title="会话评分维度"
-                        description="仅作用于对话评测；指标越多，耗时与 token 成本越高。默认保留最核心两项。"
-                      >
-                        <RagasMetricSelector
-                          metricKeys={metricKeys}
-                          onMetricKeysChange={setMetricKeys}
-                          scope="conversation"
-                          className="space-y-2"
-                          itemClassName="rounded-lg border border-slate-200/80 bg-card px-2.5 py-1.5"
+                  <EvaluationConfigSection
+                    icon={Filter}
+                    title="过滤条件"
+                    description="控制抽取最近多少轮，以及是否过滤掉无引用上下文的轮次。"
+                    className="border-b-0"
+                  >
+                    <div className="grid gap-3">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="max-turns" className="text-[12px] font-medium text-slate-600">
+                          最近轮次
+                        </Label>
+                        <Input
+                          id="max-turns"
+                          type="number"
+                          min={1}
+                          max={200}
+                          value={maxTurns}
+                          onChange={(e) => setMaxTurns(Number(e.target.value))}
+                          className="h-9 rounded-lg border-slate-200 bg-white text-xs"
                         />
-                      </EvaluationConfigSection>
-
-                      <EvaluationConfigSection
-                        icon={Filter}
-                        title="范围与过滤"
-                        description="控制抽取最近多少轮，以及是否过滤掉无引用上下文的轮次。"
-                        className="border-b-0"
-                      >
-                        <div className="grid gap-3">
-                          <div className="space-y-1.5">
-                            <Label htmlFor="max-turns" className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
-                              最近轮次
-                            </Label>
-                            <Input
-                              id="max-turns"
-                              type="number"
-                              min={1}
-                              max={200}
-                              value={maxTurns}
-                              onChange={(e) => setMaxTurns(Number(e.target.value))}
-                              className="h-9 rounded-lg border-slate-200/80 bg-card/95 text-xs"
-                            />
-                          </div>
-
-                          <label className="flex items-start gap-2.5 rounded-lg border border-slate-200/80 bg-card px-2.5 py-1.5">
-                            <Checkbox checked={skipEmptyContexts} onCheckedChange={(value) => setSkipEmptyContexts(value === true)} />
-                            <span className="space-y-0.5">
-                              <span className="block text-[12px] font-medium text-foreground">跳过无引用轮次</span>
-                              <span className="block text-[11px] leading-4 text-muted-foreground">减少空样本干扰，让结果更接近真实 RAG 场景。</span>
-                            </span>
-                          </label>
-                        </div>
-                      </EvaluationConfigSection>
-                    </div>
-
-                    <div className="shrink-0 border-t border-slate-200/80 bg-card px-3 py-2.5">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <EvaluationInlineStat label="指标" value={metricKeys.length} />
-                        <EvaluationInlineStat label="轮次" value={maxTurns} />
-                        <EvaluationInlineStat label="过滤" value={skipEmptyContexts ? '开' : '关'} />
                       </div>
 
-                      <Button
-                        className="mt-2.5 h-9 w-full rounded-lg"
-                        disabled={isStarting || !selectedConversationId}
-                        onClick={handleStart}
-                      >
-                        {isStarting ? (
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
-                        ) : (
-                          <PlayCircle className="mr-2 h-4 w-4" />
-                        )}
-                        开始评测
-                      </Button>
-
-                      <Button
-                        variant="outline"
-                        className="mt-2 h-8 w-full rounded-lg border-slate-200/80 bg-card"
-                        onClick={() => {
-                          setIsLoading(true)
-                          Promise.all([loadConversations(), loadRuns()]).finally(() => setIsLoading(false))
-                        }}
-                      >
-                        <RefreshCw className={cn('mr-2 h-4 w-4', isLoading && 'animate-spin motion-reduce:animate-none')} />
-                        刷新会话与运行
-                      </Button>
+                      <label className="flex items-start gap-2.5 rounded-lg border border-slate-200 bg-white px-2.5 py-2 shadow-sm">
+                        <Checkbox checked={skipEmptyContexts} onCheckedChange={(value) => setSkipEmptyContexts(value === true)} />
+                        <span className="space-y-0.5">
+                          <span className="block text-[12px] font-medium text-slate-900">跳过无引用轮次</span>
+                          <span className="block text-[11px] leading-4 text-slate-500">减少空样本干扰，让结果更接近真实 RAG 场景。</span>
+                        </span>
+                      </label>
                     </div>
-                  </>
-                )}
+                  </EvaluationConfigSection>
+                </div>
+
+                <div className="shrink-0 border-t border-slate-200 p-3">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <EvaluationInlineStat label="指标数" value={metricKeys.length} />
+                    <EvaluationInlineStat label="轮次" value={maxTurns} />
+                    <EvaluationInlineStat label="过滤" value={skipEmptyContexts ? '已启用' : '关闭'} />
+                  </div>
+                  <Button className="h-9 w-full rounded-lg bg-blue-600 text-[13px] font-semibold text-white hover:bg-blue-700" disabled={isStarting || !selectedConversationId || !metricKeys.length} onClick={handleStart}>
+                    {isStarting ? <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" /> : <PlayCircle className="mr-2 h-4 w-4" />}
+                    开始评测
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="mt-2 h-8 w-full rounded-lg border-slate-200 bg-white text-[12px]"
+                    onClick={() => {
+                      setIsLoading(true)
+                      Promise.all([loadConversations(), loadRuns()]).finally(() => setIsLoading(false))
+                    }}
+                  >
+                    <RefreshCw className={cn('mr-2 h-3.5 w-3.5', isLoading && 'animate-spin motion-reduce:animate-none')} />
+                    刷新会话与运行
+                  </Button>
+                </div>
               </aside>
 
-              <section className="flex min-h-0 flex-col border-b border-slate-200/80 bg-card xl:border-b-0 xl:border-r">
-                {isTimelinePanelCollapsed ? (
-                  <div className="group relative flex h-full items-center justify-center px-1 py-4">
-                    <button
-                      type="button"
-                      className="focus-ring relative h-full w-2.5 rounded-full transition-colors hover:bg-slate-200/70"
-                      onClick={() => setIsTimelinePanelCollapsed(false)}
-                      title="展开运行记录"
-                      aria-label="展开运行记录"
-                    >
-                      <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/70" aria-hidden="true" />
-                      <span className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-slate-200/80 bg-card/95 p-1 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-                        <ChevronRight className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
-                      </span>
-                    </button>
+              <main className="min-w-0 space-y-3">
+                <section className="grid overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:grid-cols-4">
+                  <div className="border-b border-slate-200 px-3 py-2.5 sm:border-b-0 sm:border-r">
+                    <div className="inline-flex items-center gap-1.5 text-[12px] font-medium text-blue-700"><MessageSquare className="h-3.5 w-3.5" />当前对话</div>
+                    <div className="mt-1 truncate text-[13px] font-semibold text-slate-950">{selectedRunTitle}</div>
                   </div>
-                ) : (
-                  <>
-                    <div className="shrink-0 border-b border-slate-200/80 bg-primary/[0.10] px-2.5 py-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <div className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-sky-700"><Clock3 className="h-3.5 w-3.5" aria-hidden="true" />运行时间线</div>
-                          <div className="mt-1 text-sm font-semibold text-foreground">运行记录</div>
+                  <div className="border-b border-slate-200 px-3 py-2.5 sm:border-b-0 sm:border-r">
+                    <div className="inline-flex items-center gap-1.5 text-[12px] font-medium text-slate-600"><ListChecks className="h-3.5 w-3.5" />样本数</div>
+                    <div className="mt-1 text-[15px] font-semibold tabular-nums text-slate-950">{formatCompactCount(summary.items)}</div>
+                  </div>
+                  <div className="border-b border-slate-200 px-3 py-2.5 sm:border-b-0 sm:border-r">
+                    <div className="inline-flex items-center gap-1.5 text-[12px] font-medium text-blue-700"><BarChart3 className="h-3.5 w-3.5" />令牌开销</div>
+                    <div className="mt-1 text-[15px] font-semibold tabular-nums text-slate-950">{formatCompactCount(summary.total_tokens)}</div>
+                  </div>
+                  <div className="px-3 py-2.5">
+                    <div className="inline-flex items-center gap-1.5 text-[12px] font-medium text-slate-600"><Sparkles className="h-3.5 w-3.5" />LLM 成本（本次运行）</div>
+                    <div className="mt-1 text-[15px] font-semibold tabular-nums text-slate-950">{formatMoney(summary.total_cost)}</div>
+                  </div>
+                </section>
+
+                <section className="rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-[14px] font-semibold text-slate-950">运行详情</div>
+                    {statusBadge}
+                  </div>
+                  {displayMetrics.length ? (
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                      {displayMetrics.map((metric) => (
+                        <div key={metric.key} className="rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2">
+                          <div className="text-[12px] text-slate-500">{metricLabel(metric.key)}</div>
+                          <div className="mt-1 text-[18px] font-semibold tabular-nums text-slate-950">{metric.value.toFixed(3)}</div>
                         </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 rounded-md px-2.5 text-[11px] text-muted-foreground hover:bg-slate-100 hover:text-foreground"
-                          onClick={() => setIsTimelinePanelCollapsed(true)}
-                        >
-                          收起侧栏
-                        </Button>
-                      </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <EvaluationInlineStat label="全部" value={runs.length} />
-                        <EvaluationInlineStat label="完成" value={runStatusCounts.completed} />
-                        <EvaluationInlineStat label="进行中" value={runStatusCounts.running} />
-                        <EvaluationInlineStat label="失败" value={runStatusCounts.failed} />
-                      </div>
+                      ))}
                     </div>
-
-                    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-                      {runs.length === 0 ? (
-                        <div className="p-4 text-sm text-muted-foreground">暂无评测记录</div>
-                      ) : (
-                        runs.map((run) => {
-                          const currentStatus = run?.status
-                          const badgeStatus =
-                            currentStatus === 'completed' ? 'completed' : currentStatus === 'failed' ? 'failed' : 'processing'
-                          const badgeLabel =
-                            currentStatus === 'completed' ? '已完成' : currentStatus === 'failed' ? '失败' : '运行中'
-                          return (
-                            <button
-                              key={run.id}
-                              type="button"
-                              onClick={() => setSelectedRunId(run.id)}
-                              className={cn(
-                                'w-full border-b border-slate-200/80 px-2.5 py-2 text-left transition-all duration-200 hover:bg-slate-50 focus-ring',
-                                selectedRunId === run.id && 'bg-sky-50/85 ring-1 ring-inset ring-sky-200/70'
-                              )}
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="flex min-w-0 items-center gap-2"><span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', currentStatus === 'completed' ? 'bg-emerald-500' : currentStatus === 'failed' ? 'bg-rose-500' : 'bg-amber-500')} aria-hidden="true" /><div className="truncate text-[13px] font-medium text-foreground">
-                                  {run.conversation_id ? '对话 ' + String(run.conversation_id).slice(0, 8) + '…' : run.id}
-                                </div></div>
-                                <StatusBadge status={badgeStatus} label={badgeLabel} dense />
-                              </div>
-                              <div className="mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground">
-                                <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
-                                <span>{new Date(run.created_at).toLocaleString('zh-CN')}</span>
-                              </div>
-                            </button>
-                          )
-                        })
-                      )}
+                  ) : (
+                    <div className="mt-3">
+                      <EvaluationHeroEmptyState
+                        title={selectedRunId ? '暂无运行记录' : '暂无运行记录'}
+                        description={selectedRunId ? '这条 run 可能仍在处理中，或者后端尚未返回 summary 分数。' : '请先在左侧选择对话、指标与参数，然后点击「开始评测」运行。'}
+                      />
                     </div>
-                  </>
-                )}
-              </section>
-
-              <section className="flex min-h-0 flex-col bg-card">
-                <div className="shrink-0 border-b border-slate-200/80">
-                  <div className="grid gap-px bg-border/70 sm:grid-cols-4">
-                    <div className="bg-primary/[0.08] px-2.5 py-2">
-                      <div className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.12em] text-sky-700"><MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />当前对话</div>
-                      <div className="mt-1 truncate text-[13px] font-semibold text-foreground">
-                        {selectedConversation?.title || (selectedConversationId ? '对话 ' + selectedConversationId.slice(0, 8) + '…' : '未选择')}
-                      </div>
+                  )}
+                  <div className="mx-auto mt-3 grid max-w-xl grid-cols-3 overflow-hidden rounded-lg border border-slate-200 bg-white text-center text-[12px] text-slate-500">
+                    <div className="px-3 py-2">
+                      <div className="font-semibold text-blue-700">1 选择会话来源</div>
+                      <div className="mt-1">从已有会话或查询中选择</div>
                     </div>
-                    <div className="bg-muted/35 px-2.5 py-2">
-                      <div className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.12em] text-slate-700"><ListChecks className="h-3.5 w-3.5" aria-hidden="true" />样本数</div>
-                      <div className="mt-1 text-base font-semibold tabular-nums text-foreground">{formatCompactCount(summary.items)}</div>
+                    <div className="border-l border-slate-200 px-3 py-2">
+                      <div className="font-semibold text-blue-700">2 配置评测参数</div>
+                      <div className="mt-1">选择指标与过滤规则</div>
                     </div>
-                    <div className="bg-primary/[0.08] px-2.5 py-2">
-                      <div className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.12em] text-sky-700"><BarChart3 className="h-3.5 w-3.5" aria-hidden="true" />令牌开销</div>
-                      <div className="mt-1 text-base font-semibold tabular-nums text-foreground">{formatCompactCount(summary.total_tokens)}</div>
-                    </div>
-                    <div className="bg-muted/35 px-2.5 py-2">
-                      <div className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.12em] text-slate-700"><Sparkles className="h-3.5 w-3.5" aria-hidden="true" />LLM 成本</div>
-                      <div className="mt-1 text-base font-semibold tabular-nums text-foreground">{formatCurrency(summary.total_cost)}</div>
+                    <div className="border-l border-slate-200 px-3 py-2">
+                      <div className="font-semibold text-blue-700">3 开始评测</div>
+                      <div className="mt-1">流程完成后查看结果</div>
                     </div>
                   </div>
+                </section>
+
+                <div className="grid gap-3 xl:grid-cols-[0.85fr_1.25fr]">
+                  <ScoreDetailsCard rows={scoreRows} />
+                  <IterationDetailsCard
+                    items={runDetail?.items || []}
+                    metricKeys={detailMetricKeys}
+                    onlyFailures={onlyFailureItems}
+                    onOnlyFailuresChange={setOnlyFailureItems}
+                    onExport={handleExportItems}
+                  />
+                </div>
+              </main>
+
+              <aside className="flex max-h-[calc(100vh-282px)] min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    className="inline-flex min-w-0 items-center gap-2 text-left text-[14px] font-semibold text-slate-950 focus-ring"
+                    onClick={() => setIsRunRecordsCollapsed((value) => !value)}
+                    aria-expanded={!isRunRecordsCollapsed}
+                    aria-controls="ragas-run-records-list"
+                  >
+                    <ListChecks className="h-4 w-4 shrink-0 text-slate-500" aria-hidden="true" />
+                    <span className="truncate">运行记录</span>
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
+                      {runs.length}
+                    </span>
+                    <ChevronDown className={cn('h-3.5 w-3.5 text-slate-400 transition-transform', isRunRecordsCollapsed && '-rotate-90')} aria-hidden="true" />
+                  </button>
+                  <Button variant="ghost" className="h-7 shrink-0 px-2 text-[12px] text-blue-700" onClick={() => loadRuns()}>
+                    刷新
+                  </Button>
                 </div>
 
-                <div className="shrink-0 border-b border-slate-200/80 bg-muted/25 px-3 py-2.5">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.12em] text-sky-700"><Sparkles className="h-3.5 w-3.5" aria-hidden="true" />运行摘要</div>
-                      <div className="mt-1 text-sm font-semibold text-foreground">运行详情</div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {statusBadge}
-                    </div>
-                  </div>
-
-                  {displayMetrics.length > 0 ? (
-                    <>
-                      <div className="mt-3 grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
-                        {displayMetrics.map((metric) => (
-                          <div key={metric.key} className="rounded-lg border border-slate-200/80 bg-slate-50/55 px-2 py-1.5">
-                            <div className="text-[11px] uppercase tracking-[0.1em] text-muted-foreground">{metricLabel(metric.key)}</div>
-                            <div className="mt-1 text-[15px] font-semibold tabular-nums text-foreground">{metric.value.toFixed(3)}</div>
-                          </div>
+                <div
+                  id="ragas-run-records-list"
+                  className={cn(
+                    'grid min-h-0 transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none',
+                    isRunRecordsCollapsed ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'
+                  )}
+                >
+                  <div className="min-h-0 overflow-hidden">
+                    {visibleRuns.length ? (
+                      <div className="max-h-[520px] min-h-0 space-y-2 overflow-y-auto overscroll-contain pr-1 no-scrollbar">
+                        {visibleRuns.map((run) => (
+                          <RunRecordCard
+                            key={run.id}
+                            active={selectedRunId === run.id}
+                            run={run}
+                            conversation={run.conversation_id ? conversations.find((conversation) => conversation.id === run.conversation_id) || null : null}
+                            onClick={() => setSelectedRunId(run.id)}
+                          />
                         ))}
                       </div>
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <EvaluationInlineStat label="样本" value={summary.items ?? '-'} />
-                        <EvaluationInlineStat label="令牌" value={summary.total_tokens ?? '-'} />
-                        <EvaluationInlineStat label="成本" value={formatCurrency(summary.total_cost)} />
-                      </div>
-                    </>
-                  ) : (
-                    <div className="mt-4">
-                      <EvaluationEmptyState
-                        title={selectedRunId ? '当前还没有可展示分数' : '先选一个评测运行'}
-                        description={selectedRunId ? '这条 run 可能还在处理中，或者后端尚未返回 summary 分数。' : '左侧运行列表选中一条 run 后，这里会显示指标摘要与状态。'}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                <div className="min-h-0 flex-1">
-                  <div className="flex items-center justify-between border-b border-slate-200/80 bg-muted/30 px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      <ListChecks className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                      <div className="text-sm font-semibold text-foreground">逐轮明细</div>
-                    </div>
-                    <div className="text-xs text-muted-foreground">{runDetail?.items?.length || 0} 条</div>
+                    ) : (
+                      <EvaluationHeroEmptyState title="暂无评测记录" description="运行一次评测后，这里会出现真实 run 记录。" />
+                    )}
                   </div>
-
-                  {runDetail?.items?.length ? (
-                    <div className="h-full overflow-auto">
-                      <table aria-label="评测结果列表" className="w-full text-sm">
-                        <thead className="sticky top-0 z-10 bg-slate-50 text-muted-foreground">
-                          <tr>
-                            <th className="w-14 px-2.5 py-1.5 text-left text-[11px] font-medium">#</th>
-                            <th className="min-w-[280px] px-2.5 py-1.5 text-left text-[11px] font-medium">问题</th>
-                            <th className="min-w-[320px] px-2.5 py-1.5 text-left text-[11px] font-medium">回答</th>
-                            {(runDetail?.run?.metrics || []).map((metricKey: string) => (
-                              <th key={metricKey} className="w-28 px-2.5 py-1.5 text-left text-[11px] font-medium">
-                                {metricLabel(metricKey)}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border/70">
-                          {(runDetail?.items || []).map((item) => (
-                            <tr key={item.id} className="align-top hover:bg-slate-50/70">
-                              <td className="px-2.5 py-1.5 text-[12px] text-muted-foreground">{item.turn_index}</td>
-                              <td className="px-2.5 py-1.5">
-                                <div className="line-clamp-3 text-[12px] leading-5 text-foreground">{item.user_input}</div>
-                              </td>
-                              <td className="px-2.5 py-1.5">
-                                <div className="line-clamp-3 text-[12px] leading-5 text-foreground/90">{item.response}</div>
-                              </td>
-                              {(runDetail?.run?.metrics || []).map((metricKey: string) => {
-                                const value = item.scores?.[metricKey]
-                                const isNum = typeof value === 'number' && !Number.isNaN(value)
-                                return (
-                                  <td key={metricKey} className="px-2.5 py-1.5 text-[12px] tabular-nums text-foreground/90">
-                                    {isNum ? value.toFixed(3) : '-'}
-                                  </td>
-                                )
-                              })}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <div className="p-4">
-                      <EvaluationEmptyState
-                        title={selectedRunId ? '当前运行暂无逐轮明细' : '先选择运行记录'}
-                        description={selectedRunId ? '这条 run 可能仍在处理中，或后端未返回 item 列表。' : '在中间运行列表中选择一条记录后，这里会显示逐轮评分细节。'}
-                      />
-                    </div>
-                  )}
                 </div>
-              </section>
+
+                {isRunRecordsCollapsed ? (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2 text-[11px] text-slate-500">
+                    已收起 {runs.length} 条运行记录，点击标题展开后在列表内上滑查看。
+                  </div>
+                ) : null}
+              </aside>
             </div>
-          </div>
-        ) : activeTab === 'regression' ? (
-            <div className="border-t border-slate-200/80 p-3">
-            <RegressionTestTab embedded />
-          </div>
-        ) : (
-            <div className="border-t border-slate-200/80 p-3">
-            <QuerysetHealthTab embedded />
-          </div>
-        )}
+          ) : activeTab === 'regression' ? (
+            <div className="flex h-[calc(100vh-285px)] min-h-[650px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+              <RegressionTestTab embedded />
+            </div>
+          ) : (
+            <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+              <QuerysetHealthTab embedded />
+            </div>
+          )}
+
         </div>
       </AnalysisPageShell>
     </div>

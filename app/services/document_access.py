@@ -291,6 +291,7 @@ def list_accessible_document_ids(
     tenant_id: UUID,
     account_id: str,
     *,
+    dataset_id: UUID | None = None,
     status: str | None = "completed",
     limit: int | None = 200,
 ) -> list[UUID]:
@@ -305,6 +306,8 @@ def list_accessible_document_ids(
         DBDocument.id, DBDocument.dataset_id, DBDocument.access_mode, DBDocument.owner_id, DBDocument.updated_at
     ).filter(DBDocument.tenant_id == tenant_id)
     query = query.filter(DBDocument.publication_status == "published")
+    if dataset_id is not None:
+        query = query.filter(DBDocument.dataset_id == dataset_id)
     if status:
         if str(status).lower() == "completed":
             # Versioning: allow documents that are currently reprocessing/failed/cancelled,
