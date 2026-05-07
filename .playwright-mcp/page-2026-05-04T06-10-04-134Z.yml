@@ -1,0 +1,305 @@
+- generic [active] [ref=e1]:
+  - region "Notifications alt+T"
+  - generic [ref=e3]:
+    - link "跳到主要内容" [ref=e4] [cursor=pointer]:
+      - /url: "#main-content"
+    - generic [ref=e5]:
+      - navigation "主导航" [ref=e6]:
+        - link "M MimirQ 智能知识库" [ref=e8] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e10]: M
+          - generic [ref=e11]:
+            - generic [ref=e12]: MimirQ
+            - generic [ref=e13]: 智能知识库
+        - button "新对话" [ref=e15]:
+          - img [ref=e16]
+          - generic [ref=e17]: 新对话
+        - button "打开命令搜索" [ref=e19]:
+          - generic [ref=e20]:
+            - img [ref=e22]
+            - generic [ref=e25]:
+              - paragraph [ref=e26]: 打开命令搜索
+              - paragraph [ref=e27]: 快速跳转到页面和常用操作
+          - generic [ref=e28]: ⌘K
+        - generic [ref=e30]:
+          - generic [ref=e31]:
+            - button "核心" [expanded] [ref=e32]:
+              - paragraph [ref=e34]: 核心
+              - img [ref=e36]
+            - generic [ref=e40]:
+              - link "对话" [ref=e42] [cursor=pointer]:
+                - /url: /
+                - img [ref=e43]
+                - generic [ref=e45]: 对话
+              - link "问答历史" [ref=e47] [cursor=pointer]:
+                - /url: /history
+                - img [ref=e48]
+                - generic [ref=e52]: 问答历史
+          - generic [ref=e53]:
+            - button "知识库管理" [expanded] [ref=e54]:
+              - paragraph [ref=e56]: 知识库管理
+              - img [ref=e58]
+            - generic [ref=e62]:
+              - link "数据集" [ref=e64] [cursor=pointer]:
+                - /url: /datasets
+                - img [ref=e65]
+                - generic [ref=e69]: 数据集
+              - link "知识库" [ref=e71] [cursor=pointer]:
+                - /url: /knowledge
+                - img [ref=e72]
+                - generic [ref=e76]: 知识库
+              - link "入库监控" [ref=e78] [cursor=pointer]:
+                - /url: /knowledge/ingestion
+                - img [ref=e79]
+                - generic [ref=e81]: 入库监控
+              - link "隔离队列" [ref=e83] [cursor=pointer]:
+                - /url: /knowledge/quarantine
+                - img [ref=e84]
+                - generic [ref=e86]: 隔离队列
+              - link "反馈质检" [ref=e88] [cursor=pointer]:
+                - /url: /knowledge/feedback
+                - img [ref=e89]
+                - generic [ref=e91]: 反馈质检
+          - generic [ref=e92]:
+            - button "入库流程" [ref=e93]:
+              - paragraph [ref=e95]: 入库流程
+              - img [ref=e97]
+            - generic [ref=e99]:
+              - link "文档解析" [ref=e101] [cursor=pointer]:
+                - /url: /parsing
+                - img [ref=e102]
+                - generic [ref=e105]: 文档解析
+              - link "数据治理" [ref=e107] [cursor=pointer]:
+                - /url: /data-governance
+                - img [ref=e108]
+                - generic [ref=e111]: 数据治理
+              - link "治理配置" [ref=e113] [cursor=pointer]:
+                - /url: /data-governance/profiles
+                - img [ref=e114]
+                - generic [ref=e117]: 治理配置
+              - link "样板行发现" [ref=e119] [cursor=pointer]:
+                - /url: /data-governance/common-lines
+                - img [ref=e120]
+                - generic [ref=e123]: 样板行发现
+              - link "切块预览" [ref=e125] [cursor=pointer]:
+                - /url: /chunk-preview
+                - img [ref=e126]
+                - generic [ref=e132]: 切块预览
+          - generic [ref=e133]:
+            - button "分析工具" [ref=e134]:
+              - paragraph [ref=e136]: 分析工具
+              - img [ref=e138]
+            - generic [ref=e140]:
+              - link "RAG 可视化" [ref=e142] [cursor=pointer]:
+                - /url: /knowledge/similarity
+                - img [ref=e143]
+                - generic [ref=e145]: RAG 可视化
+              - link "知识图谱" [ref=e147] [cursor=pointer]:
+                - /url: /graph
+                - img [ref=e148]
+                - generic [ref=e154]: 知识图谱
+              - link "KG 快照" [ref=e156] [cursor=pointer]:
+                - /url: /graph/snapshots
+                - img [ref=e157]
+                - generic [ref=e162]: KG 快照
+              - link "KG 检索评测" [ref=e164] [cursor=pointer]:
+                - /url: /graph/diagnostics
+                - img [ref=e165]
+                - generic [ref=e170]: KG 检索评测
+              - link "RAGAS 评测" [ref=e172] [cursor=pointer]:
+                - /url: /evaluations
+                - img [ref=e173]
+                - generic [ref=e175]: RAGAS 评测
+              - link "检索消融" [ref=e177] [cursor=pointer]:
+                - /url: /evaluations/ablations
+                - img [ref=e178]
+                - generic [ref=e179]: 检索消融
+              - link "报告中心" [ref=e181] [cursor=pointer]:
+                - /url: /reports
+                - img [ref=e182]
+                - generic [ref=e185]: 报告中心
+              - link "提示词" [ref=e187] [cursor=pointer]:
+                - /url: /prompts
+                - img [ref=e188]
+                - generic [ref=e191]: 提示词
+          - generic [ref=e192]:
+            - button "系统" [ref=e193]:
+              - paragraph [ref=e195]: 系统
+              - img [ref=e197]
+            - generic [ref=e199]:
+              - link "诊断" [ref=e201] [cursor=pointer]:
+                - /url: /diagnostics
+                - img [ref=e202]
+                - generic [ref=e204]: 诊断
+              - link "用量/配额" [ref=e206] [cursor=pointer]:
+                - /url: /usage
+                - img [ref=e207]
+                - generic [ref=e212]: 用量/配额
+              - link "审计日志" [ref=e214] [cursor=pointer]:
+                - /url: /audit
+                - img [ref=e215]
+                - generic [ref=e218]: 审计日志
+              - link "访问审查" [ref=e220] [cursor=pointer]:
+                - /url: /access-review
+                - img [ref=e221]
+                - generic [ref=e224]: 访问审查
+              - link "成员权限" [ref=e226] [cursor=pointer]:
+                - /url: /settings/rbac
+                - img [ref=e227]
+                - generic [ref=e230]: 成员权限
+              - link "组管理" [ref=e232] [cursor=pointer]:
+                - /url: /settings/groups
+                - img [ref=e233]
+                - generic [ref=e238]: 组管理
+              - link "设置" [ref=e240] [cursor=pointer]:
+                - /url: /settings
+                - img [ref=e241]
+                - generic [ref=e244]: 设置
+        - generic [ref=e245]:
+          - generic [ref=e246]:
+            - button "前往登录 / 注册" [ref=e247]:
+              - img [ref=e251]
+              - generic [ref=e254]:
+                - paragraph [ref=e255]: 开发模式
+                - paragraph [ref=e256]: 本地开发环境
+            - generic [ref=e257]:
+              - button "登录 / 注册" [ref=e258]:
+                - img [ref=e259]
+              - button "切换主题" [ref=e262]:
+                - img [ref=e263]
+                - generic [ref=e269]: 切换主题
+          - button "查看后端依赖状态" [ref=e271]:
+            - generic [ref=e274]: Deps：...
+      - button "收起侧边栏" [expanded]:
+        - img
+      - main [ref=e276]:
+        - generic [ref=e277]:
+          - generic [ref=e280]:
+            - generic [ref=e282]:
+              - generic [ref=e283]: Graph
+              - generic [ref=e284]: KG Snapshots
+              - generic [ref=e285]: 对比 pipeline hash 生成的轻量 KG 快照，并在 Audit 面板快速判断波动强度。
+            - generic [ref=e286]:
+              - button "刷新对比" [disabled]:
+                - img
+                - text: 刷新对比
+              - button "清空" [ref=e287]:
+                - img [ref=e288]
+              - button "折叠参数栏" [ref=e293]:
+                - img [ref=e294]
+          - generic [ref=e297]:
+            - complementary [ref=e298]:
+              - generic [ref=e299]:
+                - generic [ref=e300]:
+                  - generic [ref=e301]:
+                    - button "Studio" [ref=e302]
+                    - button "Audit" [ref=e303]
+                  - generic [ref=e305]:
+                    - generic [ref=e306]: A/B
+                    - 'generic "A: 未填写 B: 未填写" [ref=e307]': 未设置
+                - generic [ref=e309]:
+                  - generic [ref=e310]:
+                    - generic [ref=e311]: 对比参数
+                    - generic [ref=e312]:
+                      - generic [ref=e313]:
+                        - text: Hash A
+                        - textbox "Hash A" [ref=e314]:
+                          - /placeholder: ph_a...
+                      - generic [ref=e315]:
+                        - text: Hash B
+                        - textbox "Hash B" [ref=e316]:
+                          - /placeholder: ph_b...
+                  - generic [ref=e317]:
+                    - generic [ref=e318]: 作用范围
+                    - generic [ref=e319]:
+                      - text: document_ids
+                      - textbox "document_ids" [ref=e320]:
+                        - /placeholder: 按逗号或换行填写。留空表示使用默认可访问文档集合。
+                    - generic [ref=e321]:
+                      - generic [ref=e322]:
+                        - generic [ref=e323]: Docs
+                        - generic [ref=e324]: All
+                      - generic [ref=e325]:
+                        - generic [ref=e326]: Mode
+                        - generic [ref=e327]: PII-safe
+                - generic [ref=e328]:
+                  - generic [ref=e329]:
+                    - button "导出 A" [ref=e330]
+                    - button "导出 B" [ref=e331]
+                  - button "开始对比" [ref=e332]:
+                    - img [ref=e333]
+                    - text: 开始对比
+                  - button "后端对比" [ref=e338]:
+                    - img [ref=e339]
+                    - text: 后端对比
+                  - paragraph [ref=e344]: 默认请求 bounded 明细：节点、边、属性 hash 都会参与 diff；完整溯源仍可结合 KG diagnostics 或 traces 排查。
+            - generic [ref=e346]:
+              - generic [ref=e348]:
+                - generic [ref=e349]:
+                  - generic [ref=e350]:
+                    - generic [ref=e351]: Snapshot Studio
+                    - generic [ref=e352]: Diff 对比
+                  - tablist [ref=e353]:
+                    - tab "Diff 对比" [selected] [ref=e354]
+                    - tab "视图 A" [ref=e355]
+                    - tab "视图 B" [ref=e356]
+                - generic [ref=e358]:
+                  - generic [ref=e359]: A/B
+                  - 'generic "A: 未填写 B: 未填写" [ref=e360]': 未设置
+              - tabpanel "Diff 对比" [ref=e361]:
+                - generic [ref=e362]:
+                  - generic [ref=e364]:
+                    - button "复制 Diff JSON" [ref=e365]:
+                      - img [ref=e366]
+                    - button "导出 Diff JSON" [ref=e369]:
+                      - img [ref=e370]
+                  - generic [ref=e374]:
+                    - generic [ref=e375]:
+                      - generic [ref=e376]: 精确节点/边 Diff
+                      - generic [ref=e377]: 当前 diff 只有聚合计数；重新执行对比会请求 include_details=true。
+                    - generic [ref=e378]:
+                      - generic [ref=e379]:
+                        - generic [ref=e380]: Node +
+                        - generic [ref=e381]: "0"
+                      - generic [ref=e382]:
+                        - generic [ref=e383]: Node -
+                        - generic [ref=e384]: "0"
+                      - generic [ref=e385]:
+                        - generic [ref=e386]: Node Δ
+                        - generic [ref=e387]: "0"
+                      - generic [ref=e388]:
+                        - generic [ref=e389]: Edge +
+                        - generic [ref=e390]: "0"
+                      - generic [ref=e391]:
+                        - generic [ref=e392]: Edge -
+                        - generic [ref=e393]: "0"
+                      - generic [ref=e394]:
+                        - generic [ref=e395]: Edge Δ
+                        - generic [ref=e396]: "0"
+                  - generic [ref=e398]:
+                    - generic [ref=e399]:
+                      - generic [ref=e400]: "#"
+                      - generic [ref=e401]:
+                        - generic [ref=e402]: Snapshot A · 未设置
+                        - generic [ref=e403]: 默认可访问范围
+                      - generic [ref=e404]: "#"
+                      - generic [ref=e405]:
+                        - generic [ref=e406]: Snapshot B · 未设置
+                        - generic [ref=e407]: 默认可访问范围
+                    - generic [ref=e408]:
+                      - generic [ref=e409]: "1"
+                      - generic [ref=e411]: "{"
+                      - generic [ref=e412]: "1"
+                      - generic [ref=e414]: "{"
+                    - generic [ref=e415]:
+                      - generic [ref=e416]: "2"
+                      - generic [ref=e418]: "\"hint\": \"点击左侧“导出 A”生成快照。\""
+                      - generic [ref=e419]: "2"
+                      - generic [ref=e421]: "\"hint\": \"点击左侧“导出 B”生成快照。\""
+                    - generic [ref=e422]:
+                      - generic [ref=e423]: "3"
+                      - generic [ref=e425]: "}"
+                      - generic [ref=e426]: "3"
+                      - generic [ref=e428]: "}"
+  - button "Open Next.js Dev Tools" [ref=e434] [cursor=pointer]:
+    - img [ref=e435]

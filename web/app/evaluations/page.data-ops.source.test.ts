@@ -17,8 +17,11 @@ describe('evaluations page data operations', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'page.tsx'), 'utf8')
 
     expect(src).toContain('DashboardStatCard')
+    expect(src).toContain('text-[22px] font-semibold tracking-tight')
+    expect(src).not.toContain('text-[24px] font-semibold tracking-tight')
     expect(src).toContain('min-h-[76px] rounded-xl')
     expect(src).toContain('text-[16px] font-semibold')
+    expect(src).toContain("valueClassName=\"text-[15px] font-medium tracking-normal\"")
     expect(src).toContain('实时会话')
     expect(src).toContain('平均开销')
     expect(src).toContain('运行详情')
