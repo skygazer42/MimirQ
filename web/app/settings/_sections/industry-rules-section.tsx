@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { FileText, Loader2, RefreshCw, Save, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -35,6 +35,7 @@ function parseJson<T>(raw: string, fallback: T): T {
 }
 
 export function IndustryRulesSection() {
+  const didLoadRulesetsRef = useRef(false)
   const [rulesets, setRulesets] = useState<IndustryRulesetSummary[]>([])
   const [rulesetName, setRulesetName] = useState('industrial_control')
   const [query, setQuery] = useState('PLC 报警如何排查？')
@@ -44,12 +45,17 @@ export function IndustryRulesSection() {
   const [runningKey, setRunningKey] = useState<string | null>(null)
   const [result, setResult] = useState<ResultState | null>(null)
 
-  async function runAction(key: string, title: string, action: () => Promise<unknown>): Promise<void> {
+  async function runAction(
+    key: string,
+    title: string,
+    action: () => Promise<unknown>,
+    options?: { silentSuccess?: boolean }
+  ): Promise<void> {
     setRunningKey(key)
     try {
       const payload = await action()
       setResult({ title, payload })
-      toast.success(`${title}完成`)
+      if (!options?.silentSuccess) toast.success(`${title}完成`)
     } catch (error) {
       toast.error(formatApiError(error, `${title}失败`))
     } finally {
@@ -57,14 +63,14 @@ export function IndustryRulesSection() {
     }
   }
 
-  async function loadRulesets(): Promise<void> {
+  async function loadRulesets(options?: { silentSuccess?: boolean }): Promise<void> {
     await runAction('list', '加载规则集', async () => {
       const payload = await industryRulesApi.listRulesets()
       setRulesets(payload.rulesets || [])
       const first = payload.rulesets?.[0]?.name
       if (first && !rulesetName.trim()) setRulesetName(first)
       return payload
-    })
+    }, options)
   }
 
   async function loadRuleset(): Promise<void> {
@@ -78,7 +84,9 @@ export function IndustryRulesSection() {
   }
 
   useEffect(() => {
-    detachPromise(loadRulesets())
+    if (didLoadRulesetsRef.current) return
+    didLoadRulesetsRef.current = true
+    detachPromise(loadRulesets({ silentSuccess: true }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

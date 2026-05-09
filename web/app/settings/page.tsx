@@ -11,7 +11,6 @@ import { ModelConfigDialog } from '@/components/model-config-dialog'
 import { Button } from '@/components/ui/button'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { StickyActionRail } from '@/components/ui/sticky-action-rail'
-import { SystemDataStrip } from '@/components/ui/system-data-strip'
 import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { FeatureFlagsSection } from './_sections/feature-flags-section'
@@ -29,14 +28,19 @@ import { UrlIngestSection } from './_sections/url-ingest-section'
 import { useSettingsPageState } from './use-settings-page-state'
 import {
   CheckCircle2,
+  Clock,
+  LayoutGrid,
+  Layers,
   RefreshCw,
   Save,
   Settings2,
+  ShieldCheck,
   XCircle,
 } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { TENANT_PERMISSIONS } from '@/lib/tenant-permissions'
-import { systemDenseControls, systemPageTokens } from '@/components/ui/system-page-tokens'
+import { systemPageTokens } from '@/components/ui/system-page-tokens'
 
 const SETTINGS_SECTIONS = [
   { id: 'sec-frontend', label: '前端偏好' },
@@ -52,8 +56,55 @@ const SETTINGS_SECTIONS = [
   { id: 'sec-observability', label: '可观测性' },
   { id: 'sec-runtime', label: '运行时控制' },
 ] as const
-const DENSE_OUTLINE_BUTTON = systemDenseControls.outlineButton
-const DENSE_PRIMARY_BUTTON = systemDenseControls.primaryButton
+const SETTINGS_CARD_CLASS = 'rounded-[22px] border border-slate-200/80 bg-white/92 shadow-[0_18px_44px_rgba(15,23,42,0.06)]'
+const SETTINGS_OUTLINE_BUTTON = 'h-10 rounded-xl border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-700 shadow-sm hover:bg-slate-50'
+const SETTINGS_PRIMARY_BUTTON = 'h-10 rounded-xl bg-blue-600 px-4 text-[13px] font-semibold text-white shadow-[0_10px_24px_rgba(37,99,235,0.22)] hover:bg-blue-700'
+
+type SettingsMetricTone = 'blue' | 'green' | 'indigo' | 'slate'
+
+type SettingsMetricItem = {
+  label: string
+  value: string | number
+  icon: LucideIcon
+  tone: SettingsMetricTone
+  valueClassName?: string
+}
+
+const SETTINGS_METRIC_TONE_CLASS: Record<SettingsMetricTone, string> = {
+  blue: 'bg-blue-50 text-blue-600',
+  green: 'bg-emerald-50 text-emerald-600',
+  indigo: 'bg-indigo-50 text-indigo-600',
+  slate: 'bg-slate-100 text-slate-500',
+}
+
+function SettingsMetricStrip({ items }: Readonly<{ items: readonly SettingsMetricItem[] }>) {
+  return (
+    <div className={cn(SETTINGS_CARD_CLASS, 'grid min-h-[96px] grid-cols-1 overflow-hidden md:grid-cols-2 xl:grid-cols-4')}>
+      {items.map((item, index) => {
+        const Icon = item.icon
+        return (
+          <div
+            key={item.label}
+            className={cn(
+              'flex items-center justify-between gap-4 px-6 py-5',
+              index > 0 && 'border-t border-slate-100 md:border-l md:border-t-0'
+            )}
+          >
+            <div className="min-w-0">
+              <p className="text-[12px] font-semibold text-slate-500">{item.label}</p>
+              <p className={cn('mt-2 text-[23px] font-semibold leading-none tracking-[-0.04em] text-slate-950', item.valueClassName)}>
+                {item.value}
+              </p>
+            </div>
+            <div className={cn('flex size-11 shrink-0 items-center justify-center rounded-2xl', SETTINGS_METRIC_TONE_CLASS[item.tone])}>
+              <Icon className="size-5" />
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 function useSettingsScrollSpy(sectionIds: readonly string[]) {
   const [activeId, setActiveId] = useState(sectionIds[0])
@@ -108,12 +159,14 @@ function SettingsPageContent() {
   const state = useSettingsPageState()
   const { parserBackend, setParserBackend } = useParserBackendPreference()
   const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
-  const statusStripItems = [
-    { label: '配置分区', value: SETTINGS_SECTIONS.length, mono: true },
+  const statusMetricItems: SettingsMetricItem[] = [
+    { label: '配置分区', value: SETTINGS_SECTIONS.length, icon: LayoutGrid, tone: 'blue' },
     {
-      label: '草稿变更',
+      label: '环境变量',
       value: state.hasChanges ? '待保存' : '已同步',
-      tone: state.hasChanges ? 'warning' : 'success',
+      icon: Layers,
+      tone: 'green',
+      valueClassName: state.hasChanges ? 'text-amber-600' : 'text-emerald-600',
     },
     {
       label: '保存状态',
@@ -124,17 +177,24 @@ function SettingsPageContent() {
           : state.saveMessage?.type === 'error'
             ? '最近失败'
             : '空闲',
-      tone:
+      icon: ShieldCheck,
+      tone: state.saveMessage?.type === 'success' ? 'green' : 'indigo',
+      valueClassName:
         state.saveMessage?.type === 'error'
-          ? 'danger'
+          ? 'text-rose-600'
           : state.saving
-            ? 'warning'
+            ? 'text-amber-600'
             : state.saveMessage?.type === 'success'
-              ? 'success'
-              : 'default',
+              ? 'text-emerald-600'
+              : 'text-slate-950',
     },
-    { label: '最近更新键', value: state.lastUpdatedKeys.length, mono: true },
-  ] as const
+    {
+      label: '最近更新',
+      value: state.lastUpdatedKeys.length ? `${state.lastUpdatedKeys.length} 项` : '0 秒前',
+      icon: Clock,
+      tone: 'blue',
+    },
+  ]
 
   return (
     <AppFrame>
@@ -142,15 +202,18 @@ function SettingsPageContent() {
         title="设置与配置"
         badge="系统配置"
         icon={Settings2}
-        iconColor="text-muted-foreground"
+        iconColor="text-blue-600 dark:text-blue-400"
         description="统一管理功能开关、模型接入、检索增强生成参数（RAG）与运行时控制。"
         size="full"
-        density="system-dense"
+        compact={false}
+        headerClassName="[&_h1]:!text-[27px] [&_h1]:md:!text-[29px] [&_h1]:!leading-tight [&_h1]:!tracking-[-0.035em] [&_[class*='rounded-full']]:border-blue-100 [&_[class*='rounded-full']]:bg-blue-50 [&_[class*='rounded-full']]:text-blue-600"
+        topClassName="pb-3"
+        bodyClassName="pt-1.5"
         top={
           <div className="space-y-2">
-            <SystemDataStrip items={statusStripItems} minColumnWidth={148} />
+            <SettingsMetricStrip items={statusMetricItems} />
             {state.loadError ? (
-              <Alert variant="destructive" className="rounded-lg border-border/70 shadow-none">
+              <Alert variant="destructive" className="rounded-xl border-rose-200/80 bg-rose-50/70 shadow-none">
                 <XCircle className="size-4" />
                 <div>
                   <AlertTitle>加载失败</AlertTitle>
@@ -163,7 +226,7 @@ function SettingsPageContent() {
             {state.saveMessage ? (
               <Alert
                 variant={state.saveMessage.type === 'success' ? 'success' : 'destructive'}
-                className="rounded-lg border-border/70 shadow-none"
+                className="rounded-xl border-border/70 shadow-none"
               >
                 {state.saveMessage.type === 'success' ? (
                   <CheckCircle2 className="size-4" />
@@ -194,7 +257,7 @@ function SettingsPageContent() {
               variant="outline"
               onClick={state.refreshAll}
               disabled={state.loading}
-              className={DENSE_OUTLINE_BUTTON}
+              className={SETTINGS_OUTLINE_BUTTON}
             >
               <RefreshCw className={cn('size-4', state.loading && 'animate-spin motion-reduce:animate-none')} />
               刷新
@@ -202,7 +265,7 @@ function SettingsPageContent() {
             <Button
               onClick={state.saveSettings}
               disabled={!state.hasChanges || state.saving}
-              className={DENSE_PRIMARY_BUTTON}
+              className={SETTINGS_PRIMARY_BUTTON}
             >
               <Save className={cn('size-4', state.saving && 'animate-pulse motion-reduce:animate-none')} />
               {state.saving ? '保存中...' : '保存配置'}
@@ -240,20 +303,20 @@ function SettingsContent({ state, parserBackend, setParserBackend, chunkStrategy
   }, [])
 
   return (
-    <div className="flex gap-4 lg:gap-5">
-      <nav className="sticky top-4 hidden w-52 shrink-0 self-start pt-2 lg:flex lg:justify-center">
-        <ul className="w-full max-w-[12.5rem] space-y-1.5">
+    <div className="grid gap-4 lg:grid-cols-[210px_minmax(0,1fr)]">
+      <nav className={cn(SETTINGS_CARD_CLASS, 'sticky top-4 hidden shrink-0 self-start p-3 lg:block')}>
+        <ul className="space-y-1">
           {SETTINGS_SECTIONS.map((sec) => (
             <li key={sec.id}>
               <button
                 type="button"
                 onClick={() => scrollTo(sec.id)}
                 className={cn(
-                  'relative w-full rounded-lg px-3.5 py-2.5 text-center transition-colors',
-                  'text-[14px] font-semibold leading-5',
+                  'relative w-full rounded-xl px-4 py-2.5 text-left transition-colors',
+                  'text-[13px] font-semibold leading-5',
                   activeId === sec.id
-                    ? 'bg-primary/10 text-primary before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-[2px] before:rounded-full before:bg-primary'
-                    : 'text-muted-foreground hover:bg-muted/40 hover:text-foreground',
+                    ? 'bg-blue-50 text-blue-600 before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[3px] before:rounded-full before:bg-blue-600'
+                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950',
                 )}
               >
                 {sec.label}
@@ -263,7 +326,7 @@ function SettingsContent({ state, parserBackend, setParserBackend, chunkStrategy
         </ul>
       </nav>
 
-      <div className="min-w-0 flex-1 space-y-6">
+      <div className="min-w-0 space-y-4">
         <div id="sec-frontend" className="scroll-mt-24">
           <FrontendPreferencesSection
             parserBackend={parserBackend}
@@ -376,9 +439,9 @@ function SettingsContent({ state, parserBackend, setParserBackend, chunkStrategy
           />
         </div>
 
-        <StickyActionRail>
+        <StickyActionRail className="rounded-t-[18px] border border-slate-200/80 bg-white/92 px-4 py-3 shadow-[0_-12px_28px_rgba(15,23,42,0.06)]">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className={systemPageTokens.subtle}>
+            <div className="text-[12px] font-medium text-slate-500">
               {state.hasChanges
                 ? '存在未保存改动：建议保存后再离开页面。'
                 : '当前草稿与后端配置一致。'}
@@ -388,7 +451,7 @@ function SettingsContent({ state, parserBackend, setParserBackend, chunkStrategy
                 variant="outline"
                 onClick={state.refreshAll}
                 disabled={state.loading}
-                className={DENSE_OUTLINE_BUTTON}
+                className={SETTINGS_OUTLINE_BUTTON}
               >
                 <RefreshCw className={cn('size-4', state.loading && 'animate-spin motion-reduce:animate-none')} />
                 刷新
@@ -396,7 +459,7 @@ function SettingsContent({ state, parserBackend, setParserBackend, chunkStrategy
               <Button
                 onClick={state.saveSettings}
                 disabled={!state.hasChanges || state.saving}
-                className={DENSE_PRIMARY_BUTTON}
+                className={SETTINGS_PRIMARY_BUTTON}
               >
                 <Save className={cn('size-4', state.saving && 'animate-pulse motion-reduce:animate-none')} />
                 {state.saving ? '保存中...' : '保存配置'}
