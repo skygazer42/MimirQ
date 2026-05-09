@@ -1195,6 +1195,7 @@ async def create_ragas_regression_ablation_batch(
 async def list_ragas_regression_runs(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    dataset_id: Annotated[UUID | None, Query(description="Optional dataset scope")] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1204,6 +1205,9 @@ async def list_ragas_regression_runs(
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     query = db.query(RagasRegressionRun).filter(RagasRegressionRun.tenant_id == tenant_id)
+    if dataset_id is not None:
+        DatasetService.get_dataset(db, tenant_id, dataset_id)
+        query = query.filter(RagasRegressionRun.dataset_id == dataset_id)
     total = query.count()
     runs = (
         query.order_by(RagasRegressionRun.created_at.desc())

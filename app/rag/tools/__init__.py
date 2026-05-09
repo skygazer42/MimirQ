@@ -25,7 +25,10 @@ from app.rag.tools.mcp_tools import (
     extract_keywords,
     format_number,
     get_current_time,
+    get_document,
     get_document_content,
+    get_document_structure,
+    get_page_content,
     register_default_tools,
     search_documents,
 )
@@ -45,7 +48,10 @@ __all__ = [
     "call_mcp_tool",
     # Tools
     "search_documents",
+    "get_document",
     "get_document_content",
+    "get_document_structure",
+    "get_page_content",
     "get_current_time",
     "calculate",
     "format_number",

@@ -179,6 +179,115 @@ class RetrievePreviewResponse(BaseModel):
     metrics: dict[str, Any] = Field(default_factory=dict)
 
 
+class DocumentStructureRequest(BaseModel):
+    dataset_id: UUID
+    document_id: UUID
+    max_nodes: int = Field(default=200, ge=1, le=1000)
+
+
+class TreeSearchPreviewRequest(BaseModel):
+    query: str = Field(min_length=1)
+    dataset_id: UUID | None = None
+    document_ids: list[UUID] = Field(default_factory=list)
+    rag_config: ChatRAGConfig = Field(default_factory=lambda: ChatRAGConfig(retrieval_profile="recall20"))
+    max_structure_docs: int = Field(default=5, ge=1, le=20)
+    max_nodes_per_doc: int = Field(default=120, ge=1, le=500)
+
+
+class TreeSearchPreviewResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    schema_: str = Field(
+        default="mimirq.tree_search_preview.v1",
+        alias="schema",
+        serialization_alias="schema",
+    )
+    query: str
+    query_for_retrieval: str
+    citations: list[dict[str, Any]]
+    document_structures: list[dict[str, Any]] = Field(default_factory=list)
+    selected_sections: list[dict[str, Any]] = Field(default_factory=list)
+    metrics: dict[str, Any] = Field(default_factory=dict)
+
+    @property
+    def schema(self) -> str:
+        return str(self.schema_)
+
+
+def _build_document_structure_trace(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    dataset_id: UUID | None,
+    citations: list[dict[str, Any]],
+    max_documents: int = 5,
+    max_nodes: int = 120,
+) -> dict[str, Any] | None:
+    if dataset_id is None or not citations:
+        return None
+    try:
+        from app.rag.retrieval.document_structure import (
+            explain_citations_with_structure,
+            load_structures_for_citations,
+        )
+
+        structures = load_structures_for_citations(
+            db=db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_id=dataset_id,
+            citations=citations,
+            max_documents=max_documents,
+            max_nodes=max_nodes,
+        )
+        if not structures:
+            return None
+        selected_sections = explain_citations_with_structure(
+            citations=citations,
+            structures_by_document=structures,
+        )
+        return {
+            "schema": "mimirq.document_structure_trace.v1",
+            "document_count": int(len(structures)),
+            "documents": list(structures.values()),
+            "selected_sections": selected_sections,
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "schema": "mimirq.document_structure_trace.v1",
+            "document_count": 0,
+            "documents": [],
+            "selected_sections": [],
+            "error": str(exc)[:160],
+        }
+
+
+def _attach_document_structure_trace(
+    *,
+    metrics: dict[str, Any],
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    dataset_id: UUID | None,
+    citations: list[dict[str, Any]],
+    max_documents: int = 5,
+    max_nodes: int = 120,
+) -> dict[str, Any] | None:
+    trace = _build_document_structure_trace(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=dataset_id,
+        citations=citations,
+        max_documents=max_documents,
+        max_nodes=max_nodes,
+    )
+    if trace:
+        metrics.setdefault("document_structure_trace", trace)
+    return trace
+
+
 class ImageIndexRequest(BaseModel):
     dataset_id: UUID
     max_chunks: int = Field(default=3000, ge=1, le=20_000)
@@ -203,6 +312,37 @@ class ImageSearchRequest(BaseModel):
 class ImageSearchResponse(BaseModel):
     citations: list[dict[str, Any]] = Field(default_factory=list)
     metrics: dict[str, Any] = Field(default_factory=dict)
+
+
+@router.post("/document-structure", response_model=dict[str, Any], responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+async def document_structure_preview(
+    body: DocumentStructureRequest,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Return document structure derived from existing chunk hierarchy metadata."""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    ds = DatasetService.get_dataset(db, tenant_id, body.dataset_id)
+    DatasetService.assert_dataset_readable(db, ds, account_id)
+
+    from app.rag.retrieval.document_structure import load_document_structure
+
+    structure = load_document_structure(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=body.dataset_id,
+        document_id=body.document_id,
+        max_nodes=body.max_nodes,
+    )
+    error = str(structure.get("error") or "")
+    if error == "No document access":
+        raise HTTPException(status_code=403, detail=error)
+    if error == "Document not found":
+        raise HTTPException(status_code=404, detail=error)
+    return structure
 
 
 @router.post("/retrieve-preview", response_model=RetrievePreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -433,9 +573,101 @@ async def retrieve_preview(
     if rag_config_template_meta:
         metrics.setdefault("rag_config_template", rag_config_template_meta)
 
+    structure_dataset_id = scope_dataset_id
+    if structure_dataset_id is None and scope_document_ids:
+        try:
+            structure_dataset_id = resolve_single_dataset_id_for_documents(
+                db,
+                tenant_id=tenant_id,
+                document_ids=scope_document_ids,
+            )
+        except Exception:
+            structure_dataset_id = None
+    _attach_document_structure_trace(
+        metrics=metrics,
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=structure_dataset_id,
+        citations=[c for c in citations if isinstance(c, dict)],
+    )
+
     return RetrievePreviewResponse(
         query_for_retrieval=query_for_retrieval,
         citations=citations,
+        metrics=metrics,
+    )
+
+
+@router.post("/tree-search-preview", response_model=TreeSearchPreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+async def tree_search_preview(
+    body: TreeSearchPreviewRequest,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Experimental structure-first preview.
+
+    It reuses normal retrieval to find candidate evidence, then overlays
+    document section structure for PageIndex-style explainability.
+    """
+    preview = await retrieve_preview(
+        RetrievePreviewRequest(
+            query=body.query,
+            dataset_id=body.dataset_id,
+            document_ids=body.document_ids,
+            rag_config=body.rag_config,
+        ),
+        tenant_id=tenant_id,
+        account_id=account_id,
+        db=db,
+    )
+
+    structure_dataset_id = body.dataset_id
+    if structure_dataset_id is None and body.document_ids:
+        try:
+            structure_dataset_id = resolve_single_dataset_id_for_documents(
+                db,
+                tenant_id=tenant_id,
+                document_ids=body.document_ids,
+            )
+        except Exception:
+            structure_dataset_id = None
+
+    metrics = dict(preview.metrics or {})
+    trace = _build_document_structure_trace(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=structure_dataset_id,
+        citations=[c for c in preview.citations if isinstance(c, dict)],
+        max_documents=body.max_structure_docs,
+        max_nodes=body.max_nodes_per_doc,
+    )
+    if trace:
+        metrics["document_structure_trace"] = trace
+    else:
+        _attach_document_structure_trace(
+            metrics=metrics,
+            db=db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_id=structure_dataset_id,
+            citations=[c for c in preview.citations if isinstance(c, dict)],
+            max_documents=body.max_structure_docs,
+            max_nodes=body.max_nodes_per_doc,
+        )
+    metrics.setdefault("experimental_mode", "tree_search_preview")
+    metrics.setdefault("tree_search_preview_note", "structure overlay only; default retrieval mode is unchanged")
+
+    return TreeSearchPreviewResponse(
+        query=body.query,
+        query_for_retrieval=preview.query_for_retrieval,
+        citations=preview.citations,
+        document_structures=list((trace or {}).get("documents") or []),
+        selected_sections=list((trace or {}).get("selected_sections") or []),
         metrics=metrics,
     )
 
@@ -906,6 +1138,25 @@ async def retrieve_evidence(
             query_debug.setdefault("iterative_retrieve", iterative_summary)
 
     metrics.setdefault("tenant_qps_quota", tenant_qps_meta)
+
+    structure_dataset_id = scope_dataset_id
+    if structure_dataset_id is None and scope_document_ids:
+        try:
+            structure_dataset_id = resolve_single_dataset_id_for_documents(
+                db,
+                tenant_id=tenant_id,
+                document_ids=scope_document_ids,
+            )
+        except Exception:
+            structure_dataset_id = None
+    _attach_document_structure_trace(
+        metrics=metrics,
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=structure_dataset_id,
+        citations=[c for c in citations if isinstance(c, dict)],
+    )
 
     # Prometheus metrics (optional; no-op when disabled).
     try:

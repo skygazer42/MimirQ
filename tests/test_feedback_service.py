@@ -285,3 +285,81 @@ def test_list_message_feedback_enriched_filters_sorts_and_truncates() -> None:
     assert enriched["items"][1].conversation_title == "Conversation A"
     assert enriched["items"][1].message_created_at == assistant_a.created_at
     assert len(enriched["items"][1].message_content or "") == 4000
+
+
+def test_build_feedback_loop_candidates_uses_negative_feedback_context() -> None:
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    conversation_id = uuid.uuid4()
+    user_message_id = uuid.uuid4()
+    assistant_message_id = uuid.uuid4()
+    now = datetime.now(UTC)
+    user_msg = Message(
+        id=user_message_id,
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        role="user",
+        content="MCU 没数据",
+        citations=[],
+        message_metadata={},
+        created_at=now - timedelta(seconds=5),
+    )
+    assistant_msg = Message(
+        id=assistant_message_id,
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        role="assistant",
+        content="请检查采集配置。",
+        citations=[{"chunk_id": "chunk-positive", "document_id": "doc-good"}],
+        message_metadata={"dataset_id": str(dataset_id), "request_id": "req-loop-1"},
+        created_at=now,
+    )
+    conv = Conversation(
+        id=conversation_id,
+        tenant_id=tenant_id,
+        user_id=None,
+        dataset_id=dataset_id,
+        title="Loop",
+        document_ids=[],
+        message_count=2,
+        created_at=now,
+        updated_at=now,
+    )
+    feedback = MessageFeedback(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        message_id=assistant_message_id,
+        account_id="u",
+        rating=1,
+        reason="召回错",
+        tags=["negative"],
+        expected_answer="请检查 MCU 通讯和采集配置。",
+        extra={
+            "retrieval_trace": {
+                "retrieval": {"retrieval_config_hash": "cfg-loop"},
+                "citations": [
+                    {"chunk_id": "chunk-hard", "document_id": "doc-bad"},
+                    {"chunk_id": "chunk-positive", "document_id": "doc-good"},
+                ],
+            }
+        },
+        created_at=now,
+        updated_at=now,
+    )
+    db = _FakeDB(feedback_rows=[feedback], messages=[user_msg, assistant_msg], conversations=[conv])
+
+    out = FeedbackService.build_feedback_loop_candidates(
+        db=db,
+        tenant_id=tenant_id,
+        account_id="u",
+        max_rating=2,
+        limit=20,
+        ensure_member_fn=lambda *_args, **_kwargs: None,
+    )
+
+    assert out["schema"] == "mimirq.feedback_loop_candidates.v1"
+    assert out["summary"]["negative_feedback_total"] == 1
+    assert out["hard_negative_records"][0]["hard_negatives"][0]["chunk_id"] == "chunk-hard"
+    assert out["training_triples"][0]["positive_chunk_ids"] == ["chunk-positive"]
+    assert {item["token"] for item in out["rules_suggestions"]["glossary_suggestions"]} >= {"MCU"}

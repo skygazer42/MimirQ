@@ -29,6 +29,8 @@ from app.models.chat import Conversation, Message
 from app.models.evaluation import RagasRegressionCase
 from app.models.evidence import EvidenceItem, EvidenceSuite
 from app.models.feedback import MessageFeedback
+from app.rag.feedback_loop.dispatcher import dispatch_feedback_loop_batch
+from app.rag.industry_rules.loaders.yaml_loader import load_ruleset, ruleset_exists
 from app.services.audit_log_service import audit_log_event
 from app.services.dataset_service import DatasetService
 from app.services.feedback_service import FeedbackService
@@ -256,6 +258,79 @@ async def list_message_feedback_enriched(
         max_rating=max_rating,
         skip=skip,
         limit=limit,
+        ensure_member_fn=DatasetService.ensure_member,
+    )
+
+
+@router.get("/loop/candidates", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+async def preview_feedback_loop_candidates(
+    max_rating: Annotated[int, Query(ge=1, le=5)] = 2,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 200,
+    ruleset: str | None = None,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Preview feedback-loop candidates from real negative feedback.
+
+    Read-only by design: this endpoint does not write hard negatives, rules, or
+    models. Review/promote flows should use the returned candidates explicitly.
+    """
+    ruleset_obj = None
+    ruleset_name = str(ruleset or "").strip()
+    if ruleset_name:
+        if not ruleset_exists(ruleset_name):
+            raise HTTPException(status_code=404, detail="Industry ruleset not found")
+        ruleset_obj = load_ruleset(ruleset_name)
+    return FeedbackService.build_feedback_loop_candidates(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        max_rating=int(max_rating),
+        limit=int(limit),
+        ruleset=ruleset_obj,
+        ensure_member_fn=DatasetService.ensure_member,
+    )
+
+
+@router.post("/loop/hard-negatives/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+async def export_feedback_loop_hard_negatives(
+    max_rating: Annotated[int, Query(ge=1, le=5)] = 2,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 200,
+    dry_run: Annotated[bool, Query()] = True,
+    append: Annotated[bool, Query()] = True,
+    ruleset: str | None = None,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Batch-export feedback-derived hard negatives.
+
+    Safe defaults:
+    - `dry_run=true` previews counts without writing JSONL.
+    - No realtime insert listener is registered.
+    - Exported JSONL is PII-safe and contains lineage ids for audit/review.
+    """
+    ruleset_obj = None
+    ruleset_name = str(ruleset or "").strip()
+    if ruleset_name:
+        if not ruleset_exists(ruleset_name):
+            raise HTTPException(status_code=404, detail="Industry ruleset not found")
+        ruleset_obj = load_ruleset(ruleset_name)
+    return dispatch_feedback_loop_batch(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        max_rating=int(max_rating),
+        limit=int(limit),
+        dry_run=bool(dry_run),
+        append=bool(append),
+        trigger="manual",
+        ruleset=ruleset_obj,
         ensure_member_fn=DatasetService.ensure_member,
     )
 

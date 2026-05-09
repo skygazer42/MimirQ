@@ -32,7 +32,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { usePathname, useRouter } from '@/i18n/navigation'
 import { feedbackApi } from '@/lib/api'
 import { cn, formatDate } from '@/lib/utils'
-import type { MessageFeedbackEnriched } from '@/types'
+import type { FeedbackLoopCandidatesResponse, MessageFeedbackEnriched } from '@/types'
 import { formatApiError } from '@/lib/api-errors'
 import { Badge } from '@/components/ui/badge'
 
@@ -113,6 +113,49 @@ function buildConicGradient(values: number[], colors: string[]): string {
  return `${colors[index]} ${start.toFixed(2)}deg ${end.toFixed(2)}deg`
  })
  return `conic-gradient(${stops.join(', ')})`
+}
+
+function getSummaryNumber(summary: Record<string, unknown> | undefined, key: string): number {
+ const value = summary?.[key]
+ const numeric = Number(value)
+ return Number.isFinite(numeric) ? numeric : 0
+}
+
+function buildLoopCandidateMetrics(data: FeedbackLoopCandidatesResponse | undefined, demoMode: boolean) {
+ if (demoMode) {
+ return {
+ total: 128,
+ negative: 23,
+ hardNeg: 14,
+ triples: 11,
+ ruleCandidates: 8,
+ conversionRate: 60.9,
+ tokens: ['MCU', '485', '授权'],
+ }
+ }
+ const summary = (data?.summary || {}) as Record<string, unknown>
+ const total = getSummaryNumber(summary, 'feedback_total')
+ const negative = getSummaryNumber(summary, 'negative_feedback_total')
+ const hardNeg = getSummaryNumber(summary, 'hard_negative_records')
+ const triples = getSummaryNumber(summary, 'training_triples')
+ const glossary = getSummaryNumber(summary, 'rules_glossary_candidates')
+ const patterns = getSummaryNumber(summary, 'rules_pattern_candidates')
+ const intents = getSummaryNumber(summary, 'rules_intent_candidates')
+ const suggestions = (data?.rules_suggestions || {}) as Record<string, unknown>
+ const glossaryItems = Array.isArray(suggestions.glossary_suggestions) ? suggestions.glossary_suggestions : []
+ const tokens = glossaryItems
+ .map((item) => (typeof item === 'object' && item !== null ? String((item as Record<string, unknown>).token || '') : ''))
+ .filter(Boolean)
+ .slice(0, 3)
+ return {
+ total,
+ negative,
+ hardNeg,
+ triples,
+ ruleCandidates: glossary + patterns + intents,
+ conversionRate: negative > 0 ? Number(((hardNeg / negative) * 100).toFixed(1)) : 0,
+ tokens,
+ }
 }
 
 function FeedbackSummaryCard({
@@ -445,8 +488,23 @@ export default function FeedbackTriagePage() {
  staleTime: 5_000,
  })
 
+ const {
+ data: loopCandidateData,
+ isFetching: isLoopFetching,
+ refetch: refetchLoopCandidates,
+ } = useQuery({
+ queryKey: ['feedback-loop-candidates'],
+ queryFn: ({ signal }) => feedbackApi.loopCandidates({ max_rating: 2, limit: 200, ruleset: 'industrial_control' }, { signal }),
+ enabled: !demoMode,
+ staleTime: 15_000,
+ })
+
  const items = useMemo(() => (demoMode ? buildDemoFeedbackItems() : data?.items || []), [data, demoMode])
  const demoMetrics = useMemo(() => buildDemoFeedbackMetrics(), [])
+ const loopMetrics = useMemo(
+ () => buildLoopCandidateMetrics(loopCandidateData, demoMode),
+ [demoMode, loopCandidateData]
+ )
 
  const stats = useMemo(() => {
  if (demoMode) {
@@ -692,9 +750,10 @@ export default function FeedbackTriagePage() {
  return
  }
  void refetch()
+ void refetchLoopCandidates()
  }}
  >
- <RefreshCw className={cn('h-3.5 w-3.5', isFetching ? 'animate-spin motion-reduce:animate-none' : '')} />
+ <RefreshCw className={cn('h-3.5 w-3.5', isFetching || isLoopFetching ? 'animate-spin motion-reduce:animate-none' : '')} />
  刷新数据
  </Button>
  </div>
@@ -1091,6 +1150,55 @@ export default function FeedbackTriagePage() {
  </div>
  </div>
  ))}
+ </div>
+ </div>
+
+ <div className="rounded-2xl border border-border/60 bg-card p-4 shadow-subtle">
+ <div className="flex items-center justify-between gap-3">
+ <div>
+ <div className="text-[0.98rem] font-semibold text-foreground">反哺候选</div>
+ <p className="mt-1 text-[11px] leading-5 text-muted-foreground">只读预览，不自动上线</p>
+ </div>
+ <Badge variant="outline" className="rounded-full px-2.5 py-1 text-[10px] font-medium">
+ {loopMetrics.negative} 条低分
+ </Badge>
+ </div>
+ <div className="mt-3 grid grid-cols-3 gap-2">
+ <div className="rounded-xl border border-border/60 bg-muted/35 p-2.5">
+ <div className="text-[10px] font-medium text-muted-foreground">HardNeg</div>
+ <div className="mt-1 font-mono text-[1.05rem] font-semibold text-foreground">{loopMetrics.hardNeg}</div>
+ </div>
+ <div className="rounded-xl border border-border/60 bg-muted/35 p-2.5">
+ <div className="text-[10px] font-medium text-muted-foreground">训练三元组</div>
+ <div className="mt-1 font-mono text-[1.05rem] font-semibold text-foreground">{loopMetrics.triples}</div>
+ </div>
+ <div className="rounded-xl border border-border/60 bg-muted/35 p-2.5">
+ <div className="text-[10px] font-medium text-muted-foreground">规则候选</div>
+ <div className="mt-1 font-mono text-[1.05rem] font-semibold text-foreground">{loopMetrics.ruleCandidates}</div>
+ </div>
+ </div>
+ <div className="mt-3 rounded-xl border border-border/60 bg-background/70 p-3">
+ <div className="flex items-center justify-between text-[11px]">
+ <span className="text-muted-foreground">负反馈转可用候选率</span>
+ <span className="font-mono font-semibold text-foreground">{loopMetrics.conversionRate.toFixed(1)}%</span>
+ </div>
+ <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+ <div
+ className="h-full rounded-full bg-indigo transition-[width] duration-300 motion-reduce:transition-none"
+ style={{ width: `${Math.max(0, Math.min(100, loopMetrics.conversionRate))}%` }}
+ />
+ </div>
+ </div>
+ <div className="mt-3 flex flex-wrap gap-1.5">
+ {loopMetrics.tokens.length ? (
+ loopMetrics.tokens.map((token) => (
+ <Badge key={token} variant="secondary" className="rounded-full px-2.5 py-1 text-[10px] font-medium">
+ {token}
+ </Badge>
+ ))
+ ) : (
+ <span className="text-[11px] text-muted-foreground">暂无 glossary 候选，积累更多低分反馈后展示。</span>
+ )}
  </div>
  </div>
 

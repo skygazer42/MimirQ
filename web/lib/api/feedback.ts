@@ -3,6 +3,7 @@ import type {
   MessageFeedback,
   MessageFeedbackCreate,
   MessageFeedbackEnrichedListResponse,
+  FeedbackLoopCandidatesResponse,
   MessageFeedbackListResponse,
   RegressionCase,
 } from '@/types'
@@ -33,6 +34,15 @@ export const feedbackApi = {
     max_rating?: number
   }, options?: ApiRequestOptions): Promise<MessageFeedbackEnrichedListResponse> {
     const { data } = await apiClient.get('/feedback/messages/enriched', { params, signal: options?.signal })
+    return data
+  },
+
+  async loopCandidates(params?: {
+    max_rating?: number
+    limit?: number
+    ruleset?: string
+  }, options?: ApiRequestOptions): Promise<FeedbackLoopCandidatesResponse> {
+    const { data } = await apiClient.get('/feedback/loop/candidates', { params, signal: options?.signal })
     return data
   },
 

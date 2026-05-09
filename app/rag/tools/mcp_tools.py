@@ -386,6 +386,251 @@ async def get_document_content(
     )
 
 
+def _get_document_sync(
+    document_id: str,
+    *,
+    dataset_id: str | None = None,
+    account_id: str | None = None,
+) -> dict[str, Any]:
+    try:
+        from app.models.document import Document as DBDocument
+
+        if dataset_id is None or not str(dataset_id).strip():
+            return {"document_id": document_id, "error": "dataset_id is required"}
+        try:
+            ds_uuid = UUID(str(dataset_id))
+            doc_uuid = UUID(str(document_id))
+            tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or "").strip())
+        except Exception:
+            return {"document_id": document_id, "error": "dataset_id/document_id/DEFAULT_TENANT_ID must be UUIDs"}
+
+        with _db_session() as db:
+            document = (
+                db.query(DBDocument)
+                .filter(
+                    DBDocument.id == doc_uuid,
+                    DBDocument.tenant_id == tenant_uuid,
+                    DBDocument.dataset_id == ds_uuid,
+                    DBDocument.disabled_at.is_(None),
+                )
+                .first()
+            )
+            if not document:
+                return {"document_id": document_id, "error": "Document not found"}
+
+            mode = str(getattr(document, "access_mode", "") or "").strip().lower()
+            owner = str(getattr(document, "owner_id", "") or "").strip()
+            if account_id:
+                actor = str(account_id or "").strip()
+                is_owner = bool(owner and owner == actor)
+                if mode and mode not in {"inherit", "all_team_members"} and not is_owner:
+                    if mode == "only_me":
+                        return {"document_id": document_id, "error": _NO_DOCUMENT_ACCESS_ERROR}
+                    if mode == "partial_members" and not _document_permission_exists(
+                        db,
+                        tenant_id=tenant_uuid,
+                        document_id=doc_uuid,
+                        account_id=actor,
+                    ):
+                        return {"document_id": document_id, "error": _NO_DOCUMENT_ACCESS_ERROR}
+
+            meta = getattr(document, "doc_metadata", None)
+            meta = meta if isinstance(meta, dict) else {}
+            return {
+                "document_id": str(document.id),
+                "dataset_id": str(ds_uuid),
+                "filename": str(getattr(document, "filename", "") or ""),
+                "file_type": str(getattr(document, "file_type", "") or ""),
+                "chunk_count": int(getattr(document, "chunk_count", 0) or 0),
+                "total_characters": int(getattr(document, "total_characters", 0) or 0),
+                "page_count": meta.get("page_count"),
+                "description": meta.get("doc_description") or meta.get("description"),
+            }
+    except Exception as e:
+        logger.error("Failed to get document info: %s", e)
+        return {"document_id": document_id, "error": str(e)}
+
+
+async def get_document(
+    document_id: str,
+    *,
+    dataset_id: str | None = None,
+    account_id: str | None = None,
+) -> dict[str, Any]:
+    """Get bounded document metadata for tool-agent style retrieval."""
+    return await asyncio.to_thread(_get_document_sync, document_id, dataset_id=dataset_id, account_id=account_id)
+
+
+def _get_document_structure_sync(
+    document_id: str,
+    *,
+    dataset_id: str | None = None,
+    account_id: str | None = None,
+    max_nodes: int = 200,
+) -> dict[str, Any]:
+    try:
+        from app.rag.retrieval.document_structure import load_document_structure
+
+        if dataset_id is None or not str(dataset_id).strip():
+            return {"schema": "mimirq.document_structure.v1", "document": {"document_id": document_id}, "nodes": [], "error": "dataset_id is required"}
+        try:
+            ds_uuid = UUID(str(dataset_id))
+            doc_uuid = UUID(str(document_id))
+            tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or "").strip())
+        except Exception:
+            return {
+                "schema": "mimirq.document_structure.v1",
+                "document": {"document_id": document_id},
+                "nodes": [],
+                "error": "dataset_id/document_id/DEFAULT_TENANT_ID must be UUIDs",
+            }
+
+        with _db_session() as db:
+            return load_document_structure(
+                db=db,
+                tenant_id=tenant_uuid,
+                account_id=str(account_id or ""),
+                dataset_id=ds_uuid,
+                document_id=doc_uuid,
+                max_nodes=max_nodes,
+            )
+    except Exception as e:
+        logger.error("Failed to get document structure: %s", e)
+        return {"schema": "mimirq.document_structure.v1", "document": {"document_id": document_id}, "nodes": [], "error": str(e)}
+
+
+async def get_document_structure(
+    document_id: str,
+    *,
+    dataset_id: str | None = None,
+    account_id: str | None = None,
+    max_nodes: int = 200,
+) -> dict[str, Any]:
+    """Get PageIndex-style section structure derived from existing hierarchy metadata."""
+    return await asyncio.to_thread(
+        _get_document_structure_sync,
+        document_id,
+        dataset_id=dataset_id,
+        account_id=account_id,
+        max_nodes=max_nodes,
+    )
+
+
+def _parse_pages_selector(pages: Any) -> list[int]:
+    if pages is None:
+        return []
+    if isinstance(pages, int):
+        return [pages] if pages > 0 else []
+    raw = str(pages or "").strip()
+    if not raw:
+        return []
+    out: list[int] = []
+    for part in raw.split(","):
+        token = part.strip()
+        if not token:
+            continue
+        if "-" in token:
+            left, right = token.split("-", 1)
+            try:
+                start = int(left.strip())
+                end = int(right.strip())
+            except Exception:
+                continue
+            if start <= 0 or end <= 0:
+                continue
+            lo, hi = sorted((start, end))
+            out.extend(range(lo, min(hi, lo + 99) + 1))
+            continue
+        try:
+            value = int(token)
+        except Exception:
+            continue
+        if value > 0:
+            out.append(value)
+    return sorted(set(out))[:100]
+
+
+def _get_page_content_sync(
+    document_id: str,
+    pages: Any,
+    *,
+    dataset_id: str | None = None,
+    account_id: str | None = None,
+    max_chars: int = 50_000,
+) -> dict[str, Any]:
+    selected_pages = _parse_pages_selector(pages)
+    if not selected_pages:
+        result = _get_document_content_sync(
+            document_id=document_id,
+            page=None,
+            dataset_id=dataset_id,
+            account_id=account_id,
+            max_chars=max_chars,
+        )
+        result["pages_requested"] = []
+        return result
+
+    parts: list[str] = []
+    returned_chunks = 0
+    truncated = False
+    remaining = max(1_000, min(int(max_chars or 50_000), 500_000))
+    last: dict[str, Any] = {"document_id": document_id, "dataset_id": dataset_id}
+    for page in selected_pages:
+        if remaining <= 0:
+            truncated = True
+            break
+        result = _get_document_content_sync(
+            document_id=document_id,
+            page=page,
+            dataset_id=dataset_id,
+            account_id=account_id,
+            max_chars=remaining,
+        )
+        last = result
+        if result.get("error"):
+            return {**result, "pages_requested": selected_pages}
+        text = str(result.get("content") or "")
+        if text.strip():
+            prefix = f"\n\n[page {page}]\n" if parts else f"[page {page}]\n"
+            parts.append(prefix + text)
+            remaining -= len(prefix) + len(text)
+        returned_chunks += int(result.get("returned_chunks") or 0)
+        if result.get("truncated"):
+            truncated = True
+            break
+
+    return {
+        "document_id": document_id,
+        "dataset_id": dataset_id,
+        "filename": last.get("filename"),
+        "file_type": last.get("file_type"),
+        "pages_requested": selected_pages,
+        "pages": selected_pages,
+        "returned_chunks": int(returned_chunks),
+        "truncated": bool(truncated),
+        "content": "".join(parts),
+    }
+
+
+async def get_page_content(
+    document_id: str,
+    pages: Any,
+    *,
+    dataset_id: str | None = None,
+    account_id: str | None = None,
+    max_chars: int = 50_000,
+) -> dict[str, Any]:
+    """Get page-range content for PageIndex-style tool-agent retrieval."""
+    return await asyncio.to_thread(
+        _get_page_content_sync,
+        document_id,
+        pages,
+        dataset_id=dataset_id,
+        account_id=account_id,
+        max_chars=max_chars,
+    )
+
+
 # ============================================================================
 # Utility Tools
 # ============================================================================
@@ -878,6 +1123,42 @@ def register_default_tools(registry: MCPToolRegistry | None = None) -> MCPToolRe
         ],
     )
 
+    registry.register(
+        name="get_document",
+        func=get_document,
+        description="Get bounded document metadata",
+        parameters=[
+            ToolParameter(name="document_id", type="string", description="Document ID (UUID)", required=True),
+            ToolParameter(name="dataset_id", type="string", description="Dataset ID (UUID)", required=True),
+            ToolParameter(name="account_id", type="string", description="Optional account/user id for ACL trimming", default=None),
+        ],
+    )
+
+    registry.register(
+        name="get_document_structure",
+        func=get_document_structure,
+        description="Get document section structure from existing hierarchy metadata",
+        parameters=[
+            ToolParameter(name="document_id", type="string", description="Document ID (UUID)", required=True),
+            ToolParameter(name="dataset_id", type="string", description="Dataset ID (UUID)", required=True),
+            ToolParameter(name="account_id", type="string", description="Optional account/user id for ACL trimming", default=None),
+            ToolParameter(name="max_nodes", type="integer", description="Max structure nodes", default=200),
+        ],
+    )
+
+    registry.register(
+        name="get_page_content",
+        func=get_page_content,
+        description="Get page or page-range content for document-structure navigation",
+        parameters=[
+            ToolParameter(name="document_id", type="string", description="Document ID (UUID)", required=True),
+            ToolParameter(name="pages", type="string", description="Page selector, e.g. '3', '5-7', or '3,8'", required=True),
+            ToolParameter(name="dataset_id", type="string", description="Dataset ID (UUID)", required=True),
+            ToolParameter(name="account_id", type="string", description="Optional account/user id for ACL trimming", default=None),
+            ToolParameter(name="max_chars", type="integer", description="Max characters to return", default=50000),
+        ],
+    )
+
     # Utility tools
     registry.register(
         name="get_current_time",
@@ -928,7 +1209,7 @@ def register_default_tools(registry: MCPToolRegistry | None = None) -> MCPToolRe
         ],
     )
 
-    logger.info("Registered %d default tools", 7)
+    logger.info("Registered %d default tools", 10)
     return registry
 
 

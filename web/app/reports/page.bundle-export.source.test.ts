@@ -8,6 +8,6 @@ describe('reports page bundle export', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'page-client.tsx'), 'utf8')
 
     expect(src).toContain('reportApi.exportDatasetReportBundleZip')
-    expect(src).toContain('导出 Bundle ZIP')
+    expect(src).toContain('导出数据包 ZIP')
   })
 })

@@ -41,6 +41,33 @@ export interface ClipImageSearchResponse {
   metrics: Record<string, any>
 }
 
+export interface DocumentStructureRequest {
+  dataset_id: string
+  document_id: string
+  max_nodes?: number
+}
+
+export type DocumentStructureResponse = Record<string, unknown>
+
+export interface TreeSearchPreviewRequest {
+  query: string
+  dataset_id?: string | null
+  document_ids?: string[]
+  rag_config?: Record<string, unknown>
+  max_structure_docs?: number
+  max_nodes_per_doc?: number
+}
+
+export interface TreeSearchPreviewResponse {
+  schema: 'mimirq.tree_search_preview.v1'
+  query: string
+  query_for_retrieval: string
+  citations: Array<Record<string, unknown>>
+  document_structures: Array<Record<string, unknown>>
+  selected_sections: Array<Record<string, unknown>>
+  metrics: Record<string, unknown>
+}
+
 export interface RagConfigTemplate {
   id: string
   tenant_id: string
@@ -113,6 +140,16 @@ const evidenceRetrieveResponseSchema = z
 export const ragApi = {
   async retrievePreview(params: RetrievePreviewRequest): Promise<RetrievePreviewResponse> {
     const { data } = await apiClient.post('/rag/retrieve-preview', params)
+    return data
+  },
+
+  async documentStructure(params: DocumentStructureRequest): Promise<DocumentStructureResponse> {
+    const { data } = await apiClient.post('/rag/document-structure', params)
+    return data
+  },
+
+  async treeSearchPreview(params: TreeSearchPreviewRequest): Promise<TreeSearchPreviewResponse> {
+    const { data } = await apiClient.post('/rag/tree-search-preview', params)
     return data
   },
 

@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
@@ -35,8 +34,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import { promptTemplateApi, PromptTemplate, PromptTemplateCreate } from '@/lib/api'
-import { Plus, Edit, Trash2, Copy, Check, X, Eye, Filter, Wand2, MessageSquare, ListChecks, CircleCheckBig, CircleOff } from 'lucide-react'
+import { Plus, Edit, Trash2, Copy, Check, X, Eye, Wand2, MessageSquare, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { KgExtractPromptSettings } from '@/components/kg-extract-prompt-settings'
 import { KgPredicateOntologySettings } from '@/components/kg-predicate-ontology-settings'
@@ -46,7 +50,6 @@ import { cn, detachPromise } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
 import { EmptyState } from '@/components/ui/empty-state'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
-import { PromptRagOperationsPanel } from '@/components/prompts/prompt-rag-operations-panel'
 
 export default function PromptsPage() {
   const [templates, setTemplates] = useState<PromptTemplate[]>([])
@@ -55,6 +58,7 @@ export default function PromptsPage() {
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState<PromptTemplate | null>(null)
   const [previewTemplate, setPreviewTemplate] = useState<PromptTemplate | null>(null)
+  const [deleteTemplateTarget, setDeleteTemplateTarget] = useState<PromptTemplate | null>(null)
 
   // Batch selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -63,6 +67,8 @@ export default function PromptsPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
   const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
 
   // Form state
   const [formData, setFormData] = useState<PromptTemplateCreate>({
@@ -129,25 +135,56 @@ export default function PromptsPage() {
       return true
     })
 
-}, [templates, searchQuery, categoryFilter, statusFilter])
+  }, [templates, searchQuery, categoryFilter, statusFilter])
 
-const activeCount = useMemo(() => templates.filter((template) => template.is_active).length, [templates])
-const filteredActiveCount = useMemo(
-  () => filteredTemplates.filter((template) => template.is_active).length,
-  [filteredTemplates]
-)
-const inactiveCount = templates.length - activeCount
-const filteredInactiveCount = filteredTemplates.length - filteredActiveCount
+  const activeCount = useMemo(() => templates.filter((template) => template.is_active).length, [templates])
+  const inactiveCount = templates.length - activeCount
+  const pendingValidationCount = useMemo(
+    () => templates.filter((template) => template.usage_count === 0).length,
+    [templates]
+  )
+  const totalPages = Math.max(1, Math.ceil(filteredTemplates.length / pageSize))
+  const safeCurrentPage = Math.min(currentPage, totalPages)
+  const paginatedTemplates = useMemo(() => {
+    const start = (safeCurrentPage - 1) * pageSize
+    return filteredTemplates.slice(start, start + pageSize)
+  }, [filteredTemplates, pageSize, safeCurrentPage])
+  const currentPageIds = useMemo(() => paginatedTemplates.map((template) => template.id), [paginatedTemplates])
+  const allCurrentPageSelected = currentPageIds.length > 0 && currentPageIds.every((id) => selectedIds.has(id))
 
-const activeStatusBadgeClass = 'rounded-md border-sky-200 bg-sky-50 text-sky-700'
-const inactiveStatusBadgeClass = 'rounded-md border-slate-200 bg-slate-50 text-slate-600'
+  const activeStatusBadgeClass = 'rounded-md border-sky-200 bg-sky-50 text-sky-700'
+  const inactiveStatusBadgeClass = 'rounded-md border-slate-200 bg-slate-50 text-slate-600'
 
-// Batch selection handlers
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery, categoryFilter, statusFilter, pageSize])
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages)
+  }, [currentPage, totalPages])
+
+  const formatDateTime = (value?: string) => {
+    if (!value) return '-'
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return '-'
+    const pad = (part: number) => String(part).padStart(2, '0')
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+  }
+
+  // Batch selection handlers
   const handleSelectAll = () => {
-    if (selectedIds.size === filteredTemplates.length) {
-      setSelectedIds(new Set())
+    if (allCurrentPageSelected) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        for (const id of currentPageIds) next.delete(id)
+        return next
+      })
     } else {
-      setSelectedIds(new Set(filteredTemplates.map((t) => t.id)))
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        for (const id of currentPageIds) next.add(id)
+        return next
+      })
     }
   }
 
@@ -276,10 +313,6 @@ const inactiveStatusBadgeClass = 'rounded-md border-slate-200 bg-slate-50 text-s
     }
   }
 
-  const stopTemplateCardClick = (event: React.MouseEvent<HTMLElement>) => {
-    event.stopPropagation()
-  }
-
   return (
     <AppFrame>
       <AnalysisPageShell
@@ -294,346 +327,344 @@ const inactiveStatusBadgeClass = 'rounded-md border-slate-200 bg-slate-50 text-s
         bodyClassName="!pb-0"
         bodyContainerClassName="max-w-none"
       >
-
-<div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_22%)] shadow-[0_1px_0_rgba(15,23,42,0.04)]">
-  <div className="flex flex-col gap-2.5 border-b border-slate-200/80 bg-muted/35 px-4 py-3 lg:flex-row lg:items-end lg:justify-between">
-    <div className="min-w-0">
-      <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">提示词中心 · 管理工作台</div>
-      <div className="mt-1 text-[15px] font-semibold tracking-[-0.01em] text-foreground">提示词模板配置与批量运营</div>
-      <p className="mt-1 text-[12px] leading-5 text-muted-foreground">统一管理模板、启停状态、分类与变量，面向生产 RAG 场景做高密度维护。</p>
-    </div>
-    <div className="flex flex-wrap items-center gap-2 text-[11px]">
-      <Badge variant="outline" className="rounded-md border-slate-200/80 bg-card text-[11px] text-slate-600"><ListChecks className="mr-1 size-3" />总模板 {templates.length}</Badge>
-      <Badge variant="outline" className={cn('text-[11px]', activeStatusBadgeClass)}><CircleCheckBig className="mr-1 size-3" />已启用 {activeCount}</Badge>
-      <Badge variant="outline" className={cn('text-[11px]', inactiveStatusBadgeClass)}><CircleOff className="mr-1 size-3" />已停用 {inactiveCount}</Badge>
-      <Badge variant="outline" className="rounded-md border-slate-200/80 bg-card text-[11px] text-slate-600"><Filter className="mr-1 size-3" />筛选后 {filteredTemplates.length}</Badge>
-    </div>
-  </div>
-
-  <div className="space-y-4 p-4">
-    <section className="rounded-xl border border-slate-200/80 bg-card p-3">
-      <div className="grid gap-2 lg:grid-cols-[minmax(280px,1fr)_170px_170px_auto]">
-        <SearchInput
-          value={searchQuery}
-          onValueChange={setSearchQuery}
-          placeholder="搜索模板名称、描述、内容或标签..."
-          containerClassName="w-full"
-          inputClassName="h-9 text-[12px]"
-        />
-        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="h-9 w-full rounded-lg border-slate-200/80 bg-card text-[12px]">
-            <Filter className="mr-2 size-4" />
-            <SelectValue placeholder="筛选分类" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">所有分类</SelectItem>
-            {categories.map((cat) => (
-              <SelectItem key={cat} value={cat}>
-                {cat}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="h-9 w-full rounded-lg border-slate-200/80 bg-card text-[12px]">
-            <SelectValue placeholder="筛选状态" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">所有状态</SelectItem>
-            <SelectItem value="active">已启用</SelectItem>
-            <SelectItem value="inactive">已停用</SelectItem>
-          </SelectContent>
-        </Select>
-        <Button onClick={handleCreate} className="h-9 gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:bg-primary/90">
-          <Plus className="size-4" />
-          创建模板
-        </Button>
-      </div>
-    </section>
-
-    <section className="rounded-xl border border-slate-200/80 bg-card p-3">
-      <div className="mb-3 flex flex-wrap items-center gap-2 border-b border-slate-200/70 pb-2 text-[11px] text-muted-foreground">
-        <Badge variant="outline" className="rounded-md border-slate-200/80 bg-slate-50 text-[11px] text-slate-600">高级配置</Badge>
-        <span>KG 抽取相关提示配置与本体约束</span>
-      </div>
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <KgExtractPromptSettings templates={templates} />
-        <KgPredicateOntologySettings />
-      </div>
-    </section>
-
-    <PromptRagOperationsPanel />
-
-    {selectedIds.size > 0 && (
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-sky-200/80 bg-sky-50/70 px-3 py-2">
-        <div className="flex items-center gap-2">
-          <Checkbox checked={true} onCheckedChange={handleSelectAll} />
-          <span className="text-[12px] font-medium text-sky-800">已选择 {selectedIds.size} 个模板</span>
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 rounded-md border-sky-200 bg-card px-2.5 text-[11px] text-sky-700 hover:bg-sky-50"
-            onClick={() => handleBatchActivate(true)}
-          >
-            批量启用
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 rounded-md border-slate-200 bg-card px-2.5 text-[11px] text-slate-700 hover:bg-slate-50"
-            onClick={() => handleBatchActivate(false)}
-          >
-            批量停用
-          </Button>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button size="sm" variant="destructive" className="h-7 rounded-md px-2.5 text-[11px]">
-                <Trash2 className="mr-1 size-3" />
-                批量删除
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>批量删除模板？</AlertDialogTitle>
-                <AlertDialogDescription>
-                  你将删除 <span className="font-mono">{selectedIds.size}</span> 个提示词模板。此操作不可撤销。
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>取消</AlertDialogCancel>
-                <AlertDialogAction onClick={handleBatchDelete}>删除</AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
-      </div>
-    )}
-
-    {(() => {
-      if (loading) {
-        return <PageSkeleton className="py-8" />
-      }
-
-      if (filteredTemplates.length === 0) {
-        return (
-          <EmptyState
-            icon={MessageSquare}
-            title="暂无提示词模板"
-            description={templates.length === 0 ? '还没有创建任何提示词模板。' : '没有找到匹配的模板，请尝试调整筛选条件。'}
-          >
-            {templates.length === 0 ? (
-              <Button onClick={handleCreate} className="h-8 rounded-lg bg-primary px-3 text-xs text-primary-foreground hover:bg-primary/90">
-                <Plus className="mr-2 size-4" />
-                创建第一个模板
-              </Button>
-            ) : null}
-          </EmptyState>
-        )
-      }
-
-      return (
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200/80 bg-card px-3 py-2">
-            <label className="inline-flex items-center gap-2 text-[12px] text-slate-700">
-              <Checkbox
-                checked={selectedIds.size === filteredTemplates.length && filteredTemplates.length > 0}
-                onCheckedChange={handleSelectAll}
-              />
-              全选
-            </label>
-            <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-              <Badge variant="outline" className={cn('text-[11px]', activeStatusBadgeClass)}>已启用 {filteredActiveCount}</Badge>
-              <Badge variant="outline" className={cn('text-[11px]', inactiveStatusBadgeClass)}>已停用 {filteredInactiveCount}</Badge>
+        <div className="min-h-0 space-y-4 bg-[#f8fafc] px-5 py-4">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <div className="min-w-0 pt-0.5">
+              <div className="flex items-center gap-2 text-[12px] font-medium text-slate-400">
+                <span>提示词</span>
+                <ChevronRight className="size-3.5" />
+                <span className="text-slate-600">模板管理</span>
+              </div>
+              <h1 className="mt-4 text-[24px] font-semibold tracking-[-0.025em] text-slate-950">提示词模板</h1>
+              <p className="mt-2 max-w-[78ch] text-[13px] leading-5 text-slate-500">
+                维护对话与 KG 系统使用的模板资产；模板为系统提供稳定输出，避免干扰模板的实时编辑。
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:min-w-[560px]">
+              {[
+                { label: '总数', value: templates.length, tone: 'slate' },
+                { label: '启用', value: activeCount, tone: 'blue' },
+                { label: '停用', value: inactiveCount, tone: 'slate' },
+                { label: '待验证', value: pendingValidationCount, tone: 'slate' },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  className={cn(
+                    'rounded-xl border bg-white px-4 py-3 shadow-[0_1px_0_rgba(15,23,42,0.03)]',
+                    item.tone === 'blue' ? 'border-blue-200/90' : 'border-slate-200/80'
+                  )}
+                >
+                  <div className={cn('text-[13px] font-semibold', item.tone === 'blue' ? 'text-blue-600' : 'text-slate-500')}>{item.label}</div>
+                  <div className="mt-3 text-[22px] font-semibold leading-none tabular-nums text-slate-950">{item.value}</div>
+                </div>
+              ))}
             </div>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {filteredTemplates.map((template) => (
-              <Card
-                key={template.id}
-                role="button"
-                tabIndex={0}
-                aria-label={`预览模板：${template.name}`}
-                onClick={() => handlePreview(template)}
-                onKeyDown={(event) => {
-                  if (event.currentTarget !== event.target) return
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault()
-                    handlePreview(template)
-                  }
-                }}
-                className={cn(
-                  'relative cursor-pointer rounded-xl border border-slate-200/80 bg-card shadow-none transition-colors hover:border-sky-300/80 focus-ring',
-                  selectedIds.has(template.id) && 'border-sky-300 bg-sky-50/40'
-                )}
-              >
-                <CardHeader className="p-3 pb-2">
-                  <div className="flex items-start gap-2.5">
-                    <Checkbox
-                      checked={selectedIds.has(template.id)}
-                      onCheckedChange={() => handleSelectOne(template.id)}
-                      onClick={(event) => event.stopPropagation()}
-                      className="mt-0.5"
-                    />
-                    <div className="min-w-0 flex-1 space-y-1.5">
-                      <CardTitle className="flex flex-wrap items-center gap-1.5 text-[13px] font-semibold leading-5 text-slate-900">
-                        <span className="truncate">{template.name}</span>
-                        {template.is_system ? <Badge variant="secondary" className="h-5 rounded-md text-[11px]">系统</Badge> : null}
-                        <Badge variant="outline" className={cn('h-5 text-[11px]', template.is_active ? activeStatusBadgeClass : inactiveStatusBadgeClass)}>
-                          {template.is_active ? (
-                            <>
-                              <Check className="mr-1 size-3" />
-                              启用
-                            </>
-                          ) : (
-                            <>
-                              <X className="mr-1 size-3" />
-                              停用
-                            </>
-                          )}
-                        </Badge>
-                      </CardTitle>
-
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {template.category ? (
-                          <Badge variant="outline" className="h-5 rounded-md border-slate-200/80 bg-slate-50 text-[11px] text-slate-600">
-                            {template.category}
-                          </Badge>
-                        ) : null}
-                        <Badge variant="outline" className="h-5 rounded-md border-slate-200/80 bg-card text-[11px] text-slate-500">
-                          使用 {template.usage_count}
-                        </Badge>
+          <section className="rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_0_rgba(15,23,42,0.03)]">
+            <div className="flex flex-col gap-3 border-b border-slate-200/75 p-4 xl:flex-row xl:items-center">
+              <SearchInput
+                value={searchQuery}
+                onValueChange={setSearchQuery}
+                placeholder="搜索模板名称、描述、内容或标签..."
+                containerClassName="min-w-0 flex-1"
+                inputClassName="h-10 rounded-lg border-slate-200/90 bg-white text-[13px]"
+              />
+              <div className="grid grid-cols-2 gap-3 md:flex md:items-center">
+                <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                  <SelectTrigger className="h-10 w-full rounded-lg border-slate-200/90 bg-white text-[13px] md:w-[150px]">
+                    <SelectValue placeholder="所有分类" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">所有分类</SelectItem>
+                    {categories.map((cat) => (
+                      <SelectItem key={cat} value={cat}>
+                        {cat}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="h-10 w-full rounded-lg border-slate-200/90 bg-white text-[13px] md:w-[150px]">
+                    <SelectValue placeholder="所有状态" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">所有状态</SelectItem>
+                    <SelectItem value="active">已启用</SelectItem>
+                    <SelectItem value="inactive">已停用</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button onClick={handleCreate} className="h-10 gap-1.5 rounded-lg bg-blue-600 px-4 text-[13px] font-semibold text-white hover:bg-blue-700">
+                  <Plus className="size-4" />
+                  创建模板
+                </Button>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="group h-10 justify-between rounded-lg border-slate-200/90 !bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] px-2.5 text-left !text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:!bg-[linear-gradient(180deg,#ffffff_0%,#f2f7ff_100%)] hover:!text-slate-900 data-[state=open]:border-blue-200 data-[state=open]:!bg-[linear-gradient(180deg,#ffffff_0%,#f2f7ff_100%)] data-[state=open]:!text-slate-900 md:w-[286px]"
+                    >
+                      <span className="mr-2 flex size-7 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-blue-50 text-blue-600 transition-colors group-hover:bg-blue-100/70">
+                        <Wand2 className="size-3.5" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex min-w-0 items-center gap-1.5 leading-4">
+                          <span className="truncate text-[13px] font-semibold text-slate-900">场景绑定</span>
+                          <span className="rounded-full border border-blue-100 bg-blue-50 px-1.5 py-0 text-[9px] font-semibold leading-4 text-blue-600">
+                            KG
+                          </span>
+                        </span>
+                        <span className="block truncate text-[11px] font-normal leading-4 text-slate-500">抽取 · 召回 · 关系治理</span>
+                      </span>
+                      <ChevronDown className="ml-2 size-4 shrink-0 text-slate-400 transition-transform group-data-[state=open]:rotate-180 group-data-[state=open]:text-blue-500" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="max-h-[76vh] w-[540px] overflow-y-auto rounded-2xl border-slate-200 bg-white p-0 shadow-[0_18px_50px_rgba(15,23,42,0.14)]">
+                    <div className="border-b border-slate-100 bg-[linear-gradient(180deg,#f8fbff_0%,#ffffff_100%)] px-4 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-[13px] font-semibold text-slate-950">场景绑定</div>
+                          <div className="mt-1 text-[12px] leading-5 text-slate-500">把提示词模板绑定到 KG 抽取、对话召回和关系治理。</div>
+                        </div>
+                        <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-500">
+                          低频配置
+                        </span>
                       </div>
-
-                      <CardDescription className="line-clamp-2 text-[12px] leading-5 text-slate-500">
-                        {template.description || '无描述'}
-                      </CardDescription>
                     </div>
-                  </div>
-                </CardHeader>
-
-                <CardContent className="space-y-2.5 p-3 pt-0">
-                  <div className="space-y-1">
-                    <div className="text-[11px] font-medium text-slate-500">变量</div>
-                    <div className="flex min-h-6 flex-wrap gap-1">
-                      {template.variables.length > 0 ? (
-                        template.variables.map((variable) => (
-                          <Badge key={variable} variant="secondary" className="h-5 rounded-md bg-slate-100 px-1.5 font-mono text-[11px] text-slate-700">
-                            {`{${variable}}`}
-                          </Badge>
-                        ))
-                      ) : (
-                        <span className="text-[11px] text-muted-foreground">无</span>
-                      )}
+                    <div className="space-y-3 bg-slate-50/45 p-3">
+                      <KgExtractPromptSettings templates={templates} />
+                      <KgPredicateOntologySettings />
                     </div>
-                  </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
 
-                  {template.tags.length > 0 ? (
-                    <div className="space-y-1">
-                      <div className="text-[11px] font-medium text-slate-500">标签</div>
-                      <div className="flex flex-wrap gap-1">
-                        {template.tags.map((tag) => (
-                          <Badge key={tag} variant="outline" className="h-5 rounded-md border-slate-200/80 bg-card px-1.5 text-[11px] text-slate-600">
-                            {tag}
-                          </Badge>
+            {selectedIds.size > 0 ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-sky-100 bg-sky-50/70 px-4 py-2">
+                <div className="flex items-center gap-2">
+                  <Checkbox checked={true} onCheckedChange={handleSelectAll} />
+                  <span className="text-[12px] font-medium text-sky-800">已选择 {selectedIds.size} 个模板</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <Button size="sm" variant="outline" className="h-7 rounded-md border-sky-200 bg-white px-2.5 text-[11px] text-sky-700 hover:bg-sky-50" onClick={() => handleBatchActivate(true)}>
+                    批量启用
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-7 rounded-md border-slate-200 bg-white px-2.5 text-[11px] text-slate-700 hover:bg-slate-50" onClick={() => handleBatchActivate(false)}>
+                    批量停用
+                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button size="sm" variant="destructive" className="h-7 rounded-md px-2.5 text-[11px]">
+                        <Trash2 className="mr-1 size-3" />
+                        批量删除
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>批量删除模板？</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          你将删除 <span className="font-mono">{selectedIds.size}</span> 个提示词模板。此操作不可撤销。
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>取消</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleBatchDelete}>删除</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              </div>
+            ) : null}
+
+            {(() => {
+              if (loading) {
+                return <PageSkeleton className="py-8" />
+              }
+
+              if (filteredTemplates.length === 0) {
+                return (
+                  <EmptyState
+                    icon={MessageSquare}
+                    title="暂无提示词模板"
+                    description={templates.length === 0 ? '还没有创建任何提示词模板。' : '没有找到匹配的模板，请尝试调整筛选条件。'}
+                  >
+                    {templates.length === 0 ? (
+                      <Button onClick={handleCreate} className="h-8 rounded-lg bg-blue-600 px-3 text-xs text-white hover:bg-blue-700">
+                        <Plus className="mr-2 size-4" />
+                        创建第一个模板
+                      </Button>
+                    ) : null}
+                  </EmptyState>
+                )
+              }
+
+              return (
+                <>
+                  <div className="overflow-x-auto">
+                    <div className="min-w-[1080px]">
+                      <div className="grid grid-cols-[40px_minmax(220px,1fr)_78px_62px_130px_136px_350px] items-center border-b border-slate-200/75 bg-slate-50/65 px-4 py-3 text-[12px] font-semibold text-slate-500">
+                        <Checkbox checked={allCurrentPageSelected} onCheckedChange={handleSelectAll} />
+                        <div>模板</div>
+                        <div>分类</div>
+                        <div>使用</div>
+                        <div>变量</div>
+                        <div>更新时间</div>
+                        <div>操作</div>
+                      </div>
+                      <div className="max-h-[calc(100vh-360px)] divide-y divide-slate-100 overflow-y-auto">
+                        {paginatedTemplates.map((template) => (
+                          <div
+                            key={template.id}
+                            className={cn(
+                              'grid grid-cols-[40px_minmax(220px,1fr)_78px_62px_130px_136px_350px] items-center px-4 py-2 text-[13px] transition-colors hover:bg-slate-50/80',
+                              selectedIds.has(template.id) && 'bg-sky-50/60'
+                            )}
+                          >
+                            <div>
+                              <Checkbox
+                                checked={selectedIds.has(template.id)}
+                                onCheckedChange={() => handleSelectOne(template.id)}
+                              />
+                            </div>
+                            <button type="button" className="min-w-0 text-left" onClick={() => handlePreview(template)}>
+                              <div className="flex min-w-0 items-center gap-2">
+                                <span className="truncate font-semibold text-slate-900">{template.name}</span>
+                                <Badge variant="outline" className={cn('h-5 px-1.5 text-[11px]', template.is_active ? activeStatusBadgeClass : inactiveStatusBadgeClass)}>
+                                  {template.is_active ? '启用' : '停用'}
+                                </Badge>
+                              </div>
+                              <div className="mt-1 truncate text-[12px] text-slate-500">{template.description || '无描述'}</div>
+                            </button>
+                            <div className="text-slate-500">{template.category || '-'}</div>
+                            <div className="tabular-nums text-slate-500">{template.usage_count}</div>
+                            <div className="flex min-w-0 flex-wrap gap-1">
+                              {template.variables.length > 0 ? (
+                                <>
+                                  {template.variables.slice(0, 2).map((variable) => (
+                                    <Badge key={variable} variant="secondary" className="h-6 rounded-md bg-slate-100 px-2 font-mono text-[11px] font-medium text-slate-700">
+                                      {`{${variable}}`}
+                                    </Badge>
+                                  ))}
+                                  {template.variables.length > 2 ? <span className="text-[11px] text-slate-400">+{template.variables.length - 2}</span> : null}
+                                </>
+                              ) : (
+                                <span className="text-slate-400">-</span>
+                              )}
+                            </div>
+                            <div className="tabular-nums text-slate-500">{formatDateTime(template.updated_at)}</div>
+                            <div className="flex items-center gap-1.5">
+                              <Button size="sm" variant="outline" className="h-7 rounded-lg border-slate-200 px-2 text-[11px]" onClick={() => handlePreview(template)}>
+                                <Eye className="mr-1 size-3" />
+                                预览
+                              </Button>
+                              {!template.is_system ? (
+                                <Button size="sm" variant="outline" className="h-7 rounded-lg border-slate-200 px-2 text-[11px]" onClick={() => handleEdit(template)}>
+                                  <Edit className="mr-1 size-3" />
+                                  编辑
+                                </Button>
+                              ) : null}
+                              <Button size="sm" variant="outline" className="h-7 rounded-lg border-slate-200 px-2 text-[11px]" onClick={() => handleDuplicate(template)}>
+                                <Copy className="mr-1 size-3" />
+                                复制
+                              </Button>
+                              <Button size="sm" variant="outline" className="h-7 rounded-lg border-slate-200 px-2 text-[11px]" onClick={() => handleToggleActive(template)}>
+                                {template.is_active ? <X className="mr-1 size-3" /> : <Check className="mr-1 size-3" />}
+                                {template.is_active ? '停用' : '启用'}
+                              </Button>
+                              {!template.is_system ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 rounded-lg border-red-100 px-2 text-[11px] text-red-500 hover:bg-red-50 hover:text-red-600"
+                                  onClick={() => setDeleteTemplateTarget(template)}
+                                >
+                                  <Trash2 className="mr-1 size-3" />
+                                  删除
+                                </Button>
+                              ) : null}
+                            </div>
+                          </div>
                         ))}
                       </div>
                     </div>
-                  ) : null}
-
-                  <div className="flex flex-wrap gap-1.5 border-t border-slate-200/80 pt-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 rounded-md border-slate-200/80 px-2 text-[11px]"
-                      onClick={(event) => {
-                        stopTemplateCardClick(event)
-                        handlePreview(template)
-                      }}
-                    >
-                      <Eye className="mr-1 size-3" />
-                      预览
-                    </Button>
-
-                    {!template.is_system ? (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 rounded-md border-slate-200/80 px-2 text-[11px]"
-                          onClick={(event) => {
-                            stopTemplateCardClick(event)
-                            handleEdit(template)
-                          }}
-                        >
-                          <Edit className="mr-1 size-3" />
-                          编辑
-                        </Button>
-
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button size="sm" variant="outline" className="h-7 rounded-md border-slate-200/80 px-2 text-[11px]" onClick={stopTemplateCardClick}>
-                              <Trash2 className="mr-1 size-3" />
-                              删除
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>删除模板？</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                你将删除提示词模板 <span className="font-mono">{template.name}</span>。此操作不可撤销。
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>取消</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => detachPromise(handleDelete(template))}>删除</AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </>
-                    ) : null}
-
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 rounded-md border-slate-200/80 px-2 text-[11px]"
-                      onClick={(event) => {
-                        stopTemplateCardClick(event)
-                        handleDuplicate(template)
-                      }}
-                    >
-                      <Copy className="mr-1 size-3" />
-                      复制
-                    </Button>
-
-                    <Button
-                      size="sm"
-                      variant={template.is_active ? 'outline' : 'default'}
-                      className={cn(
-                        'h-7 rounded-md px-2 text-[11px] font-medium',
-                        template.is_active
-                          ? 'border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50'
-                          : 'bg-primary text-primary-foreground hover:bg-primary/90'
-                      )}
-                      onClick={(event) => {
-                        stopTemplateCardClick(event)
-                        handleToggleActive(template)
-                      }}
-                    >
-                      {template.is_active ? '停用' : '启用'}
-                    </Button>
                   </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+
+                  <div className="flex flex-col gap-3 border-t border-slate-200/75 px-4 py-3 text-[13px] text-slate-500 md:flex-row md:items-center md:justify-between">
+                    <div>共 {filteredTemplates.length} 条</div>
+                    <div className="flex flex-wrap items-center justify-end gap-3">
+                      <Select value={String(pageSize)} onValueChange={(value) => setPageSize(Number(value))}>
+                        <SelectTrigger className="h-9 w-[112px] rounded-lg border-slate-200 bg-white text-[13px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[10, 20, 50].map((size) => (
+                            <SelectItem key={size} value={String(size)}>{size} 条/页</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button variant="outline" size="sm" className="h-9 w-9 rounded-lg border-slate-200 p-0" disabled={safeCurrentPage <= 1} onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}>
+                        <ChevronLeft className="size-4" />
+                      </Button>
+                      {Array.from({ length: Math.min(4, totalPages) }, (_, index) => index + 1).map((page) => (
+                        <Button
+                          key={page}
+                          variant={safeCurrentPage === page ? 'default' : 'outline'}
+                          size="sm"
+                          className={cn('h-9 w-9 rounded-lg p-0 text-[13px]', safeCurrentPage === page ? 'bg-blue-600 text-white hover:bg-blue-700' : 'border-slate-200 bg-white text-slate-600')}
+                          onClick={() => setCurrentPage(page)}
+                        >
+                          {page}
+                        </Button>
+                      ))}
+                      <Button variant="outline" size="sm" className="h-9 w-9 rounded-lg border-slate-200 p-0" disabled={safeCurrentPage >= totalPages} onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}>
+                        <ChevronRight className="size-4" />
+                      </Button>
+                      <span>前往</span>
+                      <Input
+                        value={String(safeCurrentPage)}
+                        onChange={(event) => {
+                          const value = Number(event.target.value)
+                          if (Number.isFinite(value) && value >= 1 && value <= totalPages) setCurrentPage(value)
+                        }}
+                        className="h-9 w-16 rounded-lg border-slate-200 text-center text-[13px]"
+                      />
+                      <span>页</span>
+                    </div>
+                  </div>
+                </>
+              )
+            })()}
+          </section>
         </div>
-      )
-    })()}
-  </div>
-</div>
+
+      <AlertDialog
+        open={Boolean(deleteTemplateTarget)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTemplateTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除模板？</AlertDialogTitle>
+            <AlertDialogDescription>
+              你将删除提示词模板 <span className="font-mono">{deleteTemplateTarget?.name || '-'}</span>。此操作不可撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const target = deleteTemplateTarget
+                setDeleteTemplateTarget(null)
+                if (target) detachPromise(handleDelete(target))
+              }}
+            >
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
 
       {/* Preview Dialog */}

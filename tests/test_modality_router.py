@@ -24,10 +24,17 @@ def test_classify_query_modality_table_takes_precedence_over_image() -> None:
     assert mode == "table"
 
 
+def test_classify_query_modality_routes_chart_math_to_image() -> None:
+    from app.rag.policy.modality_router import classify_query_modality
+
+    mode, reasons = classify_query_modality("这张柱状图 2023 年增长多少？")
+    assert mode == "image"
+    assert "image_hint" in reasons
+
+
 def test_classify_query_modality_defaults_to_text() -> None:
     from app.rag.policy.modality_router import classify_query_modality
 
     mode, reasons = classify_query_modality("How do I reset my password?")
     assert mode == "text"
     assert reasons
-

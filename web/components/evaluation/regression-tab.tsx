@@ -61,6 +61,15 @@ function RegressionInlineStat({
   )
 }
 
+function safeRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
+}
+
+function safeNumber(value: unknown): number {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? numeric : 0
+}
+
 function EmbeddedSection({
   title,
   description,
@@ -495,6 +504,24 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
     .map(([k, v]) => ({ key: k, value: Number(v) }))
   const answerComparisonStatus = displayMetrics.some((m) => ['answer_correctness', 'factual_correctness'].includes(m.key)) ? '有' : '待返回'
   const evidenceRecall = typeof (summary as any)?.retrieval_recall === 'number' ? Number((summary as any).retrieval_recall).toFixed(3) : '待返回'
+  const multimodalSlices = safeRecord(summary.multimodal_slices)
+  const multimodalSliceCounts = safeRecord(multimodalSlices.counts)
+  const multimodalSliceEvaluatable = safeRecord(multimodalSlices.evaluatable)
+  const multimodalSliceCoverage = safeRecord(multimodalSlices.coverage)
+  const multimodalSliceRows = [
+    { key: 'chart', label: 'Chart' },
+    { key: 'formula', label: 'Formula' },
+    { key: 'table_math', label: 'Table-Math' },
+    { key: 'image', label: 'Image' },
+    { key: 'text', label: 'Text' },
+  ]
+    .map((slice) => ({
+      ...slice,
+      count: safeNumber(multimodalSliceCounts[slice.key]),
+      evaluatable: safeNumber(multimodalSliceEvaluatable[slice.key]),
+      coverage: safeNumber(multimodalSliceCoverage[slice.key]),
+    }))
+    .filter((slice) => slice.count > 0 || slice.evaluatable > 0 || slice.coverage > 0)
 
   const runStatus = runDetail?.run?.status
   const embeddedGridCols = isConfigPanelCollapsed
@@ -845,13 +872,15 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
 	              </div>
 	            )}
 
-	            {displayMetrics.length > 0 ? (
+	            {displayMetrics.length > 0 || multimodalSliceRows.length > 0 ? (
 	              <div className="mt-4">
-	                <StatsGrid className="lg:grid-cols-3">
-	                  {displayMetrics.map((m) => (
-	                    <StatCard key={m.key} icon={BarChart3} label={ragasMetricLabel(m.key)} value={m.value.toFixed(3)} color="sky" className="shadow-sm" />
-	                  ))}
-		                </StatsGrid>
+	                {displayMetrics.length > 0 ? (
+	                  <StatsGrid className="lg:grid-cols-3">
+	                    {displayMetrics.map((m) => (
+	                      <StatCard key={m.key} icon={BarChart3} label={ragasMetricLabel(m.key)} value={m.value.toFixed(3)} color="sky" className="shadow-sm" />
+	                    ))}
+		                  </StatsGrid>
+                  ) : null}
 		                <div className="mt-3 flex flex-wrap items-center gap-2">
 		                  <RegressionInlineStat label="样本" value={summaryItems} />
 		                  <RegressionInlineStat label="标准答案对比" value={answerComparisonStatus} tone="info" />
@@ -859,6 +888,34 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
 		                  <RegressionInlineStat label="Token" value={summaryTokens} />
 		                  <RegressionInlineStat label="费用" value={summaryCost} />
 		                </div>
+                  {multimodalSliceRows.length ? (
+                    <div className="mt-3 rounded-2xl border border-slate-200/80 bg-[linear-gradient(180deg,rgba(248,251,255,0.96)_0%,rgba(255,255,255,0.96)_100%)] p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold text-foreground">多模态切片</div>
+                          <div className="mt-0.5 text-[11px] text-muted-foreground">
+                            按 Golden case 类型统计 chart / formula / table-math 的可评测覆盖。
+                          </div>
+                        </div>
+                        <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium text-slate-600">
+                          {safeNumber(multimodalSlices.items)} items
+                        </span>
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
+                        {multimodalSliceRows.map((slice) => (
+                          <div key={slice.key} className="rounded-xl border border-slate-200/80 bg-white/90 px-2.5 py-2 shadow-sm">
+                            <div className="text-[11px] font-semibold text-foreground">{slice.label}</div>
+                            <div className="mt-1 text-lg font-semibold leading-none text-slate-950 tabular-nums">
+                              {slice.evaluatable}/{slice.count}
+                            </div>
+                            <div className="mt-1 text-[10px] text-muted-foreground">
+                              覆盖率 {(slice.coverage * 100).toFixed(0)}%
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                   {(() => {
                     const slices = (summary as any)?.retrieval_slices
                     const pq = (slices as any)?.parse_quality?.buckets

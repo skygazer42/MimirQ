@@ -563,6 +563,7 @@ def build_regression_item_meta(*, sample_kwargs: dict[str, Any] | None, item_met
         "slice_directory": meta.get("slice_directory"),
         "slice_hit_type": meta.get("slice_hit_type"),
         "slice_modality": meta.get("slice_modality"),
+        "golden_multimodal_slice": meta.get("golden_multimodal_slice"),
         "slice_quality_bucket": meta.get("slice_quality_bucket"),
         "slice_parse_quality": meta.get("slice_parse_quality"),
         "slice_chunk_quality": meta.get("slice_chunk_quality"),
