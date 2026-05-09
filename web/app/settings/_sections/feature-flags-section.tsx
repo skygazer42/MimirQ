@@ -11,13 +11,11 @@ import {
   Network,
   ScanLine,
   Sparkles,
-  ToggleLeft,
-  ToggleRight,
   Wand2,
   Zap,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { systemPageTokens, systemWorkbenchTokens } from '@/components/ui/system-page-tokens'
+import { systemPageTokens } from '@/components/ui/system-page-tokens'
 
 type FeatureFlagDescriptor = {
   key: keyof FeatureFlags
@@ -122,28 +120,28 @@ const FEATURE_FLAGS_CONFIG: FeatureFlagDescriptor[] = [
 function getColorClasses(color: FeatureFlagDescriptor['color']) {
   const styles = {
     primary: {
-      bg: 'bg-primary/10',
-      border: 'border-primary/25',
-      text: 'text-primary',
-      iconBg: 'bg-primary/15',
+      bg: 'bg-blue-50/70',
+      border: 'border-blue-200/90',
+      text: 'text-blue-600',
+      iconBg: 'bg-blue-100/90',
     },
     info: {
-      bg: 'bg-info/10',
-      border: 'border-info/25',
-      text: 'text-info',
-      iconBg: 'bg-info/15',
+      bg: 'bg-cyan-50/70',
+      border: 'border-cyan-200/90',
+      text: 'text-cyan-600',
+      iconBg: 'bg-cyan-100/90',
     },
     success: {
-      bg: 'bg-success/10',
-      border: 'border-success/25',
-      text: 'text-success',
-      iconBg: 'bg-success/15',
+      bg: 'bg-emerald-50/70',
+      border: 'border-emerald-200/90',
+      text: 'text-emerald-600',
+      iconBg: 'bg-emerald-100/90',
     },
     warning: {
-      bg: 'bg-warning/10',
-      border: 'border-warning/25',
-      text: 'text-warning',
-      iconBg: 'bg-warning/15',
+      bg: 'bg-orange-50/70',
+      border: 'border-orange-200/90',
+      text: 'text-orange-600',
+      iconBg: 'bg-orange-100/90',
     },
   }
 
@@ -165,19 +163,24 @@ export function FeatureFlagsSection({
   toggleFeature,
 }: Readonly<FeatureFlagsSectionProps>) {
   return (
-    <section className="space-y-3">
+    <section className="rounded-[22px] border border-slate-200/80 bg-white/92 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.06)]">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="flex items-center gap-2 text-sm font-semibold tracking-[-0.01em] text-foreground">
-          <Zap className="h-4 w-4 text-warning" />
-          功能开关
-        </h2>
-        <div className="inline-flex items-center gap-1.5 rounded-full border border-warning/20 bg-warning/10 px-2.5 py-1 text-[11px] font-semibold text-warning">
+        <div>
+          <h2 className="flex items-center gap-2 text-[15px] font-semibold tracking-[-0.02em] text-slate-950">
+            <Zap className="h-4 w-4 text-orange-500" />
+            功能开关
+          </h2>
+          <p className="mt-1 text-[12px] leading-5 text-slate-500">
+            按需启用各项能力模块，依赖项会在下方标签提示。
+          </p>
+        </div>
+        <div className="inline-flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-[11px] font-semibold text-orange-600">
           <AlertCircle className="h-3.5 w-3.5" />
           <span>更改后需重启后端生效</span>
         </div>
       </div>
 
-      <div className={cn('grid grid-cols-1 gap-2 xl:grid-cols-2', systemWorkbenchTokens.divider)}>
+      <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-2">
         {FEATURE_FLAGS_CONFIG.map((feature) => {
           const Icon = feature.icon
           const colors = getColorClasses(feature.color)
@@ -189,19 +192,19 @@ export function FeatureFlagsSection({
               type="button"
               key={feature.key}
               className={cn(
-                'group relative w-full rounded-lg border px-3 py-2.5 text-left transition-colors duration-150 focus-ring motion-reduce:transition-none',
-                isEnabled ? `${colors.border} ${colors.bg}` : 'border-border/70 bg-background hover:bg-muted/15',
+                'group relative w-full rounded-2xl border px-4 py-3 text-left transition-colors duration-150 focus-ring motion-reduce:transition-none',
+                isEnabled ? `${colors.border} ${colors.bg}` : 'border-slate-200 bg-slate-50/30 hover:bg-slate-50',
                 isEdited && 'ring-2 ring-blue-400/70 ring-offset-1'
               )}
               aria-pressed={isEnabled}
               onClick={() => toggleFeature(feature.key)}
             >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex min-w-0 items-start gap-2.5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-start gap-3">
                   <div
                     className={cn(
-                      'mt-0.5 rounded-md p-1.5 transition-colors',
-                      isEnabled ? colors.iconBg : 'bg-muted'
+                      'mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-xl transition-colors',
+                      isEnabled ? colors.iconBg : 'bg-slate-100'
                     )}
                   >
                     <Icon className={cn('h-4 w-4', isEnabled ? colors.text : 'text-muted-foreground')} />
@@ -209,13 +212,13 @@ export function FeatureFlagsSection({
                   <div className="min-w-0">
                     <h3
                       className={cn(
-                        'text-[13px] font-semibold leading-5 transition-colors',
-                        isEnabled ? 'text-foreground' : 'text-muted-foreground'
+                        'text-[13px] font-semibold leading-5 tracking-[-0.01em] transition-colors',
+                        isEnabled ? 'text-slate-950' : 'text-slate-700'
                       )}
                     >
                       {feature.name}
                     </h3>
-                    <p className={cn(systemPageTokens.subtle, 'mt-0.5 leading-4')}>
+                    <p className={cn(systemPageTokens.subtle, 'mt-0.5 text-[11px] leading-4')}>
                       {feature.description}
                     </p>
                     {feature.dependencies.length > 0 ? (
@@ -223,7 +226,7 @@ export function FeatureFlagsSection({
                         {feature.dependencies.map((dependency) => (
                           <span
                             key={dependency}
-                            className="rounded border border-border/70 bg-muted/30 px-1.5 py-0.5 text-[11px] leading-4 text-muted-foreground"
+                            className="rounded-md border border-slate-200 bg-white/80 px-1.5 py-0.5 text-[10px] leading-4 text-slate-500"
                           >
                             需要: {dependency}
                           </span>
@@ -232,12 +235,19 @@ export function FeatureFlagsSection({
                     ) : null}
                   </div>
                 </div>
-                <div className="flex-shrink-0 pt-0.5">
-                  {isEnabled ? (
-                    <ToggleRight className={cn('h-6 w-6', colors.text)} />
-                  ) : (
-                    <ToggleLeft className="h-6 w-6 text-muted-foreground group-hover:text-muted-foreground" />
+                <div
+                  className={cn(
+                    'mt-1 flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors',
+                    isEnabled ? 'bg-blue-600' : 'bg-slate-300'
                   )}
+                  aria-hidden="true"
+                >
+                  <span
+                    className={cn(
+                      'size-4 rounded-full bg-white shadow-sm transition-transform',
+                      isEnabled && 'translate-x-4'
+                    )}
+                  />
                 </div>
               </div>
             </button>
