@@ -61,7 +61,7 @@ export function KgPredicateOntologySettings() {
         setRows([])
         return
       }
-      toast.error(formatApiError(err, '加载 Predicate Ontology 失败'))
+      toast.error(formatApiError(err, '加载 KG 谓词治理失败'))
       setRows([])
     } finally {
       setLoading(false)
@@ -87,7 +87,7 @@ export function KgPredicateOntologySettings() {
   const saveForm = async () => {
     const predicate = formPredicate.trim()
     if (!predicate) {
-      toast.error('请输入 predicate key（snake_case）')
+      toast.error('请输入谓词 key（snake_case）')
       return
     }
 
@@ -99,7 +99,7 @@ export function KgPredicateOntologySettings() {
         description: formDescription.trim() || null,
         is_enabled: formEnabled,
       })
-      toast.success(editingId ? '已更新 predicate' : '已添加 predicate')
+      toast.success(editingId ? '已更新谓词' : '已添加谓词')
       resetForm()
       await load()
     } catch (err) {
@@ -141,7 +141,7 @@ export function KgPredicateOntologySettings() {
     try {
       const next = await kgApi.deletePredicateOntology(String(target.id))
       setRows(next.predicates || [])
-      toast.success('已删除 predicate')
+      toast.success('已删除谓词')
     } catch (err) {
       toast.error(formatApiError(err, '删除失败'))
     } finally {
@@ -152,108 +152,118 @@ export function KgPredicateOntologySettings() {
   }
 
   return (
-    <Card className={cn(loading ? 'opacity-60' : '')}>
-      <CardHeader>
-        <CardTitle>KG Predicate Ontology（谓词治理）</CardTitle>
-        <CardDescription>
-          管理 KG triples 的 predicate allowlist。启用的 predicates 会被用于 KG relation 抽取（优先于环境变量与默认列表）。
+    <Card className={cn('overflow-hidden rounded-xl border-slate-200/80 bg-white shadow-none', loading ? 'opacity-60' : '')}>
+      <CardHeader className="space-y-1 border-b border-slate-100 bg-slate-50/70 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="text-[13px] font-semibold text-slate-950">KG 谓词治理</CardTitle>
+          <span className="rounded-full border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
+            关系白名单
+          </span>
+        </div>
+        <CardDescription className="text-[11px] leading-4 text-slate-500">
+          限定关系抽取可输出的谓词，减少关系漂移和脏数据。
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3 p-3">
         {kgEnabled === false ? (
           <>
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-xs text-muted-foreground">KG 开关：关闭</div>
-              <Button type="button" size="sm" variant="outline" onClick={load} disabled={loading || saving} className="gap-2">
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200/70 bg-amber-50/70 px-3 py-2.5">
+              <div className="min-w-0">
+                <div className="text-[12px] font-semibold text-amber-900">知识图谱未启用</div>
+                <div className="mt-0.5 text-[11px] leading-4 text-amber-700">启用后才能维护关系白名单。</div>
+              </div>
+              <Button type="button" size="sm" variant="outline" onClick={load} disabled={loading || saving} className="h-7 shrink-0 gap-1.5 rounded-md border-amber-200 bg-white px-2.5 text-[11px] text-amber-800 hover:bg-amber-50">
                 <RefreshCw className="w-3 h-3" />
-                重新检查
+                检查状态
               </Button>
             </div>
 
-            <div className="rounded-xl border border-dashed border-border bg-muted/50 p-4">
-              <div className="text-sm font-medium">KG 功能当前未启用</div>
-              <div className="mt-1 text-xs leading-5 text-muted-foreground">
-                当前环境未开启知识图谱能力，Predicate Ontology 不可编辑。请先在系统设置中开启 `KG_ENABLED`，再返回此处配置谓词治理规则。
+            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/70 p-3">
+              <div className="text-[12px] font-semibold text-slate-800">当前不可编辑</div>
+              <div className="mt-1 text-[11px] leading-4 text-slate-500">
+                请先在系统设置中开启知识图谱能力，再返回这里配置谓词治理规则。
               </div>
             </div>
           </>
         ) : (
           <>
             <div className="flex items-center justify-between gap-2">
-              <div className="text-xs text-muted-foreground">
-                共 {rows.length} 条（enabled: {rows.filter((r) => r.is_enabled).length}）
+              <div className="text-[11px] text-slate-500">
+                共 {rows.length} 条，已启用 {rows.filter((r) => r.is_enabled).length} 条
               </div>
-              <Button type="button" size="sm" variant="outline" onClick={load} disabled={loading || saving} className="gap-2">
+              <Button type="button" size="sm" variant="outline" onClick={load} disabled={loading || saving} className="h-7 gap-1.5 rounded-md px-2.5 text-[11px]">
                 <RefreshCw className="w-3 h-3" />
                 刷新
               </Button>
             </div>
 
-            <div className="rounded-xl border border-border bg-muted p-4 space-y-3">
+            <div className="space-y-3 rounded-lg border border-slate-200/75 bg-slate-50/75 p-3">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-medium">{editingId ? '编辑 predicate' : '新增 predicate'}</div>
+                <div className="text-[12px] font-semibold text-slate-800">{editingId ? '编辑谓词' : '新增谓词'}</div>
                 <div className="flex items-center gap-2">
-                  <Button type="button" size="sm" variant="outline" onClick={resetForm} disabled={saving}>
+                  <Button type="button" size="sm" variant="outline" onClick={resetForm} disabled={saving} className="h-7 rounded-md px-2.5 text-[11px]">
                     重置
                   </Button>
-                  <Button type="button" size="sm" onClick={saveForm} disabled={saving || !hasForm} className="gap-2">
+                  <Button type="button" size="sm" onClick={saveForm} disabled={saving || !hasForm} className="h-7 gap-1.5 rounded-md px-2.5 text-[11px]">
                     {editingId ? <Save className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
                     保存
                   </Button>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="kg-onto-predicate">predicate key</Label>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="kg-onto-predicate" className="text-[11px] font-medium text-slate-500">谓词 key</Label>
                   <Input
                     id="kg-onto-predicate"
                     value={formPredicate}
                     onChange={(e) => setFormPredicate(e.target.value)}
                     placeholder="例如：works_for"
-                    className="font-mono"
+                    className="h-8 font-mono text-[12px]"
                   />
-                  <div className="text-[11px] text-muted-foreground">系统会自动 normalize（snake_case + 同义词映射）。</div>
+                  <div className="text-[11px] text-slate-500">系统会自动归一化为 snake_case。</div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="kg-onto-display">display name（可选）</Label>
+                <div className="space-y-1.5">
+                  <Label htmlFor="kg-onto-display" className="text-[11px] font-medium text-slate-500">展示名称</Label>
                   <Input
                     id="kg-onto-display"
                     value={formDisplayName}
                     onChange={(e) => setFormDisplayName(e.target.value)}
                     placeholder="例如：Works For / 就职于"
+                    className="h-8 text-[12px]"
                   />
                 </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="kg-onto-desc">description（可选）</Label>
+                <div className="space-y-1.5 md:col-span-2">
+                  <Label htmlFor="kg-onto-desc" className="text-[11px] font-medium text-slate-500">说明</Label>
                   <Input
                     id="kg-onto-desc"
                     value={formDescription}
                     onChange={(e) => setFormDescription(e.target.value)}
                     placeholder="用于解释该 predicate 的语义与方向性"
+                    className="h-8 text-[12px]"
                   />
                 </div>
                 <div className="flex items-center justify-between gap-2 md:col-span-2">
-                  <div className="text-sm">
-                    <div className="font-medium">Enabled</div>
-                    <div className="text-xs text-muted-foreground">禁用后 extractor 会将其归一化为 unknown（或丢弃）。</div>
+                  <div className="text-[12px]">
+                    <div className="font-semibold text-slate-800">启用该谓词</div>
+                    <div className="text-[11px] text-slate-500">关闭后抽取结果不会写入该关系。</div>
                   </div>
                   <Switch checked={formEnabled} onCheckedChange={setFormEnabled} />
                 </div>
               </div>
             </div>
 
-            <div className="overflow-hidden rounded-xl border border-border">
-              <div className="grid grid-cols-[1fr_auto] gap-2 bg-muted px-4 py-2 text-xs text-muted-foreground">
-                <div>predicate</div>
-                <div>enabled</div>
+            <div className="overflow-hidden rounded-lg border border-slate-200/75">
+              <div className="grid grid-cols-[1fr_auto] gap-2 bg-slate-50/80 px-3 py-2 text-[10px] font-medium uppercase tracking-[0.12em] text-slate-400">
+                <div>谓词</div>
+                <div>状态</div>
               </div>
-              <div className="divide-y divide-border">
+              <div className="divide-y divide-slate-100">
                 {rows.length === 0 ? (
-                  <div className="p-4 text-xs text-muted-foreground">暂无条目。可先添加常用 predicates（alias_of、part_of、works_for…）。</div>
+                  <div className="p-3 text-[11px] text-slate-500">暂无条目。可先添加常用关系，如 alias_of、part_of、works_for。</div>
                 ) : (
                   rows.map((r) => (
-                    <div key={r.id} className="grid grid-cols-[1fr_auto] items-center gap-2 px-4 py-3">
+                    <div key={r.id} className="grid grid-cols-[1fr_auto] items-center gap-2 px-3 py-2.5">
                       <div className="min-w-0">
                         <div className="flex min-w-0 items-center gap-2">
                           <span className="truncate font-mono text-xs" title={r.predicate}>
@@ -309,7 +319,7 @@ export function KgPredicateOntologySettings() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>删除 predicate？</AlertDialogTitle>
+            <AlertDialogTitle>删除谓词？</AlertDialogTitle>
             <AlertDialogDescription>
               你将删除 <span className="font-mono">{deleteTarget?.predicate || '-'}</span>。此操作不可撤销（但可以重新创建）。
             </AlertDialogDescription>

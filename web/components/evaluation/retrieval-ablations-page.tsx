@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Database,
   GitCompare,
+  Info,
   MoreHorizontal,
   PlayCircle,
   RefreshCcw,
@@ -32,6 +33,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { StatusBadge } from '@/components/ui/status-badge'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { formatApiError } from '@/lib/api-errors'
 import { datasetApi } from '@/lib/api/datasets'
 import { evaluationApi } from '@/lib/api/evaluation'
@@ -136,6 +138,61 @@ function runStatusMeta(statusValue: string | null | undefined): {
   if (statusValue === 'completed') return { status: 'completed', label: '已完成' }
   if (statusValue === 'failed') return { status: 'failed', label: '失败' }
   return { status: 'processing', label: '运行中' }
+}
+
+function pickRunPair(items: RegressionRun[], currentBaseRunId: string, currentTargetRunId: string): {
+  baseRunId: string
+  targetRunId: string
+} {
+  const ids = new Set(items.map((run) => _stableId(run.id)).filter(Boolean))
+  const currentBase = _stableId(currentBaseRunId)
+  const currentTarget = _stableId(currentTargetRunId)
+  let targetRunId = currentTarget && ids.has(currentTarget) ? currentTarget : _stableId(items?.[0]?.id)
+  let baseRunId = currentBase && ids.has(currentBase) ? currentBase : ''
+
+  if (!baseRunId || baseRunId === targetRunId) {
+    baseRunId = _stableId(items.find((run) => _stableId(run.id) !== targetRunId)?.id)
+  }
+
+  if (baseRunId === targetRunId) {
+    baseRunId = ''
+  }
+
+  return { baseRunId, targetRunId }
+}
+
+function runSelectText(run: RegressionRun): string {
+  const statusMeta = runStatusMeta(String(run.status || ''))
+  return `${shortId(String(run.id))} · ${statusMeta.label}`
+}
+
+function AblationInfoTooltip({
+  label,
+  children,
+  side = 'right',
+}: Readonly<{
+  label: string
+  children: ReactNode
+  side?: 'top' | 'right' | 'bottom' | 'left'
+}>) {
+  return (
+    <TooltipProvider delayDuration={120}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label={label}
+            className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-sky-50 hover:text-sky-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+          >
+            <Info className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side={side} align="center" className="max-w-[280px] text-[11px] leading-5">
+          {children}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
 }
 
 function toRecord(value: unknown): Record<string, unknown> {
@@ -344,7 +401,7 @@ function AblationDiffEmptyState() {
       </div>
       <div className="mt-3 text-[16px] font-semibold text-slate-950">等待生成 Diff</div>
       <p className="mt-2 max-w-[430px] text-[13px] leading-6 text-slate-500">
-        请先选择 baseline 与 candidate，然后点击“生成 Diff”。系统将对两次运行进行结构化对比，展示差异与影响分析。
+        请先选择 Base（基线 run）与 Target（候选 run），然后点击“生成 Diff”。系统将对两次运行进行结构化对比，展示差异与影响分析。
       </p>
       <div className="mt-7 w-full max-w-[390px] rounded-2xl border border-dashed border-blue-200 bg-white/85 p-4 text-left">
         {steps.map((step, index) => (
@@ -514,15 +571,11 @@ export function RetrievalAblationsPage() {
     return (runs || []).filter((r) => String(r?.dataset_id || '') === ds)
   }, [runs, datasetId])
 
-  // Keep selection stable when dataset filter changes.
   useEffect(() => {
-    if (!datasetId.trim()) return
-    const items = runsByDataset || []
-    const hasBase = items.some((r) => _stableId(r.id) === _stableId(selectedBaseRunId))
-    const hasTarget = items.some((r) => _stableId(r.id) === _stableId(selectedTargetRunId))
-    if (!hasBase) setSelectedBaseRunId(items?.[0]?.id || '')
-    if (!hasTarget) setSelectedTargetRunId(items?.[0]?.id || '')
-  }, [datasetId, runsByDataset, selectedBaseRunId, selectedTargetRunId])
+    const pair = pickRunPair(runsByDataset || [], selectedBaseRunId, selectedTargetRunId)
+    if (pair.baseRunId !== _stableId(selectedBaseRunId)) setSelectedBaseRunId(pair.baseRunId)
+    if (pair.targetRunId !== _stableId(selectedTargetRunId)) setSelectedTargetRunId(pair.targetRunId)
+  }, [runsByDataset, selectedBaseRunId, selectedTargetRunId])
 
   const loadDatasets = useCallback(async (): Promise<void> => {
     setDatasetsLoading(true)
@@ -541,17 +594,16 @@ export function RetrievalAblationsPage() {
   const refreshRuns = useCallback(async (): Promise<void> => {
     setRunsLoading(true)
     try {
-      const res = await evaluationApi.listRegressionRuns({ limit: 80 })
+      const ds = datasetId.trim()
+      const res = await evaluationApi.listRegressionRuns({ limit: 80, dataset_id: ds || undefined })
       const items = Array.isArray(res.items) ? (res.items) : []
       setRuns(items)
-      setSelectedBaseRunId((prev) => prev || items?.[0]?.id || '')
-      setSelectedTargetRunId((prev) => prev || items?.[0]?.id || '')
     } catch (err) {
       toast.error(formatApiError(err, '拉取 runs 失败'))
     } finally {
       setRunsLoading(false)
     }
-  }, [])
+  }, [datasetId])
 
   async function refreshLeaderboard(): Promise<void> {
     const ds = datasetId.trim()
@@ -636,6 +688,7 @@ export function RetrievalAblationsPage() {
       if (batch.run_ids[0]) {
         setSelectedTargetRunId(batch.run_ids[0])
       }
+      await refreshRuns()
       toast.success(`已提交 ${batch.total} 个 ablation runs`)
     } catch (err) {
       const message = formatApiError(err, '批量创建 ablation runs 失败')
@@ -648,11 +701,11 @@ export function RetrievalAblationsPage() {
     const baseId = String(selectedBaseRunId || '').trim()
     const targetId = String(selectedTargetRunId || '').trim()
     if (!baseId || !targetId) {
-      toast.error('请选择 base 与 target')
+      toast.error('请选择 Base 与 Target')
       return
     }
     if (baseId === targetId) {
-      toast.error('base 与 target 不能相同')
+      toast.error('Base 与 Target 不能相同')
       return
     }
     setDiffLoading(true)
@@ -676,11 +729,11 @@ export function RetrievalAblationsPage() {
     const baseId = String(selectedBaseRunId || '').trim()
     const targetId = String(selectedTargetRunId || '').trim()
     if (!baseId || !targetId) {
-      toast.error('请选择 base 与 target')
+      toast.error('请选择 Base 与 Target')
       return
     }
     if (baseId === targetId) {
-      toast.error('base 与 target 不能相同')
+      toast.error('Base 与 Target 不能相同')
       return
     }
 
@@ -715,8 +768,11 @@ export function RetrievalAblationsPage() {
 
   useEffect(() => {
     detachPromise(loadDatasets())
+  }, [loadDatasets])
+
+  useEffect(() => {
     detachPromise(refreshRuns())
-  }, [loadDatasets, refreshRuns])
+  }, [refreshRuns])
 
   const leaderboardItems = leaderboard?.items
   const leaderboardRows: RegressionLeaderboardRow[] = Array.isArray(leaderboardItems) ? leaderboardItems : []
@@ -732,6 +788,21 @@ export function RetrievalAblationsPage() {
     () => runsByDataset.find((run) => _stableId(run.id) === _stableId(selectedTargetRunId)) || null,
     [runsByDataset, selectedTargetRunId]
   )
+  const runsSelectDisabled = runsLoading || runsByDataset.length === 0
+  const canGenerateDiff = Boolean(
+    _stableId(selectedBaseRunId) && _stableId(selectedTargetRunId) && _stableId(selectedBaseRunId) !== _stableId(selectedTargetRunId)
+  )
+  const runsSelectionHint = useMemo(() => {
+    if (!datasetId.trim()) return '先选择数据集，再加载可对比的运行记录。'
+    if (runsLoading) return '正在加载当前数据集的运行记录...'
+    if (runsByDataset.length === 0) {
+      return '当前数据集暂无可对比 run。先运行消融实验；至少累计 2 条 run 后才能生成 Diff。'
+    }
+    if (runsByDataset.length === 1) {
+      return '当前数据集只有 1 条 run。Diff 需要 Base 和 Target 两条不同运行。'
+    }
+    return '这里用于比较两次运行的配置、指标和逐样本差异；Base 通常选基线，Target 选候选。'
+  }, [datasetId, runsByDataset.length, runsLoading])
   const deepDiveMetricKeys = useMemo(
     () => LEADERBOARD_METRIC_OPTIONS.map((item) => item.key),
     []
@@ -1168,8 +1239,11 @@ export function RetrievalAblationsPage() {
               ) : null}
               <div className="flex h-full min-h-0 flex-col">
                 <div className="flex min-h-[58px] items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3">
-                  <div className="min-w-0">
+                  <div className="flex min-w-0 items-center gap-1.5">
                     <div className="truncate text-[15px] font-semibold text-slate-950">Diff Workspace / 基线 vs 候选</div>
+                    <AblationInfoTooltip label="查看 Diff Run 选择说明" side="bottom">
+                      {runsSelectionHint}
+                    </AblationInfoTooltip>
                   </div>
                   <div className="flex items-center gap-1.5 text-[11px]">
                     <span className="text-muted-foreground">Diff Delta</span>
@@ -1186,14 +1260,14 @@ export function RetrievalAblationsPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <Label className="text-[12px] text-slate-500">选择基线 Run（Base）</Label>
-                      <Select value={selectedBaseRunId} onValueChange={setSelectedBaseRunId} disabled={runsLoading}>
+                      <Select value={selectedBaseRunId} onValueChange={setSelectedBaseRunId} disabled={runsSelectDisabled}>
                         <SelectTrigger className="h-10 rounded-xl border-slate-200 bg-white text-[13px]">
-                          <SelectValue placeholder={runsLoading ? '加载中...' : '选择 baseline'} />
+                          <SelectValue placeholder={runsLoading ? '加载中...' : '选择基线 run'} />
                         </SelectTrigger>
                         <SelectContent>
                           {runsByDataset.map((run) => (
                             <SelectItem key={run.id} value={run.id}>
-                              {shortId(String(run.id))} · {String(run.status || 'unknown')}
+                              {runSelectText(run)}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -1201,14 +1275,14 @@ export function RetrievalAblationsPage() {
                     </div>
                     <div className="space-y-1">
                       <Label className="text-[12px] text-slate-500">选择候选 Run（Target）</Label>
-                      <Select value={selectedTargetRunId} onValueChange={setSelectedTargetRunId} disabled={runsLoading}>
+                      <Select value={selectedTargetRunId} onValueChange={setSelectedTargetRunId} disabled={runsSelectDisabled}>
                         <SelectTrigger className="h-10 rounded-xl border-slate-200 bg-white text-[13px]">
-                          <SelectValue placeholder={runsLoading ? '加载中...' : '选择 candidate'} />
+                          <SelectValue placeholder={runsLoading ? '加载中...' : '选择候选 run'} />
                         </SelectTrigger>
                         <SelectContent>
                           {runsByDataset.map((run) => (
                             <SelectItem key={run.id} value={run.id}>
-                              {shortId(String(run.id))} · {String(run.status || 'unknown')}
+                              {runSelectText(run)}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -1223,7 +1297,7 @@ export function RetrievalAblationsPage() {
                       <AblationInlineStat label="Delta" value={diffDelta === null ? '-' : diffDelta.toFixed(4)} tone={diffDelta !== null && diffDelta > 0 ? 'emerald' : diffDelta !== null && diffDelta < 0 ? 'amber' : 'neutral'} />
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <Button className="h-9 gap-1.5 rounded-xl bg-slate-950 px-4 text-[13px] text-white shadow-[0_10px_24px_rgba(15,23,42,0.20)] hover:bg-slate-800" disabled={diffLoading} onClick={() => detachPromise(computeDiff())}>
+                      <Button className="h-9 gap-1.5 rounded-xl bg-slate-950 px-4 text-[13px] text-white shadow-[0_10px_24px_rgba(15,23,42,0.20)] hover:bg-slate-800" disabled={diffLoading || !canGenerateDiff} onClick={() => detachPromise(computeDiff())}>
                         <GitCompare className="h-3.5 w-3.5" />
                         生成 Diff
                       </Button>
@@ -1244,7 +1318,7 @@ export function RetrievalAblationsPage() {
                           <DropdownMenuItem disabled={!diff} onSelect={() => downloadJson(diff, sanitizeFilename('regression-run-diff.json'))}>
                             导出 JSON
                           </DropdownMenuItem>
-                          <DropdownMenuItem onSelect={() => detachPromise(exportDiffHtml())}>
+                          <DropdownMenuItem disabled={!canGenerateDiff} onSelect={() => detachPromise(exportDiffHtml())}>
                             导出 HTML
                           </DropdownMenuItem>
                         </DropdownMenuContent>

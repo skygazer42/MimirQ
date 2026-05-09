@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.models.chat import Conversation, Message
 from app.models.feedback import MessageFeedback
+from app.rag.feedback_loop.candidates import build_feedback_loop_candidates as build_feedback_loop_candidate_payload
+from app.rag.industry_rules.schema import IndustryRuleset
 from app.services.rag_trace_service import list_rag_traces
 
 
@@ -100,6 +102,61 @@ def _feedback_sort_key(row: MessageFeedback) -> datetime:
     if isinstance(created_at, datetime):
         return created_at if created_at.tzinfo is not None else created_at.replace(tzinfo=UTC)
     return datetime.min.replace(tzinfo=UTC)
+
+
+def _safe_text(value: Any, *, max_len: int = 4000) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    return text[: max(0, int(max_len or 0))]
+
+
+def _feedback_loop_reference_sources(citations: Any) -> list[dict[str, Any]]:
+    if not isinstance(citations, list):
+        return []
+    out: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for item in citations:
+        if not isinstance(item, dict):
+            continue
+        doc_id = _safe_text(item.get("document_id"), max_len=200)
+        chunk_id = _safe_text(item.get("chunk_id"), max_len=200)
+        if not chunk_id:
+            continue
+        key = (doc_id, chunk_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        row: dict[str, Any] = {"chunk_id": chunk_id}
+        if doc_id:
+            row["document_id"] = doc_id
+        for key_name in ("page_number", "start_char", "end_char", "chunk_index", "pipeline_hash", "quote", "label"):
+            if key_name in item and item.get(key_name) is not None:
+                row[key_name] = item.get(key_name)
+        out.append(row)
+        if len(out) >= 100:
+            break
+    return out
+
+
+def _previous_user_question(
+    *,
+    messages: list[Message],
+    conversation_id: UUID,
+    assistant_created_at: datetime | None,
+) -> str:
+    candidates: list[Message] = []
+    for msg in messages:
+        if getattr(msg, "conversation_id", None) != conversation_id:
+            continue
+        if str(getattr(msg, "role", "") or "").lower() != "user":
+            continue
+        created_at = getattr(msg, "created_at", None)
+        if isinstance(assistant_created_at, datetime) and isinstance(created_at, datetime) and created_at > assistant_created_at:
+            continue
+        candidates.append(msg)
+    candidates.sort(key=lambda item: getattr(item, "created_at", None) or datetime.min.replace(tzinfo=UTC), reverse=True)
+    return _safe_text(getattr(candidates[0], "content", "") if candidates else "", max_len=4000)
 
 
 class FeedbackService:
@@ -325,3 +382,107 @@ class FeedbackService:
             items.append(fb)
 
         return {"total": int(base["total"]), "items": items}
+
+    @staticmethod
+    def build_feedback_loop_candidates(
+        *,
+        db: Session,
+        tenant_id: UUID,
+        account_id: str,
+        max_rating: int = 2,
+        limit: int = 200,
+        ruleset: IndustryRuleset | None = None,
+        ensure_member_fn: Callable[[Session, UUID, str], Any] | None = None,
+    ) -> dict[str, Any]:
+        FeedbackService._ensure_member(
+            db=db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            ensure_member_fn=ensure_member_fn,
+        )
+        listed = FeedbackService.list_message_feedback(
+            db=db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            conversation_id=None,
+            message_id=None,
+            min_rating=1,
+            max_rating=max(1, int(max_rating or 2)),
+            skip=0,
+            limit=max(1, int(limit or 1)),
+            ensure_member_fn=None,
+        )
+        feedback_rows: list[MessageFeedback] = list(listed.get("items") or [])
+        if not feedback_rows:
+            return build_feedback_loop_candidate_payload([], ruleset=ruleset, max_rating=max_rating)
+
+        message_ids = [row.message_id for row in feedback_rows if getattr(row, "message_id", None) is not None]
+        conversation_ids = [row.conversation_id for row in feedback_rows if getattr(row, "conversation_id", None) is not None]
+
+        assistant_map: dict[UUID, Message] = {}
+        if message_ids:
+            assistants = (
+                db.query(Message)
+                .filter(Message.tenant_id == tenant_id, Message.id.in_(message_ids))
+                .all()
+            )
+            assistant_map = {item.id: item for item in assistants}
+
+        conversation_map: dict[UUID, Conversation] = {}
+        if conversation_ids:
+            conversations = (
+                db.query(Conversation)
+                .filter(Conversation.tenant_id == tenant_id, Conversation.id.in_(conversation_ids))
+                .all()
+            )
+            conversation_map = {item.id: item for item in conversations}
+
+        conversation_messages: list[Message] = []
+        if conversation_ids:
+            conversation_messages = (
+                db.query(Message)
+                .filter(Message.tenant_id == tenant_id, Message.conversation_id.in_(conversation_ids))
+                .all()
+            )
+
+        candidate_rows: list[dict[str, Any]] = []
+        for fb in feedback_rows:
+            assistant = assistant_map.get(fb.message_id)
+            conv = conversation_map.get(fb.conversation_id)
+            if assistant is None:
+                continue
+
+            extra = dict(getattr(fb, "extra", {}) or {}) if isinstance(getattr(fb, "extra", None), dict) else {}
+            meta = (
+                dict(getattr(assistant, "message_metadata", {}) or {})
+                if isinstance(getattr(assistant, "message_metadata", None), dict)
+                else {}
+            )
+            dataset_id = _safe_text(meta.get("dataset_id") or extra.get("dataset_id") or getattr(conv, "dataset_id", None), max_len=128)
+            retrieval_trace = extra.get("retrieval_trace") if isinstance(extra.get("retrieval_trace"), dict) else {}
+
+            candidate_rows.append(
+                {
+                    "feedback_id": str(fb.id),
+                    "rating": int(fb.rating),
+                    "reason": getattr(fb, "reason", None),
+                    "tags": list(getattr(fb, "tags", []) or []),
+                    "expected_answer": getattr(fb, "expected_answer", None),
+                    "dataset_id": dataset_id or None,
+                    "conversation_id": str(getattr(fb, "conversation_id", "") or ""),
+                    "message_id": str(getattr(fb, "message_id", "") or ""),
+                    "original_query": _previous_user_question(
+                        messages=conversation_messages,
+                        conversation_id=fb.conversation_id,
+                        assistant_created_at=getattr(assistant, "created_at", None),
+                    ),
+                    "reference_sources": _feedback_loop_reference_sources(getattr(assistant, "citations", None)),
+                    "retrieval_trace": retrieval_trace,
+                }
+            )
+
+        return build_feedback_loop_candidate_payload(
+            candidate_rows,
+            ruleset=ruleset,
+            max_rating=max_rating,
+        )

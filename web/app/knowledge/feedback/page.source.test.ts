@@ -4,17 +4,12 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 describe('feedback page source', () => {
-  it('renders feedback summary cards in the design-reference KPI style', () => {
+  it('shows real feedback loop candidates from feedbackApi', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'page.tsx'), 'utf8')
 
-    expect(src).toContain('function FeedbackSummaryCard(')
-    expect(src).toContain('min-h-[92px]')
-    expect(src).toContain('size-11')
-    expect(src).toContain('text-[1.625rem] font-semibold')
-    expect(src).toContain('较昨日')
-    expect(src).toContain('{paginated.map((item) => {')
-    expect(src).toContain('3 条/页')
-    expect(src).not.toContain('buildSparklinePath')
-    expect(src).not.toContain('series={card.series}')
+    expect(src).toContain('feedbackApi.loopCandidates')
+    expect(src).toContain('反哺候选')
+    expect(src).toContain('HardNeg')
+    expect(src).toContain('规则候选')
   })
 })

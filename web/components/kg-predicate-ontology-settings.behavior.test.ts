@@ -74,7 +74,8 @@ describe('KgPredicateOntologySettings behavior', () => {
     await waitForAssertion(() => {
       expect(apiMocks.settingsApi.get).toHaveBeenCalledTimes(1)
       expect(apiMocks.kgApi.listPredicateOntology).not.toHaveBeenCalled()
-      expect(view.container.textContent).toContain('KG 功能当前未启用')
+      expect(view.container.textContent).toContain('知识图谱未启用')
+      expect(view.container.textContent).toContain('当前不可编辑')
     })
 
     view.unmount()

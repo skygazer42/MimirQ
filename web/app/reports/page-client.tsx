@@ -3,7 +3,24 @@
 import { wrap, type Remote } from 'comlink'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { AlertTriangle, BarChart3, Database, Download, FileSearch, FileText, FolderTree, Gauge, Layers, Loader2, RefreshCw, ShieldAlert, SlidersHorizontal, Tags } from 'lucide-react'
+import {
+  AlertTriangle,
+  Archive,
+  BarChart3,
+  CheckCircle2,
+  Clock3,
+  Database,
+  Download,
+  FileSearch,
+  FileText,
+  Layers,
+  Loader2,
+  PlayCircle,
+  RefreshCw,
+  ShieldAlert,
+  ShieldCheck,
+  type LucideIcon,
+} from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { AppFrame } from '@/components/app-frame'
@@ -11,19 +28,16 @@ import { AnalysisPageShell } from '@/components/ui/analysis-page-shell'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
-import { Input } from '@/components/ui/input'
-import { SearchInput } from '@/components/ui/search-input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 
 import { datasetApi, datasetCategoryApi } from '@/lib/api/datasets'
 import { reportApi } from '@/lib/api/reports'
 import { formatApiError } from '@/lib/api-errors'
 import { flattenFolderTree } from '@/lib/report-transforms'
 import { sanitizeFilename } from '@/lib/sanitize'
-import { formatDate, formatFileSize, detachPromise } from '@/lib/utils'
+import { cn, formatDate, formatFileSize, detachPromise } from '@/lib/utils'
 
 import type { FlatFolderRow } from '@/lib/report-transforms'
 import type { Dataset, DatasetCategoryNode, DatasetReport } from '@/types'
@@ -39,6 +53,7 @@ const CHART_TOOLTIP_STYLE = {
 }
 const CHART_TOOLTIP_LABEL_STYLE = { color: '#334155', fontWeight: 600 }
 const CHART_TOOLTIP_CURSOR = { fill: 'rgba(148,163,184,0.08)' }
+const DEFAULT_PIPELINE_VERSION_VALUE = '__mimirq_default_pipeline_version__'
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -49,12 +64,140 @@ function downloadBlob(blob: Blob, filename: string) {
   globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
+function shortPipelineHash(hash: string) {
+  const value = String(hash || '').trim()
+  if (value.length <= 18) return value
+  return `${value.slice(0, 10)}…${value.slice(-6)}`
+}
+
+function safeNumber(value: unknown): number {
+  const n = Number(value || 0)
+  return Number.isFinite(n) ? n : 0
+}
+
+function formatPct(numerator: number, denominator: number) {
+  if (!denominator || !Number.isFinite(denominator)) return '0%'
+  return `${((numerator / denominator) * 100).toFixed(1).replace('.0', '')}%`
+}
+
+function sumRecordValues(value: Record<string, number> | null | undefined) {
+  return Object.values(value || {}).reduce((acc, item) => acc + safeNumber(item), 0)
+}
+
+function DataPill({
+  icon: Icon,
+  label,
+  value,
+  sub,
+  tone = 'blue',
+}: Readonly<{
+  icon: LucideIcon
+  label: string
+  value: string
+  sub?: string
+  tone?: 'blue' | 'green' | 'amber' | 'rose' | 'violet' | 'slate'
+}>) {
+  const toneClass = {
+    blue: 'bg-blue-50 text-blue-600 ring-blue-100',
+    green: 'bg-emerald-50 text-emerald-600 ring-emerald-100',
+    amber: 'bg-amber-50 text-amber-600 ring-amber-100',
+    rose: 'bg-rose-50 text-rose-600 ring-rose-100',
+    violet: 'bg-violet-50 text-violet-600 ring-violet-100',
+    slate: 'bg-slate-50 text-slate-600 ring-slate-100',
+  }[tone]
+
+  return (
+    <div className="flex min-w-[170px] items-center gap-3 border-l border-slate-200/80 px-4 py-2 first:border-l-0">
+      <div className={cn('flex size-8 items-center justify-center rounded-xl ring-1', toneClass)}>
+        <Icon className="size-4" />
+      </div>
+      <div className="min-w-0">
+        <div className="text-[11px] text-slate-500">{label}</div>
+        <div className="truncate text-[13px] font-semibold text-slate-900">{value}</div>
+        {sub ? <div className="mt-0.5 truncate text-[11px] text-slate-500">{sub}</div> : null}
+      </div>
+    </div>
+  )
+}
+
+function AuditMetricCard({
+  icon: Icon,
+  label,
+  value,
+  sub,
+  tone = 'blue',
+}: Readonly<{
+  icon: LucideIcon
+  label: string
+  value: string
+  sub: string
+  tone?: 'blue' | 'green' | 'amber' | 'rose' | 'violet' | 'slate'
+}>) {
+  const toneClass = {
+    blue: 'bg-blue-50 text-blue-600 ring-blue-100',
+    green: 'bg-emerald-50 text-emerald-600 ring-emerald-100',
+    amber: 'bg-amber-50 text-amber-600 ring-amber-100',
+    rose: 'bg-rose-50 text-rose-600 ring-rose-100',
+    violet: 'bg-violet-50 text-violet-600 ring-violet-100',
+    slate: 'bg-slate-50 text-slate-600 ring-slate-100',
+  }[tone]
+
+  return (
+    <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+      <div className="flex items-start justify-between gap-3">
+        <div className={cn('flex size-10 items-center justify-center rounded-2xl ring-1', toneClass)}>
+          <Icon className="size-5" />
+        </div>
+      </div>
+      <div className="mt-3 text-[12px] font-medium text-slate-500">{label}</div>
+      <div className="mt-1 font-mono text-[22px] font-semibold tracking-[-0.03em] text-slate-950">{value}</div>
+      <div className="mt-3 text-[11px] text-slate-500">{sub}</div>
+    </div>
+  )
+}
+
+function MiniRiskCard({
+  label,
+  value,
+  sub,
+  tone = 'blue',
+}: Readonly<{ label: string; value: string; sub: string; tone?: 'blue' | 'green' | 'amber' | 'rose' | 'violet' }>) {
+  const toneClass = {
+    blue: 'text-blue-600',
+    green: 'text-emerald-600',
+    amber: 'text-amber-600',
+    rose: 'text-rose-600',
+    violet: 'text-violet-600',
+  }[tone]
+  return (
+    <div className="rounded-xl border border-slate-200/80 bg-white/80 p-3">
+      <div className="text-[12px] text-slate-500">{label}</div>
+      <div className={cn('mt-2 font-mono text-[20px] font-semibold', toneClass)}>{value}</div>
+      <div className="mt-2 text-[11px] text-slate-500">{sub}</div>
+    </div>
+  )
+}
+
+function ProgressRow({ label, value, max }: Readonly<{ label: string; value: number; max: number }>) {
+  const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0
+  return (
+    <div className="grid grid-cols-[120px_1fr_48px] items-center gap-3 text-[12px]">
+      <div className="truncate text-slate-600" title={label}>{label}</div>
+      <div className="h-2 rounded-full bg-slate-100">
+        <div className="h-full rounded-full bg-blue-500" style={{ width: `${pct}%` }} />
+      </div>
+      <div className="text-right font-mono text-slate-600">{formatPct(value, max)}</div>
+    </div>
+  )
+}
+
 export default function ReportsCenterPage() {
   const [datasets, setDatasets] = useState<Dataset[]>([])
   const [datasetId, setDatasetId] = useState<string>('')
   const [pipelineHash, setPipelineHash] = useState<string>('')
   const [connectorRunsLimit, setConnectorRunsLimit] = useState<number>(20)
   const [redact, setRedact] = useState<boolean>(true)
+  const [showOnlyIssues, setShowOnlyIssues] = useState<boolean>(false)
 
   const [isLoadingDatasets, setIsLoadingDatasets] = useState(false)
   const [isLoadingReport, setIsLoadingReport] = useState(false)
@@ -219,7 +362,7 @@ export default function ReportsCenterPage() {
       downloadBlob(blob, `${safe}.report-bundle${suffix}.zip`)
     } catch (e: any) {
       console.error('Export report bundle zip failed', e)
-      toast.error(formatApiError(e, '导出 Bundle ZIP 失败'))
+      toast.error(formatApiError(e, '导出完整归档包失败'))
     } finally {
       setIsExportingBundle(false)
     }
@@ -234,6 +377,20 @@ export default function ReportsCenterPage() {
   const folderTree = report?.folder_tree || null
   const governance = report?.governance_metrics || null
   const governanceAudit = report?.governance_audit || null
+  const pipelineVersionOptions = useMemo(() => {
+    const seen = new Set<string>()
+    return pipelineVersions
+      .map((v) => ({
+        pipeline_hash: String(v.pipeline_hash || '').trim(),
+        documents: Number(v.documents || 0),
+      }))
+      .filter((v) => {
+        if (!v.pipeline_hash || v.pipeline_hash === 'unknown' || seen.has(v.pipeline_hash)) return false
+        seen.add(v.pipeline_hash)
+        return true
+      })
+  }, [pipelineVersions])
+  const pipelineVersionSelectValue = pipelineHash.trim() || DEFAULT_PIPELINE_VERSION_VALUE
 
   useEffect(() => {
     const seq = ++flatFoldersSeqRef.current
@@ -389,6 +546,86 @@ export default function ReportsCenterPage() {
       .slice(0, 12)
   }, [governanceAudit])
 
+  const statusCounts = report?.profile?.by_status || {}
+  const completedDocs = safeNumber(statusCounts.completed ?? statusCounts.ready ?? statusCounts.done)
+  const successDocs = completedDocs || Math.max(0, totalDocs - failed - quarantined)
+  const successRate = formatPct(successDocs, totalDocs)
+  const failedRate = formatPct(failed, totalDocs)
+  const selectedDatasetName = selectedDataset?.name || report?.dataset_name || '未选择数据集'
+  const latestAuditTime = report?.generated_at ? formatDate(report.generated_at) : '-'
+  const piiHits = sumRecordValues(report?.compliance?.pii_hits_total)
+  const secretHits = sumRecordValues(report?.compliance?.secrets_hits_total)
+  const sensitiveHits = piiHits + secretHits
+  const findingRows = (report?.profile?.findings || []).filter((item) =>
+    showOnlyIssues ? item.severity === 'warning' || item.severity === 'error' || safeNumber(item.count) > 0 : true
+  )
+  const duplicateFindingCount = findingRows
+    .filter((item) => /duplicate|重复/i.test(`${item.key} ${item.label}`))
+    .reduce((acc, item) => acc + safeNumber(item.count), 0)
+  const missingFindingCount = findingRows
+    .filter((item) => /missing|缺失/i.test(`${item.key} ${item.label}`))
+    .reduce((acc, item) => acc + safeNumber(item.count), 0)
+  const lowQualityFindingCount = findingRows
+    .filter((item) => /quality|低质量|low/i.test(`${item.key} ${item.label}`))
+    .reduce((acc, item) => acc + safeNumber(item.count), 0)
+  const topDocumentRows = (folderBarData.length > 0
+    ? folderBarData
+    : Object.entries(report?.profile?.by_file_type || {}).map(([name, value]) => ({ name, value: safeNumber(value) }))
+  )
+    .slice()
+    .sort((a, b) => safeNumber(b.value) - safeNumber(a.value))
+    .slice(0, 3)
+  const topDocumentMax = Math.max(1, ...topDocumentRows.map((item) => safeNumber(item.value)))
+  const categoryMax = Math.max(1, ...categoryBarData.map((item) => safeNumber(item.value)))
+  const versionTotal = pipelineVersions.reduce((acc, item) => acc + safeNumber(item.documents), 0)
+  const issueRows = [
+    ...findingRows.map((item) => ({
+      id: `finding-${item.key}`,
+      time: latestAuditTime,
+      level: item.severity === 'error' ? '错误' : item.severity === 'warning' ? '警告' : '信息',
+      type: item.label || item.key,
+      description: item.description || `${item.label || item.key}：${item.count}`,
+      target: `${item.count}`,
+    })),
+    ...connectorRuns
+      .filter((item) => /fail|error|failed/i.test(String(item.status || '')))
+      .map((item) => ({
+        id: `connector-${item.id}`,
+        time: formatDate(item.created_at),
+        level: '错误',
+        type: '连接器运行',
+        description: item.error_message || item.status,
+        target: item.connector_id || '-',
+      })),
+  ].slice(0, 5)
+  const fieldCoverageRows = [
+    {
+      label: '字符统计覆盖',
+      value: safeNumber(governanceAudit?.docs_with_char_stats),
+      max: safeNumber(governanceAudit?.used_documents || totalDocs),
+    },
+    {
+      label: '解析内容持久化',
+      value: safeNumber(governanceAudit?.docs_with_parsed_content_persisted),
+      max: safeNumber(governanceAudit?.used_documents || totalDocs),
+    },
+    {
+      label: '治理记录覆盖',
+      value: safeNumber(governance?.docs_with_governance),
+      max: safeNumber(governance?.used_documents || totalDocs),
+    },
+    {
+      label: '变更文档占比',
+      value: safeNumber(governanceAudit?.docs_changed),
+      max: safeNumber(governanceAudit?.used_documents || totalDocs),
+    },
+    {
+      label: '过滤/隔离占比',
+      value: safeNumber(governanceAudit?.docs_dropped || quarantined),
+      max: safeNumber(governanceAudit?.used_documents || totalDocs),
+    },
+  ]
+
   const handleExportChartsJson = useCallback(() => {
     if (!datasetId || !report) return
     const safe = sanitizeFilename(selectedDataset?.name || report.dataset_name || 'dataset')
@@ -438,11 +675,49 @@ export default function ReportsCenterPage() {
     selectedDataset?.name,
   ])
 
+  const handleExportCompleteJson = useCallback(() => {
+    if (!datasetId || !report) return
+    const safe = sanitizeFilename(selectedDataset?.name || report.dataset_name || 'dataset')
+    const suffix = pipelineHash.trim() ? `.${pipelineHash.trim().slice(0, 8)}` : ''
+    const payload = {
+      schema: 'mimirq.dataset_report_complete.v1',
+      exported_at: new Date().toISOString(),
+      report,
+      derived: {
+        success_documents: successDocs,
+        success_rate: successRate,
+        failed_rate: failedRate,
+        sensitive_hits: sensitiveHits,
+        risk_findings: findingRows,
+        field_coverage: fieldCoverageRows,
+        top_documents: topDocumentRows,
+        category_top: categoryBarData,
+        pipeline_version_total: versionTotal,
+      },
+    }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' })
+    downloadBlob(blob, `${safe}.complete-report${suffix}.json`)
+  }, [
+    categoryBarData,
+    datasetId,
+    failedRate,
+    fieldCoverageRows,
+    findingRows,
+    pipelineHash,
+    report,
+    selectedDataset?.name,
+    sensitiveHits,
+    successDocs,
+    successRate,
+    topDocumentRows,
+    versionTotal,
+  ])
+
   return (
     <AppFrame>
       <AnalysisPageShell
-        title="报告中心"
-        description="一键导出数据集「质量报告 + 合规报告」，支持按 pipeline_hash 过滤并生成可分享的 HTML。"
+        title="数据报告导出与审计概览"
+        description="一键导出数据报告与审计结果，支持多种格式与指标视图，便于数据治理与合规审查。"
         icon={FileText}
         iconColor="text-primary"
         badge="报告"
@@ -453,41 +728,32 @@ export default function ReportsCenterPage() {
         bodyContainerClassName="max-w-none"
       >
         <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_22%)] shadow-[0_1px_0_rgba(15,23,42,0.04)]">
-          <div className="flex flex-col gap-2.5 border-b border-slate-200/80 bg-muted/35 px-4 py-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex flex-col gap-4 border-b border-slate-200/80 bg-[linear-gradient(180deg,#f8fbff_0%,#ffffff_100%)] px-5 py-4 xl:flex-row xl:items-center xl:justify-between">
             <div className="min-w-0">
-              <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">报告中心 · 数据质检台</div>
-              <div className="mt-1 text-[15px] font-semibold tracking-[-0.01em] text-foreground">数据集报告导出与审计预览</div>
-              <p className="mt-1 text-[12px] leading-5 text-muted-foreground">按数据集与 pipeline_hash 聚合质量与合规指标，并导出 JSON / HTML / RAG 审计。</p>
+              <h1 className="text-[22px] font-semibold tracking-[-0.03em] text-slate-950">数据报告导出与审计概览</h1>
+              <p className="mt-2 text-[13px] leading-5 text-slate-500">
+                一键导出数据报告与审计结果，所有指标均来自后端报告接口与数据集接口。
+              </p>
             </div>
-            <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-              <Badge variant="outline" className="rounded-md border-slate-200/80 bg-card text-[11px] text-slate-600"><Database className="mr-1 size-3" />数据集 {datasets.length}</Badge>
-              <Badge variant="outline" className="rounded-md border-slate-200/80 bg-card text-[11px] text-slate-600"><FileSearch className="mr-1 size-3" />文档 {totalDocs}</Badge>
-              <Badge variant="outline" className="rounded-md border-slate-200/80 bg-card text-[11px] text-slate-600"><Layers className="mr-1 size-3" />流水线 {pipelineVersions.length}</Badge>
-              <Badge variant="outline" className="rounded-md border-slate-200/80 bg-card text-[11px] text-slate-600"><RefreshCw className="mr-1 size-3" />运行 {connectorRuns.length}</Badge>
+            <div className="flex flex-wrap overflow-hidden rounded-2xl border border-slate-200/80 bg-white/90 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
+              <DataPill icon={Database} label="数据集" value={selectedDatasetName} sub={datasetId ? shortPipelineHash(datasetId) : '未选择'} tone="blue" />
+              <DataPill icon={FileSearch} label="文档总数" value={`${totalDocs} 篇文档`} sub="后端 profile" tone="blue" />
+              <DataPill icon={ShieldCheck} label="审计状态" value={isLoadingReport ? '执行中' : report ? '已完成' : '待执行'} sub={report ? '报告已生成' : '等待执行审计'} tone={report ? 'green' : 'slate'} />
+              <DataPill icon={Clock3} label="最近审计" value={latestAuditTime} sub={report ? '后端生成时间' : '暂无'} tone="slate" />
             </div>
           </div>
           <div className="space-y-3 p-3">
-          <section className="space-y-3 rounded-xl border border-slate-200/80 bg-card p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
-            <div className="flex items-start justify-between gap-4 flex-wrap">
-              <div className="space-y-1">
-                <div className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-800"><SlidersHorizontal className="size-4 text-sky-600" />参数配置</div>
-                <div className="text-xs text-muted-foreground">选择数据集与可选 pipeline_hash，点击“刷新预览”或直接导出。</div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button variant="outline" className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50" onClick={() => detachPromise(loadDatasets())} disabled={isLoadingDatasets} aria-label="刷新数据集列表">
-                  {isLoadingDatasets ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="size-4" />}
-                  <span className="ml-2">刷新数据集</span>
-                </Button>
-                <Button className="h-8 rounded-lg bg-primary text-primary-foreground shadow-[0_6px_16px_hsl(var(--primary)/0.18)] hover:bg-primary/90" onClick={() => detachPromise(loadReport())} disabled={!datasetId || isLoadingReport} aria-label="刷新报告预览">
-                  {isLoadingReport ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="size-4" />}
-                  <span className="ml-2">刷新预览</span>
-                </Button>
-              </div>
-            </div>
-            <div className="grid gap-3 md:grid-cols-3">
+          <section className="space-y-4 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.95)]">
+            <div className="grid gap-3 xl:grid-cols-[1.25fr_1.1fr_0.9fr_auto] xl:items-end">
               <div className="space-y-2">
                 <Label htmlFor="dataset-select">数据集</Label>
-                <Select value={datasetId} onValueChange={(v) => setDatasetId(v)}>
+                <Select
+                  value={datasetId}
+                  onValueChange={(v) => {
+                    setDatasetId(v)
+                    setPipelineHash('')
+                  }}
+                >
                   <SelectTrigger id="dataset-select" className="h-8 w-full border-slate-200/80 bg-card text-[12px]">
                     <SelectValue placeholder={isLoadingDatasets ? '加载中...' : '请选择数据集'} />
                   </SelectTrigger>
@@ -502,18 +768,34 @@ export default function ReportsCenterPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="pipeline-hash">pipeline_hash（可选）</Label>
-                <Input
-                  id="pipeline-hash"
-                  value={pipelineHash}
-                  onChange={(e) => setPipelineHash(e.target.value)}
-                  placeholder="留空表示全部活动版本"
-                  className="h-8 border-slate-200/80 bg-card text-[12px]"
-                />
+                <Label htmlFor="pipeline-hash">处理版本</Label>
+                <Select
+                  value={pipelineVersionSelectValue}
+                  onValueChange={(value) => {
+                    setPipelineHash(value === DEFAULT_PIPELINE_VERSION_VALUE ? '' : value)
+                  }}
+                >
+                  <SelectTrigger id="pipeline-hash" className="h-8 w-full border-slate-200/80 bg-card text-[12px]">
+                    <SelectValue placeholder="选择或使用当前活动版本" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={DEFAULT_PIPELINE_VERSION_VALUE}>当前活动版本（默认）</SelectItem>
+                    {pipelineVersionOptions.map((v) => (
+                      <SelectItem key={v.pipeline_hash} value={v.pipeline_hash}>
+                        {shortPipelineHash(v.pipeline_hash)} · {v.documents} 个文档
+                      </SelectItem>
+                    ))}
+                    {pipelineVersionOptions.length === 0 ? (
+                      <SelectItem value="__mimirq_no_pipeline_versions__" disabled>
+                        暂无可选历史版本
+                      </SelectItem>
+                    ) : null}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="connector-limit">连接器运行上限</Label>
+                <Label htmlFor="connector-limit">返回记录数量限制</Label>
                 <Select
                   value={String(connectorRunsLimit)}
                   onValueChange={(v) => setConnectorRunsLimit(Number(v || 20))}
@@ -522,50 +804,64 @@ export default function ReportsCenterPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="0">0</SelectItem>
-                    <SelectItem value="10">10</SelectItem>
-                    <SelectItem value="20">20</SelectItem>
-                    <SelectItem value="50">50</SelectItem>
-                    <SelectItem value="100">100</SelectItem>
+                    <SelectItem value="0">不包含</SelectItem>
+                    <SelectItem value="10">限制 10 条</SelectItem>
+                    <SelectItem value="20">限制 20 条（默认）</SelectItem>
+                    <SelectItem value="50">限制 50 条</SelectItem>
+                    <SelectItem value="100">限制 100 条</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+
+              <div className="flex items-center gap-2 pb-1">
+                <Switch id="only-issues-switch" checked={showOnlyIssues} onCheckedChange={setShowOnlyIssues} />
+                <Label htmlFor="only-issues-switch" className="whitespace-nowrap text-[12px]">仅显示异常/失败</Label>
+              </div>
             </div>
 
-            <div className="mt-3 flex items-center justify-between gap-2.5 flex-wrap border-t border-slate-200/80 pt-2.5">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2">
-                  <Switch id="redact-switch" checked={redact} onCheckedChange={setRedact} />
-                  <Label htmlFor="redact-switch">导出 HTML 时脱敏（推荐分享用）</Label>
-                </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200/80 pt-3">
+              <div className="flex items-center gap-2">
+                <Switch id="redact-switch" checked={redact} onCheckedChange={setRedact} />
+                <Label htmlFor="redact-switch" className="text-[12px]">分享导出时隐藏敏感字段</Label>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
-                  className="h-8 rounded-lg bg-primary text-primary-foreground shadow-[0_6px_16px_hsl(var(--primary)/0.18)] hover:bg-primary/90"
+                  variant="outline"
+                  className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
                   onClick={() => detachPromise(handleExportJson())}
                   disabled={!datasetId || isExportingJson}
-                  aria-label="导出 JSON 报告"
+                  aria-label="导出 JSON"
                 >
                   {isExportingJson ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : <Download className="size-4" />}
                   <span className="ml-2">导出 JSON</span>
                 </Button>
                 <Button
                   variant="outline"
-                  className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50"
-                  onClick={handleExportChartsJson}
+                  className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
+                  onClick={handleExportCompleteJson}
                   disabled={!datasetId || !report}
-                  aria-label="导出 Charts JSON"
+                  aria-label="导出完整 JSON"
                 >
-                  <Download className="size-4" />
-                  <span className="ml-2">导出图表 JSON</span>
+                  <Archive className="size-4" />
+                  <span className="ml-2">导出完整 JSON</span>
                 </Button>
                 <Button
                   variant="outline"
-                  className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50"
+                  className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
+                  onClick={handleExportChartsJson}
+                  disabled={!datasetId || !report}
+                  aria-label="导出 RAC 统计"
+                >
+                  <BarChart3 className="size-4" />
+                  <span className="ml-2">导出 RAC 统计</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
                   onClick={() => detachPromise(handleExportRagAuditHtml())}
                   disabled={!datasetId || isExportingRagAuditHtml}
-                  aria-label="导出 RAG Audit 报告"
+                  aria-label="导出 RAG 审计报告"
                 >
                   {isExportingRagAuditHtml ? (
                     <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
@@ -576,352 +872,207 @@ export default function ReportsCenterPage() {
                 </Button>
                 <Button
                   variant="outline"
-                  className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50"
+                  className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
                   onClick={() => detachPromise(handleExportBundleZip())}
                   disabled={!datasetId || isExportingBundle}
-                  aria-label="导出 Bundle ZIP"
+                  aria-label="导出数据包 ZIP"
                 >
                   {isExportingBundle ? (
                     <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
                   ) : (
                     <Download className="size-4" />
                   )}
-                  <span className="ml-2">导出 Bundle ZIP</span>
+                  <span className="ml-2">导出数据包 ZIP</span>
                 </Button>
                 <Button
                   variant="outline"
-                  className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50"
+                  className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
                   onClick={() => detachPromise(handleExportHtml())}
                   disabled={!datasetId || isExportingHtml}
-                  aria-label="导出 HTML 报告"
+                  aria-label="导出 HTML"
                 >
                   {isExportingHtml ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : <Download className="size-4" />}
                   <span className="ml-2">导出 HTML</span>
+                </Button>
+                <Button
+                  className="h-8 rounded-lg bg-blue-600 text-white shadow-[0_8px_20px_rgba(37,99,235,0.22)] hover:bg-blue-700"
+                  onClick={() => detachPromise(loadReport())}
+                  disabled={!datasetId || isLoadingReport}
+                  aria-label="执行审计"
+                >
+                  {isLoadingReport ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : <PlayCircle className="size-4" />}
+                  <span className="ml-2">执行审计</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
+                  onClick={() => detachPromise(loadDatasets())}
+                  disabled={isLoadingDatasets}
+                  aria-label="刷新"
+                >
+                  {isLoadingDatasets ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="size-4" />}
+                  <span className="ml-2">刷新</span>
                 </Button>
               </div>
             </div>
           </section>
 
-          {(() => {
-    if (datasetId) {
-        if (report) {
-            return (<section className="space-y-3 rounded-xl border border-slate-200/80 bg-card p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
-              <div className="space-y-1">
-                <div className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-800"><Gauge className="size-4 text-sky-600" />预览</div>
-                <div className="text-xs text-muted-foreground">
-                  数据集：{selectedDataset?.name || report.dataset_name || datasetId} · 生成时间：{formatDate(report.generated_at)}
-                </div>
+          {report ? (
+            <section className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+                <AuditMetricCard icon={FileText} label="文档总数" value={String(totalDocs)} sub="来自后端报告 profile.total_documents" tone="blue" />
+                <AuditMetricCard icon={BarChart3} label="总大小" value={formatFileSize(Number(totalBytes || 0))} sub="来自后端报告 profile.total_size_bytes" tone="violet" />
+                <AuditMetricCard icon={CheckCircle2} label="成功文档数" value={String(successDocs)} sub={`成功率 ${successRate}`} tone="green" />
+                <AuditMetricCard icon={AlertTriangle} label="失败文档数" value={String(failed)} sub={`失败率 ${failedRate}`} tone="amber" />
+                <AuditMetricCard icon={Layers} label="版本数" value={String(pipelineVersions.length)} sub={`过滤：${pipelineHash ? shortPipelineHash(pipelineHash) : '当前活动版本'}`} tone="blue" />
+                <AuditMetricCard icon={Clock3} label="最近审计" value={latestAuditTime} sub="本次报告生成时间" tone="slate" />
               </div>
-              <StatsGrid className="mb-3 md:grid-cols-3 xl:grid-cols-6">
-                <StatCard icon={FileSearch} label="文档总数" value={String(totalDocs)} color="blue"/>
-                <StatCard icon={BarChart3} label="总大小" value={formatFileSize(Number(totalBytes || 0))} color="gray"/>
-                <StatCard icon={ShieldAlert} label="隔离文档" value={String(quarantined)} color="amber"/>
-                <StatCard icon={AlertTriangle} label="失败文档" value={String(failed)} color="rose"/>
-                <StatCard icon={Layers} label="流水线版本" value={String(pipelineVersions.length)} color="gray"/>
-                <StatCard icon={RefreshCw} label="连接器运行" value={String(connectorRuns.length)} color="blue"/>
-              </StatsGrid>
 
-              {governance ? (<div className="rounded-xl border border-slate-200/80 bg-card p-3 space-y-3">
-                  <div className="flex items-start justify-between gap-3 flex-wrap">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-800"><ShieldAlert className="size-4 text-sky-600" />治理指标</div>
-                      <div className="text-xs text-muted-foreground">
-                        采样 {governance.used_documents}/{governance.total_documents}
-                        {governance.truncated ? '（已截断）' : ''}
-                      </div>
-                    </div>
-                    <Badge variant={governance.truncated ? 'soft' : 'outline'} className="text-xs">
-                      治理覆盖： {governance.docs_with_governance}/{governance.used_documents}
-                    </Badge>
+              <div className="grid gap-4 xl:grid-cols-[1.05fr_1.2fr_1.05fr_0.95fr]">
+                <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+                  <div className="mb-4 text-[15px] font-semibold text-slate-900">边缘指标 / 风险指标</div>
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+                    <MiniRiskCard label="缺失字段率" value={formatPct(missingFindingCount, totalDocs)} sub={`${missingFindingCount} 条后端 finding`} tone={missingFindingCount ? 'amber' : 'blue'} />
+                    <MiniRiskCard label="重复文档率" value={formatPct(duplicateFindingCount, totalDocs)} sub={`${duplicateFindingCount} 条后端 finding`} tone={duplicateFindingCount ? 'violet' : 'blue'} />
+                    <MiniRiskCard label="低置信度率" value={formatPct(lowQualityFindingCount, totalDocs)} sub={`${lowQualityFindingCount} 条质量 finding`} tone={lowQualityFindingCount ? 'amber' : 'green'} />
+                    <MiniRiskCard label="解析失败率" value={failedRate} sub={`${failed} 个失败文档`} tone={failed ? 'rose' : 'green'} />
                   </div>
-
-                  <StatsGrid className="md:grid-cols-2 xl:grid-cols-4">
-                    <StatCard icon={BarChart3} label="规则命中（总）" value={String(governance.rules_applied_total || 0)} color="blue"/>
-                    <StatCard icon={RefreshCw} label="变更文档（总）" value={String(governance.changed_documents_total || 0)} color="gray"/>
-                    <StatCard icon={ShieldAlert} label="过滤/隔离（总）" value={String(governance.dropped_documents_total || 0)} color="amber"/>
-                    <StatCard icon={Layers} label="规则包数（文档）" value={String(Object.keys(governance.rule_packs_docs || {}).length)} color="gray"/>
-                  </StatsGrid>
-
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <div className="rounded-xl border border-slate-200/80 bg-card p-2.5">
-                      <div className="text-[13px] font-semibold text-slate-800 mb-1.5">过滤原因分布（Top）</div>
-                      {dropReasonsData.length === 0 ? (<div className="text-sm text-muted-foreground">暂无数据</div>) : (<div className="h-[236px]">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                              <Pie data={dropReasonsData} dataKey="value" nameKey="name" innerRadius={48} outerRadius={90}>
-                                {dropReasonsData.map((entry, idx) => (<Cell key={String(entry.name ?? 'drop')} fill={PIE_COLORS[idx % PIE_COLORS.length]}/>))}
-                              </Pie>
-                              <Tooltip cursor={CHART_TOOLTIP_CURSOR} contentStyle={CHART_TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} />
-                            </PieChart>
-                          </ResponsiveContainer>
-                        </div>)}
-                    </div>
-
-                    <div className="rounded-xl border border-slate-200/80 bg-card p-2.5">
-                      <div className="text-[13px] font-semibold text-slate-800 mb-1.5">规则包命中（Top）</div>
-                      {rulePacksData.length === 0 ? (<div className="text-sm text-muted-foreground">暂无数据</div>) : (<div className="h-[236px]">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={rulePacksData} layout="vertical" margin={{ left: 90, right: 16 }}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" opacity={0.55}/>
-                              <XAxis type="number"/>
-                              <YAxis type="category" dataKey="name" width={80}/>
-                              <Tooltip cursor={CHART_TOOLTIP_CURSOR} contentStyle={CHART_TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} />
-                              <Bar dataKey="value" radius={[0, 6, 6, 0]}>
-                                {rulePacksData.map((entry, idx) => (<Cell key={String(entry.name ?? 'rule-pack')} fill={PIE_COLORS[idx % PIE_COLORS.length]}/>))}
-                              </Bar>
-                            </BarChart>
-                          </ResponsiveContainer>
-                        </div>)}
-                    </div>
-                  </div>
-                </div>) : (<div className="rounded-xl border border-slate-200/80 bg-card p-2.5">
-                  <div className="text-sm text-muted-foreground">暂无治理指标（后端未返回治理指标数据）</div>
-                </div>)}
-
-              {governanceAudit ? (<div className="rounded-xl border border-slate-200/80 bg-card p-3 space-y-3">
-                  <div className="flex items-start justify-between gap-3 flex-wrap">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-800"><BarChart3 className="size-4 text-sky-600" />治理效果审计</div>
-                      <div className="text-xs text-muted-foreground">
-                        采样 {governanceAudit.used_documents}/{governanceAudit.total_documents}
-                        {governanceAudit.truncated ? '（已截断）' : ''} · 字符统计覆盖：{governanceAudit.docs_with_char_stats}/{governanceAudit.used_documents} · 解析内容持久化：{' '}
-                        {governanceAudit.docs_with_parsed_content_persisted}/{governanceAudit.used_documents}
-                        {' · '}字符缩减 p50/p90/p99：{governanceAudit.char_reduction_pct_percentiles?.p50 || 0}%/{governanceAudit.char_reduction_pct_percentiles?.p90 || 0}%/
-                        {governanceAudit.char_reduction_pct_percentiles?.p99 || 0}%
-                      </div>
-                    </div>
-                    <Badge variant={governanceAudit.truncated ? 'soft' : 'outline'} className="text-xs">
-                      字符缩减： {govAuditReductionPct}%
-                    </Badge>
-                  </div>
-
-                  <StatsGrid className="md:grid-cols-2 xl:grid-cols-4">
-                    <StatCard icon={FileText} label="原始字符（总）" value={String(governanceAudit.original_chars_total || 0)} color="blue"/>
-                    <StatCard icon={FileText} label="清洗后字符（总）" value={String(governanceAudit.cleaned_chars_total || 0)} color="gray"/>
-                    <StatCard icon={BarChart3} label="字符缩减" value={`${govAuditReductionPct}%`} color="blue"/>
-                    <StatCard icon={Layers} label="字符统计覆盖（文档）" value={String(governanceAudit.docs_with_char_stats || 0)} color="gray"/>
-                    <StatCard icon={FileSearch} label="解析内容持久化（文档）" value={String(governanceAudit.docs_with_parsed_content_persisted || 0)} color="gray"/>
-                    <StatCard icon={RefreshCw} label="变更文档（文档）" value={String(governanceAudit.docs_changed || 0)} color="gray"/>
-                    <StatCard icon={ShieldAlert} label="过滤/隔离（文档）" value={String(governanceAudit.docs_dropped || 0)} color="amber"/>
-                  </StatsGrid>
-
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <div className="rounded-xl border border-slate-200/80 bg-card p-2.5">
-                      <div className="text-[13px] font-semibold text-slate-800 mb-1.5">字符缩减分布（%）</div>
-                      {govAuditReductionHistData.length === 0 ? (<div className="text-sm text-muted-foreground">暂无数据</div>) : (<div className="h-[236px]">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={govAuditReductionHistData} margin={{ left: 16, right: 16 }}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" opacity={0.55}/>
-                              <XAxis dataKey="name"/>
-                              <YAxis />
-                              <Tooltip cursor={CHART_TOOLTIP_CURSOR} contentStyle={CHART_TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} />
-                              <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-                                {govAuditReductionHistData.map((entry, idx) => (<Cell key={String(entry.name ?? 'reduction')} fill={PIE_COLORS[idx % PIE_COLORS.length]}/>))}
-                              </Bar>
-                            </BarChart>
-                          </ResponsiveContainer>
-                        </div>)}
-                    </div>
-
-                    <div className="rounded-xl border border-slate-200/80 bg-card p-2.5">
-                      <div className="text-[13px] font-semibold text-slate-800 mb-1.5">规则效果（Top）</div>
-                      {govAuditEffectsData.length === 0 ? (<div className="text-sm text-muted-foreground">暂无数据</div>) : (<div className="h-[236px]">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={govAuditEffectsData} layout="vertical" margin={{ left: 130, right: 16 }}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" opacity={0.55}/>
-                              <XAxis type="number"/>
-                              <YAxis type="category" dataKey="name" width={120}/>
-                              <Tooltip cursor={CHART_TOOLTIP_CURSOR} contentStyle={CHART_TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} />
-                              <Bar dataKey="value" radius={[0, 6, 6, 0]}>
-                                {govAuditEffectsData.map((entry, idx) => (<Cell key={String(entry.name ?? 'effect')} fill={PIE_COLORS[idx % PIE_COLORS.length]}/>))}
-                              </Bar>
-                            </BarChart>
-                          </ResponsiveContainer>
-                        </div>)}
-                    </div>
-                  </div>
-
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <div className="rounded-xl border border-slate-200/80 bg-card p-2.5">
-                      <div className="text-[13px] font-semibold text-slate-800 mb-1.5">文本密度分布（%）</div>
-                      {govAuditDensityHistData.length === 0 ? (<div className="text-sm text-muted-foreground">暂无数据</div>) : (<div className="h-[236px]">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={govAuditDensityHistData} margin={{ left: 16, right: 16 }}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" opacity={0.55}/>
-                              <XAxis dataKey="name"/>
-                              <YAxis />
-                              <Tooltip cursor={CHART_TOOLTIP_CURSOR} contentStyle={CHART_TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} />
-                              <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-                                {govAuditDensityHistData.map((entry, idx) => (<Cell key={String(entry.name ?? 'density')} fill={PIE_COLORS[idx % PIE_COLORS.length]}/>))}
-                              </Bar>
-                            </BarChart>
-                          </ResponsiveContainer>
-                        </div>)}
-                    </div>
-
-                    <div className="rounded-xl border border-slate-200/80 bg-card p-2.5">
-                      <div className="text-[13px] font-semibold text-slate-800 mb-1.5">标题占比分布（%）</div>
-                      {govAuditHeadingRatioHistData.length === 0 ? (<div className="text-sm text-muted-foreground">暂无数据</div>) : (<div className="h-[236px]">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={govAuditHeadingRatioHistData} margin={{ left: 16, right: 16 }}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" opacity={0.55}/>
-                              <XAxis dataKey="name"/>
-                              <YAxis />
-                              <Tooltip cursor={CHART_TOOLTIP_CURSOR} contentStyle={CHART_TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} />
-                              <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-                                {govAuditHeadingRatioHistData.map((entry, idx) => (<Cell key={String(entry.name ?? 'heading')} fill={PIE_COLORS[idx % PIE_COLORS.length]}/>))}
-                              </Bar>
-                            </BarChart>
-                          </ResponsiveContainer>
-                        </div>)}
-                    </div>
-                  </div>
-                </div>) : (<div className="rounded-xl border border-slate-200/80 bg-card p-2.5">
-                  <div className="text-sm text-muted-foreground">暂无治理效果（后端未返回治理审计数据）</div>
-                </div>)}
-
-              <div className="grid gap-3 md:grid-cols-2">
-                <div className="rounded-xl border border-slate-200/80 bg-card p-2.5">
-	                  <div className="flex items-start justify-between gap-3 flex-wrap">
-	                    <div>
-	                      <div className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-800"><FolderTree className="size-4 text-sky-600" />目录分布（Top）</div>
-	                      {folderTree ? (<div className="text-xs text-muted-foreground">
-	                          含 source_path： {folderTree.total_with_source_path}/{folderTree.total_documents}
-	                        </div>) : null}
-	                    </div>
-	                    <SearchInput value={folderQuery} onValueChange={setFolderQuery} placeholder="搜索目录…" containerClassName="w-48" inputClassName="h-8 text-xs" disabled={!folderTree}/>
-	                  </div>
-
-                  {(() => {
-                    if (folderTree) {
-                        if (flatFolders === null) {
-                            return (<div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
-                      <Loader2 className="size-4 animate-spin motion-reduce:animate-none"/>
-                      <span>目录统计计算中...</span>
-                    </div>);
-                        }
-                        else if (flatFolders.length === 0) {
-                                return (<div className="mt-3 text-sm text-muted-foreground">暂无目录（未上传带路径的文件）</div>);
-                            }
-                            else if (folderBarData.length === 0) {
-                                    return (<div className="mt-3 text-sm text-muted-foreground">无匹配结果</div>);
-                                }
-                                else {
-                                    return (<div className="mt-3 space-y-3">
-                      <div className="h-[236px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={folderBarData} layout="vertical" margin={{ left: 80, right: 16 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" opacity={0.55}/>
-                            <XAxis type="number"/>
-                            <YAxis type="category" dataKey="name" width={80}/>
-                            <Tooltip cursor={CHART_TOOLTIP_CURSOR} contentStyle={CHART_TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} />
-                            <Bar dataKey="value" radius={[0, 6, 6, 0]} fill={PIE_COLORS[0]}/>
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-
-                      <div className="space-y-2">
-                        {folderBarData.slice(0, 10).map((f) => (<div key={f.name} className="flex items-center justify-between gap-3 rounded-md px-2 py-1 hover:bg-sky-50/60">
-                            <span className="font-mono text-xs text-foreground truncate" title={f.name}>
-                              {f.name}
-                            </span>
-                            <span className="font-mono text-xs text-muted-foreground">{f.value}</span>
-                          </div>))}
-                      </div>
-                    </div>);
-                                }
-                    }
-                    else {
-                        return (<div className="mt-3 text-sm text-muted-foreground">后端未提供目录统计</div>);
-                    }
-                })()}
                 </div>
 
-                <div className="rounded-xl border border-slate-200/80 bg-card p-2.5">
-                  <div className="mb-2 flex items-center gap-1.5 text-[13px] font-semibold text-slate-800"><Layers className="size-4 text-sky-600" />流水线版本分布（Top）</div>
-                  {pipelineVersions.length === 0 ? (<div className="text-sm text-muted-foreground">暂无数据</div>) : (<div className="space-y-2">
-                      {pipelineVersions.slice(0, 10).map((v) => (<div key={v.pipeline_hash} className="flex items-center justify-between gap-3 rounded-md px-2 py-1 hover:bg-sky-50/60">
-                          <span className="font-mono text-xs text-foreground truncate" title={v.pipeline_hash}>
-                            {v.pipeline_hash}
-                          </span>
-                          <span className="font-mono text-xs text-muted-foreground">{v.documents}</span>
-                        </div>))}
-                    </div>)}
-                </div>
-
-                <div className="rounded-xl border border-slate-200/80 bg-card p-2.5">
-                  <div className="flex items-start justify-between gap-3 flex-wrap">
-	                    <div>
-	                      <div className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-800"><Tags className="size-4 text-sky-600" />分类分布（Top）</div>
-	                      <div className="text-xs text-muted-foreground">按分类统计「数据集数量」</div>
-	                    </div>
-	                    <div className="flex items-center gap-2">
-	                      <SearchInput value={categoryQuery} onValueChange={setCategoryQuery} placeholder="搜索分类…" containerClassName="w-40" inputClassName="h-8 text-xs" disabled={isLoadingCategories}/>
-	                      <Button variant="ghost" size="sm" className="h-8 px-2 text-muted-foreground" onClick={() => detachPromise(loadCategories())} disabled={isLoadingCategories} aria-label="刷新分类">
-                        {isLoadingCategories ? (<Loader2 className="size-4 animate-spin motion-reduce:animate-none"/>) : (<RefreshCw className="size-4"/>)}
-                      </Button>
-                    </div>
+                <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div className="text-[15px] font-semibold text-slate-900">字段覆盖分布</div>
+                    <Badge variant="outline" className="rounded-full text-[11px]">后端治理审计</Badge>
                   </div>
-
-                  {(() => {
-                    if (isLoadingCategories) {
-                        return (<div className="mt-3 text-sm text-muted-foreground">加载中…</div>);
-                    }
-                    else if (categoryBarData.length === 0) {
-                            return (<div className="mt-3 text-sm text-muted-foreground">暂无数据</div>);
-                        }
-                        else {
-                            return (<div className="mt-3 space-y-3">
-                      <div className="h-[236px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={categoryBarData} layout="vertical" margin={{ left: 80, right: 16 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" opacity={0.55}/>
-                            <XAxis type="number"/>
-                            <YAxis type="category" dataKey="name" width={80}/>
-                            <Tooltip cursor={CHART_TOOLTIP_CURSOR} contentStyle={CHART_TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} />
-                            <Bar dataKey="value" radius={[0, 6, 6, 0]} fill={PIE_COLORS[1]}/>
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-
-                      <div className="space-y-2">
-                        {categoryBarData.slice(0, 10).map((c) => (<div key={String(c.name)} className="flex items-center justify-between gap-3 rounded-md px-2 py-1 hover:bg-sky-50/60">
-                            <span className="font-mono text-xs text-foreground truncate" title={String(c.name)}>
-                              {String(c.name)}
-                            </span>
-                            <span className="font-mono text-xs text-muted-foreground">{String(c.value)}</span>
-                          </div>))}
-                      </div>
-                    </div>);
-                        }
-                })()}
+                  <div className="space-y-3">
+                    {fieldCoverageRows.map((row) => (
+                      <ProgressRow key={row.label} label={row.label} value={row.value} max={row.max} />
+                    ))}
+                  </div>
                 </div>
 
-                <div className="rounded-xl border border-slate-200/80 bg-card p-2.5">
-                  <div className="mb-2 flex items-center gap-1.5 text-[13px] font-semibold text-slate-800"><RefreshCw className="size-4 text-sky-600" />最近连接器运行</div>
-                  {connectorRuns.length === 0 ? (<div className="text-sm text-muted-foreground">暂无数据</div>) : (<div className="space-y-2">
-                      {connectorRuns.slice(0, 8).map((r) => (<div key={r.id} className="flex items-start justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-sky-50/60">
-                          <div className="min-w-0">
-                            <div className="font-mono text-xs text-foreground truncate" title={r.connector_id}>
-                              {r.connector_id}
-                            </div>
-                            <div className="text-xs text-muted-foreground">{formatDate(r.created_at)}</div>
+                <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div className="text-[15px] font-semibold text-slate-900">文档分布 Top</div>
+                    <Button variant="link" className="h-auto p-0 text-xs" onClick={() => setFolderQuery('')}>查看全部</Button>
+                  </div>
+                  {topDocumentRows.length === 0 ? (
+                    <EmptyState title="暂无分布数据" description="后端报告未返回目录或文件类型分布。" />
+                  ) : (
+                    <div className="space-y-3">
+                      {topDocumentRows.map((row) => (
+                        <div key={row.name} className="grid grid-cols-[1fr_52px_100px] items-center gap-3 text-[12px]">
+                          <div className="truncate font-medium text-slate-700" title={row.name}>{row.name}</div>
+                          <div className="font-mono text-slate-700">{row.value}</div>
+                          <div className="h-2 rounded-full bg-slate-100">
+                            <div className="h-full rounded-full bg-blue-500" style={{ width: `${Math.max(3, (safeNumber(row.value) / topDocumentMax) * 100)}%` }} />
                           </div>
-                          <div className="font-mono text-xs text-muted-foreground">{r.status}</div>
-                        </div>))}
-                    </div>)}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+                  <div className="mb-4 text-[15px] font-semibold text-slate-900">污染观察 / 内容健康</div>
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+                    <MiniRiskCard label="可疑链接数" value={String(governanceAudit?.urls_changed_total || 0)} sub="URL 规范化变更" tone="blue" />
+                    <MiniRiskCard label="外部附件数" value={String(governanceAudit?.images_removed_total || 0)} sub="治理审计图片移除" tone="green" />
+                    <MiniRiskCard label="敏感词命中" value={String(sensitiveHits)} sub={`PII ${piiHits} / Secret ${secretHits}`} tone={sensitiveHits ? 'amber' : 'green'} />
+                    <MiniRiskCard label="低质量片段数" value={String(lowQualityFindingCount)} sub="后端质量 finding" tone={lowQualityFindingCount ? 'rose' : 'violet'} />
+                  </div>
                 </div>
               </div>
-            </section>);
-        }
-        else {
-            return (<EmptyState title={isLoadingReport ? '报告加载中...' : '暂无预览'} description={isLoadingReport ? '正在拉取报告数据...' : '点击“刷新预览”生成报告。'}/>);
-        }
-    }
-    else {
-        return (<EmptyState title="请选择数据集" description="选择一个数据集后即可生成报告预览并导出。"/>);
-    }
-})()}
+
+              <div className="grid gap-4 xl:grid-cols-[1.2fr_0.9fr_1.4fr]">
+                <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+                  <div className="mb-4 text-[15px] font-semibold text-slate-900">类别统计 / 分布图</div>
+                  {categoryBarData.length === 0 ? (
+                    <EmptyState title="暂无分类数据" description="后端分类树没有可展示的计数。" />
+                  ) : (
+                    <div className="h-[260px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={categoryBarData.slice(0, 8)} margin={{ left: 8, right: 12, top: 8, bottom: 8 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" opacity={0.55} />
+                          <XAxis dataKey="name" />
+                          <YAxis allowDecimals={false} />
+                          <Tooltip cursor={CHART_TOOLTIP_CURSOR} contentStyle={CHART_TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} />
+                          <Bar dataKey="value" radius={[7, 7, 0, 0]} fill="#2563eb" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+                  <div className="mb-4 text-[15px] font-semibold text-slate-900">源状态版本分布 Top</div>
+                  {pipelineVersions.length === 0 ? (
+                    <EmptyState title="暂无版本数据" description="后端报告未返回 pipeline_versions。" />
+                  ) : (
+                    <div className="grid gap-3 lg:grid-cols-[1fr_1fr] xl:grid-cols-1 2xl:grid-cols-[1fr_1fr]">
+                      <div className="h-[210px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie data={pipelineVersions} dataKey="documents" nameKey="pipeline_hash" innerRadius={54} outerRadius={84}>
+                              {pipelineVersions.map((entry, idx) => (
+                                <Cell key={entry.pipeline_hash} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <Tooltip cursor={CHART_TOOLTIP_CURSOR} contentStyle={CHART_TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <div className="space-y-2 self-center">
+                        {pipelineVersions.slice(0, 5).map((version, idx) => (
+                          <div key={version.pipeline_hash} className="flex items-center justify-between gap-2 text-[12px]">
+                            <span className="flex min-w-0 items-center gap-2">
+                              <span className="size-2 rounded-full" style={{ background: PIE_COLORS[idx % PIE_COLORS.length] }} />
+                              <span className="truncate font-mono" title={version.pipeline_hash}>{shortPipelineHash(version.pipeline_hash)}</span>
+                            </span>
+                            <span className="font-mono text-slate-500">{version.documents} ({formatPct(version.documents, versionTotal)})</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div className="text-[15px] font-semibold text-slate-900">最近错误解析</div>
+                    <Button variant="link" className="h-auto p-0 text-xs" onClick={() => setShowOnlyIssues(false)}>查看全部解读</Button>
+                  </div>
+                  {issueRows.length === 0 ? (
+                    <EmptyState title="暂无异常记录" description="当前后端报告没有返回失败连接器或风险 finding。" />
+                  ) : (
+                    <div className="overflow-hidden rounded-xl border border-slate-100">
+                      <div className="grid grid-cols-[120px_72px_120px_1fr_64px] bg-slate-50 px-3 py-2 text-[11px] font-medium text-slate-500">
+                        <span>时间</span>
+                        <span>级别</span>
+                        <span>类型</span>
+                        <span>描述</span>
+                        <span className="text-right">数量</span>
+                      </div>
+                      {issueRows.map((row) => (
+                        <div key={row.id} className="grid grid-cols-[120px_72px_120px_1fr_64px] items-center border-t border-slate-100 px-3 py-3 text-[12px] text-slate-700">
+                          <span className="truncate">{row.time}</span>
+                          <span className={cn('font-medium', row.level === '错误' ? 'text-rose-600' : row.level === '警告' ? 'text-amber-600' : 'text-emerald-600')}>{row.level}</span>
+                          <span className="truncate">{row.type}</span>
+                          <span className="truncate" title={row.description}>{row.description}</span>
+                          <span className="text-right font-mono">{row.target}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+          ) : (
+            <EmptyState
+              title={datasetId ? (isLoadingReport ? '报告加载中...' : '暂无预览') : '请选择数据集'}
+              description={datasetId ? (isLoadingReport ? '正在拉取后端报告数据...' : '点击“执行审计”生成报告。') : '选择一个数据集后即可生成报告预览并导出。'}
+            />
+          )}
           </div>
         </div>
       </AnalysisPageShell>

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { FileText, Loader2, RefreshCw, Save, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { Link } from '@/i18n/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -91,8 +92,13 @@ export function IndustryRulesSection() {
           <Sparkles className="h-4 w-4 text-info" />
           行业规则与查询改写
         </h2>
-        <div className="rounded-full border border-info/20 bg-info/10 px-2 py-0.5 text-[11px] font-semibold text-info">
-          industry-rules API
+        <div className="flex items-center gap-2">
+          <Button asChild variant="outline" className="h-8 rounded-lg px-3 text-xs font-semibold">
+            <Link href="/governance/industry-rules">打开完整工作台</Link>
+          </Button>
+          <div className="rounded-full border border-info/20 bg-info/10 px-2 py-0.5 text-[11px] font-semibold text-info">
+            industry-rules API
+          </div>
         </div>
       </div>
 

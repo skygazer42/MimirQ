@@ -15,9 +15,11 @@ import re
 
 # Keep this aligned with chat_tag_service table intent detection, but avoid importing
 # that module here to keep dependencies minimal and prevent accidental cycles.
-_TABLE_INTENT_RE = re.compile(
+_SQL_TABLE_INTENT_RE = re.compile(
     r"(?i)\b(select|where|group\s+by|order\s+by|limit|sum|avg|count|min|max|distinct|join)\b"
-    r"|统计|汇总|求和|平均|最大|最小|排名|Top\s*\d+|前\s*\d+|多少|几条|筛选|过滤|分组|占比"
+)
+_TABLE_INTENT_RE = re.compile(
+    r"(?i)统计|汇总|求和|平均|最大|最小|排名|Top\s*\d+|前\s*\d+|多少|几条|筛选|过滤|分组|占比"
 )
 
 _IMAGE_EXT_RE = re.compile(r"(?i)\.(png|jpg|jpeg|gif|webp|bmp)\b")
@@ -43,8 +45,8 @@ def classify_query_modality(query: str) -> tuple[str, list[str]]:
 
     reasons: list[str] = []
 
-    if _TABLE_INTENT_RE.search(q):
-        reasons.append("table_intent")
+    if _SQL_TABLE_INTENT_RE.search(q):
+        reasons.append("sql_table_intent")
         return "table", reasons
 
     if _MARKDOWN_IMAGE_RE.search(q) or "data:image/" in q.lower() or "<img" in q.lower():
@@ -59,8 +61,11 @@ def classify_query_modality(query: str) -> tuple[str, list[str]]:
         reasons.append("image_hint")
         return "image", reasons
 
+    if _TABLE_INTENT_RE.search(q):
+        reasons.append("table_intent")
+        return "table", reasons
+
     return "text", ["default"]
 
 
 __all__ = ["classify_query_modality"]
-

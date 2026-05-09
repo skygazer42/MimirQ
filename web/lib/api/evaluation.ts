@@ -198,6 +198,7 @@ export const evaluationApi = {
   async listRegressionRuns(params?: {
     skip?: number
     limit?: number
+    dataset_id?: string
   }): Promise<RegressionRunList> {
     const { data } = await apiClient.get('/evaluations/ragas/regression/runs', { params })
     return data

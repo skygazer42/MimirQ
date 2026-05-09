@@ -353,7 +353,7 @@ const zhCNMessages = {
       graphDiagnostics: 'KG 检索评测',
       ragas: 'RAGAS 评测',
       ablations: '检索消融',
-      reports: '报告中心',
+      reports: '数据报告导出',
       prompts: '提示词',
       diagnostics: '诊断',
       usage: '用量/配额',
@@ -1527,8 +1527,8 @@ const zhCNMessages = {
     },
   },
   Reports: {
-    loadingPage: '正在加载报告中心...',
-    loadingPageSr: 'Loading reports center',
+    loadingPage: '正在加载数据报告导出...',
+    loadingPageSr: 'Loading dataset reports',
   },
   RouteBoundaries: {
     notFound: {
@@ -2130,9 +2130,9 @@ const zhCNMessages = {
           keywords: ['parsing', 'parser', 'chunking', 'extract', '解析', '文档解析', '切分', '抽取', '解析工作台'],
         },
         reports: {
-          label: '打开报表中心',
-          description: '查看系统报表与分析概览，快速定位趋势和异常波动。',
-          keywords: ['reports', 'report', 'analytics', 'dashboard', '报表', '报告', '分析看板', '指标'],
+          label: '打开数据报告导出',
+          description: '按数据集生成质量、治理和 RAG 审计报告，支持导出分享。',
+          keywords: ['reports', 'report', 'analytics', 'dashboard', '报表', '报告', '数据集报告', '数据报告导出', '质量报告', '审计'],
         },
         observability: {
           label: '打开可观测中心',
@@ -2195,9 +2195,9 @@ const zhCNMessages = {
         keywords: ['parsing', 'parser', 'extract', '文档解析', '解析', '切分', '抽取'],
       },
       reports: {
-        label: '报表中心',
-        description: '追踪趋势指标、系统报表和异常波动。',
-        keywords: ['reports', 'report', 'analytics', 'dashboard', '报表', '报告', '指标', '趋势'],
+        label: '数据报告导出',
+        description: '生成数据集质量、治理和 RAG 审计交付物。',
+        keywords: ['reports', 'report', 'analytics', 'dashboard', '报表', '报告', '数据集报告', '数据报告导出', '质量报告', '审计'],
       },
       observability: {
         label: '可观测中心',

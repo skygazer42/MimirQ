@@ -33,6 +33,10 @@ from app.models.evaluation import (
 )
 from app.rag.core.text import parse_json_from_text
 from app.rag.embedding import create_langchain_embeddings_from_config
+from app.rag.evaluation.multimodal_slices import (
+    classify_regression_case_multimodal_slice,
+    summarize_multimodal_regression_slices,
+)
 from app.rag.evaluation.regression_sample_builder import build_regression_item_meta, build_regression_sample
 from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids, get_allowed_document_id_sets
@@ -1586,6 +1590,7 @@ def run_regression_ragas_evaluation(
             merged_meta.update(case_slice_meta.get(case.id) or {})
             # Multi-modal slicing/debug (best-effort; safe-by-default).
             merged_meta.setdefault("slice_modality", str(multimodal_router_meta.get("modality") or "text"))
+            merged_meta.setdefault("golden_multimodal_slice", classify_regression_case_multimodal_slice(case))
             merged_meta.setdefault("multimodal_router", dict(multimodal_router_meta))
             merged_meta.setdefault("tag_meta", dict(tag_meta))
             merged_meta.setdefault("image_meta", dict(image_meta))
@@ -1651,6 +1656,7 @@ def run_regression_ragas_evaluation(
 
             summary: dict[str, Any] = {"items": len(eval_items)}
             summary = _merge_summary_with_regression_gate(summary, eval_items=eval_items)
+            summary["multimodal_slices"] = summarize_multimodal_regression_slices(eval_items)
             if llm_judge_summary:
                 summary.update(llm_judge_summary)
             # Gap8 (P2): eval cost tracking (retrieval-only has no eval LLM calls).
@@ -1703,6 +1709,7 @@ def run_regression_ragas_evaluation(
 
             summary = {"items": len(eval_items)}
             summary = _merge_summary_with_regression_gate(summary, eval_items=eval_items)
+            summary["multimodal_slices"] = summarize_multimodal_regression_slices(eval_items)
             if llm_judge_summary:
                 summary.update(llm_judge_summary)
             # Gap8 (P2): eval cost tracking (deterministic gate has no RAGAS; judge is optional).
@@ -1840,6 +1847,7 @@ def run_regression_ragas_evaluation(
         summary["eval_llm_tokens_output_ragas"] = eval_completion_tokens
         summary["eval_estimated_cost_usd_ragas"] = (round(float(eval_total_cost), 6) if eval_total_cost is not None else None)
         summary = _merge_summary_with_regression_gate(summary, eval_items=eval_items)
+        summary["multimodal_slices"] = summarize_multimodal_regression_slices(eval_items)
         if llm_judge_summary:
             summary.update(llm_judge_summary)
         judge_in = llm_judge_summary.get("llm_judge_tokens_input") if isinstance(llm_judge_summary, dict) else None

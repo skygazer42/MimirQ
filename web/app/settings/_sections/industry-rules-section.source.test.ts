@@ -13,5 +13,7 @@ describe('industry rules settings section', () => {
     expect(src).toContain('industryRulesApi.updateGlossary')
     expect(src).toContain('industryRulesApi.updatePatterns')
     expect(src).toContain('industryRulesApi.updateIntents')
+    expect(src).toContain('/governance/industry-rules')
+    expect(src).toContain('打开完整工作台')
   })
 })

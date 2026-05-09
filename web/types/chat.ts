@@ -405,6 +405,14 @@ export interface MessageFeedbackEnrichedListResponse {
   items: MessageFeedbackEnriched[]
 }
 
+export interface FeedbackLoopCandidatesResponse {
+  schema: string
+  summary: JsonObject
+  hard_negative_records: JsonObject[]
+  training_triples: JsonObject[]
+  rules_suggestions: JsonObject
+}
+
 // ==================== Auth ====================
 
 export type UserProfile = import('./backend').UserProfile

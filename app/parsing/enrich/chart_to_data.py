@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import time
@@ -16,6 +17,73 @@ _HTML_IMG_ATTR_RE = re.compile(r"(src|alt)\s*=\s*([\"'])(.*?)\2", re.IGNORECASE)
 _FENCE_RE = re.compile(r"^\s*(```+|~~~+)")
 _MINIO_URL_HINT = "/api/v1/documents/image-url/"
 _CHART_HINT_RE = re.compile(r"\b(chart|plot|graph|bar|line|pie|trend)\b", re.IGNORECASE)
+CHART_DATA_SCHEMA_V1 = "mimirq.chart_data.v1"
+
+
+def _stable_json(value: Any) -> str:
+    try:
+        return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    except Exception:
+        return str(value)
+
+
+def _stable_hash(*parts: Any, length: int = 24) -> str:
+    h = hashlib.sha256()
+    for part in parts:
+        if isinstance(part, bytes):
+            data = part
+        else:
+            data = str(part or "").encode("utf-8", errors="ignore")
+        h.update(data)
+        h.update(b"\0")
+    return h.hexdigest()[: max(8, int(length or 24))]
+
+
+def _coerce_confidence(value: Any) -> float | None:
+    try:
+        if value is None:
+            return None
+        out = float(value)
+    except Exception:
+        return None
+    if out < 0:
+        return 0.0
+    if out > 1:
+        return 1.0
+    return out
+
+
+def build_chart_data_v1_payload(
+    payload: dict[str, Any],
+    *,
+    src: str,
+    alt: str,
+    image_bytes: bytes,
+) -> dict[str, Any]:
+    """
+    Normalize backend-specific chart extraction into a stable v1 sidecar schema.
+
+    The raw backend payload is preserved so existing downstream consumers still
+    see vendor-specific fields, while common fields get stable names for Golden
+    eval, caching and citation rendering.
+    """
+    raw = dict(payload or {})
+    digest = _stable_hash(src, image_bytes, _stable_json(raw), length=32)
+    source_image = str(src or "").strip()
+    out: dict[str, Any] = {
+        "schema": CHART_DATA_SCHEMA_V1,
+        "chart_id": f"chart_{digest[:16]}",
+        "cache_key": f"chart_data:v1:{digest}",
+        "source_image": source_image,
+        "alt": str(alt or "").strip(),
+        "page": raw.get("page"),
+        "title": raw.get("title"),
+        "series": raw.get("series") if isinstance(raw.get("series"), list) else [],
+        "units": raw.get("units") or raw.get("unit"),
+        "confidence": _coerce_confidence(raw.get("confidence")),
+        "raw_payload": raw,
+    }
+    return out
 
 
 def _extract_md_images(line: str) -> list[tuple[str, str]]:
@@ -224,7 +292,13 @@ def add_chart_data_blocks(
             if not payload:
                 continue
             images_succeeded += 1
-            block = json.dumps(payload, ensure_ascii=False, indent=2)
+            chart_payload = build_chart_data_v1_payload(
+                payload,
+                src=src,
+                alt=alt,
+                image_bytes=image_bytes,
+            )
+            block = json.dumps(chart_payload, ensure_ascii=False, indent=2)
             out_lines.append("")
             out_lines.append("Chart data:")
             out_lines.append("```json")
@@ -235,6 +309,9 @@ def add_chart_data_blocks(
                 {
                     "src": src,
                     "alt": alt,
+                    "schema": CHART_DATA_SCHEMA_V1,
+                    "chart_id": chart_payload["chart_id"],
+                    "cache_key": chart_payload["cache_key"],
                     "backend_status": backend_status,
                 }
             )
@@ -253,4 +330,4 @@ def add_chart_data_blocks(
     return out, charts_added, audit
 
 
-__all__ = ["ChartToDataAudit", "add_chart_data_blocks"]
+__all__ = ["CHART_DATA_SCHEMA_V1", "ChartToDataAudit", "add_chart_data_blocks", "build_chart_data_v1_payload"]
