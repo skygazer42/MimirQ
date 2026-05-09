@@ -2,7 +2,9 @@
 
 import dynamic from 'next/dynamic'
 
+import { TenantPermissionGate } from '@/components/auth/tenant-permission-gate'
 import { PageLoading } from '@/components/ui/page-loading'
+import { TENANT_PERMISSIONS } from '@/lib/tenant-permissions'
 
 const DiagnosticsPageClient = dynamic(() => import('./page-client'), {
   ssr: false,
@@ -16,7 +18,11 @@ const DiagnosticsPageClient = dynamic(() => import('./page-client'), {
 })
 
 export default function DiagnosticsPage() {
-  return <DiagnosticsPageClient />
+  return (
+    <TenantPermissionGate permission={TENANT_PERMISSIONS.OBSERVABILITY_READ} pageName="诊断">
+      <DiagnosticsPageClient />
+    </TenantPermissionGate>
+  )
 }
 
 /*

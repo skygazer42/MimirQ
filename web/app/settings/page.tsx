@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { TenantPermissionGate } from '@/components/auth/tenant-permission-gate'
 import { AppFrame } from '@/components/app-frame'
 import { ModelConfigDialog } from '@/components/model-config-dialog'
 import { Button } from '@/components/ui/button'
@@ -34,6 +35,7 @@ import {
   XCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { TENANT_PERMISSIONS } from '@/lib/tenant-permissions'
 import { systemDenseControls, systemPageTokens } from '@/components/ui/system-page-tokens'
 
 const SETTINGS_SECTIONS = [
@@ -95,6 +97,14 @@ function useSettingsScrollSpy(sectionIds: readonly string[]) {
 }
 
 export default function SettingsPage() {
+  return (
+    <TenantPermissionGate permission={TENANT_PERMISSIONS.SETTINGS_READ} pageName="系统设置">
+      <SettingsPageContent />
+    </TenantPermissionGate>
+  )
+}
+
+function SettingsPageContent() {
   const state = useSettingsPageState()
   const { parserBackend, setParserBackend } = useParserBackendPreference()
   const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()

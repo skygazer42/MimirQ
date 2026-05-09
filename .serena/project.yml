@@ -3,24 +3,26 @@ project_name: "MimirQ"
 
 
 # list of languages for which language servers are started; choose from:
-#   al                  ansible             bash                clojure             cpp
-#   cpp_ccls            crystal             csharp              csharp_omnisharp    dart
-#   elixir              elm                 erlang              fortran             fsharp
-#   go                  groovy              haskell             haxe                hlsl
-#   java                json                julia               kotlin              lean4
-#   lua                 luau                markdown            matlab              msl
-#   nix                 ocaml               pascal              perl                php
-#   php_phpactor        powershell          python              python_jedi         python_ty
-#   r                   rego                ruby                ruby_solargraph     rust
-#   scala               solidity            swift               systemverilog       terraform
-#   toml                typescript          typescript_vts      vue                 yaml
-#   zig
+#   al                  angular             ansible             bash                clojure
+#   cpp                 cpp_ccls            crystal             csharp              csharp_omnisharp
+#   dart                elixir              elm                 erlang              fortran
+#   fsharp              go                  groovy              haskell             haxe
+#   hlsl                html                java                json                julia
+#   kotlin              lean4               lua                 luau                markdown
+#   matlab              msl                 nix                 ocaml               pascal
+#   perl                php                 php_phpactor        powershell          python
+#   python_jedi         python_ty           r                   rego                ruby
+#   ruby_solargraph     rust                scala               scss                solidity
+#   swift               systemverilog       terraform           toml                typescript
+#   typescript_vts      vue                 yaml                zig
 #   (This list may be outdated. For the current list, see values of Language enum here:
 #   https://github.com/oraios/serena/blob/main/src/solidlsp/ls_config.py
 #   For some languages, there are alternative language servers, e.g. csharp_omnisharp, ruby_solargraph.)
 # Note:
 #   - For C, use cpp
 #   - For JavaScript, use typescript
+#   - For Angular projects, use angular (subsumes typescript+html; requires `npm install` in the project root)
+#   - For SCSS / Sass / plain CSS, use scss (some-sass-language-server handles all three)
 #   - For Free Pascal/Lazarus, use pascal
 # Special requirements:
 #   Some languages require additional setup/installations.
@@ -125,3 +127,14 @@ ignored_memory_patterns: []
 # The full set of modes to be activated is base_modes (from global config) + default_modes + added_modes.
 # See https://oraios.github.io/serena/02-usage/050_configuration.html#modes
 added_modes:
+
+# list of additional workspace folder paths for cross-package reference support (e.g. in monorepos).
+# Paths can be absolute or relative to the project root.
+# Each folder is registered as an LSP workspace folder, enabling language servers to discover
+# symbols and references across package boundaries.
+# Currently supported for: TypeScript.
+# Example:
+#   additional_workspace_folders:
+#     - ../sibling-package
+#     - ../shared-lib
+additional_workspace_folders: []

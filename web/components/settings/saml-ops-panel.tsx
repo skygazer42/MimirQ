@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
-import { Download, Loader2, LogIn } from 'lucide-react'
+import { ChevronUp, Download, Loader2, LogIn, ShieldCheck } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -65,42 +65,56 @@ export function SamlOpsPanel() {
   const provider = providerId.trim()
 
   return (
-    <Panel padding="md" className="border-border/70 bg-card/95">
+    <Panel padding="md" className="rounded-2xl border-slate-200/80 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.04)]">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <div className="text-sm font-semibold text-foreground">SAML SSO 操作</div>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            获取 SAML metadata；需要粘贴 IdP 断言或覆盖 provider/ACS 时再打开高级交换参数。
+        <div className="flex items-start gap-3">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+            <ShieldCheck className="size-4" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 text-[15px] font-semibold text-slate-950">
+              SAML SSO
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">按需配置</span>
+            </div>
+            <p className="mt-1 text-[12px] leading-5 text-slate-500">
+              配置 SAML 单点登录，支持企业 IdP 进行身份验证与访问控制。
           </p>
         </div>
-        {busy ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground motion-reduce:animate-none" /> : null}
+        </div>
+        <div className="flex items-center gap-2">
+          {busy ? <Loader2 className="h-4 w-4 animate-spin text-slate-400 motion-reduce:animate-none" /> : null}
+          <ChevronUp className="size-4 text-slate-400" />
+        </div>
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2">
-        <ActionButton icon={Download} busy={busy === 'metadata'} disabled={Boolean(busy)} label="获取 Metadata" onClick={() => runAction('metadata', '获取 SAML Metadata', async () => {
+        <ActionButton icon={Download} busy={busy === 'metadata'} disabled={Boolean(busy)} label="配置 Metadata" onClick={() => runAction('metadata', '获取 SAML Metadata', async () => {
           const xml = await authApi.samlMetadata({ provider_id: provider || null })
           downloadText(xml, `saml-metadata.${provider || 'default'}.xml`)
           return { provider_id: provider || null, chars: xml.length, preview: xml.slice(0, 2000) }
         })} />
+        <div className="flex min-h-9 flex-1 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/60 px-3 text-center text-[12px] text-slate-400">
+          配置完成后，将在此显示 SAML 回应结果或状态信息。
+        </div>
       </div>
 
-      <details className="mt-3 rounded-lg border border-border/60 bg-background/70 p-3">
-        <summary className="cursor-pointer text-xs font-semibold text-foreground">高级交换参数（可选）</summary>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">仅在联调具体 IdP、ACS 或手动交换 SAML Response 时填写。</p>
+      <details className="mt-3 rounded-xl border border-slate-200/80 bg-slate-50/60 p-3">
+        <summary className="cursor-pointer text-[12px] font-semibold text-slate-700">高级交换参数</summary>
+        <p className="mt-1 text-[12px] leading-5 text-slate-500">仅在联调具体 IdP、ACS 或手动交换 SAML Response 时填写。</p>
         <div className="mt-3 grid gap-2 md:grid-cols-3">
           <Field label="Provider">
-            <Input value={providerId} onChange={(event) => setProviderId(event.target.value)} className="h-8 font-mono text-xs" />
+            <Input value={providerId} onChange={(event) => setProviderId(event.target.value)} className="h-8 rounded-lg border-slate-200 bg-white font-mono text-xs shadow-none" />
           </Field>
           <Field label="Relay State">
-            <Input value={relayState} onChange={(event) => setRelayState(event.target.value)} className="h-8 font-mono text-xs" />
+            <Input value={relayState} onChange={(event) => setRelayState(event.target.value)} className="h-8 rounded-lg border-slate-200 bg-white font-mono text-xs shadow-none" />
           </Field>
           <Field label="ACS URL">
-            <Input value={acsUrl} onChange={(event) => setAcsUrl(event.target.value)} className="h-8 font-mono text-xs" />
+            <Input value={acsUrl} onChange={(event) => setAcsUrl(event.target.value)} className="h-8 rounded-lg border-slate-200 bg-white font-mono text-xs shadow-none" />
           </Field>
         </div>
 
         <Field label="SAML Response">
-          <Textarea value={samlResponse} onChange={(event) => setSamlResponse(event.target.value)} className="mt-3 min-h-[104px] font-mono text-xs" />
+          <Textarea value={samlResponse} onChange={(event) => setSamlResponse(event.target.value)} className="mt-3 min-h-[104px] rounded-lg border-slate-200 bg-white font-mono text-xs shadow-none" />
         </Field>
         <div className="mt-3 flex flex-wrap gap-2">
           <ConfirmDialog
@@ -118,7 +132,7 @@ export function SamlOpsPanel() {
               return redactSensitive(payload)
             })}
           >
-            <Button variant="outline" className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold" disabled={Boolean(busy) || !samlResponse.trim()}>
+            <Button variant="outline" className="h-8 gap-1.5 rounded-lg border-slate-200 bg-white px-3 text-xs font-semibold" disabled={Boolean(busy) || !samlResponse.trim()}>
               {busy === 'exchange' ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <LogIn className="h-3.5 w-3.5" />}
               Exchange
             </Button>
@@ -134,7 +148,7 @@ export function SamlOpsPanel() {
 function Field({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
   return (
     <div className="space-y-1">
-      <Label className="text-[11px] font-medium text-muted-foreground">{label}</Label>
+      <Label className="text-[11px] font-semibold text-slate-500">{label}</Label>
       {children}
     </div>
   )
@@ -154,7 +168,7 @@ function ActionButton({
   onClick: () => Promise<void>
 }>) {
   return (
-    <Button variant="outline" className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold" disabled={disabled} onClick={() => detachPromise(onClick())}>
+    <Button variant="outline" className="h-9 gap-1.5 rounded-lg border-slate-200 bg-white px-3 text-[12px] font-semibold text-slate-600 shadow-none" disabled={disabled} onClick={() => detachPromise(onClick())}>
       {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <Icon className="h-3.5 w-3.5" />}
       {label}
     </Button>

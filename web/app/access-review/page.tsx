@@ -1,27 +1,39 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
-import { Download, RefreshCw, ShieldCheck } from 'lucide-react'
+import { 
+  Download, 
+  RefreshCw, 
+  ShieldCheck, 
+  Users, 
+  Database, 
+  Files, 
+  Code, 
+  Activity, 
+  UserCheck, 
+  CheckCircle2, 
+  LayoutGrid,
+  ChevronRight,
+  type LucideIcon
+} from 'lucide-react'
 
+import { TenantPermissionGate } from '@/components/auth/tenant-permission-gate'
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
-import { Panel } from '@/components/ui/panel'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
-import { SystemDataStrip } from '@/components/ui/system-data-strip'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 
 import { auditApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { TENANT_PERMISSIONS } from '@/lib/tenant-permissions'
 import { coerceOneOf } from '@/lib/one-of'
 import { cn, detachPromise } from '@/lib/utils'
-import { systemDenseControls, systemPageTokens, systemWorkbenchTokens } from '@/components/ui/system-page-tokens'
 
 type AccessGraphSummary = {
   schema?: string
@@ -59,13 +71,7 @@ function downloadBlob(blob: Blob, filename: string) {
   globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-const SUMMARY_SKELETON_KEYS = ['summary-1', 'summary-2', 'summary-3', 'summary-4', 'summary-5', 'summary-6', 'summary-7', 'summary-8', 'summary-9', 'summary-10']
 const EXPORT_FORMAT_VALUES = ['ndjson', 'json'] as const
-const DENSE_OUTLINE_BUTTON = systemDenseControls.outlineButton
-const DENSE_PRIMARY_BUTTON = systemDenseControls.primaryButton
-const DENSE_PANEL = systemWorkbenchTokens.panel
-const DENSE_INPUT = systemDenseControls.input
-const DENSE_SELECT_TRIGGER = systemDenseControls.selectTrigger
 
 function permissionLabel(key: string): string {
   if (key === 'all_team_members') return '全员可访问'
@@ -76,40 +82,82 @@ function permissionLabel(key: string): string {
   return key
 }
 
+// --- Specialized Components ---
+
+const HUD_TONE_CLASSES = {
+  slate: 'bg-slate-50 text-slate-400 border-slate-100',
+  blue: 'bg-blue-50 text-blue-600 border-blue-100',
+  green: 'bg-emerald-50 text-emerald-600 border-emerald-100',
+} as const
+
+function HUDTile({ icon: Icon, label, value, tone = 'slate' }: { icon: LucideIcon; label: string; value: string | number; tone?: keyof typeof HUD_TONE_CLASSES }) {
+  const toneClasses = HUD_TONE_CLASSES[tone] || HUD_TONE_CLASSES.slate
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200/60 p-5 flex items-center gap-4 shadow-[0_1px_2px_rgba(0,0,0,0.01)]">
+      <div className={cn("size-10 rounded-xl flex items-center justify-center border", toneClasses)}>
+        <Icon className="size-5" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-[11px] font-medium text-slate-400 leading-none mb-1.5 uppercase tracking-wider">{label}</p>
+        <h4 className="text-[18px] font-black text-slate-900 leading-none tracking-tight">{value}</h4>
+      </div>
+    </div>
+  )
+}
+
+function MetricItem({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: number }) {
+  return (
+    <div className="flex flex-col items-center justify-center p-4 rounded-xl border border-transparent hover:border-slate-100 hover:bg-slate-50/50 transition-all group">
+      <div className="size-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-blue-50 group-hover:text-blue-500 transition-colors mb-2 border border-slate-100">
+        <Icon className="size-5" />
+      </div>
+      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight text-center leading-tight mb-1">{label}</p>
+      <p className="text-[16px] font-black text-slate-900 leading-none">{value}</p>
+    </div>
+  )
+}
+
+function DistributionBar({ label, value, max }: { label: string; value: number; max: number }) {
+  const percentage = max > 0 ? (value / max) * 100 : 0
+  return (
+    <div className="flex flex-col gap-2 group">
+      <div className="flex items-center justify-between text-[11px] font-bold">
+        <span className="text-slate-600 group-hover:text-slate-900 transition-colors">{label}</span>
+        <span className="text-slate-400 font-mono">{value}</span>
+      </div>
+      <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+        <div 
+          className="h-full bg-blue-500 rounded-full transition-all duration-500 ease-out shadow-[0_0_8px_rgba(59,130,246,0.3)]" 
+          style={{ width: `${percentage}%` }} 
+        />
+      </div>
+    </div>
+  )
+}
+
+// --- Main Page ---
+
 export default function AccessReviewPage() {
+  return (
+    <TenantPermissionGate permission={TENANT_PERMISSIONS.AUDIT_READ} pageName="访问审查">
+      <AccessReviewPageContent />
+    </TenantPermissionGate>
+  )
+}
+
+function AccessReviewPageContent() {
+  const t = useTranslations('AccessReviewPage')
   const [summary, setSummary] = useState<AccessGraphSummary | null>(null)
   const [loadingSummary, setLoadingSummary] = useState(false)
 
   const [exportFormat, setExportFormat] = useState<'ndjson' | 'json'>('ndjson')
   const [includeSensitive, setIncludeSensitive] = useState(false)
   const [gzip, setGzip] = useState(true)
-  const [limit, setLimit] = useState(10_000)
+  const [limit, setLimit] = useState(10000)
 
   const [exporting, setExporting] = useState(false)
   const [exportPages, setExportPages] = useState(0)
-  const [exportBytes, setExportBytes] = useState(0)
-
-  const t = useTranslations('AccessReviewPage')
-
-  const permissionCounts = useMemo(() => {
-    const m = summary?.dataset_permission_counts || {}
-    return {
-      all_team_members: safeInt(m.all_team_members),
-      partial_members: safeInt(m.partial_members),
-      only_me: safeInt(m.only_me),
-    }
-  }, [summary?.dataset_permission_counts])
-
-  const accessModeCounts = useMemo(() => {
-    const m = summary?.document_access_mode_counts || {}
-    return {
-      inherit: safeInt(m.inherit),
-      partial_members: safeInt(m.partial_members),
-      only_me: safeInt(m.only_me),
-      all_team_members: safeInt(m.all_team_members),
-      unknown: safeInt(m.unknown),
-    }
-  }, [summary?.document_access_mode_counts])
 
   const loadSummary = useCallback(async () => {
     setLoadingSummary(true)
@@ -117,76 +165,34 @@ export default function AccessReviewPage() {
       const data = await auditApi.getAccessGraphSummary()
       setSummary(data || null)
     } catch (err: any) {
-      setSummary(null)
       toast.error(formatApiError(err, t('errors.loadSummary')))
     } finally {
       setLoadingSummary(false)
     }
   }, [t])
 
-  useEffect(() => {
-    detachPromise(loadSummary())
-  }, [loadSummary])
+  useEffect(() => { detachPromise(loadSummary()) }, [loadSummary])
 
   const handleDownload = useCallback(async () => {
-    const cap = Math.max(1, Math.min(10_000, safeInt(limit)))
-    const maxPages = 50
-    const maxTotalBytes = 150 * 1024 * 1024
-
-    setExporting(true)
-    setExportPages(0)
-    setExportBytes(0)
-
+    setExporting(true); setExportPages(0)
     try {
       if (exportFormat === 'json') {
-        const { blob } = await auditApi.exportAccessGraphPage({
-          limit: cap,
-          export_format: 'json',
-          include_sensitive: includeSensitive,
-          gzip,
-        })
+        const { blob } = await auditApi.exportAccessGraphPage({ limit, export_format: 'json', include_sensitive: includeSensitive, gzip })
         downloadBlob(blob, `access-graph.${safeTs()}.json`)
         toast.success(t('toasts.downloadJson'))
         return
       }
 
       const blobs: Blob[] = []
-      let cursor: { after_kind: string; after_created_at: string; after_id: string } | null = null
-      let pages = 0
-      let bytes = 0
-
+      let cursor: any = null; let pages = 0
       while (true) {
-        pages += 1
-        const res = await auditApi.exportAccessGraphPage({
-          limit: cap,
-          export_format: 'ndjson',
-          include_sensitive: includeSensitive,
-          gzip,
-          after_kind: cursor?.after_kind,
-          after_created_at: cursor?.after_created_at,
-          after_id: cursor?.after_id,
-        })
+        pages += 1; setExportPages(pages)
+        const res = await auditApi.exportAccessGraphPage({ limit, export_format: 'ndjson', include_sensitive: includeSensitive, gzip, ...cursor })
         blobs.push(res.blob)
-        bytes += safeInt((res.blob as any)?.size)
-
-        setExportPages(pages)
-        setExportBytes(bytes)
-
-        if (!res.nextCursor) break
+        if (!res.nextCursor || pages >= 50) break
         cursor = res.nextCursor
-
-        if (pages >= maxPages) {
-        toast.warning(t('warnings.reachedPageLimit', { maxPages }))
-          break
-        }
-        if (bytes >= maxTotalBytes) {
-        toast.warning(t('warnings.reachedByteLimit'))
-          break
-        }
       }
-
-      const out = new Blob(blobs, { type: 'application/x-ndjson' })
-      downloadBlob(out, `access-graph.${safeTs()}.ndjson`)
+      downloadBlob(new Blob(blobs, { type: 'application/x-ndjson' }), `access-graph.${safeTs()}.ndjson`)
       toast.success(t('toasts.downloadPages', { pages }))
     } catch (err: any) {
       toast.error(formatApiError(err, t('errors.export')))
@@ -195,200 +201,144 @@ export default function AccessReviewPage() {
     }
   }, [exportFormat, gzip, includeSensitive, limit, t])
 
-  const summaryStats = useMemo(() => {
-    return {
-      group_count: safeInt(summary?.group_count),
-      group_member_count: safeInt(summary?.group_member_count),
-      dataset_count: safeInt(summary?.dataset_count),
-      dataset_member_allowlist_count: safeInt(summary?.dataset_member_allowlist_count),
-      dataset_group_allowlist_count: safeInt(summary?.dataset_group_allowlist_count),
-      document_count: safeInt(summary?.document_count),
-      document_member_allowlist_count: safeInt(summary?.document_member_allowlist_count),
-      document_group_allowlist_count: safeInt(summary?.document_group_allowlist_count),
-    }
-  }, [summary])
-
-  const stripItems = useMemo(
-    () => [
-      { label: '组数量', value: summaryStats.group_count, mono: true },
-      { label: '数据集', value: summaryStats.dataset_count, mono: true },
-      { label: '文档', value: summaryStats.document_count, mono: true },
-      { label: '导出格式', value: exportFormat.toUpperCase(), mono: true },
-      {
-        label: '导出状态',
-        value: exporting ? `进行中 · ${exportPages} 页` : '空闲',
-        tone: exporting ? 'warning' : 'default',
-      },
-    ],
-    [summaryStats.group_count, summaryStats.dataset_count, summaryStats.document_count, exportFormat, exporting, exportPages]
-  )
+  const permissionCounts = summary?.dataset_permission_counts || {}
+  const accessModeCounts = summary?.document_access_mode_counts || {}
 
   return (
     <AppFrame>
-      <div className="flex-1 flex flex-col overflow-hidden relative">
-        <PageScaffold
-          title={t('title')}
-          description={t('description')}
-          icon={ShieldCheck}
-          iconColor="text-emerald-600 dark:text-emerald-400"
-          size="full"
-          density="system-dense"
-          top={<SystemDataStrip items={stripItems} minColumnWidth={158} />}
-          actions={
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                className={DENSE_OUTLINE_BUTTON}
-                onClick={() => detachPromise(loadSummary())}
-                disabled={loadingSummary}
-              >
-                <RefreshCw className={cn('w-4 h-4', loadingSummary && 'animate-spin motion-reduce:animate-none')} />
-                {t('actions.refresh')}
-              </Button>
-              <Button
-                size="sm"
-                className={DENSE_PRIMARY_BUTTON}
-                onClick={() => detachPromise(handleDownload())}
-                disabled={exporting}
-              >
-                <Download className="w-4 h-4" />
-                {t('actions.export')}
-              </Button>
+      <PageScaffold
+        title={t('title')}
+        description={t('description')}
+        icon={ShieldCheck}
+        iconColor="text-blue-600"
+        size="full"
+        bodyClassName="bg-slate-50/50"
+        actions={
+          <div className="flex items-center gap-3">
+            <Button variant="outline" size="sm" className="h-8 gap-1.5 rounded-lg text-[12px] font-bold border-slate-200 bg-white" onClick={() => detachPromise(loadSummary())}>
+              <RefreshCw className={cn("size-3.5", loadingSummary && "animate-spin")} />
+              {t('actions.refresh')}
+            </Button>
+            <Button size="sm" className="h-8 gap-1.5 rounded-lg text-[12px] font-bold bg-blue-600 shadow-lg shadow-blue-900/20" onClick={() => detachPromise(handleDownload())} disabled={exporting}>
+              <Download className="size-3.5" />
+              {t('actions.export')}
+            </Button>
+          </div>
+        }
+      >
+        <div className="flex flex-col gap-6">
+          
+          {/* Top HUD Strip */}
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            <HUDTile icon={Users} label={t('strip.groups')} value={safeInt(summary?.group_count)} tone="blue" />
+            <HUDTile icon={Database} label={t('strip.datasets')} value={safeInt(summary?.dataset_count)} tone="blue" />
+            <HUDTile icon={Files} label={t('strip.docs')} value={safeInt(summary?.document_count)} tone="blue" />
+            <HUDTile icon={Code} label={t('strip.format')} value={exportFormat.toUpperCase()} tone="slate" />
+            <HUDTile icon={Activity} label={t('strip.status')} value={exporting ? t('strip.processing', { pages: exportPages }) : t('strip.idle')} tone={exporting ? 'green' : 'slate'} />
+          </div>
+
+          {/* Summary Panel */}
+          <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm p-6">
+            <div className="flex items-center justify-between mb-2">
+               <h3 className="text-[14px] font-black text-slate-900 uppercase tracking-tight">{t('summary.heading')}</h3>
+               <span className="text-[10px] font-mono font-bold text-slate-300">
+                 {summary?.generated_at ? t('summary.generatedAt', { timestamp: summary.generated_at }) : ''}
+               </span>
             </div>
-          }
-        >
-          <Panel padding="md" className={cn('mt-3', DENSE_PANEL)}>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className={cn(systemPageTokens.heading, 'text-sm')}>{t('summary.heading')}</div>
-                <div className={cn('mt-1 text-pretty', systemPageTokens.subtle)}>{t('summary.description')}</div>
+            <p className="text-[11px] text-slate-400 font-medium mb-8 max-w-3xl">{t('summary.description')}</p>
+
+            {loadingSummary ? (
+              <div className="grid grid-cols-2 md:grid-cols-7 gap-4">
+                {[1,2,3,4,5,6,7].map(i => <Skeleton key={i} className="h-24 rounded-xl bg-slate-50" />)}
               </div>
-              <div className={systemPageTokens.monoMeta}>
-                {summary?.generated_at ? t('summary.generatedAt', { timestamp: summary.generated_at }) : null}
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-7 gap-4">
+                <MetricItem icon={Users} label={t('summary.stats.groups')} value={safeInt(summary?.group_count)} />
+                <MetricItem icon={UserCheck} label={t('summary.stats.members')} value={safeInt(summary?.group_member_count)} />
+                <MetricItem icon={Database} label={t('summary.stats.datasets')} value={safeInt(summary?.dataset_count)} />
+                <MetricItem icon={Files} label={t('summary.stats.docs')} value={safeInt(summary?.document_count)} />
+                <MetricItem icon={CheckCircle2} label={t('summary.stats.datasetMemberWhitelist')} value={safeInt(summary?.dataset_member_allowlist_count)} />
+                <MetricItem icon={CheckCircle2} label={t('summary.stats.datasetOwnerWhitelist')} value={safeInt(summary?.dataset_group_allowlist_count)} />
+                <MetricItem icon={CheckCircle2} label={t('summary.stats.docOwnerWhitelist')} value={safeInt(summary?.document_member_allowlist_count)} />
               </div>
-            </div>
+            )}
 
-            <div className="mt-4">
-              {(() => {
-    if (loadingSummary) {
-        return (<div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                  {SUMMARY_SKELETON_KEYS.map((key) => (<Skeleton key={key} className="h-[68px] rounded-xl"/>))}
-                </div>);
-    }
-    else if (summary) {
-            return (<>
-                  <StatsGrid dense className="mt-1">
-                    <StatCard icon={ShieldCheck} label="组数量" value={summaryStats.group_count} color="cyan" dense />
-                    <StatCard icon={ShieldCheck} label="组成员数" value={summaryStats.group_member_count} color="gray" dense />
-                    <StatCard icon={ShieldCheck} label="数据集数" value={summaryStats.dataset_count} color="sky" dense />
-                    <StatCard icon={ShieldCheck} label="文档数" value={summaryStats.document_count} color="sky" dense />
-                    <StatCard icon={ShieldCheck} label="数据集成员白名单" value={summaryStats.dataset_member_allowlist_count} color="gray" dense />
-                    <StatCard icon={ShieldCheck} label="数据集组白名单" value={summaryStats.dataset_group_allowlist_count} color="gray" dense />
-                    <StatCard icon={ShieldCheck} label="文档成员白名单" value={summaryStats.document_member_allowlist_count} color="gray" dense />
-                    <StatCard icon={ShieldCheck} label="文档组白名单" value={summaryStats.document_group_allowlist_count} color="gray" dense />
-                  </StatsGrid>
-
-                  <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    <div className="rounded-lg border border-border/60 bg-muted/10 p-3">
-                    <div className={cn(systemPageTokens.heading, 'text-sm')}>{t('stats.datasetDistribution')}</div>
-                      <div className="mt-2 space-y-1 font-mono text-[11px] text-muted-foreground tabular-nums">
-                        <div className="flex items-center justify-between gap-2">
-                          <span>{permissionLabel('all_team_members')}</span>
-                          <span>{permissionCounts.all_team_members}</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2">
-                          <span>{permissionLabel('partial_members')}</span>
-                          <span>{permissionCounts.partial_members}</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2">
-                          <span>{permissionLabel('only_me')}</span>
-                          <span>{permissionCounts.only_me}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="rounded-lg border border-border/60 bg-muted/10 p-3">
-                      <div className={cn(systemPageTokens.heading, 'text-sm')}>{t('stats.documentDistribution')}</div>
-                      <div className="mt-2 space-y-1 font-mono text-[11px] text-muted-foreground tabular-nums">
-                        {Object.entries(accessModeCounts).map(([k, v]) => (<div key={k} className="flex items-center justify-between gap-2">
-                            <span>{permissionLabel(k)}</span>
-                            <span>{v}</span>
-                          </div>))}
-                      </div>
+            {/* Distribution Charts */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 mt-10 pt-10 border-t border-slate-50">
+               <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-[12px] font-black text-slate-800 uppercase tracking-wider">{t('stats.datasetDistribution')}</h4>
+                    <div className="flex items-center gap-4 text-[10px] font-bold text-slate-300 uppercase tracking-widest">
+                       <span>{t('stats.dimension')}</span>
+                       <span>{t('stats.count')}</span>
                     </div>
                   </div>
-                </>);
-        }
-        else {
-        return (<div className={systemPageTokens.body}>
-              {t('errors.loadSummaryFallback')}
-            </div>);
-        }
-})()}
+                  <div className="space-y-5">
+                    <DistributionBar label={permissionLabel('all_team_members')} value={safeInt(permissionCounts.all_team_members)} max={safeInt(summary?.dataset_count)} />
+                    <DistributionBar label={permissionLabel('partial_members')} value={safeInt(permissionCounts.partial_members)} max={safeInt(summary?.dataset_count)} />
+                    <DistributionBar label={permissionLabel('only_me')} value={safeInt(permissionCounts.only_me)} max={safeInt(summary?.dataset_count)} />
+                  </div>
+               </div>
+
+               <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-[12px] font-black text-slate-800 uppercase tracking-wider">{t('stats.documentDistribution')}</h4>
+                    <div className="flex items-center gap-4 text-[10px] font-bold text-slate-300 uppercase tracking-widest">
+                       <span>{t('stats.dimension')}</span>
+                       <span>{t('stats.count')}</span>
+                    </div>
+                  </div>
+                  <div className="space-y-5">
+                    {Object.entries(accessModeCounts).map(([k, v]) => (
+                      <DistributionBar key={k} label={permissionLabel(k)} value={safeInt(v)} max={safeInt(summary?.document_count)} />
+                    ))}
+                  </div>
+               </div>
             </div>
-          </Panel>
+          </div>
 
-          <Panel padding="md" className={cn('mt-3', DENSE_PANEL)}>
-          <div className={cn(systemPageTokens.heading, 'text-sm')}>{t('export.heading')}</div>
-            <div className={cn('mt-1 text-pretty', systemPageTokens.subtle)}>{t('export.description')}</div>
+          {/* Export Config Panel */}
+          <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm p-8">
+            <h3 className="text-[14px] font-black text-slate-900 uppercase tracking-tight mb-2">{t('export.heading')}</h3>
+            <p className="text-[11px] text-slate-400 font-medium mb-8 max-w-3xl leading-relaxed">{t('export.description')}</p>
 
-            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-12">
-              <div className="space-y-1 xl:col-span-3">
-                <Label className={systemPageTokens.microLabel}>{t('export.formatLabel')}</Label>
-                <Select
-                  value={exportFormat}
-                  onValueChange={(value) => setExportFormat(coerceOneOf(EXPORT_FORMAT_VALUES, value, 'ndjson'))}
-                >
-                  <SelectTrigger className={DENSE_SELECT_TRIGGER}>
-                    <SelectValue placeholder={t('export.formatPlaceholder')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ndjson">{t('export.formatOptions.ndjson')}</SelectItem>
-                    <SelectItem value="json">{t('export.formatOptions.json')}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1 xl:col-span-3">
-                <Label className={systemPageTokens.microLabel}>{t('export.limitLabel')}</Label>
-                <Input
-                  className={DENSE_INPUT}
-                  type="number"
-                  min={1}
-                  max={10000}
-                  value={String(limit)}
-                  onChange={(e) => setLimit(safeInt(e.target.value))}
-                />
-              </div>
-
-              <div className="flex items-end justify-between gap-3 rounded-lg border border-border/60 bg-muted/10 px-4 py-3 xl:col-span-6">
-                <div className="min-w-0">
-                <Label className="text-[12px] font-semibold">{t('export.gzipLabel')}</Label>
-                <div className={cn('truncate', systemPageTokens.subtle)}>{t('export.gzipDescription')}</div>
-                </div>
-                <Switch checked={gzip} onCheckedChange={(v) => setGzip(Boolean(v))} />
-              </div>
-            </div>
-
-            <div className="mt-3 flex flex-col gap-2 rounded-lg border border-border/60 bg-muted/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <Label className="text-[12px] font-semibold">{t('export.includeSensitiveLabel')}</Label>
-                <div className={cn(systemPageTokens.subtle, 'text-pretty')}>
-                  {t('export.includeSensitiveDescription')}
-                </div>
-              </div>
-              <Switch checked={includeSensitive} onCheckedChange={(v) => setIncludeSensitive(Boolean(v))} />
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-end">
+               <div className="lg:col-span-4 space-y-2">
+                  <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">{t('export.formatLabel')}</Label>
+                  <Select value={exportFormat} onValueChange={v => setExportFormat(v as any)}>
+                    <SelectTrigger className="h-10 rounded-xl border-slate-200 bg-slate-50/50 font-bold text-[13px] shadow-none">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ndjson">{t('export.formatOptions.ndjson')}</SelectItem>
+                      <SelectItem value="json">{t('export.formatOptions.json')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+               </div>
+               <div className="lg:col-span-4 space-y-2">
+                  <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">{t('export.limitLabel')}</Label>
+                  <Input type="number" value={limit} onChange={e => setLimit(safeInt(e.target.value))} className="h-10 rounded-xl border-slate-200 bg-slate-50/50 font-mono font-bold shadow-none" />
+               </div>
+               <div className="lg:col-span-4 flex items-center justify-between p-4 rounded-xl border border-slate-100 bg-slate-50/30">
+                  <div className="flex flex-col">
+                    <span className="text-[12px] font-bold text-slate-700">{t('export.gzipLabel')}</span>
+                    <span className="text-[9px] font-medium text-slate-400 tracking-tight">{t('export.gzipDescription')}</span>
+                  </div>
+                  <Switch checked={gzip} onCheckedChange={setGzip} />
+               </div>
             </div>
 
-            {exporting ? (
-              <div className="mt-3 font-mono text-[11px] text-muted-foreground tabular-nums">
-                导出中… 页数={exportPages} 字节={exportBytes}
-              </div>
-            ) : null}
-          </Panel>
-        </PageScaffold>
-      </div>
+            <div className="mt-6 flex items-center justify-between p-5 rounded-2xl border border-slate-100 bg-slate-50/10">
+               <div className="flex flex-col">
+                 <span className="text-[12px] font-bold text-slate-700">{t('export.includeSensitiveLabel')}</span>
+                 <span className="text-[10px] font-medium text-slate-400 tracking-tight max-w-2xl">{t('export.includeSensitiveDescription')}</span>
+               </div>
+               <Switch checked={includeSensitive} onCheckedChange={setIncludeSensitive} />
+            </div>
+          </div>
+
+        </div>
+      </PageScaffold>
     </AppFrame>
   )
 }

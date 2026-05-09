@@ -5,25 +5,35 @@
  */
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { Plus, RefreshCw, Trash2, Users, UsersRound } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
+import {
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Database,
+  Filter,
+  Plus,
+  RefreshCw,
+  Search,
+  Trash2,
+  Users,
+  UsersRound,
+} from 'lucide-react'
 import { toast } from 'sonner'
 
+import { TenantPermissionGate } from '@/components/auth/tenant-permission-gate'
 import { AppFrame } from '@/components/app-frame'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PageScaffold } from '@/components/ui/page-scaffold'
-import { Panel } from '@/components/ui/panel'
-import { SystemDataStrip } from '@/components/ui/system-data-strip'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn, detachPromise } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
+import { TENANT_PERMISSIONS } from '@/lib/tenant-permissions'
 import { groupApi } from '@/lib/api'
 import { useRouter } from '@/i18n/navigation'
 import type { TenantGroupOut } from '@/types/backend'
-import { EmptyState } from '@/components/ui/empty-state'
-import { systemDenseControls, systemPageTokens, systemWorkbenchTokens } from '@/components/ui/system-page-tokens'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,17 +47,75 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 
-const DENSE_OUTLINE_BUTTON = systemDenseControls.outlineButton
-const DENSE_PRIMARY_BUTTON = systemDenseControls.primaryButton
-const DENSE_INPUT = systemDenseControls.input
-const DENSE_ICON_GHOST = 'h-7 w-7 rounded-md'
-const DENSE_PANEL = systemWorkbenchTokens.panel
+const PAGE_SIZE_OPTIONS = [10, 20, 50] as const
+const OUTLINE_BUTTON = 'h-9 rounded-xl border-slate-200 bg-white px-3.5 text-[12px] font-semibold text-slate-700 shadow-sm hover:bg-slate-50'
+const PRIMARY_BUTTON = 'h-9 rounded-xl bg-blue-600 px-3.5 text-[12px] font-semibold text-white shadow-[0_8px_20px_rgba(37,99,235,0.22)] hover:bg-blue-700'
+const INPUT_CLASS = 'h-10 rounded-xl border-slate-200 bg-white text-[13px] shadow-sm placeholder:text-slate-400 focus-visible:ring-blue-500/30'
+const CARD_CLASS = 'rounded-[20px] border border-slate-200/80 bg-white/92 shadow-[0_18px_44px_rgba(15,23,42,0.06)]'
+const ICON_BUTTON = 'size-7 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+
+type SummaryTone = 'indigo' | 'blue' | 'green' | 'slate'
+
+type SummaryItem = {
+  label: string
+  value: string | number
+  icon: ComponentType<{ className?: string }>
+  tone: SummaryTone
+  valueClassName?: string
+}
+
+const SUMMARY_TONE_CLASS: Record<SummaryTone, string> = {
+  indigo: 'bg-indigo-50 text-indigo-600',
+  blue: 'bg-blue-50 text-blue-600',
+  green: 'bg-emerald-50 text-emerald-600',
+  slate: 'bg-slate-100 text-slate-500',
+}
 
 export default function SettingsGroupsPage() {
+  return (
+    <TenantPermissionGate permission={TENANT_PERMISSIONS.SETTINGS_READ} pageName="组管理">
+      <SettingsGroupsPageContent />
+    </TenantPermissionGate>
+  )
+}
+
+function GroupSummaryStrip({ items }: Readonly<{ items: SummaryItem[] }>) {
+  return (
+    <div className={cn(CARD_CLASS, 'grid min-h-[112px] grid-cols-1 overflow-hidden md:grid-cols-2 xl:grid-cols-4')}>
+      {items.map((item, index) => {
+        const Icon = item.icon
+        return (
+          <div
+            key={item.label}
+            className={cn(
+              'flex items-center justify-between gap-3.5 px-6 py-5',
+              index > 0 && 'border-t border-slate-100 md:border-l md:border-t-0'
+            )}
+          >
+            <div className="min-w-0">
+              <p className="text-[12px] font-semibold text-slate-500">{item.label}</p>
+              <p className={cn('mt-2.5 text-[23px] font-semibold leading-none tracking-[-0.04em] text-slate-950', item.valueClassName)}>
+                {item.value}
+              </p>
+            </div>
+            <div className={cn('flex size-11 shrink-0 items-center justify-center rounded-2xl', SUMMARY_TONE_CLASS[item.tone])}>
+              <Icon className="size-5" />
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function SettingsGroupsPageContent() {
   const router = useRouter()
+  const didRequestInitialLoadRef = useRef(false)
   const [loading, setLoading] = useState(false)
   const [groups, setGroups] = useState<TenantGroupOut[]>([])
   const [query, setQuery] = useState('')
+  const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(10)
+  const [page, setPage] = useState(1)
 
   const [createOpen, setCreateOpen] = useState(false)
   const [creating, setCreating] = useState(false)
@@ -68,23 +136,40 @@ export default function SettingsGroupsPage() {
   }, [groups, query])
 
   const canCreate = useMemo(() => String(nameDraft || '').trim().length > 0, [nameDraft])
-  const stripItems = useMemo(
+  const pageCount = useMemo(() => Math.max(1, Math.ceil(filtered.length / pageSize)), [filtered.length, pageSize])
+  const visibleGroups = useMemo(() => {
+    const start = (page - 1) * pageSize
+    return filtered.slice(start, start + pageSize)
+  }, [filtered, page, pageSize])
+  const summaryItems = useMemo<SummaryItem[]>(
     () => [
-      { label: '组总数', value: groups.length, mono: true },
-      { label: '筛选后', value: filtered.length, mono: true },
+      { label: '组总数', value: groups.length, icon: Users, tone: 'indigo' },
+      { label: '筛选后', value: filtered.length, icon: Filter, tone: 'blue' },
       {
         label: '创建状态',
         value: creating ? '创建中' : createOpen ? '待创建' : '空闲',
-        tone: creating ? 'warning' : createOpen ? 'default' : 'success',
+        icon: CheckCircle2,
+        tone: 'green',
+        valueClassName: creating || createOpen ? 'text-amber-600' : 'text-emerald-600',
       },
       {
         label: '列表状态',
         value: loading ? '加载中' : groups.length ? '已就绪' : '无数据',
-        tone: loading ? 'warning' : groups.length ? 'success' : 'default',
+        icon: Database,
+        tone: 'slate',
+        valueClassName: loading ? 'text-amber-600' : groups.length ? 'text-emerald-600' : 'text-slate-950',
       },
     ],
     [groups.length, filtered.length, creating, createOpen, loading]
   )
+
+  useEffect(() => {
+    setPage(1)
+  }, [query, pageSize])
+
+  useEffect(() => {
+    setPage((current) => Math.min(Math.max(1, current), pageCount))
+  }, [pageCount])
 
   async function refresh(): Promise<void> {
     setLoading(true)
@@ -136,6 +221,8 @@ export default function SettingsGroupsPage() {
   }
 
   useEffect(() => {
+    if (didRequestInitialLoadRef.current) return
+    didRequestInitialLoadRef.current = true
     detachPromise(refresh())
   }, [])
 
@@ -143,18 +230,21 @@ export default function SettingsGroupsPage() {
     <AppFrame>
       <PageScaffold
         title="组管理"
-        description="管理租户组目录，用于数据集/文档访问控制与企业身份同步（开放ID连接 OIDC / 跨域身份管理 SCIM）。"
+        description="管理和组织目录，用于数据库/文档访问控制与企业身份同步（开放ID连接 OIDC / 跨域身份管理 SCIM）。"
         icon={Users}
         iconColor="text-indigo-600 dark:text-indigo-400"
         size="full"
-        density="system-dense"
-        top={<SystemDataStrip items={stripItems} minColumnWidth={150} />}
+        compact={false}
+        headerClassName="[&_h1]:!text-[27px] [&_h1]:md:!text-[29px] [&_h1]:!leading-tight [&_h1]:!tracking-[-0.035em]"
+        topClassName="pb-2.5"
+        bodyClassName="pt-1.5"
+        top={<GroupSummaryStrip items={summaryItems} />}
         actions={
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
-              className={DENSE_OUTLINE_BUTTON}
+              className={OUTLINE_BUTTON}
               disabled={loading}
               onClick={() => detachPromise(refresh())}
             >
@@ -173,7 +263,7 @@ export default function SettingsGroupsPage() {
               }}
             >
               <DialogTrigger asChild>
-                <Button size="sm" className={DENSE_PRIMARY_BUTTON}>
+                <Button size="sm" className={PRIMARY_BUTTON}>
                   <Plus className="size-4" />
                   新建组
                 </Button>
@@ -190,7 +280,7 @@ export default function SettingsGroupsPage() {
                   <div className="grid gap-2">
                     <Label htmlFor="group-name">名称</Label>
                     <Input
-                      className={DENSE_INPUT}
+                      className={INPUT_CLASS}
                       id="group-name"
                       value={nameDraft}
                       onChange={(e) => setNameDraft(e.target.value)}
@@ -199,16 +289,16 @@ export default function SettingsGroupsPage() {
                     />
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="group-external-id">外部组 ID（external_id，可选）</Label>
+                    <Label htmlFor="group-external-id">外部组 ID（external_id）</Label>
                     <Input
-                      className={DENSE_INPUT}
+                      className={INPUT_CLASS}
                       id="group-external-id"
                       value={externalIdDraft}
                       onChange={(e) => setExternalIdDraft(e.target.value)}
                       placeholder="例如：Okta/AzureAD 组 ID"
                       autoComplete="off"
                     />
-                    <div className={systemPageTokens.subtle}>
+                    <div className="text-xs leading-relaxed text-slate-500">
                       该字段用于开放ID连接组声明（OIDC groups claim）/ 跨域身份管理（SCIM）同步；留空不影响访问控制列表（ACL）使用。
                     </div>
                   </div>
@@ -227,58 +317,86 @@ export default function SettingsGroupsPage() {
           </div>
         }
       >
-        <div className="grid grid-cols-1 gap-4">
-          <Panel padding="md" className={DENSE_PANEL}>
-              <div className="mb-3 space-y-2">
-              <div className="flex items-center justify-between gap-3">
-                <span className={cn('flex items-center gap-2 text-sm', systemPageTokens.heading)}>
-                  <Users className="size-5" />
-                  组列表
-                </span>
-                <Badge variant="outline" className="font-mono text-[11px]">
-                  {filtered.length} 条
-                </Badge>
-              </div>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                <div className="w-full space-y-1 sm:max-w-sm">
-                  <Label className={systemPageTokens.microLabel}>搜索</Label>
-                  <Input className={DENSE_INPUT} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="按名称 / 外部组 ID（external_id）/ 组 ID 过滤" />
+        <div className={cn(CARD_CLASS, 'min-h-[560px] p-5')}>
+          <div className="mb-5 flex flex-col gap-3.5">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="flex size-8 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
+                  <Users className="size-4" />
                 </div>
-                <div className={cn(systemPageTokens.subtle, 'hidden sm:block')}>
-                  名称 / 外部组 ID（external_id）/ 组 ID
+                <div>
+                  <h2 className="text-base font-semibold tracking-[-0.02em] text-slate-950">组列表</h2>
+                  <p className="mt-1 text-[13px] text-slate-500">管理组目录与外部身份映射，支持按名称、外部组 ID 或组 ID 过滤。</p>
                 </div>
               </div>
+              <Select
+                value={String(pageSize)}
+                onValueChange={(value) => {
+                  const next = Number(value)
+                  if (PAGE_SIZE_OPTIONS.includes(next as (typeof PAGE_SIZE_OPTIONS)[number])) {
+                    setPageSize(next as (typeof PAGE_SIZE_OPTIONS)[number])
+                  }
+                }}
+              >
+                <SelectTrigger className="h-9 w-[122px] rounded-xl border-slate-200 bg-white text-[13px] font-medium shadow-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent align="end">
+                  {PAGE_SIZE_OPTIONS.map((size) => (
+                    <SelectItem key={size} value={String(size)}>
+                      每页 {size} 条
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
-            <div>
-              <div className="overflow-hidden rounded-lg border border-border/70">
-                <div className={cn('grid grid-cols-12 bg-muted/40 px-3 py-2', systemPageTokens.tableHead)}>
-                  <div className="col-span-5">名称</div>
-                  <div className="col-span-3">外部组 ID（external_id）</div>
-                  <div className="col-span-3">组 ID</div>
-                  <div className="col-span-1 text-right">操作</div>
-                </div>
+            <div className="relative max-w-[500px]">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+              <Input
+                className={cn(INPUT_CLASS, 'pl-10')}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="按名称 / 外部组 ID（external_id） / 组 ID 过滤"
+              />
+            </div>
+          </div>
 
-                {(filtered || []).length ? (
-                  (filtered || []).map((g) => {
+          <div className="flex min-h-[390px] flex-col overflow-hidden rounded-2xl border border-slate-200">
+            <div className="grid grid-cols-12 bg-slate-50 px-4 py-2.5 text-[12px] font-semibold text-slate-800">
+              <div className="col-span-5 flex items-center gap-2">
+                名称
+                <span className="text-slate-400">↕</span>
+              </div>
+              <div className="col-span-3 flex items-center gap-2">
+                外部组 ID（EXTERNAL_ID）
+                <span className="text-slate-400">↕</span>
+              </div>
+              <div className="col-span-3">组 ID</div>
+              <div className="col-span-1 text-right">操作</div>
+            </div>
+
+            <div className="flex-1">
+              {visibleGroups.length ? (
+                visibleGroups.map((g) => {
                     const gid = String(g.id || '').trim()
                     const deleting = Boolean(deletingId && deletingId === gid)
                     return (
                       <div
                         key={gid}
-                        className="grid grid-cols-12 items-center gap-2 border-t border-border/70 px-3 py-1 text-[12px] transition-colors hover:bg-muted/20"
+                        className="grid grid-cols-12 items-center gap-3 border-t border-slate-100 px-4 py-2.5 text-[12px] transition-colors hover:bg-blue-50/40"
                       >
                         <button
                           type="button"
                           className="col-span-5 text-left min-w-0"
                           onClick={() => router.push(`/settings/groups/${encodeURIComponent(gid)}`)}
                         >
-                          <div className="truncate font-semibold">{g.name}</div>
+                          <div className="truncate font-semibold text-slate-900">{g.name}</div>
                         </button>
-                        <div className="col-span-3 min-w-0 truncate font-mono text-[11px] text-muted-foreground" title={g.external_id || '-'}>
+                        <div className="col-span-3 min-w-0 truncate font-mono text-[11px] text-slate-500" title={g.external_id || '-'}>
                           {g.external_id || '-'}
                         </div>
-                        <div className="col-span-3 min-w-0 truncate font-mono text-[11px] text-muted-foreground" title={gid}>
+                        <div className="col-span-3 min-w-0 truncate font-mono text-[11px] text-slate-500" title={gid}>
                           {gid}
                         </div>
                         <div className="col-span-1 flex justify-end">
@@ -287,7 +405,7 @@ export default function SettingsGroupsPage() {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className={DENSE_ICON_GHOST}
+                                className={ICON_BUTTON}
                                 disabled={!gid || deleting}
                                 aria-label="删除组"
                               >
@@ -318,19 +436,54 @@ export default function SettingsGroupsPage() {
                   })
                 ) : (
                   loading ? (
-                    <div className="px-3 py-8 text-sm text-muted-foreground">加载中…</div>
+                    <div className="flex h-full min-h-[320px] items-center justify-center text-[13px] text-slate-500">加载中…</div>
                   ) : (
-                    <EmptyState
-                      icon={UsersRound}
-                      title="暂无组"
-                      description="还没有创建任何组，或您没有查看权限。"
-                      className="rounded-none border-0 border-t border-border shadow-none"
-                    />
+                    <div className="flex h-full min-h-[320px] flex-col items-center justify-center border-t border-slate-100 px-6 text-center">
+                      <div className="relative mb-4 flex size-[72px] items-center justify-center rounded-[22px] bg-blue-50 text-blue-500 shadow-inner">
+                        <UsersRound className="size-9" />
+                        <span className="absolute -right-1 top-2 size-2 rounded-full bg-blue-300" />
+                        <span className="absolute -left-2 top-8 size-1.5 rounded-full bg-blue-200" />
+                      </div>
+                      <h3 className="text-lg font-semibold tracking-[-0.03em] text-slate-950">暂无组</h3>
+                      <p className="mt-2.5 max-w-md text-[13px] leading-6 text-slate-500">还没有创建任何组，或您没有查看权限。</p>
+                      <Button className={cn(PRIMARY_BUTTON, 'mt-5')} onClick={() => setCreateOpen(true)}>
+                        <Plus className="size-4" />
+                        新建组
+                      </Button>
+                    </div>
                   )
                 )}
+            </div>
+
+            <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-[13px] text-slate-500">
+              <span>共 {filtered.length} 条</span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="size-8 rounded-lg border-slate-200 bg-white"
+                  disabled={page <= 1}
+                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                  aria-label="上一页"
+                >
+                  <ChevronLeft className="size-4" />
+                </Button>
+                <span className="flex h-8 min-w-8 items-center justify-center rounded-lg border border-blue-500 bg-white px-3 text-[13px] font-semibold text-blue-600">
+                  {page}
+                </span>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="size-8 rounded-lg border-slate-200 bg-white"
+                  disabled={page >= pageCount}
+                  onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+                  aria-label="下一页"
+                >
+                  <ChevronRight className="size-4" />
+                </Button>
               </div>
             </div>
-          </Panel>
+          </div>
         </div>
       </PageScaffold>
     </AppFrame>

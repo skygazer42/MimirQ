@@ -10,6 +10,7 @@ import { useParams } from 'next/navigation'
 import { ArrowLeft, Loader2, RefreshCw, Save, Trash2, UserPlus, Users } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { TenantPermissionGate } from '@/components/auth/tenant-permission-gate'
 import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -20,6 +21,7 @@ import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Textarea } from '@/components/ui/textarea'
 import { cn, formatDate, detachPromise } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
+import { TENANT_PERMISSIONS } from '@/lib/tenant-permissions'
 import { groupApi } from '@/lib/api'
 import { useRouter } from '@/i18n/navigation'
 import type { TenantGroupMemberOut, TenantGroupOut } from '@/types/backend'
@@ -62,6 +64,14 @@ function normalizeMemberIds(raw: string): { ids: string[]; error?: string } {
 }
 
 export default function SettingsGroupDetailPage() {
+  return (
+    <TenantPermissionGate permission={TENANT_PERMISSIONS.SETTINGS_READ} pageName="组管理">
+      <SettingsGroupDetailPageContent />
+    </TenantPermissionGate>
+  )
+}
+
+function SettingsGroupDetailPageContent() {
   const router = useRouter()
   const params = useParams()
   const groupId = asGroupId((params as any)?.id)

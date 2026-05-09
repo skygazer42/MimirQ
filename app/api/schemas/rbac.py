@@ -26,6 +26,15 @@ class TenantMemberListResponse(BaseModel):
     items: list[TenantMemberOut] = Field(default_factory=list)
 
 
+class TenantAccessOut(BaseModel):
+    tenant_id: UUID
+    account_id: str
+    role: str = Field(default=UserRoles.VIEWER, description="owner|admin|auditor|editor|dataset_operator|viewer")
+    permissions: list[str] = Field(default_factory=list)
+    is_active: bool = True
+    is_current: bool = False
+
+
 class TenantMemberUpdateRequest(BaseModel):
     role: str = Field(..., description="owner|admin|auditor|editor|dataset_operator|viewer")
 

@@ -28,6 +28,9 @@ export const queryKeys = {
     all: ['auth'] as const,
     profile: ['auth', 'profile'] as const,
   },
+  access: {
+    current: ['access', 'current'] as const,
+  },
   indexAudit: {
     result: (datasetId: string) => ['indexAudit', datasetId] as const,
   },

@@ -56,6 +56,7 @@ export type {
 export type { PromptTemplate, PromptTemplateCreate, PromptTemplateNewVersion, PromptTemplateUpdate } from './prompts'
 export type { BackendMeta } from './meta'
 export type { TenantMember } from './access'
+export type { TenantAccess, TenantPermission } from '../tenant-permissions'
 export type { LTRModelInfo } from './ltr'
 export type { KGNetworkEdge, KGNetworkRequest, KGNetworkResponse } from './graph'
 export type {

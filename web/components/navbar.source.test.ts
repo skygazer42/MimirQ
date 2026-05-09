@@ -60,6 +60,18 @@ describe('navbar source', () => {
     expect(src).toContain("t('command.triggerLabel')")
   })
 
+  it('filters system navigation by tenant permissions', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'navbar.tsx'), 'utf8')
+
+    expect(src).toContain("import { useTenantAccess } from '@/hooks/use-tenant-access'")
+    expect(src).toContain('requiredPermission: TENANT_PERMISSIONS.OBSERVABILITY_READ')
+    expect(src).toContain('requiredPermission: TENANT_PERMISSIONS.USAGE_READ')
+    expect(src).toContain('requiredPermission: TENANT_PERMISSIONS.AUDIT_READ')
+    expect(src).toContain('requiredPermission: TENANT_PERMISSIONS.SETTINGS_READ')
+    expect(src).toContain('visibleMenuSections')
+    expect(src).toContain('tenantAccessAllows(tenantAccess.data, permission)')
+  })
+
   it('keeps the expanded sidebar width aligned with the 2048px dashboard layout reference', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'navbar.tsx'), 'utf8')
 

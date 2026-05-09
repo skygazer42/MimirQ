@@ -1,74 +1,144 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { RefreshCw, ShieldCheck, Users } from 'lucide-react'
+import {
+  ChevronLeft,
+  ChevronRight,
+  ListChecks,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  UserCog,
+  UserPlus,
+  Users,
+  type LucideIcon,
+} from 'lucide-react'
 import { toast } from 'sonner'
 
+import { TenantPermissionGate } from '@/components/auth/tenant-permission-gate'
 import { AppFrame } from '@/components/app-frame'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PageScaffold } from '@/components/ui/page-scaffold'
-import { Panel } from '@/components/ui/panel'
-import { SystemDataStrip } from '@/components/ui/system-data-strip'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { formatApiError } from '@/lib/api-errors'
+import { TENANT_PERMISSIONS } from '@/lib/tenant-permissions'
 import { cn, detachPromise } from '@/lib/utils'
 import { rbacApi, type TenantMember } from '@/lib/api'
 import { EmptyState } from '@/components/ui/empty-state'
-import { systemDenseControls, systemPageTokens, systemWorkbenchTokens } from '@/components/ui/system-page-tokens'
 import { SamlOpsPanel } from '@/components/settings/saml-ops-panel'
 import { ScimProvisioningPanel } from '@/components/settings/scim-provisioning-panel'
 
 const ROLE_OPTIONS = [
-  { key: 'owner', label: '拥有者（owner）' },
-  { key: 'admin', label: '管理员（admin）' },
-  { key: 'auditor', label: '审计员（auditor）' },
-  { key: 'editor', label: '编辑（editor）' },
-  { key: 'dataset_operator', label: '数据集运维（dataset_operator）' },
-  { key: 'viewer', label: '只读（viewer）' },
+  { key: 'owner', label: 'Owner', cn: 'border-blue-100 bg-blue-50 text-blue-700' },
+  { key: 'admin', label: '管理员', cn: 'border-purple-100 bg-purple-50 text-purple-700' },
+  { key: 'auditor', label: '审计员', cn: 'border-amber-100 bg-amber-50 text-amber-700' },
+  { key: 'editor', label: '编辑者', cn: 'border-cyan-100 bg-cyan-50 text-cyan-700' },
+  { key: 'dataset_operator', label: '数据集运维', cn: 'border-emerald-100 bg-emerald-50 text-emerald-700' },
+  { key: 'viewer', label: '查看者', cn: 'border-teal-100 bg-teal-50 text-teal-700' },
 ]
-const DENSE_OUTLINE_BUTTON = systemDenseControls.outlineButton
-const DENSE_PRIMARY_BUTTON = 'h-7 rounded-md px-2.5 text-[11px] font-semibold'
-const DENSE_INPUT = systemDenseControls.input
-const DENSE_SELECT_TRIGGER = 'h-7 rounded-md border-border/70 bg-background text-[11px]'
-const DENSE_PANEL = systemWorkbenchTokens.panel
+
+const PAGE_SIZE_OPTIONS = [7, 10, 20, 50]
+const CARD_CLASS = 'rounded-2xl border border-slate-200/80 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.04)]'
+
+function userDisplay(userId?: string | null) {
+  const value = String(userId || '').trim()
+  if (!value) return { primary: '未知成员', secondary: '缺少 user_id' }
+  const [name, domain] = value.includes('@') ? value.split('@') : [value, 'user_id']
+  return { primary: name || value, secondary: domain || value }
+}
+
+function initials(userId?: string | null) {
+  const value = String(userId || '').trim()
+  if (!value) return '?'
+  const head = value.includes('@') ? value.split('@')[0] : value
+  return head.slice(0, 1).toUpperCase()
+}
+
+function avatarTone(userId?: string | null) {
+  const tones = [
+    'bg-blue-100 text-blue-700',
+    'bg-emerald-100 text-emerald-700',
+    'bg-orange-100 text-orange-700',
+    'bg-purple-100 text-purple-700',
+    'bg-slate-200 text-slate-700',
+  ]
+  const raw = String(userId || '')
+  const sum = raw.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+  return tones[sum % tones.length]
+}
+
+function fmtDateTime(value?: string | null) {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date).replaceAll('/', '-')
+}
 
 export default function SettingsRbacPage() {
+  return (
+    <TenantPermissionGate permission={TENANT_PERMISSIONS.SETTINGS_READ} pageName="成员权限">
+      <SettingsRbacPageContent />
+    </TenantPermissionGate>
+  )
+}
+
+function SettingsRbacPageContent() {
   const [loading, setLoading] = useState(false)
   const [members, setMembers] = useState<TenantMember[]>([])
+  const [totalMembers, setTotalMembers] = useState(0)
   const [roleDraft, setRoleDraft] = useState<Record<string, string>>({})
   const [savingIds, setSavingIds] = useState<Record<string, boolean>>({})
   const [query, setQuery] = useState('')
+  const [roleFilter, setRoleFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(7)
 
   const filtered = useMemo(() => {
     const q = String(query || '').trim().toLowerCase()
-    if (!q) return members
     return (members || []).filter((m) => {
       const uid = String(m.user_id || '').toLowerCase()
       const role = String(m.role || '').toLowerCase()
-      return uid.includes(q) || role.includes(q)
+      const matchesQuery = !q || uid.includes(q) || role.includes(q)
+      const matchesRole = roleFilter === 'all' || role === roleFilter
+      const matchesStatus = statusFilter === 'all'
+        || (statusFilter === 'current' && m.is_current)
+        || (statusFilter === 'members' && !m.is_current)
+        || (statusFilter === 'unassigned' && !role)
+      return matchesQuery && matchesRole && matchesStatus
     })
-  }, [members, query])
+  }, [members, query, roleFilter, statusFilter])
+
   const savingCount = useMemo(
     () => Object.values(savingIds).filter(Boolean).length,
     [savingIds]
   )
 
-  const stripItems = useMemo(
-    () => [
-      { label: '总成员', value: members.length, mono: true },
-      { label: '筛选后', value: filtered.length, mono: true },
-      { label: '保存中', value: savingCount, mono: true },
-      {
-        label: '列表状态',
-        value: loading ? '加载中' : members.length ? '已就绪' : '无数据',
-        tone: loading ? 'warning' : members.length ? 'success' : 'default',
-      },
-    ],
-    [members.length, filtered.length, savingCount, loading]
+  const adminCount = useMemo(
+    () => members.filter((member) => ['owner', 'admin'].includes(String(member.role || '').toLowerCase())).length,
+    [members]
   )
+  const unassignedCount = useMemo(
+    () => members.filter((member) => !String(member.role || '').trim()).length,
+    [members]
+  )
+  const currentUserCount = useMemo(
+    () => members.filter((member) => member.is_current).length,
+    [members]
+  )
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const safePage = Math.min(page, pageCount)
+  const pagedMembers = filtered.slice((safePage - 1) * pageSize, safePage * pageSize)
 
   async function refresh(): Promise<void> {
     setLoading(true)
@@ -76,6 +146,7 @@ export default function SettingsRbacPage() {
       const res = await rbacApi.listTenantMembers({ limit: 500 })
       const items = Array.isArray(res.items) ? res.items : []
       setMembers(items)
+      setTotalMembers(Number(res.total || items.length || 0))
       const nextDraft: Record<string, string> = {}
       for (const m of items) {
         const uid = String(m.user_id || '')
@@ -111,58 +182,146 @@ export default function SettingsRbacPage() {
     detachPromise(refresh())
   }, [])
 
+  useEffect(() => {
+    setPage(1)
+  }, [query, roleFilter, statusFilter, pageSize])
+
   return (
     <AppFrame>
       <PageScaffold
         title="成员权限（RBAC）"
-        description="基于角色访问控制（RBAC）管理租户成员角色（role），控制数据集与连接器的读写能力。"
+        description="基于角色的访问控制（RBAC）管理用户成员角色、控制和管理与系统的访问权限。"
         icon={ShieldCheck}
-        iconColor="text-success"
+        iconColor="text-blue-600"
         size="full"
-        density="system-dense"
-        top={<SystemDataStrip items={stripItems} minColumnWidth={148} />}
+        compact
+        bodyGutter="dense"
+        bodyClassName="bg-slate-50/60 pb-6"
+        headerClassName="[&_.text-muted-foreground]:text-slate-500"
+        top={
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <StatCard icon={Users} label="总成员" value={String(totalMembers || members.length)} detail="所有成员总数" tone="blue" />
+            <StatCard icon={UserCog} label="管理员" value={String(adminCount)} detail="拥有管理权限" tone="green" />
+            <StatCard icon={UserPlus} label="未分配角色" value={String(unassignedCount)} detail="需要补齐角色" tone="orange" />
+            <StatCard icon={ListChecks} label="列表状态" value={loading ? '加载中' : '已就绪'} detail={currentUserCount ? `当前用户 ${currentUserCount}` : '成员列表状态'} tone={loading ? 'orange' : 'purple'} />
+          </div>
+        }
         actions={
-          <Button variant="outline" size="sm" className={DENSE_OUTLINE_BUTTON} disabled={loading} onClick={() => detachPromise(refresh())}>
-            <RefreshCw className={cn('size-4', loading && 'animate-spin motion-reduce:animate-none')} />
-            刷新
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="h-9 gap-2 rounded-lg border-slate-200 bg-white px-3 text-[12px] font-semibold text-slate-600 shadow-sm hover:bg-slate-50" disabled={loading} onClick={() => detachPromise(refresh())}>
+              <RefreshCw className={cn('size-4', loading && 'animate-spin motion-reduce:animate-none')} />
+              刷新
+            </Button>
+            <Button size="sm" className="h-9 gap-2 rounded-lg bg-blue-600 px-3 text-[12px] font-semibold text-white shadow-sm hover:bg-blue-700" disabled title="后端当前未提供手动新增成员接口，成员通过登录或 SCIM 同步创建。">
+              <UserPlus className="size-4" />
+              添加成员
+            </Button>
+          </div>
         }
       >
         <div className="grid grid-cols-1 gap-4">
-          <Panel padding="md" className={DENSE_PANEL}>
-            <div className={cn('mb-3 flex items-center gap-2 text-sm', systemPageTokens.heading)}>
-                <Users className="size-5" />
-                成员列表
-            </div>
-            <div className="space-y-3">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                <div className="w-full space-y-1 sm:max-w-sm">
-                  <Label className={systemPageTokens.microLabel}>搜索</Label>
-                  <Input className={DENSE_INPUT} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="按用户 ID（user_id）/ 角色键（role）过滤" />
+          <section className={cn(CARD_CLASS, 'overflow-hidden')}>
+            <div className="flex flex-col gap-3 border-b border-slate-200/70 px-5 py-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex size-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                  <Users className="size-4" />
                 </div>
-                <Badge variant="outline" className="w-fit font-mono text-[11px]">
-                  可见 {filtered.length} 人
+                <div>
+                  <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-slate-950">成员管理</h2>
+                  <p className="mt-0.5 text-[12px] text-slate-500">角色修改直接写入 RBAC 后端；成员创建由登录或 SCIM 同步完成。</p>
+                </div>
+              </div>
+              <Button variant="outline" size="sm" className="h-8 w-fit gap-2 rounded-lg border-slate-200 bg-white px-3 text-[12px] font-semibold text-slate-600" disabled={loading} onClick={() => detachPromise(refresh())}>
+            <RefreshCw className={cn('size-4', loading && 'animate-spin motion-reduce:animate-none')} />
+            刷新
+          </Button>
+            </div>
+
+            <div className="px-5 py-3">
+              <div className="grid gap-3 lg:grid-cols-[minmax(260px,1.1fr)_220px_220px_auto] lg:items-end">
+                <div className="space-y-1.5">
+                  <Label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">搜索成员</Label>
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                    <Input
+                      className="h-10 rounded-lg border-slate-200 bg-white pl-9 text-[13px] shadow-none placeholder:text-slate-400"
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder="搜索成员（名称 / 邮箱 / ID）"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">角色</Label>
+                  <Select value={roleFilter} onValueChange={setRoleFilter}>
+                    <SelectTrigger className="h-10 rounded-lg border-slate-200 bg-white text-[13px] shadow-none">
+                      <SelectValue placeholder="全部角色" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">全部角色</SelectItem>
+                      {ROLE_OPTIONS.map((role) => (
+                        <SelectItem key={role.key} value={role.key}>{role.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">状态</Label>
+                  <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <SelectTrigger className="h-10 rounded-lg border-slate-200 bg-white text-[13px] shadow-none">
+                      <SelectValue placeholder="全部状态" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">全部状态</SelectItem>
+                      <SelectItem value="current">当前用户</SelectItem>
+                      <SelectItem value="members">普通成员</SelectItem>
+                      <SelectItem value="unassigned">未分配角色</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Badge variant="outline" className="h-10 w-fit rounded-lg border-slate-200 bg-slate-50 px-3 text-[12px] font-semibold text-slate-500">
+                  可见 {filtered.length} / {totalMembers || members.length}
                 </Badge>
               </div>
 
-              <div className="overflow-hidden rounded-lg border border-border/70">
-                <div className={cn('grid grid-cols-12 bg-muted/40 px-3 py-2', systemPageTokens.tableHead)}>
-                  <div className="col-span-6">用户 ID（user_id）</div>
-                  <div className="col-span-3">角色（role）</div>
-                  <div className="col-span-1">当前</div>
-                  <div className="col-span-2 text-right">操作</div>
-                </div>
-
-                {(filtered || []).length ? (
-                  (filtered || []).map((m) => {
+              <div className="mt-3 overflow-hidden rounded-xl border border-slate-200/80">
+                <div className="overflow-x-auto">
+                  <table className="min-w-[980px] w-full border-collapse text-left">
+                    <thead>
+                      <tr className="border-b border-slate-200/80 bg-slate-50/80 text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-400">
+                        <th className="px-4 py-2.5">成员</th>
+                        <th className="px-4 py-2.5">邮箱 / ID</th>
+                        <th className="px-4 py-2.5">角色</th>
+                        <th className="px-4 py-2.5">状态</th>
+                        <th className="px-4 py-2.5">最近更新</th>
+                        <th className="px-4 py-2.5 text-right">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {pagedMembers.length ? (
+                        pagedMembers.map((m) => {
                     const uid = String(m.user_id || '').trim()
                     const key = uid || String(m.id || '')
                     const draft = uid ? String(roleDraft[uid] || m.role || 'viewer') : String(m.role || 'viewer')
                     const saving = uid ? Boolean(savingIds[uid]) : false
+                          const display = userDisplay(uid)
                     return (
-                      <div key={key} className="grid grid-cols-12 items-center gap-2 border-t border-border/70 px-3 py-1 text-[12px] transition-colors hover:bg-muted/20">
-                        <div className="col-span-6 truncate font-mono text-[11px]" title={uid || '(无用户 ID / user_id)'}>{uid || '(无用户 ID / user_id)'}</div>
-                        <div className="col-span-3">
+                            <tr key={key} className="text-[13px] text-slate-700 transition-colors hover:bg-slate-50/70">
+                              <td className="px-4 py-2">
+                                <div className="flex items-center gap-3">
+                                  <div className={cn('flex size-8 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold', avatarTone(uid))}>
+                                    {initials(uid)}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <div className="truncate font-semibold text-slate-800">{display.primary}</div>
+                                    <div className="truncate text-[12px] text-slate-400">{display.secondary}</div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="max-w-[320px] px-4 py-2">
+                                <div className="truncate font-mono text-[12px] text-slate-500" title={uid || '(无用户 ID / user_id)'}>{uid || '(无用户 ID / user_id)'}</div>
+                              </td>
+                              <td className="px-4 py-2">
                           <Select
                             value={draft}
                             onValueChange={(v) => {
@@ -171,58 +330,135 @@ export default function SettingsRbacPage() {
                             }}
                             disabled={!uid}
                           >
-                            <SelectTrigger className={DENSE_SELECT_TRIGGER}>
-                              <SelectValue placeholder="选择角色（role）" />
+                                  <SelectTrigger className="h-8 min-w-[150px] rounded-lg border-slate-200 bg-white text-[12px] shadow-none">
+                                    <SelectValue placeholder="选择角色" />
                             </SelectTrigger>
                             <SelectContent>
                               {ROLE_OPTIONS.map((r) => (
                                 <SelectItem key={r.key} value={r.key}>
-                                  {r.label}
+                                        <span className="flex items-center gap-2">
+                                          <span className={cn('size-2 rounded-full', r.key === 'owner' ? 'bg-blue-500' : r.key === 'admin' ? 'bg-purple-500' : r.key === 'auditor' ? 'bg-amber-500' : r.key === 'editor' ? 'bg-cyan-500' : r.key === 'dataset_operator' ? 'bg-emerald-500' : 'bg-teal-500')} />
+                                          {r.label}
+                                        </span>
                                 </SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
-                        </div>
-                        <div className="col-span-1">
-                          {m.is_current ? (
-                            <Badge variant="soft" className="font-mono text-[11px]">当前</Badge>
-                          ) : (
-                            <Badge variant="outline" className="font-mono text-[11px] text-muted-foreground">-</Badge>
-                          )}
-                        </div>
-                        <div className="col-span-2 flex justify-end">
-                          <Button
-                            size="sm"
-                            className={DENSE_PRIMARY_BUTTON}
-                            disabled={!uid || saving}
-                            onClick={() => detachPromise(saveRole(uid))}
-                          >
-                            保存
-                          </Button>
-                        </div>
-                      </div>
+                              </td>
+                              <td className="px-4 py-2">
+                                <Badge className={cn(
+                                  'rounded-full border px-2 py-0.5 text-[11px] font-semibold shadow-none',
+                                  m.is_current ? 'border-blue-100 bg-blue-50 text-blue-700' : 'border-emerald-100 bg-emerald-50 text-emerald-700'
+                                )}>
+                                  {m.is_current ? '当前用户' : '已同步'}
+                                </Badge>
+                              </td>
+                              <td className="px-4 py-2 text-[12px] text-slate-500">
+                                {fmtDateTime(m.updated_at || m.created_at)}
+                              </td>
+                              <td className="px-4 py-2">
+                                <div className="flex justify-end gap-2">
+                                  <Button
+                                    size="sm"
+                                    className="h-8 rounded-lg bg-slate-950 px-3 text-[12px] font-semibold text-white hover:bg-slate-800"
+                                    disabled={!uid || saving}
+                                    onClick={() => detachPromise(saveRole(uid))}
+                                  >
+                                    {saving ? '保存中' : '保存'}
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
                     )
-                  })
-                ) : (
-                  loading ? (
-                    <div className="px-3 py-8 text-sm text-muted-foreground">加载中…</div>
+                        })
                   ) : (
+                        <tr>
+                          <td colSpan={6}>
+                            {loading ? (
+                              <div className="px-4 py-10 text-sm text-slate-500">加载中...</div>
+                            ) : (
                     <EmptyState
                       icon={Users}
                       title="暂无成员"
                       description="还没有添加任何成员，或您没有查看权限。"
-                      className="rounded-none border-0 border-t border-border shadow-none"
+                                className="rounded-none border-0 shadow-none"
                     />
+                            )}
+                          </td>
+                        </tr>
                   )
-                )}
+                }
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="flex flex-col gap-3 border-t border-slate-200/80 bg-white px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="text-[12px] font-medium text-slate-500">
+                    共 {filtered.length} 条
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Select value={String(pageSize)} onValueChange={(value) => setPageSize(Number(value))}>
+                      <SelectTrigger className="h-8 w-[116px] rounded-lg border-slate-200 bg-white text-[12px] shadow-none">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PAGE_SIZE_OPTIONS.map((option) => (
+                          <SelectItem key={option} value={String(option)}>{option} 条/页</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button variant="outline" size="icon" aria-label="上一页" className="h-8 w-8 rounded-lg border-slate-200 bg-white" disabled={safePage <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>
+                      <ChevronLeft className="size-4" />
+                    </Button>
+                    <span className="rounded-lg bg-blue-600 px-3 py-1.5 text-[12px] font-semibold text-white">{safePage}</span>
+                    <Button variant="outline" size="icon" aria-label="下一页" className="h-8 w-8 rounded-lg border-slate-200 bg-white" disabled={safePage >= pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))}>
+                      <ChevronRight className="size-4" />
+                    </Button>
+                    <span className="text-[12px] text-slate-400">/ {pageCount} 页</span>
+                  </div>
+                </div>
               </div>
             </div>
-          </Panel>
+          </section>
 
           <ScimProvisioningPanel />
           <SamlOpsPanel />
         </div>
       </PageScaffold>
     </AppFrame>
+  )
+}
+
+function StatCard({
+  icon: Icon,
+  label,
+  value,
+  detail,
+  tone,
+}: Readonly<{
+  icon: LucideIcon
+  label: string
+  value: string
+  detail: string
+  tone: 'blue' | 'green' | 'orange' | 'purple'
+}>) {
+  const toneClass = {
+    blue: 'bg-blue-50 text-blue-600',
+    green: 'bg-emerald-50 text-emerald-600',
+    orange: 'bg-orange-50 text-orange-600',
+    purple: 'bg-purple-50 text-purple-600',
+  }[tone]
+
+  return (
+    <div className={cn(CARD_CLASS, 'flex min-h-[82px] items-center gap-4 px-5 py-3')}>
+      <div className={cn('flex size-10 shrink-0 items-center justify-center rounded-xl', toneClass)}>
+        <Icon className="size-5" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-[12px] font-semibold text-slate-500">{label}</p>
+        <p className="mt-1 text-[22px] font-semibold leading-none tracking-[-0.03em] text-slate-950">{value}</p>
+        <p className="mt-1.5 truncate text-[11px] font-medium text-slate-400">{detail}</p>
+      </div>
+    </div>
   )
 }

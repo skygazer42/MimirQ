@@ -1,8 +1,9 @@
 'use client'
 
 import { useMemo, useState, type ReactNode } from 'react'
-import { Download, Loader2, Trash2 } from 'lucide-react'
+import { ChevronDown, Download, Loader2, Trash2, Zap, Settings2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useTranslations } from 'next-intl'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,6 +14,7 @@ import { OperationResultPanel } from '@/components/ops/operation-result-panel'
 import { auditApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { detachPromise } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -28,6 +30,7 @@ function stamp() {
 }
 
 export function AuditRetentionPanel() {
+  const t = useTranslations('AuditPage.retention')
   const [action, setAction] = useState('')
   const [actorId, setActorId] = useState('')
   const [requestId, setRequestId] = useState('')
@@ -36,6 +39,7 @@ export function AuditRetentionPanel() {
   const [dryRun, setDryRun] = useState(true)
   const [includeSensitive, setIncludeSensitive] = useState(false)
   const [gzip, setGzip] = useState(true)
+  const [softDelete, setSoftDelete] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
   const [result, setResult] = useState<{ title: string; payload: unknown } | null>(null)
 
@@ -58,10 +62,10 @@ export function AuditRetentionPanel() {
         gzip,
       })
       downloadBlob(blob, `audit-logs.${stamp()}.ndjson${gzip ? '.gz' : ''}`)
-      setResult({ title: '导出审计日志', payload: { bytes: blob.size, include_sensitive: includeSensitive, gzip } })
-      toast.success('导出审计日志完成')
+      setResult({ title: t('export'), payload: { bytes: blob.size, include_sensitive: includeSensitive, gzip } })
+      toast.success('导出完成')
     } catch (error) {
-      toast.error(formatApiError(error, '导出审计日志失败'))
+      toast.error(formatApiError(error, '导出失败'))
     } finally {
       setBusy(null)
     }
@@ -75,77 +79,80 @@ export function AuditRetentionPanel() {
         max_delete: maxDelete,
         dry_run: dryRun,
       })
-      setResult({ title: dryRun ? '清理审计日志预演' : '清理审计日志', payload })
-      toast.success(dryRun ? '清理审计日志 Dry-run 完成' : '清理审计日志完成')
+      setResult({ title: dryRun ? `${t('purge')} (预演)` : t('purge'), payload })
+      toast.success(dryRun ? '预演完成' : '清理完成')
     } catch (error) {
-      toast.error(formatApiError(error, '清理审计日志失败'))
+      toast.error(formatApiError(error, '清理失败'))
     } finally {
       setBusy(null)
     }
   }
 
   return (
-    <Panel padding="md" className="mt-3 border-border/70 bg-card/95">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <div className="text-sm font-semibold text-foreground">审计导出与保留策略</div>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            将审计日志导出和保留期清理从纯 API 能力产品化到审计页面；清理默认 dry-run，避免误删。
-          </p>
+    <Panel padding="md" className="mt-6 border-slate-200 bg-white shadow-sm overflow-hidden rounded-2xl">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between border-b border-slate-50 pb-4 mb-4">
+        <div className="flex items-start gap-3">
+          <div className="size-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600 shrink-0 border border-blue-100/50 shadow-inner">
+             <Settings2 className="size-5" />
+          </div>
+          <div>
+            <div className="text-[14px] font-black text-slate-900 tracking-tight">{t('title')}</div>
+            <p className="mt-1 text-[11px] leading-relaxed text-slate-500 font-medium max-w-2xl">
+              {t('description')}
+            </p>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" className="h-8 gap-1.5 rounded-lg text-xs" disabled={Boolean(busy)} onClick={() => detachPromise(exportLogs())}>
-            {busy === 'export' ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <Download className="h-3.5 w-3.5" />}
-            导出审计日志
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" className="h-8 gap-2 rounded-lg text-[11px] font-bold border-slate-200" disabled={Boolean(busy)} onClick={() => detachPromise(exportLogs())}>
+            {busy === 'export' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+            {t('export')}
           </Button>
-          <Button size="sm" variant="outline" className="h-8 gap-1.5 rounded-lg text-xs" disabled={Boolean(busy)} onClick={() => detachPromise(purgeLogs())}>
-            {busy === 'purge' ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <Trash2 className="h-3.5 w-3.5" />}
-            清理审计日志
+          <Button size="sm" variant="outline" className="h-8 gap-2 rounded-lg text-[11px] font-bold border-slate-200 text-red-600 hover:bg-red-50 hover:text-red-700" disabled={Boolean(busy)} onClick={() => detachPromise(purgeLogs())}>
+            {busy === 'purge' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+            {t('purge')}
           </Button>
         </div>
       </div>
 
-      <div className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-5">
-        <Field label="操作类型">
-          <Input value={action} onChange={(event) => setAction(event.target.value)} className="h-8 text-xs" placeholder="可选" />
-        </Field>
-        <Field label="保留天数">
-          <Input value={String(retentionDays)} onChange={(event) => setRetentionDays(Number.parseInt(event.target.value || '0', 10) || 90)} className="h-8 text-xs" inputMode="numeric" />
-        </Field>
-        <Field label="最多清理">
-          <Input value={String(maxDelete)} onChange={(event) => setMaxDelete(Number.parseInt(event.target.value || '0', 10) || 1000)} className="h-8 text-xs" inputMode="numeric" />
-        </Field>
-        <div className="flex items-end gap-3">
-          <Toggle label="仅预演" checked={dryRun} onCheckedChange={setDryRun} />
-          <Toggle label="gzip" checked={gzip} onCheckedChange={setGzip} />
-          <Toggle label="敏感" checked={includeSensitive} onCheckedChange={setIncludeSensitive} />
+      <div className="grid gap-6 md:grid-cols-3 xl:grid-cols-6">
+        <div className="space-y-1.5">
+          <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">{t('actionType')}</Label>
+          <Input value={action} onChange={(event) => setAction(event.target.value)} className="h-9 text-xs rounded-lg border-slate-200 bg-slate-50/50" placeholder="可选" />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">{t('days')}</Label>
+          <Input value={String(retentionDays)} onChange={(event) => setRetentionDays(Number.parseInt(event.target.value || '0', 10) || 90)} className="h-9 text-xs rounded-lg border-slate-200 bg-slate-50/50" inputMode="numeric" />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-[10px] font-black uppercase tracking-widest text-slate-400">{t('maxDelete')}</Label>
+          <Input value={String(maxDelete)} onChange={(event) => setMaxDelete(Number.parseInt(event.target.value || '0', 10) || 1000)} className="h-9 text-xs rounded-lg border-slate-200 bg-slate-50/50" inputMode="numeric" />
+        </div>
+        <div className="flex items-center gap-4 xl:col-span-3 pt-5">
+          <Toggle label={t('dryRun')} checked={dryRun} onCheckedChange={setDryRun} />
+          <Toggle label={t('gzip')} checked={gzip} onCheckedChange={setGzip} />
+          <Toggle label={t('softDelete')} checked={softDelete} onCheckedChange={setSoftDelete} />
         </div>
       </div>
 
-      <details className="mt-3 rounded-lg border border-border/60 bg-background/70 p-3">
-        <summary className="cursor-pointer text-xs font-semibold text-foreground">高级筛选（可选）</summary>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">仅在按操作者或请求链路定位审计记录时填写。</p>
-        <div className="mt-3 grid gap-2 md:grid-cols-2">
-          <Field label="操作者">
-            <Input value={actorId} onChange={(event) => setActorId(event.target.value)} className="h-8 text-xs" placeholder="可选" />
-          </Field>
-          <Field label="请求编号">
-            <Input value={requestId} onChange={(event) => setRequestId(event.target.value)} className="h-8 text-xs" placeholder="可选" />
-          </Field>
+      <details className="mt-4 group rounded-xl border border-slate-100 bg-slate-50/30 overflow-hidden">
+        <summary className="cursor-pointer px-4 py-2 text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 hover:bg-slate-50 transition-colors">
+          <ChevronDown className="size-3 transition-transform group-open:rotate-180" />
+          {t('advanced')}
+        </summary>
+        <div className="p-4 grid gap-4 md:grid-cols-2 bg-white">
+          <div className="space-y-1.5">
+            <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">运行名</Label>
+            <Input value={actorId} onChange={(event) => setActorId(event.target.value)} className="h-8 text-xs rounded-lg border-slate-200" placeholder="可选" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">请求追踪号</Label>
+            <Input value={requestId} onChange={(event) => setRequestId(event.target.value)} className="h-8 text-xs rounded-lg border-slate-200" placeholder="可选" />
+          </div>
         </div>
       </details>
 
-      <OperationResultPanel className="mt-3" title="审计操作结果" result={result} emptyMessage="导出或清理后，这里展示执行摘要；原始响应默认收起。" />
+      <OperationResultPanel className="mt-4 border-slate-100" title={t('operationResult')} result={result} emptyMessage={t('resultEmpty')} />
     </Panel>
-  )
-}
-
-function Field({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
-  return (
-    <div className="space-y-1">
-      <Label className="text-[11px] font-medium text-muted-foreground">{label}</Label>
-      {children}
-    </div>
   )
 }
 
@@ -159,9 +166,9 @@ function Toggle({
   onCheckedChange: (checked: boolean) => void
 }>) {
   return (
-    <label className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+    <label className="flex items-center gap-2 cursor-pointer select-none">
       <Switch checked={checked} onCheckedChange={onCheckedChange} />
-      {label}
+      <span className="text-[11px] font-bold text-slate-600 tracking-tight">{label}</span>
     </label>
   )
 }
