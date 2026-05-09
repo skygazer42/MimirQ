@@ -9,6 +9,7 @@ import type {
 } from '@/types/backend'
 
 import { apiClient } from '@/lib/api/core'
+import type { TenantAccess } from '@/lib/tenant-permissions'
 
 export interface TenantMember {
   id: string
@@ -26,6 +27,11 @@ export interface TenantMemberListResponse {
 }
 
 export const rbacApi = {
+  async getCurrentTenantAccess(): Promise<TenantAccess> {
+    const { data } = await apiClient.get('/rbac/me')
+    return data
+  },
+
   async listTenantMembers(params: { skip?: number; limit?: number } = {}): Promise<TenantMemberListResponse> {
     const { data } = await apiClient.get('/rbac/members', { params })
     return data

@@ -6,10 +6,13 @@ import { describe, expect, it } from 'vitest'
 describe('AuditRetentionPanel source', () => {
   it('exposes audit log export and purge as explicit business actions', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'audit-retention-panel.tsx'), 'utf8')
+    const messages = fs.readFileSync(path.resolve(__dirname, '../../i18n/messages/zh-CN.ts'), 'utf8')
 
     expect(src).toContain('auditApi.exportLogs')
     expect(src).toContain('auditApi.purgeLogs')
-    expect(src).toContain('导出审计日志')
-    expect(src).toContain('清理审计日志')
+    expect(src).toContain("t('export')")
+    expect(src).toContain("t('purge')")
+    expect(messages).toContain("export: '导出审计日志'")
+    expect(messages).toContain("purge: '清理审计日志'")
   })
 })

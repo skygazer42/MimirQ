@@ -19,10 +19,11 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
-from app.api.schemas.rbac import TenantMemberListResponse, TenantMemberOut, TenantMemberUpdateRequest
+from app.api.schemas.rbac import TenantAccessOut, TenantMemberListResponse, TenantMemberOut, TenantMemberUpdateRequest
 from app.core.database import get_db
 from app.models.tenant import TenantMember
-from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
+from app.services.dataset_service import DatasetService
+from app.services.rbac_service import TenantPermissions, all_tenant_permissions, ensure_tenant_permission, role_allows
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -33,6 +34,26 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 }
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+
+
+@router.get("/me", response_model=TenantAccessOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+async def get_current_tenant_access(
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    role = str(getattr(member, "role", "") or "").strip().lower()
+    permissions = [permission for permission in all_tenant_permissions() if role_allows(permission, role=role)]
+    return TenantAccessOut(
+        tenant_id=tenant_id,
+        account_id=account_id,
+        role=role,
+        permissions=permissions,
+        is_active=bool(getattr(member, "is_active", True)),
+        is_current=bool(getattr(member, "is_current", False)),
+    )
 
 
 @router.get("/members", response_model=TenantMemberListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)

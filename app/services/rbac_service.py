@@ -52,6 +52,10 @@ def allowed_roles_for_permission(permission: str) -> frozenset[str]:
     return _PERMISSION_ROLES.get(str(permission or "").strip(), frozenset())
 
 
+def all_tenant_permissions() -> tuple[str, ...]:
+    return tuple(_PERMISSION_ROLES.keys())
+
+
 def role_allows(permission: str, *, role: str | None) -> bool:
     role_norm = _normalize_role(role)
     if not role_norm:
@@ -83,6 +87,7 @@ def ensure_tenant_permission(
 
 __all__ = [
     "TenantPermissions",
+    "all_tenant_permissions",
     "allowed_roles_for_permission",
     "ensure_tenant_permission",
     "role_allows",

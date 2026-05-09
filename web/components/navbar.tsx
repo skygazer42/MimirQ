@@ -3,7 +3,7 @@
  */
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import {
   Activity,
@@ -47,7 +47,9 @@ import { ModeToggle } from '@/components/mode-toggle'
 import { useAuth } from '@/hooks/use-auth'
 import { useBackendMeta } from '@/hooks/use-backend-meta'
 import { useBackendReady } from '@/hooks/use-backend-ready'
+import { useTenantAccess } from '@/hooks/use-tenant-access'
 import { useCommandMenuState } from '@/store/command-menu'
+import { TENANT_PERMISSIONS, tenantAccessAllows, type TenantPermission } from '@/lib/tenant-permissions'
 
 type SectionId = 'core' | 'ingestion' | 'knowledge' | 'analysis' | 'system'
 
@@ -55,6 +57,7 @@ type MenuItem = {
   icon: React.ComponentType<{ className?: string }>
   labelKey: string
   href: string
+  requiredPermission?: TenantPermission
 }
 
 type MenuSection = {
@@ -113,21 +116,19 @@ const menuSections: MenuSection[] = [
     id: 'system',
     titleKey: 'sections.system',
     items: [
-      { icon: Activity, labelKey: 'items.diagnostics', href: '/diagnostics' },
-      { icon: Coins, labelKey: 'items.usage', href: '/usage' },
-      { icon: ShieldCheck, labelKey: 'items.audit', href: '/audit' },
-      { icon: ShieldCheck, labelKey: 'items.accessReview', href: '/access-review' },
-      { icon: User, labelKey: 'items.members', href: '/settings/rbac' },
-      { icon: Users, labelKey: 'items.groups', href: '/settings/groups' },
-      { icon: Settings, labelKey: 'items.settings', href: '/settings' },
+      { icon: Activity, labelKey: 'items.diagnostics', href: '/diagnostics', requiredPermission: TENANT_PERMISSIONS.OBSERVABILITY_READ },
+      { icon: Coins, labelKey: 'items.usage', href: '/usage', requiredPermission: TENANT_PERMISSIONS.USAGE_READ },
+      { icon: ShieldCheck, labelKey: 'items.audit', href: '/audit', requiredPermission: TENANT_PERMISSIONS.AUDIT_READ },
+      { icon: ShieldCheck, labelKey: 'items.accessReview', href: '/access-review', requiredPermission: TENANT_PERMISSIONS.AUDIT_READ },
+      { icon: User, labelKey: 'items.members', href: '/settings/rbac', requiredPermission: TENANT_PERMISSIONS.SETTINGS_READ },
+      { icon: Users, labelKey: 'items.groups', href: '/settings/groups', requiredPermission: TENANT_PERMISSIONS.SETTINGS_READ },
+      { icon: Settings, labelKey: 'items.settings', href: '/settings', requiredPermission: TENANT_PERMISSIONS.SETTINGS_READ },
     ],
   },
 ]
 
 const DEFAULT_OPEN_SECTIONS = new Set<SectionId>(['core', 'knowledge'])
 const OPEN_SECTIONS_STORAGE_KEY = 'mimirq_navbar_open_sections_v1'
-
-const menuItems: MenuItem[] = menuSections.flatMap((s) => s.items)
 
 function isActiveRoute(pathname: string, href: string) {
   if (href === '/') return pathname === '/'
@@ -235,9 +236,25 @@ export function Navbar({
   const t = useTranslations('Navbar')
   const { data: backendMeta } = useBackendMeta()
   const backendReady = useBackendReady()
+  const tenantAccess = useTenantAccess()
   const commandMenuOpen = useCommandMenuState((state) => state.open)
   const setCommandMenuOpen = useCommandMenuState((state) => state.setOpen)
-  const activeHref = getMostSpecificActiveHref(pathname, menuItems)
+  const canAccessPermission = useCallback(
+    (permission?: TenantPermission) => !permission || tenantAccessAllows(tenantAccess.data, permission),
+    [tenantAccess.data]
+  )
+  const visibleMenuSections = useMemo(
+    () =>
+      menuSections
+        .map((section) => ({
+          ...section,
+          items: section.items.filter((item) => canAccessPermission(item.requiredPermission)),
+        }))
+        .filter((section) => section.items.length > 0),
+    [canAccessPermission]
+  )
+  const visibleMenuItems = useMemo(() => visibleMenuSections.flatMap((section) => section.items), [visibleMenuSections])
+  const activeHref = getMostSpecificActiveHref(pathname, visibleMenuItems)
   const readyDetails = backendReady.data ?? null
   const backendOk =
     (() => {
@@ -359,7 +376,7 @@ export function Navbar({
   }, [])
 
   useEffect(() => {
-    const activeSection = menuSections.find((section) => sectionHasActiveRoute(activeHref, section.items))
+    const activeSection = visibleMenuSections.find((section) => sectionHasActiveRoute(activeHref, section.items))
     if (!activeSection) return
 
     setOpenSections((current) => {
@@ -369,7 +386,7 @@ export function Navbar({
         [activeSection.id]: true,
       }
     })
-  }, [activeHref])
+  }, [activeHref, visibleMenuSections])
 
   useEffect(() => {
     if (!hasHydratedOpenSections) return
@@ -390,7 +407,7 @@ export function Navbar({
     if ((globalThis.window as any)[key]) return
     ;(globalThis.window as any)[key] = true
 
-    const hrefs = menuItems.map((i) => i.href).filter(Boolean)
+    const hrefs = visibleMenuItems.map((i) => i.href).filter(Boolean)
     const prefetchAll = () => {
       for (const href of hrefs) {
         if (href === pathname) continue
@@ -411,7 +428,7 @@ export function Navbar({
 
     const t = setTimeout(prefetchAll, 800)
     return () => clearTimeout(t)
-  }, [router, pathname])
+  }, [router, pathname, visibleMenuItems])
 
   const authMode = String(backendMeta?.features?.auth_mode || '')
   const vectorBackend = String(
@@ -466,6 +483,8 @@ export function Navbar({
   const userDisplayName =
     user?.username || user?.email || (isDevMode ? t('user.developerMode') : t('user.unauthenticatedName'))
   const userStatusLine = isAuthenticated ? user?.email || t('user.onlineStatus') : t('user.offlineEnvironment')
+  const canOpenSettings = canAccessPermission(TENANT_PERMISSIONS.SETTINGS_READ)
+  const canOpenDiagnostics = canAccessPermission(TENANT_PERMISSIONS.OBSERVABILITY_READ)
 
   return (
     <>
@@ -557,7 +576,7 @@ export function Navbar({
         {/* Allow internal scroll so items are never clipped on short viewports. */}
         <div className="flex-1 min-h-0 px-3 py-2 overflow-y-auto overscroll-contain no-scrollbar">
           <div className="space-y-4">
-            {menuSections.map((section, index) => {
+            {visibleMenuSections.map((section, index) => {
               const isOpen = openSections[section.id] ?? false
               const hasActiveItem = sectionHasActiveRoute(activeHref, section.items)
               const ToggleIcon = isOpen ? ChevronDown : ChevronRight
@@ -643,7 +662,7 @@ export function Navbar({
               className="flex-1 flex items-center gap-3 p-2 rounded-xl hover:bg-[#CAF0F8]/55 transition-colors duration-200 border border-transparent hover:border-[#CAF0F8]/70 group text-left focus-ring"
               onClick={() => {
                 if (isAuthenticated) {
-                  router.push('/settings')
+                  router.push(canOpenSettings ? '/settings' : '/')
                 } else {
                   router.push('/auth')
                 }
@@ -813,9 +832,13 @@ export function Navbar({
                   </div>
 
                   <div className="flex items-center justify-between pt-1">
-                    <Link href="/diagnostics" className="text-[11px] text-primary hover:underline">
-                      {t('deps.diagnosticsLink')}
-                    </Link>
+                    {canOpenDiagnostics ? (
+                      <Link href="/diagnostics" className="text-[11px] text-primary hover:underline">
+                        {t('deps.diagnosticsLink')}
+                      </Link>
+                    ) : (
+                      <span className="text-[11px] text-muted-foreground">仅管理员可查看诊断</span>
+                    )}
                     <span className="text-[11px] text-muted-foreground">{t('deps.requestIdHint')}</span>
                   </div>
                 </div>

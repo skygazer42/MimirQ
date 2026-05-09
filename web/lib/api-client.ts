@@ -62,6 +62,7 @@ export type { FrontendTraceReportRequest, FrontendWebVitalReportOptions, Fronten
 export type { ParsingContentResponse, ParsingContentUpdateRequest } from '@/lib/api/parsing'
 export type { BackendMeta } from '@/lib/api/meta'
 export type { TenantMember, TenantMemberListResponse } from '@/lib/api/access'
+export type { TenantAccess, TenantPermission } from '@/lib/tenant-permissions'
 export type { LTRModelActivateResponse, LTRModelInfo, LTRModelListResponse, LTRModelRegisterResponse } from '@/lib/api/ltr'
 export type { KGNetworkEdge, KGNetworkRequest, KGNetworkResponse } from '@/lib/api/graph'
 export type {

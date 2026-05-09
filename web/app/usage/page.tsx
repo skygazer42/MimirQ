@@ -1,39 +1,51 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import {
+  Activity,
+  BarChart3,
+  CalendarDays,
+  CheckCircle2,
+  Clock3,
+  Coins,
+  Database,
+  MessageSquareText,
+  RefreshCw,
+  ShieldCheck,
+  Timer,
+  UserRound,
+  ArrowUpRight,
+  LayoutGrid,
+  Zap,
+  TrendingUp,
+  type LucideIcon,
+} from 'lucide-react'
 import { toast } from 'sonner'
-import { BarChart3, RefreshCw, Coins } from 'lucide-react'
 
+import { TenantPermissionGate } from '@/components/auth/tenant-permission-gate'
 import { AppFrame } from '@/components/app-frame'
-import { PageScaffold } from '@/components/ui/page-scaffold'
-import { Panel } from '@/components/ui/panel'
-import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { Button } from '@/components/ui/button'
-import { SystemDataStrip } from '@/components/ui/system-data-strip'
+import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { TenantQuotaPanel } from '@/components/usage/tenant-quota-panel'
 import { datasetApi, usageApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
-import type { ChatCostUsageSummary, ChatTokenQuotaStatus, ChatTokenUsageSummary } from '@/types'
+import { TENANT_PERMISSIONS } from '@/lib/tenant-permissions'
 import { cn, detachPromise } from '@/lib/utils'
-import { EmptyState } from '@/components/ui/empty-state'
-import { systemDenseControls, systemPageTokens, systemWorkbenchTokens } from '@/components/ui/system-page-tokens'
-import { TenantQuotaPanel } from '@/components/usage/tenant-quota-panel'
+import type { ChatCostUsageSummary, ChatTokenQuotaStatus, ChatTokenUsageSummary } from '@/types'
 
+// --- Advanced Style Tokens ---
+
+const GLASS_CARD = "bg-white/80 backdrop-blur-md rounded-2xl border border-white/40 shadow-[0_8px_32px_rgba(0,0,0,0.04)] overflow-hidden transition-all duration-300"
+const GLOW_CARD = "group relative bg-white rounded-2xl border border-slate-200/60 p-6 shadow-sm hover:shadow-[0_20px_40px_rgba(59,130,246,0.08)] hover:-translate-y-1 transition-all duration-300"
+const NUMBER_ACCENT = "text-2xl font-black text-slate-900 tracking-tighter font-mono bg-clip-text"
 const WINDOW_PRESETS = [
-    { label: '24 小时', value: 1 },
-    { label: '7 天', value: 7 },
-    { label: '30 天', value: 30 },
-]
+  { value: 7, label: '7天' },
+  { value: 14, label: '14天' },
+  { value: 30, label: '30天' },
+] as const
 
-const DENSE_OUTLINE_BUTTON = systemDenseControls.outlineButton
-const DENSE_SELECT_TRIGGER = systemDenseControls.selectTrigger
-const DENSE_PANEL = systemWorkbenchTokens.panel
-const DENSE_TABLE_HEAD = cn(systemPageTokens.tableHead, 'tracking-[0.1em]')
-const DENSE_TABLE_CELL = 'py-1.5 px-2.5 text-[12px] tabular-nums'
-const DENSE_TABLE = 'w-full table-fixed text-[12px]'
-const DENSE_PRIMARY_COL = 'w-[52%]'
-const DENSE_NUM_COL = 'w-[24%]'
-const DENSE_NUM_COL_WIDE = 'w-[16%]'
+// --- Helper Functions ---
 
 function shortId(id: string) {
   const v = (id || '').trim()
@@ -41,19 +53,106 @@ function shortId(id: string) {
   return v.length > 12 ? `${v.slice(0, 6)}…${v.slice(-4)}` : v
 }
 
+function formatNumber(value: number | string | null | undefined) {
+  if (value == null || value === '') return '0'
+  const n = Number(value)
+  if (!Number.isFinite(n)) return String(value)
+  return n.toLocaleString()
+}
+
+function formatSec(sec: number | null | undefined) {
+  if (sec == null || !Number.isFinite(sec)) return '0ms'
+  if (sec < 1) return `${Math.round(sec * 1000)}ms`
+  return `${sec.toFixed(2)}s`
+}
+
+function formatWindow(start?: string | null, end?: string | null) {
+  if (!start || !end) return '---'
+  try {
+    const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }
+    return `${new Date(start).toLocaleString('zh-CN', opts)} - ${new Date(end).toLocaleString('zh-CN', opts)}`
+  } catch {
+    return `${start} - ${end}`
+  }
+}
+
+// --- Specialized Components ---
+
+function HUDStatus({ icon: Icon, label, value, tone = 'blue' }: { icon: LucideIcon; label: string; value: string | number; tone?: string }) {
+  const toneMap = {
+    blue: 'text-blue-600 bg-blue-50/50 border-blue-100',
+    green: 'text-emerald-600 bg-emerald-50/50 border-emerald-100',
+    slate: 'text-slate-400 bg-slate-50 border-slate-100',
+  }
+  return (
+    <div className="relative flex min-h-[88px] items-center justify-center gap-4 border-r border-slate-100 px-6 py-4 text-center last:border-none group">
+      <div className={cn("size-10 rounded-xl flex items-center justify-center border shadow-inner transition-transform group-hover:scale-110", toneMap[tone as keyof typeof toneMap])}>
+        <Icon className="size-5" />
+      </div>
+      <div className="flex min-w-0 flex-col items-center text-center">
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 leading-none mb-1.5">{label}</p>
+        <h4 className="text-[16px] font-black text-slate-800 leading-none tracking-tight">{value}</h4>
+      </div>
+    </div>
+  )
+}
+
+function StylizedMetricCard({ icon: Icon, label, value, detail, tone = 'blue' }: { icon: LucideIcon; label: string; value: string | number; detail?: string; tone?: string }) {
+  const accentMap = {
+    blue: 'bg-blue-500',
+    green: 'bg-emerald-500',
+    indigo: 'bg-indigo-500',
+    slate: 'bg-slate-300',
+  }
+  return (
+    <div className={GLOW_CARD}>
+      {/* Accent Strip */}
+      <div className={cn("absolute left-0 top-6 bottom-6 w-1 rounded-r-full transition-all group-hover:w-1.5", accentMap[tone as keyof typeof accentMap])} />
+      
+      <div className="flex items-start justify-between mb-5">
+        <div className="flex items-center gap-3">
+           <div className="size-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-blue-600 group-hover:text-white group-hover:rotate-6 transition-all duration-300 shadow-sm">
+             <Icon className="size-5" />
+           </div>
+           <span className="text-[12px] font-black text-slate-400 uppercase tracking-widest">{label}</span>
+        </div>
+        <div className="size-6 rounded-full bg-slate-50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+          <ArrowUpRight className="size-3 text-blue-500" />
+        </div>
+      </div>
+      
+      <div className="flex flex-col pl-2">
+        <span className={NUMBER_ACCENT}>{value}</span>
+        {detail && (
+          <div className="mt-3 flex items-center gap-1.5">
+            <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 uppercase tracking-tighter">
+              {detail}
+            </span>
+            <TrendingUp className="size-3 text-emerald-500 opacity-50" />
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// --- Main Page ---
+
 export default function UsagePage() {
+  return (
+    <TenantPermissionGate permission={TENANT_PERMISSIONS.USAGE_READ} pageName="用量/配额">
+      <UsagePageContent />
+    </TenantPermissionGate>
+  )
+}
+
+function UsagePageContent() {
   const [windowDays, setWindowDays] = useState<number>(7)
   const [loading, setLoading] = useState(false)
   const [summary, setSummary] = useState<ChatTokenUsageSummary | null>(null)
   const [cost, setCost] = useState<ChatCostUsageSummary | null>(null)
   const [quota, setQuota] = useState<ChatTokenQuotaStatus | null>(null)
   const [datasetNameById, setDatasetNameById] = useState<Record<string, string>>({})
-
-  const formatSec = (sec: number | null | undefined) => {
-    if (sec == null || !Number.isFinite(sec)) return '—'
-    if (sec < 1) return `${Math.round(sec * 1000)}ms`
-    return `${sec.toFixed(2)}s`
-  }
 
   const load = useCallback(async (days: number) => {
     setLoading(true)
@@ -64,279 +163,184 @@ export default function UsagePage() {
         usageApi.getChatTokenQuotaStatus().catch(() => null),
         datasetApi.list({ limit: 200 }),
       ])
-
       const nameMap: Record<string, string> = {}
       for (const ds of datasets.items || []) {
-        if (!ds?.id) continue
-        nameMap[String(ds.id)] = String(ds.name || '').trim() || shortId(String(ds.id))
+        if (ds?.id) nameMap[String(ds.id)] = String(ds.name || '').trim() || shortId(String(ds.id))
       }
       setDatasetNameById(nameMap)
-      setSummary(usage)
-      setCost(costUsage)
-      setQuota(q)
+      setSummary(usage); setCost(costUsage); setQuota(q)
     } catch (err: any) {
-      setSummary(null)
-      setCost(null)
-      setQuota(null)
-      toast.error(formatApiError(err, '加载用量数据失败'))
+      toast.error(formatApiError(err, '数据拉取失败'))
     } finally {
       setLoading(false)
     }
   }, [])
 
-  useEffect(() => {
-    detachPromise(load(windowDays))
-  }, [load, windowDays])
+  useEffect(() => { detachPromise(load(windowDays)) }, [load, windowDays])
 
   const rows = useMemo(() => {
     const list = summary?.by_dataset || []
-    return [...list].sort((a, b) => (b.assistant_tokens || 0) - (a.assistant_tokens || 0))
-  }, [summary?.by_dataset])
+    return [...list].sort((a, b) => (b.assistant_tokens || 0) - (a.assistant_tokens || 0)).slice(0, 10)
+  }, [summary])
 
   const costRows = useMemo(() => {
     const list = cost?.by_dataset || []
-    return [...list].sort((a, b) => (b.llm_total_tokens || 0) - (a.llm_total_tokens || 0))
-  }, [cost?.by_dataset])
-
-  const windowLabel = useMemo(() => {
-    const p = WINDOW_PRESETS.find((x) => x.value === windowDays)
-    return p?.label || `${windowDays} 天`
-  }, [windowDays])
-
-  const avgRetrieve = useMemo(() => {
-    if (!cost) return null
-    const denom = Math.max(1, cost.total_assistant_messages || 0)
-    return cost.total_retrieval_elapsed_sec / denom
+    return [...list].sort((a, b) => (b.llm_total_tokens || 0) - (a.llm_total_tokens || 0)).slice(0, 10)
   }, [cost])
 
-  const avgRerank = useMemo(() => {
-    if (!cost) return null
-    const denom = Math.max(1, cost.total_assistant_messages || 0)
-    return cost.total_rerank_elapsed_sec / denom
-  }, [cost])
-
-  const usageStripItems = useMemo(
-    () => [
-      { label: '统计窗口', value: windowLabel },
-      { label: '数据集条目', value: rows.length, mono: true },
-      {
-        label: '模型总令牌（LLM）',
-        value: cost?.total_llm_total_tokens ?? '-',
-        mono: true,
-      },
-      {
-        label: '配额状态',
-        value: quota?.enabled ? (quota.exceeded ? '已超额' : '正常') : '未启用',
-        tone: quota?.enabled ? (quota.exceeded ? 'danger' : 'success') : 'default',
-      },
-      {
-        label: '数据状态',
-        value: loading ? '加载中' : summary ? '已就绪' : '无数据',
-        tone: loading ? 'warning' : summary ? 'success' : 'default',
-      },
-    ],
-    [windowLabel, rows.length, cost?.total_llm_total_tokens, quota?.enabled, quota?.exceeded, loading, summary]
-  )
+  const avgRetrieve = cost ? cost.total_retrieval_elapsed_sec / Math.max(1, cost.total_assistant_messages || 0) : null
+  const quotaExceeded = quota?.enabled && quota.exceeded
+  const quotaStatus = quota?.enabled ? (quota.exceeded ? '已超额' : '运行正常') : '未启用'
+  const dataStatus = summary ? '已就绪' : (loading ? '同步中' : '未连接')
 
   return (
     <AppFrame>
-      <div className="flex-1 flex flex-col overflow-hidden relative">
-        <PageScaffold
-          title="用量/配额"
-          description="按数据集聚合的令牌、成本估算与窗口配额占用（仅管理员）"
-          icon={Coins}
-          iconColor="text-amber-600 dark:text-amber-400"
-          size="full"
-          density="system-dense"
-          top={<SystemDataStrip items={usageStripItems} minColumnWidth={160} />}
-          actions={
-            <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:flex-row sm:items-center">
-              <div className="w-full sm:w-[140px]">
-                <Select
-                  value={String(windowDays)}
-                  onValueChange={(v) => {
-                    const next = Number.parseInt(v, 10)
-                    setWindowDays(next)
-                  }}
-                >
-                  <SelectTrigger className={DENSE_SELECT_TRIGGER}>
+      <PageScaffold
+        title="用量/配额"
+        description="按数据集聚合的令牌、成本估算与接口配额占用（仅管理员）"
+        icon={Coins}
+        iconColor="text-blue-600"
+        size="full"
+        bodyClassName="bg-[#F8FAFC] relative"
+      >
+        {/* Ambient background glow */}
+        <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+          <div className="absolute -left-[10%] -top-[10%] size-[40%] rounded-full bg-blue-400/5 blur-[120px]" />
+          <div className="absolute -right-[5%] top-[20%] size-[30%] rounded-full bg-indigo-400/5 blur-[100px]" />
+        </div>
+
+        <div className="relative z-10 flex flex-col gap-10 pb-32">
+          
+          {/* Header Actions */}
+          <div className="flex items-center justify-between">
+             <div className="flex items-center gap-2">
+                <div className="size-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Live System Usage Monitoring</span>
+             </div>
+             <div className="flex items-center gap-3">
+                <Select value={String(windowDays)} onValueChange={v => setWindowDays(Number(v))}>
+                  <SelectTrigger className="h-10 w-[120px] rounded-xl border-white bg-white/60 backdrop-blur-sm font-bold text-[13px] shadow-sm hover:bg-white transition-all">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {WINDOW_PRESETS.map((p) => (
-                      <SelectItem key={p.value} value={String(p.value)}>
-                        {p.label}
-                      </SelectItem>
-                    ))}
+                    {WINDOW_PRESETS.map(p => <SelectItem key={p.value} value={String(p.value)}>{p.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                className={cn(DENSE_OUTLINE_BUTTON, 'justify-center')}
-                onClick={() => detachPromise(load(windowDays))}
-                disabled={loading}
-              >
-                <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin motion-reduce:animate-none')} />
-                刷新
-              </Button>
-            </div>
-          }
-        >
-          {summary ? (
-            <div className="space-y-4">
-              <StatsGrid dense className="mt-1">
-                <StatCard
-                  icon={Coins}
-                  label="助手令牌"
-                  value={summary.total_assistant_tokens}
-                  subValue={windowLabel}
-                  color="amber"
-                  dense
-                />
-                {cost ? (
-                  <StatCard
-                    icon={Coins}
-                    label="模型总令牌（LLM，估算）"
-                    value={cost.total_llm_total_tokens}
-                    subValue={`输入 ${cost.total_llm_prompt_tokens} + 输出 ${cost.total_llm_completion_tokens}`}
-                    color="orange"
-                    dense
-                  />
-                ) : null}
-                {cost ? (
-                  <StatCard
-                    icon={Coins}
-                    label="向量令牌（估算）"
-                    value={cost.total_embedding_query_tokens}
-                    subValue={`${cost.total_embedding_query_chars} 字符 · 按检索请求估算`}
-                    color="teal"
-                    dense
-                  />
-                ) : null}
-                {cost ? (
-                  <StatCard
-                    icon={BarChart3}
-                    label="平均检索耗时"
-                    value={formatSec(avgRetrieve)}
-                    subValue={`平均重排 ${formatSec(avgRerank)}`}
-                    color="sky"
-                    dense
-                  />
-                ) : null}
-                <StatCard
-                  icon={Coins}
-                  label="配额剩余"
-                  value={quota?.enabled ? quota.remaining : '-'}
-                  subValue={quota?.enabled ? `${quota.window_hours}h · ${quota.mode}` : '未启用'}
-                  color={quota?.enabled && quota.exceeded ? 'red' : 'green'}
-                  dense
-                />
-                <StatCard
-                  icon={BarChart3}
-                  label="助手消息数"
-                  value={summary.total_assistant_messages}
-                  subValue="助手角色"
-                  color="sky"
-                  dense
-                />
-              </StatsGrid>
+                <Button variant="outline" size="icon" className="size-10 rounded-xl border-white bg-white/60 backdrop-blur-sm shadow-sm hover:bg-white transition-all" onClick={() => detachPromise(load(windowDays))}>
+                  <RefreshCw className={cn("size-4 text-slate-600", loading && "animate-spin")} />
+                </Button>
+             </div>
+          </div>
 
-              <Panel padding="md" className={DENSE_PANEL}>
-                  <div className="mb-2.5 flex items-center justify-between">
-                    <div className={cn(systemPageTokens.heading, 'text-sm')}>按数据集（Top 排名）</div>
-                    <div className={systemPageTokens.subtle}>
-                      窗口: {new Date(summary.window_start).toLocaleString()} → {new Date(summary.window_end).toLocaleString()}
+          {/* HUD Status Bar (Glassmorphism) */}
+          <div className="grid overflow-hidden rounded-3xl border border-white/60 bg-white/40 shadow-xl shadow-slate-200/20 backdrop-blur-xl md:grid-cols-5">
+            <HUDStatus icon={CalendarDays} label="统计窗口" value={windowDays === 1 ? '24小时' : `${windowDays}天`} tone="blue" />
+            <HUDStatus icon={Database} label="数据集条目" value={rows.length} tone="blue" />
+            <HUDStatus icon={Coins} label="模型总令牌" value={formatNumber(cost?.total_llm_total_tokens)} tone="blue" />
+            <HUDStatus icon={ShieldCheck} label="配额状态" value={quotaStatus} tone={quota?.enabled && !quota.exceeded ? 'green' : (quotaExceeded ? 'red' : 'slate')} />
+            <HUDStatus icon={CheckCircle2} label="数据状态" value={dataStatus} tone={summary ? 'green' : 'slate'} />
+          </div>
+
+          {/* Main Visual KPIs */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
+            <StylizedMetricCard icon={UserRound} label="助手令牌" value={formatNumber(summary?.total_assistant_tokens)} detail="ASSISTANT" tone="blue" />
+            <StylizedMetricCard icon={Coins} label="LLM 预估总额" value={formatNumber(cost?.total_llm_total_tokens)} detail="LLM_EST" tone="indigo" />
+            <StylizedMetricCard icon={Database} label="向量令牌" value={formatNumber(cost?.total_embedding_query_tokens)} detail="EMBEDDING" tone="blue" />
+            <StylizedMetricCard icon={Timer} label="平均检索耗时" value={formatSec(avgRetrieve)} detail="LATENCY" tone="indigo" />
+            <StylizedMetricCard icon={Clock3} label="配额剩余" value={quota?.enabled ? formatNumber(quota.remaining) : '0'} detail="REMAINING" tone="green" />
+            <StylizedMetricCard icon={MessageSquareText} label="总消息数" value={formatNumber(summary?.total_assistant_messages)} detail="TOTAL_MSG" tone="slate" />
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-10">
+            
+            {/* Usage Table Section */}
+            <div className={cn(GLASS_CARD, "xl:col-span-5 flex flex-col border-blue-100/30")}>
+               <div className="px-8 py-6 border-b border-slate-100/50 flex items-center justify-between bg-gradient-to-r from-blue-50/50 to-transparent">
+                  <div>
+                    <h3 className="text-[14px] font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
+                       <TrendingUp className="size-4 text-blue-500" />
+                       数据集用量排行
+                    </h3>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase mt-1 tracking-tighter">{formatWindow(summary?.window_start, summary?.window_end)}</p>
                   </div>
-                </div>
-
-                <div className="overflow-auto">
-                  <table aria-label="令牌用量明细" className={DENSE_TABLE}>
-                    <thead className="sticky top-0 z-10 bg-background">
-                        <tr className={cn(DENSE_TABLE_HEAD, 'border-b border-border/60')}>
-                          <th className={cn('py-1.5 pr-3 text-left font-semibold', DENSE_PRIMARY_COL)}>数据集</th>
-                          <th className={cn('py-1.5 px-3 text-right font-semibold', DENSE_NUM_COL)}>助手消息</th>
-                          <th className={cn('py-1.5 pl-3 text-right font-semibold', DENSE_NUM_COL)}>助手令牌</th>
+                  <div className="size-8 rounded-lg bg-white border border-slate-100 flex items-center justify-center text-slate-200">
+                    <LayoutGrid className="size-4" />
+                  </div>
+               </div>
+               <div className="overflow-auto max-h-[520px]">
+                 <table className="w-full text-left">
+                   <thead>
+                      <tr className="bg-slate-50/30 border-b border-slate-100/50">
+                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">数据集</th>
+                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-right">消息</th>
+                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-right">消耗</th>
+                      </tr>
+                   </thead>
+                   <tbody className="divide-y divide-slate-50/50">
+                      {rows.map(r => (
+                        <tr key={r.dataset_id} className="hover:bg-blue-50/30 transition-all duration-200 group">
+                          <td className="px-8 py-5">
+                            <p className="text-[13px] font-bold text-slate-700 truncate max-w-[200px] group-hover:text-blue-600 transition-colors">{datasetNameById[r.dataset_id || ''] || '未绑定'}</p>
+                            <p className="text-[9px] font-mono text-slate-300 group-hover:text-slate-400 uppercase">{shortId(r.dataset_id || '')}</p>
+                          </td>
+                          <td className="px-8 py-5 text-[12px] font-mono text-slate-500 text-right">{formatNumber(r.assistant_messages)}</td>
+                          <td className="px-8 py-5 text-[12px] font-mono font-black text-slate-900 text-right">{formatNumber(r.assistant_tokens)}</td>
                         </tr>
-                      </thead>
-                    <tbody>
-                      {rows.slice(0, 50).map((r) => {
-                        const id = r.dataset_id || ''
-                        const name = id ? datasetNameById[id] || shortId(id) : '(未知数据集)'
-                        return (
-                          <tr key={JSON.stringify(r)} className="border-b border-border/40 text-[12px] transition-colors hover:bg-muted/20 last:border-0">
-                            <td className="py-1.5 pr-3">
-                              <div className="truncate font-semibold text-foreground" title={name}>{name}</div>
-                              {id ? <div className={cn(systemPageTokens.monoMeta, 'truncate text-[11px]')} title={id}>{id}</div> : null}
-                            </td>
-                            <td className={cn(DENSE_TABLE_CELL, 'text-right')}>{r.assistant_messages}</td>
-                            <td className={cn(DENSE_TABLE_CELL, 'pl-3 text-right')}>{r.assistant_tokens}</td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </Panel>
-
-              {cost ? (
-                <Panel padding="md" className={DENSE_PANEL}>
-                  <div className="mb-2.5 flex items-center justify-between">
-                    <div className={cn(systemPageTokens.heading, 'text-sm')}>成本归因（估算）</div>
-                    <div className={systemPageTokens.subtle}>
-                      窗口: {new Date(cost.window_start).toLocaleString()} → {new Date(cost.window_end).toLocaleString()}
-                    </div>
-                  </div>
-
-                  <div className="overflow-auto">
-                    <table aria-label="成本用量明细" className={DENSE_TABLE}>
-                      <thead className="sticky top-0 z-10 bg-background">
-                        <tr className={cn(DENSE_TABLE_HEAD, 'border-b border-border/60')}>
-                          <th className={cn('py-1.5 pr-3 text-left font-semibold', DENSE_PRIMARY_COL)}>数据集</th>
-                          <th className={cn('py-1.5 px-3 text-right font-semibold', DENSE_NUM_COL_WIDE)}>请求数</th>
-                          <th className={cn('py-1.5 px-3 text-right font-semibold', DENSE_NUM_COL_WIDE)}>模型总令牌（LLM）</th>
-                          <th className={cn('py-1.5 px-3 text-right font-semibold', DENSE_NUM_COL_WIDE)}>向量令牌</th>
-                          <th className={cn('py-1.5 pl-3 text-right font-semibold', DENSE_NUM_COL_WIDE)}>平均检索</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {costRows.slice(0, 50).map((r) => {
-                          const id = r.dataset_id || ''
-                          const name = id ? datasetNameById[id] || shortId(id) : '(未知数据集)'
-                          const denom = Math.max(1, r.assistant_messages || 0)
-                          const avgR = (r.retrieval_elapsed_sec_sum || 0) / denom
-                          return (
-                            <tr key={JSON.stringify(r)} className="border-b border-border/40 text-[12px] transition-colors hover:bg-muted/20 last:border-0">
-                              <td className="py-1.5 pr-3">
-                                <div className="truncate font-semibold text-foreground" title={name}>{name}</div>
-                                {id ? <div className={cn(systemPageTokens.monoMeta, 'truncate text-[11px]')} title={id}>{id}</div> : null}
-                              </td>
-                              <td className={cn(DENSE_TABLE_CELL, 'text-right')}>{r.assistant_messages}</td>
-                              <td className={cn(DENSE_TABLE_CELL, 'text-right')}>{r.llm_total_tokens}</td>
-                              <td className={cn(DENSE_TABLE_CELL, 'text-right')}>{r.embedding_query_tokens}</td>
-                              <td className={cn(DENSE_TABLE_CELL, 'pl-3 text-right')}>{formatSec(avgR)}</td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </Panel>
-              ) : null}
-
-              <TenantQuotaPanel />
+                      ))}
+                   </tbody>
+                 </table>
+               </div>
             </div>
-          ) : (
-            <EmptyState
-              icon={BarChart3}
-              title="暂无用量数据"
-              description="无法加载用量数据。请确认您拥有管理员权限，并且后端已更新到包含用量接口的版本。"
-              className="mt-4"
-            />
-          )}
-        </PageScaffold>
-      </div>
+
+            {/* Cost Attribution Table Section */}
+            <div className={cn(GLASS_CARD, "xl:col-span-7 flex flex-col border-indigo-100/30")}>
+               <div className="px-8 py-6 border-b border-slate-100/50 flex items-center justify-between bg-gradient-to-r from-indigo-50/50 to-transparent">
+                  <div>
+                    <h3 className="text-[14px] font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
+                       <Zap className="size-4 text-indigo-500 fill-current" />
+                       成本归因分析 (估算)
+                    </h3>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase mt-1 tracking-tighter">{formatWindow(cost?.window_start, cost?.window_end)}</p>
+                  </div>
+                  <div className="size-8 rounded-lg bg-white border border-slate-100 flex items-center justify-center text-slate-200">
+                    <BarChart3 className="size-4" />
+                  </div>
+               </div>
+               <div className="overflow-auto max-h-[520px]">
+                 <table className="w-full text-left">
+                   <thead>
+                      <tr className="bg-slate-50/30 border-b border-slate-100/50">
+                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">分析维度</th>
+                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-right">LLM TOKEN</th>
+                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-right">向量 TOKEN</th>
+                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-right">平均检索</th>
+                      </tr>
+                   </thead>
+                   <tbody className="divide-y divide-slate-50/50">
+                      {costRows.map(r => (
+                        <tr key={r.dataset_id} className="hover:bg-indigo-50/30 transition-all duration-200 group">
+                          <td className="px-8 py-5">
+                            <p className="text-[13px] font-bold text-slate-700 truncate max-w-[240px] group-hover:text-indigo-600 transition-colors">{datasetNameById[r.dataset_id || ''] || '未绑定'}</p>
+                            <p className="text-[9px] font-mono text-slate-300 group-hover:text-slate-400 uppercase">{shortId(r.dataset_id || '')}</p>
+                          </td>
+                          <td className="px-8 py-5 text-[12px] font-mono font-black text-slate-800 text-right">{formatNumber(r.llm_total_tokens)}</td>
+                          <td className="px-8 py-5 text-[12px] font-mono text-slate-500 text-right">{formatNumber(r.embedding_query_tokens)}</td>
+                          <td className="px-8 py-5 text-[12px] font-mono text-slate-400 text-right">{formatSec(r.retrieval_elapsed_sec_sum / Math.max(1, r.assistant_messages || 0))}</td>
+                        </tr>
+                      ))}
+                   </tbody>
+                 </table>
+               </div>
+            </div>
+          </div>
+
+          {/* Bottom Custom Panel */}
+          <div className="relative">
+             <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/5 to-white/10 rounded-3xl pointer-events-none" />
+             <TenantQuotaPanel />
+          </div>
+        </div>
+      </PageScaffold>
     </AppFrame>
   )
 }

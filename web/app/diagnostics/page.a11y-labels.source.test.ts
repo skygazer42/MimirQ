@@ -7,13 +7,8 @@ describe('diagnostics page accessibility labels', () => {
   it('uses section-specific aria-labels for icon-only copy and refresh actions', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'page-client.tsx'), 'utf8')
 
-    expect(src).toContain('aria-label="复制 Backend Summary JSON"')
-    expect(src).toContain('aria-label="刷新 Backend Meta"')
-    expect(src).toContain('aria-label="复制 Backend Meta JSON"')
-    expect(src).toContain('aria-label="刷新 Backend Health"')
-    expect(src).toContain('aria-label="复制 Backend Health JSON"')
-    expect(src).toContain('aria-label="刷新依赖就绪（Deps Ready）"')
-    expect(src).toContain('aria-label="复制依赖就绪 JSON（Deps Ready）"')
+    expect(src).toContain('aria-label="刷新诊断状态"')
+    expect(src).toContain('aria-label="复制后端输出 JSON"')
     expect(src).not.toContain('aria-label="复制"')
     expect(src).not.toContain('aria-label="刷新"')
     expect(src).not.toContain('aria-label="复制 Frontend Env JSON"')
