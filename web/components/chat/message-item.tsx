@@ -345,7 +345,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   const handleFollowupPrefill = useCallback((question: string) => {
     const prompt = question.trim()
     if (!prompt) return
-    globalEventBus.emit('chat:send', prompt)
+    globalEventBus.emit('chat:submit', prompt)
   }, [])
 
   const handleInlineCitationClick = useCallback((href?: string) => {

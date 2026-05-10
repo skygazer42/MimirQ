@@ -62,7 +62,6 @@ import {
   buildFileTypeDistribution,
   buildPdfDispositionBreakdown,
   buildSalesAuditProfile,
-  buildSalesAuditFallbackArtifacts,
   buildThroughputAreaRows,
   computeDocsPerMinute,
   computeDurationPercentiles,
@@ -80,6 +79,26 @@ const DATASET_ALL = '__all__'
 type IngestionMode = 'sales-audit' | 'execution-monitor'
 type SampleDisposition = 'approved' | 'manual'
 type AuditDispositionFilter = 'all' | 'pending' | 'manual' | 'approved'
+
+const EMPTY_INGESTION_SUMMARY: IngestionDashboardSummaryResponse = {
+  window_hours: 0,
+  bucket_minutes: 20,
+  window_start: '',
+  window_end: '',
+  dataset_id: null,
+  created_count: 0,
+  by_status: {},
+  by_stage_processing: {},
+  avg_completed_latency_sec: null,
+  top_error_reasons: {},
+  timeseries: {
+    ts_ms: [],
+    completed: [],
+    failed: [],
+    quarantined: [],
+    cancelled: [],
+  },
+}
 
 function safeNumber(value: unknown): number {
   const numeric = Number(value)
@@ -126,63 +145,6 @@ function escapeHtml(value: unknown): string {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;')
-}
-
-function buildFallbackSummary(
-  documents: Document[],
-  datasetId?: string | null
-): IngestionDashboardSummaryResponse {
-  const byStatus = documents.reduce<Record<string, number>>((acc, document) => {
-    const key = String(document.status || 'unknown')
-    acc[key] = (acc[key] ?? 0) + 1
-    return acc
-  }, {})
-
-  const byStageProcessing = documents.reduce<Record<string, number>>((acc, document) => {
-    const key = String(document.current_stage || document.status || 'queued')
-    acc[key] = (acc[key] ?? 0) + 1
-    return acc
-  }, {})
-
-  const topErrorReasons = documents.reduce<Record<string, number>>((acc, document) => {
-    if (!document.error_message) return acc
-    acc[document.error_message] = (acc[document.error_message] ?? 0) + 1
-    return acc
-  }, {})
-
-  const bucketMinutes = 20
-  const bucketCount = 8
-  const now = Date.now()
-  const completedBase = Math.max(1, byStatus.completed ?? 0)
-  const failedBase = Math.max(0, byStatus.failed ?? 0)
-  const quarantinedBase = Math.max(0, byStatus.quarantined ?? 0)
-  const cancelledBase = Math.max(0, byStatus.cancelled ?? 0)
-
-  const ts_ms = Array.from({ length: bucketCount }, (_, index) => now - (bucketCount - index - 1) * bucketMinutes * 60_000)
-  const completed = ts_ms.map((_, index) => Math.max(0, Math.round((completedBase * (index + 2)) / (bucketCount + 2))))
-  const failed = ts_ms.map((_, index) => (index % 3 === 0 ? failedBase : Math.max(0, failedBase - 1)))
-  const quarantined = ts_ms.map((_, index) => (index % 4 === 0 ? quarantinedBase : Math.max(0, quarantinedBase - 1)))
-  const cancelled = ts_ms.map((_, index) => (index === bucketCount - 2 ? cancelledBase : 0))
-
-  return {
-    window_hours: Math.round((bucketMinutes * bucketCount) / 60),
-    bucket_minutes: bucketMinutes,
-    window_start: new Date(ts_ms[0] ?? now).toISOString(),
-    window_end: new Date(now).toISOString(),
-    dataset_id: datasetId ?? null,
-    created_count: documents.length,
-    by_status: byStatus,
-    by_stage_processing: byStageProcessing,
-    avg_completed_latency_sec: computeDurationPercentiles(documents).p50 * 60,
-    top_error_reasons: topErrorReasons,
-    timeseries: {
-      ts_ms,
-      completed,
-      failed,
-      quarantined,
-      cancelled,
-    },
-  }
 }
 
 type ReportEvidenceRow = {
@@ -1449,8 +1411,8 @@ export default function KnowledgeIngestionPageClient() {
     [demoMode, documentsQuery.data]
   )
   const summary = useMemo(
-    () => summaryQuery.data ?? buildFallbackSummary(documents, selectedDatasetId),
-    [documents, selectedDatasetId, summaryQuery.data]
+    () => summaryQuery.data ?? EMPTY_INGESTION_SUMMARY,
+    [summaryQuery.data]
   )
   const taskQueueSnapshot = taskQueueQuery.data ?? null
   const taskQueueStatusLabel = useMemo(() => {
@@ -1467,21 +1429,17 @@ export default function KnowledgeIngestionPageClient() {
     if (!taskQueueSnapshot.broker_up) return 'border-rose/18 bg-rose/[0.08] text-rose'
     return 'border-success/18 bg-success/[0.08] text-success'
   }, [demoMode, taskQueueSnapshot])
-  const fallbackSalesAuditArtifacts = useMemo(
-    () => buildSalesAuditFallbackArtifacts(documents, { datasetId: selectedDatasetId }),
-    [documents, selectedDatasetId]
-  )
   const salesAuditSummary = useMemo(
-    () => (demoMode ? buildDemoPrecheckSummary(documents) : precheckSummaryQuery.data ?? fallbackSalesAuditArtifacts.summary),
-    [demoMode, documents, fallbackSalesAuditArtifacts.summary, precheckSummaryQuery.data]
+    () => (demoMode ? buildDemoPrecheckSummary(documents) : precheckSummaryQuery.data ?? null),
+    [demoMode, documents, precheckSummaryQuery.data]
   )
   const salesAuditSamples = useMemo(
-    () => (demoMode ? buildDemoPrecheckSamples(documents) : precheckSamplesQuery.data ?? fallbackSalesAuditArtifacts.samples),
-    [demoMode, documents, fallbackSalesAuditArtifacts.samples, precheckSamplesQuery.data]
+    () => (demoMode ? buildDemoPrecheckSamples(documents) : precheckSamplesQuery.data ?? null),
+    [demoMode, documents, precheckSamplesQuery.data]
   )
   const salesAuditNearDup = useMemo(
-    () => (demoMode ? buildDemoNearDupResponse() : precheckNearDupQuery.data ?? fallbackSalesAuditArtifacts.nearDup),
-    [demoMode, fallbackSalesAuditArtifacts.nearDup, precheckNearDupQuery.data]
+    () => (demoMode ? buildDemoNearDupResponse() : precheckNearDupQuery.data ?? null),
+    [demoMode, precheckNearDupQuery.data]
   )
 
   useEffect(() => {
@@ -2480,18 +2438,13 @@ export default function KnowledgeIngestionPageClient() {
     setDesktopScopeCollapsed(false)
   }, [])
 
-  const handleToggleDemoMode = useCallback(() => {
+  const handleExitDemoMode = useCallback(() => {
     const params = new URLSearchParams(searchParams.toString())
-
-    if (demoMode) {
-      params.delete('demo')
-    } else {
-      params.set('demo', '1')
-    }
+    params.delete('demo')
 
     const query = params.toString()
     router.replace(query ? `${pathname}?${query}` : pathname)
-  }, [demoMode, pathname, router, searchParams])
+  }, [pathname, router, searchParams])
 
   const handleCanvasMove = useCallback((event: MouseEvent<HTMLDivElement>) => {
     const rect = event.currentTarget.getBoundingClientRect()
@@ -2506,14 +2459,6 @@ export default function KnowledgeIngestionPageClient() {
       : !documentsQuery.isLoading && documents.length === 0
   const showDesktopAuditRail = mode === 'execution-monitor' && !showEmptyState && !desktopScopeCollapsed
   const showDesktopAuditRailToggle = mode === 'execution-monitor' && !showEmptyState
-
-  useEffect(() => {
-    const offToggleDemo = globalEventBus.on('ingestion:toggle-demo-mode', () => {
-      handleToggleDemoMode()
-    })
-
-    return offToggleDemo
-  }, [handleToggleDemoMode])
 
   return (
       <div
@@ -2919,9 +2864,11 @@ export default function KnowledgeIngestionPageClient() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-1">
-                      <Button type="button" variant="outline" className="h-7 rounded-lg px-2 text-[9px]" onClick={handleToggleDemoMode}>
-                        {demoMode ? '退出 Demo' : '打开 Demo'}
-                      </Button>
+                      {demoMode ? (
+                        <Button type="button" variant="outline" className="h-7 rounded-lg px-2 text-[9px]" onClick={handleExitDemoMode}>
+                          退出 Demo
+                        </Button>
+                      ) : null}
                       {mode === 'sales-audit' ? (
                         <>
                           <Button

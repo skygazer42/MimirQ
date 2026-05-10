@@ -603,6 +603,11 @@ def _get_workspace_document(db: Session, *, tenant_id: UUID, account_id: str, do
     return doc
 
 
+def _filter_parsing_workspace_documents(query):
+    """Keep parsing workspace list semantics aligned with workspace detail endpoints."""
+    return query.filter(DBDocument.doc_metadata["workspace"].astext == "parsing")  # type: ignore[attr-defined]
+
+
 @router.get("/documents", response_model=DocumentList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_parsing_documents(
     skip: Annotated[int, Query(ge=0)] = 0,
@@ -626,6 +631,7 @@ async def list_parsing_documents(
             DBDocument.dataset_id == dataset.id,
         )
     )
+    query = _filter_parsing_workspace_documents(query)
 
     if status and status != "all":
         query = query.filter(DBDocument.status == status)

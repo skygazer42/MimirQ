@@ -129,9 +129,6 @@ export function EmptyState({
           </div>
         </div>
         <div className="mt-6 flex items-center justify-center gap-3">
-          <Button variant="outline" asChild>
-            <Link href="/knowledge/ingestion?demo=1">加载虚拟数据</Link>
-          </Button>
           <Button asChild>
             <Link href="/datasets">入库预检</Link>
           </Button>

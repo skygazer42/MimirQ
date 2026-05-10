@@ -312,12 +312,9 @@ export default function AuthPage() {
                 <div className="mt-8 text-center">
                     <p className="text-xs text-muted-foreground">
                         遇到问题？{" "}
-                        <a
-                            href="#"
-                            className="focus-ring text-foreground/80 hover:text-foreground underline underline-offset-4 transition-colors motion-reduce:transition-none"
-                        >
+                        <span className="font-medium text-foreground/80">
                             联系管理员
-                        </a>
+                        </span>
                     </p>
                 </div>
             </div>

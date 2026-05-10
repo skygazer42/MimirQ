@@ -14,6 +14,7 @@ class BuildMeta(BaseModel):
 class MetaFeatureFlags(BaseModel):
     auth_mode: str
     vector_backend: str
+    kg_enabled: bool
     task_queue_enabled: bool
     embedding_cache_enabled: bool
     minio_enabled: bool

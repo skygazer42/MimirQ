@@ -19,13 +19,13 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
 
   return (
     <section>
-      <h2 className={cn('mb-4 flex items-center gap-2 text-base', systemPageTokens.heading)}>
-        <Sliders className="h-4 w-4 text-primary" />
+      <h2 className={cn('mb-2 flex items-center gap-2 text-[13px] font-medium', systemPageTokens.heading)}>
+        <Sliders className="h-3.5 w-3.5 text-primary" />
         检索增强生成参数（RAG）
       </h2>
 
-      <div className="rounded-lg border border-border/70 bg-card p-4 shadow-none">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="rounded-[16px] border border-slate-200/75 bg-white p-3.5 shadow-sm">
+        <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2 lg:grid-cols-3">
           <div>
             <div className="mb-1.5 flex items-center justify-between">
               <div className={cn(systemPageTokens.microLabel, 'text-foreground/80')}>召回 Top K</div>
@@ -67,7 +67,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
             <p className="mt-1.5 text-[11px] text-muted-foreground">过滤掉相关性得分低于此值的片段</p>
           </div>
 
-          <div className="rounded-lg border border-border bg-muted/30 p-3">
+          <div className="rounded-[13px] border border-border bg-muted/25 p-3">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className={cn(systemPageTokens.microLabel, 'text-foreground')}>BM25 关键字检索</div>
@@ -93,7 +93,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
             </p>
           </div>
 
-          <div className="rounded-lg border border-border bg-muted/30 p-3">
+          <div className="rounded-[13px] border border-border bg-muted/25 p-3">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className={cn(systemPageTokens.microLabel, 'text-foreground')}>启用重排序（Reranker）</div>

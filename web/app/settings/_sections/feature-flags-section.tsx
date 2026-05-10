@@ -120,28 +120,28 @@ const FEATURE_FLAGS_CONFIG: FeatureFlagDescriptor[] = [
 function getColorClasses(color: FeatureFlagDescriptor['color']) {
   const styles = {
     primary: {
-      bg: 'bg-blue-50/70',
-      border: 'border-blue-200/90',
+      bg: 'bg-blue-50/35',
+      border: 'border-blue-200/75',
       text: 'text-blue-600',
-      iconBg: 'bg-blue-100/90',
+      iconBg: 'bg-blue-100/65',
     },
     info: {
-      bg: 'bg-cyan-50/70',
-      border: 'border-cyan-200/90',
+      bg: 'bg-cyan-50/35',
+      border: 'border-cyan-200/75',
       text: 'text-cyan-600',
-      iconBg: 'bg-cyan-100/90',
+      iconBg: 'bg-cyan-100/65',
     },
     success: {
-      bg: 'bg-emerald-50/70',
-      border: 'border-emerald-200/90',
+      bg: 'bg-emerald-50/35',
+      border: 'border-emerald-200/75',
       text: 'text-emerald-600',
-      iconBg: 'bg-emerald-100/90',
+      iconBg: 'bg-emerald-100/65',
     },
     warning: {
-      bg: 'bg-orange-50/70',
-      border: 'border-orange-200/90',
+      bg: 'bg-orange-50/35',
+      border: 'border-orange-200/75',
       text: 'text-orange-600',
-      iconBg: 'bg-orange-100/90',
+      iconBg: 'bg-orange-100/65',
     },
   }
 
@@ -163,24 +163,24 @@ export function FeatureFlagsSection({
   toggleFeature,
 }: Readonly<FeatureFlagsSectionProps>) {
   return (
-    <section className="rounded-[22px] border border-slate-200/80 bg-white/92 p-5 shadow-[0_18px_44px_rgba(15,23,42,0.06)]">
+    <section className="rounded-[16px] border border-slate-200/75 bg-white p-3.5 shadow-sm">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="flex items-center gap-2 text-[15px] font-semibold tracking-[-0.02em] text-slate-950">
-            <Zap className="h-4 w-4 text-orange-500" />
+          <h2 className="flex items-center gap-2 text-[13px] font-medium text-slate-950">
+            <Zap className="h-3.5 w-3.5 text-orange-500" />
             功能开关
           </h2>
-          <p className="mt-1 text-[12px] leading-5 text-slate-500">
+          <p className="mt-0.5 text-[11px] leading-4 text-slate-500">
             按需启用各项能力模块，依赖项会在下方标签提示。
           </p>
         </div>
-        <div className="inline-flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-[11px] font-semibold text-orange-600">
-          <AlertCircle className="h-3.5 w-3.5" />
+        <div className="inline-flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-50/70 px-2.5 py-1 text-[11px] font-medium text-orange-600">
+          <AlertCircle className="h-3 w-3" />
           <span>更改后需重启后端生效</span>
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-2">
+      <div className="mt-3.5 grid grid-cols-1 gap-2 xl:grid-cols-2">
         {FEATURE_FLAGS_CONFIG.map((feature) => {
           const Icon = feature.icon
           const colors = getColorClasses(feature.color)
@@ -192,41 +192,41 @@ export function FeatureFlagsSection({
               type="button"
               key={feature.key}
               className={cn(
-                'group relative w-full rounded-2xl border px-4 py-3 text-left transition-colors duration-150 focus-ring motion-reduce:transition-none',
-                isEnabled ? `${colors.border} ${colors.bg}` : 'border-slate-200 bg-slate-50/30 hover:bg-slate-50',
+                'group relative w-full rounded-[13px] border px-3 py-2 text-left transition-[border-color,background-color,box-shadow] duration-150 focus-ring motion-reduce:transition-none',
+                isEnabled ? `${colors.border} ${colors.bg} shadow-[inset_0_0_0_1px_rgba(255,255,255,0.55)]` : 'border-slate-200 bg-white hover:border-blue-100 hover:bg-slate-50/65',
                 isEdited && 'ring-2 ring-blue-400/70 ring-offset-1'
               )}
               aria-pressed={isEnabled}
               onClick={() => toggleFeature(feature.key)}
             >
               <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 items-start gap-3">
+                <div className="flex min-w-0 items-start gap-2.5">
                   <div
                     className={cn(
-                      'mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-xl transition-colors',
+                      'mt-0.5 flex size-[23px] shrink-0 items-center justify-center rounded-[9px] transition-colors',
                       isEnabled ? colors.iconBg : 'bg-slate-100'
                     )}
                   >
-                    <Icon className={cn('h-4 w-4', isEnabled ? colors.text : 'text-muted-foreground')} />
+                    <Icon className={cn('h-3 w-3', isEnabled ? colors.text : 'text-muted-foreground')} />
                   </div>
                   <div className="min-w-0">
                     <h3
                       className={cn(
-                        'text-[13px] font-semibold leading-5 tracking-[-0.01em] transition-colors',
+                        'text-[12px] font-medium leading-[15px] transition-colors',
                         isEnabled ? 'text-slate-950' : 'text-slate-700'
                       )}
                     >
                       {feature.name}
                     </h3>
-                    <p className={cn(systemPageTokens.subtle, 'mt-0.5 text-[11px] leading-4')}>
+                    <p className={cn(systemPageTokens.subtle, 'mt-0.5 max-w-[62ch] truncate text-[10.5px] leading-[14px]')}>
                       {feature.description}
                     </p>
                     {feature.dependencies.length > 0 ? (
-                      <div className="mt-1.5 flex flex-wrap gap-1">
+                      <div className="mt-1 flex flex-wrap gap-1">
                         {feature.dependencies.map((dependency) => (
                           <span
                             key={dependency}
-                            className="rounded-md border border-slate-200 bg-white/80 px-1.5 py-0.5 text-[10px] leading-4 text-slate-500"
+                            className="rounded-md border border-slate-200 bg-white/75 px-1.5 py-0.5 text-[10px] leading-[14px] text-slate-500"
                           >
                             需要: {dependency}
                           </span>
@@ -237,7 +237,7 @@ export function FeatureFlagsSection({
                 </div>
                 <div
                   className={cn(
-                    'mt-1 flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors',
+                    'mt-0.5 flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors',
                     isEnabled ? 'bg-blue-600' : 'bg-slate-300'
                   )}
                   aria-hidden="true"

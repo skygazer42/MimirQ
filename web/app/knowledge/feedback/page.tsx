@@ -665,13 +665,12 @@ export default function FeedbackTriagePage() {
  [demoMode]
  )
 
- const handleToggleDemoMode = useCallback(() => {
+ const handleExitDemoMode = useCallback(() => {
  const params = new URLSearchParams(searchParams.toString())
- if (demoMode) params.delete('demo')
- else params.set('demo', '1')
+ params.delete('demo')
  const query = params.toString()
  router.replace(query ? `${pathname}?${query}` : pathname)
- }, [demoMode, pathname, router, searchParams])
+ }, [pathname, router, searchParams])
 
  // Reset per-detail UI state.
  useEffect(() => {
@@ -734,13 +733,15 @@ export default function FeedbackTriagePage() {
  }
  actions={
  <div className="flex flex-wrap items-center gap-2">
+ {demoMode ? (
  <Button
  variant="outline"
  className="gap-2 rounded-full bg-card/80 text-muted-foreground shadow-sm transition-colors duration-200 hover:border-border/60 hover:bg-card hover:text-foreground motion-reduce:transition-none"
- onClick={handleToggleDemoMode}
+ onClick={handleExitDemoMode}
  >
- {demoMode ? '退出 Demo' : '打开 Demo'}
+ 退出 Demo
  </Button>
+ ) : null}
  <Button
  variant="outline"
  className="gap-2 rounded-full bg-card/80 text-muted-foreground shadow-sm transition-colors duration-200 hover:border-border/60 hover:bg-card hover:text-foreground motion-reduce:transition-none"

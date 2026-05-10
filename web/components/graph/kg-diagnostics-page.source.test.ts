@@ -170,8 +170,10 @@ describe('KG diagnostics quality report wiring', () => {
     expect(pageSrc).toContain('setDatasets(items)')
     expect(pageSrc).toContain('setDatasetId((current)')
     expect(pageSrc).toContain("String(items[0]?.id || '').trim()")
+    expect(pageSrc).toContain('<Select value={datasetId} onValueChange={handleDatasetChange}')
     expect(pageSrc).toContain('dataset.name || id')
     expect(pageSrc).toContain('dataset_id: ds')
+    expect(pageSrc).not.toContain('datasetId || undefined')
     expect(pageSrc).not.toContain('placeholder={datasetLabel}')
   })
 

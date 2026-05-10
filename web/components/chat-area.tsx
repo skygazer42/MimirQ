@@ -580,6 +580,21 @@ export function ChatArea({
   }, [inputValue, submitMessage])
 
   useEffect(() => {
+    const unsubscribe = globalEventBus.on('chat:submit', (payload: string) => {
+      const prompt = payload.trim()
+      if (!prompt) return
+      if (submitMessage(prompt)) {
+        setInputValue('')
+        if (textareaRef.current) textareaRef.current.style.height = 'auto'
+        return
+      }
+      setInputValue(prompt)
+    })
+
+    return () => unsubscribe()
+  }, [submitMessage])
+
+  useEffect(() => {
     const p = (initialPrompt || '').trim()
     if (!initialAutoSendPrompt || !p) return
     if (autoSendPromptRef.current) return

@@ -2417,6 +2417,12 @@ const zhCNMessages = {
       autoClassify: 'AI 分类',
       analyzing: '分析中...',
     },
+    auto: {
+      empty: '请先选择或输入文档内容',
+      success: '后端已返回 {count} 个分类标签',
+      noTags: '后端未返回可用分类标签',
+      failed: '后端自动分类失败',
+    },
     sections: {
       category: '文档分类',
       tags: '标签',

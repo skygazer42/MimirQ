@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { toast } from 'sonner'
 
+import { metaApi } from '@/lib/api'
 import { kgApi } from '@/lib/api/graph'
 import { GraphService } from '@/lib/graph-service'
 import { parseGraphML, type GraphData } from '@/lib/graph-parser'
@@ -48,7 +49,7 @@ type UseGraphDataLoadingParams = Readonly<{
   maxEntityLinks: number
   setGraphData: Dispatch<SetStateAction<GraphData>>
   setFileName: Dispatch<SetStateAction<string | null>>
-  setDataSource: Dispatch<SetStateAction<'live' | 'mock' | 'file'>>
+  setDataSource: Dispatch<SetStateAction<'live' | 'file'>>
   setTraceReplay: Dispatch<SetStateAction<RagTrace | null>>
   setKgStats: Dispatch<SetStateAction<KGStatsResponse | null>>
   setKgNodeDetail: Dispatch<SetStateAction<KGEntityDetailResponse | KGEventDetailResponse | null>>
@@ -65,7 +66,7 @@ type UseGraphDataLoadingParams = Readonly<{
 
 type UseGraphDataLoadingResult = Readonly<{
   loadInitialData: (
-    source?: 'live' | 'mock',
+    source?: 'live',
     opts?: { includeEntityLinks?: boolean; includeRelationLinks?: boolean; minSharedEvents?: number }
   ) => Promise<void>
   handleFileUpload: (event: ChangeEvent<HTMLInputElement>) => Promise<void>
@@ -115,7 +116,7 @@ export function useGraphDataLoading({
 
   const loadInitialData = useCallback(
     async (
-      source: 'live' | 'mock' = 'live',
+      source: 'live' = 'live',
       opts?: { includeEntityLinks?: boolean; includeRelationLinks?: boolean; minSharedEvents?: number }
     ) => {
       if (
@@ -137,14 +138,12 @@ export function useGraphDataLoading({
         const sharedThreshold = opts?.minSharedEvents ?? minSharedEvents
 
         const data = await GraphService.fetchInitialGraph({
-          preferMock: source === 'mock',
-          includeEntityLinks: source === 'live' ? includeLinks : undefined,
-          includeRelationLinks: source === 'live' ? includeRels : undefined,
-          minSharedEvents: source === 'live' ? sharedThreshold : undefined,
-          maxEntityLinks: source === 'live' ? maxEntityLinks : undefined,
-          documentIds:
-            source === 'live' && scopedDocumentIds && scopedDocumentIds.length ? scopedDocumentIds : undefined,
-          pipelineHash: source === 'live' ? (scope.pipelineHash || undefined) : undefined,
+          includeEntityLinks: includeLinks,
+          includeRelationLinks: includeRels,
+          minSharedEvents: sharedThreshold,
+          maxEntityLinks,
+          documentIds: scopedDocumentIds && scopedDocumentIds.length ? scopedDocumentIds : undefined,
+          pipelineHash: scope.pipelineHash || undefined,
         })
 
         setGraphData(data)
@@ -152,25 +151,24 @@ export function useGraphDataLoading({
         setDataSource(source)
         setTraceReplay(null)
         setFileName(
-          source === 'mock'
-            ? '示例数据'
-            : scope.datasetId
-              ? '知识库图谱'
-              : scope.pipelineHash
-                ? '批次图谱'
-                : scopeParams
-                  ? '范围图谱'
-                  : '知识图谱'
+          scope.datasetId
+            ? '知识库图谱'
+            : scope.pipelineHash
+              ? '批次图谱'
+              : scopeParams
+                ? '范围图谱'
+                : '知识图谱'
         )
 
-        if (source === 'live') {
-          try {
+        try {
+          const meta = await metaApi.get()
+          if (meta.features?.kg_enabled === false) {
+            setKgStats(null)
+          } else {
             const stats = await kgApi.getStats(scopeParams || undefined)
             setKgStats(stats)
-          } catch {
-            setKgStats(null)
           }
-        } else {
+        } catch {
           setKgStats(null)
         }
 
@@ -204,13 +202,13 @@ export function useGraphDataLoading({
   useEffect(() => {
     const autoLoadKey = scope.hasScope
       ? `live:${scope.datasetId || ''}:${scope.pipelineHash || ''}:${scope.directDocIds.join(',')}:${scopedDocumentIds?.join(',') || ''}`
-      : 'default-mock-3d'
+      : 'default-live'
     if (autoLoadedGraphKey === autoLoadKey) return
 
     if (scope.hasScope && scope.datasetId && scope.directDocIds.length === 0 && scopedDocumentIds === null) return
 
     setAutoLoadedGraphKey(autoLoadKey)
-    void loadInitialData(scope.hasScope ? 'live' : 'mock')
+    void loadInitialData('live')
   }, [autoLoadedGraphKey, loadInitialData, scope, scopedDocumentIds])
 
   useEffect(() => {

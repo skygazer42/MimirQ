@@ -11,24 +11,24 @@ describe('graph service source', () => {
     expect(src).not.toContain('JSON.parse(JSON.stringify')
   })
 
-  it('uses codePointAt for unicode-safe hashing', () => {
+  it('does not synthesize mock neighbors during node expansion', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'graph-service.ts'), 'utf8')
 
-    expect(src).toContain('codePointAt(')
+    expect(src).toContain('metaApi.get()')
+    expect(src).toContain('meta.features?.kg_enabled !== false')
+    expect(src).toContain('Live graph expansion must only use backend KG data')
+    expect(src).toContain('return { nodes: [], links: [] }')
+    expect(src).not.toContain('Generate deterministic mock neighbors')
     expect(src).not.toContain('charCodeAt(')
+    expect(src).not.toContain('Date.now()')
   })
 
-  it('ships a multi-cluster 3D-ready sample graph for the unscoped graph page', () => {
+  it('does not keep a local mock graph branch in the production graph service', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'graph-service.ts'), 'utf8')
 
-    expect(src).toContain("createNode('ai', 'Artificial Intelligence', 'concept', 34)")
-    expect(src).toContain("createNode('nlp', 'NLP', 'technology', 23)")
-    expect(src).toContain("createNode('computer-vision', 'Computer Vision', 'technology', 23)")
-    expect(src).toContain("createNode('deep-learning', 'Deep Learning', 'model', 24)")
-    expect(src).toContain("createNode('reinforcement-learning', 'Reinforcement Learning', 'application', 22)")
-    expect(src).toContain("label: '概念 / Concept'")
-    expect(src).toContain("label: '技术 / Technology'")
-    expect(src).toContain("createLink('ai', 'machine-learning', '子领域'")
-    expect(src).toContain("createLink('nlp', 'named-entity-recognition', '应用于'")
+    expect(src).not.toContain('getMockGraph')
+    expect(src).not.toContain('preferMock')
+    expect(src).not.toContain('AI Knowledge Demo')
+    expect(src).not.toContain('Artificial Intelligence')
   })
 })

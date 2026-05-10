@@ -27,7 +27,7 @@ type GraphScopeParams = Readonly<{
 }> | null
 
 type UseGraphNodeOperationsParams = Readonly<{
-  dataSource: 'live' | 'mock' | 'file'
+  dataSource: 'live' | 'file'
   isDetailOpen: boolean
   selectedNode: GraphNodeLike | null
   scopeParams: GraphScopeParams

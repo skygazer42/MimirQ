@@ -191,7 +191,6 @@ const ForceGraph2DNoSSR = dynamic(
   () => import('./force-graph-2d-wrapper'),
   { ssr: false }
 )
-const isDev = process.env.NODE_ENV !== 'production'
 const LARGE_GRAPH_NODE_THRESHOLD = 600
 const LARGE_GRAPH_LINK_THRESHOLD = 1200
 
@@ -459,14 +458,6 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
     scheduleViewportLodUpdate(next)
   }, [height, isLargeGraph, sanitizedData.links, sanitizedData.nodes, scheduleViewportLodUpdate, viewportPinnedNodeIds, width])
 
-  // Debug: Log dimensions
-  useEffect(() => {
-    // Only log if dimensions change or on mount
-    if (mounted && isDev) {
-      console.log('[GraphViewer] Dimensions check:', { width, height })
-    }
-  }, [width, height, mounted])
-
   useEffect(() => {
     setMounted(true)
   }, [])
@@ -546,21 +537,10 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
   // Expose methods to parent
   useImperativeHandle(ref, () => ({
     zoomIn: () => {
-      if (isDev) {
-        console.log('[GraphViewer] zoomIn called. fgRef:', fgRef.current)
-      }
       if (fgRef.current) {
-        if (isDev) {
-          console.log('[GraphViewer] fgRef methods:', Object.keys(fgRef.current))
-        }
         const currentZoom = fgRef.current.zoom()
-        if (isDev) {
-          console.log('[GraphViewer] currentZoom:', currentZoom)
-        }
         fgRef.current.zoom(currentZoom * 1.2, 400)
-      } else if (isDev) {
-          console.warn('[GraphViewer] fgRef.current is null/undefined')
-        }
+      }
     },
     zoomOut: () => {
       if (fgRef.current) {
@@ -626,9 +606,6 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
     
     const tryZoom = () => {
       if (fgRef.current && sanitizedData.nodes.length > 0) {
-        if (isDev) {
-          console.log('[GraphViewer] Zooming to fit...')
-        }
         fgRef.current.zoomToFit(400, 20)
       } else if (attempts < maxAttempts) {
         attempts++

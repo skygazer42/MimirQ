@@ -48,7 +48,6 @@ type SlashCommandId =
   | "stats"
   | "retryFailed"
   | "pauseActive"
-  | "demo"
   | "precheck"
   | "datasets"
   | "history"
@@ -403,7 +402,6 @@ export function CommandMenu() {
         { id: "stats", shortcut: "/stats", icon: Coins },
         { id: "retryFailed", shortcut: "/retry-failed", icon: RefreshCw },
         { id: "pauseActive", shortcut: "/pause-active", icon: Activity },
-        { id: "demo", shortcut: "/demo", icon: Sparkles },
         { id: "precheck", shortcut: "/precheck", icon: Workflow },
         { id: "datasets", shortcut: "/datasets", icon: Database },
         { id: "history", shortcut: "/history", icon: History },
@@ -473,15 +471,6 @@ export function CommandMenu() {
           if (id === "pauseActive") {
             if (pathname.startsWith("/knowledge/ingestion")) {
               globalEventBus.emit('ingestion:cancel-all-active', undefined)
-              return
-            }
-            router.push("/knowledge/ingestion")
-            return
-          }
-
-          if (id === "demo") {
-            if (pathname.startsWith("/knowledge/ingestion")) {
-              globalEventBus.emit('ingestion:toggle-demo-mode', undefined)
               return
             }
             router.push("/knowledge/ingestion")

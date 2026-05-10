@@ -22,7 +22,7 @@ type GraphFilterOption = Readonly<{
 
 type GraphPageHeaderProps = Readonly<{
   fileName: string | null
-  dataSource: 'live' | 'mock' | 'file'
+  dataSource: 'live' | 'file'
   viewMode: '2d' | '3d'
   kgStats: KGStatsResponse | null
   graphNodeCount: number

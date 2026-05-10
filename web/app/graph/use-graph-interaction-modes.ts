@@ -38,7 +38,7 @@ type UseGraphInteractionModesParams = Readonly<{
   handleDeleteNode: (node?: GraphNodeLike) => void
   getActiveGraph: () => GraphViewportApi
   loadInitialData: (
-    source?: 'live' | 'mock',
+    source?: 'live',
     opts?: { includeEntityLinks?: boolean; includeRelationLinks?: boolean; minSharedEvents?: number }
   ) => Promise<void>
   selectedNode: GraphNodeLike | null
@@ -54,7 +54,7 @@ type UseGraphInteractionModesParams = Readonly<{
   connectLabelDraft: string
   viewMode: '2d' | '3d'
   layoutMode: LayoutMode
-  dataSource: 'live' | 'mock' | 'file'
+  dataSource: 'live' | 'file'
   traceReplay: RagTrace | null
   graphData: GraphData
   displayGraphData: GraphData
@@ -81,7 +81,7 @@ type UseGraphInteractionModesParams = Readonly<{
   setIsExplainMode: Dispatch<SetStateAction<boolean>>
   setViewMode: Dispatch<SetStateAction<'2d' | '3d'>>
   setGraphData: Dispatch<SetStateAction<GraphData>>
-  setDataSource: Dispatch<SetStateAction<'live' | 'mock' | 'file'>>
+  setDataSource: Dispatch<SetStateAction<'live' | 'file'>>
   setKgStats: Dispatch<SetStateAction<KGStatsResponse | null>>
   setKgNodeDetail: Dispatch<SetStateAction<KGEntityDetailResponse | KGEventDetailResponse | null>>
   setFileName: Dispatch<SetStateAction<string | null>>

@@ -11,7 +11,6 @@ import {
   Cell,
   Pie,
   PieChart,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
@@ -29,6 +28,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart'
 
 import { datasetApi, sseApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
@@ -861,8 +861,7 @@ export default function DatasetPrecheckPage() {
                 <div className="font-semibold">格式分布</div>
                 <div className="text-xs text-muted-foreground font-mono">{summary?.generated_at ? `updated ${formatDate(summary.generated_at)}` : ''}</div>
               </div>
-              <div className="h-[280px]">
-                <ResponsiveContainer width="100%" height="100%">
+              <SafeResponsiveChart>
                   <PieChart>
                     <Tooltip />
                     <Pie data={fileTypeChartData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={95} paddingAngle={2}>
@@ -871,16 +870,14 @@ export default function DatasetPrecheckPage() {
                       ))}
                     </Pie>
                   </PieChart>
-                </ResponsiveContainer>
-              </div>
+                </SafeResponsiveChart>
             </Panel>
 
             <Panel className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <div className="font-semibold">长度分布（chars）</div>
               </div>
-              <div className="h-[280px]">
-                <ResponsiveContainer width="100%" height="100%">
+              <SafeResponsiveChart>
                   <BarChart data={lengthHistogramData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" fontSize={12} />
@@ -888,16 +885,14 @@ export default function DatasetPrecheckPage() {
                     <Tooltip />
                     <Bar dataKey="value" fill="hsl(var(--chart-2))" radius={[6, 6, 0, 0]} />
                   </BarChart>
-                </ResponsiveContainer>
-              </div>
+                </SafeResponsiveChart>
             </Panel>
 
             <Panel className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <div className="font-semibold">PDF 扫描占比</div>
               </div>
-              <div className="h-[280px]">
-                <ResponsiveContainer width="100%" height="100%">
+              <SafeResponsiveChart>
                   <PieChart>
                     <Tooltip />
                     <Pie data={pdfScanData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={95} paddingAngle={2}>
@@ -906,16 +901,14 @@ export default function DatasetPrecheckPage() {
                       ))}
                     </Pie>
                   </PieChart>
-                </ResponsiveContainer>
-              </div>
+                </SafeResponsiveChart>
             </Panel>
 
             <Panel className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <div className="font-semibold">文件大小分布</div>
               </div>
-              <div className="h-[280px]">
-                <ResponsiveContainer width="100%" height="100%">
+              <SafeResponsiveChart>
                   <BarChart data={fileSizeHistogramData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" fontSize={12} />
@@ -923,8 +916,7 @@ export default function DatasetPrecheckPage() {
                     <Tooltip />
                     <Bar dataKey="value" fill="hsl(var(--chart-3))" radius={[6, 6, 0, 0]} />
                   </BarChart>
-                </ResponsiveContainer>
-              </div>
+                </SafeResponsiveChart>
             </Panel>
 
             <Panel className="p-5">
@@ -932,8 +924,7 @@ export default function DatasetPrecheckPage() {
                 <div className="font-semibold">PII 命中（次数）</div>
               </div>
               {piiChartData.length ? (
-                <div className="h-[280px]">
-                  <ResponsiveContainer width="100%" height="100%">
+                <SafeResponsiveChart>
                     <BarChart data={piiChartData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" fontSize={12} />
@@ -941,8 +932,7 @@ export default function DatasetPrecheckPage() {
                       <Tooltip />
                       <Bar dataKey="value" fill="hsl(var(--chart-4))" radius={[6, 6, 0, 0]} />
                     </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                  </SafeResponsiveChart>
               ) : (
                 <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
               )}
@@ -953,8 +943,7 @@ export default function DatasetPrecheckPage() {
                 <div className="font-semibold">Secrets/Token 命中（次数）</div>
               </div>
               {secretsChartData.length ? (
-                <div className="h-[280px]">
-                  <ResponsiveContainer width="100%" height="100%">
+                <SafeResponsiveChart>
                     <BarChart data={secretsChartData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" fontSize={12} />
@@ -962,8 +951,7 @@ export default function DatasetPrecheckPage() {
                       <Tooltip />
                       <Bar dataKey="value" fill="hsl(var(--chart-6))" radius={[6, 6, 0, 0]} />
                     </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                  </SafeResponsiveChart>
               ) : (
                 <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
               )}

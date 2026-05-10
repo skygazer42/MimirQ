@@ -66,7 +66,7 @@ type UseGraphPageActionsParams = Readonly<{
   fileName: string | null
   viewMode: '2d' | '3d'
   datasetId: string | null
-  dataSource: 'live' | 'mock' | 'file'
+  dataSource: 'live' | 'file'
   scopeParams: GraphScopeParams
   includeEntityLinks: boolean
   includeRelationLinks: boolean

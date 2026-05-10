@@ -1020,7 +1020,7 @@ export function KGDiagnosticsPage() {
 
                 <div className="flex flex-wrap items-center gap-2.5">
                   <DiagnosticsHeaderPill label={t('runConfig.datasetId')} className="min-w-[220px]">
-                    <Select value={datasetId || undefined} onValueChange={handleDatasetChange} disabled={datasetsLoading || !datasets.length}>
+                    <Select value={datasetId} onValueChange={handleDatasetChange} disabled={datasetsLoading || !datasets.length}>
                       <SelectTrigger
                         aria-label={t('runConfig.datasetId')}
                         className="h-auto min-h-0 border-0 bg-transparent px-0 py-0 text-right text-[13px] font-medium shadow-none focus:ring-0 focus-visible:ring-0 [&>svg]:ml-2 [&>svg]:h-3.5 [&>svg]:w-3.5"

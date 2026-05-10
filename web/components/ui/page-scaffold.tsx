@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils"
 type PageScaffoldProps = {
   title: string
   description?: React.ReactNode
-  icon: LucideIcon
+  icon?: LucideIcon
   iconColor?: string
   badge?: string
   actions?: React.ReactNode

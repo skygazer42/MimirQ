@@ -113,7 +113,7 @@ type GraphNodeDetailPanelProps = Readonly<{
   open: boolean
   selectedNode: GraphNodeLike | null
   detailScrollRef: RefObject<HTMLDivElement | null>
-  dataSource: 'live' | 'mock' | 'file'
+  dataSource: 'live' | 'file'
   kgNodeDetailLoading: boolean
   kgNodeDetail: KGEntityDetailResponse | KGEventDetailResponse | null
   entityAliasesLoading: boolean

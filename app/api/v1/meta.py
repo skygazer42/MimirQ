@@ -56,6 +56,7 @@ def get_meta() -> dict:
         "features": {
             "auth_mode": str(getattr(settings, "AUTH_MODE", "header") or "header"),
             "vector_backend": str(getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus"),
+            "kg_enabled": bool(getattr(settings, "KG_ENABLED", False)),
             "task_queue_enabled": bool(getattr(settings, "TASK_QUEUE_ENABLED", False)),
             "embedding_cache_enabled": bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", False)),
             "minio_enabled": bool(getattr(settings, "MINIO_ENABLED", False)),
