@@ -52,6 +52,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { useRouter } from '@/i18n/navigation'
+import { getAuthHeaders } from '@/lib/auth-headers'
 import { API_V1_BASE_URL } from '@/lib/env'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { cn, detachPromise, formatFileSize } from '@/lib/utils'
@@ -215,6 +216,12 @@ export function TopBar() {
     // Used for bash $'...' strings in generated cURL.
     return value.replaceAll('\\', '\\\\').replaceAll("'", "\\\\'")
   }
+  const escapeForDoubleQuotedShell = (value: string) =>
+    value
+      .replaceAll('\\', '\\\\')
+      .replaceAll('"', '\\"')
+      .replaceAll('$', '\\$')
+      .replaceAll('`', '\\`')
 
   const summaryChipClass =
     'inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-background/75 px-2.5 py-1 text-[11px] leading-none text-muted-foreground'
@@ -804,9 +811,12 @@ export function TopBar() {
                 const pipeline = pipelineOverridesEnabled
                   ? JSON.stringify(pipelineOptions || {})
                   : null
+                const authHeaders = getAuthHeaders()
                 const lines = [
                   `curl -X POST "${url}" \\`,
-                  `  -H "X-User-ID: demo" \\`,
+                  ...Object.entries(authHeaders).map(
+                    ([name, value]) => `  -H "${name}: ${escapeForDoubleQuotedShell(value)}" \\`
+                  ),
                   `  -F "file=@/path/to/your-file" \\`,
                   `  -F "parser_backend=${effectiveParserBackend}" \\`,
                   `  -F "chunk_strategy=${effectiveChunkStrategy}"`,

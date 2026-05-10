@@ -27,11 +27,11 @@ type GraphLoadOptions = Readonly<{
 }>
 
 type UseGraphEntityResolutionParams = Readonly<{
-  dataSource: 'live' | 'mock' | 'file'
+  dataSource: 'live' | 'file'
   isDetailOpen: boolean
   selectedNode: GraphNodeLike | null
   scopeParams: GraphScopeParams
-  loadInitialData: (source?: 'live' | 'mock', opts?: GraphLoadOptions) => Promise<void>
+  loadInitialData: (source?: 'live', opts?: GraphLoadOptions) => Promise<void>
 }>
 
 export function useGraphEntityResolution({

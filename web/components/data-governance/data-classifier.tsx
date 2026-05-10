@@ -3,10 +3,13 @@
 import { useCallback, useMemo, useState } from 'react'
 import { Check, FileText, Folder, FolderTree, Plus, Sparkles, Tag, X } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { pipelineApi } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import type { AutoDocumentTag } from '@/types'
 
 interface DataClassifierProps {
   content: string
@@ -16,25 +19,6 @@ interface DataClassifierProps {
 }
 
 type CategoryId = 'technical' | 'product' | 'business' | 'legal' | 'hr' | 'finance' | 'other'
-type SuggestedTagId =
-  | 'important'
-  | 'public'
-  | 'internal'
-  | 'confidential'
-  | 'reviewPending'
-  | 'archived'
-  | 'version1'
-  | 'version2'
-  | 'latest'
-  | 'historical'
-  | 'faq'
-  | 'tutorial'
-  | 'guide'
-  | 'reference'
-  | 'api'
-  | 'urgent'
-  | 'longTerm'
-  | 'temporary'
 
 const PRESET_CATEGORY_CONFIGS: Array<{
   id: CategoryId
@@ -48,27 +32,6 @@ const PRESET_CATEGORY_CONFIGS: Array<{
   { id: 'hr', icon: Folder, tone: 'warning' },
   { id: 'finance', icon: Folder, tone: 'warning' },
   { id: 'other', icon: Folder, tone: 'neutral' },
-]
-
-const SUGGESTED_TAG_IDS: SuggestedTagId[] = [
-  'important',
-  'public',
-  'internal',
-  'confidential',
-  'reviewPending',
-  'archived',
-  'version1',
-  'version2',
-  'latest',
-  'historical',
-  'faq',
-  'tutorial',
-  'guide',
-  'reference',
-  'api',
-  'urgent',
-  'longTerm',
-  'temporary',
 ]
 
 type CategoryTone = (typeof PRESET_CATEGORY_CONFIGS)[number]['tone']
@@ -131,6 +94,31 @@ function getSuggestionChipClassName(isAdded: boolean, isRecommended: boolean) {
   return 'border-border bg-muted text-muted-foreground hover:bg-accent/40 hover:text-foreground'
 }
 
+function dedupeStrings(values: string[]): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const value of values) {
+    const normalized = String(value || '').trim()
+    if (!normalized || seen.has(normalized)) continue
+    seen.add(normalized)
+    result.push(normalized)
+  }
+  return result
+}
+
+function getTagText(tag: AutoDocumentTag): string {
+  return String(tag.label || tag.value || '').trim()
+}
+
+function selectCategoryTag(tags: AutoDocumentTag[]): AutoDocumentTag | undefined {
+  const preferredTypes: AutoDocumentTag['type'][] = ['category', 'domain', 'industry', 'doc_type', 'topic']
+  for (const type of preferredTypes) {
+    const match = tags.find((tag) => tag.type === type && getTagText(tag))
+    if (match) return match
+  }
+  return tags.find((tag) => getTagText(tag))
+}
+
 export function DataClassifier({
   content,
   initialCategory = null,
@@ -145,18 +133,10 @@ export function DataClassifier({
         icon,
         tone,
         label: t(`categories.${id}.label`),
-        keywords: t.raw(`categories.${id}.keywords`) as string[],
       })),
     [t]
   )
   const suggestedTagLabels = t.raw('suggestedTags') as string[]
-  const suggestedTagMap = useMemo(
-    () =>
-      Object.fromEntries(
-        SUGGESTED_TAG_IDS.map((id, index) => [id, suggestedTagLabels[index] ?? id])
-      ) as Record<SuggestedTagId, string>,
-    [suggestedTagLabels]
-  )
   const [selectedCategory, setSelectedCategory] = useState<string | null>(initialCategory)
   const [tags, setTags] = useState<string[]>(initialTags)
   const [newTag, setNewTag] = useState('')
@@ -165,49 +145,48 @@ export function DataClassifier({
   const [showAllTags, setShowAllTags] = useState(false)
 
   const handleAutoClassify = useCallback(async () => {
+    const source = String(content || '').trim()
+    if (!source) {
+      toast.warning(t('auto.empty'))
+      return
+    }
+
     setIsAutoClassifying(true)
+    try {
+      const response = await pipelineApi.autoAnnotations({
+        text: source,
+        mode: 'document_focus',
+        providers: ['cpu'],
+        enable_keywords: true,
+        enable_entities: true,
+        enable_sensitive: false,
+        keyword_provider: 'simple',
+        keyword_top_k: 12,
+        max_annotations: 60,
+      })
+      const documentTags = response.document_tags || []
+      const categoryTag = selectCategoryTag(documentTags)
+      const nextCategory = categoryTag ? getTagText(categoryTag) : t('categories.other.label')
+      const backendSuggestedTags = dedupeStrings(documentTags.map(getTagText)).slice(0, 12)
+      const nextTags = dedupeStrings([...tags, ...backendSuggestedTags])
 
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+      setSelectedCategory(nextCategory)
+      setSuggestedTags(backendSuggestedTags)
+      setTags(nextTags)
+      onClassify(nextCategory, nextTags)
 
-    const contentLower = content.toLowerCase()
-    let bestMatch: CategoryId = 'other'
-    let maxScore = 0
-
-    categories.forEach((category) => {
-      const score = category.keywords.reduce((sum, keyword) => {
-        return sum + (contentLower.includes(keyword.toLowerCase()) ? 1 : 0)
-      }, 0)
-
-      if (score > maxScore) {
-        maxScore = score
-        bestMatch = category.id
+      if (backendSuggestedTags.length > 0) {
+        toast.success(t('auto.success', { count: backendSuggestedTags.length }))
+      } else {
+        toast.info(t('auto.noTags'))
       }
-    })
-
-    const category = categories.find((item) => item.id === bestMatch) ?? categories[categories.length - 1]
-    setSelectedCategory(category.label)
-
-    const recommendations: string[] = []
-    if (contentLower.includes('重要') || contentLower.includes('必须')) {
-      recommendations.push(suggestedTagMap.important)
+    } catch (error) {
+      console.warn('Backend auto classification failed:', error)
+      toast.error(t('auto.failed'))
+    } finally {
+      setIsAutoClassifying(false)
     }
-    if (contentLower.includes('faq') || contentLower.includes('常见')) {
-      recommendations.push(suggestedTagMap.faq)
-    }
-    if (contentLower.includes('教程') || contentLower.includes('指南')) {
-      recommendations.push(suggestedTagMap.tutorial)
-    }
-    if (contentLower.includes('api')) {
-      recommendations.push(suggestedTagMap.api)
-    }
-    if (contentLower.includes('版本') || contentLower.includes('v1')) {
-      recommendations.push(suggestedTagMap.version1)
-    }
-
-    setSuggestedTags(recommendations)
-    setIsAutoClassifying(false)
-    onClassify(category.label, tags)
-  }, [categories, content, onClassify, suggestedTagMap, tags])
+  }, [content, onClassify, t, tags])
 
   const handleAddTag = useCallback(
     (tag: string) => {

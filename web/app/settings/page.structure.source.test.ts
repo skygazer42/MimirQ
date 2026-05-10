@@ -20,4 +20,15 @@ describe('settings page structure', () => {
     expect(hook).toContain('const DEFAULT_OBSERVABILITY')
     expect(hook).toContain('const loadSettings = async () =>')
   })
+
+  it('keeps the settings shell aligned with the compact system-dashboard reference', () => {
+    const page = read('./page.tsx')
+
+    expect(page).not.toContain('icon={Settings2}')
+    expect(page).toContain('min-h-[68px]')
+    expect(page).toContain('lg:grid-cols-[176px_minmax(0,1fr)]')
+    expect(page).toContain('关键词增强配置')
+    expect(page).toContain("state.updateRag({ bm25_index_enabled: !bm25Enabled })")
+    expect(page).toContain("state.toggleFeature('kg_enabled')")
+  })
 })

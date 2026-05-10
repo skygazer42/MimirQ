@@ -44,11 +44,17 @@ export function DocumentViewerHeader({
             回到对话引用
           </Button>
         ) : null}
-        <Button variant="ghost" size="icon" asChild title="下载原文件" aria-label="下载原文件">
-          <a href={downloadUrl || "#"} target="_blank" rel="noopener noreferrer">
+        {downloadUrl ? (
+          <Button variant="ghost" size="icon" asChild title="下载原文件" aria-label="下载原文件">
+            <a href={downloadUrl} target="_blank" rel="noopener noreferrer">
+              <Download className="size-4" />
+            </a>
+          </Button>
+        ) : (
+          <Button variant="ghost" size="icon" disabled title="后端未返回原文件下载地址" aria-label="下载原文件">
             <Download className="size-4" />
-          </a>
-        </Button>
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon"

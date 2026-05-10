@@ -34,7 +34,7 @@ describe('knowledge ingestion dual-mode layout', () => {
     expect(src).toContain('格式转换')
     expect(src).toContain('人工审核')
     expect(src).toContain('去重处理')
-    expect(src).toContain('打开 Demo')
+    expect(src).not.toContain('打开 Demo')
     expect(src).toContain('退出 Demo')
     expect(src).toContain('报价依据')
     expect(src).toContain('复杂度细节')

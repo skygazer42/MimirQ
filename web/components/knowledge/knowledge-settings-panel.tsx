@@ -128,7 +128,6 @@ export function KnowledgeSettingsPanel({ selectedDatasetId, onGoToRetrievalTest 
   const [isSavingSettings, setIsSavingSettings] = useState(false)
   const [confirmEmbeddingSaveOpen, setConfirmEmbeddingSaveOpen] = useState(false)
   const [activeSection, setActiveSection] = useState<'embedding' | 'retrieval' | 'reranker' | 'hybrid' | 'advanced'>('embedding')
-  const [configNote, setConfigNote] = useState('生产环境配置 v1.2')
   const [retrievalModeView, setRetrievalModeView] = useState('vector')
 
   const loadSettings = useCallback(async () => {
@@ -156,6 +155,30 @@ export function KnowledgeSettingsPanel({ selectedDatasetId, onGoToRetrievalTest 
       setSavedConfig(JSON.parse(JSON.stringify(draftConfig)))
       toast.success(t('toasts.saveSuccess'))
     } catch (err) { toast.error(formatApiError(err, t('toasts.saveFailed'))) } finally { setIsSavingSettings(false); setConfirmEmbeddingSaveOpen(false) }
+  }
+
+  const handleSaveDraft = () => {
+    if (savedConfig?.embedding.model !== draftConfig?.embedding.model) {
+      setConfirmEmbeddingSaveOpen(true)
+      return
+    }
+    detachPromise(handleSave())
+  }
+
+  const handleApplyRecommendedConfig = () => {
+    setDraftConfig((prev) =>
+      prev
+        ? {
+            ...prev,
+            rag: {
+              ...prev.rag,
+              retrieval_top_k: Math.max(prev.rag.retrieval_top_k, 12),
+              similarity_threshold: Math.min(prev.rag.similarity_threshold, 0.6),
+            },
+          }
+        : null
+    )
+    toast.success('已应用到配置草稿，请保存后生效')
   }
 
   if (settingsLoading && !draftConfig) return <div className="p-8 space-y-4 animate-pulse"><div className="h-20 bg-muted/20 rounded-2xl" /><div className="h-40 bg-muted/20 rounded-2xl" /></div>
@@ -264,25 +287,31 @@ export function KnowledgeSettingsPanel({ selectedDatasetId, onGoToRetrievalTest 
               <div className="space-y-2.5 p-3">
                 <div className="grid gap-2.5">
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-[10px] text-muted-foreground/72">最后保存时间</span>
-                    <span className="text-[10px] font-medium text-foreground">2024-05-24 14:30</span>
+                    <span className="text-[10px] text-muted-foreground/72">配置来源</span>
+                    <span className="text-[10px] font-medium text-foreground">后端 /settings</span>
                   </div>
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-[10px] text-muted-foreground/72">创建人</span>
-                    <span className="text-[10px] font-medium text-foreground">admin</span>
+                    <span className="text-[10px] text-muted-foreground/72">保存状态</span>
+                    <span className={cn('text-[10px] font-medium', isDirty ? 'text-amber-600' : 'text-emerald-600')}>
+                      {isDirty ? '有未保存更改' : '已同步'}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-[10px] text-muted-foreground/72">备注</span>
-                    <span className="text-[10px] font-medium text-foreground">{configNote}</span>
+                    <span className="text-[10px] text-muted-foreground/72">嵌入模型</span>
+                    <span className="max-w-[8rem] truncate text-[10px] font-medium text-foreground">
+                      {savedConfig?.embedding.model || '-'}
+                    </span>
                   </div>
                 </div>
                 <Button
                   type="button"
                   variant="outline"
                   className="h-8 w-full rounded-[12px] border-border/70 bg-background text-[10px] font-medium"
-                  onClick={() => toast.success('已保存为默认配置')}
+                  onClick={handleSaveDraft}
+                  disabled={isSavingSettings || !draftConfig || !isDirty}
                 >
-                  保存为默认配置
+                  {isSavingSettings ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : null}
+                  保存当前配置
                 </Button>
               </div>
             </Panel>
@@ -304,9 +333,6 @@ export function KnowledgeSettingsPanel({ selectedDatasetId, onGoToRetrievalTest 
                       </p>
                     </div>
                   </div>
-                  <Button variant="outline" className="h-6.5 rounded-[10px] border-border/70 bg-background px-3 text-[10px] font-medium">
-                    模型对比
-                  </Button>
                 </div>
               </div>
 
@@ -383,9 +409,6 @@ export function KnowledgeSettingsPanel({ selectedDatasetId, onGoToRetrievalTest 
                       当前数据建议：您的数据集中中文占比较高，建议优先使用 <span className="font-medium text-foreground">bge-large-zh</span> 模型以获得更好的中文语义理解效果。
                     </div>
                   </div>
-                   <Button variant="outline" className="h-6.5 rounded-[10px] border-info/20 bg-background px-2.5 text-[10px] font-medium text-primary">
-                     查看模型文档
-                   </Button>
                  </div>
               </div>
             </Panel>
@@ -404,8 +427,14 @@ export function KnowledgeSettingsPanel({ selectedDatasetId, onGoToRetrievalTest 
                       </p>
                     </div>
                   </div>
-                  <Button variant="outline" className="h-6.5 rounded-[10px] border-border/70 bg-background px-3 text-[10px] font-medium">
-                    恢复默认配置
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-6.5 rounded-[10px] border-border/70 bg-background px-3 text-[10px] font-medium"
+                    onClick={handleResetDraft}
+                    disabled={!isDirty}
+                  >
+                    恢复已保存配置
                   </Button>
                 </div>
               </div>
@@ -548,7 +577,11 @@ export function KnowledgeSettingsPanel({ selectedDatasetId, onGoToRetrievalTest 
                   <div className="mt-2.5 space-y-2 text-[10px] leading-4.5 text-muted-foreground/74">
                     <div>• TopK 偏小，建议提升至 12～15 以提高召回率。</div>
                     <div>• 相似度阈值偏高，建议降低至 0.60 左右。</div>
-                    <button type="button" className="inline-flex items-center text-[10px] font-medium text-info transition-colors hover:text-info dark:text-info dark:hover:text-info/80">
+                    <button
+                      type="button"
+                      onClick={handleApplyRecommendedConfig}
+                      className="inline-flex items-center text-[10px] font-medium text-info transition-colors hover:text-info dark:text-info dark:hover:text-info/80"
+                    >
                       一键应用建议配置
                       <ChevronRight className="ml-1 size-3 text-info/90 dark:text-info/90" />
                     </button>
@@ -558,15 +591,12 @@ export function KnowledgeSettingsPanel({ selectedDatasetId, onGoToRetrievalTest 
             </div>
 
             <Panel padding="none" className="rounded-[18px] border border-border/70 bg-background/92 shadow-[0_12px_22px_-20px_rgba(15,23,42,0.06)]">
-              <div className="grid gap-2.5 p-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end">
+              <div className="grid gap-2.5 p-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
                 <div>
-                  <div className="text-[11px] font-medium text-foreground">配置备注（选填）</div>
-                  <textarea
-                    value={configNote}
-                    onChange={(event) => setConfigNote(event.target.value)}
-                    className="mt-2 h-14 w-full resize-none rounded-[13px] border border-border/70 bg-background px-3 py-2 text-[10px] text-foreground outline-none"
-                    placeholder="描述当前配置的用途或新增备注信息..."
-                  />
+                  <div className="text-[11px] font-medium text-foreground">配置保存</div>
+                  <div className="mt-1 text-[10px] leading-4 text-muted-foreground/72">
+                    写入后端 /settings；保存成功后会刷新当前草稿和已保存配置。
+                  </div>
                 </div>
 
                  <div className="flex flex-wrap items-center justify-end gap-3">
@@ -574,8 +604,8 @@ export function KnowledgeSettingsPanel({ selectedDatasetId, onGoToRetrievalTest 
                       type="button"
                       variant="outline"
                       className="h-9 rounded-[12px] border-border/70 bg-background px-4 text-[11px] font-medium"
-                      onClick={() => (savedConfig?.embedding.model !== draftConfig?.embedding.model ? setConfirmEmbeddingSaveOpen(true) : detachPromise(handleSave()))}
-                      disabled={isSavingSettings || !draftConfig}
+                      onClick={handleSaveDraft}
+                      disabled={isSavingSettings || !draftConfig || !isDirty}
                     >
                     {isSavingSettings ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
                     保存配置

@@ -40,7 +40,7 @@ type GraphScopeParams = Readonly<{
   pipeline_hash?: string
 }> | null
 
-type GraphDataSource = 'live' | 'mock' | 'file'
+type GraphDataSource = 'live' | 'file'
 
 type GraphDeleteNodeTarget = {
   id: string

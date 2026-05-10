@@ -1304,13 +1304,12 @@ export default function QuarantineQueuePage() {
     setDetailOpen(true)
   }, [documents, filtered])
 
-  const handleToggleDemoMode = useCallback(() => {
+  const handleExitDemoMode = useCallback(() => {
     const params = new URLSearchParams(searchParams.toString())
-    if (demoMode) params.delete('demo')
-    else params.set('demo', '1')
+    params.delete('demo')
     const query = params.toString()
     router.replace(query ? `${pathname}?${query}` : pathname)
-  }, [demoMode, pathname, router, searchParams])
+  }, [pathname, router, searchParams])
 
   return (
     <AppFrame
@@ -1339,15 +1338,17 @@ export default function QuarantineQueuePage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 gap-2 rounded-xl border-blue-500/55 bg-background px-4 text-[12px] font-medium text-blue-700 shadow-[0_16px_30px_-26px_rgba(37,99,235,0.55)] hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-950/25"
-                  onClick={handleToggleDemoMode}
-                >
-                  <Play className="size-4 fill-current" />
-                  {demoMode ? '退出 Demo' : '打开 Demo'}
-                </Button>
+                {demoMode ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 gap-2 rounded-xl border-blue-500/55 bg-background px-4 text-[12px] font-medium text-blue-700 shadow-[0_16px_30px_-26px_rgba(37,99,235,0.55)] hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-950/25"
+                    onClick={handleExitDemoMode}
+                  >
+                    <Play className="size-4 fill-current" />
+                    退出 Demo
+                  </Button>
+                ) : null}
                 <Button
                   variant="outline"
                   size="sm"

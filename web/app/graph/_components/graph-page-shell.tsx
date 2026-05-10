@@ -146,9 +146,6 @@ export function GraphPageShell({
             onLinkRightClick: pageActions.handleLinkRightClick,
             onBackgroundClick: pageActions.handleBackgroundClick,
             onBackgroundRightClick: pageActions.handleBackgroundRightClick,
-            onLoadMock: () => {
-              detachPromise(dataLoading.loadInitialData('mock'))
-            },
             onOpenGraphPicker: () => setGraphScopePickerOpen(true),
             onTriggerFileUpload: dataLoading.triggerFileUpload,
           }}

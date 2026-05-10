@@ -3,6 +3,7 @@ import type {
   MessageFeedback,
   MessageFeedbackCreate,
   MessageFeedbackEnrichedListResponse,
+  FeedbackLoopHardNegativeExportResponse,
   FeedbackLoopCandidatesResponse,
   MessageFeedbackListResponse,
   RegressionCase,
@@ -43,6 +44,20 @@ export const feedbackApi = {
     ruleset?: string
   }, options?: ApiRequestOptions): Promise<FeedbackLoopCandidatesResponse> {
     const { data } = await apiClient.get('/feedback/loop/candidates', { params, signal: options?.signal })
+    return data
+  },
+
+  async exportHardNegatives(params?: {
+    max_rating?: number
+    limit?: number
+    dry_run?: boolean
+    append?: boolean
+    ruleset?: string
+  }, options?: ApiRequestOptions): Promise<FeedbackLoopHardNegativeExportResponse> {
+    const { data } = await apiClient.post('/feedback/loop/hard-negatives/export', undefined, {
+      params,
+      signal: options?.signal,
+    })
     return data
   },
 

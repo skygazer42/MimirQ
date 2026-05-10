@@ -22,6 +22,7 @@ import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn, formatFileSize } from '@/lib/utils'
 import { useChunkPreview } from '@/components/chunk-preview/context'
@@ -42,15 +43,7 @@ import type {
   IngestionPreviewResponse,
   JsonObject,
 } from '@/types'
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-} from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts'
 
 function clampInt(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, Math.trunc(value)))
@@ -1694,26 +1687,24 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 <div className="col-span-2 bg-card p-3 rounded-xl border border-border/60 shadow-sm">
                   <div className="text-[11px] text-muted-foreground uppercase  font-medium">{histogramTitle}</div>
                   {histogramData.length ? (
-                    <div className="mt-2 h-[120px]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={histogramData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" strokeOpacity={0.35} />
-                          <XAxis dataKey="label" hide />
-                          <YAxis hide />
-                          <Tooltip
-                            formatter={(value) => [value ?? 0, t('sidebar.stats.histogramCount')]}
-                            labelFormatter={(label, payload) => {
-                              const p = payload?.[0]?.payload
-                              const min = typeof p?.min === 'number' ? p.min : null
-                              const max = typeof p?.max === 'number' ? p.max : null
-                              if (min != null && max != null) return `${min}-${max} ${statsUnitLabel}`
-                              return String(label ?? '')
-                            }}
-                          />
-                          <Bar dataKey="count" fill="hsl(var(--primary))" fillOpacity={0.25} radius={[2, 2, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
+                    <SafeResponsiveChart className="mt-2 h-[120px]" minHeight={120}>
+                      <BarChart data={histogramData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" strokeOpacity={0.35} />
+                        <XAxis dataKey="label" hide />
+                        <YAxis hide />
+                        <Tooltip
+                          formatter={(value) => [value ?? 0, t('sidebar.stats.histogramCount')]}
+                          labelFormatter={(label, payload) => {
+                            const p = payload?.[0]?.payload
+                            const min = typeof p?.min === 'number' ? p.min : null
+                            const max = typeof p?.max === 'number' ? p.max : null
+                            if (min != null && max != null) return `${min}-${max} ${statsUnitLabel}`
+                            return String(label ?? '')
+                          }}
+                        />
+                        <Bar dataKey="count" fill="hsl(var(--primary))" fillOpacity={0.25} radius={[2, 2, 0, 0]} />
+                      </BarChart>
+                    </SafeResponsiveChart>
                   ) : (
                     <div className="mt-2 text-[11px] text-muted-foreground">{t('sidebar.stats.histogramEmpty')}</div>
                   )}

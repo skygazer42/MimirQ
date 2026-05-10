@@ -16,5 +16,7 @@ describe('KnowledgePage actions', () => {
     expect(src).not.toContain('入库管线配置')
     expect(src).not.toContain('URL 批量导入（Connector）')
     expect(src).not.toContain('Website Crawl (Connector)')
+    expect(src).not.toContain('已收藏当前配置')
+    expect(src).not.toContain('收藏此配置')
   })
 })

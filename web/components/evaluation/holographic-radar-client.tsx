@@ -1,7 +1,8 @@
 "use client"
 
-import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Tooltip } from 'recharts'
+import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Tooltip } from 'recharts'
 import { motion, useReducedMotion } from 'framer-motion'
+import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart'
 import { cn } from "@/lib/utils"
 
 interface HolographicRadarProps {
@@ -52,7 +53,7 @@ export function HolographicRadar({ data, className }: Readonly<HolographicRadarP
          )}
       </div>
 
-      <ResponsiveContainer width="100%" height="100%">
+      <SafeResponsiveChart className="h-full w-full" minHeight={320}>
         <RadarChart cx="50%" cy="50%" outerRadius="70%" data={data}>
           <PolarGrid stroke={gridStroke} strokeDasharray="4 4" />
           <PolarAngleAxis 
@@ -70,7 +71,7 @@ export function HolographicRadar({ data, className }: Readonly<HolographicRadarP
           />
           <Tooltip content={<CustomTooltip />} cursor={{ stroke: primaryStroke, strokeWidth: 1 }} />
         </RadarChart>
-      </ResponsiveContainer>
+      </SafeResponsiveChart>
       
       {/* Decorative Corners */}
       <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-primary/30 rounded-tl-lg" />

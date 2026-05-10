@@ -101,11 +101,17 @@ export function PreviewTabPanel({
               当前文件类型为 <span className="font-mono">{doc?.file_type || "-"}</span>。你可以下载原文件，或切换到「智能切片」查看内容。
             </p>
             <div className="mt-4 flex items-center gap-2">
-              <Button size="sm" variant="outline" asChild>
-                <a href={downloadUrl || "#"} target="_blank" rel="noopener noreferrer">
+              {downloadUrl ? (
+                <Button size="sm" variant="outline" asChild>
+                  <a href={downloadUrl} target="_blank" rel="noopener noreferrer">
+                    下载原文件
+                  </a>
+                </Button>
+              ) : (
+                <Button size="sm" variant="outline" disabled title="后端未返回原文件下载地址">
                   下载原文件
-                </a>
-              </Button>
+                </Button>
+              )}
               <Button size="sm" onClick={onViewChunks}>
                 查看切片
               </Button>

@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { observabilityApi } from '@/lib/api'
@@ -30,17 +31,7 @@ import {
   TriangleAlert,
   Copy,
 } from 'lucide-react'
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-  BarChart,
-  Bar,
-} from 'recharts'
+import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar } from 'recharts'
 
 const WINDOW_PRESETS = [
     { label: '15 分钟', value: 15 },
@@ -362,17 +353,15 @@ export default function ObservabilityPage() {
                         <div className="text-sm font-semibold text-foreground">请求量（rag_trace）</div>
                         <div className="text-xs text-muted-foreground">按分钟聚合</div>
                       </div>
-                      <div className="h-[260px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={chartData}>
-                            <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                            <XAxis dataKey="time" tick={{ fontSize: 10 }} />
-                            <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
-                            <Tooltip />
-                            <Bar dataKey="rag_trace" fill="hsl(var(--primary))" opacity={0.85} />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
+                      <SafeResponsiveChart className="h-[260px]" minHeight={260}>
+                        <BarChart data={chartData}>
+                          <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                          <XAxis dataKey="time" tick={{ fontSize: 10 }} />
+                          <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
+                          <Tooltip />
+                          <Bar dataKey="rag_trace" fill="hsl(var(--primary))" opacity={0.85} />
+                        </BarChart>
+                      </SafeResponsiveChart>
                     </Panel>
 
                     <Panel padding="lg" className="min-h-[320px]">
@@ -380,23 +369,21 @@ export default function ObservabilityPage() {
                         <div className="text-sm font-semibold text-foreground">检索平均耗时</div>
                         <div className="text-xs text-muted-foreground">每分钟均值</div>
                       </div>
-                      <div className="h-[260px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={chartData}>
-                            <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                            <XAxis dataKey="time" tick={{ fontSize: 10 }} />
-                            <YAxis tick={{ fontSize: 10 }} />
-                            <Tooltip />
-                            <Line
-                              type="monotone"
-                              dataKey="retrieval_avg_elapsed_sec"
-                              stroke="hsl(var(--info))"
-                              strokeWidth={2}
-                              dot={false}
-                            />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
+                      <SafeResponsiveChart className="h-[260px]" minHeight={260}>
+                        <LineChart data={chartData}>
+                          <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                          <XAxis dataKey="time" tick={{ fontSize: 10 }} />
+                          <YAxis tick={{ fontSize: 10 }} />
+                          <Tooltip />
+                          <Line
+                            type="monotone"
+                            dataKey="retrieval_avg_elapsed_sec"
+                            stroke="hsl(var(--info))"
+                            strokeWidth={2}
+                            dot={false}
+                          />
+                        </LineChart>
+                      </SafeResponsiveChart>
                     </Panel>
                   </div>
 
@@ -502,22 +489,20 @@ export default function ObservabilityPage() {
                         <div className="text-sm font-semibold text-foreground">Zero-hit / Slow（rate）</div>
                         <div className="text-xs text-muted-foreground">按分钟聚合</div>
                       </div>
-                      <div className="h-[260px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={analyticsChartData}>
-                            <CartesianGrid strokeDasharray="3 3" opacity={0.2}/>
-                            <XAxis dataKey="time" tick={{ fontSize: 10 }}/>
-                            <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${Math.round(Number(v || 0) * 100)}%`} domain={[0, 1]}/>
-                            <Tooltip formatter={(v: any, name: any) => {
+                      <SafeResponsiveChart className="h-[260px]" minHeight={260}>
+                        <LineChart data={analyticsChartData}>
+                          <CartesianGrid strokeDasharray="3 3" opacity={0.2}/>
+                          <XAxis dataKey="time" tick={{ fontSize: 10 }}/>
+                          <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${Math.round(Number(v || 0) * 100)}%`} domain={[0, 1]}/>
+                          <Tooltip formatter={(v: any, name: any) => {
                             if (name === 'zero-hit rate' || name === 'slow rate')
                                 return [fmtPercent(Number(v), 2), name];
                             return [v, name];
                         }}/>
-                            <Line type="monotone" dataKey="zero_hit_rate" name="zero-hit rate" stroke="hsl(var(--warning))" strokeWidth={2} dot={false}/>
-                            <Line type="monotone" dataKey="slow_rate" name="slow rate" stroke="hsl(var(--info))" strokeWidth={2} dot={false}/>
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
+                          <Line type="monotone" dataKey="zero_hit_rate" name="zero-hit rate" stroke="hsl(var(--warning))" strokeWidth={2} dot={false}/>
+                          <Line type="monotone" dataKey="slow_rate" name="slow rate" stroke="hsl(var(--info))" strokeWidth={2} dot={false}/>
+                        </LineChart>
+                      </SafeResponsiveChart>
                     </Panel>
 
                     <Panel padding="lg" className="min-h-[320px]">
@@ -525,20 +510,18 @@ export default function ObservabilityPage() {
                         <div className="text-sm font-semibold text-foreground">Requests / zero-hit / slow / errors（count）</div>
                         <div className="text-xs text-muted-foreground">按分钟聚合</div>
                       </div>
-                      <div className="h-[260px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={analyticsChartData}>
-                            <CartesianGrid strokeDasharray="3 3" opacity={0.2}/>
-                            <XAxis dataKey="time" tick={{ fontSize: 10 }}/>
-                            <YAxis tick={{ fontSize: 10 }} allowDecimals={false}/>
-                            <Tooltip />
-                            <Line type="monotone" dataKey="requests" name="requests" stroke="hsl(var(--muted-foreground))" strokeWidth={2} dot={false}/>
-                            <Line type="monotone" dataKey="zero_hit" name="zero-hit" stroke="hsl(var(--warning))" strokeWidth={2} dot={false}/>
-                            <Line type="monotone" dataKey="slow" name="slow" stroke="hsl(var(--info))" strokeWidth={2} dot={false}/>
-                            <Line type="monotone" dataKey="errors" name="errors" stroke="hsl(var(--destructive))" strokeWidth={2} dot={false}/>
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
+                      <SafeResponsiveChart className="h-[260px]" minHeight={260}>
+                        <LineChart data={analyticsChartData}>
+                          <CartesianGrid strokeDasharray="3 3" opacity={0.2}/>
+                          <XAxis dataKey="time" tick={{ fontSize: 10 }}/>
+                          <YAxis tick={{ fontSize: 10 }} allowDecimals={false}/>
+                          <Tooltip />
+                          <Line type="monotone" dataKey="requests" name="requests" stroke="hsl(var(--muted-foreground))" strokeWidth={2} dot={false}/>
+                          <Line type="monotone" dataKey="zero_hit" name="zero-hit" stroke="hsl(var(--warning))" strokeWidth={2} dot={false}/>
+                          <Line type="monotone" dataKey="slow" name="slow" stroke="hsl(var(--info))" strokeWidth={2} dot={false}/>
+                          <Line type="monotone" dataKey="errors" name="errors" stroke="hsl(var(--destructive))" strokeWidth={2} dot={false}/>
+                        </LineChart>
+                      </SafeResponsiveChart>
                     </Panel>
                   </div>
 

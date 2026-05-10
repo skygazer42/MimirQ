@@ -23,7 +23,6 @@ import {
   Cell,
   Pie,
   PieChart,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
@@ -43,6 +42,7 @@ import { Input } from '@/components/ui/input'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { DocumentDetailDialog } from '@/components/document-detail-dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart'
 
 import { datasetApi, documentApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
@@ -809,8 +809,7 @@ export default function DatasetProfilePage() {
                   {summary?.generated_at ? `updated ${formatDate(summary.generated_at)}` : ''}
                 </div>
               </div>
-              <div className="h-[280px]">
-                <ResponsiveContainer width="100%" height="100%">
+              <SafeResponsiveChart>
                   <PieChart>
                     <Tooltip />
                     <Pie
@@ -826,16 +825,14 @@ export default function DatasetProfilePage() {
                       ))}
                     </Pie>
                   </PieChart>
-                </ResponsiveContainer>
-              </div>
+                </SafeResponsiveChart>
             </Panel>
 
             <Panel className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <div className="font-semibold">状态分布</div>
               </div>
-              <div className="h-[280px]">
-                <ResponsiveContainer width="100%" height="100%">
+              <SafeResponsiveChart>
                   <BarChart data={statusChartData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" fontSize={12} />
@@ -843,16 +840,14 @@ export default function DatasetProfilePage() {
                     <Tooltip />
                     <Bar dataKey="value" fill="hsl(var(--chart-1))" radius={[6, 6, 0, 0]} />
                   </BarChart>
-                </ResponsiveContainer>
-              </div>
+                </SafeResponsiveChart>
             </Panel>
 
             <Panel className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <div className="font-semibold">长度分布（chars）</div>
               </div>
-              <div className="h-[280px]">
-                <ResponsiveContainer width="100%" height="100%">
+              <SafeResponsiveChart>
                   <BarChart data={lengthHistogramData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" fontSize={12} />
@@ -860,16 +855,14 @@ export default function DatasetProfilePage() {
                     <Tooltip />
                     <Bar dataKey="value" fill="hsl(var(--chart-2))" radius={[6, 6, 0, 0]} />
                   </BarChart>
-                </ResponsiveContainer>
-              </div>
+                </SafeResponsiveChart>
             </Panel>
 
             <Panel className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <div className="font-semibold">PDF 扫描占比</div>
               </div>
-              <div className="h-[280px]">
-                <ResponsiveContainer width="100%" height="100%">
+              <SafeResponsiveChart>
                   <PieChart>
                     <Tooltip />
                     <Pie data={pdfScanData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={95} paddingAngle={2}>
@@ -878,16 +871,14 @@ export default function DatasetProfilePage() {
                       ))}
                     </Pie>
                   </PieChart>
-                </ResponsiveContainer>
-              </div>
+                </SafeResponsiveChart>
             </Panel>
 
             <Panel className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <div className="font-semibold">文件大小分布</div>
               </div>
-              <div className="h-[280px]">
-                <ResponsiveContainer width="100%" height="100%">
+              <SafeResponsiveChart>
                   <BarChart data={fileSizeHistogramData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" fontSize={12} />
@@ -895,8 +886,7 @@ export default function DatasetProfilePage() {
                     <Tooltip />
                     <Bar dataKey="value" fill="hsl(var(--chart-3))" radius={[6, 6, 0, 0]} />
                   </BarChart>
-                </ResponsiveContainer>
-              </div>
+                </SafeResponsiveChart>
             </Panel>
 
             <Panel className="p-5">
@@ -904,8 +894,7 @@ export default function DatasetProfilePage() {
                 <div className="font-semibold">页数分布</div>
               </div>
               {pageCountHistogramData.length ? (
-                <div className="h-[280px]">
-                  <ResponsiveContainer width="100%" height="100%">
+                <SafeResponsiveChart>
                     <BarChart data={pageCountHistogramData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" fontSize={12} />
@@ -913,8 +902,7 @@ export default function DatasetProfilePage() {
                       <Tooltip />
                       <Bar dataKey="value" fill="hsl(var(--chart-7))" radius={[6, 6, 0, 0]} />
                     </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                  </SafeResponsiveChart>
               ) : (
                 <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
               )}
@@ -925,8 +913,7 @@ export default function DatasetProfilePage() {
                 <div className="font-semibold">Chunk 数分布（每文档）</div>
               </div>
               {chunkCountHistogramData.length ? (
-                <div className="h-[280px]">
-                  <ResponsiveContainer width="100%" height="100%">
+                <SafeResponsiveChart>
                     <BarChart data={chunkCountHistogramData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" fontSize={12} />
@@ -934,8 +921,7 @@ export default function DatasetProfilePage() {
                       <Tooltip />
                       <Bar dataKey="value" fill="hsl(var(--chart-4))" radius={[6, 6, 0, 0]} />
                     </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                  </SafeResponsiveChart>
               ) : (
                 <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
               )}
@@ -946,8 +932,7 @@ export default function DatasetProfilePage() {
                 <div className="font-semibold">平均 Chunk 长度（chars/chunk）</div>
               </div>
               {avgChunkCharsHistogramData.length ? (
-                <div className="h-[280px]">
-                  <ResponsiveContainer width="100%" height="100%">
+                <SafeResponsiveChart>
                     <BarChart data={avgChunkCharsHistogramData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" fontSize={12} />
@@ -955,8 +940,7 @@ export default function DatasetProfilePage() {
                       <Tooltip />
                       <Bar dataKey="value" fill="hsl(var(--chart-2))" radius={[6, 6, 0, 0]} />
                     </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                  </SafeResponsiveChart>
               ) : (
                 <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
               )}
@@ -967,8 +951,7 @@ export default function DatasetProfilePage() {
                 <div className="font-semibold">Chunk 长度分布（chunk-level）</div>
               </div>
               {chunkLengthHistogramData.length ? (
-                <div className="h-[280px]">
-                  <ResponsiveContainer width="100%" height="100%">
+                <SafeResponsiveChart>
                     <BarChart data={chunkLengthHistogramData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" fontSize={12} />
@@ -976,8 +959,7 @@ export default function DatasetProfilePage() {
                       <Tooltip />
                       <Bar dataKey="value" fill="hsl(var(--chart-6))" radius={[6, 6, 0, 0]} />
                     </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                  </SafeResponsiveChart>
               ) : (
                 <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
               )}
@@ -1046,8 +1028,7 @@ export default function DatasetProfilePage() {
                 ) : null}
               </div>
               {parseQualityHistogramData.length ? (
-                <div className="h-[280px]">
-                  <ResponsiveContainer width="100%" height="100%">
+                <SafeResponsiveChart>
                     <BarChart data={parseQualityHistogramData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" fontSize={12} />
@@ -1055,8 +1036,7 @@ export default function DatasetProfilePage() {
                       <Tooltip />
                       <Bar dataKey="value" fill="hsl(var(--chart-1))" radius={[6, 6, 0, 0]} />
                     </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                  </SafeResponsiveChart>
               ) : (
                 <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
               )}
@@ -1068,8 +1048,7 @@ export default function DatasetProfilePage() {
               </div>
 
               {parsingBackendChartData.length ? (
-                <div className="h-[220px]">
-                  <ResponsiveContainer width="100%" height="100%">
+                <SafeResponsiveChart className="h-[220px]" minHeight={220}>
                     <BarChart data={parsingBackendChartData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" fontSize={12} />
@@ -1077,8 +1056,7 @@ export default function DatasetProfilePage() {
                       <Tooltip />
                       <Bar dataKey="value" fill="hsl(var(--chart-1))" radius={[6, 6, 0, 0]} />
                     </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                  </SafeResponsiveChart>
               ) : (
                 <div className="h-[220px] flex items-center justify-center text-muted-foreground">暂无数据</div>
               )}
@@ -1128,8 +1106,7 @@ export default function DatasetProfilePage() {
                 <div className="font-semibold">语言分布</div>
               </div>
               {languageMixChartData.length ? (
-                <div className="h-[280px]">
-                  <ResponsiveContainer width="100%" height="100%">
+                <SafeResponsiveChart>
                     <PieChart>
                       <Tooltip />
                       <Pie
@@ -1145,8 +1122,7 @@ export default function DatasetProfilePage() {
                         ))}
                       </Pie>
                     </PieChart>
-                  </ResponsiveContainer>
-                </div>
+                  </SafeResponsiveChart>
               ) : (
                 <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
               )}
@@ -1158,8 +1134,7 @@ export default function DatasetProfilePage() {
                 <div className="text-xs text-muted-foreground">click bar → drilldown</div>
               </div>
               {directoryChartData.length ? (
-                <div className="h-[280px]">
-                  <ResponsiveContainer width="100%" height="100%">
+                <SafeResponsiveChart>
                     <BarChart data={directoryChartData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" fontSize={12} interval={0} />
@@ -1175,8 +1150,7 @@ export default function DatasetProfilePage() {
                         ))}
                       </Bar>
                     </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                  </SafeResponsiveChart>
               ) : (
                 <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
               )}
@@ -1188,8 +1162,7 @@ export default function DatasetProfilePage() {
                 <div className="text-xs text-muted-foreground">click bar → drilldown</div>
               </div>
               {qualityBucketChartData.length ? (
-                <div className="h-[280px]">
-                  <ResponsiveContainer width="100%" height="100%">
+                <SafeResponsiveChart>
                     <BarChart data={qualityBucketChartData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" fontSize={12} interval={0} />
@@ -1205,8 +1178,7 @@ export default function DatasetProfilePage() {
                         ))}
                       </Bar>
                     </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                  </SafeResponsiveChart>
               ) : (
                 <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
               )}
@@ -1217,8 +1189,7 @@ export default function DatasetProfilePage() {
                 <div className="font-semibold">PII 命中（次数）</div>
               </div>
               {piiChartData.length ? (
-                <div className="h-[280px]">
-                  <ResponsiveContainer width="100%" height="100%">
+                <SafeResponsiveChart>
                     <BarChart data={piiChartData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" fontSize={12} />
@@ -1226,8 +1197,7 @@ export default function DatasetProfilePage() {
                       <Tooltip />
                       <Bar dataKey="value" fill="hsl(var(--chart-4))" radius={[6, 6, 0, 0]} />
                     </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                  </SafeResponsiveChart>
               ) : (
                 <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
               )}
@@ -1238,8 +1208,7 @@ export default function DatasetProfilePage() {
                 <div className="font-semibold">Secrets/Token 命中（次数）</div>
               </div>
               {secretsChartData.length ? (
-                <div className="h-[280px]">
-                  <ResponsiveContainer width="100%" height="100%">
+                <SafeResponsiveChart>
                     <BarChart data={secretsChartData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" fontSize={12} />
@@ -1247,8 +1216,7 @@ export default function DatasetProfilePage() {
                       <Tooltip />
                       <Bar dataKey="value" fill="hsl(var(--chart-6))" radius={[6, 6, 0, 0]} />
                     </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                  </SafeResponsiveChart>
               ) : (
                 <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
               )}

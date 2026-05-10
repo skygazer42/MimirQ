@@ -41,7 +41,7 @@ import {
 import { startTransition, useDeferredValue, useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import { useSearchParams } from 'next/navigation'
-import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Bar, BarChart, CartesianGrid, Cell, Tooltip, XAxis, YAxis } from 'recharts'
 import { toast } from 'sonner'
 
 import { AppFrame } from '@/components/app-frame'
@@ -49,12 +49,14 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { formatApiError } from '@/lib/api-errors'
 import { datasetApi } from '@/lib/api/datasets'
 import { kgApi } from '@/lib/api/graph'
+import { metaApi } from '@/lib/api/meta'
 import { sanitizeFilename } from '@/lib/sanitize'
 import { cn, detachPromise } from '@/lib/utils'
 import type { Dataset, KGGraphLink, KGGraphNode, KGGraphResponse } from '@/types'
@@ -1563,8 +1565,8 @@ function SnapshotAuditPanel({
             </div>
           </div>
 
-          <div className="h-[280px] px-3 py-2">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="px-3 py-2">
+            <SafeResponsiveChart className="h-[280px]" minHeight={280}>
               <BarChart data={chartRows} margin={{ top: 8, right: 10, left: -16, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                 <XAxis dataKey="key" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
@@ -1576,7 +1578,7 @@ function SnapshotAuditPanel({
                   ))}
                 </Bar>
               </BarChart>
-            </ResponsiveContainer>
+            </SafeResponsiveChart>
           </div>
         </div>
 
@@ -1848,6 +1850,15 @@ export function KGSnapshotsPage() {
     setLiveGraphError(null)
     ;(async () => {
       try {
+        const meta = await metaApi.get().catch(() => null)
+        if (meta?.features?.kg_enabled === false) {
+          if (!cancelled) {
+            setLiveGraph({ nodes: [], links: [] })
+            setLiveGraphError('KG 功能未启用，已按后端能力状态跳过实时图谱读取。请在设置中开启 KG 抽取后刷新。')
+          }
+          return
+        }
+
         const graph = await kgApi.getGraph({
           dataset_id: scopeDatasetId,
           document_ids: scopeDocumentIds,

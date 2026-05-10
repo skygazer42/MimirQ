@@ -17206,6 +17206,8 @@ export interface components {
             auth_mode: string;
             /** Vector Backend */
             vector_backend: string;
+            /** Kg Enabled */
+            kg_enabled: boolean;
             /** Task Queue Enabled */
             task_queue_enabled: boolean;
             /** Embedding Cache Enabled */

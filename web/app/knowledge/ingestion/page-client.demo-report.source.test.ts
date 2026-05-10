@@ -31,4 +31,16 @@ describe('knowledge ingestion demo report export', () => {
     expect(src).toContain('.jpg')
     expect(src).toContain('if (demoMode || !selectedDatasetId || !latestPrecheckRun?.id)')
   })
+
+  it('does not synthesize sales-audit artifacts on the non-demo backend view', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'page-client.tsx'), 'utf8')
+
+    expect(src).not.toContain('function buildFallbackSummary')
+    expect(src).not.toContain('summaryQuery.data ?? buildFallbackSummary')
+    expect(src).not.toContain('buildSalesAuditFallbackArtifacts')
+    expect(src).not.toContain('fallbackSalesAuditArtifacts')
+    expect(src).not.toContain('precheckSummaryQuery.data ?? fallbackSalesAuditArtifacts.summary')
+    expect(src).not.toContain('precheckSamplesQuery.data ?? fallbackSalesAuditArtifacts.samples')
+    expect(src).not.toContain('precheckNearDupQuery.data ?? fallbackSalesAuditArtifacts.nearDup')
+  })
 })

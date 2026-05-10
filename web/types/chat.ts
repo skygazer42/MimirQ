@@ -413,6 +413,16 @@ export interface FeedbackLoopCandidatesResponse {
   rules_suggestions: JsonObject
 }
 
+export interface FeedbackLoopHardNegativeExportResponse {
+  schema: string
+  trigger: string
+  realtime_listener_enabled: boolean
+  dry_run: boolean
+  candidates: JsonObject
+  hard_negative_export: JsonObject
+  rules_suggestions: JsonObject
+}
+
 // ==================== Auth ====================
 
 export type UserProfile = import('./backend').UserProfile

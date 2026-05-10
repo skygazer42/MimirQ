@@ -91,7 +91,7 @@ export function FloatingMenu() {
             break
     }
     
-    globalEventBus.emit("chat:send", prompt)
+    globalEventBus.emit("chat:submit", prompt)
     setVisible(false)
     globalThis.window.getSelection()?.removeAllRanges()
   }

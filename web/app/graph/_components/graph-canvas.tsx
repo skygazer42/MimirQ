@@ -165,7 +165,6 @@ type GraphCanvasProps = Readonly<{
   onLinkRightClick: (link: GraphLinkLike, event: MouseEvent) => void
   onBackgroundClick: () => void
   onBackgroundRightClick: (event: MouseEvent) => void
-  onLoadMock: () => void
   onOpenGraphPicker: () => void
   onTriggerFileUpload: () => void
 }>
@@ -211,7 +210,6 @@ export function GraphCanvas({
   onLinkRightClick,
   onBackgroundClick,
   onBackgroundRightClick,
-  onLoadMock,
   onOpenGraphPicker,
   onTriggerFileUpload,
 }: GraphCanvasProps) {
@@ -895,7 +893,7 @@ export function GraphCanvas({
                 {hasActiveScope ? (
                   '当前知识库范围还没有可视化结果。请先执行 KG 抽取，或切换到其他已有图谱的范围。'
                 ) : (
-                  '优先查看前面流程已生成的 KG 结果。也可临时导入 GraphML，或加载示例数据体验交互。'
+                  '优先查看前面流程已生成的 KG 结果；也可临时导入 GraphML 做离线分析。'
                 )}
               </div>
               <div className="mx-auto mt-7 flex w-full max-w-[30rem] flex-wrap items-center justify-center gap-3">
@@ -913,15 +911,6 @@ export function GraphCanvas({
                   className="h-10 rounded-lg border-border/70 bg-background/82 px-4 text-[13px] font-medium text-foreground/88 shadow-none hover:bg-background"
                 >
                   导入 GraphML
-                </Button>
-                <Button
-                  size="lg"
-                  variant="ghost"
-                  onClick={onLoadMock}
-                  disabled={isLoading}
-                  className="h-10 rounded-lg px-3 text-[13px] font-medium text-muted-foreground shadow-none hover:bg-muted/45 hover:text-foreground"
-                >
-                  加载示例数据
                 </Button>
               </div>
             </section>

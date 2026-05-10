@@ -51,8 +51,11 @@ describe('data governance message sources', () => {
 
     expect(classifierSrc).toContain("useTranslations('DataClassifier')")
     expect(classifierSrc).toContain("label: t(`categories.${id}.label`)")
-    expect(classifierSrc).toContain("keywords: t.raw(`categories.${id}.keywords`) as string[]")
     expect(classifierSrc).toContain("t.raw('suggestedTags') as string[]")
+    expect(classifierSrc).toContain('pipelineApi.autoAnnotations')
+    expect(classifierSrc).toContain("mode: 'document_focus'")
+    expect(classifierSrc).toContain('document_tags')
+    expect(classifierSrc).not.toContain('setTimeout(resolve, 1000)')
 
     expect(cleanerSrc).toContain("useTranslations('DataCleaner')")
     expect(cleanerSrc).toContain('t("header.title")')
@@ -62,6 +65,9 @@ describe('data governance message sources', () => {
     expect(qualitySrc).toContain("label: t(`checkItems.${id}.label`)")
     expect(qualitySrc).toContain('t("header.title")')
     expect(qualitySrc).toContain('t("actions.scan")')
+    expect(qualitySrc).toContain('const [backendScanEnabled, setBackendScanEnabled] = useState(true)')
+    expect(qualitySrc).toContain('pipelineApi.governanceAnalyze')
+    expect(qualitySrc).not.toContain('setTimeout(resolve, step.delay)')
   })
 
   it('wires manual annotation selection to the document canvas instead of the tool panel', () => {

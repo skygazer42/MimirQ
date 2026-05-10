@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { Activity, ArrowLeft, BarChart3, Download, FileSearch, RefreshCw, Settings2, ShieldAlert } from 'lucide-react'
-import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
+import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart'
 
 import { datasetApi } from '@/lib/api/datasets'
 import { formatApiError } from '@/lib/api-errors'
@@ -346,8 +347,7 @@ export default function DatasetHealthPage() {
                 </div>
               </div>
               {statusChartData.length ? (
-                <div className="h-[280px]">
-                  <ResponsiveContainer width="100%" height="100%">
+                <SafeResponsiveChart>
                     <BarChart data={statusChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                       <XAxis dataKey="name" tick={{ fontSize: 12 }} />
@@ -359,8 +359,7 @@ export default function DatasetHealthPage() {
                         ))}
                       </Bar>
                     </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                  </SafeResponsiveChart>
               ) : (
                 <EmptyState icon={Activity} title="暂无状态数据" description="后端未返回可用的状态分布。" className="min-h-[280px]" />
               )}
@@ -374,8 +373,7 @@ export default function DatasetHealthPage() {
                 </div>
               </div>
               {fileTypeChartData.length ? (
-                <div className="h-[280px]">
-                  <ResponsiveContainer width="100%" height="100%">
+                <SafeResponsiveChart>
                     <PieChart>
                       <Pie data={fileTypeChartData} dataKey="value" nameKey="name" outerRadius={110} label>
                         {fileTypeChartData.map((entry, idx) => (
@@ -384,8 +382,7 @@ export default function DatasetHealthPage() {
                       </Pie>
                       <Tooltip />
                     </PieChart>
-                  </ResponsiveContainer>
-                </div>
+                  </SafeResponsiveChart>
               ) : (
                 <EmptyState icon={BarChart3} title="暂无格式数据" description="后端未返回可用的格式统计。" className="min-h-[280px]" />
               )}

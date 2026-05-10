@@ -36,4 +36,13 @@ describe('chunk preview top bar messages source', () => {
     expect(src).toContain("t('topBar.actions.completed')")
     expect(src).toContain("t('topBar.actions.confirmIngest')")
   })
+
+  it('builds copied cURL auth headers from the current session instead of hard-coded demo IDs', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'top-bar.tsx'), 'utf8')
+
+    expect(src).toContain("import { getAuthHeaders } from '@/lib/auth-headers'")
+    expect(src).toContain('const authHeaders = getAuthHeaders()')
+    expect(src).toContain('Object.entries(authHeaders)')
+    expect(src).not.toContain('X-User-ID: demo')
+  })
 })

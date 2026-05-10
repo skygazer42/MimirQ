@@ -24,7 +24,6 @@ import {
  Minimize2,
  Plus,
  RefreshCw,
- Star,
  X,
 } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion, type Transition } from 'framer-motion'
@@ -857,19 +856,6 @@ export default function KnowledgePage() {
 
  {activeTab === 'settings' ? (
  <>
- <Button
- type="button"
- variant="ghost"
- size="sm"
- className={cn(
- 'h-9 rounded-xl border px-3 text-[12px] font-medium','border-border/60 bg-card text-foreground'
- )}
- onClick={() => toast.success('已收藏当前配置')}
- >
- <Star className="mr-2 size-3.5" />
- 收藏此配置
- </Button>
-
  <Button
  type="button"
  variant="ghost"

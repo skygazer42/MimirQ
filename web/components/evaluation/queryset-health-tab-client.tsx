@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import {
-  ResponsiveContainer,
   LineChart,
   Line,
   XAxis,
@@ -25,6 +24,7 @@ import {
 
 import { Button } from '@/components/ui/button'
 import { Panel } from '@/components/ui/panel'
+import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { observabilityApi } from '@/lib/api'
@@ -267,7 +267,7 @@ export function QuerysetHealthTab({ embedded = false }: Readonly<{ embedded?: bo
             </div>
           </div>
           <div className="relative h-[145px]">
-            <ResponsiveContainer width="100%" height="100%">
+            <SafeResponsiveChart className="h-full" minHeight={145}>
               <LineChart data={chartDisplayData}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
                 <XAxis dataKey="dateLabel" tick={{ fontSize: 10 }} />
@@ -277,7 +277,7 @@ export function QuerysetHealthTab({ embedded = false }: Readonly<{ embedded?: bo
                 <Line type="monotone" dataKey="mrr" stroke="hsl(var(--info))" strokeWidth={2} dot={false} />
                 <Line type="monotone" dataKey="ndcg_at_k" stroke="hsl(var(--success))" strokeWidth={2} dot={false} />
               </LineChart>
-            </ResponsiveContainer>
+            </SafeResponsiveChart>
             {!hasQualityChartData ? <QuerysetChartEmptyState /> : null}
           </div>
         </Panel>
@@ -291,7 +291,7 @@ export function QuerysetHealthTab({ embedded = false }: Readonly<{ embedded?: bo
             </div>
           </div>
           <div className="relative h-[145px]">
-            <ResponsiveContainer width="100%" height="100%">
+            <SafeResponsiveChart className="h-full" minHeight={145}>
               <LineChart data={chartDisplayData}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
                 <XAxis dataKey="dateLabel" tick={{ fontSize: 10 }} />
@@ -301,7 +301,7 @@ export function QuerysetHealthTab({ embedded = false }: Readonly<{ embedded?: bo
                 <Line type="monotone" dataKey="miss_rate" stroke="hsl(var(--destructive))" strokeWidth={2} dot={false} />
                 <Line type="monotone" dataKey="weak_hit_rate" stroke="hsl(var(--info))" strokeWidth={2} dot={false} />
               </LineChart>
-            </ResponsiveContainer>
+            </SafeResponsiveChart>
             {!hasRiskChartData ? <QuerysetChartEmptyState /> : null}
           </div>
         </Panel>

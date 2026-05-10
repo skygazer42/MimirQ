@@ -21,7 +21,7 @@ import {
   ShieldCheck,
   type LucideIcon,
 } from 'lucide-react'
-import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { AppFrame } from '@/components/app-frame'
 import { AnalysisPageShell } from '@/components/ui/analysis-page-shell'
@@ -29,6 +29,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Label } from '@/components/ui/label'
+import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 
@@ -990,17 +991,15 @@ export default function ReportsCenterPage() {
                   {categoryBarData.length === 0 ? (
                     <EmptyState title="暂无分类数据" description="后端分类树没有可展示的计数。" />
                   ) : (
-                    <div className="h-[260px]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={categoryBarData.slice(0, 8)} margin={{ left: 8, right: 12, top: 8, bottom: 8 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" opacity={0.55} />
-                          <XAxis dataKey="name" />
-                          <YAxis allowDecimals={false} />
-                          <Tooltip cursor={CHART_TOOLTIP_CURSOR} contentStyle={CHART_TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} />
-                          <Bar dataKey="value" radius={[7, 7, 0, 0]} fill="#2563eb" />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
+                    <SafeResponsiveChart className="h-[260px]" minHeight={260}>
+                      <BarChart data={categoryBarData.slice(0, 8)} margin={{ left: 8, right: 12, top: 8, bottom: 8 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" opacity={0.55} />
+                        <XAxis dataKey="name" />
+                        <YAxis allowDecimals={false} />
+                        <Tooltip cursor={CHART_TOOLTIP_CURSOR} contentStyle={CHART_TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} />
+                        <Bar dataKey="value" radius={[7, 7, 0, 0]} fill="#2563eb" />
+                      </BarChart>
+                    </SafeResponsiveChart>
                   )}
                 </div>
 
@@ -1010,18 +1009,16 @@ export default function ReportsCenterPage() {
                     <EmptyState title="暂无版本数据" description="后端报告未返回 pipeline_versions。" />
                   ) : (
                     <div className="grid gap-3 lg:grid-cols-[1fr_1fr] xl:grid-cols-1 2xl:grid-cols-[1fr_1fr]">
-                      <div className="h-[210px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie data={pipelineVersions} dataKey="documents" nameKey="pipeline_hash" innerRadius={54} outerRadius={84}>
-                              {pipelineVersions.map((entry, idx) => (
-                                <Cell key={entry.pipeline_hash} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
-                              ))}
-                            </Pie>
-                            <Tooltip cursor={CHART_TOOLTIP_CURSOR} contentStyle={CHART_TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      </div>
+                      <SafeResponsiveChart className="h-[210px]" minHeight={210}>
+                        <PieChart>
+                          <Pie data={pipelineVersions} dataKey="documents" nameKey="pipeline_hash" innerRadius={54} outerRadius={84}>
+                            {pipelineVersions.map((entry, idx) => (
+                              <Cell key={entry.pipeline_hash} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip cursor={CHART_TOOLTIP_CURSOR} contentStyle={CHART_TOOLTIP_STYLE} labelStyle={CHART_TOOLTIP_LABEL_STYLE} />
+                        </PieChart>
+                      </SafeResponsiveChart>
                       <div className="space-y-2 self-center">
                         {pipelineVersions.slice(0, 5).map((version, idx) => (
                           <div key={version.pipeline_hash} className="flex items-center justify-between gap-2 text-[12px]">

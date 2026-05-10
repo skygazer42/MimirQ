@@ -205,7 +205,7 @@ export function QualityChecker({
   const [isScanning, setIsScanning] = useState(false)
   const [score, setScore] = useState(initialScore)
   const [issues, setIssues] = useState<QualityIssue[]>(initialIssues)
-  const [backendScanEnabled, setBackendScanEnabled] = useState(false)
+  const [backendScanEnabled, setBackendScanEnabled] = useState(true)
   const [expandedItems, setExpandedItems] = useState<Set<CheckItemId>>(new Set(['chars']))
   const [scanProgress, setScanProgress] = useState(0)
 
@@ -266,28 +266,17 @@ export function QualityChecker({
 
   const handleScan = useCallback(async () => {
     setIsScanning(true)
-    setScanProgress(0)
-
-    const steps = [
-      { progress: 20, delay: 300 },
-      { progress: 40, delay: 300 },
-      { progress: 60, delay: 300 },
-      { progress: 80, delay: 300 },
-      { progress: 100, delay: 200 },
-    ]
-
-    for (const step of steps) {
-      await new Promise((resolve) => setTimeout(resolve, step.delay))
-      setScanProgress(step.progress)
-    }
+    setScanProgress(20)
 
     const detectedIssues = collectLocalQualityIssues(content, t)
+    setScanProgress(55)
 
     if (backendScanEnabled) {
       detectedIssues.push(
         ...(await getBackendQualityIssues(content, formatInfo.format === t('format.types.html') ? 'html' : 'markdown', t))
       )
     }
+    setScanProgress(100)
 
     setIssues(detectedIssues)
 

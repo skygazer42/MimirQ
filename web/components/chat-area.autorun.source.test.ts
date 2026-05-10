@@ -12,6 +12,18 @@ describe('chat area autorun source', () => {
     expect(src).toContain('submitMessage(p)')
   })
 
+  it('submits document-selection and follow-up actions to the backend instead of only prefilling', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'chat-area.tsx'), 'utf8')
+    const messageSrc = fs.readFileSync(path.resolve(__dirname, 'chat/message-item.tsx'), 'utf8')
+    const floatingMenuSrc = fs.readFileSync(path.resolve(__dirname, 'document-viewer/floating-menu.tsx'), 'utf8')
+
+    expect(src).toContain("globalEventBus.on('chat:submit'")
+    expect(src).toContain('if (submitMessage(prompt)) {')
+    expect(src).toContain("globalEventBus.on('chat:send'")
+    expect(messageSrc).toContain("globalEventBus.emit('chat:submit', prompt)")
+    expect(floatingMenuSrc).toContain('globalEventBus.emit("chat:submit", prompt)')
+  })
+
   it('scopes chat requests to the currently opened document when the viewer is active', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'chat-area.tsx'), 'utf8')
 
