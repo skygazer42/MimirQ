@@ -169,6 +169,27 @@ def _expand_dev_cors_origins(origins: list[str]) -> list[str]:
 
     return sorted(expanded)
 
+
+def _build_cors_expose_headers(raw_headers: str) -> list[str]:
+    """
+    Keep app-critical response headers readable even when local `.env` overrides
+    the configurable CORS expose list.
+    """
+    required_headers = [
+        "X-Request-ID",
+        "X-Conversation-ID",
+        "X-Assistant-Message-ID",
+    ]
+    seen: set[str] = set()
+    headers: list[str] = []
+    for header in [*parse_csv(raw_headers), *required_headers]:
+        key = header.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        headers.append(header)
+    return headers
+
 # Optional JSON logging (LOG_FORMAT=json).
 configure_logging(
     log_level=str(getattr(settings, "LOG_LEVEL", "INFO") or "INFO"),
@@ -448,7 +469,7 @@ app.add_middleware(
     allow_credentials=bool(getattr(settings, "CORS_ALLOW_CREDENTIALS", True)),
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
-    expose_headers=parse_csv(getattr(settings, "CORS_EXPOSE_HEADERS", "X-Request-ID")),
+    expose_headers=_build_cors_expose_headers(getattr(settings, "CORS_EXPOSE_HEADERS", "X-Request-ID")),
 )
 
 # Rate limiting middleware

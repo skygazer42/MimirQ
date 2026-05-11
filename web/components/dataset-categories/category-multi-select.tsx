@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FolderTree, Loader2, Pencil, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -13,7 +14,8 @@ import { Panel } from '@/components/ui/panel'
 import { datasetApi, datasetCategoryApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { flattenDatasetCategoryTree } from '@/lib/dataset-categories'
-import { cn, detachPromise } from '@/lib/utils'
+import { queryKeys } from '@/lib/query-keys'
+import { cn } from '@/lib/utils'
 
 import type { DatasetCategoryNode } from '@/types'
 
@@ -24,36 +26,51 @@ function toggleId(list: string[], id: string): string[] {
 }
 
 export function DatasetCategoryMultiSelect({ datasetId, className }: Readonly<{ datasetId: string; className?: string }>) {
+  const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [tree, setTree] = useState<DatasetCategoryNode[]>([])
-  const [assigned, setAssigned] = useState<string[]>([])
   const [draft, setDraft] = useState<string[]>([])
   const [query, setQuery] = useState('')
 
-  const load = useCallback(async () => {
-    if (!datasetId) return
-    setLoading(true)
-    try {
-      const [cats, cur] = await Promise.all([
-        datasetCategoryApi.listTree(),
-        datasetApi.getCategories(datasetId),
-      ])
-      setTree(cats.items || [])
-      setAssigned((cur.category_ids || []).map(String))
-    } catch (e: any) {
-      console.error('Failed to load dataset categories', e)
-      toast.error(formatApiError(e, '加载分类失败'))
-    } finally {
-      setLoading(false)
-    }
-  }, [datasetId])
+  const categoryTreeQuery = useQuery({
+    queryKey: queryKeys.datasetCategories.tree,
+    queryFn: () => datasetCategoryApi.listTree(),
+  })
+
+  const assignedCategoriesQuery = useQuery({
+    queryKey: queryKeys.datasets.categories(datasetId),
+    enabled: Boolean(datasetId),
+    queryFn: () => datasetApi.getCategories(datasetId),
+  })
+
+  const saveCategoriesMutation = useMutation({
+    mutationFn: (categoryIds: string[]) =>
+      datasetApi.setCategories(datasetId, { category_ids: categoryIds }),
+    onSuccess: (res) => {
+      queryClient.setQueryData(queryKeys.datasets.categories(datasetId), res)
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.datasets.categories(datasetId),
+      })
+    },
+  })
 
   useEffect(() => {
-    detachPromise(load())
-  }, [load])
+    const error = categoryTreeQuery.error || assignedCategoriesQuery.error
+    if (!error) return
+    console.error('Failed to load dataset categories', error)
+    toast.error(formatApiError(error, '加载分类失败'))
+  }, [assignedCategoriesQuery.error, categoryTreeQuery.error])
 
+  const tree = useMemo<DatasetCategoryNode[]>(
+    () => categoryTreeQuery.data?.items || [],
+    [categoryTreeQuery.data]
+  )
+  const assigned = useMemo(
+    () => (assignedCategoriesQuery.data?.category_ids || []).map(String),
+    [assignedCategoriesQuery.data]
+  )
+  const loading = categoryTreeQuery.isLoading || assignedCategoriesQuery.isLoading
+  const refreshing = categoryTreeQuery.isFetching || assignedCategoriesQuery.isFetching
+  const saving = saveCategoriesMutation.isPending
   const flat = useMemo(() => flattenDatasetCategoryTree(tree), [tree])
   const nameById = useMemo(() => new Map(flat.map((x) => [x.id, x.name])), [flat])
 
@@ -78,17 +95,13 @@ export function DatasetCategoryMultiSelect({ datasetId, className }: Readonly<{ 
 
   const save = async () => {
     if (!datasetId) return
-    setSaving(true)
     try {
-      const res = await datasetApi.setCategories(datasetId, { category_ids: draft })
-      setAssigned((res.category_ids || []).map(String))
+      await saveCategoriesMutation.mutateAsync(draft)
       toast.success('分类已更新')
       setOpen(false)
     } catch (e: any) {
       console.error('Failed to set dataset categories', e)
       toast.error(formatApiError(e, '更新分类失败'))
-    } finally {
-      setSaving(false)
     }
   }
 
@@ -124,8 +137,20 @@ export function DatasetCategoryMultiSelect({ datasetId, className }: Readonly<{ 
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" className="h-9 px-3" onClick={() => detachPromise(load())} disabled={loading} aria-label="刷新分类">
-            <Loader2 className={cn('h-4 w-4', loading ? 'animate-spin motion-reduce:animate-none' : 'opacity-0')} />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-9 px-3"
+            onClick={() => {
+              void Promise.all([
+                categoryTreeQuery.refetch(),
+                assignedCategoriesQuery.refetch(),
+              ])
+            }}
+            disabled={refreshing}
+            aria-label="刷新分类"
+          >
+            <Loader2 className={cn('h-4 w-4', refreshing ? 'animate-spin motion-reduce:animate-none' : 'opacity-0')} />
             <span className="sr-only">刷新</span>
           </Button>
           <Dialog open={open} onOpenChange={setOpen}>
@@ -205,7 +230,12 @@ export function DatasetCategoryMultiSelect({ datasetId, className }: Readonly<{ 
                 <Button variant="ghost" onClick={() => setOpen(false)} disabled={saving}>
                   取消
                 </Button>
-                <Button onClick={() => detachPromise(save())} disabled={saving}>
+                <Button
+                  onClick={() => {
+                    void save()
+                  }}
+                  disabled={saving}
+                >
                   {saving ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none mr-2" /> : null}
                   保存
                 </Button>

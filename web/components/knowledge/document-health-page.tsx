@@ -2,8 +2,9 @@
 
 import type { DocumentHealthCard } from '@/types'
 
+import { useQuery } from '@tanstack/react-query'
 import { Activity, ArrowLeft, RefreshCw } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
@@ -11,11 +12,17 @@ import { Panel } from '@/components/ui/panel'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useRouter } from '@/i18n/navigation'
-import { cn, formatDate, formatFileSize, detachPromise } from '@/lib/utils'
+import { cn, formatDate, formatFileSize } from '@/lib/utils'
 import { documentApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { queryKeys } from '@/lib/query-keys'
 
 type QualityBadgeTone = 'bad' | 'warn' | 'ok'
+
+const DOCUMENT_HEALTH_QUERY_PARAMS = {
+  window_minutes: 24 * 60,
+  max_chunks_scored: 256,
+} as const
 
 function safeNumber(value: unknown): number | null {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null
@@ -66,9 +73,14 @@ function retrievalHitsStatusLabel(
 
 export default function DocumentHealthPage({ documentId }: Readonly<{ documentId: string }>) {
   const router = useRouter()
-  const [data, setData] = useState<DocumentHealthCard | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const healthQuery = useQuery({
+    queryKey: queryKeys.documents.health(documentId, DOCUMENT_HEALTH_QUERY_PARAMS),
+    queryFn: () => documentApi.health(documentId, DOCUMENT_HEALTH_QUERY_PARAMS),
+    enabled: Boolean(documentId),
+  })
+  const data = (healthQuery.data ?? null) as DocumentHealthCard | null
+  const loading = healthQuery.isFetching
+  const error = healthQuery.error ? formatApiError(healthQuery.error, '加载失败') : null
 
   const qualityScore = useMemo(() => parseQualityScore(data), [data])
   const qualityBadge = useMemo(() => {
@@ -79,30 +91,6 @@ export default function DocumentHealthPage({ documentId }: Readonly<{ documentId
   }, [qualityScore])
   const retrievalHitsStatus = retrievalHitsStatusLabel(data?.retrieval_hits)
   const retrievalMetricsDisabled = data?.retrieval_hits?.enabled === false
-
-  const load = useCallback(async () => {
-    if (!documentId) return
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await documentApi.health(documentId, {
-        window_minutes: 24 * 60,
-        max_chunks_scored: 256,
-      })
-      setData(res)
-    } catch (err: any) {
-      console.error('Load document health failed:', err)
-      const msg = formatApiError(err, '加载失败')
-      setError(msg)
-      setData(null)
-    } finally {
-      setLoading(false)
-    }
-  }, [documentId])
-
-  useEffect(() => {
-    detachPromise(load())
-  }, [load])
 
   return (
     <AppFrame>
@@ -135,7 +123,9 @@ export default function DocumentHealthPage({ documentId }: Readonly<{ documentId
               size="sm"
               className="rounded-xl"
               disabled={loading}
-              onClick={() => detachPromise(load())}
+              onClick={() => {
+                void healthQuery.refetch()
+              }}
             >
               <RefreshCw className={cn('mr-2 size-4', loading ? 'animate-spin motion-reduce:animate-none' : '')} />
               刷新

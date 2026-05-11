@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 
 import { Database, FileCode, Loader2, Search } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -16,8 +17,8 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { datasetApi } from '@/lib/api'
+import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
-import type { Dataset } from '@/types'
 
 type GraphScopePickerDialogProps = Readonly<{
   open: boolean
@@ -28,6 +29,8 @@ type GraphScopePickerDialogProps = Readonly<{
   onTriggerFileUpload: () => void
 }>
 
+const GRAPH_SCOPE_DATASET_PARAMS = { limit: 200 } as const
+
 export function GraphScopePickerDialog({
   open,
   onOpenChange,
@@ -37,35 +40,26 @@ export function GraphScopePickerDialog({
   onTriggerFileUpload,
 }: GraphScopePickerDialogProps) {
   const router = useRouter()
-  const [datasets, setDatasets] = useState<Dataset[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [selectedDatasetId, setSelectedDatasetId] = useState<string>(currentDatasetId ?? '')
 
-  const loadDatasets = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await datasetApi.list({ limit: 200 })
-      setDatasets(Array.isArray(res.items) ? res.items : [])
-    } catch (loadError) {
-      console.error('Failed to load datasets for graph scope picker', loadError)
-      setError('加载知识库列表失败，请稍后重试。')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  const datasetsQuery = useQuery({
+    queryKey: queryKeys.datasets.list(GRAPH_SCOPE_DATASET_PARAMS),
+    queryFn: () => datasetApi.list(GRAPH_SCOPE_DATASET_PARAMS),
+    enabled: open,
+  })
+  const datasets = useMemo(
+    () => (Array.isArray(datasetsQuery.data?.items) ? datasetsQuery.data.items : []),
+    [datasetsQuery.data?.items]
+  )
+  const loading = datasetsQuery.isFetching
+  const error = datasetsQuery.error ? '加载知识库列表失败，请稍后重试。' : null
+  const { refetch: refetchDatasets } = datasetsQuery
 
   useEffect(() => {
     if (!open) return
     setSelectedDatasetId(currentDatasetId ?? '')
   }, [currentDatasetId, open])
-
-  useEffect(() => {
-    if (!open || datasets.length > 0 || loading) return
-    void loadDatasets()
-  }, [datasets.length, loadDatasets, loading, open])
 
   const filteredDatasets = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -131,7 +125,7 @@ export function GraphScopePickerDialog({
               variant="ghost"
               size="sm"
               className="h-10 rounded-xl px-3 text-muted-foreground"
-              onClick={() => void loadDatasets()}
+              onClick={() => void refetchDatasets()}
               disabled={loading}
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : '刷新'}

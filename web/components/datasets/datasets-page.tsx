@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -31,8 +32,9 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { datasetApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise } from '@/lib/utils'
-import type { Dataset, PermissionEnum, DocumentPipelineOptions, DatasetIngestionStats } from '@/types'
+import type { Dataset, DatasetListResponse, PermissionEnum, DocumentPipelineOptions, DatasetIngestionStats } from '@/types'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { GovernanceProfileSelector } from '@/components/governance-profile-selector'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
@@ -262,10 +264,8 @@ function getDatasetIconTone(icon: LucideIcon) {
 
 export default function DatasetsPage() {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const { options: defaultPipelineOptions } = usePipelineOptions()
-  const [items, setItems] = useState<Dataset[]>([])
-  const [total, setTotal] = useState(0)
-  const [isLoading, setIsLoading] = useState(false)
   const [pipelineTogglePendingId, setPipelineTogglePendingId] = useState<string | null>(null)
   const [permissionUpdatePendingId, setPermissionUpdatePendingId] = useState<string | null>(null)
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
@@ -295,25 +295,44 @@ export default function DatasetsPage() {
     })
   }
 
-  const load = useCallback(async () => {
-    setIsLoading(true)
-    try {
-      const res = await datasetApi.list({
-        skip: 0, limit: 200,
-        category_id: selectedCategoryId || undefined,
-        include_descendants: true,
-      })
-      setItems(res.items || [])
-      setTotal(Number(res.total || 0))
-    } catch (e: any) {
-      console.error('Failed to load datasets', e)
-      toast.error(formatApiError(e, '加载数据集失败'))
-    } finally {
-      setIsLoading(false)
-    }
-  }, [selectedCategoryId])
+  const datasetListParams = useMemo(() => ({
+    skip: 0,
+    limit: 200,
+    category_id: selectedCategoryId || undefined,
+    include_descendants: true,
+  }), [selectedCategoryId])
 
-  useEffect(() => { detachPromise(load()) }, [load])
+  const datasetsQueryKey = useMemo(
+    () => queryKeys.datasets.list(datasetListParams),
+    [datasetListParams]
+  )
+
+  const datasetsQuery = useQuery({
+    queryKey: datasetsQueryKey,
+    queryFn: () => datasetApi.list(datasetListParams),
+  })
+
+  const items = useMemo(() => datasetsQuery.data?.items || [], [datasetsQuery.data?.items])
+  const total = Number(datasetsQuery.data?.total || 0)
+  const isLoading = datasetsQuery.isPending
+  const isRefreshing = datasetsQuery.isFetching
+
+  useEffect(() => {
+    if (!datasetsQuery.error) return
+    console.error('Failed to load datasets', datasetsQuery.error)
+    toast.error(formatApiError(datasetsQuery.error, '加载数据集失败'))
+  }, [datasetsQuery.error, datasetsQuery.errorUpdatedAt])
+
+  const refreshDatasets = useCallback(async () => {
+    await datasetsQuery.refetch()
+  }, [datasetsQuery])
+
+  const updateDatasetListCache = useCallback((updater: (current: DatasetListResponse) => DatasetListResponse) => {
+    queryClient.setQueryData<DatasetListResponse>(datasetsQueryKey, (current) => {
+      if (!current) return current
+      return updater(current)
+    })
+  }, [datasetsQueryKey, queryClient])
 
   useEffect(() => {
     const missingIds = items
@@ -426,8 +445,11 @@ export default function DatasetsPage() {
   }[collectionFilter]
 
   const replaceDataset = useCallback((next: Dataset) => {
-    setItems((prev) => prev.map((item) => (item.id === next.id ? next : item)))
-  }, [])
+    updateDatasetListCache((current) => ({
+      ...current,
+      items: (current.items || []).map((item) => (item.id === next.id ? next : item)),
+    }))
+  }, [updateDatasetListCache])
 
   const buildPayload = (mode: 'create' | 'update') => {
     const payload: any = {
@@ -457,7 +479,7 @@ export default function DatasetsPage() {
       toast.success('已创建数据集')
       setCreateOpen(false)
       resetForm()
-      await load()
+      await refreshDatasets()
     } catch (e: any) {
       toast.error(formatApiError(e, '创建失败'))
     }
@@ -485,7 +507,7 @@ export default function DatasetsPage() {
       setEditOpen(false)
       setEditing(null)
       resetForm()
-      await load()
+      await refreshDatasets()
     } catch (e: any) {
       toast.error(formatApiError(e, '更新失败'))
     }
@@ -496,8 +518,12 @@ export default function DatasetsPage() {
     try {
       await datasetApi.delete(deleteTarget.id)
       toast.success('已删除数据集')
-      setItems((prev) => prev.filter((x) => x.id !== deleteTarget.id))
-      setTotal((prev) => Math.max(0, prev - 1))
+      updateDatasetListCache((current) => ({
+        ...current,
+        items: (current.items || []).filter((x) => x.id !== deleteTarget.id),
+        total: Math.max(0, Number(current.total || 0) - 1),
+      }))
+      await refreshDatasets()
     } catch (e: any) {
       toast.error(formatApiError(e, '删除失败'))
     } finally {
@@ -559,9 +585,9 @@ export default function DatasetsPage() {
           <div className="flex items-center gap-2">
             <Button
               variant="ghost" size="sm"
-              onClick={() => load()} disabled={isLoading}
+              onClick={() => { detachPromise(refreshDatasets()) }} disabled={isRefreshing}
             >
-              <RefreshCw className={cn('size-4', isLoading && 'animate-spin motion-reduce:animate-none')} />
+              <RefreshCw className={cn('size-4', isRefreshing && 'animate-spin motion-reduce:animate-none')} />
             </Button>
             <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (open) resetForm() }}>
               <DialogTrigger asChild>

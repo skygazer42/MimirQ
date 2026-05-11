@@ -1,0 +1,10 @@
+# Development and CI-only tooling.
+#
+# Runtime/container images should install requirements.txt. Local development,
+# tests, lint and audit jobs should install this layered file.
+-r requirements.txt
+
+pytest==9.0.3
+pytest-asyncio==1.3.0
+pip-audit==2.10.0
+ruff==0.15.9

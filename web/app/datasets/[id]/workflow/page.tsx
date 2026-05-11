@@ -2,6 +2,7 @@
 
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
+import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { ArrowLeft, BarChart3, Download, FileUp, Layers, Loader2, RefreshCw, Save, Settings2, Table2 } from 'lucide-react'
 
@@ -18,6 +19,7 @@ import { datasetApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { buildDatasetConfigGraph } from '@/lib/dataset-config-graph'
 import type { GraphNode } from '@/lib/graph-parser'
+import { queryKeys } from '@/lib/query-keys'
 import { useRouter } from '@/i18n/navigation'
 import { cn, detachPromise } from '@/lib/utils'
 
@@ -61,12 +63,9 @@ export default function DatasetWorkflowPage() {
 
   const importInputRef = useRef<HTMLInputElement>(null)
 
-  const [dataset, setDataset] = useState<Dataset | null>(null)
-  const [exportRes, setExportRes] = useState<DatasetConfigExport | null>(null)
   const [workingConfig, setWorkingConfig] = useState<DatasetConfigBundle | null>(null)
   const [selectedNode, setSelectedNode] = useState<DatasetWorkflowGraphNode | null>(null)
 
-  const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [importing, setImporting] = useState(false)
@@ -74,6 +73,36 @@ export default function DatasetWorkflowPage() {
   const [importOpen, setImportOpen] = useState(false)
   const [importFileName, setImportFileName] = useState<string>('')
   const [importBundle, setImportBundle] = useState<DatasetConfigBundle | null>(null)
+
+  const datasetQuery = useQuery({
+    queryKey: queryKeys.datasets.detail(datasetId || ''),
+    queryFn: () => {
+      if (!datasetId) throw new Error('缺少数据集 ID')
+      return datasetApi.get(datasetId)
+    },
+    enabled: Boolean(datasetId),
+  })
+  const configQuery = useQuery({
+    queryKey: queryKeys.datasets.config(datasetId || ''),
+    queryFn: () => {
+      if (!datasetId) throw new Error('缺少数据集 ID')
+      return datasetApi.exportConfig(datasetId)
+    },
+    enabled: Boolean(datasetId),
+  })
+  const dataset = (datasetQuery.data ?? null) as Dataset | null
+  const exportRes = (configQuery.data ?? null) as DatasetConfigExport | null
+  const loading = datasetQuery.isFetching || configQuery.isFetching
+  const loadError = datasetQuery.error ?? configQuery.error
+  const loadErrorUpdatedAt = Math.max(
+    datasetQuery.errorUpdatedAt,
+    configQuery.errorUpdatedAt
+  )
+  const { refetch: refetchDataset } = datasetQuery
+  const { refetch: refetchConfig } = configQuery
+  const refreshWorkflow = useCallback(async () => {
+    await Promise.all([refetchDataset(), refetchConfig()])
+  }, [refetchConfig, refetchDataset])
 
   const importKeys = useMemo(() => {
     if (!importBundle || typeof importBundle !== 'object') return []
@@ -113,29 +142,16 @@ export default function DatasetWorkflowPage() {
     }
   }, [selectedJson])
 
-  const load = useCallback(async () => {
-    if (!datasetId) return
-    setLoading(true)
-    try {
-      const [ds, exp] = await Promise.all([
-        datasetApi.get(datasetId),
-        datasetApi.exportConfig(datasetId),
-      ])
-      setDataset(ds)
-      setExportRes(exp)
-      setWorkingConfig(exp.config ?? {})
-      setSelectedNode(null)
-    } catch (e: unknown) {
-      console.error('Failed to load dataset workflow', e)
-      toast.error(formatApiError(e, 'Failed to load workflow config'))
-    } finally {
-      setLoading(false)
-    }
-  }, [datasetId])
+  useEffect(() => {
+    if (!loadError) return
+    toast.error(formatApiError(loadError, 'Failed to load workflow config'))
+  }, [loadError, loadErrorUpdatedAt])
 
   useEffect(() => {
-    detachPromise(load())
-  }, [load])
+    if (!exportRes) return
+    setWorkingConfig(exportRes.config ?? {})
+    setSelectedNode(null)
+  }, [exportRes])
 
   const doExport = useCallback(async () => {
     if (!datasetId) return
@@ -187,14 +203,14 @@ export default function DatasetWorkflowPage() {
       setImportOpen(false)
       setImportBundle(null)
       setImportFileName('')
-      await load()
+      await refreshWorkflow()
     } catch (e: unknown) {
       console.error('Failed to import dataset config', e)
       toast.error(formatApiError(e, 'Import failed'))
     } finally {
       setImporting(false)
     }
-  }, [datasetId, importBundle, load])
+  }, [datasetId, importBundle, refreshWorkflow])
 
   const onWorkflowLayoutChange = useCallback((workflowLayout: Record<string, any>) => {
     startTransition(() => {
@@ -212,14 +228,14 @@ export default function DatasetWorkflowPage() {
       const payload: DatasetConfigImportRequest = { config: workingConfig, replace: true }
       await datasetApi.importConfig(datasetId, payload)
       toast.success('Saved workflow layout')
-      await load()
+      await refreshWorkflow()
     } catch (e: unknown) {
       console.error('Failed to save workflow layout', e)
       toast.error(formatApiError(e, 'Save failed'))
     } finally {
       setSaving(false)
     }
-  }, [datasetId, load, workingConfig])
+  }, [datasetId, refreshWorkflow, workingConfig])
 
   const copySelectedJson = useCallback(async () => {
     if (!selectedJsonText.trim()) return
@@ -268,7 +284,7 @@ export default function DatasetWorkflowPage() {
                 Tables
               </Button>
             ) : null}
-            <Button variant="outline" className="gap-2" onClick={() => detachPromise(load())} disabled={loading}>
+            <Button variant="outline" className="gap-2" onClick={() => detachPromise(refreshWorkflow())} disabled={loading}>
               <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin motion-reduce:animate-none')} />
               Refresh
             </Button>

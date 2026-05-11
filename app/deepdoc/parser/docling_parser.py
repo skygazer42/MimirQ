@@ -471,6 +471,6 @@ class DoclingParser(IntegratedPipelinePdfParser):
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     parser = DoclingParser()
-    print("Docling available:", parser.check_installation())
+    logging.info("Docling available: %s", parser.check_installation())
     sections, tables = parser.parse_pdf(filepath="test_docling/toc.pdf", binary=None)
-    print(len(sections), len(tables))
+    logging.info("%s sections, %s tables", len(sections), len(tables))

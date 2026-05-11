@@ -20,4 +20,29 @@ describe('dataset ingestion page source', () => {
     expect(src).toContain('INGESTION_FALLBACK_CHUNK_STRATEGY_VALUES')
     expect(src).not.toContain("['langchain_recursive', 'integrated_naive', 'integrated_book', 'integrated_laws', 'integrated_email']")
   })
+
+  it('loads governance profile options through TanStack Query instead of hand-written profile effects', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'page.tsx'), 'utf8')
+
+    expect(src).toContain("from '@tanstack/react-query'")
+    expect(src).toContain('useQuery')
+    expect(src).toContain('queryKey: queryKeys.governance.profiles')
+    expect(src).not.toContain('const [profiles, setProfiles]')
+    expect(src).not.toContain('const loadProfiles')
+    expect(src).not.toContain('setProfiles(')
+  })
+
+  it('loads dataset, ingestion policy, and ingestion stats through TanStack Query', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'page.tsx'), 'utf8')
+
+    expect(src).toContain('queryKey: queryKeys.datasets.detail')
+    expect(src).toContain('queryKey: queryKeys.datasets.ingestionPolicy')
+    expect(src).toContain('queryKey: queryKeys.datasets.ingestionStats')
+    expect(src).toContain('refreshIngestionPolicy')
+    expect(src).not.toContain('const [dataset, setDataset]')
+    expect(src).not.toContain('const [ingestionStats, setIngestionStats]')
+    expect(src).not.toContain('const [loading, setLoading]')
+    expect(src).not.toContain('const load = useCallback')
+    expect(src).not.toContain('await load()')
+  })
 })

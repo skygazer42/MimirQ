@@ -23,6 +23,13 @@ def test_table_store_table_id_parse_and_format():  # noqa: ANN001
     assert parse_table_id("random") is None
 
 
+def test_table_store_quotes_sqlite_identifiers():  # noqa: ANN001
+    from app.services.table_store import quote_sqlite_ident
+
+    assert quote_sqlite_ident("sheet_0") == '"sheet_0"'
+    assert quote_sqlite_ident('sheet_"; DROP TABLE documents; --') == '"sheet_""; DROP TABLE documents; --"'
+
+
 def test_table_store_import_csv_and_query(monkeypatch):  # noqa: ANN001
     from app.core.config import settings
     from app.services.table_store_service import import_table_document, run_table_query

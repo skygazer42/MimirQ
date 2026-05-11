@@ -1,6 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react'
 import {
   BarChart3,
   Bell,
@@ -26,20 +32,42 @@ import { AblationSliceDiffPanel } from '@/components/evaluation/ablation-slice-d
 import { AblationStatisticsPanel } from '@/components/evaluation/ablation-statistics-panel'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { formatApiError } from '@/lib/api-errors'
 import { datasetApi } from '@/lib/api/datasets'
 import { evaluationApi } from '@/lib/api/evaluation'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { sanitizeFilename } from '@/lib/sanitize'
-import type { Dataset, RegressionAblationGridValue, RegressionRun, RegressionRunCreate, RagasRegressionRunDiffResponse } from '@/types'
+import type {
+  Dataset,
+  RegressionAblationGridValue,
+  RegressionRun,
+  RegressionRunCreate,
+  RagasRegressionRunDiffResponse,
+} from '@/types'
 import { cn, detachPromise } from '@/lib/utils'
 
 type RegressionLeaderboardRow = {
@@ -55,7 +83,6 @@ type RegressionLeaderboardRow = {
 type RegressionRunLeaderboard = {
   items?: RegressionLeaderboardRow[]
 }
-
 
 function prettyJson(value: unknown): string {
   try {
@@ -92,9 +119,21 @@ function toNumber(value: unknown): number | null {
 }
 
 const RAGAS_METRIC_OPTIONS = [
-  { key: 'faithfulness', label: 'Faithfulness', hint: '答案是否忠于检索上下文' },
-  { key: 'response_relevancy', label: 'Response Relevancy', hint: '回答是否真正回应问题' },
-  { key: 'context_precision', label: 'Context Precision', hint: '上下文是否足够精准干净' },
+  {
+    key: 'faithfulness',
+    label: 'Faithfulness',
+    hint: '答案是否忠于检索上下文',
+  },
+  {
+    key: 'response_relevancy',
+    label: 'Response Relevancy',
+    hint: '回答是否真正回应问题',
+  },
+  {
+    key: 'context_precision',
+    label: 'Context Precision',
+    hint: '上下文是否足够精准干净',
+  },
 ]
 
 const RETRIEVAL_MODE_OPTIONS = [
@@ -128,30 +167,42 @@ function shortId(value: string | null | undefined): string {
 }
 
 function leaderboardMetricLabel(key: string): string {
-  return LEADERBOARD_METRIC_OPTIONS.find((item) => item.key === key)?.label || key
+  return (
+    LEADERBOARD_METRIC_OPTIONS.find((item) => item.key === key)?.label || key
+  )
 }
 
 function runStatusMeta(statusValue: string | null | undefined): {
   status: 'completed' | 'failed' | 'processing'
   label: string
 } {
-  if (statusValue === 'completed') return { status: 'completed', label: '已完成' }
+  if (statusValue === 'completed')
+    return { status: 'completed', label: '已完成' }
   if (statusValue === 'failed') return { status: 'failed', label: '失败' }
   return { status: 'processing', label: '运行中' }
 }
 
-function pickRunPair(items: RegressionRun[], currentBaseRunId: string, currentTargetRunId: string): {
+function pickRunPair(
+  items: RegressionRun[],
+  currentBaseRunId: string,
+  currentTargetRunId: string
+): {
   baseRunId: string
   targetRunId: string
 } {
   const ids = new Set(items.map((run) => _stableId(run.id)).filter(Boolean))
   const currentBase = _stableId(currentBaseRunId)
   const currentTarget = _stableId(currentTargetRunId)
-  let targetRunId = currentTarget && ids.has(currentTarget) ? currentTarget : _stableId(items?.[0]?.id)
+  let targetRunId =
+    currentTarget && ids.has(currentTarget)
+      ? currentTarget
+      : _stableId(items?.[0]?.id)
   let baseRunId = currentBase && ids.has(currentBase) ? currentBase : ''
 
   if (!baseRunId || baseRunId === targetRunId) {
-    baseRunId = _stableId(items.find((run) => _stableId(run.id) !== targetRunId)?.id)
+    baseRunId = _stableId(
+      items.find((run) => _stableId(run.id) !== targetRunId)?.id
+    )
   }
 
   if (baseRunId === targetRunId) {
@@ -187,7 +238,11 @@ function AblationInfoTooltip({
             <Info className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
         </TooltipTrigger>
-        <TooltipContent side={side} align="center" className="max-w-[280px] text-[11px] leading-5">
+        <TooltipContent
+          side={side}
+          align="center"
+          className="max-w-[280px] text-[11px] leading-5"
+        >
           {children}
         </TooltipContent>
       </Tooltip>
@@ -204,7 +259,8 @@ function compactValue(value: unknown, maxLen = 72): string {
   if (value === null || value === undefined) return '-'
   const raw = (() => {
     if (typeof value === 'string') return value
-    if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+    if (typeof value === 'number' || typeof value === 'boolean')
+      return String(value)
     try {
       return JSON.stringify(value)
     } catch {
@@ -256,9 +312,20 @@ function AblationInlineStat({
               }
 
   return (
-    <div className={cn('inline-flex items-center gap-1.5 rounded-md border px-2 py-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]', toneClasses.surface)}>
-      <span className={cn('text-[11px] tracking-[0.08em]', toneClasses.label)}>{label}</span>
-      <span className={cn('font-mono text-[11px] tabular-nums', toneClasses.value)}>{value}</span>
+    <div
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]',
+        toneClasses.surface
+      )}
+    >
+      <span className={cn('text-[11px] tracking-[0.08em]', toneClasses.label)}>
+        {label}
+      </span>
+      <span
+        className={cn('font-mono text-[11px] tabular-nums', toneClasses.value)}
+      >
+        {value}
+      </span>
     </div>
   )
 }
@@ -281,22 +348,38 @@ function AblationSection({
   const [collapsed, setCollapsed] = useState(defaultCollapsed)
 
   return (
-    <section className={cn('border-b border-slate-200/70 bg-white px-4 py-3 last:border-b-0', className)}>
+    <section
+      className={cn(
+        'border-b border-slate-200/70 bg-card px-4 py-3 last:border-b-0',
+        className
+      )}
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="text-[13px] font-semibold text-slate-950">{title}</div>
-          {!collapsed && description ? <p className="mt-1 text-[12px] leading-5 text-slate-500">{description}</p> : null}
+          <div className="text-[13px] font-semibold text-slate-950">
+            {title}
+          </div>
+          {!collapsed && description ? (
+            <p className="mt-1 text-[12px] leading-5 text-slate-500">
+              {description}
+            </p>
+          ) : null}
         </div>
         {collapsible ? (
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            className="h-7 w-7 shrink-0 rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+            className="h-7 w-7 shrink-0 rounded-lg border border-slate-200 bg-card text-slate-500 hover:bg-slate-50 hover:text-slate-900"
             onClick={() => setCollapsed((prev) => !prev)}
             aria-label={collapsed ? `展开${title}` : `收起${title}`}
           >
-            <ChevronDown className={cn('h-3 w-3 transition-transform', collapsed ? '-rotate-90' : 'rotate-0')} />
+            <ChevronDown
+              className={cn(
+                'h-3 w-3 transition-transform',
+                collapsed ? '-rotate-90' : 'rotate-0'
+              )}
+            />
           </Button>
         ) : null}
       </div>
@@ -316,14 +399,16 @@ function AblationDatasetCard({
   const version = compactValue(pipeline.version ?? 'v1', 20)
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
+    <div className="rounded-xl border border-slate-200 bg-card p-3 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
       <div className="flex items-start gap-3">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 ring-1 ring-blue-100">
           <Database className="h-5 w-5" aria-hidden="true" />
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
-            <div className="truncate text-[13px] font-semibold text-slate-950">{dataset?.name || '未选择数据集'}</div>
+            <div className="truncate text-[13px] font-semibold text-slate-950">
+              {dataset?.name || '未选择数据集'}
+            </div>
             <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
               {dataset ? '固定' : '待选择'}
             </span>
@@ -335,8 +420,12 @@ function AblationDatasetCard({
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-1.5">
-        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">{dataset?.permission || 'permission'}</span>
-        <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">主指标 {leaderboardMetricLabel(metricKey)}</span>
+        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+          {dataset?.permission || 'permission'}
+        </span>
+        <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">
+          主指标 {leaderboardMetricLabel(metricKey)}
+        </span>
       </div>
     </div>
   )
@@ -346,7 +435,7 @@ function AblationLeaderboardEmptyState() {
   return (
     <div className="flex min-h-[530px] flex-col items-center justify-center px-8 text-center">
       <div className="ablation-empty-illustration relative h-40 w-56">
-        <div className="absolute left-4 top-10 h-24 w-36 -rotate-6 rounded-2xl border border-blue-100 bg-white shadow-[0_16px_42px_rgba(37,99,235,0.12)]" />
+        <div className="absolute left-4 top-10 h-24 w-36 -rotate-6 rounded-2xl border border-blue-100 bg-card shadow-[0_16px_42px_rgba(37,99,235,0.12)]" />
         <div className="absolute left-11 top-16 h-2 w-20 rounded-full bg-slate-200" />
         <div className="absolute left-11 top-[108px] h-2 w-14 rounded-full bg-slate-100" />
         <div className="absolute left-24 top-24 h-8 w-3 rounded bg-blue-300" />
@@ -355,13 +444,16 @@ function AblationLeaderboardEmptyState() {
         <div className="absolute bottom-8 left-12 h-8 w-12 rounded bg-slate-200 shadow-sm" />
         <div className="absolute bottom-8 left-24 h-14 w-12 rounded bg-blue-500 shadow-[0_14px_30px_rgba(37,99,235,0.22)]" />
         <div className="absolute bottom-8 left-36 h-10 w-12 rounded bg-slate-200 shadow-sm" />
-        <div className="absolute right-9 top-11 flex h-20 w-20 items-center justify-center rounded-full bg-amber-400 text-white shadow-[0_18px_44px_rgba(245,158,11,0.32)]">
+        <div className="absolute right-9 top-11 flex h-20 w-20 items-center justify-center rounded-full bg-amber-400 text-info-foreground shadow-[0_18px_44px_rgba(245,158,11,0.32)]">
           <Trophy className="h-10 w-10 fill-white/70" aria-hidden="true" />
         </div>
       </div>
-      <div className="mt-2 text-[16px] font-semibold text-slate-950">暂无排行数据</div>
+      <div className="mt-2 text-[16px] font-semibold text-slate-950">
+        暂无排行数据
+      </div>
       <p className="mt-2 max-w-[260px] text-[13px] leading-6 text-slate-500">
-        固定 dataset 后运行一次 leaderboard，这里会显示每条 run 的主指标与配置得分。
+        固定 dataset 后运行一次 leaderboard，这里会显示每条 run
+        的主指标与配置得分。
       </p>
       <div className="mt-7 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-[12px] text-blue-700">
         排行榜数据将在固定数据集运行后自动生成
@@ -380,38 +472,52 @@ function AblationDiffEmptyState() {
   return (
     <div className="flex min-h-[530px] flex-col items-center justify-center px-6 py-8 text-center">
       <div className="ablation-empty-illustration relative h-36 w-[360px]">
-        <div className="absolute left-10 top-8 h-20 w-32 rounded-xl border border-blue-100 bg-white shadow-[0_16px_42px_rgba(37,99,235,0.10)]">
-          <div className="border-b border-blue-50 px-3 py-2 text-left text-[10px] font-semibold text-blue-700">BASE</div>
+        <div className="absolute left-10 top-8 h-20 w-32 rounded-xl border border-blue-100 bg-card shadow-[0_16px_42px_rgba(37,99,235,0.10)]">
+          <div className="border-b border-blue-50 px-3 py-2 text-left text-[10px] font-semibold text-blue-700">
+            BASE
+          </div>
           <div className="space-y-2 px-3 py-3">
             <div className="h-2 rounded bg-slate-100" />
             <div className="h-2 w-20 rounded bg-slate-100" />
           </div>
         </div>
         <div className="absolute right-10 top-8 h-20 w-32 rounded-xl border border-emerald-100 bg-emerald-50/35 shadow-[0_16px_42px_rgba(16,185,129,0.10)]">
-          <div className="border-b border-emerald-100 px-3 py-2 text-left text-[10px] font-semibold text-emerald-700">TARGET</div>
+          <div className="border-b border-emerald-100 px-3 py-2 text-left text-[10px] font-semibold text-emerald-700">
+            TARGET
+          </div>
           <div className="space-y-2 px-3 py-3">
             <div className="h-2 rounded bg-slate-100" />
             <div className="h-2 w-20 rounded bg-slate-100" />
           </div>
         </div>
-        <div className="absolute left-1/2 top-12 flex h-16 w-16 -translate-x-1/2 items-center justify-center rounded-full bg-white text-blue-600 shadow-[0_16px_42px_rgba(37,99,235,0.16)] ring-1 ring-blue-100">
+        <div className="absolute left-1/2 top-12 flex h-16 w-16 -translate-x-1/2 items-center justify-center rounded-full bg-card text-blue-600 shadow-[0_16px_42px_rgba(37,99,235,0.16)] ring-1 ring-blue-100">
           <GitCompare className="h-7 w-7" aria-hidden="true" />
         </div>
         <div className="absolute left-[88px] top-3 h-8 w-[184px] rounded-t-2xl border-x border-t border-dashed border-emerald-300" />
       </div>
-      <div className="mt-3 text-[16px] font-semibold text-slate-950">等待生成 Diff</div>
+      <div className="mt-3 text-[16px] font-semibold text-slate-950">
+        等待生成 Diff
+      </div>
       <p className="mt-2 max-w-[430px] text-[13px] leading-6 text-slate-500">
-        请先选择 Base（基线 run）与 Target（候选 run），然后点击“生成 Diff”。系统将对两次运行进行结构化对比，展示差异与影响分析。
+        请先选择 Base（基线 run）与 Target（候选 run），然后点击“生成
+        Diff”。系统将对两次运行进行结构化对比，展示差异与影响分析。
       </p>
-      <div className="mt-7 w-full max-w-[390px] rounded-2xl border border-dashed border-blue-200 bg-white/85 p-4 text-left">
+      <div className="mt-7 w-full max-w-[390px] rounded-2xl border border-dashed border-blue-200 bg-card/85 p-4 text-left">
         {steps.map((step, index) => (
-          <div key={step.label} className="flex gap-3 py-2 first:pt-0 last:pb-0">
-            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[11px] font-semibold text-white">
+          <div
+            key={step.label}
+            className="flex gap-3 py-2 first:pt-0 last:pb-0"
+          >
+            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[11px] font-semibold text-info-foreground">
               {index + 1}
             </span>
             <span>
-              <span className="block text-[13px] font-semibold text-slate-950">{step.label}</span>
-              <span className="mt-0.5 block text-[12px] text-slate-500">{step.hint}</span>
+              <span className="block text-[13px] font-semibold text-slate-950">
+                {step.label}
+              </span>
+              <span className="mt-0.5 block text-[12px] text-slate-500">
+                {step.hint}
+              </span>
             </span>
           </div>
         ))}
@@ -420,7 +526,14 @@ function AblationDiffEmptyState() {
   )
 }
 
-type JsonTokenKind = 'plain' | 'key' | 'string' | 'number' | 'boolean' | 'null' | 'punctuation'
+type JsonTokenKind =
+  | 'plain'
+  | 'key'
+  | 'string'
+  | 'number'
+  | 'boolean'
+  | 'null'
+  | 'punctuation'
 
 function splitCodeLines(value: string): string[] {
   const normalized = String(value ?? '').replace(/\r/g, '')
@@ -429,7 +542,9 @@ function splitCodeLines(value: string): string[] {
   return lines.length ? lines : ['']
 }
 
-function tokenizeJsonLine(line: string): Array<{ text: string; kind: JsonTokenKind }> {
+function tokenizeJsonLine(
+  line: string
+): Array<{ text: string; kind: JsonTokenKind }> {
   const tokens: Array<{ text: string; kind: JsonTokenKind }> = []
   const pattern =
     /("(?:\\.|[^"\\])*")(\s*:)?|\b-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b|\btrue\b|\bfalse\b|\bnull\b|[{}\[\],:]/g
@@ -477,7 +592,10 @@ function jsonTokenClassName(kind: JsonTokenKind): string {
   return 'text-foreground'
 }
 
-function JsonCodeLine({ lineNumber, text }: Readonly<{ lineNumber: number; text: string }>) {
+function JsonCodeLine({
+  lineNumber,
+  text,
+}: Readonly<{ lineNumber: number; text: string }>) {
   const tokens = useMemo(() => tokenizeJsonLine(text), [text])
 
   return (
@@ -488,7 +606,10 @@ function JsonCodeLine({ lineNumber, text }: Readonly<{ lineNumber: number; text:
       <div className="min-w-0 px-3 font-mono">
         <span className="inline-block min-w-full whitespace-pre">
           {tokens.map((token, idx) => (
-            <span key={`${lineNumber}:${idx}:${token.kind}`} className={jsonTokenClassName(token.kind)}>
+            <span
+              key={`${lineNumber}:${idx}:${token.kind}`}
+              className={jsonTokenClassName(token.kind)}
+            >
               {token.text}
             </span>
           ))}
@@ -505,7 +626,11 @@ function JsonCodeViewer({ code }: Readonly<{ code: string }>) {
     <div className="h-full min-h-0 overflow-auto bg-[linear-gradient(180deg,rgba(248,250,252,0.96)_0%,rgba(255,255,255,1)_40%)]">
       <div className="min-w-max">
         {lines.map((line, index) => (
-          <JsonCodeLine key={`json-line:${index + 1}`} lineNumber={index + 1} text={line} />
+          <JsonCodeLine
+            key={`json-line:${index + 1}`}
+            lineNumber={index + 1}
+            text={line}
+          />
         ))}
       </div>
     </div>
@@ -521,20 +646,27 @@ export function RetrievalAblationsPage() {
   const [runs, setRuns] = useState<RegressionRun[]>([])
   const [selectedBaseRunId, setSelectedBaseRunId] = useState('')
   const [selectedTargetRunId, setSelectedTargetRunId] = useState('')
-  const [leaderboardAssignRole, setLeaderboardAssignRole] = useState<'base' | 'target'>('target')
+  const [leaderboardAssignRole, setLeaderboardAssignRole] = useState<
+    'base' | 'target'
+  >('target')
   const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false)
   const [leaderboardCollapsed, setLeaderboardCollapsed] = useState(false)
 
-  const [leaderboardMetricKey, setLeaderboardMetricKey] = useState<string>('retrieval_mrr')
+  const [leaderboardMetricKey, setLeaderboardMetricKey] =
+    useState<string>('retrieval_mrr')
   const [leaderboardLoading, setLeaderboardLoading] = useState(false)
-  const [leaderboard, setLeaderboard] = useState<RegressionRunLeaderboard | null>(null)
+  const [leaderboard, setLeaderboard] =
+    useState<RegressionRunLeaderboard | null>(null)
 
   const [diffLoading, setDiffLoading] = useState(false)
   const [diff, setDiff] = useState<RagasRegressionRunDiffResponse | null>(null)
 
   // Run config (ablation knobs)
   const [retrievalOnly, setRetrievalOnly] = useState(true)
-  const [metricKeys, setMetricKeys] = useState<string[]>(['faithfulness', 'response_relevancy'])
+  const [metricKeys, setMetricKeys] = useState<string[]>([
+    'faithfulness',
+    'response_relevancy',
+  ])
   const [maxCases, setMaxCases] = useState(50)
   const [skipEmptyContexts, setSkipEmptyContexts] = useState(true)
 
@@ -550,7 +682,10 @@ export function RetrievalAblationsPage() {
   const [rerankerProvider, setRerankerProvider] = useState('llm')
   const [rerankerTopN, setRerankerTopN] = useState(20)
 
-  const diffJson = useMemo(() => prettyJson(diff ?? { hint: '选择 base/target runs 并生成 diff' }), [diff])
+  const diffJson = useMemo(
+    () => prettyJson(diff ?? { hint: '选择 base/target runs 并生成 diff' }),
+    [diff]
+  )
   const diffScore = diff?.diff_score ?? null
 
   const diffScoreFmt = useMemo(() => {
@@ -561,7 +696,9 @@ export function RetrievalAblationsPage() {
       base: b == null ? '-' : b.toFixed(4),
       target: a == null ? '-' : a.toFixed(4),
       delta: d == null ? '-' : d.toFixed(4),
-      usedKeys: Array.isArray(diffScore?.used_metric_keys) ? diffScore.used_metric_keys.map(String) : [],
+      usedKeys: Array.isArray(diffScore?.used_metric_keys)
+        ? diffScore.used_metric_keys.map(String)
+        : [],
     }
   }, [diffScore])
 
@@ -572,9 +709,15 @@ export function RetrievalAblationsPage() {
   }, [runs, datasetId])
 
   useEffect(() => {
-    const pair = pickRunPair(runsByDataset || [], selectedBaseRunId, selectedTargetRunId)
-    if (pair.baseRunId !== _stableId(selectedBaseRunId)) setSelectedBaseRunId(pair.baseRunId)
-    if (pair.targetRunId !== _stableId(selectedTargetRunId)) setSelectedTargetRunId(pair.targetRunId)
+    const pair = pickRunPair(
+      runsByDataset || [],
+      selectedBaseRunId,
+      selectedTargetRunId
+    )
+    if (pair.baseRunId !== _stableId(selectedBaseRunId))
+      setSelectedBaseRunId(pair.baseRunId)
+    if (pair.targetRunId !== _stableId(selectedTargetRunId))
+      setSelectedTargetRunId(pair.targetRunId)
   }, [runsByDataset, selectedBaseRunId, selectedTargetRunId])
 
   const loadDatasets = useCallback(async (): Promise<void> => {
@@ -595,8 +738,11 @@ export function RetrievalAblationsPage() {
     setRunsLoading(true)
     try {
       const ds = datasetId.trim()
-      const res = await evaluationApi.listRegressionRuns({ limit: 80, dataset_id: ds || undefined })
-      const items = Array.isArray(res.items) ? (res.items) : []
+      const res = await evaluationApi.listRegressionRuns({
+        limit: 80,
+        dataset_id: ds || undefined,
+      })
+      const items = Array.isArray(res.items) ? res.items : []
       setRuns(items)
     } catch (err) {
       toast.error(formatApiError(err, '拉取 runs 失败'))
@@ -627,7 +773,9 @@ export function RetrievalAblationsPage() {
     }
   }
 
-  function buildRegressionRunPayload(variant: Partial<RegressionRunCreate> = {}): RegressionRunCreate | null {
+  function buildRegressionRunPayload(
+    variant: Partial<RegressionRunCreate> = {}
+  ): RegressionRunCreate | null {
     const ds = datasetId.trim()
     if (!ds) {
       return null
@@ -673,7 +821,10 @@ export function RetrievalAblationsPage() {
     }
   }
 
-  async function runGridBatch(grid: Record<string, RegressionAblationGridValue[]>, maxCombinations: number): Promise<void> {
+  async function runGridBatch(
+    grid: Record<string, RegressionAblationGridValue[]>,
+    maxCombinations: number
+  ): Promise<void> {
     const payload = buildRegressionRunPayload()
     if (!payload) {
       toast.error('请选择 dataset')
@@ -738,8 +889,13 @@ export function RetrievalAblationsPage() {
     }
 
     try {
-      const blob = await evaluationApi.exportRegressionRunDiffHtml(targetId, { base_run_id: baseId, redact: true })
-      const name = sanitizeFilename(`regression-diff_${baseId.slice(0, 8)}_vs_${targetId.slice(0, 8)}.html`)
+      const blob = await evaluationApi.exportRegressionRunDiffHtml(targetId, {
+        base_run_id: baseId,
+        redact: true,
+      })
+      const name = sanitizeFilename(
+        `regression-diff_${baseId.slice(0, 8)}_vs_${targetId.slice(0, 8)}.html`
+      )
       downloadBlob(blob, name)
     } catch (err) {
       toast.error(formatApiError(err, '导出 HTML 失败'))
@@ -759,7 +915,9 @@ export function RetrievalAblationsPage() {
         include_contexts: false,
         download: true,
       })
-      const name = sanitizeFilename(`regression-run_${label}_${id.slice(0, 8)}.json`)
+      const name = sanitizeFilename(
+        `regression-run_${label}_${id.slice(0, 8)}.json`
+      )
       downloadBlob(blob, name)
     } catch (err) {
       toast.error(formatApiError(err, '导出 run bundle 失败'))
@@ -775,22 +933,34 @@ export function RetrievalAblationsPage() {
   }, [refreshRuns])
 
   const leaderboardItems = leaderboard?.items
-  const leaderboardRows: RegressionLeaderboardRow[] = Array.isArray(leaderboardItems) ? leaderboardItems : []
+  const leaderboardRows: RegressionLeaderboardRow[] = Array.isArray(
+    leaderboardItems
+  )
+    ? leaderboardItems
+    : []
   const selectedDataset = useMemo(
     () => datasets.find((dataset) => dataset.id === datasetId) || null,
     [datasetId, datasets]
   )
   const selectedBaseRun = useMemo(
-    () => runsByDataset.find((run) => _stableId(run.id) === _stableId(selectedBaseRunId)) || null,
+    () =>
+      runsByDataset.find(
+        (run) => _stableId(run.id) === _stableId(selectedBaseRunId)
+      ) || null,
     [runsByDataset, selectedBaseRunId]
   )
   const selectedTargetRun = useMemo(
-    () => runsByDataset.find((run) => _stableId(run.id) === _stableId(selectedTargetRunId)) || null,
+    () =>
+      runsByDataset.find(
+        (run) => _stableId(run.id) === _stableId(selectedTargetRunId)
+      ) || null,
     [runsByDataset, selectedTargetRunId]
   )
   const runsSelectDisabled = runsLoading || runsByDataset.length === 0
   const canGenerateDiff = Boolean(
-    _stableId(selectedBaseRunId) && _stableId(selectedTargetRunId) && _stableId(selectedBaseRunId) !== _stableId(selectedTargetRunId)
+    _stableId(selectedBaseRunId) &&
+    _stableId(selectedTargetRunId) &&
+    _stableId(selectedBaseRunId) !== _stableId(selectedTargetRunId)
   )
   const runsSelectionHint = useMemo(() => {
     if (!datasetId.trim()) return '先选择数据集，再加载可对比的运行记录。'
@@ -808,7 +978,9 @@ export function RetrievalAblationsPage() {
     []
   )
   const completedRunsCount = useMemo(
-    () => runsByDataset.filter((run) => String(run.status || '') === 'completed').length,
+    () =>
+      runsByDataset.filter((run) => String(run.status || '') === 'completed')
+        .length,
     [runsByDataset]
   )
   const diffDelta = toNumber(diffScore?.delta)
@@ -819,7 +991,9 @@ export function RetrievalAblationsPage() {
   const paramDiffRows = useMemo(() => {
     const base = toRecord(diff?.base_params)
     const target = toRecord(diff?.target_params)
-    const keys = Array.from(new Set([...Object.keys(base), ...Object.keys(target)])).sort((a, b) => a.localeCompare(b))
+    const keys = Array.from(
+      new Set([...Object.keys(base), ...Object.keys(target)])
+    ).sort((a, b) => a.localeCompare(b))
     return keys.map((key) => {
       const before = compactValue(base[key])
       const after = compactValue(target[key])
@@ -828,16 +1002,22 @@ export function RetrievalAblationsPage() {
   }, [diff])
   const workspaceGridClassName = cn(
     'grid h-full min-h-[760px] gap-4',
-    !leftSidebarCollapsed && !leaderboardCollapsed && 'grid-cols-[390px_420px_minmax(0,1fr)]',
-    leftSidebarCollapsed && !leaderboardCollapsed && 'grid-cols-[420px_minmax(0,1fr)]',
-    !leftSidebarCollapsed && leaderboardCollapsed && 'grid-cols-[390px_minmax(0,1fr)]',
+    !leftSidebarCollapsed &&
+      !leaderboardCollapsed &&
+      'grid-cols-[390px_420px_minmax(0,1fr)]',
+    leftSidebarCollapsed &&
+      !leaderboardCollapsed &&
+      'grid-cols-[420px_minmax(0,1fr)]',
+    !leftSidebarCollapsed &&
+      leaderboardCollapsed &&
+      'grid-cols-[390px_minmax(0,1fr)]',
     leftSidebarCollapsed && leaderboardCollapsed && 'grid-cols-[minmax(0,1fr)]'
   )
 
   return (
     <AppFrame showBackground={false} className="bg-slate-50">
       <div className="flex h-[111.111%] w-[111.111%] origin-top-left scale-[0.9] flex-col bg-slate-50">
-        <header className="shrink-0 border-b border-slate-200/80 bg-white/95">
+        <header className="shrink-0 border-b border-slate-200/80 bg-card/95">
           <div className="px-6 py-3.5">
             <div className="flex items-center justify-between gap-4">
               <div className="min-w-0">
@@ -846,9 +1026,12 @@ export function RetrievalAblationsPage() {
                     <BarChart3 className="h-[18px] w-[18px] text-sky-600" />
                   </div>
                   <div className="min-w-0">
-                    <h1 className="text-[22px] font-semibold tracking-[-0.01em] text-slate-950">检索消融实验</h1>
+                    <h1 className="text-[22px] font-semibold tracking-[-0.01em] text-slate-950">
+                      检索消融实验
+                    </h1>
                     <p className="mt-0.5 text-[13px] leading-6 text-muted-foreground">
-                      围绕同一数据集调召回参数、查看排行榜，并对 baseline 与 candidate 做结构化 diff。
+                      围绕同一数据集调召回参数、查看排行榜，并对 baseline 与
+                      candidate 做结构化 diff。
                     </p>
                   </div>
                 </div>
@@ -859,7 +1042,7 @@ export function RetrievalAblationsPage() {
                   variant="outline"
                   size="icon"
                   aria-label="刷新消融实验数据"
-                  className="h-9 w-9 rounded-xl border-slate-200 bg-white text-blue-700 hover:bg-blue-50"
+                  className="h-9 w-9 rounded-xl border-slate-200 bg-card text-blue-700 hover:bg-blue-50"
                   disabled={datasetsLoading || runsLoading}
                   onClick={() => {
                     detachPromise(loadDatasets())
@@ -872,7 +1055,7 @@ export function RetrievalAblationsPage() {
                   variant="outline"
                   size="icon"
                   aria-label="查看消融实验通知"
-                  className="h-9 w-9 rounded-xl border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                  className="h-9 w-9 rounded-xl border-slate-200 bg-card text-slate-700 hover:bg-slate-50"
                 >
                   <Bell className="h-4 w-4" />
                 </Button>
@@ -883,598 +1066,983 @@ export function RetrievalAblationsPage() {
 
         <div className="min-h-0 flex-1 overflow-auto p-4">
           <div className={workspaceGridClassName}>
-          {!leftSidebarCollapsed ? (
-          <aside className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
-            <div className="shrink-0 border-b border-slate-200 bg-white px-4 py-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-[15px] font-semibold text-slate-950">参数配置</div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-[12px] text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-                  onClick={() => setLeftSidebarCollapsed(true)}
-                >
-                  收起
-                </Button>
-              </div>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain no-scrollbar">
-              <AblationSection
-                title="实验基线"
-                description="固定数据集与主指标，确认本轮 ablation 的起点。"
-                className="bg-card"
-              >
-                <div className="space-y-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="ablation-dataset" className="text-[12px] text-slate-500">
-                      当前数据集
-                    </Label>
-                    <Select value={datasetId} onValueChange={setDatasetId} disabled={datasetsLoading || !datasets.length}>
-                      <SelectTrigger id="ablation-dataset" className="h-10 rounded-xl border-slate-200 bg-white text-[13px] shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-                        <SelectValue placeholder={datasetsLoading ? '加载中...' : '选择数据集'} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(datasets || []).map((dataset) => (
-                          <SelectItem key={dataset.id} value={dataset.id}>
-                            {dataset.name || dataset.id}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <AblationDatasetCard dataset={selectedDataset} metricKey={leaderboardMetricKey} />
-                </div>
-              </AblationSection>
-
-              <AblationSection
-                title="评测模式"
-                description="决定这轮只看检索，还是同时带上 RAGAS 指标。"
-                className="bg-card"
-              >
-                <div className="space-y-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium text-foreground">仅检索评测</div>
-                      <div className="mt-1 text-[11px] leading-5 text-muted-foreground">
-                        关闭 RAGAS 指标，只保留检索相关 recall / mrr / ndcg 等指标。
-                      </div>
+            {!leftSidebarCollapsed ? (
+              <aside className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-card shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
+                <div className="shrink-0 border-b border-slate-200 bg-card px-4 py-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-[15px] font-semibold text-slate-950">
+                      参数配置
                     </div>
-                    <Switch checked={retrievalOnly} onCheckedChange={setRetrievalOnly} />
-                  </div>
-
-                  <div className="grid gap-2.5">
-                    {RAGAS_METRIC_OPTIONS.map((option) => {
-                      const checked = metricKeys.includes(option.key)
-                      return (
-                        <label
-                          key={option.key}
-                          className={cn(
-                            'flex items-start gap-3 py-1.5',
-                            retrievalOnly && 'opacity-60'
-                          )}
-                        >
-                          <Checkbox
-                            checked={checked}
-                            disabled={retrievalOnly}
-                            onCheckedChange={(value) => {
-                              const next = new Set(metricKeys)
-                              if (value === true) next.add(option.key)
-                              else next.delete(option.key)
-                              setMetricKeys(Array.from(next))
-                            }}
-                          />
-                          <span className="space-y-1">
-                            <span className="block text-sm font-medium text-foreground">{option.label}</span>
-                            <span className="block text-[11px] leading-5 text-muted-foreground">{option.hint}</span>
-                          </span>
-                        </label>
-                      )
-                    })}
-                  </div>
-                </div>
-              </AblationSection>
-
-              <AblationSection
-                title="检索参数"
-                description="召回窗口、混合检索与权重参数。"
-                className="bg-card"
-              >
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">样本上限</Label>
-                    <Input type="number" value={maxCases} min={1} max={500} onChange={(e) => setMaxCases(Number(e.target.value || 0))} className="h-9 rounded-lg border-border/70 bg-card" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">召回 Top K</Label>
-                    <Input type="number" value={topK} min={1} max={50} onChange={(e) => setTopK(Number(e.target.value || 0))} className="h-9 rounded-lg border-border/70 bg-card" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">检索模式</Label>
-                    <Select value={retrievalMode} onValueChange={setRetrievalMode}>
-                      <SelectTrigger className="h-9 rounded-lg border-border/70 bg-card">
-                        <SelectValue placeholder="选择模式" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {RETRIEVAL_MODE_OPTIONS.map((option) => (
-                          <SelectItem key={option.key} value={option.key}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">分数阈值</Label>
-                    <Input type="number" value={scoreThreshold} min={0} max={1} step={0.01} onChange={(e) => setScoreThreshold(Number(e.target.value || 0))} className="h-9 rounded-lg border-border/70 bg-card" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">混合权重 Alpha</Label>
-                    <Input type="number" value={alpha} min={0} max={1} step={0.05} onChange={(e) => setAlpha(Number(e.target.value || 0))} className="h-9 rounded-lg border-border/70 bg-card" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">MMR Lambda</Label>
-                    <Input type="number" value={mmrLambda} min={0} max={1} step={0.05} onChange={(e) => setMmrLambda(Number(e.target.value || 0))} className="h-9 rounded-lg border-border/70 bg-card" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">向量权重</Label>
-                    <Input type="number" value={vectorWeight} min={0} max={1} step={0.05} onChange={(e) => setVectorWeight(Number(e.target.value || 0))} className="h-9 rounded-lg border-border/70 bg-card" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">关键词权重</Label>
-                    <Input type="number" value={keywordWeight} min={0} max={1} step={0.05} onChange={(e) => setKeywordWeight(Number(e.target.value || 0))} className="h-9 rounded-lg border-border/70 bg-card" />
-                  </div>
-                </div>
-              </AblationSection>
-
-              <AblationSection
-                title="重排与过滤"
-                description="布尔开关与 reranker 参数。"
-                className="bg-card"
-              >
-                <div className="space-y-3">
-                  <label className="flex items-start gap-3 py-1.5">
-                    <Checkbox checked={skipEmptyContexts} onCheckedChange={(value) => setSkipEmptyContexts(value === true)} />
-                    <span className="space-y-1">
-                      <span className="block text-sm font-medium text-foreground">跳过空上下文样本</span>
-                      <span className="block text-[11px] leading-5 text-muted-foreground">过滤掉没有引用上下文的样本，减少空样本对分数的扰动。</span>
-                    </span>
-                  </label>
-
-                  <label className="flex items-start gap-3 py-1.5">
-                    <Checkbox checked={enableWeightRerank} onCheckedChange={(value) => setEnableWeightRerank(value === true)} />
-                    <span className="space-y-1">
-                      <span className="block text-sm font-medium text-foreground">启用权重重排</span>
-                      <span className="block text-[11px] leading-5 text-muted-foreground">对 hybrid 结果做二次权重整合，观察 vector / keyword 配比的影响。</span>
-                    </span>
-                  </label>
-
-                  <div className="border-t border-border/70 pt-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-sm font-medium text-foreground">重排器</div>
-                        <div className="mt-1 text-[11px] leading-5 text-muted-foreground">
-                          需要时再开启重排器，把服务商与重排深度作为单独实验旋钮。
-                        </div>
-                      </div>
-                      <Switch checked={enableReranker} onCheckedChange={setEnableReranker} />
-                    </div>
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                      <div className="space-y-1.5">
-                        <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">服务提供方</Label>
-                        <Input value={rerankerProvider} onChange={(e) => setRerankerProvider(e.target.value)} className="h-9 rounded-lg border-border/70 bg-card" />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">重排 Top N</Label>
-                        <Input type="number" value={rerankerTopN} min={1} max={200} onChange={(e) => setRerankerTopN(Number(e.target.value || 0))} className="h-9 rounded-lg border-border/70 bg-card" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </AblationSection>
-            </div>
-
-            <div className="shrink-0 border-t border-sky-100/90 bg-primary/[0.06] px-5 py-3.5 shadow-none">
-              <div className="text-[11px] tracking-[0.08em] text-muted-foreground">运行入口</div>
-              <Button className="mt-2 h-10 w-full gap-2 rounded-lg bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--info)))] text-primary-foreground shadow-[0_8px_24px_hsl(var(--primary)/0.24)] hover:opacity-90" onClick={() => detachPromise(runAblation())}>
-                <PlayCircle className="h-4 w-4" />
-                运行消融实验
-              </Button>
-            </div>
-          </aside>
-          ) : null}
-
-          <div className="contents">
-            {leftSidebarCollapsed ? (
-              <button
-                type="button"
-                className="focus-ring absolute left-0 top-3 z-20 -translate-x-1/2 rounded-full border border-border/70 bg-card p-1 text-muted-foreground shadow-sm transition-colors hover:bg-slate-50 hover:text-foreground"
-                onClick={() => setLeftSidebarCollapsed(false)}
-                aria-label="展开参数配置栏"
-                title="展开参数配置栏"
-              >
-                <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
-              </button>
-            ) : null}
-            {!leaderboardCollapsed ? (
-            <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
-              <div className="flex h-full min-h-0 flex-col">
-                <div className="flex min-h-[58px] items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3">
-                  <div className="min-w-0">
-                    <div className="truncate text-[15px] font-semibold text-slate-950">Leaderboard / 实验排行</div>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <Trophy className="h-4 w-4 text-primary" />
                     <Button
                       type="button"
                       variant="ghost"
                       size="sm"
-                      className="h-8 rounded-lg px-2.5 text-[12px] text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-                      onClick={() => setLeaderboardCollapsed(true)}
+                      className="h-8 rounded-lg border border-slate-200 bg-card px-2.5 text-[12px] text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                      onClick={() => setLeftSidebarCollapsed(true)}
                     >
                       收起
                     </Button>
                   </div>
                 </div>
-
-                <div className="border-b border-slate-200 bg-white px-4 py-3">
-                  <div className="space-y-2">
-                    <div className="flex items-end gap-2">
-                      <div className="min-w-0 flex-1 space-y-1">
-                        <Label className="text-[12px] text-slate-500">排行榜主指标</Label>
-                        <Select value={leaderboardMetricKey} onValueChange={setLeaderboardMetricKey}>
-                          <SelectTrigger className="h-9 rounded-xl border-slate-200 bg-white text-[13px]">
-                            <SelectValue placeholder="选择指标" />
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain no-scrollbar">
+                  <AblationSection
+                    title="实验基线"
+                    description="固定数据集与主指标，确认本轮 ablation 的起点。"
+                    className="bg-card"
+                  >
+                    <div className="space-y-3">
+                      <div className="space-y-1.5">
+                        <Label
+                          htmlFor="ablation-dataset"
+                          className="text-[12px] text-slate-500"
+                        >
+                          当前数据集
+                        </Label>
+                        <Select
+                          value={datasetId}
+                          onValueChange={setDatasetId}
+                          disabled={datasetsLoading || !datasets.length}
+                        >
+                          <SelectTrigger
+                            id="ablation-dataset"
+                            className="h-10 rounded-xl border-slate-200 bg-card text-[13px] shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+                          >
+                            <SelectValue
+                              placeholder={
+                                datasetsLoading ? '加载中...' : '选择数据集'
+                              }
+                            />
                           </SelectTrigger>
                           <SelectContent>
-                            {LEADERBOARD_METRIC_OPTIONS.map((metric) => (
-                              <SelectItem key={metric.key} value={metric.key}>
-                                {metric.label}
+                            {(datasets || []).map((dataset) => (
+                              <SelectItem key={dataset.id} value={dataset.id}>
+                                {dataset.name || dataset.id}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                       </div>
 
-                      <Button
-                        variant="outline"
-                        className="h-9 gap-1.5 rounded-xl border-slate-200 bg-white px-3 text-[13px] text-slate-900 hover:bg-slate-50"
-                        disabled={leaderboardLoading}
-                        onClick={() => detachPromise(refreshLeaderboard())}
-                      >
-                        <RefreshCcw className="h-3.5 w-3.5" />
-                        刷新
-                      </Button>
+                      <AblationDatasetCard
+                        dataset={selectedDataset}
+                        metricKey={leaderboardMetricKey}
+                      />
                     </div>
+                  </AblationSection>
 
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[12px] text-slate-500">筛选运行</span>
-                      <div className="inline-flex rounded-lg border border-border/70 bg-card p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
-                        <button
-                          type="button"
-                          className={cn(
-                            'h-7 rounded-md px-2.5 text-[11px] font-medium',
-                            leaderboardAssignRole === 'base' ? 'bg-foreground text-background shadow-sm' : 'text-muted-foreground hover:bg-slate-100'
-                          )}
-                          onClick={() => setLeaderboardAssignRole('base')}
-                        >
-                          BASE
-                        </button>
-                        <button
-                          type="button"
-                          className={cn(
-                            'h-7 rounded-md px-2.5 text-[11px] font-medium',
-                            leaderboardAssignRole === 'target' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-slate-100'
-                          )}
-                          onClick={() => setLeaderboardAssignRole('target')}
-                        >
-                          TARGET
-                        </button>
+                  <AblationSection
+                    title="评测模式"
+                    description="决定这轮只看检索，还是同时带上 RAGAS 指标。"
+                    className="bg-card"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium text-foreground">
+                            仅检索评测
+                          </div>
+                          <div className="mt-1 text-[11px] leading-5 text-muted-foreground">
+                            关闭 RAGAS 指标，只保留检索相关 recall / mrr / ndcg
+                            等指标。
+                          </div>
+                        </div>
+                        <Switch
+                          checked={retrievalOnly}
+                          onCheckedChange={setRetrievalOnly}
+                        />
+                      </div>
+
+                      <div className="grid gap-2.5">
+                        {RAGAS_METRIC_OPTIONS.map((option) => {
+                          const checked = metricKeys.includes(option.key)
+                          return (
+                            <label
+                              key={option.key}
+                              className={cn(
+                                'flex items-start gap-3 py-1.5',
+                                retrievalOnly && 'opacity-60'
+                              )}
+                            >
+                              <Checkbox
+                                checked={checked}
+                                disabled={retrievalOnly}
+                                onCheckedChange={(value) => {
+                                  const next = new Set(metricKeys)
+                                  if (value === true) next.add(option.key)
+                                  else next.delete(option.key)
+                                  setMetricKeys(Array.from(next))
+                                }}
+                              />
+                              <span className="space-y-1">
+                                <span className="block text-sm font-medium text-foreground">
+                                  {option.label}
+                                </span>
+                                <span className="block text-[11px] leading-5 text-muted-foreground">
+                                  {option.hint}
+                                </span>
+                              </span>
+                            </label>
+                          )
+                        })}
                       </div>
                     </div>
-                  </div>
-                </div>
+                  </AblationSection>
 
-                <div className="min-h-0 flex-1 overflow-y-auto no-scrollbar">
-                  {leaderboardRows.length ? (
-                    leaderboardRows.map((row) => {
-                      const runId = String(row.run_id || '')
-                      const metricValue = toNumber(row.metric_value)
-                      const badge = runStatusMeta(row.status)
-                      const isBase = _stableId(runId) === _stableId(selectedBaseRunId)
-                      const isTarget = _stableId(runId) === _stableId(selectedTargetRunId)
-                      return (
-                        <button
-                          key={runId}
-                          type="button"
-                          className={cn(
-                            'w-full border-b border-border/60 bg-card px-5 py-2.5 text-left transition-colors hover:bg-slate-50/70',
-                            isBase || isTarget ? 'border-l-2 border-l-sky-500 bg-sky-50/75' : ''
-                          )}
-                          onClick={() => {
-                            if (leaderboardAssignRole === 'base') setSelectedBaseRunId(runId)
-                            else setSelectedTargetRunId(runId)
-                          }}
+                  <AblationSection
+                    title="检索参数"
+                    description="召回窗口、混合检索与权重参数。"
+                    className="bg-card"
+                  >
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">
+                          样本上限
+                        </Label>
+                        <Input
+                          type="number"
+                          value={maxCases}
+                          min={1}
+                          max={500}
+                          onChange={(e) =>
+                            setMaxCases(Number(e.target.value || 0))
+                          }
+                          className="h-9 rounded-lg border-border/70 bg-card"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">
+                          召回 Top K
+                        </Label>
+                        <Input
+                          type="number"
+                          value={topK}
+                          min={1}
+                          max={50}
+                          onChange={(e) => setTopK(Number(e.target.value || 0))}
+                          className="h-9 rounded-lg border-border/70 bg-card"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">
+                          检索模式
+                        </Label>
+                        <Select
+                          value={retrievalMode}
+                          onValueChange={setRetrievalMode}
                         >
+                          <SelectTrigger className="h-9 rounded-lg border-border/70 bg-card">
+                            <SelectValue placeholder="选择模式" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {RETRIEVAL_MODE_OPTIONS.map((option) => (
+                              <SelectItem key={option.key} value={option.key}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">
+                          分数阈值
+                        </Label>
+                        <Input
+                          type="number"
+                          value={scoreThreshold}
+                          min={0}
+                          max={1}
+                          step={0.01}
+                          onChange={(e) =>
+                            setScoreThreshold(Number(e.target.value || 0))
+                          }
+                          className="h-9 rounded-lg border-border/70 bg-card"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">
+                          混合权重 Alpha
+                        </Label>
+                        <Input
+                          type="number"
+                          value={alpha}
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          onChange={(e) =>
+                            setAlpha(Number(e.target.value || 0))
+                          }
+                          className="h-9 rounded-lg border-border/70 bg-card"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">
+                          MMR Lambda
+                        </Label>
+                        <Input
+                          type="number"
+                          value={mmrLambda}
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          onChange={(e) =>
+                            setMmrLambda(Number(e.target.value || 0))
+                          }
+                          className="h-9 rounded-lg border-border/70 bg-card"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">
+                          向量权重
+                        </Label>
+                        <Input
+                          type="number"
+                          value={vectorWeight}
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          onChange={(e) =>
+                            setVectorWeight(Number(e.target.value || 0))
+                          }
+                          className="h-9 rounded-lg border-border/70 bg-card"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">
+                          关键词权重
+                        </Label>
+                        <Input
+                          type="number"
+                          value={keywordWeight}
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          onChange={(e) =>
+                            setKeywordWeight(Number(e.target.value || 0))
+                          }
+                          className="h-9 rounded-lg border-border/70 bg-card"
+                        />
+                      </div>
+                    </div>
+                  </AblationSection>
+
+                  <AblationSection
+                    title="重排与过滤"
+                    description="布尔开关与 reranker 参数。"
+                    className="bg-card"
+                  >
+                    <div className="space-y-3">
+                      <label className="flex items-start gap-3 py-1.5">
+                        <Checkbox
+                          checked={skipEmptyContexts}
+                          onCheckedChange={(value) =>
+                            setSkipEmptyContexts(value === true)
+                          }
+                        />
+                        <span className="space-y-1">
+                          <span className="block text-sm font-medium text-foreground">
+                            跳过空上下文样本
+                          </span>
+                          <span className="block text-[11px] leading-5 text-muted-foreground">
+                            过滤掉没有引用上下文的样本，减少空样本对分数的扰动。
+                          </span>
+                        </span>
+                      </label>
+
+                      <label className="flex items-start gap-3 py-1.5">
+                        <Checkbox
+                          checked={enableWeightRerank}
+                          onCheckedChange={(value) =>
+                            setEnableWeightRerank(value === true)
+                          }
+                        />
+                        <span className="space-y-1">
+                          <span className="block text-sm font-medium text-foreground">
+                            启用权重重排
+                          </span>
+                          <span className="block text-[11px] leading-5 text-muted-foreground">
+                            对 hybrid 结果做二次权重整合，观察 vector / keyword
+                            配比的影响。
+                          </span>
+                        </span>
+                      </label>
+
+                      <div className="border-t border-border/70 pt-3">
+                        <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <span className="font-mono text-[12px] text-foreground">{shortId(runId)}</span>
-                              <StatusBadge status={badge.status} label={badge.label} dense />
-                              {isBase ? <span className="rounded-full bg-foreground px-1.5 py-0.5 text-[9px] font-medium text-background">BASE</span> : null}
-                              {isTarget ? <span className="rounded-full bg-primary/12 px-1.5 py-0.5 text-[9px] font-medium text-primary">TARGET</span> : null}
+                            <div className="text-sm font-medium text-foreground">
+                              重排器
                             </div>
-                            <div className="mt-1.5 text-[13px] font-semibold tabular-nums text-foreground">
-                              {formatMetric(metricValue)}
-                            </div>
-                            <div className="mt-1 font-mono text-[11px] leading-4 text-muted-foreground">
-                              {String(row.retrieval_config_hash || 'no-config-hash')}
+                            <div className="mt-1 text-[11px] leading-5 text-muted-foreground">
+                              需要时再开启重排器，把服务商与重排深度作为单独实验旋钮。
                             </div>
                           </div>
-                        </button>
-                      )
-                    })
-                  ) : (
-                    <AblationLeaderboardEmptyState />
-                  )}
+                          <Switch
+                            checked={enableReranker}
+                            onCheckedChange={setEnableReranker}
+                          />
+                        </div>
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                          <div className="space-y-1.5">
+                            <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">
+                              服务提供方
+                            </Label>
+                            <Input
+                              value={rerankerProvider}
+                              onChange={(e) =>
+                                setRerankerProvider(e.target.value)
+                              }
+                              className="h-9 rounded-lg border-border/70 bg-card"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">
+                              重排 Top N
+                            </Label>
+                            <Input
+                              type="number"
+                              value={rerankerTopN}
+                              min={1}
+                              max={200}
+                              onChange={(e) =>
+                                setRerankerTopN(Number(e.target.value || 0))
+                              }
+                              className="h-9 rounded-lg border-border/70 bg-card"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </AblationSection>
                 </div>
-              </div>
-            </section>
+
+                <div className="shrink-0 border-t border-sky-100/90 bg-primary/[0.06] px-5 py-3.5 shadow-none">
+                  <div className="text-[11px] tracking-[0.08em] text-muted-foreground">
+                    运行入口
+                  </div>
+                  <Button
+                    className="mt-2 h-10 w-full gap-2 rounded-lg bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--info)))] text-primary-foreground shadow-[0_8px_24px_hsl(var(--primary)/0.24)] hover:opacity-90"
+                    onClick={() => detachPromise(runAblation())}
+                  >
+                    <PlayCircle className="h-4 w-4" />
+                    运行消融实验
+                  </Button>
+                </div>
+              </aside>
             ) : null}
 
-            <section className="relative min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
-              {leaderboardCollapsed ? (
+            <div className="contents">
+              {leftSidebarCollapsed ? (
                 <button
                   type="button"
-                  className={cn(
-                    'focus-ring absolute left-0 z-20 -translate-x-1/2 rounded-full border border-border/70 bg-card p-1 text-muted-foreground shadow-sm transition-colors hover:bg-slate-50 hover:text-foreground',
-                    leftSidebarCollapsed ? 'top-12' : 'top-3'
-                  )}
-                  onClick={() => setLeaderboardCollapsed(false)}
-                  aria-label="展开排行榜"
-                  title="展开排行榜"
+                  className="focus-ring absolute left-0 top-3 z-20 -translate-x-1/2 rounded-full border border-border/70 bg-card p-1 text-muted-foreground shadow-sm transition-colors hover:bg-slate-50 hover:text-foreground"
+                  onClick={() => setLeftSidebarCollapsed(false)}
+                  aria-label="展开参数配置栏"
+                  title="展开参数配置栏"
                 >
                   <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
                 </button>
               ) : null}
-              <div className="flex h-full min-h-0 flex-col">
-                <div className="flex min-h-[58px] items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3">
-                  <div className="flex min-w-0 items-center gap-1.5">
-                    <div className="truncate text-[15px] font-semibold text-slate-950">Diff Workspace / 基线 vs 候选</div>
-                    <AblationInfoTooltip label="查看 Diff Run 选择说明" side="bottom">
-                      {runsSelectionHint}
-                    </AblationInfoTooltip>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-[11px]">
-                    <span className="text-muted-foreground">Diff Delta</span>
-                    <span className={cn(
-                      'font-mono font-semibold',
-                      diffDelta !== null && diffDelta > 0 ? 'text-emerald-600' : diffDelta !== null && diffDelta < 0 ? 'text-rose-600' : 'text-foreground'
-                    )}>
-                      {diffDelta === null ? '-' : diffDelta.toFixed(4)}
-                    </span>
-                  </div>
-                </div>
+              {!leaderboardCollapsed ? (
+                <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-card shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
+                  <div className="flex h-full min-h-0 flex-col">
+                    <div className="flex min-h-[58px] items-center justify-between gap-3 border-b border-slate-200 bg-card px-4 py-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-[15px] font-semibold text-slate-950">
+                          Leaderboard / 实验排行
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <Trophy className="h-4 w-4 text-primary" />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 rounded-lg px-2.5 text-[12px] text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                          onClick={() => setLeaderboardCollapsed(true)}
+                        >
+                          收起
+                        </Button>
+                      </div>
+                    </div>
 
-                <div className="border-b border-slate-200 bg-white px-4 py-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <Label className="text-[12px] text-slate-500">选择基线 Run（Base）</Label>
-                      <Select value={selectedBaseRunId} onValueChange={setSelectedBaseRunId} disabled={runsSelectDisabled}>
-                        <SelectTrigger className="h-10 rounded-xl border-slate-200 bg-white text-[13px]">
-                          <SelectValue placeholder={runsLoading ? '加载中...' : '选择基线 run'} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {runsByDataset.map((run) => (
-                            <SelectItem key={run.id} value={run.id}>
-                              {runSelectText(run)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-[12px] text-slate-500">选择候选 Run（Target）</Label>
-                      <Select value={selectedTargetRunId} onValueChange={setSelectedTargetRunId} disabled={runsSelectDisabled}>
-                        <SelectTrigger className="h-10 rounded-xl border-slate-200 bg-white text-[13px]">
-                          <SelectValue placeholder={runsLoading ? '加载中...' : '选择候选 run'} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {runsByDataset.map((run) => (
-                            <SelectItem key={run.id} value={run.id}>
-                              {runSelectText(run)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
+                    <div className="border-b border-slate-200 bg-card px-4 py-3">
+                      <div className="space-y-2">
+                        <div className="flex items-end gap-2">
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <Label className="text-[12px] text-slate-500">
+                              排行榜主指标
+                            </Label>
+                            <Select
+                              value={leaderboardMetricKey}
+                              onValueChange={setLeaderboardMetricKey}
+                            >
+                              <SelectTrigger className="h-9 rounded-xl border-slate-200 bg-card text-[13px]">
+                                <SelectValue placeholder="选择指标" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {LEADERBOARD_METRIC_OPTIONS.map((metric) => (
+                                  <SelectItem
+                                    key={metric.key}
+                                    value={metric.key}
+                                  >
+                                    {metric.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
 
-                  <div className="mt-2.5 flex items-center justify-between">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <AblationInlineStat label="Base" value={shortId(selectedBaseRun?.id ? String(selectedBaseRun.id) : '')} tone="sky" />
-                      <AblationInlineStat label="Target" value={shortId(selectedTargetRun?.id ? String(selectedTargetRun.id) : '')} tone="neutral" />
-                      <AblationInlineStat label="Delta" value={diffDelta === null ? '-' : diffDelta.toFixed(4)} tone={diffDelta !== null && diffDelta > 0 ? 'emerald' : diffDelta !== null && diffDelta < 0 ? 'amber' : 'neutral'} />
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <Button className="h-9 gap-1.5 rounded-xl bg-slate-950 px-4 text-[13px] text-white shadow-[0_10px_24px_rgba(15,23,42,0.20)] hover:bg-slate-800" disabled={diffLoading || !canGenerateDiff} onClick={() => detachPromise(computeDiff())}>
-                        <GitCompare className="h-3.5 w-3.5" />
-                        生成 Diff
-                      </Button>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="outline" className="h-9 gap-1.5 rounded-xl border-slate-200 bg-white px-3 text-[13px] text-slate-900 hover:bg-slate-50">
-                            导出
-                            <MoreHorizontal className="h-3.5 w-3.5" />
+                          <Button
+                            variant="outline"
+                            className="h-9 gap-1.5 rounded-xl border-slate-200 bg-card px-3 text-[13px] text-slate-900 hover:bg-slate-50"
+                            disabled={leaderboardLoading}
+                            onClick={() => detachPromise(refreshLeaderboard())}
+                          >
+                            <RefreshCcw className="h-3.5 w-3.5" />
+                            刷新
                           </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-40">
-                          <DropdownMenuItem disabled={!selectedBaseRunId} onSelect={() => detachPromise(exportRunBundle(selectedBaseRunId, 'base'))}>
-                            导出 base
-                          </DropdownMenuItem>
-                          <DropdownMenuItem disabled={!selectedTargetRunId} onSelect={() => detachPromise(exportRunBundle(selectedTargetRunId, 'target'))}>
-                            导出 target
-                          </DropdownMenuItem>
-                          <DropdownMenuItem disabled={!diff} onSelect={() => downloadJson(diff, sanitizeFilename('regression-run-diff.json'))}>
-                            导出 JSON
-                          </DropdownMenuItem>
-                          <DropdownMenuItem disabled={!canGenerateDiff} onSelect={() => detachPromise(exportDiffHtml())}>
-                            导出 HTML
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[12px] text-slate-500">
+                            筛选运行
+                          </span>
+                          <div className="inline-flex rounded-lg border border-border/70 bg-card p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]">
+                            <button
+                              type="button"
+                              className={cn(
+                                'h-7 rounded-md px-2.5 text-[11px] font-medium',
+                                leaderboardAssignRole === 'base'
+                                  ? 'bg-foreground text-background shadow-sm'
+                                  : 'text-muted-foreground hover:bg-slate-100'
+                              )}
+                              onClick={() => setLeaderboardAssignRole('base')}
+                            >
+                              BASE
+                            </button>
+                            <button
+                              type="button"
+                              className={cn(
+                                'h-7 rounded-md px-2.5 text-[11px] font-medium',
+                                leaderboardAssignRole === 'target'
+                                  ? 'bg-primary text-primary-foreground shadow-sm'
+                                  : 'text-muted-foreground hover:bg-slate-100'
+                              )}
+                              onClick={() => setLeaderboardAssignRole('target')}
+                            >
+                              TARGET
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="min-h-0 flex-1 overflow-y-auto no-scrollbar">
+                      {leaderboardRows.length ? (
+                        leaderboardRows.map((row) => {
+                          const runId = String(row.run_id || '')
+                          const metricValue = toNumber(row.metric_value)
+                          const badge = runStatusMeta(row.status)
+                          const isBase =
+                            _stableId(runId) === _stableId(selectedBaseRunId)
+                          const isTarget =
+                            _stableId(runId) === _stableId(selectedTargetRunId)
+                          return (
+                            <button
+                              key={runId}
+                              type="button"
+                              className={cn(
+                                'w-full border-b border-border/60 bg-card px-5 py-2.5 text-left transition-colors hover:bg-slate-50/70',
+                                isBase || isTarget
+                                  ? 'border-l-2 border-l-sky-500 bg-sky-50/75'
+                                  : ''
+                              )}
+                              onClick={() => {
+                                if (leaderboardAssignRole === 'base')
+                                  setSelectedBaseRunId(runId)
+                                else setSelectedTargetRunId(runId)
+                              }}
+                            >
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className="font-mono text-[12px] text-foreground">
+                                    {shortId(runId)}
+                                  </span>
+                                  <StatusBadge
+                                    status={badge.status}
+                                    label={badge.label}
+                                    dense
+                                  />
+                                  {isBase ? (
+                                    <span className="rounded-full bg-foreground px-1.5 py-0.5 text-[9px] font-medium text-background">
+                                      BASE
+                                    </span>
+                                  ) : null}
+                                  {isTarget ? (
+                                    <span className="rounded-full bg-primary/12 px-1.5 py-0.5 text-[9px] font-medium text-primary">
+                                      TARGET
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <div className="mt-1.5 text-[13px] font-semibold tabular-nums text-foreground">
+                                  {formatMetric(metricValue)}
+                                </div>
+                                <div className="mt-1 font-mono text-[11px] leading-4 text-muted-foreground">
+                                  {String(
+                                    row.retrieval_config_hash ||
+                                      'no-config-hash'
+                                  )}
+                                </div>
+                              </div>
+                            </button>
+                          )
+                        })
+                      ) : (
+                        <AblationLeaderboardEmptyState />
+                      )}
                     </div>
                   </div>
-                </div>
+                </section>
+              ) : null}
 
-                <Tabs defaultValue="overview" className="flex min-h-0 flex-1 flex-col">
-                  <div className="border-b border-slate-200 px-4">
-                    <TabsList className="h-10 justify-start gap-5 rounded-none border-none bg-transparent p-0">
-                      <TabsTrigger value="overview" className="h-10 rounded-none border-b-2 border-transparent px-0 text-[13px] data-[state=active]:border-primary data-[state=active]:bg-transparent">
-                        概览
-                      </TabsTrigger>
-                      <TabsTrigger value="config" className="h-10 rounded-none border-b-2 border-transparent px-0 text-[13px] data-[state=active]:border-primary data-[state=active]:bg-transparent">
-                        配置差异
-                      </TabsTrigger>
-                      <TabsTrigger value="deep-dive" className="h-10 rounded-none border-b-2 border-transparent px-0 text-[13px] data-[state=active]:border-primary data-[state=active]:bg-transparent">
-                        深度分析
-                      </TabsTrigger>
-                      <TabsTrigger value="raw" className="h-10 rounded-none border-b-2 border-transparent px-0 text-[13px] data-[state=active]:border-primary data-[state=active]:bg-transparent">
-                        原始 JSON
-                      </TabsTrigger>
-                    </TabsList>
+              <section className="relative min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-card shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
+                {leaderboardCollapsed ? (
+                  <button
+                    type="button"
+                    className={cn(
+                      'focus-ring absolute left-0 z-20 -translate-x-1/2 rounded-full border border-border/70 bg-card p-1 text-muted-foreground shadow-sm transition-colors hover:bg-slate-50 hover:text-foreground',
+                      leftSidebarCollapsed ? 'top-12' : 'top-3'
+                    )}
+                    onClick={() => setLeaderboardCollapsed(false)}
+                    aria-label="展开排行榜"
+                    title="展开排行榜"
+                  >
+                    <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                ) : null}
+                <div className="flex h-full min-h-0 flex-col">
+                  <div className="flex min-h-[58px] items-center justify-between gap-3 border-b border-slate-200 bg-card px-4 py-3">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <div className="truncate text-[15px] font-semibold text-slate-950">
+                        Diff Workspace / 基线 vs 候选
+                      </div>
+                      <AblationInfoTooltip
+                        label="查看 Diff Run 选择说明"
+                        side="bottom"
+                      >
+                        {runsSelectionHint}
+                      </AblationInfoTooltip>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[11px]">
+                      <span className="text-muted-foreground">Diff Delta</span>
+                      <span
+                        className={cn(
+                          'font-mono font-semibold',
+                          diffDelta !== null && diffDelta > 0
+                            ? 'text-emerald-600'
+                            : diffDelta !== null && diffDelta < 0
+                              ? 'text-rose-600'
+                              : 'text-foreground'
+                        )}
+                      >
+                        {diffDelta === null ? '-' : diffDelta.toFixed(4)}
+                      </span>
+                    </div>
                   </div>
 
-                  <TabsContent value="overview" className="mt-0 min-h-0 flex-1 overflow-auto">
-                    {!diff ? (
-                      <AblationDiffEmptyState />
-                    ) : (
-                      <div className="px-5 py-3">
-                        <div className="overflow-hidden border border-border/70">
-                          <div className="grid border-b border-border/70 sm:grid-cols-3">
-                            <div className="bg-card px-3 py-2.5 sm:border-r sm:border-border/70">
-                              <div className="text-[11px] tracking-[0.08em] text-muted-foreground">Base Score</div>
-                              <div className="mt-1 font-mono text-[13px] font-semibold text-foreground">{diffScoreFmt.base}</div>
-                            </div>
-                            <div className="bg-card px-3 py-2.5 sm:border-r sm:border-border/70">
-                              <div className="text-[11px] tracking-[0.08em] text-muted-foreground">Target Score</div>
-                              <div className="mt-1 font-mono text-[13px] font-semibold text-foreground">{diffScoreFmt.target}</div>
-                            </div>
-                            <div className="bg-card px-3 py-2.5">
-                              <div className="text-[11px] tracking-[0.08em] text-muted-foreground">Delta</div>
-                              <div className={cn(
-                                'mt-1 font-mono text-[13px] font-semibold',
-                                diffDelta !== null && diffDelta > 0 ? 'text-emerald-600' : diffDelta !== null && diffDelta < 0 ? 'text-rose-600' : 'text-foreground'
-                              )}>
-                                {diffScoreFmt.delta}
+                  <div className="border-b border-slate-200 bg-card px-4 py-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-[12px] text-slate-500">
+                          选择基线 Run（Base）
+                        </Label>
+                        <Select
+                          value={selectedBaseRunId}
+                          onValueChange={setSelectedBaseRunId}
+                          disabled={runsSelectDisabled}
+                        >
+                          <SelectTrigger className="h-10 rounded-xl border-slate-200 bg-card text-[13px]">
+                            <SelectValue
+                              placeholder={
+                                runsLoading ? '加载中...' : '选择基线 run'
+                              }
+                            />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {runsByDataset.map((run) => (
+                              <SelectItem key={run.id} value={run.id}>
+                                {runSelectText(run)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[12px] text-slate-500">
+                          选择候选 Run（Target）
+                        </Label>
+                        <Select
+                          value={selectedTargetRunId}
+                          onValueChange={setSelectedTargetRunId}
+                          disabled={runsSelectDisabled}
+                        >
+                          <SelectTrigger className="h-10 rounded-xl border-slate-200 bg-card text-[13px]">
+                            <SelectValue
+                              placeholder={
+                                runsLoading ? '加载中...' : '选择候选 run'
+                              }
+                            />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {runsByDataset.map((run) => (
+                              <SelectItem key={run.id} value={run.id}>
+                                {runSelectText(run)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="mt-2.5 flex items-center justify-between">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <AblationInlineStat
+                          label="Base"
+                          value={shortId(
+                            selectedBaseRun?.id
+                              ? String(selectedBaseRun.id)
+                              : ''
+                          )}
+                          tone="sky"
+                        />
+                        <AblationInlineStat
+                          label="Target"
+                          value={shortId(
+                            selectedTargetRun?.id
+                              ? String(selectedTargetRun.id)
+                              : ''
+                          )}
+                          tone="neutral"
+                        />
+                        <AblationInlineStat
+                          label="Delta"
+                          value={
+                            diffDelta === null ? '-' : diffDelta.toFixed(4)
+                          }
+                          tone={
+                            diffDelta !== null && diffDelta > 0
+                              ? 'emerald'
+                              : diffDelta !== null && diffDelta < 0
+                                ? 'amber'
+                                : 'neutral'
+                          }
+                        />
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <Button
+                          className="h-9 gap-1.5 rounded-xl bg-slate-950 px-4 text-[13px] text-info-foreground shadow-[0_10px_24px_rgba(15,23,42,0.20)] hover:bg-slate-800"
+                          disabled={diffLoading || !canGenerateDiff}
+                          onClick={() => detachPromise(computeDiff())}
+                        >
+                          <GitCompare className="h-3.5 w-3.5" />
+                          生成 Diff
+                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className="h-9 gap-1.5 rounded-xl border-slate-200 bg-card px-3 text-[13px] text-slate-900 hover:bg-slate-50"
+                            >
+                              导出
+                              <MoreHorizontal className="h-3.5 w-3.5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-40">
+                            <DropdownMenuItem
+                              disabled={!selectedBaseRunId}
+                              onSelect={() =>
+                                detachPromise(
+                                  exportRunBundle(selectedBaseRunId, 'base')
+                                )
+                              }
+                            >
+                              导出 base
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={!selectedTargetRunId}
+                              onSelect={() =>
+                                detachPromise(
+                                  exportRunBundle(selectedTargetRunId, 'target')
+                                )
+                              }
+                            >
+                              导出 target
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={!diff}
+                              onSelect={() =>
+                                downloadJson(
+                                  diff,
+                                  sanitizeFilename('regression-run-diff.json')
+                                )
+                              }
+                            >
+                              导出 JSON
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={!canGenerateDiff}
+                              onSelect={() => detachPromise(exportDiffHtml())}
+                            >
+                              导出 HTML
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Tabs
+                    defaultValue="overview"
+                    className="flex min-h-0 flex-1 flex-col"
+                  >
+                    <div className="border-b border-slate-200 px-4">
+                      <TabsList className="h-10 justify-start gap-5 rounded-none border-none bg-transparent p-0">
+                        <TabsTrigger
+                          value="overview"
+                          className="h-10 rounded-none border-b-2 border-transparent px-0 text-[13px] data-[state=active]:border-primary data-[state=active]:bg-transparent"
+                        >
+                          概览
+                        </TabsTrigger>
+                        <TabsTrigger
+                          value="config"
+                          className="h-10 rounded-none border-b-2 border-transparent px-0 text-[13px] data-[state=active]:border-primary data-[state=active]:bg-transparent"
+                        >
+                          配置差异
+                        </TabsTrigger>
+                        <TabsTrigger
+                          value="deep-dive"
+                          className="h-10 rounded-none border-b-2 border-transparent px-0 text-[13px] data-[state=active]:border-primary data-[state=active]:bg-transparent"
+                        >
+                          深度分析
+                        </TabsTrigger>
+                        <TabsTrigger
+                          value="raw"
+                          className="h-10 rounded-none border-b-2 border-transparent px-0 text-[13px] data-[state=active]:border-primary data-[state=active]:bg-transparent"
+                        >
+                          原始 JSON
+                        </TabsTrigger>
+                      </TabsList>
+                    </div>
+
+                    <TabsContent
+                      value="overview"
+                      className="mt-0 min-h-0 flex-1 overflow-auto"
+                    >
+                      {!diff ? (
+                        <AblationDiffEmptyState />
+                      ) : (
+                        <div className="px-5 py-3">
+                          <div className="overflow-hidden border border-border/70">
+                            <div className="grid border-b border-border/70 sm:grid-cols-3">
+                              <div className="bg-card px-3 py-2.5 sm:border-r sm:border-border/70">
+                                <div className="text-[11px] tracking-[0.08em] text-muted-foreground">
+                                  Base Score
+                                </div>
+                                <div className="mt-1 font-mono text-[13px] font-semibold text-foreground">
+                                  {diffScoreFmt.base}
+                                </div>
+                              </div>
+                              <div className="bg-card px-3 py-2.5 sm:border-r sm:border-border/70">
+                                <div className="text-[11px] tracking-[0.08em] text-muted-foreground">
+                                  Target Score
+                                </div>
+                                <div className="mt-1 font-mono text-[13px] font-semibold text-foreground">
+                                  {diffScoreFmt.target}
+                                </div>
+                              </div>
+                              <div className="bg-card px-3 py-2.5">
+                                <div className="text-[11px] tracking-[0.08em] text-muted-foreground">
+                                  Delta
+                                </div>
+                                <div
+                                  className={cn(
+                                    'mt-1 font-mono text-[13px] font-semibold',
+                                    diffDelta !== null && diffDelta > 0
+                                      ? 'text-emerald-600'
+                                      : diffDelta !== null && diffDelta < 0
+                                        ? 'text-rose-600'
+                                        : 'text-foreground'
+                                  )}
+                                >
+                                  {diffScoreFmt.delta}
+                                </div>
                               </div>
                             </div>
-                          </div>
 
-                          <div className="grid grid-cols-[minmax(120px,1fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)] border-b border-border/70 bg-card px-3 py-2 text-[11px] tracking-[0.08em] text-muted-foreground">
-                            <div>Metric</div>
-                            <div className="text-right">Before</div>
-                            <div className="text-right">After</div>
-                            <div className="text-right">Delta</div>
-                          </div>
-                          {metricDiffRows.length ? (
-                            metricDiffRows.map((row) => {
-                              const delta = toNumber(row.delta)
-                              return (
-                                <div key={row.key} className="grid grid-cols-[minmax(120px,1fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)] border-b border-border/60 px-3 py-2 text-xs last:border-b-0">
-                                  <div className="truncate font-mono text-[11px] text-foreground">{row.key}</div>
-                                  <div className="text-right font-mono text-[11px] text-muted-foreground">{compactValue(row.before, 24)}</div>
-                                  <div className="text-right font-mono text-[11px] text-muted-foreground">{compactValue(row.after, 24)}</div>
-                                  <div className={cn(
-                                    'text-right font-mono text-[11px]',
-                                    delta !== null && delta > 0 ? 'text-emerald-600' : delta !== null && delta < 0 ? 'text-rose-600' : 'text-foreground'
-                                  )}>
-                                    {delta === null ? compactValue(row.delta, 24) : delta.toFixed(4)}
+                            <div className="grid grid-cols-[minmax(120px,1fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)] border-b border-border/70 bg-card px-3 py-2 text-[11px] tracking-[0.08em] text-muted-foreground">
+                              <div>Metric</div>
+                              <div className="text-right">Before</div>
+                              <div className="text-right">After</div>
+                              <div className="text-right">Delta</div>
+                            </div>
+                            {metricDiffRows.length ? (
+                              metricDiffRows.map((row) => {
+                                const delta = toNumber(row.delta)
+                                return (
+                                  <div
+                                    key={row.key}
+                                    className="grid grid-cols-[minmax(120px,1fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)] border-b border-border/60 px-3 py-2 text-xs last:border-b-0"
+                                  >
+                                    <div className="truncate font-mono text-[11px] text-foreground">
+                                      {row.key}
+                                    </div>
+                                    <div className="text-right font-mono text-[11px] text-muted-foreground">
+                                      {compactValue(row.before, 24)}
+                                    </div>
+                                    <div className="text-right font-mono text-[11px] text-muted-foreground">
+                                      {compactValue(row.after, 24)}
+                                    </div>
+                                    <div
+                                      className={cn(
+                                        'text-right font-mono text-[11px]',
+                                        delta !== null && delta > 0
+                                          ? 'text-emerald-600'
+                                          : delta !== null && delta < 0
+                                            ? 'text-rose-600'
+                                            : 'text-foreground'
+                                      )}
+                                    >
+                                      {delta === null
+                                        ? compactValue(row.delta, 24)
+                                        : delta.toFixed(4)}
+                                    </div>
                                   </div>
+                                )
+                              })
+                            ) : (
+                              <div className="px-3 py-4 text-xs text-muted-foreground">
+                                没有可展示的 metric_diffs。
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </TabsContent>
+
+                    <TabsContent
+                      value="config"
+                      className="mt-0 min-h-0 flex-1 overflow-auto"
+                    >
+                      {!diff ? (
+                        <div className="px-5 py-10 text-center text-[12px] text-muted-foreground">
+                          生成 diff 后可查看参数差异。
+                        </div>
+                      ) : (
+                        <div className="mx-5 my-3 overflow-hidden border border-border/70">
+                          <div className="grid grid-cols-[minmax(140px,180px)_minmax(0,1fr)_minmax(0,1fr)] border-b border-border/70 bg-card px-3 py-2 text-[11px] tracking-[0.08em] text-muted-foreground">
+                            <div>参数</div>
+                            <div>Base</div>
+                            <div>Target</div>
+                          </div>
+                          {paramDiffRows.length ? (
+                            paramDiffRows.map((row) => (
+                              <div
+                                key={row.key}
+                                className="grid grid-cols-[minmax(140px,180px)_minmax(0,1fr)_minmax(0,1fr)] border-b border-border/60 bg-card px-3 py-2 text-xs last:border-b-0"
+                              >
+                                <div
+                                  className={cn(
+                                    'truncate font-mono text-[11px]',
+                                    row.changed
+                                      ? 'font-semibold text-foreground'
+                                      : 'text-foreground'
+                                  )}
+                                >
+                                  {row.key}
                                 </div>
-                              )
-                            })
+                                <div className="truncate font-mono text-[11px] text-muted-foreground">
+                                  {row.before}
+                                </div>
+                                <div
+                                  className={cn(
+                                    'truncate font-mono text-[11px]',
+                                    row.changed
+                                      ? 'text-foreground'
+                                      : 'text-muted-foreground'
+                                  )}
+                                >
+                                  {row.after}
+                                </div>
+                              </div>
+                            ))
                           ) : (
-                            <div className="px-3 py-4 text-xs text-muted-foreground">没有可展示的 metric_diffs。</div>
+                            <div className="px-3 py-4 text-xs text-muted-foreground">
+                              没有可展示的参数差异。
+                            </div>
                           )}
                         </div>
-                      </div>
-                    )}
-                  </TabsContent>
+                      )}
+                    </TabsContent>
 
-                  <TabsContent value="config" className="mt-0 min-h-0 flex-1 overflow-auto">
-                    {!diff ? (
-                      <div className="px-5 py-10 text-center text-[12px] text-muted-foreground">生成 diff 后可查看参数差异。</div>
-                    ) : (
-                      <div className="mx-5 my-3 overflow-hidden border border-border/70">
-                        <div className="grid grid-cols-[minmax(140px,180px)_minmax(0,1fr)_minmax(0,1fr)] border-b border-border/70 bg-card px-3 py-2 text-[11px] tracking-[0.08em] text-muted-foreground">
-                          <div>参数</div>
-                          <div>Base</div>
-                          <div>Target</div>
+                    <TabsContent
+                      value="deep-dive"
+                      className="mt-0 min-h-0 flex-1 overflow-auto bg-slate-50/70"
+                    >
+                      <div className="space-y-4 px-5 py-4">
+                        <AblationGridPanel
+                          disabled={!datasetId.trim()}
+                          onRunGrid={runGridBatch}
+                          onBatchComplete={async () => {
+                            await refreshRuns()
+                            await refreshLeaderboard()
+                          }}
+                        />
+                        <AblationStatisticsPanel diff={diff} />
+                        <AblationComparisonMatrix
+                          runs={runsByDataset}
+                          baseRunId={selectedBaseRunId}
+                          metricKeys={deepDiveMetricKeys}
+                        />
+                        <div className="grid gap-4 xl:grid-cols-2">
+                          <AblationParetoPanel
+                            runs={runsByDataset}
+                            metricKey={leaderboardMetricKey}
+                          />
+                          <AblationParameterImpactPanel
+                            runs={runsByDataset}
+                            metricKey={leaderboardMetricKey}
+                          />
                         </div>
-                        {paramDiffRows.length ? (
-                          paramDiffRows.map((row) => (
-                            <div
-                              key={row.key}
-                              className="grid grid-cols-[minmax(140px,180px)_minmax(0,1fr)_minmax(0,1fr)] border-b border-border/60 bg-card px-3 py-2 text-xs last:border-b-0"
-                            >
-                              <div className={cn('truncate font-mono text-[11px]', row.changed ? 'font-semibold text-foreground' : 'text-foreground')}>{row.key}</div>
-                              <div className="truncate font-mono text-[11px] text-muted-foreground">{row.before}</div>
-                              <div className={cn('truncate font-mono text-[11px]', row.changed ? 'text-foreground' : 'text-muted-foreground')}>{row.after}</div>
-                            </div>
-                          ))
-                        ) : (
-                          <div className="px-3 py-4 text-xs text-muted-foreground">没有可展示的参数差异。</div>
-                        )}
+                        <AblationSliceDiffPanel diff={diff} />
+                        <AblationCaseDrilldown
+                          baseRunId={selectedBaseRunId}
+                          targetRunId={selectedTargetRunId}
+                          metricKeys={deepDiveMetricKeys}
+                          caseDiffs={diff?.case_diffs ?? []}
+                        />
                       </div>
-                    )}
-                  </TabsContent>
+                    </TabsContent>
 
-                  <TabsContent value="deep-dive" className="mt-0 min-h-0 flex-1 overflow-auto bg-slate-50/70">
-                    <div className="space-y-4 px-5 py-4">
-                      <AblationGridPanel
-                        disabled={!datasetId.trim()}
-                        onRunGrid={runGridBatch}
-                        onBatchComplete={async () => {
-                          await refreshRuns()
-                          await refreshLeaderboard()
-                        }}
-                      />
-                      <AblationStatisticsPanel diff={diff} />
-                      <AblationComparisonMatrix
-                        runs={runsByDataset}
-                        baseRunId={selectedBaseRunId}
-                        metricKeys={deepDiveMetricKeys}
-                      />
-                      <div className="grid gap-4 xl:grid-cols-2">
-                        <AblationParetoPanel runs={runsByDataset} metricKey={leaderboardMetricKey} />
-                        <AblationParameterImpactPanel runs={runsByDataset} metricKey={leaderboardMetricKey} />
+                    <TabsContent
+                      value="raw"
+                      className="mt-0 min-h-0 flex-1 overflow-hidden"
+                    >
+                      <div className="flex h-full min-h-0 flex-col">
+                        <div className="flex items-center justify-between border-b border-border/70 px-5 py-2.5">
+                          <div className="text-[11px] tracking-[0.12em] text-muted-foreground">
+                            Diff Payload
+                          </div>
+                          <Database className="h-4 w-4 text-primary" />
+                        </div>
+                        <JsonCodeViewer code={diffJson} />
                       </div>
-                      <AblationSliceDiffPanel diff={diff} />
-                      <AblationCaseDrilldown
-                        baseRunId={selectedBaseRunId}
-                        targetRunId={selectedTargetRunId}
-                        metricKeys={deepDiveMetricKeys}
-                        caseDiffs={diff?.case_diffs ?? []}
-                      />
-                    </div>
-                  </TabsContent>
-
-                  <TabsContent value="raw" className="mt-0 min-h-0 flex-1 overflow-hidden">
-                    <div className="flex h-full min-h-0 flex-col">
-                      <div className="flex items-center justify-between border-b border-border/70 px-5 py-2.5">
-                        <div className="text-[11px] tracking-[0.12em] text-muted-foreground">Diff Payload</div>
-                        <Database className="h-4 w-4 text-primary" />
-                      </div>
-                      <JsonCodeViewer code={diffJson} />
-                    </div>
-                  </TabsContent>
-                </Tabs>
-              </div>
-            </section>
+                    </TabsContent>
+                  </Tabs>
+                </div>
+              </section>
+            </div>
           </div>
         </div>
-      </div>
       </div>
     </AppFrame>
   )

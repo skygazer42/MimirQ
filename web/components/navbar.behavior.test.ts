@@ -15,7 +15,10 @@ const commandMenuStore = vi.hoisted(() => ({
   setOpen: vi.fn(),
 }))
 
-const messages: Record<string, string | ((values?: Record<string, unknown>) => string)> = {
+const messages: Record<
+  string,
+  string | ((values?: Record<string, unknown>) => string)
+> = {
   'actions.newConversation': 'actions.newConversation',
   'auth.goToLogin': 'auth.goToLogin',
   'auth.login': 'auth.login',
@@ -56,8 +59,10 @@ vi.mock('@/i18n/navigation', () => ({
     href,
     prefetch: _prefetch,
     ...props
-  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string; prefetch?: boolean }) =>
-    React.createElement('a', { href, ...props }, children),
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & {
+    href: string
+    prefetch?: boolean
+  }) => React.createElement('a', { href, ...props }, children),
   usePathname: () => routerMocks.pathname,
   useRouter: () => ({
     prefetch: routerMocks.prefetch,
@@ -89,28 +94,59 @@ vi.mock('@/hooks/use-backend-ready', () => ({
   }),
 }))
 
+vi.mock('@/hooks/use-tenant-access', () => ({
+  useTenantAccess: () => ({
+    data: {
+      account_id: 'test-account',
+      is_active: true,
+      is_current: true,
+      permissions: [
+        'settings.read',
+        'settings.write',
+        'observability.read',
+        'usage.read',
+        'audit.read',
+        'audit.manage',
+        'table_sql.read',
+        'lifecycle.manage',
+      ],
+      role: 'admin',
+      tenant_id: 'test-tenant',
+    },
+  }),
+}))
+
 vi.mock('@/store/command-menu', () => ({
-  useCommandMenuState: (selector: (state: typeof commandMenuStore) => unknown) => selector(commandMenuStore),
+  useCommandMenuState: (
+    selector: (state: typeof commandMenuStore) => unknown
+  ) => selector(commandMenuStore),
 }))
 
 vi.mock('@/components/mode-toggle', () => ({
-  ModeToggle: () => React.createElement('div', { 'data-testid': 'mode-toggle' }),
+  ModeToggle: () =>
+    React.createElement('div', { 'data-testid': 'mode-toggle' }),
 }))
 
 vi.mock('@/components/ui/status-badge', () => ({
-  StatusBadge: ({ label }: { label: string }) => React.createElement('div', null, label),
+  StatusBadge: ({ label }: { label: string }) =>
+    React.createElement('div', null, label),
 }))
 
 vi.mock('@/components/ui/popover', () => ({
-  Popover: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
-  PopoverContent: ({ children }: { children: React.ReactNode }) => React.createElement('div', null, children),
-  PopoverTrigger: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
+  Popover: ({ children }: { children: React.ReactNode }) =>
+    React.createElement(React.Fragment, null, children),
+  PopoverContent: ({ children }: { children: React.ReactNode }) =>
+    React.createElement('div', null, children),
+  PopoverTrigger: ({ children }: { children: React.ReactNode }) =>
+    React.createElement(React.Fragment, null, children),
 }))
 
 import { Navbar } from './navbar'
 
 function renderComponent(element: React.ReactElement) {
-  ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+  ;(
+    globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+  ).IS_REACT_ACT_ENVIRONMENT = true
 
   const container = document.createElement('div')
   document.body.appendChild(container)
@@ -161,17 +197,23 @@ describe('Navbar behavior', () => {
   it('marks only the analysis section as current on the RAG visualization route', () => {
     const view = renderComponent(React.createElement(Navbar))
 
-    const knowledgeSection = view.container.querySelector('button[aria-controls="sidebar-section-knowledge"]')
-    const analysisSection = view.container.querySelector('button[aria-controls="sidebar-section-analysis"]')
-    const knowledgeBaseLink = Array.from(view.container.querySelectorAll('a')).find(
-      (node) => node.textContent?.includes('items.knowledgeBase')
+    const knowledgeSection = view.container.querySelector(
+      'button[aria-controls="sidebar-section-knowledge"]'
     )
-    const ragVisualizationLink = Array.from(view.container.querySelectorAll('a')).find(
-      (node) => node.textContent?.includes('items.ragVisualization')
+    const analysisSection = view.container.querySelector(
+      'button[aria-controls="sidebar-section-analysis"]'
     )
+    const knowledgeBaseLink = Array.from(
+      view.container.querySelectorAll('a')
+    ).find((node) => node.textContent?.includes('items.knowledgeBase'))
+    const ragVisualizationLink = Array.from(
+      view.container.querySelectorAll('a')
+    ).find((node) => node.textContent?.includes('items.ragVisualization'))
 
     // After V3: "current" badge removed; verify active section is identified by expanded state
-    const analysisToggle = view.container.querySelector('button[aria-controls="sidebar-section-analysis"]') as HTMLButtonElement
+    const analysisToggle = view.container.querySelector(
+      'button[aria-controls="sidebar-section-analysis"]'
+    ) as HTMLButtonElement
     expect(analysisToggle?.getAttribute('aria-expanded')).toBe('true')
     expect(knowledgeBaseLink?.getAttribute('aria-current')).toBeNull()
     expect(ragVisualizationLink?.getAttribute('aria-current')).toBe('page')
@@ -183,7 +225,9 @@ describe('Navbar behavior', () => {
     routerMocks.pathname = '/'
 
     const firstView = renderComponent(React.createElement(Navbar))
-    const coreToggle = firstView.container.querySelector('button[aria-controls="sidebar-section-core"]') as HTMLButtonElement
+    const coreToggle = firstView.container.querySelector(
+      'button[aria-controls="sidebar-section-core"]'
+    ) as HTMLButtonElement
     const knowledgeToggle = firstView.container.querySelector(
       'button[aria-controls="sidebar-section-knowledge"]'
     ) as HTMLButtonElement
@@ -198,12 +242,18 @@ describe('Navbar behavior', () => {
     routerMocks.pathname = '/graph'
 
     const secondView = renderComponent(React.createElement(Navbar))
-    const coreSection = secondView.container.querySelector('#sidebar-section-core')
-    const knowledgeSection = secondView.container.querySelector('#sidebar-section-knowledge')
+    const coreSection = secondView.container.querySelector(
+      '#sidebar-section-core'
+    )
+    const knowledgeSection = secondView.container.querySelector(
+      '#sidebar-section-knowledge'
+    )
     const analysisToggle = secondView.container.querySelector(
       'button[aria-controls="sidebar-section-analysis"]'
     ) as HTMLButtonElement
-    const analysisSection = secondView.container.querySelector('#sidebar-section-analysis')
+    const analysisSection = secondView.container.querySelector(
+      '#sidebar-section-analysis'
+    )
 
     // After V3: verify analysis section auto-opens for active route
     expect(analysisToggle.getAttribute('aria-expanded')).toBe('true')

@@ -28,4 +28,13 @@ describe('heavy import guards', () => {
     const pkg = fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf8')
     expect(pkg).not.toContain('"@codesandbox/sandpack-react"')
   })
+
+  it('keeps decorative Lottie runtime out of the frontend bundle', () => {
+    const pkg = fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf8')
+    const sidebar = fs.readFileSync(path.resolve(__dirname, '../components/sidebar.tsx'), 'utf8')
+
+    expect(pkg).not.toContain('"lottie-react"')
+    expect(sidebar).not.toContain('@/components/ui/lottie-animation')
+    expect(sidebar).not.toContain('<LottieAnimation')
+  })
 })

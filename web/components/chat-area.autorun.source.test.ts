@@ -12,6 +12,21 @@ describe('chat area autorun source', () => {
     expect(src).toContain('submitMessage(p)')
   })
 
+  it('loads chat shell metadata through TanStack Query instead of effect-owned request state', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'chat-area.tsx'), 'utf8')
+
+    expect(src).toContain("import { useQuery } from '@tanstack/react-query'")
+    expect(src).toContain("import { queryKeys } from '@/lib/query-keys'")
+    expect(src).toContain('queryKey: queryKeys.settings.snapshot')
+    expect(src).toContain('queryKey: queryKeys.datasets.list')
+    expect(src).toContain('queryKey: queryKeys.documents.list')
+    expect(src).toContain('queryKey: queryKeys.prompts.list')
+    expect(src).not.toContain('loadWelcomeStats')
+    expect(src).not.toContain('loadTemplates')
+    expect(src).not.toContain('setDatasets(')
+    expect(src).not.toContain('setPromptTemplates(')
+  })
+
   it('submits document-selection and follow-up actions to the backend instead of only prefilling', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'chat-area.tsx'), 'utf8')
     const messageSrc = fs.readFileSync(path.resolve(__dirname, 'chat/message-item.tsx'), 'utf8')

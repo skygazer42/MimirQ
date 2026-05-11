@@ -3,6 +3,8 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
+import { readMessageCatalogSource } from './source-test-utils'
+
 function read(relativePath: string): string {
   return fs.readFileSync(path.resolve(__dirname, '..', relativePath), 'utf8')
 }
@@ -48,7 +50,7 @@ describe('long-term cleanup source guards', () => {
       read('components/document-detail-dialog.tsx'),
       read('components/document-detail-dialog/document-detail-activity-panel.tsx'),
     ].join('\n')
-    const messageCatalog = read('i18n/messages/zh-CN.ts')
+    const messageCatalog = readMessageCatalogSource(path.resolve(__dirname, '..'))
 
     expect(dialog).toContain('role="tablist"')
     expect(dialog).toContain('role="tab"')

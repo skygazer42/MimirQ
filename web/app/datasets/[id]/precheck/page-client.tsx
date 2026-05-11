@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
+import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { ArrowLeft, Download, FileSearch, Loader2, RefreshCw, Settings2, Sparkles, StopCircle, Table2, Wand2 } from 'lucide-react'
 import {
@@ -32,11 +33,11 @@ import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart'
 
 import { datasetApi, sseApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { queryKeys } from '@/lib/query-keys'
 import { cn, formatFileSize, formatDate, detachPromise } from '@/lib/utils'
 import { useRouter } from '@/i18n/navigation'
 
 import type {
-  Dataset,
   DatasetPrecheckDiffResponse,
   DatasetPrecheckFileOut,
   DatasetPrecheckFindingListResponse,
@@ -60,6 +61,8 @@ const PIE_COLORS = [
   'hsl(var(--chart-5))',
   'hsl(var(--chart-8))',
 ]
+
+const PRECHECK_RUNS_PARAMS = { skip: 0, limit: 20 } as const
 
 function asDatasetId(raw: unknown): string | null {
   if (typeof raw === 'string' && raw.trim()) return raw
@@ -88,12 +91,9 @@ export default function DatasetPrecheckPage() {
   const params = useParams()
   const datasetId = asDatasetId((params as any)?.id)
 
-  const [dataset, setDataset] = useState<Dataset | null>(null)
-  const [runs, setRuns] = useState<DatasetPrecheckScanRunOut[]>([])
   const [selectedRun, setSelectedRun] = useState<DatasetPrecheckScanRunOut | null>(null)
   const [summary, setSummary] = useState<DatasetPrecheckSummary | null>(null)
 
-  const [loading, setLoading] = useState(false)
   const [scanRunning, setScanRunning] = useState(false)
   const pollTimerRef = useRef<number | null>(null)
   const sseAbortRef = useRef<AbortController | null>(null)
@@ -165,46 +165,53 @@ export default function DatasetPrecheckPage() {
     sseAbortRef.current = null
   }, [])
 
-  const loadRuns = useCallback(async () => {
-    if (!datasetId) return
-    try {
-      const res = await datasetApi.listPrecheckScanRuns(datasetId, { skip: 0, limit: 20 })
-      setRuns(res.items || [])
-      if (!selectedRun && (res.items || []).length) {
-        setSelectedRun(res.items[0])
-      }
-    } catch (e: any) {
-      console.error('Failed to load precheck runs', e)
-    }
-  }, [datasetId, selectedRun])
+  const datasetQuery = useQuery({
+    queryKey: queryKeys.datasets.detail(datasetId || ''),
+    queryFn: () => datasetApi.get(datasetId as string),
+    enabled: Boolean(datasetId),
+  })
 
-  const load = useCallback(async () => {
-    if (!datasetId) return
-    setLoading(true)
-    try {
-      const [ds, runList] = await Promise.all([
-        datasetApi.get(datasetId),
-        datasetApi.listPrecheckScanRuns(datasetId, { skip: 0, limit: 20 }),
-      ])
-      setDataset(ds)
-      setRuns(runList.items || [])
-      const first = (runList.items || [])[0] || null
-      setSelectedRun((prev) => prev || first)
-    } catch (e: any) {
-      console.error('Failed to load dataset precheck', e)
-      toast.error(formatApiError(e, '加载预检页面失败'))
-    } finally {
-      setLoading(false)
-    }
-  }, [datasetId])
+  const runsQuery = useQuery({
+    queryKey: queryKeys.datasets.precheckRuns(datasetId || '', PRECHECK_RUNS_PARAMS),
+    queryFn: () => datasetApi.listPrecheckScanRuns(datasetId as string, PRECHECK_RUNS_PARAMS),
+    enabled: Boolean(datasetId),
+  })
+
+  const dataset = datasetQuery.data ?? null
+  const runs = useMemo(() => runsQuery.data?.items || [], [runsQuery.data?.items])
+  const loading = Boolean(datasetId) && (datasetQuery.isPending || runsQuery.isPending)
+  const refreshing = Boolean(datasetId) && (datasetQuery.isFetching || runsQuery.isFetching)
 
   useEffect(() => {
-    detachPromise(load())
+    const error = datasetQuery.error || runsQuery.error
+    if (!error) return
+    console.error('Failed to load dataset precheck', error)
+    toast.error(formatApiError(error, '加载预检页面失败'))
+  }, [datasetQuery.error, datasetQuery.errorUpdatedAt, runsQuery.error, runsQuery.errorUpdatedAt])
+
+  const { refetch: refetchDataset } = datasetQuery
+  const { refetch: refetchRunsQuery } = runsQuery
+
+  const refreshPrecheckRuns = useCallback(async () => {
+    await refetchRunsQuery()
+  }, [refetchRunsQuery])
+
+  const refreshPrecheckPage = useCallback(async () => {
+    await Promise.all([refetchDataset(), refetchRunsQuery()])
+  }, [refetchDataset, refetchRunsQuery])
+
+  useEffect(() => {
+    if (!selectedRun && runs.length) {
+      setSelectedRun(runs[0])
+    }
+  }, [runs, selectedRun])
+
+  useEffect(() => {
     return () => {
       stopPolling()
       stopSse()
     }
-  }, [load, stopPolling, stopSse])
+  }, [stopPolling, stopSse])
 
   const pollRun = useCallback(
     async (datasetIdValue: string, runId: string) => {
@@ -218,7 +225,7 @@ export default function DatasetPrecheckPage() {
         }
         setScanRunning(false)
         stopPolling()
-        await loadRuns()
+        await refreshPrecheckRuns()
         if (st === 'completed') {
           const s = await datasetApi.getPrecheckSummary(datasetIdValue, runId)
           setSummary(s)
@@ -231,7 +238,7 @@ export default function DatasetPrecheckPage() {
         stopPolling()
       }
     },
-    [loadRuns, stopPolling]
+    [refreshPrecheckRuns, stopPolling]
   )
 
   const startSse = useCallback(
@@ -256,7 +263,7 @@ export default function DatasetPrecheckPage() {
                 setScanRunning(false)
                 stopSse()
                 stopPolling()
-                detachPromise(loadRuns())
+                detachPromise(refreshPrecheckRuns())
               }
             } catch {
               // ignore
@@ -277,7 +284,7 @@ export default function DatasetPrecheckPage() {
           }, 800)
         }))
     },
-    [loadRuns, pollRun, stopPolling, stopSse]
+    [pollRun, refreshPrecheckRuns, stopPolling, stopSse]
   )
 
   // When selectedRun changes, load summary (if available) and resume polling (if running).
@@ -312,7 +319,7 @@ export default function DatasetPrecheckPage() {
     try {
       const run = await datasetApi.startPrecheckScan(datasetId, scanConfig)
       setSelectedRun(run)
-      await loadRuns()
+      await refreshPrecheckRuns()
       const st = String(run.status || '').toLowerCase()
       if (st === 'pending' || st === 'running') {
         startSse(datasetId, run.id)
@@ -325,7 +332,7 @@ export default function DatasetPrecheckPage() {
       toast.error(formatApiError(e, '启动预检扫描失败'))
       setScanRunning(false)
     }
-  }, [datasetId, loadRuns, scanConfig, startSse])
+  }, [datasetId, refreshPrecheckRuns, scanConfig, startSse])
 
   const cancelScan = useCallback(async () => {
     if (!datasetId || !selectedRun?.id) return
@@ -581,8 +588,8 @@ export default function DatasetPrecheckPage() {
                 表格 / TAG
               </Button>
             ) : null}
-            <Button variant="outline" className="gap-2" onClick={() => detachPromise(load())} disabled={loading}>
-              <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin motion-reduce:animate-none')} />
+            <Button variant="outline" className="gap-2" onClick={() => detachPromise(refreshPrecheckPage())} disabled={refreshing}>
+              <RefreshCw className={cn('w-4 h-4', refreshing && 'animate-spin motion-reduce:animate-none')} />
               刷新
             </Button>
             <Button variant="outline" className="gap-2" onClick={() => setAdvancedOpen(true)}>

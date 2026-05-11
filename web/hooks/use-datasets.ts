@@ -1,37 +1,29 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+
 import { datasetApi } from '@/lib/api'
+import { queryKeys } from '@/lib/query-keys'
 import type { Dataset } from '@/types'
-import { detachPromise } from '@/lib/utils'
 
 export function useDatasets() {
-  const [datasets, setDatasets] = useState<Dataset[]>([])
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<unknown | null>(null)
+  const listParams = { skip: 0, limit: 200 }
+  const datasetsQuery = useQuery<Dataset[]>({
+    queryKey: queryKeys.datasets.list(listParams),
+    queryFn: async () => {
+      const res = await datasetApi.list(listParams)
+      return res.items || []
+    },
+  })
 
-  const loadDatasets = useCallback(async () => {
-    setIsLoading(true)
-    setError(null)
-    try {
-      const res = await datasetApi.list({ skip: 0, limit: 200 })
-      setDatasets(res.items || [])
-    } catch (err) {
-      console.error('Failed to load datasets:', err)
-      setError(err)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    detachPromise(loadDatasets())
-  }, [loadDatasets])
+  const refreshDatasets = async () => {
+    await datasetsQuery.refetch()
+  }
 
   return {
-    datasets,
-    isLoading,
-    error,
-    refreshDatasets: loadDatasets,
+    datasets: datasetsQuery.data || [],
+    isLoading: datasetsQuery.isLoading,
+    error: datasetsQuery.error,
+    refreshDatasets,
   }
 }

@@ -1,16 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { datasetApi } from '@/lib/api'
-import { cn, detachPromise } from '@/lib/utils'
-
-type DatasetOption = {
-  id?: string
-  name?: string | null
-}
+import { useDatasets } from '@/hooks/use-datasets'
+import { cn } from '@/lib/utils'
 
 const ALL_DATASETS_VALUE = '__all_datasets__'
 
@@ -31,30 +24,7 @@ export function DatasetSelectField({
   allowAll?: boolean
   className?: string
 }>) {
-  const [datasets, setDatasets] = useState<DatasetOption[]>([])
-  const [isLoading, setIsLoading] = useState(false)
-
-  useEffect(() => {
-    let cancelled = false
-    setIsLoading(true)
-    detachPromise(
-      datasetApi
-        .list({ limit: 200 })
-        .then((response) => {
-          if (!cancelled) setDatasets(response.items || [])
-        })
-        .catch(() => {
-          if (!cancelled) setDatasets([])
-        })
-        .finally(() => {
-          if (!cancelled) setIsLoading(false)
-        })
-    )
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  const { datasets, isLoading } = useDatasets()
 
   const selectedValue = value || (allowAll ? ALL_DATASETS_VALUE : '')
 

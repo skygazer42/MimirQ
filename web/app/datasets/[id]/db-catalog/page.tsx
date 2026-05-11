@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
+import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { ArrowLeft, Database, Play, RefreshCw, Settings2 } from 'lucide-react'
 
@@ -19,11 +20,13 @@ import { Textarea } from '@/components/ui/textarea'
 import { useRouter } from '@/i18n/navigation'
 import { formatApiError } from '@/lib/api-errors'
 import { connectorApi, datasetApi } from '@/lib/api'
+import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise } from '@/lib/utils'
 
 import type { ConnectorRunOut, Dataset, DbCatalogTableDetail, DbCatalogTableSummary, DbProfileSnapshot } from '@/types'
 
 const ENGINE_OPTIONS: ReadonlyArray<'all' | 'mysql' | 'sqlserver'> = ['all', 'mysql', 'sqlserver']
+const DB_CATALOG_LIST_LIMIT = 200
 
 function asDatasetId(raw: unknown): string | null {
   if (typeof raw === 'string' && raw.trim()) return raw
@@ -60,13 +63,8 @@ export default function DatasetDbCatalogPage() {
   const params = useParams()
   const datasetId = asDatasetId((params as any)?.id)
 
-  const [dataset, setDataset] = useState<Dataset | null>(null)
-
   const [engine, setEngine] = useState<'all' | 'mysql' | 'sqlserver'>('all')
   const [query, setQuery] = useState('')
-
-  const [isLoading, setIsLoading] = useState(false)
-  const [items, setItems] = useState<DbCatalogTableSummary[]>([])
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selected, setSelected] = useState<DbCatalogTableDetail | null>(null)
@@ -106,33 +104,51 @@ export default function DatasetDbCatalogPage() {
     }
   }, [datasetId])
 
-  const loadList = useCallback(async () => {
-    if (!datasetId) return
-    setIsLoading(true)
-    try {
-      const [ds, list] = await Promise.all([
-        datasetApi.get(datasetId),
-        datasetApi.listDbCatalogTables(datasetId, {
-          skip: 0,
-          limit: 200,
-          engine: engine === 'all' ? undefined : engine,
-          q: query.trim() ? query.trim() : undefined,
-        }),
-      ])
-      setDataset(ds)
-      const nextItems = list.items || []
-      setItems(nextItems)
-      setSelectedId((prev) => {
-        if (prev && nextItems.some((t) => t.id === prev)) return prev
-        return nextItems[0]?.id || null
-      })
-    } catch (e: any) {
-      console.error('Failed to load DB catalog', e)
-      toast.error(formatApiError(e, '加载数据库目录失败'))
-    } finally {
-      setIsLoading(false)
-    }
-  }, [datasetId, engine, query])
+  const catalogListParams = useMemo(
+    () => ({
+      skip: 0,
+      limit: DB_CATALOG_LIST_LIMIT,
+      engine: engine === 'all' ? undefined : engine,
+      q: query.trim() ? query.trim() : undefined,
+    }),
+    [engine, query]
+  )
+  const datasetQuery = useQuery({
+    queryKey: queryKeys.datasets.detail(datasetId || ''),
+    queryFn: () => {
+      if (!datasetId) throw new Error('缺少数据集 ID')
+      return datasetApi.get(datasetId)
+    },
+    enabled: Boolean(datasetId),
+  })
+  const catalogTablesQuery = useQuery({
+    queryKey: queryKeys.datasets.dbCatalogTables(
+      datasetId || '',
+      catalogListParams
+    ),
+    queryFn: () => {
+      if (!datasetId) throw new Error('缺少数据集 ID')
+      return datasetApi.listDbCatalogTables(datasetId, catalogListParams)
+    },
+    enabled: Boolean(datasetId),
+  })
+  const dataset = (datasetQuery.data ?? null) as Dataset | null
+  const items: DbCatalogTableSummary[] = useMemo(
+    () => catalogTablesQuery.data?.items || [],
+    [catalogTablesQuery.data?.items]
+  )
+  const isLoading = datasetQuery.isFetching || catalogTablesQuery.isFetching
+  const loadError = datasetQuery.error ?? catalogTablesQuery.error
+  const loadErrorUpdatedAt = Math.max(
+    datasetQuery.errorUpdatedAt,
+    catalogTablesQuery.errorUpdatedAt
+  )
+  const { refetch: refetchDataset } = datasetQuery
+  const { refetch: refetchCatalogTables } = catalogTablesQuery
+  const refreshCatalogList = useCallback(() => {
+    void refetchDataset()
+    void refetchCatalogTables()
+  }, [refetchCatalogTables, refetchDataset])
 
   const loadDetail = useCallback(
     async (tableId: string) => {
@@ -233,7 +249,7 @@ export default function DatasetDbCatalogPage() {
       setSyncPassword('')
       // Best-effort: refresh after a short delay (sync runs async).
       globalThis.window.setTimeout(() => {
-        detachPromise(loadList())
+        refreshCatalogList()
         detachPromise(loadLatestRun())
       }, 1500)
     } catch (e: any) {
@@ -244,8 +260,8 @@ export default function DatasetDbCatalogPage() {
     }
   }, [
     datasetId,
-    loadList,
     loadLatestRun,
+    refreshCatalogList,
     syncConnectorId,
     syncDatabase,
     syncHost,
@@ -259,8 +275,16 @@ export default function DatasetDbCatalogPage() {
   ])
 
   useEffect(() => {
-    loadList()
-  }, [loadList])
+    if (!loadError) return
+    toast.error(formatApiError(loadError, '加载数据库目录失败'))
+  }, [loadError, loadErrorUpdatedAt])
+
+  useEffect(() => {
+    setSelectedId((prev) => {
+      if (prev && items.some((t) => t.id === prev)) return prev
+      return items[0]?.id || null
+    })
+  }, [items])
 
   useEffect(() => {
     detachPromise(loadLatestRun())
@@ -353,7 +377,7 @@ export default function DatasetDbCatalogPage() {
                 </Button>
               </>
             ) : null}
-            <Button variant="outline" className="gap-2" onClick={loadList} disabled={isLoading}>
+            <Button variant="outline" className="gap-2" onClick={refreshCatalogList} disabled={isLoading}>
               <RefreshCw className="h-4 w-4" />
               刷新
             </Button>

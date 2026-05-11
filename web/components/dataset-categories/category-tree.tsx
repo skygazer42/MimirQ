@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, ChevronRight, FolderOpen, FolderPlus, FolderTree, Loader2, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -20,11 +21,12 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { cn, detachPromise } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { datasetCategoryApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { queryKeys } from '@/lib/query-keys'
 
-import type { DatasetCategoryNode, DatasetCategoryTreeResponse } from '@/types'
+import type { DatasetCategoryCreate, DatasetCategoryNode } from '@/types'
 
 type DatasetCategoryTreeViewProps = {
   items: DatasetCategoryNode[]
@@ -182,33 +184,38 @@ type DatasetCategoryTreeProps = {
 }
 
 export function DatasetCategoryTree({ selectedId, onSelect, className }: Readonly<DatasetCategoryTreeProps>) {
-  const [resp, setResp] = useState<DatasetCategoryTreeResponse | null>(null)
-  const [loading, setLoading] = useState(false)
+  const queryClient = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
   const [categoryName, setCategoryName] = useState('')
-  const [creating, setCreating] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
-  const [deleting, setDeleting] = useState(false)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const data = await datasetCategoryApi.listTree()
-      setResp(data)
-    } catch (e: any) {
-      console.error('Failed to load dataset categories', e)
-      toast.error(formatApiError(e, '加载分类失败'))
-      setResp(null)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  const categoryTreeQuery = useQuery({
+    queryKey: queryKeys.datasetCategories.tree,
+    queryFn: () => datasetCategoryApi.listTree(),
+  })
+
+  const createCategoryMutation = useMutation({
+    mutationFn: (payload: DatasetCategoryCreate) => datasetCategoryApi.create(payload),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.datasetCategories.tree }),
+  })
+
+  const deleteCategoryMutation = useMutation({
+    mutationFn: (categoryId: string) => datasetCategoryApi.delete(categoryId),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.datasetCategories.tree }),
+  })
 
   useEffect(() => {
-    detachPromise(load())
-  }, [load])
+    if (!categoryTreeQuery.error) return
+    console.error('Failed to load dataset categories', categoryTreeQuery.error)
+    toast.error(formatApiError(categoryTreeQuery.error, '加载分类失败'))
+  }, [categoryTreeQuery.error])
 
-  const items = useMemo(() => resp?.items || [], [resp])
+  const items = useMemo(() => categoryTreeQuery.data?.items || [], [categoryTreeQuery.data])
+  const loading = categoryTreeQuery.isLoading
+  const creating = createCategoryMutation.isPending
+  const deleting = deleteCategoryMutation.isPending
   const selectedNodeName = useMemo(() => {
     if (!selectedId) return null
 
@@ -226,45 +233,36 @@ export function DatasetCategoryTree({ selectedId, onSelect, className }: Readonl
 
   const resetCreateState = () => {
     setCategoryName('')
-    setCreating(false)
   }
 
   const handleCreate = async () => {
     const name = categoryName.trim()
     if (!name || creating) return
 
-    setCreating(true)
     try {
-      const created = await datasetCategoryApi.create({
+      const created = await createCategoryMutation.mutateAsync({
         name,
         parent_id: selectedId || null,
       })
       toast.success(selectedId ? '已创建子分类' : '已创建分类')
       setCreateOpen(false)
       resetCreateState()
-      await load()
       onSelect(created.id)
     } catch (e: any) {
       toast.error(formatApiError(e, '创建分类失败'))
-    } finally {
-      setCreating(false)
     }
   }
 
   const handleDelete = async () => {
     if (!selectedId || deleting) return
 
-    setDeleting(true)
     try {
-      await datasetCategoryApi.delete(selectedId)
+      await deleteCategoryMutation.mutateAsync(selectedId)
       toast.success('已删除分类')
       setDeleteOpen(false)
       onSelect(null)
-      await load()
     } catch (e: any) {
       toast.error(formatApiError(e, '删除分类失败'))
-    } finally {
-      setDeleting(false)
     }
   }
 
@@ -351,7 +349,7 @@ export function DatasetCategoryTree({ selectedId, onSelect, className }: Readonl
       </div>
 
       <div className="rounded-[1rem] border border-border/60 bg-background/55 p-1.5 shadow-sm">
-        {loading && !resp ? (
+        {loading && !categoryTreeQuery.data ? (
           <div className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
             加载中…

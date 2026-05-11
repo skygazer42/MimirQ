@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { GitBranch, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -8,7 +9,8 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { lineageApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
-import { cn, detachPromise } from '@/lib/utils'
+import { queryKeys } from '@/lib/query-keys'
+import { cn } from '@/lib/utils'
 
 type AnswerLineageActionProps = Readonly<{
   requestId: string
@@ -24,25 +26,19 @@ function prettyJson(value: unknown): string {
 
 export function AnswerLineageAction({ requestId }: AnswerLineageActionProps) {
   const [open, setOpen] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [payload, setPayload] = useState<unknown>(null)
-  const [error, setError] = useState<string | null>(null)
+  const lineageQuery = useQuery({
+    queryKey: queryKeys.lineage.answer(requestId),
+    enabled: open,
+    queryFn: () => lineageApi.getAnswerLineage(requestId),
+  })
+  const error = lineageQuery.error
+    ? formatApiError(lineageQuery.error, '加载答案血缘失败')
+    : null
 
-  async function loadLineage(): Promise<void> {
-    setOpen(true)
-    setLoading(true)
-    setError(null)
-    try {
-      const next = await lineageApi.getAnswerLineage(requestId)
-      setPayload(next)
-    } catch (err) {
-      const message = formatApiError(err, '加载答案血缘失败')
-      setError(message)
-      toast.error(message)
-    } finally {
-      setLoading(false)
-    }
-  }
+  useEffect(() => {
+    if (!error) return
+    toast.error(error)
+  }, [error])
 
   return (
     <>
@@ -51,9 +47,9 @@ export function AnswerLineageAction({ requestId }: AnswerLineageActionProps) {
         variant="ghost"
         size="sm"
         className="h-7 gap-1.5 rounded-lg px-2 text-[11px] text-muted-foreground hover:text-foreground"
-        onClick={() => detachPromise(loadLineage())}
+        onClick={() => setOpen(true)}
       >
-        {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <GitBranch className="h-3.5 w-3.5" />}
+        {lineageQuery.isFetching ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <GitBranch className="h-3.5 w-3.5" />}
         答案血缘
       </Button>
 
@@ -69,7 +65,7 @@ export function AnswerLineageAction({ requestId }: AnswerLineageActionProps) {
 
           {error ? <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</div> : null}
           <pre className={cn('max-h-[520px] overflow-auto rounded-lg border border-border/60 bg-muted/20 p-3 text-xs', 'whitespace-pre-wrap break-words')}>
-            {loading ? 'Loading...' : prettyJson(payload ?? { message: '暂无血缘数据' })}
+            {lineageQuery.isFetching ? 'Loading...' : prettyJson(lineageQuery.data ?? { message: '暂无血缘数据' })}
           </pre>
         </DialogContent>
       </Dialog>

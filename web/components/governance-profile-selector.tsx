@@ -1,14 +1,16 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Download, FileUp, RefreshCw, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { pipelineApi } from '@/lib/api'
-import type { DocumentPipelineOptions, GovernanceProfileResolvedResponse, GovernanceProfileSummary } from '@/types'
+import type { DocumentPipelineOptions } from '@/types'
 import { toast } from 'sonner'
 import { formatApiError } from '@/lib/api-errors'
+import { queryKeys } from '@/lib/query-keys'
 
 type Props = {
   className?: string
@@ -30,58 +32,47 @@ function downloadBlob(blob: Blob, filename: string) {
 }
 
 export function GovernanceProfileSelector({ className, compact, onApplyPatch }: Readonly<Props>) {
-  const [loading, setLoading] = useState(false)
-  const [profiles, setProfiles] = useState<GovernanceProfileSummary[]>([])
+  const queryClient = useQueryClient()
   const [selectedRef, setSelectedRef] = useState<string>(SELECT_NONE)
-  const [selectedResolved, setSelectedResolved] = useState<GovernanceProfileResolvedResponse | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  const loadProfiles = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await pipelineApi.listGovernanceProfiles({ include_builtin: true, limit: 200 })
-      setProfiles(res.items || [])
-    } catch (e) {
-      console.error('Failed to load governance profiles', e)
-      setProfiles([])
-      toast.error(formatApiError(e, '加载治理预设失败'))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  const profilesQuery = useQuery({
+    queryKey: queryKeys.governance.profiles({ include_builtin: true, limit: 200 }),
+    queryFn: async () => {
+      try {
+        const res = await pipelineApi.listGovernanceProfiles({ include_builtin: true, limit: 200 })
+        return res.items || []
+      } catch (e) {
+        console.error('Failed to load governance profiles', e)
+        toast.error(formatApiError(e, '加载治理预设失败'))
+        return []
+      }
+    },
+  })
 
-  useEffect(() => {
-    loadProfiles()
-  }, [loadProfiles])
+  const selectedResolvedQuery = useQuery({
+    queryKey: queryKeys.governance.profileResolved(selectedRef),
+    queryFn: async () => {
+      if (!selectedRef || selectedRef === SELECT_NONE) return null
+      try {
+        return await pipelineApi.getGovernanceProfileResolved(selectedRef)
+      } catch (e) {
+        console.error('Failed to load governance profile detail', e)
+        toast.error(formatApiError(e, '加载治理预设详情失败'))
+        return null
+      }
+    },
+    enabled: Boolean(selectedRef && selectedRef !== SELECT_NONE),
+  })
+
+  const profiles = useMemo(() => profilesQuery.data || [], [profilesQuery.data])
+  const selectedResolved = selectedResolvedQuery.data || null
+  const loading = profilesQuery.isFetching
 
   const selectedSummary = useMemo(() => {
     if (!selectedRef || selectedRef === SELECT_NONE) return null
     return profiles.find((p) => p.key === selectedRef || p.id === selectedRef) || null
   }, [profiles, selectedRef])
-
-  useEffect(() => {
-    let cancelled = false
-    const loadDetail = async () => {
-      if (!selectedRef || selectedRef === SELECT_NONE) {
-        setSelectedResolved(null)
-        return
-      }
-      try {
-        const res = await pipelineApi.getGovernanceProfileResolved(selectedRef)
-        if (cancelled) return
-        setSelectedResolved(res)
-      } catch (e) {
-        if (cancelled) return
-        console.error('Failed to load governance profile detail', e)
-        setSelectedResolved(null)
-        toast.error(formatApiError(e, '加载治理预设详情失败'))
-      }
-    }
-    loadDetail()
-    return () => {
-      cancelled = true
-    }
-  }, [selectedRef])
 
   const handleApply = useCallback(() => {
     const resolved = selectedResolved
@@ -120,14 +111,16 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
     try {
       const res = await pipelineApi.importGovernanceProfiles(file, true /* overwrite */)
       toast.success(`导入成功：新增 ${res.created} / 更新 ${res.updated}`)
-      await loadProfiles()
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.governance.profiles({ include_builtin: true, limit: 200 }),
+      })
     } catch (e) {
       console.error('Failed to import governance profiles', e)
       toast.error(formatApiError(e, '导入失败（请检查脚本格式/正则是否安全）'))
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
-  }, [loadProfiles])
+  }, [queryClient])
 
   const handleExport = useCallback(async () => {
     if (!selectedRef || selectedRef === SELECT_NONE) {
@@ -175,7 +168,7 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
         <Button
           variant="outline"
           size={compact ? 'sm' : 'default'}
-          onClick={loadProfiles}
+          onClick={() => void profilesQuery.refetch()}
           disabled={loading}
           aria-label="刷新治理预设"
           title="刷新治理预设"

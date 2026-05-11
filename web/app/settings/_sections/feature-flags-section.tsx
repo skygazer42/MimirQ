@@ -38,7 +38,8 @@ const FEATURE_FLAGS_CONFIG: FeatureFlagDescriptor[] = [
   {
     key: 'deepdoc_enabled',
     name: 'DeepDoc 结构化解析',
-    description: '启用视觉 + OCR 解析能力，适合扫描件/图文混排 PDF（自动选择时生效）',
+    description:
+      '启用视觉 + OCR 解析能力，适合扫描件/图文混排 PDF（自动选择时生效）',
     icon: ScanLine,
     color: 'orange',
     dependencies: [],
@@ -46,7 +47,8 @@ const FEATURE_FLAGS_CONFIG: FeatureFlagDescriptor[] = [
   {
     key: 'docling_enabled',
     name: 'Docling 结构化解析',
-    description: '启用 Docling 解析，对版面/表格结构抽取更友好（自动选择时生效）',
+    description:
+      '启用 Docling 解析，对版面/表格结构抽取更友好（自动选择时生效）',
     icon: FileSearch,
     color: 'cyan',
     dependencies: [],
@@ -54,7 +56,8 @@ const FEATURE_FLAGS_CONFIG: FeatureFlagDescriptor[] = [
   {
     key: 'etl4llm_enabled',
     name: 'ETL4LLM 版面解析',
-    description: '启用 ETL4LLM 版面/表格/图片解析（需自建服务，自动选择时生效）',
+    description:
+      '启用 ETL4LLM 版面/表格/图片解析（需自建服务，自动选择时生效）',
     icon: LayoutGrid,
     color: 'green',
     dependencies: ['ETL4LLM 服务地址（API URL）'],
@@ -62,7 +65,8 @@ const FEATURE_FLAGS_CONFIG: FeatureFlagDescriptor[] = [
   {
     key: 'marker_enabled',
     name: 'Marker 启发式解析',
-    description: '启用 Marker 启发式 PDF→Markdown 解析服务（可在解析器下拉中选择）',
+    description:
+      '启用 Marker 启发式 PDF→Markdown 解析服务（可在解析器下拉中选择）',
     icon: LayoutGrid,
     color: 'green',
     dependencies: ['Marker 服务地址（API URL）'],
@@ -70,7 +74,8 @@ const FEATURE_FLAGS_CONFIG: FeatureFlagDescriptor[] = [
   {
     key: 'paddle_vl_enabled',
     name: 'PaddleOCR-VL 外部解析',
-    description: '启用 PaddleOCR-VL 外部 OCR/版面解析服务（适合扫描件 PDF，可在解析器下拉中选择）',
+    description:
+      '启用 PaddleOCR-VL 外部 OCR/版面解析服务（适合扫描件 PDF，可在解析器下拉中选择）',
     icon: ScanLine,
     color: 'orange',
     dependencies: ['PaddleOCR-VL 服务地址（API URL）'],
@@ -78,7 +83,8 @@ const FEATURE_FLAGS_CONFIG: FeatureFlagDescriptor[] = [
   {
     key: 'textin_enabled',
     name: 'TextIn xParse 外部解析',
-    description: '启用 TextIn 文档解析 API（可用于 PDF/Office/图片等文档转 Markdown）',
+    description:
+      '启用 TextIn 文档解析 API（可用于 PDF/Office/图片等文档转 Markdown）',
     icon: CloudCog,
     color: 'cyan',
     dependencies: ['TextIn API 地址', 'TextIn APP ID', 'TextIn Secret Code'],
@@ -86,7 +92,8 @@ const FEATURE_FLAGS_CONFIG: FeatureFlagDescriptor[] = [
   {
     key: 'markitdown_enabled',
     name: 'MarkItDown 文档解析',
-    description: '启用多格式转 Markdown（Office/表格/PDF），自动选择与解析工作台会使用',
+    description:
+      '启用多格式转 Markdown（Office/表格/PDF），自动选择与解析工作台会使用',
     icon: FileCode,
     color: 'teal',
     dependencies: [],
@@ -126,10 +133,10 @@ function getColorClasses(color: FeatureFlagDescriptor['color']) {
       iconBg: 'bg-blue-100/65',
     },
     info: {
-      bg: 'bg-cyan-50/35',
-      border: 'border-cyan-200/75',
-      text: 'text-cyan-600',
-      iconBg: 'bg-cyan-100/65',
+      bg: 'bg-info/10',
+      border: 'border-info/25',
+      text: 'text-info',
+      iconBg: 'bg-info/10',
     },
     success: {
       bg: 'bg-emerald-50/35',
@@ -146,7 +153,13 @@ function getColorClasses(color: FeatureFlagDescriptor['color']) {
   }
 
   const key =
-    color === 'green' ? 'success' : color === 'orange' ? 'warning' : color === 'cyan' ? 'primary' : 'info'
+    color === 'green'
+      ? 'success'
+      : color === 'orange'
+        ? 'warning'
+        : color === 'cyan'
+          ? 'primary'
+          : 'info'
 
   return styles[key]
 }
@@ -163,7 +176,7 @@ export function FeatureFlagsSection({
   toggleFeature,
 }: Readonly<FeatureFlagsSectionProps>) {
   return (
-    <section className="rounded-[16px] border border-slate-200/75 bg-white p-3.5 shadow-sm">
+    <section className="rounded-[16px] border border-slate-200/75 bg-card p-3.5 shadow-sm">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="flex items-center gap-2 text-[13px] font-medium text-slate-950">
@@ -185,7 +198,9 @@ export function FeatureFlagsSection({
           const Icon = feature.icon
           const colors = getColorClasses(feature.color)
           const isEnabled = getFeatureValue(feature.key)
-          const isEdited = Boolean(editedFeatureFlags && feature.key in editedFeatureFlags)
+          const isEdited = Boolean(
+            editedFeatureFlags && feature.key in editedFeatureFlags
+          )
 
           return (
             <button
@@ -193,7 +208,9 @@ export function FeatureFlagsSection({
               key={feature.key}
               className={cn(
                 'group relative w-full rounded-[13px] border px-3 py-2 text-left transition-[border-color,background-color,box-shadow] duration-150 focus-ring motion-reduce:transition-none',
-                isEnabled ? `${colors.border} ${colors.bg} shadow-[inset_0_0_0_1px_rgba(255,255,255,0.55)]` : 'border-slate-200 bg-white hover:border-blue-100 hover:bg-slate-50/65',
+                isEnabled
+                  ? `${colors.border} ${colors.bg} shadow-[inset_0_0_0_1px_rgba(255,255,255,0.55)]`
+                  : 'border-slate-200 bg-card hover:border-blue-100 hover:bg-slate-50/65',
                 isEdited && 'ring-2 ring-blue-400/70 ring-offset-1'
               )}
               aria-pressed={isEnabled}
@@ -207,7 +224,12 @@ export function FeatureFlagsSection({
                       isEnabled ? colors.iconBg : 'bg-slate-100'
                     )}
                   >
-                    <Icon className={cn('h-3 w-3', isEnabled ? colors.text : 'text-muted-foreground')} />
+                    <Icon
+                      className={cn(
+                        'h-3 w-3',
+                        isEnabled ? colors.text : 'text-muted-foreground'
+                      )}
+                    />
                   </div>
                   <div className="min-w-0">
                     <h3
@@ -218,7 +240,12 @@ export function FeatureFlagsSection({
                     >
                       {feature.name}
                     </h3>
-                    <p className={cn(systemPageTokens.subtle, 'mt-0.5 max-w-[62ch] truncate text-[10.5px] leading-[14px]')}>
+                    <p
+                      className={cn(
+                        systemPageTokens.subtle,
+                        'mt-0.5 max-w-[62ch] truncate text-[10.5px] leading-[14px]'
+                      )}
+                    >
                       {feature.description}
                     </p>
                     {feature.dependencies.length > 0 ? (
@@ -226,7 +253,7 @@ export function FeatureFlagsSection({
                         {feature.dependencies.map((dependency) => (
                           <span
                             key={dependency}
-                            className="rounded-md border border-slate-200 bg-white/75 px-1.5 py-0.5 text-[10px] leading-[14px] text-slate-500"
+                            className="rounded-md border border-slate-200 bg-card/75 px-1.5 py-0.5 text-[10px] leading-[14px] text-slate-500"
                           >
                             需要: {dependency}
                           </span>
@@ -244,7 +271,7 @@ export function FeatureFlagsSection({
                 >
                   <span
                     className={cn(
-                      'size-4 rounded-full bg-white shadow-sm transition-transform',
+                      'size-4 rounded-full bg-card shadow-sm transition-transform',
                       isEnabled && 'translate-x-4'
                     )}
                   />

@@ -644,12 +644,13 @@ class MinerUParser(IntegratedPipelinePdfParser):
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     parser = MinerUParser("mineru")
     ok, reason = parser.check_installation()
-    print("MinerU available:", ok)
+    logging.info("MinerU available: %s", ok)
 
     filepath = ""
     with open(filepath, "rb") as file:
         outputs = parser.parse_pdf(filepath=filepath, binary=file.read())
         for output in outputs:
-            print(output)
+            logging.info("%s", output)

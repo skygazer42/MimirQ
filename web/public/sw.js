@@ -9,9 +9,6 @@ const APP_SHELL_URLS = [
   '/favicon-light.svg',
   '/favicon-dark.svg',
   '/icon.svg',
-  '/lottie/empty-documents.json',
-  '/lottie/thinking.json',
-  '/lottie/processing.json',
 ]
 
 self.addEventListener('install', (event) => {
@@ -41,7 +38,6 @@ function isPdfWorkerRequest(url) {
 function isSupportedStaticPath(url) {
   return (
     url.pathname.startsWith('/_next/static/') ||
-    url.pathname.startsWith('/lottie/') ||
     url.pathname.startsWith('/monaco/') ||
     url.pathname.startsWith('/fonts/') ||
     url.pathname.startsWith('/pdfjs-dist/') ||

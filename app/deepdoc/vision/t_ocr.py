@@ -14,6 +14,7 @@
 #  limitations under the License.
 #
 
+import logging
 import os
 import sys
 
@@ -49,13 +50,14 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'  # 1 gpu
 def main(args):
     import torch.cuda
 
+    logger = logging.getLogger(__name__)
     cuda_devices = torch.cuda.device_count()
     limiter = [trio.CapacityLimiter(1) for _ in range(cuda_devices)] if cuda_devices > 1 else None
     ocr = OCR()
     images, outputs = init_in_out(args)
 
     def __ocr(i, id, img):
-        print("Task {} start".format(i))
+        logger.info("Task %s start", i)
         bxs = ocr(np.array(img), id)
         bxs = [(line[0], line[1][0]) for line in bxs]
         bxs = [{
@@ -68,12 +70,12 @@ def main(args):
         with open(outputs[i] + ".txt", "w+", encoding='utf-8') as f:
             f.write("\n".join([o["text"] for o in bxs]))
 
-        print("Task {} done".format(i))
+        logger.info("Task %s done", i)
 
     async def __ocr_thread(i, id, img, limiter=None):
         if limiter:
             async with limiter:
-                print("Task {} use device {}".format(i, id))
+                logger.info("Task %s use device %s", i, id)
                 await trio.to_thread.run_sync(lambda: __ocr(i, id, img))
         else:
             __ocr(i, id, img)
@@ -90,10 +92,11 @@ def main(args):
 
     trio.run(__ocr_launcher)
 
-    print("OCR tasks are all done")
+    logger.info("OCR tasks are all done")
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser()
     parser.add_argument('--inputs',
                         help="Directory where to store images or PDFs, or a file path to a single image or PDF",

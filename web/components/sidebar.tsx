@@ -14,7 +14,6 @@ import type { Document } from '@/types'
 import { ManualUploadDialog } from '@/components/manual-upload-dialog'
 import { DocumentDetailDialog } from '@/components/document-detail-dialog'
 import { getParserLabel } from '@/lib/parser-options'
-import { LottieAnimation, LOTTIE_URLS } from '@/components/ui/lottie-animation'
 import { PipelineVisualizer } from '@/components/ui/pipeline-visualizer'
 import { Magnetic } from '@/components/ui/magnetic'
 import { TiltCard } from '@/components/ui/tilt-card'
@@ -188,7 +187,17 @@ export function Sidebar({ variant = 'app' }: SidebarProps = {}) {
     }
     else if (results.length === 0) {
             return (<div className="flex flex-col items-center justify-center h-64 text-muted-foreground/50 gap-4">
-            <LottieAnimation url={LOTTIE_URLS.EMPTY_DOCUMENTS} className="w-40 h-40 opacity-80"/>
+            <div
+              aria-hidden="true"
+              className="relative flex size-32 items-center justify-center rounded-[2rem] border border-border/50 bg-background/45 shadow-inner"
+            >
+              <div className="absolute -left-2 top-6 h-16 w-20 rotate-[-8deg] rounded-2xl border border-border/45 bg-card/70" />
+              <div className="absolute right-1 top-3 h-20 w-16 rotate-[10deg] rounded-2xl border border-primary/20 bg-primary/8" />
+              <div className="relative flex size-16 items-center justify-center rounded-2xl border border-border/50 bg-card shadow-sm">
+                <FileText className="size-8 text-primary/45" />
+              </div>
+              <div className="absolute bottom-5 h-1.5 w-16 rounded-full bg-primary/15" />
+            </div>
             <p className="text-sm font-medium">
               {documents.length > 0 ? "未找到匹配文档" : "暂无文档，请上传知识"}
             </p>

@@ -21,10 +21,12 @@ import {
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useTranslations } from 'next-intl'
+import { useQuery } from '@tanstack/react-query'
 
 import type { Conversation, Dataset, Document } from "@/types"
 import { chatApi, datasetApi, documentApi } from "@/lib/api"
 import { globalEventBus } from "@/lib/event-bus"
+import { queryKeys } from '@/lib/query-keys'
 import { usePathname, useRouter } from "@/i18n/navigation"
 import { useCommandMenuState } from "@/store/command-menu"
 import { useDocumentView } from "@/store/document-view"
@@ -116,6 +118,10 @@ type ModuleWorkbenchItem = {
 type CommandMenuTranslationGetter = (key: string) => string
 
 const KEY_CHORD_TIMEOUT_MS = 1600
+const COMMAND_MENU_SEARCH_DEBOUNCE_MS = 220
+const COMMAND_MENU_DOCUMENT_SEARCH_LIMIT = 8
+const COMMAND_MENU_DATASET_SEARCH_PARAMS = { limit: 30 }
+const COMMAND_MENU_CONVERSATION_SEARCH_PARAMS = { limit: 30 }
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
@@ -178,14 +184,8 @@ function matchesSearchNeedle(values: Array<string | null | undefined>, needle: s
 
 export function CommandMenu() {
   const [query, setQuery] = React.useState("")
-  const [docResults, setDocResults] = React.useState<Document[]>([])
-  const [datasetResults, setDatasetResults] = React.useState<Dataset[]>([])
-  const [conversationResults, setConversationResults] = React.useState<Conversation[]>([])
-  const [docLoading, setDocLoading] = React.useState(false)
-  const [datasetLoading, setDatasetLoading] = React.useState(false)
-  const [conversationLoading, setConversationLoading] = React.useState(false)
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = React.useState("")
   const [pendingChordPrefix, setPendingChordPrefix] = React.useState<string | null>(null)
-  const requestSeqRef = React.useRef(0)
   const chordTimerRef = React.useRef<number | null>(null)
   const router = useRouter()
   const pathname = usePathname()
@@ -196,10 +196,74 @@ export function CommandMenu() {
   const toggleOpen = useCommandMenuState((state) => state.toggle)
   const { lastOpenedTarget, openDocument, reopenLastDocument } = useDocumentView()
   const currentViewPrompt = React.useMemo(() => buildCurrentViewPrompt(pathname || '/', t), [pathname, t])
-  const isSlashMode = query.trim().startsWith("/")
-  const slashNeedle = query.trim().slice(1).toLowerCase()
-  const shouldShowShortcutReference = query.trim().length === 0
+  const trimmedQuery = query.trim()
+  const isSlashMode = trimmedQuery.startsWith("/")
+  const slashNeedle = trimmedQuery.slice(1).toLowerCase()
+  const shouldShowShortcutReference = trimmedQuery.length === 0
+  const hasTypedSearchQuery = trimmedQuery.length >= 2 && !isSlashMode
+  const isTypedSearchActive = open && hasTypedSearchQuery
+  const isSearchDebouncing = isTypedSearchActive && debouncedSearchQuery !== trimmedQuery
+  const showBaseCommandGroups = !hasTypedSearchQuery && !isSlashMode
   const hasResumeTarget = Boolean(lastOpenedTarget?.documentId)
+
+  const documentSearchParams = React.useMemo(
+    () => ({
+      q: debouncedSearchQuery,
+      limit: COMMAND_MENU_DOCUMENT_SEARCH_LIMIT,
+      order_by: "created_at" as const,
+      order_dir: "desc" as const,
+    }),
+    [debouncedSearchQuery]
+  )
+
+  const documentSearchQuery = useQuery<Document[]>({
+    queryKey: queryKeys.documents.list(documentSearchParams),
+    queryFn: async () => {
+      const response = await documentApi.list(documentSearchParams)
+      return response.items || []
+    },
+    enabled: Boolean(debouncedSearchQuery),
+    staleTime: 30_000,
+  })
+
+  const datasetSearchQuery = useQuery<Dataset[]>({
+    queryKey: queryKeys.datasets.list(COMMAND_MENU_DATASET_SEARCH_PARAMS),
+    queryFn: async () => {
+      const response = await datasetApi.list(COMMAND_MENU_DATASET_SEARCH_PARAMS)
+      return response.items || []
+    },
+    enabled: Boolean(debouncedSearchQuery),
+    staleTime: 60_000,
+  })
+
+  const conversationSearchQuery = useQuery<Conversation[]>({
+    queryKey: queryKeys.chat.conversations(COMMAND_MENU_CONVERSATION_SEARCH_PARAMS),
+    queryFn: async () => {
+      const response = await chatApi.listConversations(COMMAND_MENU_CONVERSATION_SEARCH_PARAMS)
+      return response.items || []
+    },
+    enabled: Boolean(debouncedSearchQuery),
+    staleTime: 30_000,
+  })
+
+  const searchNeedle = debouncedSearchQuery.toLowerCase()
+  const docResults = debouncedSearchQuery ? documentSearchQuery.data || [] : []
+  const datasetResults = React.useMemo(() => {
+    if (!debouncedSearchQuery) return []
+    return (datasetSearchQuery.data || [])
+      .filter((dataset) => matchesSearchNeedle([dataset.name, dataset.description], searchNeedle))
+      .slice(0, 6)
+  }, [datasetSearchQuery.data, debouncedSearchQuery, searchNeedle])
+  const conversationResults = React.useMemo(() => {
+    if (!debouncedSearchQuery) return []
+    return (conversationSearchQuery.data || [])
+      .filter((conversation) => matchesSearchNeedle([conversation.title, conversation.last_message], searchNeedle))
+      .slice(0, 6)
+  }, [conversationSearchQuery.data, debouncedSearchQuery, searchNeedle])
+  const docLoading = isSearchDebouncing || (Boolean(debouncedSearchQuery) && documentSearchQuery.isFetching)
+  const datasetLoading = isSearchDebouncing || (Boolean(debouncedSearchQuery) && datasetSearchQuery.isFetching)
+  const conversationLoading =
+    isSearchDebouncing || (Boolean(debouncedSearchQuery) && conversationSearchQuery.isFetching)
 
   const resumeLastDocumentContext = React.useCallback(() => {
     if (!hasResumeTarget) return
@@ -246,78 +310,26 @@ export function CommandMenu() {
   }, [setOpen, toggleOpen])
 
   React.useEffect(() => {
-    if (!open) {
-      setQuery("")
-      setDocResults([])
-      setDatasetResults([])
-      setConversationResults([])
-      setDocLoading(false)
-      setDatasetLoading(false)
-      setConversationLoading(false)
-      requestSeqRef.current += 1
+    if (!open) setQuery("")
+  }, [open])
+
+  React.useEffect(() => {
+    if (!isTypedSearchActive) {
+      setDebouncedSearchQuery("")
       return
     }
 
-    const q = query.trim()
-    if (q.length < 2 || q.startsWith("/")) {
-      setDocResults([])
-      setDatasetResults([])
-      setConversationResults([])
-      setDocLoading(false)
-      setDatasetLoading(false)
-      setConversationLoading(false)
-      requestSeqRef.current += 1
-      return
-    }
-
-    const seq = ++requestSeqRef.current
-    setDocLoading(true)
-    setDatasetLoading(true)
-    setConversationLoading(true)
     const timeoutId = globalThis.window.setTimeout(() => {
-      const needle = q.toLowerCase()
-
-      Promise.allSettled([
-        documentApi.list({ q, limit: 8, order_by: "created_at", order_dir: "desc" }),
-        datasetApi.list({ limit: 30 }),
-        chatApi.listConversations({ limit: 30 }),
-      ]).then(([documentsResult, datasetsResult, conversationsResult]) => {
-        if (seq !== requestSeqRef.current) return
-
-        if (documentsResult.status === "fulfilled") {
-          setDocResults(documentsResult.value.items || [])
-        } else {
-          setDocResults([])
-        }
-        setDocLoading(false)
-
-        if (datasetsResult.status === "fulfilled") {
-          const items = (datasetsResult.value.items || [])
-            .filter((dataset) => matchesSearchNeedle([dataset.name, dataset.description], needle))
-            .slice(0, 6)
-          setDatasetResults(items)
-        } else {
-          setDatasetResults([])
-        }
-        setDatasetLoading(false)
-
-        if (conversationsResult.status === "fulfilled") {
-          const items = (conversationsResult.value.items || [])
-            .filter((conversation) => matchesSearchNeedle([conversation.title, conversation.last_message], needle))
-            .slice(0, 6)
-          setConversationResults(items)
-        } else {
-          setConversationResults([])
-        }
-        setConversationLoading(false)
-      })
-    }, 220)
+      setDebouncedSearchQuery(trimmedQuery)
+    }, COMMAND_MENU_SEARCH_DEBOUNCE_MS)
 
     return () => globalThis.window.clearTimeout(timeoutId)
-  }, [open, query])
+  }, [isTypedSearchActive, trimmedQuery])
 
   const runCommand = React.useCallback(
     (command: () => unknown) => {
+      setQuery("")
+      setDebouncedSearchQuery("")
       setOpen(false)
       command()
     },
@@ -729,47 +741,62 @@ export function CommandMenu() {
           </>
         ) : null}
 
-        <CommandGroup heading={t("groups.keyboardWorkflow")}>
-          {keyChordCommands.map((command) => (
-            <CommandItem key={command.key} onSelect={() => runCommand(command.run)}>
-              <Workflow className="mr-2 size-4" />
-              <div className="flex min-w-0 flex-1 flex-col">
-                <span>{command.label}</span>
-                <span className="truncate text-xs text-muted-foreground">{command.description}</span>
-              </div>
-              <CommandShortcut>{command.key}</CommandShortcut>
-            </CommandItem>
-          ))}
-        </CommandGroup>
-
-        <CommandSeparator />
-
-        {shouldShowShortcutReference ? (
+        {showBaseCommandGroups ? (
           <>
-            <CommandGroup heading={t('groups.viewerShortcuts')}>
-              {viewerShortcutDocs.map((shortcut) => (
-                <CommandItem key={shortcut.key} value={`viewer-shortcut ${shortcut.key} ${shortcut.label}`} disabled>
-                  <FileText className="mr-2 size-4" />
+            <CommandGroup heading={t("groups.keyboardWorkflow")}>
+              {keyChordCommands.map((command) => (
+                <CommandItem key={command.key} onSelect={() => runCommand(command.run)}>
+                  <Workflow className="mr-2 size-4" />
                   <div className="flex min-w-0 flex-1 flex-col">
-                    <span>{shortcut.label}</span>
-                    <span className="truncate text-xs text-muted-foreground">{shortcut.description}</span>
+                    <span>{command.label}</span>
+                    <span className="truncate text-xs text-muted-foreground">{command.description}</span>
                   </div>
-                  <CommandShortcut>{shortcut.key}</CommandShortcut>
+                  <CommandShortcut>{command.key}</CommandShortcut>
                 </CommandItem>
               ))}
             </CommandGroup>
 
             <CommandSeparator />
 
-            <CommandGroup heading={t('groups.shortcutMap')}>
-              {shortcutGuideItems.map((item) => (
-                <CommandItem key={`${item.shortcut}:${item.label}`} disabled value={`${item.shortcut} ${item.label}`}>
-                  <Keyboard className="mr-2 size-4" />
-                  <div className="flex min-w-0 flex-1 flex-col">
-                    <span>{item.label}</span>
-                    <span className="truncate text-xs text-muted-foreground">{item.description}</span>
-                  </div>
-                  <CommandShortcut>{item.shortcut}</CommandShortcut>
+            {shouldShowShortcutReference ? (
+              <>
+                <CommandGroup heading={t('groups.viewerShortcuts')}>
+                  {viewerShortcutDocs.map((shortcut) => (
+                    <CommandItem key={shortcut.key} value={`viewer-shortcut ${shortcut.key} ${shortcut.label}`} disabled>
+                      <FileText className="mr-2 size-4" />
+                      <div className="flex min-w-0 flex-1 flex-col">
+                        <span>{shortcut.label}</span>
+                        <span className="truncate text-xs text-muted-foreground">{shortcut.description}</span>
+                      </div>
+                      <CommandShortcut>{shortcut.key}</CommandShortcut>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+
+                <CommandSeparator />
+
+                <CommandGroup heading={t('groups.shortcutMap')}>
+                  {shortcutGuideItems.map((item) => (
+                    <CommandItem key={`${item.shortcut}:${item.label}`} disabled value={`${item.shortcut} ${item.label}`}>
+                      <Keyboard className="mr-2 size-4" />
+                      <div className="flex min-w-0 flex-1 flex-col">
+                        <span>{item.label}</span>
+                        <span className="truncate text-xs text-muted-foreground">{item.description}</span>
+                      </div>
+                      <CommandShortcut>{item.shortcut}</CommandShortcut>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+
+                <CommandSeparator />
+              </>
+            ) : null}
+
+            <CommandGroup heading={t('groups.navigation')}>
+              {navigationItems.map((item) => (
+                <CommandItem key={item.label} onSelect={() => runCommand(item.run)}>
+                  <item.icon className="mr-2 size-4" />
+                  <span>{item.label}</span>
                 </CommandItem>
               ))}
             </CommandGroup>
@@ -778,28 +805,17 @@ export function CommandMenu() {
           </>
         ) : null}
 
-        <CommandGroup heading={t('groups.navigation')}>
-          {navigationItems.map((item) => (
-            <CommandItem key={item.label} onSelect={() => runCommand(item.run)}>
-              <item.icon className="mr-2 size-4" />
-              <span>{item.label}</span>
-            </CommandItem>
-          ))}
-        </CommandGroup>
-
-        <CommandSeparator />
-
-        {query.trim().length >= 2 && !isSlashMode ? (
+        {hasTypedSearchQuery ? (
           <>
-            {query.trim().length >= 4 ? (
+            {trimmedQuery.length >= 4 ? (
               <>
                 <CommandGroup heading={t('groups.aiActions')}>
                   <CommandItem
-                    value={`ai ${query.trim()}`}
+                    value={`ai ${trimmedQuery}`}
                     onSelect={() =>
                       runCommand(() => {
                         const params = new URLSearchParams({
-                          prompt: query.trim(),
+                          prompt: trimmedQuery,
                           autorun: "1",
                         })
                         router.push(`/?${params.toString()}`)
@@ -944,25 +960,29 @@ export function CommandMenu() {
           </>
         ) : null}
 
-        <CommandGroup heading={t("groups.actions")}>
-          {actionItems.map((item) => (
-            <CommandItem key={item.label} onSelect={() => runCommand(item.run)}>
-              <item.icon className="mr-2 size-4" />
-              <span>{item.label}</span>
-            </CommandItem>
-          ))}
-        </CommandGroup>
+        {showBaseCommandGroups ? (
+          <>
+            <CommandGroup heading={t("groups.actions")}>
+              {actionItems.map((item) => (
+                <CommandItem key={item.label} onSelect={() => runCommand(item.run)}>
+                  <item.icon className="mr-2 size-4" />
+                  <span>{item.label}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
 
-        <CommandSeparator />
+            <CommandSeparator />
 
-        <CommandGroup heading={t('groups.theme')}>
-          {themeItems.map((item) => (
-            <CommandItem key={item.label} onSelect={() => runCommand(item.run)}>
-              <item.icon className="mr-2 size-4" />
-              <span>{item.label}</span>
-            </CommandItem>
-          ))}
-        </CommandGroup>
+            <CommandGroup heading={t('groups.theme')}>
+              {themeItems.map((item) => (
+                <CommandItem key={item.label} onSelect={() => runCommand(item.run)}>
+                  <item.icon className="mr-2 size-4" />
+                  <span>{item.label}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </>
+        ) : null}
       </CommandList>
     </CommandDialog>
   )

@@ -1608,8 +1608,8 @@ if __name__ == "__main__":
     # Merge all text blocks into a single paragraph
     full_text = "".join(parser.remove_tag(t) for t in text_blocks)
 
-    print("📄 All text content:")
-    print(full_text)
+    logging.info("All text content:")
+    logging.info("%s", full_text)
 
     # print(f"\n📊 Number of tables or images: {len(tables_and_figures)}")
     # output_dir = "output_images"

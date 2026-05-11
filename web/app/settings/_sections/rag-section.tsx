@@ -19,16 +19,28 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
 
   return (
     <section>
-      <h2 className={cn('mb-2 flex items-center gap-2 text-[13px] font-medium', systemPageTokens.heading)}>
+      <h2
+        className={cn(
+          'mb-2 flex items-center gap-2 text-[13px] font-medium',
+          systemPageTokens.heading
+        )}
+      >
         <Sliders className="h-3.5 w-3.5 text-primary" />
         检索增强生成参数（RAG）
       </h2>
 
-      <div className="rounded-[16px] border border-slate-200/75 bg-white p-3.5 shadow-sm">
+      <div className="rounded-[16px] border border-slate-200/75 bg-card p-3.5 shadow-sm">
         <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2 lg:grid-cols-3">
           <div>
             <div className="mb-1.5 flex items-center justify-between">
-              <div className={cn(systemPageTokens.microLabel, 'text-foreground/80')}>召回 Top K</div>
+              <div
+                className={cn(
+                  systemPageTokens.microLabel,
+                  'text-foreground/80'
+                )}
+              >
+                召回 Top K
+              </div>
               <span className="rounded bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
                 {rag.retrieval_top_k}
               </span>
@@ -39,16 +51,27 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
               max="20"
               value={rag.retrieval_top_k}
               onChange={(event) =>
-                updateRag({ retrieval_top_k: Number.parseInt(event.target.value, 10) })
+                updateRag({
+                  retrieval_top_k: Number.parseInt(event.target.value, 10),
+                })
               }
               className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-muted accent-primary"
             />
-            <p className="mt-1.5 text-[11px] text-muted-foreground">每次检索返回的最相关文档片段数量</p>
+            <p className="mt-1.5 text-[11px] text-muted-foreground">
+              每次检索返回的最相关文档片段数量
+            </p>
           </div>
 
           <div>
             <div className="mb-1.5 flex items-center justify-between">
-              <div className={cn(systemPageTokens.microLabel, 'text-foreground/80')}>相似度阈值</div>
+              <div
+                className={cn(
+                  systemPageTokens.microLabel,
+                  'text-foreground/80'
+                )}
+              >
+                相似度阈值
+              </div>
               <span className="rounded bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
                 {rag.similarity_threshold.toFixed(1)}
               </span>
@@ -60,24 +83,35 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
               step="0.1"
               value={rag.similarity_threshold}
               onChange={(event) =>
-                updateRag({ similarity_threshold: Number.parseFloat(event.target.value) })
+                updateRag({
+                  similarity_threshold: Number.parseFloat(event.target.value),
+                })
               }
               className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-muted accent-primary"
             />
-            <p className="mt-1.5 text-[11px] text-muted-foreground">过滤掉相关性得分低于此值的片段</p>
+            <p className="mt-1.5 text-[11px] text-muted-foreground">
+              过滤掉相关性得分低于此值的片段
+            </p>
           </div>
 
           <div className="rounded-[13px] border border-border bg-muted/25 p-3">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className={cn(systemPageTokens.microLabel, 'text-foreground')}>BM25 关键字检索</div>
+                <div
+                  className={cn(systemPageTokens.microLabel, 'text-foreground')}
+                >
+                  BM25 关键字检索
+                </div>
                 <div className="mt-1 text-[11px] text-muted-foreground">
-                  启用关键词通道（hybrid/keyword 模式），对“精确词匹配”召回更友好
+                  启用关键词通道（hybrid/keyword
+                  模式），对“精确词匹配”召回更友好
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => updateRag({ bm25_index_enabled: !isBm25IndexEnabled })}
+                onClick={() =>
+                  updateRag({ bm25_index_enabled: !isBm25IndexEnabled })
+                }
                 className="shrink-0"
                 aria-label="切换 BM25 检索"
               >
@@ -96,14 +130,20 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
           <div className="rounded-[13px] border border-border bg-muted/25 p-3">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className={cn(systemPageTokens.microLabel, 'text-foreground')}>启用重排序（Reranker）</div>
+                <div
+                  className={cn(systemPageTokens.microLabel, 'text-foreground')}
+                >
+                  启用重排序（Reranker）
+                </div>
                 <div className="mt-1 text-[11px] text-muted-foreground">
                   用重排序模型对候选片段二次排序，通常可提升答案质量（会增加延迟/成本）
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => updateRag({ enable_reranker: !isRerankerEnabled })}
+                onClick={() =>
+                  updateRag({ enable_reranker: !isRerankerEnabled })
+                }
                 className="shrink-0"
                 aria-label="切换重排器"
               >
@@ -121,7 +161,14 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
 
           <div>
             <div className="mb-1.5 flex items-center justify-between">
-              <div className={cn(systemPageTokens.microLabel, 'text-foreground/80')}>分块大小</div>
+              <div
+                className={cn(
+                  systemPageTokens.microLabel,
+                  'text-foreground/80'
+                )}
+              >
+                分块大小
+              </div>
               <span className="rounded bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
                 {rag.chunk_size}
               </span>
@@ -132,15 +179,28 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
               max="4000"
               step="100"
               value={rag.chunk_size}
-              onChange={(event) => updateRag({ chunk_size: Number.parseInt(event.target.value, 10) })}
+              onChange={(event) =>
+                updateRag({
+                  chunk_size: Number.parseInt(event.target.value, 10),
+                })
+              }
               className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-muted accent-primary"
             />
-            <p className="mt-1.5 text-[11px] text-muted-foreground">文档分块的目标字符数</p>
+            <p className="mt-1.5 text-[11px] text-muted-foreground">
+              文档分块的目标字符数
+            </p>
           </div>
 
           <div>
             <div className="mb-1.5 flex items-center justify-between">
-              <div className={cn(systemPageTokens.microLabel, 'text-foreground/80')}>分块重叠</div>
+              <div
+                className={cn(
+                  systemPageTokens.microLabel,
+                  'text-foreground/80'
+                )}
+              >
+                分块重叠
+              </div>
               <span className="rounded bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
                 {rag.chunk_overlap}
               </span>
@@ -152,7 +212,9 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
               step="50"
               value={rag.chunk_overlap}
               onChange={(event) =>
-                updateRag({ chunk_overlap: Number.parseInt(event.target.value, 10) })
+                updateRag({
+                  chunk_overlap: Number.parseInt(event.target.value, 10),
+                })
               }
               className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-muted accent-primary"
             />
@@ -163,7 +225,14 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
 
           <div>
             <div className="mb-1.5 flex items-center justify-between">
-              <div className={cn(systemPageTokens.microLabel, 'text-foreground/80')}>最小分块长度</div>
+              <div
+                className={cn(
+                  systemPageTokens.microLabel,
+                  'text-foreground/80'
+                )}
+              >
+                最小分块长度
+              </div>
               <span className="rounded bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
                 {rag.chunk_min_chars}
               </span>
@@ -175,7 +244,10 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
               value={rag.chunk_min_chars}
               onChange={(event) =>
                 updateRag({
-                  chunk_min_chars: Math.max(0, Number.parseInt(event.target.value || '0', 10)),
+                  chunk_min_chars: Math.max(
+                    0,
+                    Number.parseInt(event.target.value || '0', 10)
+                  ),
                 })
               }
             />

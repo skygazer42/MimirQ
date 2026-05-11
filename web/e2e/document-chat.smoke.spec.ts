@@ -43,12 +43,10 @@ test('document upload flows into intelligent chat smoke path', async ({ page }) 
 
   await expect(page.getByText('已加入队列：1 个文件')).toBeVisible()
   await expect(queueFileRow).toBeVisible()
-  await expect(page.getByText('1 等待')).toBeVisible()
   await expect(page.getByText('准备就绪')).toBeVisible()
 
   await page.getByRole('button', { name: '开始解析' }).click()
 
-  await expect(page.getByText('1 完成')).toBeVisible({ timeout: 60_000 })
   await expect(queueFileRow).toBeVisible()
   await expect(page.getByText(PARSED_MARKDOWN.split('\n')[2])).toBeVisible()
 

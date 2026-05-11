@@ -7,12 +7,12 @@ import { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffect } fr
 import { useTranslations } from 'next-intl'
 import { Send, StopCircle, Sparkles, Database, Wand2, Settings2, Bot, Mic, ArrowDown, Zap, Layers, ShieldCheck, Route, type LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
+import { useQuery } from '@tanstack/react-query'
 import { useChat } from '@/hooks/use-chat'
-import type { Dataset } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-import { cn, detachPromise } from '@/lib/utils'
-import { datasetApi, documentApi, promptTemplateApi, settingsApi, type PromptTemplate } from '@/lib/api'
+import { cn } from '@/lib/utils'
+import { datasetApi, documentApi, promptTemplateApi, settingsApi } from '@/lib/api'
 import { ChatMessageItem } from '@/components/chat/message-item'
 import {
   Select,
@@ -35,12 +35,16 @@ import { globalEventBus } from '@/lib/event-bus'
 import { Magnetic } from '@/components/ui/magnetic'
 import { useRouter } from '@/i18n/navigation'
 import { coerceOneOf } from '@/lib/one-of'
+import { queryKeys } from '@/lib/query-keys'
 import { useDocumentView } from '@/store/document-view'
 
 const SELECT_DEFAULT_VALUE = '__mimirq_default__'
 const DEFAULT_VISIBLE_MESSAGES = 80
 const LOAD_MORE_STEP = 40
 const METADATA_FILTER_MODE_VALUES = ['all', 'exclude_qa', 'qa_only', 'custom'] as const
+const CHAT_DATASET_LIST_PARAMS = { limit: 200 }
+const CHAT_DOCUMENT_STATS_PARAMS = { limit: 1, status: 'completed' as const }
+const CHAT_PROMPT_TEMPLATE_PARAMS = { is_active: true, limit: 50 }
 
 function escapeAttributeSelector(value: string): string {
   if (typeof globalThis.CSS?.escape === 'function') {
@@ -68,9 +72,6 @@ export function ChatArea({
   const summaryMemoryId = 'chat-enable-summary-memory'
   const [inputValue, setInputValue] = useState(() => (initialPrompt || '').trim())
   const [promptTemplateId, setPromptTemplateId] = useState<string>('')
-  const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([])
-  const [datasets, setDatasets] = useState<Dataset[]>([])
-  const [datasetsLoading, setDatasetsLoading] = useState(true)
   const [selectedDatasetId, setSelectedDatasetId] = useState('')
   const [showRagSettings, setShowRagSettings] = useState(Boolean(initialOpenRagSettings))
   const [hasSystemRagDefaults, setHasSystemRagDefaults] = useState(false)
@@ -118,14 +119,51 @@ export function ChatArea({
   const [slashOpen, setSlashOpen] = useState(false)
   const [slashPos, setSlashPos] = useState({ top: 0, left: 0 })
   const [voiceModeOpen, setVoiceModeOpen] = useState(false)
-  const [welcomeStats, setWelcomeStats] = useState<{
-    datasets: number | null
-    documents: number | null
-    loading: boolean
-  }>({ datasets: null, documents: null, loading: true })
   const activeDocumentIds = useMemo(
     () => (activeDocumentId ? [activeDocumentId] : undefined),
     [activeDocumentId]
+  )
+
+  const settingsQuery = useQuery({
+    queryKey: queryKeys.settings.snapshot,
+    queryFn: () => settingsApi.get(),
+    staleTime: 60_000,
+  })
+
+  const datasetsQuery = useQuery({
+    queryKey: queryKeys.datasets.list(CHAT_DATASET_LIST_PARAMS),
+    queryFn: () => datasetApi.list(CHAT_DATASET_LIST_PARAMS),
+    staleTime: 60_000,
+  })
+
+  const documentStatsQuery = useQuery({
+    queryKey: queryKeys.documents.list(CHAT_DOCUMENT_STATS_PARAMS),
+    queryFn: () => documentApi.list(CHAT_DOCUMENT_STATS_PARAMS),
+    staleTime: 30_000,
+  })
+
+  const promptTemplatesQuery = useQuery({
+    queryKey: queryKeys.prompts.list(CHAT_PROMPT_TEMPLATE_PARAMS),
+    queryFn: async () => {
+      const response = await promptTemplateApi.list(CHAT_PROMPT_TEMPLATE_PARAMS)
+      return response.items || []
+    },
+    staleTime: 60_000,
+  })
+
+  const datasets = useMemo(
+    () => (Array.isArray(datasetsQuery.data?.items) ? datasetsQuery.data.items : []),
+    [datasetsQuery.data]
+  )
+  const promptTemplates = useMemo(() => promptTemplatesQuery.data || [], [promptTemplatesQuery.data])
+  const datasetsLoading = datasetsQuery.isLoading
+  const welcomeStats = useMemo(
+    () => ({
+      datasets: datasetsQuery.data ? Number(datasetsQuery.data.total || 0) : null,
+      documents: documentStatsQuery.data ? Number(documentStatsQuery.data.total || 0) : null,
+      loading: datasetsQuery.isLoading || documentStatsQuery.isLoading,
+    }),
+    [datasetsQuery.data, datasetsQuery.isLoading, documentStatsQuery.data, documentStatsQuery.isLoading]
   )
 
   const focusMessageById = useCallback((messageId: string) => {
@@ -150,76 +188,33 @@ export function ChatArea({
     return true
   }, [])
 
-  // Initialize chat retrieval defaults from system settings (avoid hard-coded 5/0.7 overriding backend config).
   useEffect(() => {
-    let cancelled = false
-    const loadRagDefaults = async () => {
-      try {
-        const system = await settingsApi.get()
-        if (cancelled) return
-        setHasSystemRagDefaults(true)
-        setRagConfig((prev) => {
-          const isDefault =
-            prev.top_k === 5 &&
-            prev.score_threshold === 0.7 &&
-            prev.retrieval_mode === 'hybrid' &&
-            prev.use_graph === false
-          if (!isDefault) return prev
-          return {
-            ...prev,
-            top_k: system.rag?.retrieval_top_k ?? prev.top_k,
-            score_threshold: system.rag?.similarity_threshold ?? prev.score_threshold,
-          }
-        })
-      } catch {
-        // best-effort only
+    const system = settingsQuery.data
+    if (!system || hasSystemRagDefaults) return
+
+    setHasSystemRagDefaults(true)
+    setRagConfig((prev) => {
+      const isDefault =
+        prev.top_k === 5 &&
+        prev.score_threshold === 0.7 &&
+        prev.retrieval_mode === 'hybrid' &&
+        prev.use_graph === false
+      if (!isDefault) return prev
+      return {
+        ...prev,
+        top_k: system.rag?.retrieval_top_k ?? prev.top_k,
+        score_threshold: system.rag?.similarity_threshold ?? prev.score_threshold,
       }
-    }
-    detachPromise(loadRagDefaults())
-    return () => {
-      cancelled = true
-    }
-  }, [])
+    })
+  }, [hasSystemRagDefaults, settingsQuery.data])
 
   useEffect(() => {
-    let cancelled = false
-
-    const loadWelcomeStats = async () => {
-      try {
-        const [datasetsRes, documentsRes] = await Promise.all([
-          datasetApi.list({ limit: 200 }),
-          documentApi.list({ limit: 1, status: 'completed' }),
-        ])
-        if (cancelled) return
-        const nextDatasets = Array.isArray(datasetsRes.items) ? datasetsRes.items : []
-        setDatasets(nextDatasets)
-        setSelectedDatasetId((current) => {
-          const trimmed = String(current || '').trim()
-          if (trimmed && nextDatasets.some((dataset) => dataset.id === trimmed)) {
-            return trimmed
-          }
-          return String(nextDatasets[0]?.id || '')
-        })
-        setDatasetsLoading(false)
-        setWelcomeStats({
-          datasets: Number(datasetsRes.total || 0),
-          documents: Number(documentsRes.total || 0),
-          loading: false,
-        })
-      } catch {
-        if (cancelled) return
-        setDatasets([])
-        setSelectedDatasetId('')
-        setDatasetsLoading(false)
-        setWelcomeStats({ datasets: null, documents: null, loading: false })
-      }
-    }
-
-    detachPromise(loadWelcomeStats())
-    return () => {
-      cancelled = true
-    }
-  }, [])
+    setSelectedDatasetId((current) => {
+      const trimmed = String(current || '').trim()
+      if (trimmed && datasets.some((dataset) => dataset.id === trimmed)) return trimmed
+      return String(datasets[0]?.id || '')
+    })
+  }, [datasets])
 
   const selectedDataset = useMemo(
     () => datasets.find((dataset) => dataset.id === selectedDatasetId),
@@ -346,18 +341,7 @@ export function ChatArea({
     }
   }, [handlePrefillInput, router, t])
 
-  // Load prompt templates
   useEffect(() => {
-    const loadTemplates = async () => {
-      try {
-        const response = await promptTemplateApi.list({ is_active: true, limit: 50 })
-        setPromptTemplates(response.items)
-      } catch (error) {
-        console.error('Failed to load prompt templates:', error)
-      }
-    }
-    loadTemplates()
-
     const unsubscribe = globalEventBus.on('chat:send', (prompt: string) => {
       setInputValue(prompt)
     })

@@ -450,5 +450,6 @@ class TCADPParser(IntegratedPipelinePdfParser):
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     parser = TCADPParser()
-    print("ADP available:", parser.check_installation())
+    logging.info("ADP available: %s", parser.check_installation())

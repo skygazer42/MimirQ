@@ -1,16 +1,18 @@
 'use client'
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, ChevronRight, Folder, FolderOpen, Loader2, RefreshCw } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
-import { cn, detachPromise } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { documentApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { queryKeys } from '@/lib/query-keys'
 
-import type { DocumentFolderNode, DocumentFolderTreeResponse } from '@/types'
+import type { DocumentFolderNode } from '@/types'
 
 function collectFolderPaths(node: DocumentFolderNode, out: Set<string>) {
   out.add(node.path)
@@ -184,30 +186,33 @@ export function DatasetFolderTree({
   className,
 }: Readonly<DatasetFolderTreeProps>) {
   const t = useTranslations('DatasetFolderTree')
-  const [tree, setTree] = useState<DocumentFolderTreeResponse | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const folderTreeParams = useMemo(
+    () => ({
+      dataset_id: datasetId,
+      lifecycle,
+      max_depth: maxDepth,
+    }),
+    [datasetId, lifecycle, maxDepth]
+  )
 
-  const load = useCallback(async () => {
-    if (!datasetId) return
-    setLoading(true)
-    setError(null)
-    try {
-      const data = await documentApi.folders({ dataset_id: datasetId, lifecycle, max_depth: maxDepth })
-      setTree(data)
-    } catch (e: any) {
-      console.error('Failed to load dataset folder tree', e)
-      setTree(null)
-      setError(formatApiError(e, t('loadFailed')))
-      toast.error(formatApiError(e, t('loadFailed')))
-    } finally {
-      setLoading(false)
-    }
-  }, [datasetId, lifecycle, maxDepth, t])
+  const folderTreeQuery = useQuery({
+    queryKey: queryKeys.documents.folders(folderTreeParams),
+    enabled: Boolean(datasetId),
+    queryFn: () => documentApi.folders(folderTreeParams),
+  })
+
+  const tree = datasetId ? (folderTreeQuery.data ?? null) : null
+  const loading = Boolean(datasetId) && folderTreeQuery.isLoading
+  const refreshing = Boolean(datasetId) && folderTreeQuery.isFetching
+  const error = folderTreeQuery.error
+    ? formatApiError(folderTreeQuery.error, t('loadFailed'))
+    : null
 
   useEffect(() => {
-    detachPromise(load())
-  }, [load])
+    if (!folderTreeQuery.error) return
+    console.error('Failed to load dataset folder tree', folderTreeQuery.error)
+    toast.error(formatApiError(folderTreeQuery.error, t('loadFailed')))
+  }, [folderTreeQuery.error, t])
 
   const labels = useMemo(
     () => ({
@@ -227,11 +232,13 @@ export function DatasetFolderTree({
           variant="ghost"
           size="sm"
           className="h-7 px-2 text-muted-foreground"
-          onClick={() => detachPromise(load())}
-          disabled={loading}
+          onClick={() => {
+            void folderTreeQuery.refetch()
+          }}
+          disabled={refreshing}
           aria-label={t('refresh')}
         >
-          {loading ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-4 w-4" />}
+          {refreshing ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-4 w-4" />}
         </Button>
       </div>
 

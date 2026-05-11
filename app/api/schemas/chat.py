@@ -612,6 +612,15 @@ class StreamEvent(BaseModel):
     data: Any
 
 
+class ConversationSummaryResponse(BaseModel):
+    available: bool
+    summary: str | None = None
+
+
+class ConversationSummaryUpdateResponse(BaseModel):
+    summary: str
+
+
 class CheckpointItem(BaseModel):
     checkpoint_id: str | None = None
     checkpoint_ns: str = ""

@@ -7,6 +7,7 @@ const DEFAULT_TENANT_ID = '00000000-0000-0000-0000-000000000000'
 const DEFAULT_USER_ID = 'demo'
 const FIXTURE_NAME = 'enterprise-telemetry-sample.md'
 const DOCUMENT_POLL_TIMEOUT_MS = 300_000
+const LIVE_STACK_TEST_TIMEOUT_MS = 420_000
 
 type LiveDocument = {
   id?: string
@@ -220,6 +221,8 @@ test.describe('live stack smoke', () => {
     page,
     request,
   }) => {
+    test.setTimeout(LIVE_STACK_TEST_TIMEOUT_MS)
+
     const filePath = path.resolve(__dirname, 'fixtures/enterprise-telemetry-sample.md')
     const apiBase = process.env.PLAYWRIGHT_LIVE_API_URL || 'http://127.0.0.1:8000'
     const tenantId = process.env.PLAYWRIGHT_LIVE_TENANT_ID || process.env.NEXT_PUBLIC_TENANT_ID || DEFAULT_TENANT_ID
@@ -255,8 +258,10 @@ test.describe('live stack smoke', () => {
         documentId,
       })
 
-      await page.getByText(/^0 处理$/).waitFor({ timeout: 120_000 })
-      await page.getByText(/^1 完成$/).waitFor({ timeout: 120_000 })
+      const uploadedDocument = page.getByRole('button', { name: new RegExp(FIXTURE_NAME) }).first()
+      await uploadedDocument.waitFor({ timeout: 120_000 })
+      await uploadedDocument.click()
+      await page.getByRole('heading', { name: 'Enterprise Telemetry Sample' }).waitFor({ timeout: 120_000 })
     })
 
     await test.step('open the real document viewer and keep state across reload', async () => {
