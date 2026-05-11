@@ -14,6 +14,7 @@
 #  limitations under the License.
 #
 
+import logging
 import re
 from collections import Counter
 from io import BytesIO
@@ -157,14 +158,15 @@ if __name__ == "__main__":
     paragraphs, tables = parser(docx_path)
 
     # 5. Print paragraph content
-    print("=== Text Paragraphs ===")
+    logging.basicConfig(level=logging.INFO)
+    logging.info("=== Text Paragraphs ===")
     for i, (text, style) in enumerate(paragraphs):
         if text.strip():
-            print(f"[Paragraph {i + 1} - Style: {style}]: {text}")
+            logging.info("[Paragraph %s - Style: %s]: %s", i + 1, style, text)
 
     # 6. Print table content
-    print("\n=== Table Content ===")
+    logging.info("=== Table Content ===")
     for i, table_lines in enumerate(tables):
-        print(f"\n[Table {i + 1}]")
+        logging.info("[Table %s]", i + 1)
         for line in table_lines:
-            print(line)
+            logging.info("%s", line)

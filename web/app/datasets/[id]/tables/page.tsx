@@ -1,7 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
+import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { ArrowLeft, Database, Play, RefreshCw, Sparkles, Table2 } from 'lucide-react'
 
@@ -16,6 +17,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useRouter } from '@/i18n/navigation'
 import { formatApiError } from '@/lib/api-errors'
 import { datasetApi } from '@/lib/api'
+import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
 
 import type { Dataset, DatasetTableAsset, TableAskResponse, TableQueryResponse } from '@/types'
@@ -37,14 +39,13 @@ function renderValue(v: any): string {
   }
 }
 
+const TABLE_ASSET_LIST_PARAMS = { skip: 0, limit: 200 } as const
+
 export default function DatasetTablesPage() {
   const router = useRouter()
   const params = useParams()
   const datasetId = asDatasetId((params as any)?.id)
 
-  const [dataset, setDataset] = useState<Dataset | null>(null)
-  const [items, setItems] = useState<DatasetTableAsset[]>([])
-  const [isLoading, setIsLoading] = useState(false)
   const [selected, setSelected] = useState<DatasetTableAsset | null>(null)
 
   const [querySql, setQuerySql] = useState('SELECT * FROM "sheet_0" LIMIT 20')
@@ -59,35 +60,52 @@ export default function DatasetTablesPage() {
   const [semFilterRes, setSemFilterRes] = useState<TableQueryResponse | null>(null)
   const [semFilterRunning, setSemFilterRunning] = useState(false)
 
-  const load = useCallback(async () => {
-    if (!datasetId) return
-    setIsLoading(true)
-    try {
-      const [ds, list] = await Promise.all([
-        datasetApi.get(datasetId),
-        datasetApi.listTables(datasetId, { skip: 0, limit: 200 }),
-      ])
-      setDataset(ds)
-      const tables = list.items || []
-      setItems(tables)
-      setSelected((prev) => {
-        if (prev) {
-          const found = tables.find((t) => t.table_id === prev.table_id)
-          return found || prev
-        }
-        return tables[0] || null
-      })
-    } catch (e: any) {
-      console.error('Failed to load dataset tables', e)
-      toast.error(formatApiError(e, '加载表格失败'))
-    } finally {
-      setIsLoading(false)
-    }
-  }, [datasetId])
+  const datasetQuery = useQuery({
+    queryKey: queryKeys.datasets.detail(datasetId || ''),
+    queryFn: () => {
+      if (!datasetId) throw new Error('缺少数据集 ID')
+      return datasetApi.get(datasetId)
+    },
+    enabled: Boolean(datasetId),
+  })
+  const tablesQuery = useQuery({
+    queryKey: queryKeys.datasets.tables(datasetId || '', TABLE_ASSET_LIST_PARAMS),
+    queryFn: () => {
+      if (!datasetId) throw new Error('缺少数据集 ID')
+      return datasetApi.listTables(datasetId, TABLE_ASSET_LIST_PARAMS)
+    },
+    enabled: Boolean(datasetId),
+  })
+  const dataset = (datasetQuery.data ?? null) as Dataset | null
+  const items: DatasetTableAsset[] = useMemo(
+    () => tablesQuery.data?.items || [],
+    [tablesQuery.data?.items]
+  )
+  const isLoading = datasetQuery.isFetching || tablesQuery.isFetching
+  const loadError = datasetQuery.error ?? tablesQuery.error
+  const loadErrorUpdatedAt = Math.max(
+    datasetQuery.errorUpdatedAt,
+    tablesQuery.errorUpdatedAt
+  )
 
   useEffect(() => {
-    load()
-  }, [load])
+    if (!loadError) return
+    toast.error(formatApiError(loadError, '加载表格失败'))
+  }, [loadError, loadErrorUpdatedAt])
+
+  useEffect(() => {
+    setSelected((prev) => {
+      if (items.length === 0) return null
+      if (!prev) return items[0] || null
+      const found = items.find((t) => t.table_id === prev.table_id)
+      if (!found) return items[0] || null
+      return {
+        ...found,
+        columns: prev.columns,
+        sample_rows: prev.sample_rows,
+      }
+    })
+  }, [items])
 
   const selectTable = async (table: DatasetTableAsset) => {
     if (!datasetId) return
@@ -207,7 +225,15 @@ export default function DatasetTablesPage() {
               <Database className="w-4 h-4" />
               入库策略
             </Button>
-            <Button variant="outline" className="gap-2" onClick={() => load()} disabled={isLoading}>
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => {
+                void datasetQuery.refetch()
+                void tablesQuery.refetch()
+              }}
+              disabled={isLoading}
+            >
               <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin motion-reduce:animate-none')} />
               刷新
             </Button>

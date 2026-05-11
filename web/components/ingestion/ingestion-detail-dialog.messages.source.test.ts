@@ -3,10 +3,12 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
+import { readMessageCatalogSource } from '@/lib/source-test-utils'
+
 describe('ingestion detail dialog message sources', () => {
   it('moves ingestion detail copy into next-intl catalogs', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'ingestion-detail-dialog.tsx'), 'utf8')
-    const messagesSrc = fs.readFileSync(path.resolve(__dirname, '../../i18n/messages/zh-CN.ts'), 'utf8')
+    const messagesSrc = readMessageCatalogSource(path.resolve(__dirname, '../..'))
 
     expect(src).toContain("useTranslations('IngestionDetailDialog')")
     expect(src).toContain('label: t(`stages.${stage.key}`)')

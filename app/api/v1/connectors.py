@@ -34,7 +34,6 @@ from app.api.schemas.connector import (
     ConnectorConfigListResponse,
     ConnectorConfigOut,
     ConnectorConfigUpdateRequest,
-    ConnectorInfo,
     ConnectorRunCreateRequest,
     ConnectorRunListResponse,
     ConnectorRunOut,
@@ -50,6 +49,7 @@ from app.api.schemas.connector import (
     WebCrawlConnectorConfig,
 )
 from app.api.utils.url_ingest import validate_url_for_ingest
+from app.api.v1 import connectors_catalog
 from app.api.v1.documents import (
     LocalHtmlIngestRequest,
     UrlUploadRequest,
@@ -75,7 +75,7 @@ from app.services.connector_reconcile_service import (
     plan_connector_reconcile,
     resolve_connector_reconcile_source_refs,
 )
-from app.services.connector_registry import get_connector_definition, list_connector_definitions
+from app.services.connector_registry import get_connector_definition
 from app.services.connector_sync_state import (
     build_persisted_state,
     build_saved_state_snapshot,
@@ -99,6 +99,7 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 }
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+router.routes.extend(connectors_catalog.router.routes)
 _DB_CONNECTOR_IDS = {"mysql_catalog", "sqlserver_catalog"}
 URL_SHA256_PREFIX = "url_sha256:"
 CONNECTOR_CONFIG_NOT_FOUND_DETAIL = "Connector config not found"
@@ -1363,23 +1364,6 @@ def _sync_connector_config_from_run(db: Session, *, run: ConnectorRun) -> None:
         )
 
     db.commit()
-
-
-@router.get("", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-def list_connectors() -> list[ConnectorInfo]:
-    """List available connectors from the shared registry."""
-    return [
-        ConnectorInfo(
-            id=definition.connector_id,
-            name=definition.name,
-            description=definition.description,
-            supports_incremental=definition.supports_incremental,
-            supports_resume=definition.supports_resume,
-            supports_full_reconcile=definition.supports_full_reconcile,
-            sync_cursor_kind=definition.sync_cursor_kind,
-        )
-        for definition in list_connector_definitions()
-    ]
 
 
 def _format_validation_error(exc: ValidationError) -> list[dict[str, Any]]:

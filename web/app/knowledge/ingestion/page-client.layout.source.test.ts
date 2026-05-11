@@ -3,75 +3,131 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
+import {
+  expectSourceNotToContain,
+  expectSourceToContain,
+} from '@/lib/source-test-utils'
+
 describe('knowledge ingestion dual-mode layout', () => {
   it('defaults to sales-audit mode and exposes a full skeleton switch for execution-monitor', () => {
-    const src = fs.readFileSync(path.resolve(__dirname, 'page-client.tsx'), 'utf8')
+    const src = fs.readFileSync(
+      path.resolve(__dirname, 'page-client.tsx'),
+      'utf8'
+    )
 
-    expect(src).toContain('data-page-scroll-container="true"')
-    expect(src).toContain('flex-1 h-full min-h-0 overflow-y-auto overscroll-contain no-scrollbar scroll-fade-bottom')
-    expect(src).toContain('max-w-none')
-    expect(src).toContain("type IngestionMode = 'sales-audit' | 'execution-monitor'")
-    expect(src).toContain("searchParams.get('mode') === 'execution-monitor' ? 'execution-monitor' : 'sales-audit'")
-    expect(src).toContain('售前摸底')
-    expect(src).toContain('执行监控')
-    expect(src).toContain('建议报价模式')
-    expect(src).toContain('建议 POC 样本量')
-    expect(src).toContain('PDF 类型分流')
-    expect(src).toContain('文档长度分布（按字符数）')
-    expect(src).toContain('版本冲突')
-    expect(src).toContain('脱敏报告导出')
-    expect(src).toContain('核心摘要')
-    expect(src).toContain('风险热区（按风险类型）')
-    expect(src).toContain('处理清单（待处理文件数）')
-    expect(src).toContain('建议 POC 样本')
-    expect(src).toContain('高风险文件（示例）')
-    expect(src).toContain('扫描件')
-    expect(src).toContain('解析失败')
-    expect(src).toContain('合敏感信息')
-    expect(src).toContain('重复文件')
-    expect(src).toContain('其他风险')
-    expect(src).toContain('OCR 处理')
-    expect(src).toContain('格式转换')
-    expect(src).toContain('人工审核')
-    expect(src).toContain('去重处理')
-    expect(src).not.toContain('打开 Demo')
-    expect(src).toContain('退出 Demo')
-    expect(src).toContain('报价依据')
-    expect(src).toContain('复杂度细节')
-    expect(src).toContain('建议 POC 样本')
-    expect(src).toContain('高风险文件（示例）')
-    expect(src).toContain('text-[clamp(1.45rem,2.4vw,2.4rem)]')
-    expect(src).toContain('h-9 rounded-xl')
-    expect(src).toContain('rounded-[1.6rem]')
-    expect(src).toContain('p-3.5 md:p-4')
-    expect(src).toContain('const [desktopScopeCollapsed, setDesktopScopeCollapsed] = useState(false)')
-    expect(src).toContain("const showDesktopAuditRail = mode === 'execution-monitor' && !showEmptyState && !desktopScopeCollapsed")
-    expect(src).toContain("const showDesktopAuditRailToggle = mode === 'execution-monitor' && !showEmptyState")
-    expect(src).toContain('const [headerCollapsed, setHeaderCollapsed] = useState(false)')
-    expect(src).toContain("const [auditDispositionFilter, setAuditDispositionFilter] = useState<AuditDispositionFilter>('all')")
-    expect(src).toContain("const node = scrollContainerRef.current")
-    expect(src).toContain("node.addEventListener('scroll', handleScroll, { passive: true })")
-    expect(src).toContain("showDesktopAuditRailToggle ? 'lg:flex' : 'lg:hidden'")
-    expect(src).toContain("showDesktopAuditRail ? 'w-[18rem] opacity-100' : 'w-0 opacity-0 -translate-x-4 pointer-events-none'")
-    expect(src).toContain('const auditRailCounts = useMemo(() => {')
-    expect(src).toContain('aria-pressed={auditDispositionFilter === value}')
-    expect(src).toContain("onClick={() => setAuditDispositionFilter(value)}")
-    expect(src).toContain("['pending', '待确认', auditRailCounts.pending")
-    expect(src).toContain("['manual', '人工处理', auditRailCounts.manual")
-    expect(src).toContain("['approved', '已确认', auditRailCounts.approved")
-    expect(src).toContain('共 {visibleAuditSamples.length} 项线索')
-    expect(src).toContain('backdrop-blur-xl')
-    expect(src).toContain('bg-[linear-gradient(rgba(148,163,184,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.08)_1px,transparent_1px)]')
-    expect(src).toContain('handleExportSalesAuditReport')
-    expect(src).toContain('taskQueueSnapshot')
-    expect(src).toContain('recentQueueOutcomes')
-    expect(src).toContain('handleRefreshExecutionMonitor')
-    expect(src).toContain('队列深度')
-    expect(src).toContain('活跃 Worker')
-    expect(src).toContain("mode === 'sales-audit'")
-    expect(src).toContain("searchParams.get('mode') === 'execution-monitor'")
-    expect(src).not.toContain('清隐已处理')
-    expect(src).not.toContain('text-[clamp(1.8rem,3vw,3rem)]')
-    expect(src).not.toContain('h-10 rounded-2xl')
+    expectSourceToContain(src, 'data-page-scroll-container="true"')
+    expectSourceToContain(
+      src,
+      'flex-1 h-full min-h-0 overflow-y-auto overscroll-contain no-scrollbar scroll-fade-bottom'
+    )
+    expectSourceToContain(src, 'max-w-none')
+    expectSourceToContain(
+      src,
+      "type IngestionMode = 'sales-audit' | 'execution-monitor'"
+    )
+    expectSourceToContain(
+      src,
+      "searchParams.get('mode') === 'execution-monitor' ? 'execution-monitor' : 'sales-audit'"
+    )
+    expectSourceToContain(src, '售前摸底')
+    expectSourceToContain(src, '执行监控')
+    expectSourceToContain(src, '建议报价模式')
+    expectSourceToContain(src, '建议 POC 样本量')
+    expectSourceToContain(src, 'PDF 类型分流')
+    expectSourceToContain(src, '文档长度分布（按字符数）')
+    expectSourceToContain(src, '版本冲突')
+    expectSourceToContain(src, '脱敏报告导出')
+    expectSourceToContain(src, '核心摘要')
+    expectSourceToContain(src, '风险热区（按风险类型）')
+    expectSourceToContain(src, '处理清单（待处理文件数）')
+    expectSourceToContain(src, '建议 POC 样本')
+    expectSourceToContain(src, '高风险文件（示例）')
+    expectSourceToContain(src, '扫描件')
+    expectSourceToContain(src, '解析失败')
+    expectSourceToContain(src, '合敏感信息')
+    expectSourceToContain(src, '重复文件')
+    expectSourceToContain(src, '其他风险')
+    expectSourceToContain(src, 'OCR 处理')
+    expectSourceToContain(src, '格式转换')
+    expectSourceToContain(src, '人工审核')
+    expectSourceToContain(src, '去重处理')
+    expectSourceNotToContain(src, '打开 Demo')
+    expectSourceToContain(src, '退出演示')
+    expectSourceToContain(src, '报价依据')
+    expectSourceToContain(src, '复杂度细节')
+    expectSourceToContain(src, '建议 POC 样本')
+    expectSourceToContain(src, '高风险文件（示例）')
+    expectSourceToContain(src, 'text-[clamp(1.45rem,2.4vw,2.4rem)]')
+    expectSourceToContain(src, 'h-9 rounded-xl')
+    expectSourceToContain(src, 'rounded-[1.6rem]')
+    expectSourceToContain(src, 'p-3.5 md:p-4')
+    expectSourceToContain(
+      src,
+      'const [desktopScopeCollapsed, setDesktopScopeCollapsed] = useState(false)'
+    )
+    expectSourceToContain(
+      src,
+      "const showDesktopAuditRail = mode === 'execution-monitor' && !showEmptyState && !desktopScopeCollapsed"
+    )
+    expectSourceToContain(
+      src,
+      "const showDesktopAuditRailToggle = mode === 'execution-monitor' && !showEmptyState"
+    )
+    expectSourceToContain(
+      src,
+      'const [headerCollapsed, setHeaderCollapsed] = useState(false)'
+    )
+    expectSourceToContain(
+      src,
+      "const [auditDispositionFilter, setAuditDispositionFilter] = useState<AuditDispositionFilter>('all')"
+    )
+    expectSourceToContain(src, 'const node = scrollContainerRef.current')
+    expectSourceToContain(
+      src,
+      "node.addEventListener('scroll', handleScroll, { passive: true })"
+    )
+    expectSourceToContain(
+      src,
+      "showDesktopAuditRailToggle ? 'lg:flex' : 'lg:hidden'"
+    )
+    expectSourceToContain(
+      src,
+      "showDesktopAuditRail ? 'w-[18rem] opacity-100' : 'w-0 opacity-0 -translate-x-4 pointer-events-none'"
+    )
+    expectSourceToContain(src, 'const auditRailCounts = useMemo(() => {')
+    expectSourceToContain(
+      src,
+      'aria-pressed={auditDispositionFilter === value}'
+    )
+    expectSourceToContain(
+      src,
+      'onClick={() => setAuditDispositionFilter(value)}'
+    )
+    expectSourceToContain(src, "['pending', '待确认', auditRailCounts.pending")
+    expectSourceToContain(src, "['manual', '人工处理', auditRailCounts.manual")
+    expectSourceToContain(
+      src,
+      "['approved', '已确认', auditRailCounts.approved"
+    )
+    expectSourceToContain(src, '共 {visibleAuditSamples.length} 项线索')
+    expectSourceToContain(src, 'backdrop-blur-xl')
+    expectSourceToContain(
+      src,
+      'bg-[linear-gradient(rgba(148,163,184,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.08)_1px,transparent_1px)]'
+    )
+    expectSourceToContain(src, 'handleExportSalesAuditReport')
+    expectSourceToContain(src, 'taskQueueSnapshot')
+    expectSourceToContain(src, 'recentQueueOutcomes')
+    expectSourceToContain(src, 'handleRefreshExecutionMonitor')
+    expectSourceToContain(src, '队列深度')
+    expectSourceToContain(src, '活跃 Worker')
+    expectSourceToContain(src, "mode === 'sales-audit'")
+    expectSourceToContain(
+      src,
+      "searchParams.get('mode') === 'execution-monitor'"
+    )
+    expectSourceNotToContain(src, '清隐已处理')
+    expectSourceNotToContain(src, 'text-[clamp(1.8rem,3vw,3rem)]')
+    expectSourceNotToContain(src, 'h-10 rounded-2xl')
   })
 })

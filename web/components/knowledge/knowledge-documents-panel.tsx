@@ -2,7 +2,18 @@
 
 import type { Dataset, Document } from '@/types'
 
-import { Activity, Database, Eye, Filter, Layers, Loader2, MoreVertical, RefreshCw, RotateCcw, Trash2 } from 'lucide-react'
+import {
+  Activity,
+  Database,
+  Eye,
+  Filter,
+  Layers,
+  Loader2,
+  MoreVertical,
+  RefreshCw,
+  RotateCcw,
+  Trash2,
+} from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { type SyntheticEvent, useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -12,11 +23,20 @@ import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { SearchInput } from '@/components/ui/search-input'
 import { Panel } from '@/components/ui/panel'
-import { StatusBadge, type StatusBadgeStatus } from '@/components/ui/status-badge'
+import {
+  StatusBadge,
+  type StatusBadgeStatus,
+} from '@/components/ui/status-badge'
 import { DocumentOperationsPanel } from '@/components/documents/document-operations-panel'
 import { DocumentTags } from '@/components/documents/document-tags'
 import { KnowledgeInspector } from '@/components/knowledge/knowledge-inspector'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,7 +52,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Link } from '@/i18n/navigation'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, formatDate, formatFileSize, detachPromise } from '@/lib/utils'
@@ -90,7 +116,9 @@ type KnowledgeDocumentsPanelProps = {
   batchLifecycleWorking: boolean
   batchReingestWorking: boolean
   runBatchReingest: () => void | Promise<void>
-  runBatchLifecycle: (action: 'disable' | 'enable' | 'archive' | 'unarchive') => void | Promise<void>
+  runBatchLifecycle: (
+    action: 'disable' | 'enable' | 'archive' | 'unarchive'
+  ) => void | Promise<void>
 
   anySelectedDisabled: boolean
   anySelectedEnabled: boolean
@@ -102,7 +130,10 @@ type KnowledgeDocumentsPanelProps = {
   onPeek?: (docId: string) => void
 }
 
-function getStatusBadge(status: string, t: TranslateFn): { status: StatusBadgeStatus; label: string } {
+function getStatusBadge(
+  status: string,
+  t: TranslateFn
+): { status: StatusBadgeStatus; label: string } {
   switch (status) {
     case 'completed':
       return { status: 'completed', label: t('status.completed') }
@@ -135,9 +166,16 @@ function getDocumentLifecycleLabel(doc: Document) {
 
 function getDocumentSourceLabel(doc: Document) {
   const metadata = (doc.metadata || {}) as Record<string, unknown>
-  const source = typeof metadata.source === 'string' ? metadata.source.toLowerCase() : ''
-  const sourcePath = typeof metadata.source_path === 'string' ? metadata.source_path : ''
-  if (source.includes('connector') || source.includes('crawl') || source.includes('jira')) return '连接器'
+  const source =
+    typeof metadata.source === 'string' ? metadata.source.toLowerCase() : ''
+  const sourcePath =
+    typeof metadata.source_path === 'string' ? metadata.source_path : ''
+  if (
+    source.includes('connector') ||
+    source.includes('crawl') ||
+    source.includes('jira')
+  )
+    return '连接器'
   if (source.includes('url')) return 'URL 导入'
   if (sourcePath) return '目录上传'
   return '手动导入'
@@ -214,7 +252,9 @@ export function KnowledgeDocumentsPanel({
   const [activeDrawerDoc, setActiveDrawerDoc] = useState<Document | null>(null)
   const [singleDeleteDoc, setSingleDeleteDoc] = useState<Document | null>(null)
   const [singleDeleteWorking, setSingleDeleteWorking] = useState(false)
-  const [singleDeleteError, setSingleDeleteError] = useState<string | null>(null)
+  const [singleDeleteError, setSingleDeleteError] = useState<string | null>(
+    null
+  )
   const [opsOpen, setOpsOpen] = useState(false)
 
   const docsGridColsClassName =
@@ -235,14 +275,19 @@ export function KnowledgeDocumentsPanel({
     : '2.25rem minmax(18rem,1.8fr) minmax(5.5rem,.55fr) minmax(5rem,.5fr) 3.75rem 5rem 5.5rem 8.5rem'
   const peekChunksLabel = (() => {
     const resolved = t('actions.peekChunks')
-    return resolved === 'KnowledgeDocumentsPanel.actions.peekChunks' ? '查看分块' : resolved
+    return resolved === 'KnowledgeDocumentsPanel.actions.peekChunks'
+      ? '查看分块'
+      : resolved
   })()
 
   const docsGridVirtualRows = docsGridVirtualizer.getVirtualItems()
   const docsTableVirtualRows = docsTableVirtualizer.getVirtualItems()
-  const docsTablePaddingTop = docsTableVirtualRows.length ? docsTableVirtualRows[0].start : 0
+  const docsTablePaddingTop = docsTableVirtualRows.length
+    ? docsTableVirtualRows[0].start
+    : 0
   const docsTablePaddingBottom = docsTableVirtualRows.length
-    ? docsTableVirtualizer.getTotalSize() - docsTableVirtualRows[docsTableVirtualRows.length - 1].end
+    ? docsTableVirtualizer.getTotalSize() -
+      docsTableVirtualRows[docsTableVirtualRows.length - 1].end
     : 0
   const sectionInsetClassName = embedded ? 'px-4 py-4' : ''
 
@@ -255,7 +300,7 @@ export function KnowledgeDocumentsPanel({
     setSingleDeleteError(null)
     try {
       await deleteDocument(doc.id)
-      toast.success(t("toasts.deleteSuccess"))
+      toast.success(t('toasts.deleteSuccess'))
       setSingleDeleteDoc(null)
     } catch (err: any) {
       console.error('Delete document failed:', err)
@@ -282,14 +327,17 @@ export function KnowledgeDocumentsPanel({
     []
   )
 
-  const copyText = useCallback(async (text: string, okMsg: string) => {
-    try {
-      await globalThis.navigator.clipboard.writeText(text)
-      toast.success(okMsg)
-    } catch {
-      toast.error(t('toasts.copyFailed'))
-    }
-  }, [t])
+  const copyText = useCallback(
+    async (text: string, okMsg: string) => {
+      try {
+        await globalThis.navigator.clipboard.writeText(text)
+        toast.success(okMsg)
+      } catch {
+        toast.error(t('toasts.copyFailed'))
+      }
+    },
+    [t]
+  )
 
   const renderGridDocCard = (doc: Document) => {
     const badge = getStatusBadge(doc.status, t)
@@ -334,12 +382,22 @@ export function KnowledgeDocumentsPanel({
       >
         <AlertDialogContent className="max-w-md">
           <AlertDialogHeader>
-            <AlertDialogTitle>{singleDeleteDoc ? t('singleDelete.title') : t('singleDelete.titleDefault')}</AlertDialogTitle>
+            <AlertDialogTitle>
+              {singleDeleteDoc
+                ? t('singleDelete.title')
+                : t('singleDelete.titleDefault')}
+            </AlertDialogTitle>
             <AlertDialogDescription>
               {singleDeleteDoc && (
                 <div className="space-y-2">
-                  <div>{t('singleDelete.description', { filename: singleDeleteDoc.filename })}</div>
-                  <div className="text-xs text-muted-foreground font-mono break-all">{singleDeleteDoc.id}</div>
+                  <div>
+                    {t('singleDelete.description', {
+                      filename: singleDeleteDoc.filename,
+                    })}
+                  </div>
+                  <div className="text-xs text-muted-foreground font-mono break-all">
+                    {singleDeleteDoc.id}
+                  </div>
                 </div>
               )}
               {singleDeleteError ? (
@@ -364,7 +422,9 @@ export function KnowledgeDocumentsPanel({
               onClick={() => detachPromise(confirmSingleDelete())}
               disabled={singleDeleteWorking || !singleDeleteDoc}
             >
-              {singleDeleteWorking ? t('actions.deleting') : t('actions.confirmDelete')}
+              {singleDeleteWorking
+                ? t('actions.deleting')
+                : t('actions.confirmDelete')}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -392,35 +452,119 @@ export function KnowledgeDocumentsPanel({
                   {selectedDocIds.length}
                 </div>
                 <span className="text-[13px] font-medium text-foreground/90 whitespace-nowrap">
-                  {t('selection.selectedCount', { count: selectedDocIds.length })}
+                  {t('selection.selectedCount', {
+                    count: selectedDocIds.length,
+                  })}
                 </span>
               </div>
 
               <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 pr-0.5">
-                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-medium hover:bg-muted/60" onClick={toggleSelectAllVisible}>
-                  {allVisibleSelected ? t('selection.clearSelectAll') : t('selection.selectAllVisible')}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-9 rounded-full px-4 text-xs font-medium hover:bg-muted/60"
+                  onClick={toggleSelectAllVisible}
+                >
+                  {allVisibleSelected
+                    ? t('selection.clearSelectAll')
+                    : t('selection.selectAllVisible')}
                 </Button>
-                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-medium hover:bg-muted/60" onClick={() => setSelectedDocIds([])}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-9 rounded-full px-4 text-xs font-medium hover:bg-muted/60"
+                  onClick={() => setSelectedDocIds([])}
+                >
                   {t('actions.clearSelection')}
                 </Button>
                 <div className="w-px h-4 bg-border/40 mx-1" />
-                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-medium hover:bg-muted/60 text-primary" onClick={() => detachPromise(runBatchReingest())} disabled={batchDeleting || batchLifecycleWorking || batchReingestWorking}>
-                  {batchReingestWorking ? <Loader2 className="size-3 animate-spin mr-1.5" /> : <RefreshCw className="size-3 mr-1.5" />}
-                  {batchReingestWorking ? t('actions.reingesting') : t('actions.reingest')}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-9 rounded-full px-4 text-xs font-medium hover:bg-muted/60 text-primary"
+                  onClick={() => detachPromise(runBatchReingest())}
+                  disabled={
+                    batchDeleting ||
+                    batchLifecycleWorking ||
+                    batchReingestWorking
+                  }
+                >
+                  {batchReingestWorking ? (
+                    <Loader2 className="size-3 animate-spin mr-1.5" />
+                  ) : (
+                    <RefreshCw className="size-3 mr-1.5" />
+                  )}
+                  {batchReingestWorking
+                    ? t('actions.reingesting')
+                    : t('actions.reingest')}
                 </Button>
-                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-medium hover:bg-muted/60" onClick={() => detachPromise(runBatchLifecycle('disable'))} disabled={batchDeleting || batchLifecycleWorking || !anySelectedEnabled}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-9 rounded-full px-4 text-xs font-medium hover:bg-muted/60"
+                  onClick={() => detachPromise(runBatchLifecycle('disable'))}
+                  disabled={
+                    batchDeleting ||
+                    batchLifecycleWorking ||
+                    !anySelectedEnabled
+                  }
+                >
                   {t('actions.disable')}
                 </Button>
-                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-medium hover:bg-muted/60" onClick={() => detachPromise(runBatchLifecycle('enable'))} disabled={batchDeleting || batchLifecycleWorking || !anySelectedDisabled}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-9 rounded-full px-4 text-xs font-medium hover:bg-muted/60"
+                  onClick={() => detachPromise(runBatchLifecycle('enable'))}
+                  disabled={
+                    batchDeleting ||
+                    batchLifecycleWorking ||
+                    !anySelectedDisabled
+                  }
+                >
                   {t('actions.enable')}
                 </Button>
-                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-medium hover:bg-muted/60" onClick={() => detachPromise(runBatchLifecycle('archive'))} disabled={batchDeleting || batchLifecycleWorking || !anySelectedNotArchived}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-9 rounded-full px-4 text-xs font-medium hover:bg-muted/60"
+                  onClick={() => detachPromise(runBatchLifecycle('archive'))}
+                  disabled={
+                    batchDeleting ||
+                    batchLifecycleWorking ||
+                    !anySelectedNotArchived
+                  }
+                >
                   {t('actions.archive')}
                 </Button>
-                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-medium hover:bg-muted/60" onClick={() => detachPromise(runBatchLifecycle('unarchive'))} disabled={batchDeleting || batchLifecycleWorking || !anySelectedArchived}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-9 rounded-full px-4 text-xs font-medium hover:bg-muted/60"
+                  onClick={() => detachPromise(runBatchLifecycle('unarchive'))}
+                  disabled={
+                    batchDeleting ||
+                    batchLifecycleWorking ||
+                    !anySelectedArchived
+                  }
+                >
                   {t('actions.unarchive')}
                 </Button>
-                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-4 text-xs font-medium bg-destructive/5 text-destructive hover:bg-destructive/15" onClick={() => setBatchDeleteOpen(true)} disabled={batchDeleting || batchLifecycleWorking}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-9 rounded-full px-4 text-xs font-medium bg-destructive/5 text-destructive hover:bg-destructive/15"
+                  onClick={() => setBatchDeleteOpen(true)}
+                  disabled={batchDeleting || batchLifecycleWorking}
+                >
                   <Trash2 className="size-3 mr-1.5" />
                   {t('actions.batchDelete')}
                 </Button>
@@ -433,26 +577,41 @@ export function KnowledgeDocumentsPanel({
       <AlertDialog open={batchDeleteOpen} onOpenChange={setBatchDeleteOpen}>
         <AlertDialogContent className="max-w-md">
           <AlertDialogHeader>
-            <AlertDialogTitle>{t("batchDelete.title")}</AlertDialogTitle>
+            <AlertDialogTitle>{t('batchDelete.title')}</AlertDialogTitle>
             <AlertDialogDescription>
               {t('batchDelete.description', { count: selectedDocIds.length })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <Button type="button" variant="outline" onClick={() => setBatchDeleteOpen(false)} disabled={batchDeleting}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setBatchDeleteOpen(false)}
+              disabled={batchDeleting}
+            >
               {t('actions.cancel')}
             </Button>
-            <Button type="button" variant="destructive" onClick={() => detachPromise(confirmBatchDelete())} disabled={batchDeleting || selectedDocIds.length === 0}>
-              {batchDeleting ? t('actions.deleting') : t('actions.confirmDelete')}
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => detachPromise(confirmBatchDelete())}
+              disabled={batchDeleting || selectedDocIds.length === 0}
+            >
+              {batchDeleting
+                ? t('actions.deleting')
+                : t('actions.confirmDelete')}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <Dialog open={Boolean(activeDrawerDoc)} onOpenChange={handleDrawerOpenChange}>
+      <Dialog
+        open={Boolean(activeDrawerDoc)}
+        onOpenChange={handleDrawerOpenChange}
+      >
         <DialogContent className="left-auto right-0 top-0 h-dvh w-[min(480px,100vw)] max-w-[480px] translate-x-0 translate-y-0 rounded-none p-0 overflow-hidden">
           <DialogHeader className="border-b border-border/70 px-5 py-4 text-left">
-            <DialogTitle className="text-[15px] font-semibold tracking-tight text-foreground">
+            <DialogTitle className="text-[15px] font-semibold text-foreground">
               文档审查视图
             </DialogTitle>
             <DialogDescription className="text-[12px] text-muted-foreground/76">
@@ -460,7 +619,10 @@ export function KnowledgeDocumentsPanel({
             </DialogDescription>
           </DialogHeader>
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <KnowledgeInspector embedded selectedDocs={activeDrawerDoc ? [activeDrawerDoc] : []} />
+            <KnowledgeInspector
+              embedded
+              selectedDocs={activeDrawerDoc ? [activeDrawerDoc] : []}
+            />
           </div>
         </DialogContent>
       </Dialog>
@@ -476,13 +638,18 @@ export function KnowledgeDocumentsPanel({
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div className="min-w-0 space-y-1.5">
               <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.22em] text-muted-foreground/70">
-                <div className={cn('flex size-6 items-center justify-center rounded-lg border border-border/70 bg-muted/35 text-primary/80', iconShellClassName)}>
+                <div
+                  className={cn(
+                    'flex size-6 items-center justify-center rounded-lg border border-border/70 bg-muted/35 text-primary/80',
+                    iconShellClassName
+                  )}
+                >
                   <span className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[linear-gradient(135deg,rgba(255,255,255,0.3),transparent_52%)] opacity-80" />
                   <Database className="size-3.5" />
                 </div>
                 Document Inventory
               </div>
-              <div className="text-[18px] font-medium tracking-tight text-foreground/92">
+              <div className="text-[18px] font-medium text-foreground/92">
                 {selectedDatasetLabel || '全部知识库文档总览'}
               </div>
               <div className="max-w-3xl text-[12px] leading-5 text-muted-foreground/76">
@@ -503,7 +670,9 @@ export function KnowledgeDocumentsPanel({
                 <div className="mt-0.5 font-mono text-[14px] tabular-nums text-foreground transition-transform duration-200 group-hover:scale-[1.02]">
                   {visibleDocumentsCount}
                 </div>
-                <div className="mt-0.5 text-[9px] text-muted-foreground/72">当前列表结果</div>
+                <div className="mt-0.5 text-[9px] text-muted-foreground/72">
+                  当前列表结果
+                </div>
               </motion.div>
               <motion.div
                 whileHover={{ y: -1, scale: 1.003 }}
@@ -517,7 +686,9 @@ export function KnowledgeDocumentsPanel({
                 <div className="mt-0.5 font-mono text-[14px] tabular-nums text-foreground transition-transform duration-200 group-hover:scale-[1.02]">
                   {selectedDocIds.length}
                 </div>
-                <div className="mt-0.5 text-[9px] text-muted-foreground/72">批量操作范围</div>
+                <div className="mt-0.5 text-[9px] text-muted-foreground/72">
+                  批量操作范围
+                </div>
               </motion.div>
               <motion.div
                 whileHover={{ y: -1, scale: 1.003 }}
@@ -546,11 +717,18 @@ export function KnowledgeDocumentsPanel({
               onValueChange={setDocFilter}
               containerClassName="min-w-0 w-full xl:max-w-[460px]"
               inputClassName="h-9 rounded-[12px] border-border/70 bg-background pr-4 text-[12px]"
-              placeholder={showDatasetColumn ? '搜索文件名 / 文档 ID / 数据集' : '搜索文件名 / 文档 ID'}
+              placeholder={
+                showDatasetColumn
+                  ? '搜索文件名 / 文档 ID / 数据集'
+                  : '搜索文件名 / 文档 ID'
+              }
             />
 
             <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap lg:justify-end">
-              <Select value={sortKey} onValueChange={(value) => setSortKey(value as DocSortKey)}>
+              <Select
+                value={sortKey}
+                onValueChange={(value) => setSortKey(value as DocSortKey)}
+              >
                 <SelectTrigger className="h-9 min-w-[144px] rounded-[12px] border-border/70 bg-background text-[11px] font-medium">
                   <SelectValue placeholder={t('table.columns.name')} />
                 </SelectTrigger>
@@ -600,7 +778,11 @@ export function KnowledgeDocumentsPanel({
 
           {opsOpen ? (
             <div className="mt-3">
-              <DocumentOperationsPanel selectedDocumentIds={selectedDocIds} datasetId={selectedDatasetId} datasets={datasets} />
+              <DocumentOperationsPanel
+                selectedDocumentIds={selectedDocIds}
+                datasetId={selectedDatasetId}
+                datasets={datasets}
+              />
             </div>
           ) : null}
         </div>
@@ -642,7 +824,11 @@ export function KnowledgeDocumentsPanel({
                         <div className="absolute bottom-0 h-16 w-28 rounded-[24px] border border-info/20 bg-background/80 shadow-[0_22px_48px_-34px_rgba(37,99,235,0.7)]" />
                         <div className="absolute bottom-5 h-14 w-20 rounded-[18px] border border-info/20 bg-info/10" />
                         <div className="absolute bottom-8 flex size-14 items-center justify-center rounded-[20px] border border-info/20 bg-background text-info shadow-[0_16px_28px_-20px_rgba(37,99,235,0.6)]">
-                          {isDatasetEmpty ? <Database className="size-7" /> : <Filter className="size-7" />}
+                          {isDatasetEmpty ? (
+                            <Database className="size-7" />
+                          ) : (
+                            <Filter className="size-7" />
+                          )}
                         </div>
                         <span className="absolute left-5 top-2 size-2 rounded-full bg-info/50" />
                         <span className="absolute right-4 top-8 size-1.5 rounded-full bg-info/50" />
@@ -651,7 +837,7 @@ export function KnowledgeDocumentsPanel({
                       <div className="inline-flex items-center rounded-full border border-info/15 bg-background/78 px-3 py-1 text-[10px] font-medium uppercase tracking-[0.22em] text-info/70 dark:text-info/78">
                         Asset Shelf
                       </div>
-                      <h3 className="mt-3 text-[22px] font-semibold tracking-tight text-foreground">
+                      <h3 className="mt-3 text-[22px] font-semibold text-foreground">
                         {emptyTitle}
                       </h3>
                       <p className="mt-2 max-w-2xl text-[13px] leading-6 text-muted-foreground/78">
@@ -665,7 +851,8 @@ export function KnowledgeDocumentsPanel({
                             导入路径
                           </div>
                           <p className="mt-2 text-[11px] leading-5 text-muted-foreground/74">
-                            从右上角「导入/新增」上传文件、批量 URL 或连接器任务，文档会自动绑定当前数据集。
+                            从右上角「导入/新增」上传文件、批量 URL
+                            或连接器任务，文档会自动绑定当前数据集。
                           </p>
                         </div>
                         <div className="rounded-[18px] border border-border/70 bg-background/82 p-4 text-left shadow-[0_14px_28px_-26px_rgba(15,23,42,0.35)]">
@@ -746,7 +933,10 @@ export function KnowledgeDocumentsPanel({
                     {docsGridVirtualRows.map((virtualRow: any) => {
                       const cols = Math.max(1, docGridColumns)
                       const startIndex = virtualRow.index * cols
-                      const rowDocs = filteredDocuments.slice(startIndex, startIndex + cols)
+                      const rowDocs = filteredDocuments.slice(
+                        startIndex,
+                        startIndex + cols
+                      )
                       const isLastRow = virtualRow.index === docGridRowCount - 1
 
                       return (
@@ -763,7 +953,12 @@ export function KnowledgeDocumentsPanel({
                           }}
                           className={isLastRow ? undefined : 'pb-5'}
                         >
-                          <div className={cn('grid items-stretch gap-5', docsGridColsClassName)}>
+                          <div
+                            className={cn(
+                              'grid items-stretch gap-5',
+                              docsGridColsClassName
+                            )}
+                          >
                             {rowDocs.map(renderGridDocCard)}
                           </div>
                         </div>
@@ -775,225 +970,354 @@ export function KnowledgeDocumentsPanel({
             }
 
             return (
-              <div className={cn(embedded ? 'flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background/10 px-5 py-5' : 'rounded-xl overflow-hidden')}>
+              <div
+                className={cn(
+                  embedded
+                    ? 'flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background/10 px-5 py-5'
+                    : 'rounded-xl overflow-hidden'
+                )}
+              >
                 {/* className="group hover:bg-muted/20 transition-colors" */}
-                <div className={cn('overflow-hidden rounded-[22px] border border-border/70 bg-background', embedded && 'flex h-full min-h-0 flex-1 flex-col')}>
+                <div
+                  className={cn(
+                    'overflow-hidden rounded-[22px] border border-border/70 bg-background',
+                    embedded && 'flex h-full min-h-0 flex-1 flex-col'
+                  )}
+                >
                   <div className="min-h-0 flex-1 overflow-auto">
-                    <table aria-label={t('table.ariaLabel')} className="w-full table-fixed text-sm text-left">
-                    <colgroup>
-                      <col className="w-9" />
-                      <col />
-                      {showDatasetColumn ? <col className="w-[10rem]" /> : null}
-                      <col className="w-[6.5rem]" />
-                      <col className="w-[6rem]" />
-                      <col className="w-[4.5rem]" />
-                      <col className="w-[6rem]" />
-                      <col className="w-[6.5rem]" />
-                      <col className="w-[8.5rem]" />
-                    </colgroup>
-                    <thead className="border-b border-border/60 bg-muted/[0.16] text-[11px] uppercase text-muted-foreground/78">
-                      <tr>
-                        <th colSpan={tableColumnCount} className="sticky top-0 z-10 bg-background/95 px-3 py-2 font-medium">
-                          <div
-                            className="grid items-center gap-3"
-                            style={{ gridTemplateColumns: documentListGridTemplate }}
-                          >
-                            <div className="flex items-center justify-center">
-                              <input
-                                type="checkbox"
-                                className="h-4 w-4 rounded border-border/60 text-primary focus-ring"
-                                checked={allVisibleSelected}
-                                onChange={toggleSelectAllVisible}
-                                aria-label={t('table.selectAllVisible')}
-                              />
-                            </div>
-                            <div>{t('table.columns.name')}</div>
-                            {showDatasetColumn ? <div>{t('table.columns.dataset')}</div> : null}
-                            <div>{t('table.columns.tags')}</div>
-                            <div>{t('table.columns.status')}</div>
-                            <div className="text-right tabular-nums">{t('table.columns.chunks')}</div>
-                            <div className="text-right tabular-nums">{t('table.columns.size')}</div>
-                            <div>{t('table.columns.uploadedAt')}</div>
-                            <div className="text-right">{t('table.columns.actions')}</div>
-                          </div>
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-card/95">
-                      {docsTablePaddingTop > 0 ? (
+                    <table
+                      aria-label={t('table.ariaLabel')}
+                      className="w-full table-fixed text-sm text-left"
+                    >
+                      <colgroup>
+                        <col className="w-9" />
+                        <col />
+                        {showDatasetColumn ? (
+                          <col className="w-[10rem]" />
+                        ) : null}
+                        <col className="w-[6.5rem]" />
+                        <col className="w-[6rem]" />
+                        <col className="w-[4.5rem]" />
+                        <col className="w-[6rem]" />
+                        <col className="w-[6.5rem]" />
+                        <col className="w-[8.5rem]" />
+                      </colgroup>
+                      <thead className="border-b border-border/60 bg-muted/[0.16] text-[11px] uppercase text-muted-foreground/78">
                         <tr>
-                          <td colSpan={tableColumnCount} className="p-0" style={{ height: `${docsTablePaddingTop}px` }} />
-                        </tr>
-                      ) : null}
-
-                      {docsTableVirtualRows.map((virtualRow: any) => {
-                        const doc = filteredDocuments[virtualRow.index]
-                        if (!doc) return null
-                        const badge = getStatusBadge(doc.status, t)
-                        const tags = getUserTagsFromDocument(doc)
-                        const fileType = getFileTypeMeta(doc)
-                        const TypeIcon = fileType.icon
-                        const datasetLabel = datasetLabelById?.[doc.dataset_id || ''] || '-'
-                        const metadataItems = [
-                          { label: '数据集', value: datasetLabel },
-                          { label: '标签', value: getDocumentTagSummary(tags) },
-                          { label: '生命周期', value: getDocumentLifecycleLabel(doc) },
-                          { label: '来源', value: getDocumentSourceLabel(doc) },
-                          { label: '更新时间', value: formatDate(doc.updated_at || doc.created_at) },
-                        ]
-
-                        return (
-                          <tr
-                            key={doc.id}
-                            data-index={virtualRow.index}
-                            ref={docsTableVirtualizer.measureElement}
-                            className="group/row"
+                          <th
+                            colSpan={tableColumnCount}
+                            className="sticky top-0 z-10 bg-background/95 px-3 py-2 font-medium"
                           >
-                            <td colSpan={tableColumnCount} className="px-3 py-1.5">
-                              <div className="rounded-[18px] border border-border/70 bg-background shadow-[0_14px_30px_-28px_rgba(15,23,42,0.32)] transition-[border-color,box-shadow,transform] duration-150 group-hover/row:-translate-y-px group-hover/row:border-primary/20 group-hover/row:shadow-[0_20px_34px_-28px_rgba(37,99,235,0.32)]">
-                                <div
-                                  className="grid min-h-[64px] items-center gap-3 px-3 py-3"
-                                  style={{ gridTemplateColumns: documentListGridTemplate }}
-                                >
-                                  <div className="flex items-center justify-center">
-                                    <input
-                                      type="checkbox"
-                                      className="h-4 w-4 rounded border-border/60 text-primary focus-ring"
-                                      checked={selectedSet.has(doc.id)}
-                                      onChange={() => toggleDocSelection(doc.id)}
-                                      aria-label={t('table.selectDocument', { filename: doc.filename })}
-                                    />
-                                  </div>
-
-                                  <div className="min-w-0">
-                                    <div className="flex min-w-0 items-center gap-3">
-                                      <div className={cn('flex size-8 shrink-0 items-center justify-center rounded-[10px] border transition-transform duration-150 group-hover/row:scale-[1.03]', iconShellClassName, fileType.bg, fileType.border, fileType.color)}>
-                                        <span className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[linear-gradient(135deg,rgba(255,255,255,0.28),transparent_52%)] opacity-75" />
-                                        <TypeIcon className="size-4.5" />
-                                      </div>
-                                      <div className="min-w-0 flex-1">
-                                        <div className="mb-1 max-w-[360px] truncate text-[13px] font-medium tracking-tight leading-none text-foreground/90 xl:max-w-[440px]" title={doc.filename}>
-                                          {doc.filename}
-                                        </div>
-                                        <div className="max-w-[360px] truncate font-mono text-[10px] uppercase tracking-[0.04em] text-muted-foreground/48 xl:max-w-[440px]">
-                                          {doc.id}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  {showDatasetColumn ? (
-                                    <div className="min-w-0 text-[12px] leading-5 text-muted-foreground/82">
-                                      <span className="line-clamp-2">{datasetLabel}</span>
-                                    </div>
-                                  ) : null}
-
-                                  <div className="min-w-0">
-                                    {tags.length ? (
-                                      <DocumentTags tags={tags} max={2} dense />
-                                    ) : (
-                                      <span className="text-[12px] text-muted-foreground/32">—</span>
-                                    )}
-                                  </div>
-
-                                  <div className="min-w-0">
-                                    <StatusBadge status={badge.status} label={badge.label} dense className="rounded-full bg-muted/50" />
-                                  </div>
-
-                                  <div className="text-right font-mono text-[11px] tabular-nums text-foreground/70">
-                                    {doc.chunk_count ?? '0'}
-                                  </div>
-                                  <div className="text-right font-mono text-[11px] tabular-nums text-muted-foreground">
-                                    {formatFileSize(doc.file_size)}
-                                  </div>
-                                  <div className="whitespace-nowrap font-mono text-[11px] tabular-nums text-muted-foreground">
-                                    {formatDate(doc.created_at)}
-                                  </div>
-                                  <div className="flex items-center justify-end gap-1">
-                                    <IconButton
-                                      label="查看详情"
-                                      variant="ghost"
-                                      className="h-7 w-7 rounded-full text-muted-foreground transition-[transform,background-color,color,box-shadow] hover:scale-[1.04] hover:text-primary hover:bg-primary/8 hover:shadow-[0_8px_18px_-12px_rgba(37,99,235,0.45)]"
-                                      onClick={buildOpenInspectorHandler(doc)}
-                                    >
-                                      <Eye className="h-3.5 w-3.5" />
-                                    </IconButton>
-
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-7 rounded-full px-2.5 text-[10px] font-medium text-primary hover:bg-primary/10"
-                                      onClick={(event) => {
-                                        event.stopPropagation()
-                                        if (onPeek) onPeek(doc.id)
-                                        else globalThis.window.open(`/chunk-preview?docId=${doc.id}`, '_blank')
-                                      }}
-                                    >
-                                      <Layers className="mr-1 size-3" />
-                                      {peekChunksLabel}
-                                    </Button>
-
-                                    <DropdownMenu>
-                                      <DropdownMenuTrigger asChild>
-                                        <IconButton
-                                          label={t('actions.moreActions')}
-                                          variant="ghost"
-                                          className="h-7 w-7 rounded-full text-muted-foreground transition-[transform,background-color,color] hover:scale-[1.04] hover:text-foreground hover:bg-muted/70"
-                                        >
-                                          <MoreVertical className="h-3.5 w-3.5" />
-                                        </IconButton>
-                                      </DropdownMenuTrigger>
-                                      <DropdownMenuContent align="end" className="w-56 rounded-xl border-border/60 shadow-strong/10">
-                                        <DropdownMenuItem onSelect={() => detachPromise(copyText(doc.id, t('toasts.copyDocumentId')))}>
-                                          {t('actions.copyDocumentId')}
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onSelect={() => detachPromise(copyText(doc.filename, t('toasts.copyFilename')))}>
-                                          {t('actions.copyFilename')}
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem asChild>
-                                          <Link href={`/knowledge/${doc.id}/health`} className="flex items-center">
-                                            <Activity className="mr-2 h-4 w-4" />
-                                            {t('actions.healthCard')}
-                                          </Link>
-                                        </DropdownMenuItem>
-                                        <DropdownMenuSeparator />
-                                        <DropdownMenuItem
-                                          className="text-destructive focus:text-destructive"
-                                          onSelect={() => requestSingleDelete(doc)}
-                                        >
-                                          <Trash2 className="mr-2 h-4 w-4" />
-                                          {t('actions.deleteDocument')}
-                                        </DropdownMenuItem>
-                                      </DropdownMenuContent>
-                                    </DropdownMenu>
-                                  </div>
-                                </div>
-
-                                <div className="mx-3 mb-3 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-[12px] border border-border/60 bg-muted/[0.18] px-3 py-2 text-[11px] text-muted-foreground/76">
-                                  {metadataItems.map((item, index) => (
-                                    <div key={item.label} className={cn('flex min-w-0 items-center gap-2', index > 0 && 'border-l border-border/60 pl-3')}>
-                                      <span className="shrink-0 text-muted-foreground/56">{item.label}</span>
-                                      <span className="min-w-0 truncate text-foreground/66">{item.value}</span>
-                                    </div>
-                                  ))}
-                                </div>
+                            <div
+                              className="grid items-center gap-3"
+                              style={{
+                                gridTemplateColumns: documentListGridTemplate,
+                              }}
+                            >
+                              <div className="flex items-center justify-center">
+                                <input
+                                  type="checkbox"
+                                  className="h-4 w-4 rounded border-border/60 text-primary focus-ring"
+                                  checked={allVisibleSelected}
+                                  onChange={toggleSelectAllVisible}
+                                  aria-label={t('table.selectAllVisible')}
+                                />
                               </div>
-                            </td>
-                          </tr>
-                        )
-                      })}
-
-                      {docsTablePaddingBottom > 0 ? (
-                        <tr>
-                          <td colSpan={tableColumnCount} className="p-0" style={{ height: `${docsTablePaddingBottom}px` }} />
+                              <div>{t('table.columns.name')}</div>
+                              {showDatasetColumn ? (
+                                <div>{t('table.columns.dataset')}</div>
+                              ) : null}
+                              <div>{t('table.columns.tags')}</div>
+                              <div>{t('table.columns.status')}</div>
+                              <div className="text-right tabular-nums">
+                                {t('table.columns.chunks')}
+                              </div>
+                              <div className="text-right tabular-nums">
+                                {t('table.columns.size')}
+                              </div>
+                              <div>{t('table.columns.uploadedAt')}</div>
+                              <div className="text-right">
+                                {t('table.columns.actions')}
+                              </div>
+                            </div>
+                          </th>
                         </tr>
-                      ) : null}
-                    </tbody>
+                      </thead>
+                      <tbody className="bg-card/95">
+                        {docsTablePaddingTop > 0 ? (
+                          <tr>
+                            <td
+                              colSpan={tableColumnCount}
+                              className="p-0"
+                              style={{ height: `${docsTablePaddingTop}px` }}
+                            />
+                          </tr>
+                        ) : null}
+
+                        {docsTableVirtualRows.map((virtualRow: any) => {
+                          const doc = filteredDocuments[virtualRow.index]
+                          if (!doc) return null
+                          const badge = getStatusBadge(doc.status, t)
+                          const tags = getUserTagsFromDocument(doc)
+                          const fileType = getFileTypeMeta(doc)
+                          const TypeIcon = fileType.icon
+                          const datasetLabel =
+                            datasetLabelById?.[doc.dataset_id || ''] || '-'
+                          const metadataItems = [
+                            { label: '数据集', value: datasetLabel },
+                            {
+                              label: '标签',
+                              value: getDocumentTagSummary(tags),
+                            },
+                            {
+                              label: '生命周期',
+                              value: getDocumentLifecycleLabel(doc),
+                            },
+                            {
+                              label: '来源',
+                              value: getDocumentSourceLabel(doc),
+                            },
+                            {
+                              label: '更新时间',
+                              value: formatDate(
+                                doc.updated_at || doc.created_at
+                              ),
+                            },
+                          ]
+
+                          return (
+                            <tr
+                              key={doc.id}
+                              data-index={virtualRow.index}
+                              ref={docsTableVirtualizer.measureElement}
+                              className="group/row"
+                            >
+                              <td
+                                colSpan={tableColumnCount}
+                                className="px-3 py-1.5"
+                              >
+                                <div className="rounded-[18px] border border-border/70 bg-background shadow-[0_14px_30px_-28px_rgba(15,23,42,0.32)] transition-[border-color,box-shadow,transform] duration-150 group-hover/row:-translate-y-px group-hover/row:border-primary/20 group-hover/row:shadow-[0_20px_34px_-28px_rgba(37,99,235,0.32)]">
+                                  <div
+                                    className="grid min-h-[64px] items-center gap-3 px-3 py-3"
+                                    style={{
+                                      gridTemplateColumns:
+                                        documentListGridTemplate,
+                                    }}
+                                  >
+                                    <div className="flex items-center justify-center">
+                                      <input
+                                        type="checkbox"
+                                        className="h-4 w-4 rounded border-border/60 text-primary focus-ring"
+                                        checked={selectedSet.has(doc.id)}
+                                        onChange={() =>
+                                          toggleDocSelection(doc.id)
+                                        }
+                                        aria-label={t('table.selectDocument', {
+                                          filename: doc.filename,
+                                        })}
+                                      />
+                                    </div>
+
+                                    <div className="min-w-0">
+                                      <div className="flex min-w-0 items-center gap-3">
+                                        <div
+                                          className={cn(
+                                            'flex size-8 shrink-0 items-center justify-center rounded-[10px] border transition-transform duration-150 group-hover/row:scale-[1.03]',
+                                            iconShellClassName,
+                                            fileType.bg,
+                                            fileType.border,
+                                            fileType.color
+                                          )}
+                                        >
+                                          <span className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[linear-gradient(135deg,rgba(255,255,255,0.28),transparent_52%)] opacity-75" />
+                                          <TypeIcon className="size-4.5" />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                          <div
+                                            className="mb-1 max-w-[360px] truncate text-[13px] font-medium leading-none text-foreground/90 xl:max-w-[440px]"
+                                            title={doc.filename}
+                                          >
+                                            {doc.filename}
+                                          </div>
+                                          <div className="max-w-[360px] truncate font-mono text-[10px] uppercase tracking-[0.04em] text-muted-foreground/48 xl:max-w-[440px]">
+                                            {doc.id}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {showDatasetColumn ? (
+                                      <div className="min-w-0 text-[12px] leading-5 text-muted-foreground/82">
+                                        <span className="line-clamp-2">
+                                          {datasetLabel}
+                                        </span>
+                                      </div>
+                                    ) : null}
+
+                                    <div className="min-w-0">
+                                      {tags.length ? (
+                                        <DocumentTags
+                                          tags={tags}
+                                          max={2}
+                                          dense
+                                        />
+                                      ) : (
+                                        <span className="text-[12px] text-muted-foreground/32">
+                                          —
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <div className="min-w-0">
+                                      <StatusBadge
+                                        status={badge.status}
+                                        label={badge.label}
+                                        dense
+                                        className="rounded-full bg-muted/50"
+                                      />
+                                    </div>
+
+                                    <div className="text-right font-mono text-[11px] tabular-nums text-foreground/70">
+                                      {doc.chunk_count ?? '0'}
+                                    </div>
+                                    <div className="text-right font-mono text-[11px] tabular-nums text-muted-foreground">
+                                      {formatFileSize(doc.file_size)}
+                                    </div>
+                                    <div className="whitespace-nowrap font-mono text-[11px] tabular-nums text-muted-foreground">
+                                      {formatDate(doc.created_at)}
+                                    </div>
+                                    <div className="flex items-center justify-end gap-1">
+                                      <IconButton
+                                        label="查看详情"
+                                        variant="ghost"
+                                        className="h-7 w-7 rounded-full text-muted-foreground transition-[transform,background-color,color,box-shadow] hover:scale-[1.04] hover:text-primary hover:bg-primary/8 hover:shadow-[0_8px_18px_-12px_rgba(37,99,235,0.45)]"
+                                        onClick={buildOpenInspectorHandler(doc)}
+                                      >
+                                        <Eye className="h-3.5 w-3.5" />
+                                      </IconButton>
+
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 rounded-full px-2.5 text-[10px] font-medium text-primary hover:bg-primary/10"
+                                        onClick={(event) => {
+                                          event.stopPropagation()
+                                          if (onPeek) onPeek(doc.id)
+                                          else
+                                            globalThis.window.open(
+                                              `/chunk-preview?docId=${doc.id}`,
+                                              '_blank'
+                                            )
+                                        }}
+                                      >
+                                        <Layers className="mr-1 size-3" />
+                                        {peekChunksLabel}
+                                      </Button>
+
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                          <IconButton
+                                            label={t('actions.moreActions')}
+                                            variant="ghost"
+                                            className="h-7 w-7 rounded-full text-muted-foreground transition-[transform,background-color,color] hover:scale-[1.04] hover:text-foreground hover:bg-muted/70"
+                                          >
+                                            <MoreVertical className="h-3.5 w-3.5" />
+                                          </IconButton>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent
+                                          align="end"
+                                          className="w-56 rounded-xl border-border/60 shadow-strong/10"
+                                        >
+                                          <DropdownMenuItem
+                                            onSelect={() =>
+                                              detachPromise(
+                                                copyText(
+                                                  doc.id,
+                                                  t('toasts.copyDocumentId')
+                                                )
+                                              )
+                                            }
+                                          >
+                                            {t('actions.copyDocumentId')}
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem
+                                            onSelect={() =>
+                                              detachPromise(
+                                                copyText(
+                                                  doc.filename,
+                                                  t('toasts.copyFilename')
+                                                )
+                                              )
+                                            }
+                                          >
+                                            {t('actions.copyFilename')}
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem asChild>
+                                            <Link
+                                              href={`/knowledge/${doc.id}/health`}
+                                              className="flex items-center"
+                                            >
+                                              <Activity className="mr-2 h-4 w-4" />
+                                              {t('actions.healthCard')}
+                                            </Link>
+                                          </DropdownMenuItem>
+                                          <DropdownMenuSeparator />
+                                          <DropdownMenuItem
+                                            className="text-destructive focus:text-destructive"
+                                            onSelect={() =>
+                                              requestSingleDelete(doc)
+                                            }
+                                          >
+                                            <Trash2 className="mr-2 h-4 w-4" />
+                                            {t('actions.deleteDocument')}
+                                          </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
+                                    </div>
+                                  </div>
+
+                                  <div className="mx-3 mb-3 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-[12px] border border-border/60 bg-muted/[0.18] px-3 py-2 text-[11px] text-muted-foreground/76">
+                                    {metadataItems.map((item, index) => (
+                                      <div
+                                        key={item.label}
+                                        className={cn(
+                                          'flex min-w-0 items-center gap-2',
+                                          index > 0 &&
+                                            'border-l border-border/60 pl-3'
+                                        )}
+                                      >
+                                        <span className="shrink-0 text-muted-foreground/56">
+                                          {item.label}
+                                        </span>
+                                        <span className="min-w-0 truncate text-foreground/66">
+                                          {item.value}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+
+                        {docsTablePaddingBottom > 0 ? (
+                          <tr>
+                            <td
+                              colSpan={tableColumnCount}
+                              className="p-0"
+                              style={{ height: `${docsTablePaddingBottom}px` }}
+                            />
+                          </tr>
+                        ) : null}
+                      </tbody>
                     </table>
                   </div>
                   <div className="mt-auto flex items-center justify-end gap-3 border-t border-border/60 px-4 py-3">
-                    <span className="text-[12px] text-muted-foreground/78">共 {visibleDocumentsCount} 条</span>
+                    <span className="text-[12px] text-muted-foreground/78">
+                      共 {visibleDocumentsCount} 条
+                    </span>
                     <button
                       type="button"
                       className="inline-flex h-9 items-center rounded-[12px] border border-border/70 bg-background px-3 text-[12px] text-muted-foreground"
@@ -1053,27 +1377,42 @@ function DocumentCard({
 }>) {
   const peekChunksLabel = (() => {
     const resolved = t('actions.peekChunks')
-    return resolved === 'KnowledgeDocumentsPanel.actions.peekChunks' ? '查看分块' : resolved
+    return resolved === 'KnowledgeDocumentsPanel.actions.peekChunks'
+      ? '查看分块'
+      : resolved
   })()
-  const parserLabel = doc.metadata?.parser_backend ? getParserLabel(doc.metadata.parser_backend as string) : null
+  const parserLabel = doc.metadata?.parser_backend
+    ? getParserLabel(doc.metadata.parser_backend as string)
+    : null
   const userTags = getUserTagsFromDocument(doc)
   const fileType = getFileTypeMeta(doc)
   const TypeIcon = fileType.icon
   const parseScoreRaw = (doc.metadata as any)?.parse_quality?.score
-  const parseScore = typeof parseScoreRaw === 'number' && Number.isFinite(parseScoreRaw) ? parseScoreRaw : null
+  const parseScore =
+    typeof parseScoreRaw === 'number' && Number.isFinite(parseScoreRaw)
+      ? parseScoreRaw
+      : null
 
   // 计算质量百分比和颜色
-  const qualityPercent = parseScore !== null ? Math.round(parseScore * 100) : null
-  const qualityColor = qualityPercent !== null
-    ? qualityPercent > 80 ? 'text-success' : qualityPercent > 50 ? 'text-warning' : 'text-rose'
-    : 'text-muted-foreground/20'
+  const qualityPercent =
+    parseScore !== null ? Math.round(parseScore * 100) : null
+  const qualityColor =
+    qualityPercent !== null
+      ? qualityPercent > 80
+        ? 'text-success'
+        : qualityPercent > 50
+          ? 'text-warning'
+          : 'text-rose'
+      : 'text-muted-foreground/20'
 
   return (
     <Panel
       padding="none"
       className={cn(
-        "group relative flex h-full flex-col rounded-2xl overflow-hidden transition-all duration-300 motion-reduce:transition-none border-border/50 bg-card/40 backdrop-blur-sm",
-        selected ? "ring-2 ring-primary ring-offset-2 ring-offset-background border-primary/40 bg-primary/[0.03]" : "hover:border-primary/30 hover:shadow-strong/10 hover:-translate-y-1"
+        'group relative flex h-full flex-col rounded-2xl overflow-hidden transition-all duration-300 motion-reduce:transition-none border-border/50 bg-card/40 backdrop-blur-sm',
+        selected
+          ? 'ring-2 ring-primary ring-offset-2 ring-offset-background border-primary/40 bg-primary/[0.03]'
+          : 'hover:border-primary/30 hover:shadow-strong/10 hover:-translate-y-1'
       )}
     >
       <div className={cn('h-1 w-full', statusBarClassName)} />
@@ -1082,7 +1421,9 @@ function DocumentCard({
       <div
         className={cn(
           'absolute top-4 left-4 z-10 rounded-lg border border-border/60 bg-background/80 backdrop-blur-md p-1.5 transition-all duration-300',
-          selected ? 'opacity-100 border-primary bg-primary/10' : contextualRevealClassName
+          selected
+            ? 'opacity-100 border-primary bg-primary/10'
+            : contextualRevealClassName
         )}
       >
         <input
@@ -1097,10 +1438,14 @@ function DocumentCard({
       <div className="p-6 flex-1 flex flex-col">
         <div className="flex items-start justify-between mb-5">
           <div className="relative">
-            <div className={cn(
-              'size-14 rounded-2xl flex items-center justify-center border shadow-sm transition-transform duration-500 group-hover:scale-110 group-hover:rotate-3',
-              fileType.bg, fileType.border, fileType.color
-            )}>
+            <div
+              className={cn(
+                'size-14 rounded-2xl flex items-center justify-center border shadow-sm transition-transform duration-500 group-hover:scale-110 group-hover:rotate-3',
+                fileType.bg,
+                fileType.border,
+                fileType.color
+              )}
+            >
               <TypeIcon className="size-7" />
             </div>
             {/* Quality Indicator Mini-Ring */}
@@ -1109,43 +1454,74 @@ function DocumentCard({
                 className="absolute -bottom-1 -right-1 size-6 rounded-full bg-background border border-border/60 flex items-center justify-center shadow-sm"
                 title={`解析质量: ${qualityPercent}%`}
               >
-                <div className={cn("text-[8px] font-medium font-mono tabular-nums ", qualityColor)}>
+                <div
+                  className={cn(
+                    'text-[8px] font-medium font-mono tabular-nums',
+                    qualityColor
+                  )}
+                >
                   {qualityPercent}
                 </div>
               </div>
             )}
           </div>
           <div className="flex flex-col items-end gap-1.5">
-            <StatusBadge status={statusBadge.status} label={statusBadge.label} dense />
-            <div className={cn('px-2 py-0.5 rounded-full text-[11px] font-medium uppercase border ', fileType.bg, fileType.color, fileType.border)}>
+            <StatusBadge
+              status={statusBadge.status}
+              label={statusBadge.label}
+              dense
+            />
+            <div
+              className={cn(
+                'px-2 py-0.5 rounded-full text-[11px] font-medium uppercase border ',
+                fileType.bg,
+                fileType.color,
+                fileType.border
+              )}
+            >
               {fileType.label}
             </div>
           </div>
         </div>
 
-        <h3 className="text-sm font-medium tracking-tight text-foreground leading-snug line-clamp-2 mb-3 min-h-[2.5rem] group-hover:text-primary transition-colors" title={doc.filename}>
+        <h3
+          className="text-sm font-medium text-foreground leading-snug line-clamp-2 mb-3 min-h-[2.5rem] group-hover:text-primary transition-colors"
+          title={doc.filename}
+        >
           {doc.filename}
         </h3>
 
-        {userTags.length ? <DocumentTags tags={userTags} max={3} dense className="mb-4" /> : null}
+        {userTags.length ? (
+          <DocumentTags tags={userTags} max={3} dense className="mb-4" />
+        ) : null}
 
         <div className="grid grid-cols-2 gap-3 mt-auto pt-4 border-t border-border/40">
           <div className="space-y-0.5">
-            <p className="text-[11px] font-medium uppercase  text-muted-foreground/50">{t('row.size')}</p>
-            <p className="text-xs font-medium font-mono tabular-nums text-foreground/80">{formatFileSize(doc.file_size)}</p>
+            <p className="text-[11px] font-medium uppercase text-muted-foreground/50">
+              {t('row.size')}
+            </p>
+            <p className="text-xs font-medium font-mono tabular-nums text-foreground/80">
+              {formatFileSize(doc.file_size)}
+            </p>
           </div>
           <div className="space-y-0.5">
-            <p className="text-[11px] font-medium uppercase  text-muted-foreground/50">{t('row.chunks')}</p>
-            <p className="text-xs font-medium font-mono tabular-nums text-foreground/80">{doc.chunk_count ?? '-'}</p>
+            <p className="text-[11px] font-medium uppercase text-muted-foreground/50">
+              {t('row.chunks')}
+            </p>
+            <p className="text-xs font-medium font-mono tabular-nums text-foreground/80">
+              {doc.chunk_count ?? '-'}
+            </p>
           </div>
         </div>
       </div>
 
-      <div className={cn(
-        'px-6 py-3.5 bg-muted/30 border-t border-border/40 flex items-center justify-between transition-all duration-300',
-        contextualRevealClassName
-      )}>
-        <span className="text-[11px] text-muted-foreground/60 font-medium uppercase  truncate max-w-[100px]">
+      <div
+        className={cn(
+          'px-6 py-3.5 bg-muted/30 border-t border-border/40 flex items-center justify-between transition-all duration-300',
+          contextualRevealClassName
+        )}
+      >
+        <span className="text-[11px] text-muted-foreground/60 font-medium uppercase truncate max-w-[100px]">
           {parserLabel || t('row.parserAuto')}
         </span>
         <div className="flex items-center gap-1.5">
@@ -1157,7 +1533,11 @@ function DocumentCard({
             onClick={(e) => {
               e.stopPropagation()
               if (onPeek) onPeek(doc.id)
-              else globalThis.window.open(`/chunk-preview?docId=${doc.id}`, '_blank')
+              else
+                globalThis.window.open(
+                  `/chunk-preview?docId=${doc.id}`,
+                  '_blank'
+                )
             }}
           >
             <Layers className="size-3 mr-1.5" />
@@ -1175,15 +1555,31 @@ function DocumentCard({
                 <MoreVertical className="w-4 h-4" />
               </IconButton>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 rounded-xl border-border/60 shadow-strong/10">
-              <DropdownMenuItem onSelect={() => detachPromise(copyText(doc.id, t('toasts.copyDocumentId')))}>
+            <DropdownMenuContent
+              align="end"
+              className="w-56 rounded-xl border-border/60 shadow-strong/10"
+            >
+              <DropdownMenuItem
+                onSelect={() =>
+                  detachPromise(copyText(doc.id, t('toasts.copyDocumentId')))
+                }
+              >
                 {t('actions.copyDocumentId')}
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => detachPromise(copyText(doc.filename, t('toasts.copyFilename')))}>
+              <DropdownMenuItem
+                onSelect={() =>
+                  detachPromise(
+                    copyText(doc.filename, t('toasts.copyFilename'))
+                  )
+                }
+              >
                 {t('actions.copyFilename')}
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
-                <Link href={`/knowledge/${doc.id}/health`} className="flex items-center">
+                <Link
+                  href={`/knowledge/${doc.id}/health`}
+                  className="flex items-center"
+                >
                   <Activity className="mr-2 h-4 w-4" />
                   {t('actions.healthCard')}
                 </Link>

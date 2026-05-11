@@ -1,15 +1,17 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Download, Loader2, Search, X } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { AuthImage, AuthImageLink } from '@/components/auth-image'
-import type { Citation, Dataset, EvidenceRetrieveResponse } from '@/types'
+import type { Citation, EvidenceRetrieveResponse } from '@/types'
 import { datasetApi, ragApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { resolveSafeCitationImageUrl } from '@/lib/citation-images'
+import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -20,6 +22,7 @@ import { Textarea } from '@/components/ui/textarea'
 type RetrievalProfile = 'recall50' | 'coverage80' | 'recall20'
 
 type JsonRecord = Record<string, unknown>
+const EVIDENCE_DATASET_PARAMS = { limit: 200 } as const
 
 function downloadJson(filename: string, data: unknown) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' })
@@ -93,9 +96,6 @@ function toCitation(value: unknown): Citation | null {
 
 export function EvidenceWorkbench() {
   const t = useTranslations('EvidenceWorkbench')
-  const [datasets, setDatasets] = useState<Dataset[]>([])
-  const [datasetsLoading, setDatasetsLoading] = useState(false)
-  const [datasetsError, setDatasetsError] = useState<string | null>(null)
 
   const DATASET_ALL = '__all__'
   const [datasetScope, setDatasetScope] = useState<string>(DATASET_ALL)
@@ -108,22 +108,15 @@ export function EvidenceWorkbench() {
 
   const [result, setResult] = useState<EvidenceRetrieveResponse | null>(null)
 
-  const loadDatasets = useCallback(async () => {
-    setDatasetsLoading(true)
-    setDatasetsError(null)
-    try {
-      const res = await datasetApi.list({ limit: 200 })
-      setDatasets(res.items || [])
-    } catch (error: unknown) {
-      setDatasetsError(formatApiError(error, t("errors.loadDatasetsFailed")))
-    } finally {
-      setDatasetsLoading(false)
-    }
-  }, [t])
-
-  useEffect(() => {
-    detachPromise(loadDatasets())
-  }, [loadDatasets])
+  const datasetsQuery = useQuery({
+    queryKey: queryKeys.datasets.list(EVIDENCE_DATASET_PARAMS),
+    queryFn: () => datasetApi.list(EVIDENCE_DATASET_PARAMS),
+  })
+  const datasets = useMemo(() => datasetsQuery.data?.items || [], [datasetsQuery.data?.items])
+  const datasetsLoading = datasetsQuery.isFetching
+  const datasetsError = datasetsQuery.error
+    ? formatApiError(datasetsQuery.error, t("errors.loadDatasetsFailed"))
+    : null
 
   const datasetOptions = useMemo(() => {
     const opts = (datasets || []).map((d) => ({ id: String(d.id), name: d.name || String(d.id) }))

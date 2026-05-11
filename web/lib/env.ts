@@ -25,11 +25,13 @@ function resolveApiBaseUrl(): string {
       const pageHost = rawPageHost === '0.0.0.0' ? 'localhost' : rawPageHost
       const loopbacks = new Set(['localhost', '127.0.0.1', '0.0.0.0'])
 
-      if (apiHost === '0.0.0.0' && pageHost) {
-        url.hostname = pageHost
-        return trimTrailingSlashes(url.toString())
-      }
-      if (loopbacks.has(apiHost) && pageHost && !loopbacks.has(pageHost)) {
+      if (
+        loopbacks.has(apiHost) &&
+        pageHost &&
+        (apiHost === '0.0.0.0' ||
+          !loopbacks.has(pageHost) ||
+          apiHost !== pageHost)
+      ) {
         url.hostname = pageHost
         return trimTrailingSlashes(url.toString())
       }

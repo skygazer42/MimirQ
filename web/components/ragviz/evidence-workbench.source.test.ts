@@ -58,4 +58,17 @@ describe('evidence workbench source', () => {
     expect(src).toContain('t("results.citations.emptyContent")')
     expect(src).toContain('t("results.citations.noCitations")')
   })
+
+  it('loads dataset options through TanStack Query', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'evidence-workbench.tsx'), 'utf8')
+
+    expect(src).toContain("from '@tanstack/react-query'")
+    expect(src).toContain('useQuery')
+    expect(src).toContain('queryKey: queryKeys.datasets.list')
+    expect(src).not.toContain('const [datasets, setDatasets]')
+    expect(src).not.toContain('const [datasetsLoading, setDatasetsLoading]')
+    expect(src).not.toContain('const [datasetsError, setDatasetsError]')
+    expect(src).not.toContain('const loadDatasets = useCallback')
+    expect(src).not.toContain('detachPromise(loadDatasets())')
+  })
 })

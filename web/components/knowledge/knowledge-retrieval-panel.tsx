@@ -60,7 +60,9 @@ function estimateIndexSizeBytes(vectorCount: number): number {
   const embeddingDims = 3072
   const bytesPerDim = 4
   const storageOverheadMultiplier = 2.2
-  return Math.round(normalizedCount * embeddingDims * bytesPerDim * storageOverheadMultiplier)
+  return Math.round(
+    normalizedCount * embeddingDims * bytesPerDim * storageOverheadMultiplier
+  )
 }
 
 export function KnowledgeRetrievalPanel({
@@ -72,8 +74,10 @@ export function KnowledgeRetrievalPanel({
   const t = useTranslations('KnowledgeRetrievalPanel')
   // t("empty.title")
   // t("empty.description")
-  const { indexAudit, indexAuditError, indexAuditLoading, runIndexAudit } = useIndexAudit({ selectedDatasetId })
-  const hasAggregateOverview = !selectedDatasetId && (aggregateDocuments > 0 || aggregateChunks > 0)
+  const { indexAudit, indexAuditError, indexAuditLoading, runIndexAudit } =
+    useIndexAudit({ selectedDatasetId })
+  const hasAggregateOverview =
+    !selectedDatasetId && (aggregateDocuments > 0 || aggregateChunks > 0)
   const overviewDatasetLabel = selectedDatasetId || '全部数据集'
 
   const metricCards = useMemo(() => {
@@ -109,7 +113,9 @@ export function KnowledgeRetrievalPanel({
         {
           key: 'indexSize',
           label: '索引大小',
-          value: formatBytesCompact(estimateIndexSizeBytes(indexAudit.vector_ids_checked)),
+          value: formatBytesCompact(
+            estimateIndexSizeBytes(indexAudit.vector_ids_checked)
+          ),
           icon: HardDrive,
           tone: 'sky',
           meta: indexAudit.vector_backend || '向量后端',
@@ -179,7 +185,13 @@ export function KnowledgeRetrievalPanel({
       return { label: '正常运行', tone: 'success' as const }
     }
     return { label: '待执行审计', tone: 'neutral' as const }
-  }, [hasAggregateOverview, indexAudit, indexAuditError, indexAuditLoading, selectedDatasetId])
+  }, [
+    hasAggregateOverview,
+    indexAudit,
+    indexAuditError,
+    indexAuditLoading,
+    selectedDatasetId,
+  ])
 
   const healthChecklist = useMemo(() => {
     if (hasAggregateOverview) {
@@ -200,9 +212,21 @@ export function KnowledgeRetrievalPanel({
     }
 
     return [
-      { label: '索引服务', state: indexAudit.vector_ids_missing_in_backend > 0 ? 'warning' : 'ok' },
-      { label: '向量服务', state: indexAudit.vector_id_missing > 0 ? 'warning' : 'ok' },
-      { label: '存储服务', state: (indexAudit.milvus_orphan_ids_sample || []).length > 0 ? 'warning' : 'ok' },
+      {
+        label: '索引服务',
+        state: indexAudit.vector_ids_missing_in_backend > 0 ? 'warning' : 'ok',
+      },
+      {
+        label: '向量服务',
+        state: indexAudit.vector_id_missing > 0 ? 'warning' : 'ok',
+      },
+      {
+        label: '存储服务',
+        state:
+          (indexAudit.milvus_orphan_ids_sample || []).length > 0
+            ? 'warning'
+            : 'ok',
+      },
       { label: '权限校验', state: 'ok' },
     ] as const
   }, [hasAggregateOverview, indexAudit])
@@ -218,27 +242,46 @@ export function KnowledgeRetrievalPanel({
   const renderDiagnosticHeader = () => (
     <div className="flex items-start justify-between gap-4 mb-6">
       <div className="flex items-center gap-3">
-        <div className={cn(
-          "flex size-10 items-center justify-center rounded-xl border transition-all duration-500",
-          indexAuditLoading ? "bg-primary/10 border-primary/40 shadow-[0_0_15px_-5px_rgba(var(--primary),0.5)]" : "bg-muted/30 border-border/40"
-        )}>
-          {indexAuditLoading ? <Scan className="size-5 text-primary animate-pulse" /> : <ShieldCheck className="size-5 text-muted-foreground/60" />}
+        <div
+          className={cn(
+            'flex size-10 items-center justify-center rounded-xl border transition-all duration-500',
+            indexAuditLoading
+              ? 'bg-primary/10 border-primary/40 shadow-[0_0_15px_-5px_rgba(var(--primary),0.5)]'
+              : 'bg-muted/30 border-border/40'
+          )}
+        >
+          {indexAuditLoading ? (
+            <Scan className="size-5 text-primary animate-pulse" />
+          ) : (
+            <ShieldCheck className="size-5 text-muted-foreground/60" />
+          )}
         </div>
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-primary/40 leading-none">{t("header.badge")}</span>
-            <div className={cn("size-1 rounded-full", selectedDatasetId ? "bg-success shadow-[0_0_8px_rgba(16,185,129,0.4)]" : "bg-muted-foreground/20")} />
+            <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-primary/40 leading-none">
+              {t('header.badge')}
+            </span>
+            <div
+              className={cn(
+                'size-1 rounded-full',
+                selectedDatasetId
+                  ? 'bg-success shadow-[0_0_8px_rgba(16,185,129,0.4)]'
+                  : 'bg-muted-foreground/20'
+              )}
+            />
           </div>
-          <h4 className="text-sm font-medium text-foreground  mt-1">{t("header.title")}</h4>
+          <h4 className="text-sm font-medium text-foreground mt-1">
+            {t('header.title')}
+          </h4>
         </div>
       </div>
 
       <Button
         type="button"
-        variant={indexAuditLoading ? "secondary" : "outline"}
+        variant={indexAuditLoading ? 'secondary' : 'outline'}
         className={cn(
-          "h-9 rounded-xl border-border/60 bg-background/50 px-4 text-xs font-medium uppercase  transition-all active:scale-[0.98]",
-          indexAuditLoading && "border-primary/30 text-primary"
+          'h-9 rounded-xl border-border/60 bg-background/50 px-4 text-xs font-medium uppercase transition-all active:scale-[0.98]',
+          indexAuditLoading && 'border-primary/30 text-primary'
         )}
         onClick={() => detachPromise(runIndexAudit())}
         disabled={!selectedDatasetId || indexAuditLoading}
@@ -248,7 +291,7 @@ export function KnowledgeRetrievalPanel({
         ) : (
           <RefreshCw className="mr-2 size-3.5" />
         )}
-        {indexAuditLoading ? t("actions.running") : t("actions.run")}
+        {indexAuditLoading ? t('actions.running') : t('actions.run')}
       </Button>
     </div>
   )
@@ -261,23 +304,34 @@ export function KnowledgeRetrievalPanel({
             <Fingerprint className="size-4" />
           </div>
           <div className="min-w-0">
-            <h4 className="text-[13px] font-medium text-foreground leading-none">{t("header.title")}</h4>
+            <h4 className="text-[13px] font-medium text-foreground leading-none">
+              {t('header.title')}
+            </h4>
             <div className="flex items-center gap-1.5 mt-1.5 min-w-0">
-              <span className="text-[9px] font-medium text-muted-foreground/40 uppercase  shrink-0">{t("header.currentDataset")}</span>
+              <span className="text-[9px] font-medium text-muted-foreground/40 uppercase shrink-0">
+                {t('header.currentDataset')}
+              </span>
               <span className="text-[10px] font-medium font-mono text-muted-foreground/80 truncate px-1.5 py-0.5 rounded bg-muted/40">
-                {selectedDatasetId || t("header.noneSelected")}
+                {selectedDatasetId || t('header.noneSelected')}
               </span>
             </div>
           </div>
         </div>
         <IconButton
-          label={t("actions.run")}
+          label={t('actions.run')}
           variant="outline"
-          className={cn("size-8 rounded-lg", indexAuditLoading && "text-primary border-primary/20")}
+          className={cn(
+            'size-8 rounded-lg',
+            indexAuditLoading && 'text-primary border-primary/20'
+          )}
           onClick={() => detachPromise(runIndexAudit())}
           disabled={!selectedDatasetId || indexAuditLoading}
         >
-          {indexAuditLoading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+          {indexAuditLoading ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <RefreshCw className="size-3.5" />
+          )}
         </IconButton>
       </div>
     </div>
@@ -297,22 +351,26 @@ export function KnowledgeRetrievalPanel({
                 <div className="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground/62">
                   索引审计
                 </div>
-                <div className="mt-1 text-[20px] font-semibold tracking-tight text-foreground">
-                  {t("header.title")}
+                <div className="mt-1 text-[20px] font-semibold text-foreground">
+                  {t('header.title')}
                 </div>
               </div>
             </div>
             <IconButton
-              label={t("actions.run")}
+              label={t('actions.run')}
               variant="outline"
               className={cn(
-                "size-9 rounded-[14px] border-border/70 bg-background/72 transition-[transform,box-shadow] hover:scale-[1.03] hover:shadow-[0_12px_24px_-18px_rgba(37,99,235,0.24)]",
-                indexAuditLoading && "text-primary border-primary/20"
+                'size-9 rounded-[14px] border-border/70 bg-background/72 transition-[transform,box-shadow] hover:scale-[1.03] hover:shadow-[0_12px_24px_-18px_rgba(37,99,235,0.24)]',
+                indexAuditLoading && 'text-primary border-primary/20'
               )}
               onClick={() => detachPromise(runIndexAudit())}
               disabled={!selectedDatasetId || indexAuditLoading}
             >
-              {indexAuditLoading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+              {indexAuditLoading ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="size-3.5" />
+              )}
             </IconButton>
           </div>
         </div>
@@ -327,16 +385,25 @@ export function KnowledgeRetrievalPanel({
 
           <div className="space-y-4">
             <div className="space-y-3">
-              <div className="text-[12px] text-muted-foreground/64">{t("header.currentDataset")}</div>
-               <div className="inline-flex items-center rounded-full border border-border/70 bg-background px-3 py-1.5 text-[13px] font-medium text-foreground">
-                 <Database className="mr-2 size-3.5 text-info" />
-                 {overviewDatasetLabel}
-               </div>
-             </div>
+              <div className="text-[12px] text-muted-foreground/64">
+                {t('header.currentDataset')}
+              </div>
+              <div className="inline-flex items-center rounded-full border border-border/70 bg-background px-3 py-1.5 text-[13px] font-medium text-foreground">
+                <Database className="mr-2 size-3.5 text-info" />
+                {overviewDatasetLabel}
+              </div>
+            </div>
 
             <div className="space-y-3">
-              <div className="text-[12px] text-muted-foreground/64">索引状态</div>
-              <div className={cn("inline-flex items-center rounded-full border px-3 py-1.5 text-[13px] font-medium", statusToneClassName)}>
+              <div className="text-[12px] text-muted-foreground/64">
+                索引状态
+              </div>
+              <div
+                className={cn(
+                  'inline-flex items-center rounded-full border px-3 py-1.5 text-[13px] font-medium',
+                  statusToneClassName
+                )}
+              >
                 <span className="mr-2 size-1.5 rounded-full bg-current opacity-75" />
                 {auditStatus.label}
               </div>
@@ -353,25 +420,35 @@ export function KnowledgeRetrievalPanel({
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <div className="text-[11px] font-medium text-muted-foreground/68">{item.label}</div>
+                        <div className="text-[11px] font-medium text-muted-foreground/68">
+                          {item.label}
+                        </div>
                         {item.estimated ? (
                           <span className="rounded-full bg-info/10 px-2 py-0.5 text-[9px] font-medium text-info">
                             估算
                           </span>
                         ) : null}
                       </div>
-                      <div className="mt-1.5 font-mono text-[14px] font-semibold tracking-tight text-foreground">
+                      <div className="mt-1.5 font-mono text-[14px] font-semibold text-foreground">
                         {item.value}
                       </div>
-                      <div className="mt-1 text-[10px] text-muted-foreground/58">{item.meta}</div>
+                      <div className="mt-1 text-[10px] text-muted-foreground/58">
+                        {item.meta}
+                      </div>
                     </div>
-                    <div className={cn(
-                      'relative flex size-7.5 shrink-0 items-center justify-center rounded-[11px] border shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_8px_12px_-12px_rgba(15,23,42,0.18)]',
-                      item.tone === 'emerald' && 'border-success/20 bg-success/8 text-success',
-                      item.tone === 'blue' && 'border-info/20 bg-info/8 text-info',
-                      item.tone === 'violet' && 'border-accent/20 bg-accent/8 text-accent',
-                      item.tone === 'sky' && 'border-info/20 bg-info/8 text-info',
-                    )}>
+                    <div
+                      className={cn(
+                        'relative flex size-7.5 shrink-0 items-center justify-center rounded-[11px] border shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_8px_12px_-12px_rgba(15,23,42,0.18)]',
+                        item.tone === 'emerald' &&
+                          'border-success/20 bg-success/8 text-success',
+                        item.tone === 'blue' &&
+                          'border-info/20 bg-info/8 text-info',
+                        item.tone === 'violet' &&
+                          'border-accent/20 bg-accent/8 text-accent',
+                        item.tone === 'sky' &&
+                          'border-info/20 bg-info/8 text-info'
+                      )}
+                    >
                       <span className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[linear-gradient(135deg,rgba(255,255,255,0.3),transparent_50%)] opacity-80" />
                       <item.icon className="size-3" />
                     </div>
@@ -381,9 +458,13 @@ export function KnowledgeRetrievalPanel({
             </div>
 
             <div className="space-y-2 border-t border-border/60 pt-3.5">
-              <div className="text-[12px] text-muted-foreground/64">最后同步</div>
+              <div className="text-[12px] text-muted-foreground/64">
+                最后同步
+              </div>
               <div className="text-[14px] font-medium text-foreground">
-                {indexAudit || hasAggregateOverview ? '已完成当前数据集索引审计' : '尚未运行'}
+                {indexAudit || hasAggregateOverview
+                  ? '已完成当前数据集索引审计'
+                  : '尚未运行'}
               </div>
               <div className="inline-flex items-center rounded-full bg-success/10 px-3 py-1 text-[12px] font-medium text-success">
                 {indexAudit || hasAggregateOverview ? '同步成功' : '等待执行'}
@@ -391,32 +472,47 @@ export function KnowledgeRetrievalPanel({
             </div>
 
             <div className="space-y-3 border-t border-border/60 pt-3.5">
-              <div className="text-[13px] font-medium text-foreground">健康检查清单</div>
+              <div className="text-[13px] font-medium text-foreground">
+                健康检查清单
+              </div>
               <div className="space-y-3">
                 {healthChecklist.map((item) => (
-                  <div key={item.label} className="flex items-center justify-between gap-3">
+                  <div
+                    key={item.label}
+                    className="flex items-center justify-between gap-3"
+                  >
                     <div className="flex items-center gap-2">
                       <span
                         className={cn(
                           'flex size-5 items-center justify-center rounded-full',
                           item.state === 'ok' && 'bg-success/10 text-success',
-                          item.state === 'warning' && 'bg-warning/10 text-warning',
-                          item.state === 'pending' && 'bg-muted/30 text-muted-foreground'
+                          item.state === 'warning' &&
+                            'bg-warning/10 text-warning',
+                          item.state === 'pending' &&
+                            'bg-muted/30 text-muted-foreground'
                         )}
                       >
                         <Check className="size-3" />
                       </span>
-                      <span className="text-[13px] text-foreground/84">{item.label}</span>
+                      <span className="text-[13px] text-foreground/84">
+                        {item.label}
+                      </span>
                     </div>
                     <span
                       className={cn(
                         'rounded-full px-2.5 py-1 text-[11px] font-medium',
                         item.state === 'ok' && 'bg-success/10 text-success',
-                        item.state === 'warning' && 'bg-warning/10 text-warning',
-                        item.state === 'pending' && 'bg-muted/30 text-muted-foreground'
+                        item.state === 'warning' &&
+                          'bg-warning/10 text-warning',
+                        item.state === 'pending' &&
+                          'bg-muted/30 text-muted-foreground'
                       )}
                     >
-                      {item.state === 'ok' ? '正常' : item.state === 'warning' ? '关注' : '等待'}
+                      {item.state === 'ok'
+                        ? '正常'
+                        : item.state === 'warning'
+                          ? '关注'
+                          : '等待'}
                     </span>
                   </div>
                 ))}
@@ -439,13 +535,16 @@ export function KnowledgeRetrievalPanel({
 
   return (
     <div className="max-w-4xl mx-auto w-full p-6 animate-in fade-in slide-in-from-bottom-3 duration-500">
-      <Panel padding="none" className="overflow-hidden rounded-[2.5rem] border border-border/60 bg-background/80 shadow-strong backdrop-blur-2xl relative">
+      <Panel
+        padding="none"
+        className="overflow-hidden rounded-[2.5rem] border border-border/60 bg-background/80 shadow-strong backdrop-blur-2xl relative"
+      >
         {/* Dynamic Scanning Glow */}
         {indexAuditLoading && (
           <motion.div
             initial={{ left: '-100%' }}
             animate={{ left: '100%' }}
-            transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+            transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
             className="absolute top-0 z-20 h-0.5 w-1/3 bg-primary/50"
           />
         )}
@@ -454,54 +553,74 @@ export function KnowledgeRetrievalPanel({
           {renderDiagnosticHeader()}
 
           {indexAuditError ? (
-            <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="mb-6 p-4 rounded-2xl border border-destructive/20 bg-destructive/5 flex gap-3 items-start">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="mb-6 p-4 rounded-2xl border border-destructive/20 bg-destructive/5 flex gap-3 items-start"
+            >
               <AlertTriangle className="size-4 text-destructive shrink-0 mt-0.5" />
               <div className="space-y-1">
-                <div className="text-xs font-medium text-destructive">审计执行中断</div>
-                <p className="text-[11px] text-destructive/80 leading-relaxed font-medium">{indexAuditError}</p>
+                <div className="text-xs font-medium text-destructive">
+                  审计执行中断
+                </div>
+                <p className="text-[11px] text-destructive/80 leading-relaxed font-medium">
+                  {indexAuditError}
+                </p>
               </div>
             </motion.div>
           ) : null}
 
           {indexAudit ? (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="space-y-8"
+            >
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {metricCards.map((item) => (
-                 <div key={item.key} className="p-4 rounded-2xl border border-border/40 bg-background/40 hover:border-primary/20 transition-all group/metric shadow-inner-soft">
-                    <div className="text-[10px] font-medium uppercase  text-muted-foreground/40 mb-2 group-hover/metric:text-primary/60 transition-colors">
-                       {item.label}
-                     </div>
-                     <div className={cn(
-                       "text-xl font-semibold font-mono tabular-nums ",
-                       item.tone === 'emerald' && 'text-success',
-                       item.tone === 'blue' && 'text-info',
-                       item.tone === 'violet' && 'text-accent',
-                       item.tone === 'sky' && 'text-info',
-                     )}>
-                       {item.value}
-                     </div>
-                   </div>
+                  <div
+                    key={item.key}
+                    className="p-4 rounded-2xl border border-border/40 bg-background/40 hover:border-primary/20 transition-all group/metric shadow-inner-soft"
+                  >
+                    <div className="text-[10px] font-medium uppercase text-muted-foreground/40 mb-2 group-hover/metric:text-primary/60 transition-colors">
+                      {item.label}
+                    </div>
+                    <div
+                      className={cn(
+                        'text-xl font-semibold font-mono tabular-nums',
+                        item.tone === 'emerald' && 'text-success',
+                        item.tone === 'blue' && 'text-info',
+                        item.tone === 'violet' && 'text-accent',
+                        item.tone === 'sky' && 'text-info'
+                      )}
+                    >
+                      {item.value}
+                    </div>
+                  </div>
                 ))}
               </div>
 
               <div className="grid gap-6 md:grid-cols-2 mt-8">
-                {(indexAudit.vector_ids_missing_in_backend_sample || []).length > 0 && (
+                {(indexAudit.vector_ids_missing_in_backend_sample || [])
+                  .length > 0 && (
                   <div className="space-y-3">
-                    <div className="flex items-center gap-2 text-[10px] font-medium uppercase  text-destructive">
+                    <div className="flex items-center gap-2 text-[10px] font-medium uppercase text-destructive">
                       <div className="size-1.5 rounded-full bg-destructive animate-pulse" />
-                      {t("samples.missingInBackend")}
+                      {t('samples.missingInBackend')}
                     </div>
                     <pre className="max-h-56 overflow-auto rounded-[1.5rem] border border-destructive/10 bg-destructive/[0.02] p-4 text-[11px] font-mono leading-loose text-destructive/70 no-scrollbar">
-                      {(indexAudit.vector_ids_missing_in_backend_sample || []).join('\n')}
+                      {(
+                        indexAudit.vector_ids_missing_in_backend_sample || []
+                      ).join('\n')}
                     </pre>
                   </div>
                 )}
 
                 {(indexAudit.milvus_orphan_ids_sample || []).length > 0 && (
                   <div className="space-y-3">
-                    <div className="flex items-center gap-2 text-[10px] font-medium uppercase  text-warning">
+                    <div className="flex items-center gap-2 text-[10px] font-medium uppercase text-warning">
                       <div className="size-1.5 rounded-full bg-warning animate-pulse" />
-                      {t("samples.orphanIds")}
+                      {t('samples.orphanIds')}
                     </div>
                     <pre className="max-h-56 overflow-auto rounded-[1.5rem] border border-warning/10 bg-warning/[0.02] p-4 text-[11px] font-mono leading-loose text-warning/70 no-scrollbar">
                       {(indexAudit.milvus_orphan_ids_sample || []).join('\n')}
@@ -518,12 +637,14 @@ export function KnowledgeRetrievalPanel({
                   <Scan className="size-8 text-muted-foreground/20" />
                 </div>
               </div>
-               <div className="max-w-xs space-y-2">
-                 <h5 className="text-sm font-medium text-foreground/80">{t("empty.title")}</h5>
-                 <p className="text-xs text-muted-foreground/50 leading-relaxed font-medium">
-                   {t("empty.description")}
-                 </p>
-               </div>
+              <div className="max-w-xs space-y-2">
+                <h5 className="text-sm font-medium text-foreground/80">
+                  {t('empty.title')}
+                </h5>
+                <p className="text-xs text-muted-foreground/50 leading-relaxed font-medium">
+                  {t('empty.description')}
+                </p>
+              </div>
               {selectedDatasetId ? (
                 <Button
                   onClick={() => detachPromise(runIndexAudit())}
@@ -534,7 +655,7 @@ export function KnowledgeRetrievalPanel({
                 </Button>
               ) : (
                 <div className="text-[10px] font-medium uppercase tracking-[0.15em] text-warning/60 bg-warning/5 px-3 py-1 rounded-full border border-warning/10">
-                  {t("empty.waitingForDataset")}
+                  {t('empty.waitingForDataset')}
                 </div>
               )}
             </div>

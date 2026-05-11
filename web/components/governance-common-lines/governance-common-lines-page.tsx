@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   ArrowRight,
@@ -27,14 +28,20 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 import { datasetApi, pipelineApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise } from '@/lib/utils'
 
 import type {
-  Dataset,
   GovernanceCommonLineCandidate,
   GovernanceCommonLinesLearnResponse,
   GovernanceProfileCreate,
@@ -100,8 +107,15 @@ const DEFAULT_COMMON_LINES_PROFILE: GovernanceProfileCreate = {
 
 const SCRIPT_UPLOAD_ACCEPT = '.js,.ts,.py,.rs'
 const MAX_PROCESSING_SCRIPT_CHARS = 200_000
+const COMMON_LINES_DATASET_PARAMS = { skip: 0, limit: 200 } as const
+const COMMON_LINES_PROFILE_PARAMS = {
+  include_builtin: false,
+  limit: 200,
+} as const
 
-function detectScriptLanguage(filename: string): GovernanceProcessingScript['language'] | null {
+function detectScriptLanguage(
+  filename: string
+): GovernanceProcessingScript['language'] | null {
   const ext = filename.trim().toLowerCase().split('.').pop()
   if (ext === 'js') return 'javascript'
   if (ext === 'ts') return 'typescript'
@@ -110,12 +124,34 @@ function detectScriptLanguage(filename: string): GovernanceProcessingScript['lan
   return null
 }
 
+async function listWritableCommonLineProfiles(): Promise<
+  GovernanceProfileSummary[]
+> {
+  const profResp = await pipelineApi.listGovernanceProfiles(
+    COMMON_LINES_PROFILE_PARAMS
+  )
+  let profs = (profResp.items || []).filter((p) => !p.is_system)
+  if (!profs.length) {
+    try {
+      const created = await pipelineApi.createGovernanceProfile(
+        DEFAULT_COMMON_LINES_PROFILE
+      )
+      profs = [created]
+    } catch (createErr: any) {
+      if (createErr?.response?.status !== 409) throw createErr
+      const retryResp = await pipelineApi.listGovernanceProfiles(
+        COMMON_LINES_PROFILE_PARAMS
+      )
+      profs = (retryResp.items || []).filter((p) => !p.is_system)
+    }
+  }
+  return profs
+}
+
 export function GovernanceCommonLinesPage() {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const uploadInputRef = useRef<HTMLInputElement | null>(null)
-
-  const [datasets, setDatasets] = useState<Dataset[]>([])
-  const [profiles, setProfiles] = useState<GovernanceProfileSummary[]>([])
 
   const [datasetId, setDatasetId] = useState<string>('')
   const [profileRef, setProfileRef] = useState<string>('')
@@ -129,50 +165,64 @@ export function GovernanceCommonLinesPage() {
   const [controlsCollapsed, setControlsCollapsed] = useState(false)
 
   const [loading, setLoading] = useState(false)
-  const [loadingMeta, setLoadingMeta] = useState(false)
   const [importingScript, setImportingScript] = useState(false)
-  const [resp, setResp] = useState<GovernanceCommonLinesLearnResponse | null>(null)
+  const [resp, setResp] = useState<GovernanceCommonLinesLearnResponse | null>(
+    null
+  )
   const [selected, setSelected] = useState<Record<string, boolean>>({})
 
-  const loadMeta = useCallback(async () => {
-    setLoadingMeta(true)
-    try {
-      const [dsResp, profResp] = await Promise.all([
-        datasetApi.list({ skip: 0, limit: 200 }),
-        pipelineApi.listGovernanceProfiles({ include_builtin: false, limit: 200 }),
-      ])
-      const ds = dsResp.items || []
-      let profs = (profResp.items || []).filter((p) => !p.is_system)
-      if (!profs.length) {
-        try {
-          const created = await pipelineApi.createGovernanceProfile(DEFAULT_COMMON_LINES_PROFILE)
-          profs = [created]
-        } catch (createErr: any) {
-          if (createErr?.response?.status !== 409) throw createErr
-          const retryResp = await pipelineApi.listGovernanceProfiles({ include_builtin: false, limit: 200 })
-          profs = (retryResp.items || []).filter((p) => !p.is_system)
-        }
-      }
-      setDatasets(ds)
-      setProfiles(profs)
-      if (!datasetId && ds.length) setDatasetId(String(ds[0].id || ''))
-      const profileStillExists = profs.some((p) => {
-        const id = String(p.id || '').trim()
-        return profileRef === p.key || (!!id && profileRef === id)
-      })
-      if ((!profileRef || !profileStillExists) && profs.length) setProfileRef(String(profs[0].id || profs[0].key || ''))
-    } catch (err: any) {
-      toast.error(formatApiError(err, '加载数据集或治理配置失败'))
-    } finally {
-      setLoadingMeta(false)
-    }
-  }, [datasetId, profileRef])
+  const datasetsQuery = useQuery({
+    queryKey: queryKeys.datasets.list(COMMON_LINES_DATASET_PARAMS),
+    queryFn: () => datasetApi.list(COMMON_LINES_DATASET_PARAMS),
+  })
+  const profilesQuery = useQuery({
+    queryKey: queryKeys.governance.profiles(COMMON_LINES_PROFILE_PARAMS),
+    queryFn: listWritableCommonLineProfiles,
+  })
+
+  const datasets = useMemo(
+    () => datasetsQuery.data?.items || [],
+    [datasetsQuery.data?.items]
+  )
+  const profiles = useMemo(
+    () => profilesQuery.data || [],
+    [profilesQuery.data]
+  )
+  const loadingMeta = datasetsQuery.isFetching || profilesQuery.isFetching
+  const metaError = datasetsQuery.error || profilesQuery.error
+
+  const refreshMeta = useCallback(() => {
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.datasets.list(COMMON_LINES_DATASET_PARAMS),
+    })
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.governance.profiles(COMMON_LINES_PROFILE_PARAMS),
+    })
+  }, [queryClient])
 
   useEffect(() => {
-    detachPromise(loadMeta())
-  }, [loadMeta])
+    if (metaError) {
+      toast.error(formatApiError(metaError, '加载数据集或治理配置失败'))
+    }
+  }, [metaError])
 
-  const candidates: GovernanceCommonLineCandidate[] = useMemo(() => resp?.candidates || [], [resp?.candidates])
+  useEffect(() => {
+    if (!datasetId && datasets.length) setDatasetId(String(datasets[0].id || ''))
+  }, [datasetId, datasets])
+
+  useEffect(() => {
+    const profileStillExists = profiles.some((p) => {
+      const id = String(p.id || '').trim()
+      return profileRef === p.key || (!!id && profileRef === id)
+    })
+    if ((!profileRef || !profileStillExists) && profiles.length)
+      setProfileRef(String(profiles[0].id || profiles[0].key || ''))
+  }, [profileRef, profiles])
+
+  const candidates: GovernanceCommonLineCandidate[] = useMemo(
+    () => resp?.candidates || [],
+    [resp?.candidates]
+  )
   const sortedCandidates = useMemo(
     () =>
       [...candidates].sort((a, b) => {
@@ -216,7 +266,10 @@ export function GovernanceCommonLinesPage() {
         use_original: Boolean(useOriginal),
         min_docs: Math.max(2, Math.min(50, Number(minDocs || 3))),
         min_ratio: Math.max(0, Math.min(1, Number(minRatio || 0.5))),
-        max_line_length: Math.max(20, Math.min(400, Number(maxLineLength || 120))),
+        max_line_length: Math.max(
+          20,
+          Math.min(400, Number(maxLineLength || 120))
+        ),
         max_candidates: Math.max(1, Math.min(200, Number(maxCandidates || 50))),
       })
       setResp(out)
@@ -226,7 +279,15 @@ export function GovernanceCommonLinesPage() {
     } finally {
       setLoading(false)
     }
-  }, [datasetId, limitDocs, maxCandidates, maxLineLength, minDocs, minRatio, useOriginal])
+  }, [
+    datasetId,
+    limitDocs,
+    maxCandidates,
+    maxLineLength,
+    minDocs,
+    minRatio,
+    useOriginal,
+  ])
 
   const importProcessingScripts = useCallback(
     async (files: File[]) => {
@@ -263,7 +324,8 @@ export function GovernanceCommonLinesPage() {
             stage: 'post_governance',
             content,
             enabled: false,
-            description: '导入的处理脚本草案，仅用于治理配置审核，不会在入库链路中自动执行。',
+            description:
+              '导入的处理脚本草案，仅用于治理配置审核，不会在入库链路中自动执行。',
             created_at: new Date().toISOString(),
           })
         }
@@ -275,8 +337,10 @@ export function GovernanceCommonLinesPage() {
 
         const existing = prof.payload.processing_scripts ?? []
         const byKey = new Map<string, GovernanceProcessingScript>()
-        for (const item of existing) byKey.set(`${item.language}:${item.name}`, item)
-        for (const item of drafts) byKey.set(`${item.language}:${item.name}`, item)
+        for (const item of existing)
+          byKey.set(`${item.language}:${item.name}`, item)
+        for (const item of drafts)
+          byKey.set(`${item.language}:${item.name}`, item)
         const nextScripts = Array.from(byKey.values())
         if (nextScripts.length > 10) {
           toast.error('处理脚本最多保留 10 个，请先在治理配置中清理旧脚本')
@@ -318,13 +382,21 @@ export function GovernanceCommonLinesPage() {
         return
       }
 
-      const existingRules: RegexRuleModel[] = Array.isArray(prof.payload?.regex_rules) ? prof.payload.regex_rules : []
-      const patterns = new Set(existingRules.map((r) => String(r?.pattern || '')))
+      const existingRules: RegexRuleModel[] = Array.isArray(
+        prof.payload?.regex_rules
+      )
+        ? prof.payload.regex_rules
+        : []
+      const patterns = new Set(
+        existingRules.map((r) => String(r?.pattern || ''))
+      )
       const nextRules = [...existingRules]
 
       let added = 0
       for (const c of selectedCandidates) {
-        const rule = buildLineRegexRule(String(c.sample || '')) || buildLineRegexRule(String(c.signature || ''))
+        const rule =
+          buildLineRegexRule(String(c.sample || '')) ||
+          buildLineRegexRule(String(c.signature || ''))
         if (!rule) continue
         if (patterns.has(rule.pattern)) continue
         patterns.add(rule.pattern)
@@ -369,10 +441,15 @@ export function GovernanceCommonLinesPage() {
             variant="outline"
             size="sm"
             className="h-10 gap-2 rounded-xl border-border/60 bg-card px-4 text-[13px] font-semibold shadow-subtle"
-            onClick={() => detachPromise(loadMeta())}
+            onClick={refreshMeta}
             disabled={loadingMeta}
           >
-            <RefreshCw className={cn('w-4 h-4', loadingMeta && 'animate-spin motion-reduce:animate-none')} />
+            <RefreshCw
+              className={cn(
+                'w-4 h-4',
+                loadingMeta && 'animate-spin motion-reduce:animate-none'
+              )}
+            />
             刷新
           </Button>
           <Button
@@ -406,7 +483,9 @@ export function GovernanceCommonLinesPage() {
       <div
         className={cn(
           'mt-6 grid transition-[grid-template-columns,gap] duration-200 ease-out',
-          controlsCollapsed ? 'gap-2 xl:grid-cols-[0px_minmax(0,1fr)]' : 'gap-6 xl:grid-cols-[420px_minmax(0,1fr)]'
+          controlsCollapsed
+            ? 'gap-2 xl:grid-cols-[0px_minmax(0,1fr)]'
+            : 'gap-6 xl:grid-cols-[420px_minmax(0,1fr)]'
         )}
       >
         <aside className="relative min-w-0 xl:sticky xl:top-3 xl:self-start">
@@ -421,7 +500,12 @@ export function GovernanceCommonLinesPage() {
             aria-label={controlsCollapsed ? '展开参数栏' : '收起参数栏'}
             onClick={() => setControlsCollapsed((value) => !value)}
           >
-            <ChevronsLeft className={cn('size-4 transition-transform', controlsCollapsed && 'rotate-180')} />
+            <ChevronsLeft
+              className={cn(
+                'size-4 transition-transform',
+                controlsCollapsed && 'rotate-180'
+              )}
+            />
           </Button>
 
           {controlsCollapsed ? (
@@ -431,15 +515,20 @@ export function GovernanceCommonLinesPage() {
               data-testid="common-lines-control-panel"
               className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-subtle"
             >
-              <section className="relative border-b border-border/55 bg-gradient-to-br from-success/[0.07] via-background to-transparent px-5 py-5 dark:from-success/[0.10]">
-                <span aria-hidden className="absolute left-0 top-4 bottom-4 w-[2px] rounded-full bg-success/70" />
+              <section className="relative border-b border-border/55 from-success/[0.07] via-background to-transparent px-5 py-5 dark:from-success/[0.10]">
+                <span
+                  aria-hidden
+                  className="absolute left-0 top-4 bottom-4 w-[2px] rounded-full bg-success/70"
+                />
                 <div>
                   <div className="flex items-start gap-3">
                     <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-success/20 bg-success/[0.08] text-success">
                       <FileSearch className="size-4" />
                     </div>
                     <div className="min-w-0">
-                      <h2 className="text-[16px] font-semibold tracking-[-0.01em] text-foreground">识别范围</h2>
+                      <h2 className="text-[16px] font-semibold tracking-[-0.01em] text-foreground">
+                        识别范围
+                      </h2>
                       <p className="mt-2 text-[13px] leading-6 text-muted-foreground/90">
                         优先扫描治理前原始解析结果中的重复行,适合发现页眉、页脚、导航和免责声明。
                       </p>
@@ -451,12 +540,19 @@ export function GovernanceCommonLinesPage() {
               <section className="border-b border-border/55">
                 <div className="flex items-center gap-2 px-5 py-4">
                   <Database className="size-5 text-muted-foreground/80" />
-                  <h2 className="text-[16px] font-semibold tracking-[-0.01em] text-foreground">目标</h2>
+                  <h2 className="text-[16px] font-semibold tracking-[-0.01em] text-foreground">
+                    目标
+                  </h2>
                 </div>
                 <div className="space-y-4 px-5 pb-5">
                   <div className="min-w-0 space-y-2">
-                    <Label className="text-[12px] font-semibold text-foreground/85">数据集</Label>
-                    <Select value={datasetId || ''} onValueChange={(v) => setDatasetId(v)}>
+                    <Label className="text-[12px] font-semibold text-foreground/85">
+                      数据集
+                    </Label>
+                    <Select
+                      value={datasetId || ''}
+                      onValueChange={(v) => setDatasetId(v)}
+                    >
                       <SelectTrigger className="h-11 rounded-lg border-border/60 bg-card text-[14px] shadow-none hover:border-success/40 focus:border-success/60 focus-visible:ring-2 focus-visible:ring-success/20">
                         <SelectValue placeholder="选择数据集" />
                       </SelectTrigger>
@@ -483,15 +579,23 @@ export function GovernanceCommonLinesPage() {
                   </div>
 
                   <div className="min-w-0 space-y-2">
-                    <Label className="text-[12px] font-semibold text-foreground/85">写入目标治理配置</Label>
-                    <Select value={profileRef || ''} onValueChange={(v) => setProfileRef(v)}>
+                    <Label className="text-[12px] font-semibold text-foreground/85">
+                      写入目标治理配置
+                    </Label>
+                    <Select
+                      value={profileRef || ''}
+                      onValueChange={(v) => setProfileRef(v)}
+                    >
                       <SelectTrigger className="h-11 rounded-lg border-border/60 bg-card text-[14px] shadow-none hover:border-success/40 focus:border-success/60 focus-visible:ring-2 focus-visible:ring-success/20">
                         <SelectValue placeholder="选择自定义治理配置" />
                       </SelectTrigger>
                       <SelectContent>
                         {profiles.length ? (
                           profiles.map((p) => (
-                            <SelectItem key={p.key} value={String(p.id || p.key)}>
+                            <SelectItem
+                              key={p.key}
+                              value={String(p.id || p.key)}
+                            >
                               {p.name}
                             </SelectItem>
                           ))
@@ -517,9 +621,12 @@ export function GovernanceCommonLinesPage() {
                         <Upload className="size-4" />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="text-[12px] font-semibold text-foreground/85">导入处理脚本</div>
+                        <div className="text-[12px] font-semibold text-foreground/85">
+                          导入处理脚本
+                        </div>
                         <p className="mt-1 text-[11px] leading-5 text-muted-foreground/75">
-                          只导入 JS/TS、Python、Rust 脚本草案到当前治理配置，用于处理解析后或治理后的文本；不上传文档，也不会自动执行。
+                          只导入 JS/TS、Python、Rust
+                          脚本草案到当前治理配置，用于处理解析后或治理后的文本；不上传文档，也不会自动执行。
                         </p>
                       </div>
                     </div>
@@ -528,7 +635,9 @@ export function GovernanceCommonLinesPage() {
                       variant="outline"
                       size="sm"
                       className="mt-3 h-9 w-full gap-2 rounded-lg border-success/25 bg-card text-[12px] font-semibold text-success shadow-none hover:bg-success/[0.08] hover:text-success"
-                      disabled={importingScript || loading || !profileRef.trim()}
+                      disabled={
+                        importingScript || loading || !profileRef.trim()
+                      }
                       onClick={() => uploadInputRef.current?.click()}
                     >
                       {importingScript ? (
@@ -545,21 +654,29 @@ export function GovernanceCommonLinesPage() {
               <section>
                 <div className="flex items-center gap-2 px-5 py-4">
                   <Sliders className="size-5 text-muted-foreground/80" />
-                  <h2 className="text-[16px] font-semibold tracking-[-0.01em] text-foreground">参数</h2>
+                  <h2 className="text-[16px] font-semibold tracking-[-0.01em] text-foreground">
+                    参数
+                  </h2>
                 </div>
                 <div className="grid grid-cols-2 gap-3 px-5 pb-4">
                   <div className="min-w-0 space-y-1.5">
-                    <Label className="text-[11px] font-medium text-foreground/85">扫描文档数</Label>
+                    <Label className="text-[11px] font-medium text-foreground/85">
+                      扫描文档数
+                    </Label>
                     <Input
                       type="number"
                       value={String(limitDocs)}
-                      onChange={(e) => setLimitDocs(Number(e.target.value || 0))}
+                      onChange={(e) =>
+                        setLimitDocs(Number(e.target.value || 0))
+                      }
                       className="h-9 rounded-lg border-border/60 bg-card text-[13px] tabular-nums shadow-none"
                     />
                   </div>
 
                   <div className="min-w-0 space-y-1.5">
-                    <Label className="text-[11px] font-medium text-foreground/85">最少命中文档</Label>
+                    <Label className="text-[11px] font-medium text-foreground/85">
+                      最少命中文档
+                    </Label>
                     <Input
                       type="number"
                       value={String(minDocs)}
@@ -569,7 +686,9 @@ export function GovernanceCommonLinesPage() {
                   </div>
 
                   <div className="min-w-0 space-y-1.5">
-                    <Label className="text-[11px] font-medium text-foreground/85">最小命中比例</Label>
+                    <Label className="text-[11px] font-medium text-foreground/85">
+                      最小命中比例
+                    </Label>
                     <Input
                       type="number"
                       step="0.1"
@@ -580,21 +699,29 @@ export function GovernanceCommonLinesPage() {
                   </div>
 
                   <div className="min-w-0 space-y-1.5">
-                    <Label className="text-[11px] font-medium text-foreground/85">最大行长度</Label>
+                    <Label className="text-[11px] font-medium text-foreground/85">
+                      最大行长度
+                    </Label>
                     <Input
                       type="number"
                       value={String(maxLineLength)}
-                      onChange={(e) => setMaxLineLength(Number(e.target.value || 0))}
+                      onChange={(e) =>
+                        setMaxLineLength(Number(e.target.value || 0))
+                      }
                       className="h-9 rounded-lg border-border/60 bg-card text-[13px] tabular-nums shadow-none"
                     />
                   </div>
 
                   <div className="col-span-2 min-w-0 space-y-1.5">
-                    <Label className="text-[11px] font-medium text-foreground/85">最多候选数</Label>
+                    <Label className="text-[11px] font-medium text-foreground/85">
+                      最多候选数
+                    </Label>
                     <Input
                       type="number"
                       value={String(maxCandidates)}
-                      onChange={(e) => setMaxCandidates(Number(e.target.value || 0))}
+                      onChange={(e) =>
+                        setMaxCandidates(Number(e.target.value || 0))
+                      }
                       className="h-9 rounded-lg border-border/60 bg-card text-[13px] tabular-nums shadow-none"
                     />
                   </div>
@@ -604,7 +731,7 @@ export function GovernanceCommonLinesPage() {
                   <Checkbox
                     checked={useOriginal}
                     onCheckedChange={(v) => setUseOriginal(Boolean(v))}
-                    className="mt-0.5 data-[state=checked]:border-[#2563eb] data-[state=checked]:bg-[#2563eb] data-[state=checked]:text-white"
+                    className="mt-0.5 data-[state=checked]:border-[#2563eb] data-[state=checked]:bg-[#2563eb] data-[state=checked]:text-info-foreground"
                   />
                   <span>优先基于治理前的原始解析结果进行识别</span>
                 </label>
@@ -620,7 +747,9 @@ export function GovernanceCommonLinesPage() {
                 <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/30 text-muted-foreground">
                   <Sparkles className="size-4" />
                 </div>
-                <h2 className="text-[17px] font-semibold tracking-[-0.01em] text-foreground">候选结果</h2>
+                <h2 className="text-[17px] font-semibold tracking-[-0.01em] text-foreground">
+                  候选结果
+                </h2>
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 {resp && candidates.length ? (
@@ -676,7 +805,11 @@ export function GovernanceCommonLinesPage() {
                   <Filter className="size-4" />
                 </Button>
                 <span className="text-[14px] font-medium text-muted-foreground">
-                  {resp ? (sortedCandidates.length ? `${sortedCandidates.length} 条数据` : '暂无数据') : '暂无数据'}
+                  {resp
+                    ? sortedCandidates.length
+                      ? `${sortedCandidates.length} 条数据`
+                      : '暂无数据'
+                    : '暂无数据'}
                 </span>
               </div>
             </div>
@@ -714,14 +847,21 @@ export function GovernanceCommonLinesPage() {
                           <div className="pt-0.5">
                             <Checkbox
                               checked={checked}
-                              onCheckedChange={(v) => setSelected((prev) => ({ ...prev, [sig]: Boolean(v) }))}
+                              onCheckedChange={(v) =>
+                                setSelected((prev) => ({
+                                  ...prev,
+                                  [sig]: Boolean(v),
+                                }))
+                              }
                             />
                           </div>
                           <div className="min-w-0">
                             <div
                               className={cn(
                                 'line-clamp-2 break-words text-[13px] leading-[1.45rem] transition-colors',
-                                checked ? 'text-foreground' : 'text-foreground/90 group-hover:text-foreground'
+                                checked
+                                  ? 'text-foreground'
+                                  : 'text-foreground/90 group-hover:text-foreground'
                               )}
                               title={c.sample || c.signature}
                             >
@@ -737,7 +877,12 @@ export function GovernanceCommonLinesPage() {
                           <div className="pt-0.5 text-right font-mono text-[12px] tabular-nums text-foreground/85">
                             {c.docs}
                           </div>
-                          <div className={cn('pt-0.5 text-right font-mono text-[12px] font-medium tabular-nums', ratioToneClass)}>
+                          <div
+                            className={cn(
+                              'pt-0.5 text-right font-mono text-[12px] font-medium tabular-nums',
+                              ratioToneClass
+                            )}
+                          >
                             {ratio.toFixed(2)}
                           </div>
                         </div>
@@ -750,11 +895,25 @@ export function GovernanceCommonLinesPage() {
               <div className="flex flex-1 flex-col">
                 <div className="flex min-h-[410px] flex-none flex-col items-center justify-center px-6 py-10 text-center">
                   <div className="relative mb-7 flex size-24 items-center justify-center rounded-full border border-success/20 bg-success/[0.08] text-success">
-                    <span aria-hidden className="absolute inset-2 rounded-full bg-success/[0.05]" />
+                    <span
+                      aria-hidden
+                      className="absolute inset-2 rounded-full bg-success/[0.05]"
+                    />
                     <Search className="relative size-10" />
-                    <span aria-hidden className="absolute -left-4 top-12 text-[28px] font-medium text-muted-foreground/25">+</span>
-                    <span aria-hidden className="absolute -right-5 top-8 size-2 rounded-full bg-success/25" />
-                    <span aria-hidden className="absolute -right-2 bottom-5 size-1.5 rounded-full bg-muted-foreground/25" />
+                    <span
+                      aria-hidden
+                      className="absolute -left-4 top-12 text-[28px] font-medium text-muted-foreground/25"
+                    >
+                      +
+                    </span>
+                    <span
+                      aria-hidden
+                      className="absolute -right-5 top-8 size-2 rounded-full bg-success/25"
+                    />
+                    <span
+                      aria-hidden
+                      className="absolute -right-2 bottom-5 size-1.5 rounded-full bg-muted-foreground/25"
+                    />
                   </div>
                   <div className="text-[18px] font-semibold tracking-[-0.01em] text-foreground">
                     {resp ? '没有发现候选样板行' : '尚未生成候选结果'}
@@ -780,8 +939,12 @@ export function GovernanceCommonLinesPage() {
                                   <StepIcon className="size-5" />
                                 </div>
                                 <div className="min-w-0">
-                                  <div className="text-[15px] font-semibold text-foreground">{step.title}</div>
-                                  <p className="mt-1.5 text-[12px] leading-5 text-muted-foreground">{step.description}</p>
+                                  <div className="text-[15px] font-semibold text-foreground">
+                                    {step.title}
+                                  </div>
+                                  <p className="mt-1.5 text-[12px] leading-5 text-muted-foreground">
+                                    {step.description}
+                                  </p>
                                 </div>
                               </div>
                             </div>

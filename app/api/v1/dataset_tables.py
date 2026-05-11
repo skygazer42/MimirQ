@@ -46,7 +46,7 @@ from app.services.lotus_bridge import sem_filter as lotus_sem_filter
 from app.services.rbac_service import TenantPermissions, role_allows
 from app.services.security_redaction import redact_sql_literals
 from app.services.table_sql_fingerprint import fingerprint_sql
-from app.services.table_store import parse_table_id, table_store_path
+from app.services.table_store import parse_table_id, quote_sqlite_ident, sql_table_name_for_sheet, table_store_path
 from app.services.table_store_service import run_table_query
 from app.services.table_tag_service import (
     generate_answer_from_result,
@@ -541,12 +541,13 @@ def preview_dataset_table(
 
     filter_allowed_document_ids(db, tenant_id, account_id, [parsed.document_id])
 
-    sql_table = f"sheet_{int(parsed.sheet_index)}"
+    sql_table = sql_table_name_for_sheet(parsed.sheet_index)
+    sql_table_q = quote_sqlite_ident(sql_table)
     payload = run_table_query(
         tenant_id=tenant_id,
         dataset_id=dataset_id,
         table_id=table_id,
-        sql=f'SELECT * FROM "{sql_table}"',
+        sql=f"SELECT * FROM {sql_table_q}",
         max_rows=min(int(limit), int(getattr(settings, "TABLE_QUERY_MAX_ROWS", 200) or 200)),
         max_cols=int(getattr(settings, "TABLE_QUERY_MAX_COLS", 200) or 200),
         max_bytes=int(getattr(settings, "TABLE_QUERY_MAX_BYTES", 1_000_000) or 1_000_000),
@@ -733,7 +734,7 @@ def ask_dataset_table(
             sheet_name = str(sn).strip() if sn is not None else None
             break
 
-    sql_table = f"sheet_{int(parsed.sheet_index)}"
+    sql_table = sql_table_name_for_sheet(parsed.sheet_index)
     max_rows = int(body.max_rows or getattr(settings, "TABLE_QUERY_MAX_ROWS", 200) or 200)
     max_rows = min(max_rows, int(getattr(settings, "TABLE_QUERY_MAX_ROWS", 200) or 200))
 
@@ -901,7 +902,8 @@ def lotus_sem_filter_dataset_table(
     if doc is None:
         raise HTTPException(status_code=404, detail=_DETAIL_TABLE_NOT_FOUND)
 
-    sql_table = f"sheet_{int(parsed.sheet_index)}"
+    sql_table = sql_table_name_for_sheet(parsed.sheet_index)
+    sql_table_q = quote_sqlite_ident(sql_table)
     output_rows = int(body.max_rows or getattr(settings, "TABLE_QUERY_MAX_ROWS", 200) or 200)
     output_rows = min(output_rows, int(getattr(settings, "TABLE_QUERY_MAX_ROWS", 200) or 200))
 
@@ -928,7 +930,7 @@ def lotus_sem_filter_dataset_table(
                 # for semantic filtering.
                 cols: list[str] = []
                 try:
-                    cur = conn.execute(f'PRAGMA table_info("{sql_table}")')
+                    cur = conn.execute(f"PRAGMA table_info({sql_table_q})")
                     cols = [str(r[1]) for r in cur.fetchall() if r and len(r) > 1 and str(r[1] or "").strip()]
                 except Exception:
                     cols = []
@@ -940,9 +942,9 @@ def lotus_sem_filter_dataset_table(
                         return '"' + str(ident).replace('"', '""') + '"'
 
                     select_list = ", ".join([_q(c) for c in cols])
-                    query = f'SELECT {select_list} FROM "{sql_table}" LIMIT {int(max_in_rows)}'
+                    query = f"SELECT {select_list} FROM {sql_table_q} LIMIT {int(max_in_rows)}"
                 else:
-                    query = f'SELECT * FROM "{sql_table}" LIMIT {int(max_in_rows)}'
+                    query = f"SELECT * FROM {sql_table_q} LIMIT {int(max_in_rows)}"
                 df = pd.read_sql_query(query, conn)
                 if fls_policy is not None:
                     # Defense-in-depth: avoid sending denied columns to LOTUS/LLM flows.

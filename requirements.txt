@@ -121,9 +121,7 @@ opentelemetry-instrumentation-fastapi==0.61b0
 opentelemetry-instrumentation-httpx==0.61b0
 opentelemetry-semantic-conventions==0.61b0
 
-# Development
-pytest==9.0.3
-pytest-asyncio==1.3.0
+# HTTP client
 httpx[http2]==0.28.1
 
 # RAGAS
@@ -136,6 +134,3 @@ llama-index-core==0.14.20
 # NOTE: arq 0.27.x requires redis-py < 6.
 redis==5.3.1
 arq==0.27.0
-# Dev / test tooling
-pip-audit==2.10.0
-ruff==0.15.9

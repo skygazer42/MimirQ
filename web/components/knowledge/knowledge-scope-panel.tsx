@@ -2,13 +2,24 @@ import { useState } from 'react'
 import { ChevronDown, Filter, FolderSearch } from 'lucide-react'
 import { WorkbenchPane } from '@/components/workbench'
 import { DatasetFolderTree } from '@/components/document-library/dataset-folder-tree'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import type { Dataset } from '@/types'
 import { useTranslations } from 'next-intl'
 
 type DocLifecycleFilter = 'active' | 'archived' | 'disabled' | 'all'
-type DocStatusFilter = 'all' | 'completed' | 'processing' | 'failed' | 'quarantined'
+type DocStatusFilter =
+  | 'all'
+  | 'completed'
+  | 'processing'
+  | 'failed'
+  | 'quarantined'
 type DocCountValue = string | number
 
 type KnowledgeScopePanelProps = {
@@ -74,15 +85,23 @@ export function KnowledgeScopePanel({
     { key: 'quarantined', count: quarantinedDocsValue },
   ].map((item) => {
     const count = Number(item.count || 0)
-    const ratio = item.key === 'all'
-      ? 1
-      : Math.max(0, Math.min(1, Number(totalDocs || 0) > 0 ? count / Number(totalDocs || 0) : 0))
+    const ratio =
+      item.key === 'all'
+        ? 1
+        : Math.max(
+            0,
+            Math.min(
+              1,
+              Number(totalDocs || 0) > 0 ? count / Number(totalDocs || 0) : 0
+            )
+          )
 
     return {
       ...item,
       label: t(`status.${item.key}.label`),
       ratio,
-      showRatioBar: item.key !== 'all' && count > 0 && Number(totalDocs || 0) > 0,
+      showRatioBar:
+        item.key !== 'all' && count > 0 && Number(totalDocs || 0) > 0,
       ratioClassName:
         item.key === 'completed'
           ? 'bg-success/70'
@@ -94,15 +113,17 @@ export function KnowledgeScopePanel({
                 ? 'bg-warning/75'
                 : 'bg-primary/55',
       countElement: (
-        <span className={cn(
-          "font-mono text-[11px] transition-all tabular-nums",
-          count === 0 
-            ? "opacity-20 font-medium" 
-            : "font-medium text-foreground bg-muted/40 px-1.5 py-0.5 rounded-md shadow-inner-soft"
-        )}>
+        <span
+          className={cn(
+            'font-mono text-[11px] transition-all tabular-nums',
+            count === 0
+              ? 'opacity-20 font-medium'
+              : 'font-medium text-foreground bg-muted/40 px-1.5 py-0.5 rounded-md shadow-inner-soft'
+          )}
+        >
           {count}
         </span>
-      )
+      ),
     }
   })
 
@@ -118,7 +139,7 @@ export function KnowledgeScopePanel({
           <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-foreground/68">
             {t('header.subtitle')}
           </div>
-          <div className="mt-0.5 text-[13px] font-medium tracking-tight text-foreground/92">
+          <div className="mt-0.5 text-[13px] font-medium text-foreground/92">
             导航
           </div>
           <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground/76">
@@ -148,25 +169,32 @@ export function KnowledgeScopePanel({
     ...datasets.map((ds) => ({ id: ds.id, name: ds.name })),
   ]
   const [datasetListExpanded, setDatasetListExpanded] = useState(false)
-  const selectedDatasetItem = datasetItems.find((item) => item.id === datasetScope) ?? datasetItems[0]
+  const selectedDatasetItem =
+    datasetItems.find((item) => item.id === datasetScope) ?? datasetItems[0]
 
   const statusThemes: Record<DocStatusFilter, string> = {
     all: 'bg-primary/10 border-primary/40 text-primary shadow-[0_0_12px_-4px_rgba(var(--primary),0.3)]',
-    completed: 'bg-success/10 border-success/40 text-success dark:text-success shadow-[0_0_12px_-4px_rgba(16,185,129,0.3)]',
-    processing: 'bg-info/10 border-info/40 text-info dark:text-info shadow-[0_0_12px_-4px_rgba(14,165,233,0.3)]',
-    failed: 'bg-destructive/10 border-destructive/40 text-destructive dark:text-destructive/85 shadow-[0_0_12px_-4px_rgba(239,68,68,0.3)]',
-    quarantined: 'bg-warning/10 border-warning/40 text-warning dark:text-warning shadow-[0_0_12px_-4px_rgba(245,158,11,0.3)]',
+    completed:
+      'bg-success/10 border-success/40 text-success dark:text-success shadow-[0_0_12px_-4px_rgba(16,185,129,0.3)]',
+    processing:
+      'bg-info/10 border-info/40 text-info dark:text-info shadow-[0_0_12px_-4px_rgba(14,165,233,0.3)]',
+    failed:
+      'bg-destructive/10 border-destructive/40 text-destructive dark:text-destructive/85 shadow-[0_0_12px_-4px_rgba(239,68,68,0.3)]',
+    quarantined:
+      'bg-warning/10 border-warning/40 text-warning dark:text-warning shadow-[0_0_12px_-4px_rgba(245,158,11,0.3)]',
   }
 
   const body = (
     <div className={cn('space-y-3', embedded && 'space-y-2.5 p-3')}>
       {/* cn('space-y-4', embedded && 'space-y-3 p-3.5 lg:p-4') */}
       <div className={cn(sectionClassName, sectionShellClassName)}>
-        <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/72">{t("dataset.label")}</div>
+        <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/72">
+          {t('dataset.label')}
+        </div>
         <div className="space-y-1.5">
           <button
             type="button"
-            aria-label={t("dataset.ariaLabel")}
+            aria-label={t('dataset.ariaLabel')}
             aria-expanded={datasetListExpanded}
             onClick={() => setDatasetListExpanded((prev) => !prev)}
             className={cn(
@@ -178,7 +206,9 @@ export function KnowledgeScopePanel({
           >
             <div className="min-w-0">
               <div className="truncate text-[11px] font-normal text-foreground/90">
-                {datasetsLoading ? t('dataset.loading') : selectedDatasetItem.name}
+                {datasetsLoading
+                  ? t('dataset.loading')
+                  : selectedDatasetItem.name}
               </div>
             </div>
             <ChevronDown
@@ -192,13 +222,15 @@ export function KnowledgeScopePanel({
           {datasetListExpanded ? (
             <div
               role="group"
-              aria-label={t("dataset.ariaLabel")}
+              aria-label={t('dataset.ariaLabel')}
               className={cn(
                 'space-y-1 rounded-[12px] border border-border/70 bg-background p-1'
               )}
             >
               {datasetsLoading ? (
-                <div className="rounded-lg px-2 py-1.5 text-[10px] text-muted-foreground">{t('dataset.loading')}</div>
+                <div className="rounded-lg px-2 py-1.5 text-[10px] text-muted-foreground">
+                  {t('dataset.loading')}
+                </div>
               ) : (
                 <div className="max-h-56 space-y-1 overflow-y-auto pr-0.5">
                   {datasetItems.map((item) => {
@@ -225,7 +257,9 @@ export function KnowledgeScopePanel({
                             isActive ? 'bg-primary' : 'bg-muted-foreground/35'
                           )}
                         />
-                        <span className="min-w-0 truncate font-normal text-foreground/88">{item.name}</span>
+                        <span className="min-w-0 truncate font-normal text-foreground/88">
+                          {item.name}
+                        </span>
                       </button>
                     )
                   })}
@@ -238,7 +272,9 @@ export function KnowledgeScopePanel({
 
       {showDocumentFilters ? (
         <div className={cn(sectionClassName, sectionShellClassName)}>
-        <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/72">{t('status.label')}</div>
+          <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/72">
+            {t('status.label')}
+          </div>
           <div className="flex flex-wrap items-center gap-1.5">
             {statusItems.map((item) => (
               <button
@@ -251,7 +287,8 @@ export function KnowledgeScopePanel({
                     ? 'min-h-8 rounded-[10px] border px-2 py-1 text-[10px] font-medium transition-all duration-300 hover:-translate-y-[1px] focus-ring'
                     : 'h-9 rounded-full border px-3 text-xs font-medium transition-all duration-300 hover:-translate-y-[1px] focus-ring',
                   statusFilter === item.key
-                    ? (statusThemes[item.key as DocStatusFilter] || statusThemes.all)
+                    ? statusThemes[item.key as DocStatusFilter] ||
+                        statusThemes.all
                     : 'bg-background/60 border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted/30 hover:border-border/80'
                 )}
                 aria-pressed={statusFilter === item.key}
@@ -259,17 +296,31 @@ export function KnowledgeScopePanel({
                 {item.showRatioBar ? (
                   <span
                     aria-hidden="true"
-                    className={cn('pointer-events-none absolute inset-x-2 bottom-1 h-[2px] rounded-full opacity-90 transition-all duration-500', item.ratioClassName)}
-                    style={{ width: statusFilter === item.key ? '0%' : `calc(${Math.max(item.ratio * 100, 8)}% - 1rem)` }}
+                    className={cn(
+                      'pointer-events-none absolute inset-x-2 bottom-1 h-[2px] rounded-full opacity-90 transition-all duration-500',
+                      item.ratioClassName
+                    )}
+                    style={{
+                      width:
+                        statusFilter === item.key
+                          ? '0%'
+                          : `calc(${Math.max(item.ratio * 100, 8)}% - 1rem)`,
+                    }}
                   />
                 ) : null}
                 {/* className={cn('pointer-events-none absolute inset-x-2 bottom-1 h-[2px] rounded-full opacity-90', item.ratioClassName)} */}
                 <span className="relative z-10">
                   {item.label}
-                  <span className={cn(
-                    "ml-1.5 font-mono tabular-nums text-[10px] transition-all",
-                    statusFilter === item.key ? "opacity-100 font-semibold" : "opacity-50"
-                  )}>{item.count}</span>
+                  <span
+                    className={cn(
+                      'ml-1.5 font-mono tabular-nums text-[10px] transition-all',
+                      statusFilter === item.key
+                        ? 'opacity-100 font-semibold'
+                        : 'opacity-50'
+                    )}
+                  >
+                    {item.count}
+                  </span>
                 </span>
               </button>
             ))}
@@ -282,7 +333,9 @@ export function KnowledgeScopePanel({
           {selectedDatasetId ? (
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-3">
-                <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/72">{t('folder.label')}</div>
+                <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/72">
+                  {t('folder.label')}
+                </div>
                 {folderPath ? (
                   <button
                     type="button"
@@ -294,7 +347,11 @@ export function KnowledgeScopePanel({
                 ) : null}
               </div>
               <DatasetFolderTree
-                className={embedded ? 'rounded-[12px] border border-border/70 bg-background p-2' : undefined}
+                className={
+                  embedded
+                    ? 'rounded-[12px] border border-border/70 bg-background p-2'
+                    : undefined
+                }
                 datasetId={selectedDatasetId}
                 lifecycle={lifecycleFilter}
                 selectedPath={folderPath}
@@ -327,18 +384,27 @@ export function KnowledgeScopePanel({
 
       {showDocumentFilters ? (
         <div className={cn(sectionClassName, sectionShellClassName)}>
-          <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/72">{t('lifecycle.label')}</div>
-          <Select value={lifecycleFilter} onValueChange={(v) => setLifecycleFilter(v as DocLifecycleFilter)}>
+          <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/72">
+            {t('lifecycle.label')}
+          </div>
+          <Select
+            value={lifecycleFilter}
+            onValueChange={(v) => setLifecycleFilter(v as DocLifecycleFilter)}
+          >
             <SelectTrigger
               className={cn('w-full', embeddedSelectTriggerClassName)}
-              aria-label={t("lifecycle.ariaLabel")}
+              aria-label={t('lifecycle.ariaLabel')}
             >
-              <SelectValue placeholder={t("lifecycle.placeholder")} />
+              <SelectValue placeholder={t('lifecycle.placeholder')} />
             </SelectTrigger>
             <SelectContent className={embeddedSelectContentClassName}>
-              <SelectItem value="active">{t("lifecycle.active")}</SelectItem>
-              <SelectItem value="disabled">{t('lifecycle.disabled')}</SelectItem>
-              <SelectItem value="archived">{t("lifecycle.archived")}</SelectItem>
+              <SelectItem value="active">{t('lifecycle.active')}</SelectItem>
+              <SelectItem value="disabled">
+                {t('lifecycle.disabled')}
+              </SelectItem>
+              <SelectItem value="archived">
+                {t('lifecycle.archived')}
+              </SelectItem>
               <SelectItem value="all">{t('lifecycle.all')}</SelectItem>
             </SelectContent>
           </Select>
@@ -350,7 +416,9 @@ export function KnowledgeScopePanel({
   if (embedded) {
     return (
       <div className={cn('flex flex-col border-0 bg-transparent', className)}>
-        <div className="border-b border-border/70 bg-background/92 px-3 py-3">{header}</div>
+        <div className="border-b border-border/70 bg-background/92 px-3 py-3">
+          {header}
+        </div>
         {body}
       </div>
     )

@@ -251,5 +251,5 @@ if __name__ == "__main__":
     pdf_file = r"/data/Langagent/resources/data/example/test1.pdf"
     ocr_handler = OCRHandler2(det_threshold=0.3)
     recognized_text = ocr_handler.pdf_ocr_pipeline(pdf_file)
-    print("=== OCR Results ===")
-    print(recognized_text)
+    logging.info("=== OCR Results ===")
+    logging.info("%s", recognized_text)

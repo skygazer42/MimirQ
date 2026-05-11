@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
+import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { ArrowLeft, BarChart3, Download, FileUp, History, Loader2, Plus, RefreshCw, Save, Scissors, Settings2, Sparkles, Table2, Trash2 } from 'lucide-react'
 
@@ -23,13 +24,11 @@ import { datasetApi, pipelineApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { INGESTION_FALLBACK_CHUNK_STRATEGY_VALUES } from '@/lib/chunk-strategies'
 import { PARSER_BACKEND_REGISTRY_OPTIONS } from '@/lib/parser-options'
+import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise } from '@/lib/utils'
 import { useRouter } from '@/i18n/navigation'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 import type {
-  Dataset,
-  DatasetIngestionStats,
-  GovernanceProfileSummary,
   IngestionPolicy,
   IngestionPolicyVersionListResponse,
   IngestionRule,
@@ -37,6 +36,7 @@ import type {
 } from '@/types'
 
 const NONE = '__none__'
+const INGESTION_PROFILE_PARAMS = { include_builtin: true, limit: 200 } as const
 
 const PREPROCESS_STEP_CATALOG: Array<{ id: string; label: string; desc: string }> = [
   { id: 'text.reencode_utf8', label: '文本编码修复 → UTF-8', desc: '修复乱码/编码不一致（GBK/Windows-1252 等）' },
@@ -592,11 +592,7 @@ export default function DatasetIngestionPolicyPage() {
   const datasetId = String(params?.id || '')
   const { capabilities } = usePipelineCapabilities()
 
-  const [dataset, setDataset] = useState<Dataset | null>(null)
-  const [ingestionStats, setIngestionStats] = useState<DatasetIngestionStats | null>(null)
   const [policy, setPolicy] = useState<IngestionPolicy | null>(null)
-  const [profiles, setProfiles] = useState<GovernanceProfileSummary[]>([])
-  const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
 
   const [editorOpen, setEditorOpen] = useState(false)
@@ -632,25 +628,81 @@ export default function DatasetIngestionPolicyPage() {
     return uniq.length ? uniq : INGESTION_FALLBACK_CHUNK_STRATEGY_VALUES
   }, [capabilities])
 
-  const load = useCallback(async () => {
-    if (!datasetId) return
-    setLoading(true)
-    try {
-      const [ds, pol, stats] = await Promise.all([
-        datasetApi.get(datasetId),
-        datasetApi.getIngestionPolicy(datasetId),
-        datasetApi.getIngestionStats(datasetId).catch(() => null),
-      ])
-      setDataset(ds)
-      setPolicy(pol)
-      setIngestionStats(stats)
-    } catch (e: any) {
-      console.error('Failed to load dataset ingestion policy', e)
-      toast.error(formatApiError(e, '加载入库策略失败'))
-    } finally {
-      setLoading(false)
+  const profilesQuery = useQuery({
+    queryKey: queryKeys.governance.profiles(INGESTION_PROFILE_PARAMS),
+    queryFn: () => pipelineApi.listGovernanceProfiles(INGESTION_PROFILE_PARAMS),
+  })
+  const profiles = useMemo(
+    () => profilesQuery.data?.items || [],
+    [profilesQuery.data?.items]
+  )
+
+  const datasetQuery = useQuery({
+    queryKey: queryKeys.datasets.detail(datasetId),
+    queryFn: () => datasetApi.get(datasetId),
+    enabled: Boolean(datasetId),
+  })
+
+  const policyQuery = useQuery({
+    queryKey: queryKeys.datasets.ingestionPolicy(datasetId),
+    queryFn: () => datasetApi.getIngestionPolicy(datasetId),
+    enabled: Boolean(datasetId),
+    refetchOnWindowFocus: false,
+  })
+
+  const ingestionStatsQuery = useQuery({
+    queryKey: queryKeys.datasets.ingestionStats(datasetId),
+    queryFn: async () => {
+      try {
+        return await datasetApi.getIngestionStats(datasetId)
+      } catch {
+        return null
+      }
+    },
+    enabled: Boolean(datasetId),
+  })
+
+  const dataset = datasetQuery.data ?? null
+  const ingestionStats = ingestionStatsQuery.data ?? null
+  const loading = Boolean(datasetId) && (
+    datasetQuery.isPending ||
+    policyQuery.isPending ||
+    ingestionStatsQuery.isPending
+  )
+  const refreshing = Boolean(datasetId) && (
+    datasetQuery.isFetching ||
+    policyQuery.isFetching ||
+    ingestionStatsQuery.isFetching
+  )
+
+  useEffect(() => {
+    if (profilesQuery.error) {
+      toast.error(formatApiError(profilesQuery.error, '加载治理预设失败'))
     }
-  }, [datasetId])
+  }, [profilesQuery.error])
+
+  useEffect(() => {
+    const error = datasetQuery.error || policyQuery.error
+    if (!error) return
+    console.error('Failed to load dataset ingestion policy', error)
+    toast.error(formatApiError(error, '加载入库策略失败'))
+  }, [datasetQuery.error, datasetQuery.errorUpdatedAt, policyQuery.error, policyQuery.errorUpdatedAt])
+
+  useEffect(() => {
+    setPolicy(policyQuery.data ?? null)
+  }, [policyQuery.data])
+
+  const { refetch: refetchDataset } = datasetQuery
+  const { refetch: refetchPolicy } = policyQuery
+  const { refetch: refetchIngestionStats } = ingestionStatsQuery
+
+  const refreshIngestionPolicy = useCallback(async () => {
+    await Promise.all([
+      refetchDataset(),
+      refetchPolicy(),
+      refetchIngestionStats(),
+    ])
+  }, [refetchDataset, refetchIngestionStats, refetchPolicy])
 
   const loadVersions = useCallback(async () => {
     if (!datasetId) return
@@ -681,7 +733,7 @@ export default function DatasetIngestionPolicyPage() {
       try {
         await datasetApi.rollbackIngestionPolicy(datasetId, { version_id: id })
         toast.success('已回滚入库策略')
-        await Promise.all([load(), loadVersions()])
+        await Promise.all([refreshIngestionPolicy(), loadVersions()])
       } catch (e: any) {
         console.error('Failed to rollback ingestion policy', e)
         toast.error(formatApiError(e, '回滚失败'))
@@ -689,23 +741,8 @@ export default function DatasetIngestionPolicyPage() {
         setRollbackingVersionId(null)
       }
     },
-    [datasetId, load, loadVersions]
+    [datasetId, loadVersions, refreshIngestionPolicy]
   )
-
-  const loadProfiles = useCallback(async () => {
-    try {
-      const res = await pipelineApi.listGovernanceProfiles({ include_builtin: true, limit: 200 })
-      setProfiles(res.items || [])
-    } catch (e) {
-      console.error('Failed to load governance profiles', e)
-      setProfiles([])
-    }
-  }, [])
-
-  useEffect(() => {
-    load()
-    loadProfiles()
-  }, [load, loadProfiles])
 
   const rules = useMemo(() => policy?.rules || [], [policy])
 
@@ -803,14 +840,14 @@ export default function DatasetIngestionPolicyPage() {
     try {
       await datasetApi.updateIngestionPolicy(datasetId, policy)
       toast.success('已保存入库策略')
-      await load()
+      await refreshIngestionPolicy()
     } catch (e: any) {
       console.error('Failed to save ingestion policy', e)
       toast.error(formatApiError(e, '保存失败（请检查规则ID/扩展名/正则/patch JSON）'))
     } finally {
       setSaving(false)
     }
-  }, [datasetId, policy, load])
+  }, [datasetId, policy, refreshIngestionPolicy])
 
   const handleExport = useCallback(async () => {
     if (!datasetId) return
@@ -829,14 +866,14 @@ export default function DatasetIngestionPolicyPage() {
     try {
       const res = await datasetApi.importIngestionPolicy(datasetId, file, true)
       toast.success(`导入成功：规则 ${res.rule_count}`)
-      await load()
+      await refreshIngestionPolicy()
     } catch (e: any) {
       console.error('Failed to import ingestion policy', e)
       toast.error(formatApiError(e, '导入失败（请检查脚本格式/正则是否安全）'))
     } finally {
       if (importInputRef.current) importInputRef.current.value = ''
     }
-  }, [datasetId, load])
+  }, [datasetId, refreshIngestionPolicy])
 
   const runPreview = useCallback(async () => {
     if (!previewFile || !datasetId) return
@@ -870,8 +907,8 @@ export default function DatasetIngestionPolicyPage() {
               <ArrowLeft className="w-4 h-4" />
               返回
             </Button>
-            <Button variant="outline" onClick={load} disabled={loading} className="gap-2">
-              <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin motion-reduce:animate-none')} />
+            <Button variant="outline" onClick={() => detachPromise(refreshIngestionPolicy())} disabled={refreshing} className="gap-2">
+              <RefreshCw className={cn('w-4 h-4', refreshing && 'animate-spin motion-reduce:animate-none')} />
               刷新
             </Button>
             {datasetId ? (

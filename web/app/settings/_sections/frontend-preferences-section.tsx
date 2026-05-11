@@ -31,15 +31,25 @@ export function FrontendPreferencesSection({
         </div>
       </div>
 
-      <Panel className="space-y-3 rounded-[16px] border-slate-200/75 bg-white shadow-sm" padding="md">
+      <Panel
+        className="space-y-3 rounded-[16px] border-slate-200/75 bg-card shadow-sm"
+        padding="md"
+      >
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div className="space-y-2">
-            <div className="text-[12px] font-medium text-slate-700">解析方式</div>
+            <div className="text-[12px] font-medium text-slate-700">
+              解析方式
+            </div>
             <ParserDropdown value={parserBackend} onChange={setParserBackend} />
           </div>
           <div className="space-y-2">
-            <div className="text-[12px] font-medium text-slate-700">切块策略</div>
-            <ChunkStrategyDropdown value={chunkStrategy} onChange={setChunkStrategy} />
+            <div className="text-[12px] font-medium text-slate-700">
+              切块策略
+            </div>
+            <ChunkStrategyDropdown
+              value={chunkStrategy}
+              onChange={setChunkStrategy}
+            />
           </div>
         </div>
 
@@ -48,7 +58,7 @@ export function FrontendPreferencesSection({
             <span>入库管线高级配置</span>
             <ChevronDown className="size-4 text-slate-400 transition-transform group-open:rotate-180" />
           </summary>
-          <div className="border-t border-slate-200 bg-white/75 p-3">
+          <div className="border-t border-slate-200 bg-card/75 p-3">
             <PipelineOptionsPanel compact />
           </div>
         </details>

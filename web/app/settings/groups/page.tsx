@@ -5,7 +5,8 @@
  */
 'use client'
 
-import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useMemo, useState, type ComponentType } from 'react'
 import {
   CheckCircle2,
   ChevronLeft,
@@ -27,8 +28,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PageScaffold } from '@/components/ui/page-scaffold'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { cn, detachPromise } from '@/lib/utils'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { cn } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
 import { TENANT_PERMISSIONS } from '@/lib/tenant-permissions'
 import { groupApi } from '@/lib/api'
@@ -45,14 +52,29 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
+import { queryKeys } from '@/lib/query-keys'
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50] as const
-const OUTLINE_BUTTON = 'h-9 rounded-xl border-slate-200 bg-white px-3.5 text-[12px] font-semibold text-slate-700 shadow-sm hover:bg-slate-50'
-const PRIMARY_BUTTON = 'h-9 rounded-xl bg-blue-600 px-3.5 text-[12px] font-semibold text-white shadow-[0_8px_20px_rgba(37,99,235,0.22)] hover:bg-blue-700'
-const INPUT_CLASS = 'h-10 rounded-xl border-slate-200 bg-white text-[13px] shadow-sm placeholder:text-slate-400 focus-visible:ring-blue-500/30'
-const CARD_CLASS = 'rounded-[20px] border border-slate-200/80 bg-white/92 shadow-[0_18px_44px_rgba(15,23,42,0.06)]'
-const ICON_BUTTON = 'size-7 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+const GROUP_PAGE_LIST_PARAMS = { limit: 500 } as const
+const OUTLINE_BUTTON =
+  'h-9 rounded-xl border-slate-200 bg-card px-3.5 text-[12px] font-semibold text-slate-700 shadow-sm hover:bg-slate-50'
+const PRIMARY_BUTTON =
+  'h-9 rounded-xl bg-blue-600 px-3.5 text-[12px] font-semibold text-info-foreground shadow-[0_8px_20px_rgba(37,99,235,0.22)] hover:bg-blue-700'
+const INPUT_CLASS =
+  'h-10 rounded-xl border-slate-200 bg-card text-[13px] shadow-sm placeholder:text-slate-400 focus-visible:ring-blue-500/30'
+const CARD_CLASS =
+  'rounded-[20px] border border-slate-200/80 bg-card/92 shadow-[0_18px_44px_rgba(15,23,42,0.06)]'
+const ICON_BUTTON =
+  'size-7 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900'
 
 type SummaryTone = 'indigo' | 'blue' | 'green' | 'slate'
 
@@ -73,7 +95,10 @@ const SUMMARY_TONE_CLASS: Record<SummaryTone, string> = {
 
 export default function SettingsGroupsPage() {
   return (
-    <TenantPermissionGate permission={TENANT_PERMISSIONS.SETTINGS_READ} pageName="组管理">
+    <TenantPermissionGate
+      permission={TENANT_PERMISSIONS.SETTINGS_READ}
+      pageName="组管理"
+    >
       <SettingsGroupsPageContent />
     </TenantPermissionGate>
   )
@@ -81,7 +106,12 @@ export default function SettingsGroupsPage() {
 
 function GroupSummaryStrip({ items }: Readonly<{ items: SummaryItem[] }>) {
   return (
-    <div className={cn(CARD_CLASS, 'grid min-h-[112px] grid-cols-1 overflow-hidden md:grid-cols-2 xl:grid-cols-4')}>
+    <div
+      className={cn(
+        CARD_CLASS,
+        'grid min-h-[112px] grid-cols-1 overflow-hidden md:grid-cols-2 xl:grid-cols-4'
+      )}
+    >
       {items.map((item, index) => {
         const Icon = item.icon
         return (
@@ -93,12 +123,24 @@ function GroupSummaryStrip({ items }: Readonly<{ items: SummaryItem[] }>) {
             )}
           >
             <div className="min-w-0">
-              <p className="text-[12px] font-semibold text-slate-500">{item.label}</p>
-              <p className={cn('mt-2.5 text-[23px] font-semibold leading-none tracking-[-0.04em] text-slate-950', item.valueClassName)}>
+              <p className="text-[12px] font-semibold text-slate-500">
+                {item.label}
+              </p>
+              <p
+                className={cn(
+                  'mt-2.5 text-[23px] font-semibold leading-none tracking-[-0.04em] text-slate-950',
+                  item.valueClassName
+                )}
+              >
                 {item.value}
               </p>
             </div>
-            <div className={cn('flex size-11 shrink-0 items-center justify-center rounded-2xl', SUMMARY_TONE_CLASS[item.tone])}>
+            <div
+              className={cn(
+                'flex size-11 shrink-0 items-center justify-center rounded-2xl',
+                SUMMARY_TONE_CLASS[item.tone]
+              )}
+            >
               <Icon className="size-5" />
             </div>
           </div>
@@ -110,22 +152,81 @@ function GroupSummaryStrip({ items }: Readonly<{ items: SummaryItem[] }>) {
 
 function SettingsGroupsPageContent() {
   const router = useRouter()
-  const didRequestInitialLoadRef = useRef(false)
-  const [loading, setLoading] = useState(false)
-  const [groups, setGroups] = useState<TenantGroupOut[]>([])
+  const queryClient = useQueryClient()
   const [query, setQuery] = useState('')
-  const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(10)
+  const [pageSize, setPageSize] =
+    useState<(typeof PAGE_SIZE_OPTIONS)[number]>(10)
   const [page, setPage] = useState(1)
 
   const [createOpen, setCreateOpen] = useState(false)
-  const [creating, setCreating] = useState(false)
   const [nameDraft, setNameDraft] = useState('')
   const [externalIdDraft, setExternalIdDraft] = useState('')
 
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const groupsQuery = useQuery<TenantGroupOut[]>({
+    queryKey: queryKeys.groups.list(GROUP_PAGE_LIST_PARAMS),
+    retry: false,
+    queryFn: async () => {
+      try {
+        const res = await groupApi.listGroups(GROUP_PAGE_LIST_PARAMS)
+        return Array.isArray(res.items) ? res.items : []
+      } catch (err: unknown) {
+        toast.error(formatApiError(err, '加载组失败（需要管理员权限）'))
+        throw err
+      }
+    },
+  })
+  const groups = useMemo(() => groupsQuery.data || [], [groupsQuery.data])
+  const loading = groupsQuery.isFetching
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const name = String(nameDraft || '').trim()
+      const externalId = String(externalIdDraft || '').trim()
+      return groupApi.createGroup({
+        name,
+        external_id: externalId || undefined,
+      })
+    },
+    onSuccess: (created) => {
+      toast.success(`已创建组：${created.name}`)
+      setCreateOpen(false)
+      setNameDraft('')
+      setExternalIdDraft('')
+      void queryClient.invalidateQueries({ queryKey: queryKeys.groups.all })
+    },
+    onError: (err: unknown) => {
+      toast.error(formatApiError(err, '创建组失败'))
+    },
+  })
+  const deleteMutation = useMutation({
+    mutationFn: async (groupId: string) => {
+      await groupApi.deleteGroup(groupId)
+      return groupId
+    },
+    onMutate: (groupId) => {
+      setDeletingId(groupId)
+    },
+    onSuccess: (groupId) => {
+      toast.success('已删除组')
+      queryClient.setQueryData<TenantGroupOut[]>(
+        queryKeys.groups.list(GROUP_PAGE_LIST_PARAMS),
+        (prev) => (prev || []).filter((g) => g.id !== groupId)
+      )
+      void queryClient.invalidateQueries({ queryKey: queryKeys.groups.all })
+    },
+    onError: (err: unknown) => {
+      toast.error(formatApiError(err, '删除组失败'))
+    },
+    onSettled: () => {
+      setDeletingId(null)
+    },
+  })
+  const creating = createMutation.isPending
 
   const filtered = useMemo(() => {
-    const q = String(query || '').trim().toLowerCase()
+    const q = String(query || '')
+      .trim()
+      .toLowerCase()
     if (!q) return groups
     return (groups || []).filter((g) => {
       const name = String(g.name || '').toLowerCase()
@@ -135,8 +236,14 @@ function SettingsGroupsPageContent() {
     })
   }, [groups, query])
 
-  const canCreate = useMemo(() => String(nameDraft || '').trim().length > 0, [nameDraft])
-  const pageCount = useMemo(() => Math.max(1, Math.ceil(filtered.length / pageSize)), [filtered.length, pageSize])
+  const canCreate = useMemo(
+    () => String(nameDraft || '').trim().length > 0,
+    [nameDraft]
+  )
+  const pageCount = useMemo(
+    () => Math.max(1, Math.ceil(filtered.length / pageSize)),
+    [filtered.length, pageSize]
+  )
   const visibleGroups = useMemo(() => {
     const start = (page - 1) * pageSize
     return filtered.slice(start, start + pageSize)
@@ -150,14 +257,19 @@ function SettingsGroupsPageContent() {
         value: creating ? '创建中' : createOpen ? '待创建' : '空闲',
         icon: CheckCircle2,
         tone: 'green',
-        valueClassName: creating || createOpen ? 'text-amber-600' : 'text-emerald-600',
+        valueClassName:
+          creating || createOpen ? 'text-amber-600' : 'text-emerald-600',
       },
       {
         label: '列表状态',
         value: loading ? '加载中' : groups.length ? '已就绪' : '无数据',
         icon: Database,
         tone: 'slate',
-        valueClassName: loading ? 'text-amber-600' : groups.length ? 'text-emerald-600' : 'text-slate-950',
+        valueClassName: loading
+          ? 'text-amber-600'
+          : groups.length
+            ? 'text-emerald-600'
+            : 'text-slate-950',
       },
     ],
     [groups.length, filtered.length, creating, createOpen, loading]
@@ -170,61 +282,6 @@ function SettingsGroupsPageContent() {
   useEffect(() => {
     setPage((current) => Math.min(Math.max(1, current), pageCount))
   }, [pageCount])
-
-  async function refresh(): Promise<void> {
-    setLoading(true)
-    try {
-      const res = await groupApi.listGroups({ limit: 500 })
-      setGroups(Array.isArray(res.items) ? res.items : [])
-    } catch (err) {
-      toast.error(formatApiError(err, '加载组失败（需要管理员权限）'))
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function createGroup(): Promise<void> {
-    if (!canCreate) return
-    setCreating(true)
-    try {
-      const name = String(nameDraft || '').trim()
-      const externalId = String(externalIdDraft || '').trim()
-      const created = await groupApi.createGroup({
-        name,
-        external_id: externalId || undefined,
-      })
-      toast.success(`已创建组：${created.name}`)
-      setCreateOpen(false)
-      setNameDraft('')
-      setExternalIdDraft('')
-      await refresh()
-    } catch (err) {
-      toast.error(formatApiError(err, '创建组失败'))
-    } finally {
-      setCreating(false)
-    }
-  }
-
-  async function deleteGroup(groupId: string): Promise<void> {
-    const gid = String(groupId || '').trim()
-    if (!gid) return
-    setDeletingId(gid)
-    try {
-      await groupApi.deleteGroup(gid)
-      toast.success('已删除组')
-      setGroups((prev) => (prev || []).filter((g) => g.id !== gid))
-    } catch (err) {
-      toast.error(formatApiError(err, '删除组失败'))
-    } finally {
-      setDeletingId(null)
-    }
-  }
-
-  useEffect(() => {
-    if (didRequestInitialLoadRef.current) return
-    didRequestInitialLoadRef.current = true
-    detachPromise(refresh())
-  }, [])
 
   return (
     <AppFrame>
@@ -246,9 +303,16 @@ function SettingsGroupsPageContent() {
               size="sm"
               className={OUTLINE_BUTTON}
               disabled={loading}
-              onClick={() => detachPromise(refresh())}
+              onClick={() => {
+                void groupsQuery.refetch()
+              }}
             >
-              <RefreshCw className={cn('size-4', loading && 'animate-spin motion-reduce:animate-none')} />
+              <RefreshCw
+                className={cn(
+                  'size-4',
+                  loading && 'animate-spin motion-reduce:animate-none'
+                )}
+              />
               刷新
             </Button>
 
@@ -272,7 +336,8 @@ function SettingsGroupsPageContent() {
                 <DialogHeader>
                   <DialogTitle>新建组</DialogTitle>
                   <DialogDescription className="text-sm">
-                    建议使用稳定命名；如需与外部身份提供方（IdP）对齐，可填写外部组 ID（`external_id`）。
+                    建议使用稳定命名；如需与外部身份提供方（IdP）对齐，可填写外部组
+                    ID（`external_id`）。
                   </DialogDescription>
                 </DialogHeader>
 
@@ -289,7 +354,9 @@ function SettingsGroupsPageContent() {
                     />
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="group-external-id">外部组 ID（external_id）</Label>
+                    <Label htmlFor="group-external-id">
+                      外部组 ID（external_id）
+                    </Label>
                     <Input
                       className={INPUT_CLASS}
                       id="group-external-id"
@@ -299,16 +366,29 @@ function SettingsGroupsPageContent() {
                       autoComplete="off"
                     />
                     <div className="text-xs leading-relaxed text-slate-500">
-                      该字段用于开放ID连接组声明（OIDC groups claim）/ 跨域身份管理（SCIM）同步；留空不影响访问控制列表（ACL）使用。
+                      该字段用于开放ID连接组声明（OIDC groups claim）/
+                      跨域身份管理（SCIM）同步；留空不影响访问控制列表（ACL）使用。
                     </div>
                   </div>
                 </div>
 
                 <DialogFooter className="mt-4">
-                  <Button variant="ghost" className="h-8 rounded-lg px-3 text-xs font-semibold" onClick={() => setCreateOpen(false)} disabled={creating}>
+                  <Button
+                    variant="ghost"
+                    className="h-8 rounded-lg px-3 text-xs font-semibold"
+                    onClick={() => setCreateOpen(false)}
+                    disabled={creating}
+                  >
                     取消
                   </Button>
-                  <Button className="h-8 rounded-lg px-3 text-xs font-semibold" onClick={() => detachPromise(createGroup())} disabled={!canCreate || creating}>
+                  <Button
+                    className="h-8 rounded-lg px-3 text-xs font-semibold"
+                    onClick={() => {
+                      if (!canCreate) return
+                      createMutation.mutate()
+                    }}
+                    disabled={!canCreate || creating}
+                  >
                     {creating ? '创建中…' : '创建'}
                   </Button>
                 </DialogFooter>
@@ -325,20 +405,29 @@ function SettingsGroupsPageContent() {
                   <Users className="size-4" />
                 </div>
                 <div>
-                  <h2 className="text-base font-semibold tracking-[-0.02em] text-slate-950">组列表</h2>
-                  <p className="mt-1 text-[13px] text-slate-500">管理组目录与外部身份映射，支持按名称、外部组 ID 或组 ID 过滤。</p>
+                  <h2 className="text-base font-semibold tracking-[-0.02em] text-slate-950">
+                    组列表
+                  </h2>
+                  <p className="mt-1 text-[13px] text-slate-500">
+                    管理组目录与外部身份映射，支持按名称、外部组 ID 或组 ID
+                    过滤。
+                  </p>
                 </div>
               </div>
               <Select
                 value={String(pageSize)}
                 onValueChange={(value) => {
                   const next = Number(value)
-                  if (PAGE_SIZE_OPTIONS.includes(next as (typeof PAGE_SIZE_OPTIONS)[number])) {
+                  if (
+                    PAGE_SIZE_OPTIONS.includes(
+                      next as (typeof PAGE_SIZE_OPTIONS)[number]
+                    )
+                  ) {
                     setPageSize(next as (typeof PAGE_SIZE_OPTIONS)[number])
                   }
                 }}
               >
-                <SelectTrigger className="h-9 w-[122px] rounded-xl border-slate-200 bg-white text-[13px] font-medium shadow-sm">
+                <SelectTrigger className="h-9 w-[122px] rounded-xl border-slate-200 bg-card text-[13px] font-medium shadow-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent align="end">
@@ -379,80 +468,112 @@ function SettingsGroupsPageContent() {
             <div className="flex-1">
               {visibleGroups.length ? (
                 visibleGroups.map((g) => {
-                    const gid = String(g.id || '').trim()
-                    const deleting = Boolean(deletingId && deletingId === gid)
-                    return (
-                      <div
-                        key={gid}
-                        className="grid grid-cols-12 items-center gap-3 border-t border-slate-100 px-4 py-2.5 text-[12px] transition-colors hover:bg-blue-50/40"
+                  const gid = String(g.id || '').trim()
+                  const deleting = Boolean(deletingId && deletingId === gid)
+                  return (
+                    <div
+                      key={gid}
+                      className="grid grid-cols-12 items-center gap-3 border-t border-slate-100 px-4 py-2.5 text-[12px] transition-colors hover:bg-blue-50/40"
+                    >
+                      <button
+                        type="button"
+                        className="col-span-5 text-left min-w-0"
+                        onClick={() =>
+                          router.push(
+                            `/settings/groups/${encodeURIComponent(gid)}`
+                          )
+                        }
                       >
-                        <button
-                          type="button"
-                          className="col-span-5 text-left min-w-0"
-                          onClick={() => router.push(`/settings/groups/${encodeURIComponent(gid)}`)}
-                        >
-                          <div className="truncate font-semibold text-slate-900">{g.name}</div>
-                        </button>
-                        <div className="col-span-3 min-w-0 truncate font-mono text-[11px] text-slate-500" title={g.external_id || '-'}>
-                          {g.external_id || '-'}
+                        <div className="truncate font-semibold text-slate-900">
+                          {g.name}
                         </div>
-                        <div className="col-span-3 min-w-0 truncate font-mono text-[11px] text-slate-500" title={gid}>
-                          {gid}
-                        </div>
-                        <div className="col-span-1 flex justify-end">
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className={ICON_BUTTON}
-                                disabled={!gid || deleting}
-                                aria-label="删除组"
+                      </button>
+                      <div
+                        className="col-span-3 min-w-0 truncate font-mono text-[11px] text-slate-500"
+                        title={g.external_id || '-'}
+                      >
+                        {g.external_id || '-'}
+                      </div>
+                      <div
+                        className="col-span-3 min-w-0 truncate font-mono text-[11px] text-slate-500"
+                        title={gid}
+                      >
+                        {gid}
+                      </div>
+                      <div className="col-span-1 flex justify-end">
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className={ICON_BUTTON}
+                              disabled={!gid || deleting}
+                              aria-label="删除组"
+                            >
+                              <Trash2
+                                className={cn(
+                                  'size-4',
+                                  deleting && 'opacity-60'
+                                )}
+                              />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>删除组？</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                将删除组{' '}
+                                <span className="font-mono">{g.name}</span>（
+                                {gid.slice(0, 8)}…）。此操作不可撤销。
+                                <div className="mt-2 text-xs text-muted-foreground">
+                                  注意：若该组被用于数据集/文档允许列表（allowlist），删除前请先移除引用。
+                                </div>
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>取消</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => {
+                                  if (!gid) return
+                                  deleteMutation.mutate(gid)
+                                }}
+                                disabled={deleting}
                               >
-                                <Trash2 className={cn('size-4', deleting && 'opacity-60')} />
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>删除组？</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  将删除组 <span className="font-mono">{g.name}</span>（{gid.slice(0, 8)}…）。此操作不可撤销。
-                                  <div className="mt-2 text-xs text-muted-foreground">
-                                    注意：若该组被用于数据集/文档允许列表（allowlist），删除前请先移除引用。
-                                  </div>
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>取消</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => detachPromise(deleteGroup(gid))} disabled={deleting}>
-                                  {deleting ? '删除中…' : '删除'}
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </div>
+                                {deleting ? '删除中…' : '删除'}
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </div>
-                    )
-                  })
-                ) : (
-                  loading ? (
-                    <div className="flex h-full min-h-[320px] items-center justify-center text-[13px] text-slate-500">加载中…</div>
-                  ) : (
-                    <div className="flex h-full min-h-[320px] flex-col items-center justify-center border-t border-slate-100 px-6 text-center">
-                      <div className="relative mb-4 flex size-[72px] items-center justify-center rounded-[22px] bg-blue-50 text-blue-500 shadow-inner">
-                        <UsersRound className="size-9" />
-                        <span className="absolute -right-1 top-2 size-2 rounded-full bg-blue-300" />
-                        <span className="absolute -left-2 top-8 size-1.5 rounded-full bg-blue-200" />
-                      </div>
-                      <h3 className="text-lg font-semibold tracking-[-0.03em] text-slate-950">暂无组</h3>
-                      <p className="mt-2.5 max-w-md text-[13px] leading-6 text-slate-500">还没有创建任何组，或您没有查看权限。</p>
-                      <Button className={cn(PRIMARY_BUTTON, 'mt-5')} onClick={() => setCreateOpen(true)}>
-                        <Plus className="size-4" />
-                        新建组
-                      </Button>
                     </div>
                   )
-                )}
+                })
+              ) : loading ? (
+                <div className="flex h-full min-h-[320px] items-center justify-center text-[13px] text-slate-500">
+                  加载中…
+                </div>
+              ) : (
+                <div className="flex h-full min-h-[320px] flex-col items-center justify-center border-t border-slate-100 px-6 text-center">
+                  <div className="relative mb-4 flex size-[72px] items-center justify-center rounded-[22px] bg-blue-50 text-blue-500 shadow-inner">
+                    <UsersRound className="size-9" />
+                    <span className="absolute -right-1 top-2 size-2 rounded-full bg-blue-300" />
+                    <span className="absolute -left-2 top-8 size-1.5 rounded-full bg-blue-200" />
+                  </div>
+                  <h3 className="text-lg font-semibold tracking-[-0.03em] text-slate-950">
+                    暂无组
+                  </h3>
+                  <p className="mt-2.5 max-w-md text-[13px] leading-6 text-slate-500">
+                    还没有创建任何组，或您没有查看权限。
+                  </p>
+                  <Button
+                    className={cn(PRIMARY_BUTTON, 'mt-5')}
+                    onClick={() => setCreateOpen(true)}
+                  >
+                    <Plus className="size-4" />
+                    新建组
+                  </Button>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-[13px] text-slate-500">
@@ -461,22 +582,24 @@ function SettingsGroupsPageContent() {
                 <Button
                   variant="outline"
                   size="icon"
-                  className="size-8 rounded-lg border-slate-200 bg-white"
+                  className="size-8 rounded-lg border-slate-200 bg-card"
                   disabled={page <= 1}
                   onClick={() => setPage((current) => Math.max(1, current - 1))}
                   aria-label="上一页"
                 >
                   <ChevronLeft className="size-4" />
                 </Button>
-                <span className="flex h-8 min-w-8 items-center justify-center rounded-lg border border-blue-500 bg-white px-3 text-[13px] font-semibold text-blue-600">
+                <span className="flex h-8 min-w-8 items-center justify-center rounded-lg border border-blue-500 bg-card px-3 text-[13px] font-semibold text-blue-600">
                   {page}
                 </span>
                 <Button
                   variant="outline"
                   size="icon"
-                  className="size-8 rounded-lg border-slate-200 bg-white"
+                  className="size-8 rounded-lg border-slate-200 bg-card"
                   disabled={page >= pageCount}
-                  onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+                  onClick={() =>
+                    setPage((current) => Math.min(pageCount, current + 1))
+                  }
                   aria-label="下一页"
                 >
                   <ChevronRight className="size-4" />

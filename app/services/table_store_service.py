@@ -27,6 +27,7 @@ from app.services.table_sql_fingerprint import fingerprint_sql
 from app.services.table_store import (
     format_table_id,
     parse_table_id,
+    quote_sqlite_ident,
     sql_table_name_for_sheet,
     table_store_path,
 )
@@ -256,7 +257,7 @@ def import_table_document(
                     name = str(row[0] or "")
                     if not name:
                         continue
-                    conn.execute(f'DROP TABLE IF EXISTS "{name}";')
+                    conn.execute(f"DROP TABLE IF EXISTS {quote_sqlite_ident(name)};")
                 conn.commit()
             finally:
                 conn.close()
@@ -444,7 +445,7 @@ def _write_single_sheet(
     conn = _connect_rw(out_path)
     try:
         # Replace the sheet table.
-        conn.execute(f'DROP TABLE IF EXISTS "{sql_table}";')
+        conn.execute(f"DROP TABLE IF EXISTS {quote_sqlite_ident(sql_table)};")
         # Use pandas to write; it will create columns with proper quoting.
         df = _sanitize_dataframe(df)
         df.to_sql(sql_table, conn, if_exists="replace", index=False)
@@ -512,7 +513,7 @@ def import_docx_tables(
                 for row in cur.fetchall():
                     name = str(row[0] or "")
                     if name:
-                        conn.execute(f'DROP TABLE IF EXISTS "{name}";')
+                        conn.execute(f"DROP TABLE IF EXISTS {quote_sqlite_ident(name)};")
                 conn.commit()
             finally:
                 conn.close()
@@ -750,7 +751,7 @@ def import_markdown_tables(
                 for row in cur.fetchall():
                     name = str(row[0] or "")
                     if name:
-                        conn.execute(f'DROP TABLE IF EXISTS "{name}";')
+                        conn.execute(f"DROP TABLE IF EXISTS {quote_sqlite_ident(name)};")
                 conn.commit()
             finally:
                 conn.close()
@@ -850,7 +851,7 @@ def import_db_row_snapshots(
                 for row in cur.fetchall():
                     name = str(row[0] or "")
                     if name:
-                        conn.execute(f'DROP TABLE IF EXISTS "{name}";')
+                        conn.execute(f"DROP TABLE IF EXISTS {quote_sqlite_ident(name)};")
                 conn.commit()
             finally:
                 conn.close()

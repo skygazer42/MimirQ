@@ -5,7 +5,8 @@
  */
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { ArrowLeft, Loader2, RefreshCw, Save, Trash2, UserPlus, Users } from 'lucide-react'
 import { toast } from 'sonner'
@@ -19,12 +20,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Textarea } from '@/components/ui/textarea'
-import { cn, formatDate, detachPromise } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
 import { TENANT_PERMISSIONS } from '@/lib/tenant-permissions'
 import { groupApi } from '@/lib/api'
+import { queryKeys } from '@/lib/query-keys'
 import { useRouter } from '@/i18n/navigation'
-import type { TenantGroupMemberOut, TenantGroupOut } from '@/types/backend'
+import type { TenantGroupMemberListResponse, TenantGroupMemberOut, TenantGroupOut } from '@/types/backend'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,6 +38,14 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
+
+const GROUP_MEMBERS_PARAMS = { limit: 500 } as const
+
+type GroupDraft = {
+  groupId: string
+  name: string
+  externalId: string
+}
 
 function asGroupId(raw: unknown): string | null {
   if (typeof raw === 'string' && raw.trim()) return raw
@@ -73,61 +83,70 @@ export default function SettingsGroupDetailPage() {
 
 function SettingsGroupDetailPageContent() {
   const router = useRouter()
-  const params = useParams()
-  const groupId = asGroupId((params as any)?.id)
+  const queryClient = useQueryClient()
+  const params = useParams<{ id?: string | string[] }>()
+  const groupId = asGroupId(params?.id)
 
-  const [group, setGroup] = useState<TenantGroupOut | null>(null)
-  const [loadingGroup, setLoadingGroup] = useState(false)
-  const [savingGroup, setSavingGroup] = useState(false)
+  const groupDetailQueryKey = queryKeys.groups.detail(groupId || '')
+  const membersQueryKey = queryKeys.groups.members(groupId || '', GROUP_MEMBERS_PARAMS)
 
-  const [nameDraft, setNameDraft] = useState('')
-  const [externalIdDraft, setExternalIdDraft] = useState('')
-
-  const [members, setMembers] = useState<TenantGroupMemberOut[]>([])
-  const [membersTotal, setMembersTotal] = useState(0)
-  const [loadingMembers, setLoadingMembers] = useState(false)
+  const [draft, setDraft] = useState<GroupDraft | null>(null)
   const [memberQuery, setMemberQuery] = useState('')
 
   const [addOpen, setAddOpen] = useState(false)
   const [addText, setAddText] = useState('')
-  const [adding, setAdding] = useState(false)
 
   const [removingUserId, setRemovingUserId] = useState<string | null>(null)
 
-  const loadGroup = useCallback(async () => {
-    if (!groupId) return
-    setLoadingGroup(true)
-    try {
-      const g = await groupApi.getGroup(groupId)
-      setGroup(g)
-      setNameDraft(String(g.name || ''))
-      setExternalIdDraft(String(g.external_id || ''))
-    } catch (err) {
-      toast.error(formatApiError(err, '加载组详情失败'))
-    } finally {
-      setLoadingGroup(false)
-    }
-  }, [groupId])
+  const groupQuery = useQuery<TenantGroupOut | null>({
+    queryKey: groupDetailQueryKey,
+    enabled: Boolean(groupId),
+    retry: false,
+    queryFn: async () => {
+      if (!groupId) return null
+      try {
+        return await groupApi.getGroup(groupId)
+      } catch (err: unknown) {
+        toast.error(formatApiError(err, '加载组详情失败'))
+        throw err
+      }
+    },
+  })
 
-  const loadMembers = useCallback(async () => {
-    if (!groupId) return
-    setLoadingMembers(true)
-    try {
-      const res = await groupApi.listGroupMembers(groupId, { limit: 500 })
-      const items = Array.isArray(res.items) ? res.items : []
-      setMembers(items)
-      setMembersTotal(Number(res.total || items.length || 0))
-    } catch (err) {
-      toast.error(formatApiError(err, '加载成员失败'))
-    } finally {
-      setLoadingMembers(false)
-    }
-  }, [groupId])
+  const membersQuery = useQuery<TenantGroupMemberListResponse>({
+    queryKey: membersQueryKey,
+    enabled: Boolean(groupId),
+    retry: false,
+    queryFn: async () => {
+      if (!groupId) return { items: [], total: 0 }
+      try {
+        return await groupApi.listGroupMembers(groupId, GROUP_MEMBERS_PARAMS)
+      } catch (err: unknown) {
+        toast.error(formatApiError(err, '加载成员失败'))
+        throw err
+      }
+    },
+  })
 
-  useEffect(() => {
-    detachPromise(loadGroup())
-    detachPromise(loadMembers())
-  }, [loadGroup, loadMembers])
+  const group = groupQuery.data
+  const activeDraft = draft?.groupId === groupId ? draft : null
+  const nameDraft = activeDraft?.name ?? String(group?.name || '')
+  const externalIdDraft = activeDraft?.externalId ?? String(group?.external_id || '')
+  const members = useMemo<TenantGroupMemberOut[]>(() => {
+    const items = membersQuery.data?.items
+    return Array.isArray(items) ? items : []
+  }, [membersQuery.data?.items])
+  const membersTotal = Number(membersQuery.data?.total ?? members.length)
+  const loadingGroup = groupQuery.isFetching
+  const loadingMembers = membersQuery.isFetching
+
+  const updateDraft = (patch: Partial<Omit<GroupDraft, 'groupId'>>) => {
+    setDraft({
+      groupId: groupId || '',
+      name: patch.name ?? nameDraft,
+      externalId: patch.externalId ?? externalIdDraft,
+    })
+  }
 
   const canSaveGroup = useMemo(() => {
     const name = String(nameDraft || '').trim()
@@ -143,7 +162,74 @@ function SettingsGroupDetailPageContent() {
     return (members || []).filter((m) => String(m.user_id || '').toLowerCase().includes(q))
   }, [members, memberQuery])
 
-  const saveGroup = async () => {
+  const saveGroupMutation = useMutation({
+    mutationFn: async ({ name, externalId }: { name: string; externalId: string }) => {
+      if (!groupId) throw new Error('缺少组 ID')
+      return groupApi.patchGroup(groupId, {
+        name,
+        external_id: externalId || null,
+      })
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData(queryKeys.groups.detail(updated.id), updated)
+      setDraft({
+        groupId: updated.id,
+        name: String(updated.name || ''),
+        externalId: String(updated.external_id || ''),
+      })
+      toast.success('已保存组信息')
+      void queryClient.invalidateQueries({ queryKey: queryKeys.groups.all })
+    },
+    onError: (err: unknown) => {
+      toast.error(formatApiError(err, '保存失败'))
+    },
+  })
+
+  const addMembersMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      if (!groupId) throw new Error('缺少组 ID')
+      return groupApi.addGroupMembers(groupId, { member_ids: ids })
+    },
+    onSuccess: (res) => {
+      toast.success(`已添加 ${res.updated} 个成员`)
+      setAddText('')
+      setAddOpen(false)
+      void queryClient.invalidateQueries({ queryKey: membersQueryKey })
+    },
+    onError: (err: unknown) => {
+      toast.error(formatApiError(err, '添加成员失败'))
+    },
+  })
+
+  const removeMemberMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      if (!groupId) throw new Error('缺少组 ID')
+      return groupApi.removeGroupMembers(groupId, { member_ids: [userId] })
+    },
+    onMutate: (userId) => {
+      setRemovingUserId(userId)
+    },
+    onSuccess: (res, userId) => {
+      toast.success(`已移除 ${res.updated} 个成员`)
+      queryClient.setQueryData<TenantGroupMemberListResponse>(membersQueryKey, (prev) => {
+        const previousItems = Array.isArray(prev?.items) ? prev.items : []
+        const nextItems = previousItems.filter((m) => String(m.user_id || '') !== userId)
+        return {
+          items: nextItems,
+          total: Math.max(0, Number(prev?.total ?? previousItems.length) - 1),
+        }
+      })
+      void queryClient.invalidateQueries({ queryKey: membersQueryKey })
+    },
+    onError: (err: unknown) => {
+      toast.error(formatApiError(err, '移除成员失败'))
+    },
+    onSettled: () => {
+      setRemovingUserId(null)
+    },
+  })
+
+  const saveGroup = () => {
     if (!groupId) return
     const name = String(nameDraft || '').trim()
     const externalId = String(externalIdDraft || '').trim()
@@ -160,24 +246,10 @@ function SettingsGroupDetailPageContent() {
       return
     }
 
-    setSavingGroup(true)
-    try {
-      const updated = await groupApi.patchGroup(groupId, {
-        name,
-        external_id: externalId || null,
-      })
-      setGroup(updated)
-      setNameDraft(String(updated.name || ''))
-      setExternalIdDraft(String(updated.external_id || ''))
-      toast.success('已保存组信息')
-    } catch (err) {
-      toast.error(formatApiError(err, '保存失败'))
-    } finally {
-      setSavingGroup(false)
-    }
+    saveGroupMutation.mutate({ name, externalId })
   }
 
-  const addMembers = async () => {
+  const addMembers = () => {
     if (!groupId) return
     const { ids, error } = normalizeMemberIds(addText)
     if (error) {
@@ -189,39 +261,20 @@ function SettingsGroupDetailPageContent() {
       return
     }
 
-    setAdding(true)
-    try {
-      const res = await groupApi.addGroupMembers(groupId, { member_ids: ids })
-      toast.success(`已添加 ${res.updated} 个成员`)
-      setAddText('')
-      setAddOpen(false)
-      await loadMembers()
-    } catch (err) {
-      toast.error(formatApiError(err, '添加成员失败'))
-    } finally {
-      setAdding(false)
-    }
+    addMembersMutation.mutate(ids)
   }
 
-  const removeMember = async (userId: string) => {
+  const removeMember = (userId: string) => {
     if (!groupId) return
     const uid = String(userId || '').trim()
     if (!uid) return
 
-    setRemovingUserId(uid)
-    try {
-      const res = await groupApi.removeGroupMembers(groupId, { member_ids: [uid] })
-      toast.success(`已移除 ${res.updated} 个成员`)
-      setMembers((prev) => (prev || []).filter((m) => String(m.user_id || '') !== uid))
-      setMembersTotal((prev) => Math.max(0, prev - 1))
-    } catch (err) {
-      toast.error(formatApiError(err, '移除成员失败'))
-    } finally {
-      setRemovingUserId(null)
-    }
+    removeMemberMutation.mutate(uid)
   }
 
   const title = group?.name ? `组：${group.name}` : '组详情'
+  const savingGroup = saveGroupMutation.isPending
+  const adding = addMembersMutation.isPending
 
   return (
     <AppFrame>
@@ -243,14 +296,14 @@ function SettingsGroupDetailPageContent() {
               className="gap-2 rounded-xl"
               disabled={loadingGroup || loadingMembers}
               onClick={() => {
-                detachPromise(loadGroup())
-                detachPromise(loadMembers())
+                void groupQuery.refetch()
+                void membersQuery.refetch()
               }}
             >
               <RefreshCw className={cn('size-4', (loadingGroup || loadingMembers) && 'animate-spin motion-reduce:animate-none')} />
               刷新
             </Button>
-            <Button size="sm" className="gap-2 rounded-xl" disabled={!canSaveGroup || savingGroup} onClick={() => detachPromise(saveGroup())}>
+            <Button size="sm" className="gap-2 rounded-xl" disabled={!canSaveGroup || savingGroup} onClick={saveGroup}>
               {savingGroup ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : <Save className="size-4" />}
               保存
             </Button>
@@ -272,7 +325,7 @@ function SettingsGroupDetailPageContent() {
                   id="group-name"
                   value={nameDraft}
                   maxLength={255}
-                  onChange={(e) => setNameDraft(e.target.value)}
+                  onChange={(e) => updateDraft({ name: e.target.value })}
                   placeholder="例如：研发 / 法务 / 财务"
                   disabled={loadingGroup}
                 />
@@ -285,7 +338,7 @@ function SettingsGroupDetailPageContent() {
                   id="group-external-id"
                   value={externalIdDraft}
                   maxLength={255}
-                  onChange={(e) => setExternalIdDraft(e.target.value)}
+                  onChange={(e) => updateDraft({ externalId: e.target.value })}
                   placeholder="例如：Okta/AzureAD 组 ID"
                   disabled={loadingGroup}
                 />
@@ -365,7 +418,7 @@ function SettingsGroupDetailPageContent() {
                         <Button variant="ghost" onClick={() => setAddOpen(false)} disabled={adding}>
                           取消
                         </Button>
-                        <Button onClick={() => detachPromise(addMembers())} disabled={adding}>
+                        <Button onClick={addMembers} disabled={adding}>
                           {adding ? <Loader2 className="mr-2 size-4 animate-spin motion-reduce:animate-none" /> : null}
                           添加
                         </Button>
@@ -420,7 +473,7 @@ function SettingsGroupDetailPageContent() {
                               </AlertDialogHeader>
                               <AlertDialogFooter>
                                 <AlertDialogCancel>取消</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => detachPromise(removeMember(uid))} disabled={removing}>
+                                <AlertDialogAction onClick={() => removeMember(uid)} disabled={removing}>
                                   {removing ? '移除中…' : '移除'}
                                 </AlertDialogAction>
                               </AlertDialogFooter>

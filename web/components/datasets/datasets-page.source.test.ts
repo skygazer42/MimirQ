@@ -22,4 +22,18 @@ describe('datasets page source', () => {
     expect(src).toContain('选择一个数据集以查看快捷入口与访问配置')
     expect(src).toContain('<DatasetShortcutButton')
   })
+
+  it('loads the dataset collection through TanStack Query', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'datasets-page.tsx'), 'utf8')
+
+    expect(src).toContain("from '@tanstack/react-query'")
+    expect(src).toContain('useQuery')
+    expect(src).toContain('useQueryClient')
+    expect(src).toContain('queryKey: datasetsQueryKey')
+    expect(src).toContain('queryKeys.datasets.list')
+    expect(src).not.toContain('const [items, setItems]')
+    expect(src).not.toContain('const [total, setTotal]')
+    expect(src).not.toContain('setIsLoading')
+    expect(src).not.toContain('const load = useCallback')
+  })
 })

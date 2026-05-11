@@ -3,6 +3,11 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
+import {
+  expectSourceNotToContain,
+  expectSourceToContain,
+} from '@/lib/source-test-utils'
+
 function read(relativePath: string) {
   return fs.readFileSync(path.resolve(__dirname, '..', relativePath), 'utf8')
 }
@@ -15,29 +20,35 @@ describe('knowledge workspace message sources', () => {
     const retrievalSrc = read('knowledge/knowledge-retrieval-panel.tsx')
     const settingsSrc = read('knowledge/knowledge-settings-panel.tsx')
 
-    expect(pageSrc).toContain("useTranslations('KnowledgePage')")
-    expect(pageSrc).toContain("label: t(`tabs.${tab.key}.label`)")
-    expect(pageSrc).toContain('t("header.title")')
-    expect(pageSrc).toContain('t("stats.totalDocuments")')
-    expect(pageSrc).toContain("t('dialogs.scope.title')")
+    expectSourceToContain(pageSrc, "useTranslations('KnowledgePage')")
+    expectSourceToContain(pageSrc, 'label: t(`tabs.${tab.key}.label`)')
+    expectSourceToContain(pageSrc, 't("header.title")')
+    expectSourceToContain(pageSrc, 't("stats.totalDocuments")')
+    expectSourceToContain(pageSrc, "t('dialogs.scope.title')")
 
-    expect(scopeSrc).toContain("useTranslations('KnowledgeScopePanel')")
-    expect(scopeSrc).toContain("label: t(`status.${item.key}.label`)")
-    expect(scopeSrc).toContain('t("dataset.label")')
-    expect(scopeSrc).toContain('t("lifecycle.placeholder")')
+    expectSourceToContain(scopeSrc, "useTranslations('KnowledgeScopePanel')")
+    expectSourceToContain(scopeSrc, 'label: t(`status.${item.key}.label`)')
+    expectSourceToContain(scopeSrc, 't("dataset.label")')
+    expectSourceToContain(scopeSrc, 't("lifecycle.placeholder")')
 
-    expect(docsSrc).toContain("useTranslations('KnowledgeDocumentsPanel')")
-    expect(docsSrc).toContain('t("empty.filtered.title")')
-    expect(docsSrc).toContain('t("actions.clearFilters")')
-    expect(docsSrc).toContain('t("sort.placeholder")')
+    expectSourceToContain(docsSrc, "useTranslations('KnowledgeDocumentsPanel')")
+    expectSourceToContain(docsSrc, 't("empty.filtered.title")')
+    expectSourceToContain(docsSrc, 't("actions.clearFilters")')
+    expectSourceToContain(docsSrc, 't("sort.placeholder")')
 
-    expect(retrievalSrc).toContain("useTranslations('KnowledgeRetrievalPanel')")
-    expect(retrievalSrc).toContain('t("header.title")')
-    expect(retrievalSrc).toContain('t("actions.run")')
+    expectSourceToContain(
+      retrievalSrc,
+      "useTranslations('KnowledgeRetrievalPanel')"
+    )
+    expectSourceToContain(retrievalSrc, 't("header.title")')
+    expectSourceToContain(retrievalSrc, 't("actions.run")')
 
-    expect(settingsSrc).toContain("useTranslations('KnowledgeSettingsPanel')")
-    expect(settingsSrc).toContain("label: t(`runStatus.${value}`)")
-    expect(settingsSrc).toContain("t('header.title')")
-    expect(settingsSrc).toContain("t('connectorRuns.title')")
+    expectSourceToContain(
+      settingsSrc,
+      "useTranslations('KnowledgeSettingsPanel')"
+    )
+    expectSourceToContain(settingsSrc, 'label: t(`runStatus.${value}`)')
+    expectSourceToContain(settingsSrc, "t('header.title')")
+    expectSourceToContain(settingsSrc, "t('connectorRuns.title')")
   })
 })

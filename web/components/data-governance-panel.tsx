@@ -6,7 +6,30 @@
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ShieldCheck, Sparkles, Tag, FolderTree, FileText, Upload, Save, RotateCcw, Trash2, Eye, Search, Wrench, ScanLine, FileSearch, Hash, Layers, X, Info, AlertTriangle, Copy, PanelRightOpen, PanelRightClose } from 'lucide-react'
+import {
+  ShieldCheck,
+  Sparkles,
+  Tag,
+  FolderTree,
+  FileText,
+  Upload,
+  Save,
+  RotateCcw,
+  Trash2,
+  Eye,
+  Search,
+  Wrench,
+  ScanLine,
+  FileSearch,
+  Hash,
+  Layers,
+  X,
+  Info,
+  AlertTriangle,
+  Copy,
+  PanelRightOpen,
+  PanelRightClose,
+} from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -31,7 +54,11 @@ import { PipelineRail, WorkbenchScaffold } from '@/components/workbench'
 import { useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { useRouter } from '@/i18n/navigation'
-import { ROOT_FOLDER_ID, useParsedFiles, type ParsedFileData } from '@/store/use-parsed-files-store'
+import {
+  ROOT_FOLDER_ID,
+  useParsedFiles,
+  type ParsedFileData,
+} from '@/store/use-parsed-files-store'
 import { cn, formatFileSize, detachPromise } from '@/lib/utils'
 import { getDocContentFromCache } from '@/lib/doc-content-cache'
 import { QualityChecker } from '@/components/data-governance/quality-checker'
@@ -42,9 +69,15 @@ import { datasetApi, documentApi, parsingApi } from '@/lib/api'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
 
-import { DocumentFolderTree, getFileIcon } from '@/components/document-library/folder-tree'
+import {
+  DocumentFolderTree,
+  getFileIcon,
+} from '@/components/document-library/folder-tree'
 import { extractZipFiles, isZipFile } from '@/lib/zip'
-import { UPLOAD_ACCEPT_WITH_ZIP, ZIP_ALLOWED_EXTENSIONS } from '@/lib/upload-extensions'
+import {
+  UPLOAD_ACCEPT_WITH_ZIP,
+  ZIP_ALLOWED_EXTENSIONS,
+} from '@/lib/upload-extensions'
 import { getParserLabel } from '@/lib/parser-options'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
 
@@ -55,17 +88,20 @@ const GOVERNANCE_TAB_CONFIGS = [
   { id: 'classify', icon: FolderTree, color: 'orange' },
 ] as const
 
-type GovernanceTab = typeof GOVERNANCE_TAB_CONFIGS[number]['id']
-type GovernanceTabColor = typeof GOVERNANCE_TAB_CONFIGS[number]['color']
+type GovernanceTab = (typeof GOVERNANCE_TAB_CONFIGS)[number]['id']
+type GovernanceTabColor = (typeof GOVERNANCE_TAB_CONFIGS)[number]['color']
 
 // Tailwind needs literal class strings — keep this map close to the consts.
-const TAB_COLOR_CLASSES: Record<GovernanceTabColor, {
-  active: string
-  icon: string
-  ring: string
-  ringStatic: string
-  dot: string
-}> = {
+const TAB_COLOR_CLASSES: Record<
+  GovernanceTabColor,
+  {
+    active: string
+    icon: string
+    ring: string
+    ringStatic: string
+    dot: string
+  }
+> = {
   info: {
     active: 'bg-info/10 text-info ring-info/25',
     icon: 'text-info',
@@ -100,8 +136,12 @@ type DatasetOption = {
   name: string
 }
 
-type GovernanceDocument = Awaited<ReturnType<typeof documentApi.list>>['items'][number]
-type GovernanceParsingDocument = Awaited<ReturnType<typeof parsingApi.listDocuments>>['items'][number]
+type GovernanceDocument = Awaited<
+  ReturnType<typeof documentApi.list>
+>['items'][number]
+type GovernanceParsingDocument = Awaited<
+  ReturnType<typeof parsingApi.listDocuments>
+>['items'][number]
 
 const ALL_DATASETS_VALUE = '__all_datasets__'
 
@@ -109,10 +149,18 @@ function normalizeBackendCandidate(value: unknown): string {
   return typeof value === 'string' && value.trim() ? value.trim() : ''
 }
 
-function mapBackendStatusToGovernanceStatus(status: unknown): ParsedFileData['status'] {
+function mapBackendStatusToGovernanceStatus(
+  status: unknown
+): ParsedFileData['status'] {
   const normalized = String(status || '').toLowerCase()
-  if (['completed', 'complete', 'ready', 'parsed', 'done', 'success'].includes(normalized)) return 'parsed'
-  if (['processing', 'parsing', 'running'].includes(normalized)) return 'parsing'
+  if (
+    ['completed', 'complete', 'ready', 'parsed', 'done', 'success'].includes(
+      normalized
+    )
+  )
+    return 'parsed'
+  if (['processing', 'parsing', 'running'].includes(normalized))
+    return 'parsing'
   if (['failed', 'failure', 'error'].includes(normalized)) return 'error'
   if (['pending', 'queued', 'waiting'].includes(normalized)) return 'pending'
   return 'parsed'
@@ -132,7 +180,10 @@ function mapKnowledgeDocumentToGovernanceFile(
     normalizeBackendCandidate(meta?.parser_backend) ||
     normalizeBackendCandidate(meta?.parser_backend_requested) ||
     'auto'
-  const resolved = resolveParserBackendForFilename(doc.filename || 'document', backendCandidate)
+  const resolved = resolveParserBackendForFilename(
+    doc.filename || 'document',
+    backendCandidate
+  )
   const backend = resolved.backend || backendCandidate
   const datasetId = doc.dataset_id || null
 
@@ -143,7 +194,9 @@ function mapKnowledgeDocumentToGovernanceFile(
     fileSize: Number(doc.file_size || 0),
     markdownContent: '',
     originalMarkdownContent: '',
-    parsedAt: String(doc.updated_at || doc.created_at || new Date().toISOString()),
+    parsedAt: String(
+      doc.updated_at || doc.created_at || new Date().toISOString()
+    ),
     parser: getParserLabel(backend),
     parserBackend: backend,
     folderId: ROOT_FOLDER_ID,
@@ -156,13 +209,18 @@ function mapKnowledgeDocumentToGovernanceFile(
   }
 }
 
-function mapParsingDocumentToGovernanceFile(doc: GovernanceParsingDocument): ParsedFileData {
+function mapParsingDocumentToGovernanceFile(
+  doc: GovernanceParsingDocument
+): ParsedFileData {
   const meta = doc.metadata as Record<string, unknown> | undefined
   const backendCandidate =
     normalizeBackendCandidate(meta?.parser_backend) ||
     normalizeBackendCandidate(meta?.parser_backend_requested) ||
     'auto'
-  const resolved = resolveParserBackendForFilename(doc.filename || 'document', backendCandidate)
+  const resolved = resolveParserBackendForFilename(
+    doc.filename || 'document',
+    backendCandidate
+  )
   const backend = resolved.backend || backendCandidate
 
   return {
@@ -172,7 +230,9 @@ function mapParsingDocumentToGovernanceFile(doc: GovernanceParsingDocument): Par
     fileSize: Number(doc.file_size || 0),
     markdownContent: '',
     originalMarkdownContent: '',
-    parsedAt: String(doc.updated_at || doc.created_at || new Date().toISOString()),
+    parsedAt: String(
+      doc.updated_at || doc.created_at || new Date().toISOString()
+    ),
     parser: getParserLabel(backend),
     parserBackend: backend,
     folderId: ROOT_FOLDER_ID,
@@ -229,19 +289,28 @@ export function DataGovernancePanel() {
   const [activeTab, setActiveTab] = useState<GovernanceTab>('quality')
   const [inboundBannerDismissed, setInboundBannerDismissed] = useState(false)
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'edit' | 'preview' | 'original'>('preview')
-  const [previewFormat, setPreviewFormat] = useState<'rendered' | 'markdown'>('rendered')
+  const [viewMode, setViewMode] = useState<'edit' | 'preview' | 'original'>(
+    'preview'
+  )
+  const [previewFormat, setPreviewFormat] = useState<'rendered' | 'markdown'>(
+    'rendered'
+  )
   const [isDragging, setIsDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [deleteFileOpen, setDeleteFileOpen] = useState(false)
-  const [deleteFileTarget, setDeleteFileTarget] = useState<{ id: string; filename: string } | null>(null)
-  const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(() => {
-    const fromUrl = (searchParams.get('dataset_id') || '').trim()
-    return fromUrl || null
-  })
+  const [deleteFileTarget, setDeleteFileTarget] = useState<{
+    id: string
+    filename: string
+  } | null>(null)
+  const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(
+    () => {
+      const fromUrl = (searchParams.get('dataset_id') || '').trim()
+      return fromUrl || null
+    }
+  )
   const uploadAbortRef = useRef<AbortController | null>(null)
-  const headerTitle = t("header.title")
-  const headerSubtitle = t("header.subtitle")
+  const headerTitle = t('header.title')
+  const headerSubtitle = t('header.subtitle')
   const governanceTabs = useMemo(
     () =>
       GOVERNANCE_TAB_CONFIGS.map(({ id, icon, color }) => ({
@@ -272,7 +341,9 @@ export function DataGovernancePanel() {
   const inboundContext = useMemo(() => {
     const from = (searchParams.get('from') || '').trim()
     const datasetId = (searchParams.get('dataset_id') || '').trim()
-    const governanceProfileRef = (searchParams.get('governance_profile_ref') || '').trim()
+    const governanceProfileRef = (
+      searchParams.get('governance_profile_ref') || ''
+    ).trim()
     return {
       from: from || null,
       datasetId: datasetId || null,
@@ -298,44 +369,80 @@ export function DataGovernancePanel() {
     },
   })
 
-  const availableDatasets = useMemo(() => datasetsQuery.data || [], [datasetsQuery.data])
+  const availableDatasets = useMemo(
+    () => datasetsQuery.data || [],
+    [datasetsQuery.data]
+  )
   const datasetNameById = useMemo(
-    () => new Map(availableDatasets.map((dataset) => [dataset.id, dataset.name])),
+    () =>
+      new Map(availableDatasets.map((dataset) => [dataset.id, dataset.name])),
     [availableDatasets]
   )
   const datasetNameSignature = useMemo(
-    () => availableDatasets.map((dataset) => `${dataset.id}:${dataset.name}`).join('|'),
+    () =>
+      availableDatasets
+        .map((dataset) => `${dataset.id}:${dataset.name}`)
+        .join('|'),
     [availableDatasets]
   )
-  const selectedDatasetName = selectedDatasetId ? datasetNameById.get(selectedDatasetId) || selectedDatasetId : null
+  const selectedDatasetName = selectedDatasetId
+    ? datasetNameById.get(selectedDatasetId) || selectedDatasetId
+    : null
   const activeFolderLabel = useMemo(() => {
-    if (!activeFolderId || activeFolderId === ROOT_FOLDER_ID) return t('sidebar.allFolders')
-    return libraryFolders.find((folder) => folder.id === activeFolderId)?.name || t('sidebar.rootFolder')
+    if (!activeFolderId || activeFolderId === ROOT_FOLDER_ID)
+      return t('sidebar.allFolders')
+    return (
+      libraryFolders.find((folder) => folder.id === activeFolderId)?.name ||
+      t('sidebar.rootFolder')
+    )
   }, [activeFolderId, libraryFolders, t])
 
   const documentSyncQuery = useQuery({
-    queryKey: ['data-governance', 'library-documents', datasetNameSignature, selectedDatasetId],
+    queryKey: [
+      'data-governance',
+      'library-documents',
+      datasetNameSignature,
+      selectedDatasetId,
+    ],
     enabled: isLoaded,
     queryFn: async (): Promise<ParsedFileData[]> => {
       const [parsingResult, knowledgeResult] = await Promise.allSettled([
         parsingApi.listDocuments({ skip: 0, limit: 200 }),
-        documentApi.list({ skip: 0, limit: 200, dataset_id: selectedDatasetId }),
+        documentApi.list({
+          skip: 0,
+          limit: 200,
+          dataset_id: selectedDatasetId,
+        }),
       ])
 
       if (parsingResult.status === 'rejected') {
-        console.warn('Failed to sync parsing documents for governance:', parsingResult.reason)
+        console.warn(
+          'Failed to sync parsing documents for governance:',
+          parsingResult.reason
+        )
       }
       if (knowledgeResult.status === 'rejected') {
-        console.warn('Failed to sync knowledge documents for governance:', knowledgeResult.reason)
+        console.warn(
+          'Failed to sync knowledge documents for governance:',
+          knowledgeResult.reason
+        )
       }
 
-      const parsingItems = parsingResult.status === 'fulfilled' ? parsingResult.value.items || [] : []
-      const knowledgeItems = knowledgeResult.status === 'fulfilled' ? knowledgeResult.value.items || [] : []
+      const parsingItems =
+        parsingResult.status === 'fulfilled'
+          ? parsingResult.value.items || []
+          : []
+      const knowledgeItems =
+        knowledgeResult.status === 'fulfilled'
+          ? knowledgeResult.value.items || []
+          : []
       return [
         ...parsingItems.map(mapParsingDocumentToGovernanceFile),
         ...knowledgeItems
           .filter((doc) => !isParsingWorkspaceDocument(doc))
-          .map((doc) => mapKnowledgeDocumentToGovernanceFile(doc, datasetNameById)),
+          .map((doc) =>
+            mapKnowledgeDocumentToGovernanceFile(doc, datasetNameById)
+          ),
       ].filter((file) => file.id)
     },
   })
@@ -343,7 +450,9 @@ export function DataGovernancePanel() {
   useEffect(() => {
     if (!isLoaded || !documentSyncQuery.data) return
 
-    const remoteById = new Map(documentSyncQuery.data.map((file) => [file.id, file]))
+    const remoteById = new Map(
+      documentSyncQuery.data.map((file) => [file.id, file])
+    )
     const currentFiles = useParsedFiles.getState().files || []
     const merged = currentFiles.map((file) => {
       const remote = remoteById.get(file.id)
@@ -352,7 +461,8 @@ export function DataGovernancePanel() {
       return {
         ...remote,
         markdownContent: file.markdownContent || remote.markdownContent,
-        originalMarkdownContent: file.originalMarkdownContent || remote.originalMarkdownContent,
+        originalMarkdownContent:
+          file.originalMarkdownContent || remote.originalMarkdownContent,
         folderId: file.folderId || remote.folderId || ROOT_FOLDER_ID,
       }
     })
@@ -378,11 +488,18 @@ export function DataGovernancePanel() {
 
   const InboundBanner = useMemo(() => {
     if (inboundBannerDismissed) return null
-    if (!inboundContext.from && !inboundContext.datasetId && !inboundContext.governanceProfileRef) return null
+    if (
+      !inboundContext.from &&
+      !inboundContext.datasetId &&
+      !inboundContext.governanceProfileRef
+    )
+      return null
     return (
       <div className="mt-3 rounded-xl border border-border/60 bg-card px-4 py-3 text-[12px] text-muted-foreground flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-[11px] uppercase  text-muted-foreground/80">{t('inbound.title')}</div>
+          <div className="text-[11px] uppercase text-muted-foreground/80">
+            {t('inbound.title')}
+          </div>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             {inboundContext.from ? (
               <span className="px-2 py-0.5 rounded-full border border-border/60 bg-muted/40 font-mono">
@@ -396,7 +513,8 @@ export function DataGovernancePanel() {
             ) : null}
             {inboundContext.governanceProfileRef ? (
               <span className="px-2 py-0.5 rounded-full border border-border/60 bg-muted/40 font-mono">
-                {t('inbound.profileLabel')}: {inboundContext.governanceProfileRef}
+                {t('inbound.profileLabel')}:{' '}
+                {inboundContext.governanceProfileRef}
               </span>
             ) : null}
           </div>
@@ -432,7 +550,9 @@ export function DataGovernancePanel() {
   }, [t])
 
   // 鏂囦欢娌荤悊鐘舵€?
-  const [governanceStates, setGovernanceStates] = useState<Record<string, FileGovernanceState>>({})
+  const [governanceStates, setGovernanceStates] = useState<
+    Record<string, FileGovernanceState>
+  >({})
 
   // 渚ц竟鏍忕姸鎬?
   const [sidebarWidth, setSidebarWidth] = useState(280)
@@ -447,7 +567,7 @@ export function DataGovernancePanel() {
   const panelRef = useRef<HTMLDivElement>(null)
   const contentScrollRef = useRef<HTMLDivElement>(null)
 
-  // When switching the selected file, reset the main preview pane so it doesn't look "half scrolled".
+  // When switching the selected file, reset the main preview pane so it doesn't look"half scrolled".
   useEffect(() => {
     if (!selectedFileId) return
     const raf = globalThis.window.requestAnimationFrame(() => {
@@ -523,7 +643,9 @@ export function DataGovernancePanel() {
 
   // 閫変腑鐨勬枃浠?
   const selectedFile = scopedFiles.find((f) => f.id === selectedFileId) || null
-  const governanceState = selectedFileId ? governanceStates[selectedFileId] : null
+  const governanceState = selectedFileId
+    ? governanceStates[selectedFileId]
+    : null
 
   const visibleFiles = useMemo(() => {
     if (!activeFolderId || activeFolderId === ROOT_FOLDER_ID) return scopedFiles
@@ -547,46 +669,61 @@ export function DataGovernancePanel() {
       for (const childId of children) stack.push(childId)
     }
 
-    return scopedFiles.filter((f) => allowedFolderIds.has(f.folderId || ROOT_FOLDER_ID))
+    return scopedFiles.filter((f) =>
+      allowedFolderIds.has(f.folderId || ROOT_FOLDER_ID)
+    )
   }, [scopedFiles, activeFolderId, libraryFolders])
 
   // 鍒濆鍖栨枃浠舵不鐞嗙姸鎬?
-  const initializeGovernanceState = useCallback((file: { id: string; markdownContent: string; originalMarkdownContent?: string }) => {
-    const originalContent = file.originalMarkdownContent ?? file.markdownContent
-    const cleanedContent = file.markdownContent
-    setGovernanceStates((prev) => {
-      const existing = prev[file.id]
-      if (existing) {
-        // If we initialized with empty content (e.g., after refresh), backfill once content is loaded.
-        const hasAnyExistingContent = Boolean((existing.originalContent || '').trim() || (existing.cleanedContent || '').trim())
-        const hasIncomingContent = Boolean(originalContent.trim() || cleanedContent.trim())
-        if (hasAnyExistingContent || !hasIncomingContent) return prev
+  const initializeGovernanceState = useCallback(
+    (file: {
+      id: string
+      markdownContent: string
+      originalMarkdownContent?: string
+    }) => {
+      const originalContent =
+        file.originalMarkdownContent ?? file.markdownContent
+      const cleanedContent = file.markdownContent
+      setGovernanceStates((prev) => {
+        const existing = prev[file.id]
+        if (existing) {
+          // If we initialized with empty content (e.g., after refresh), backfill once content is loaded.
+          const hasAnyExistingContent = Boolean(
+            (existing.originalContent || '').trim() ||
+            (existing.cleanedContent || '').trim()
+          )
+          const hasIncomingContent = Boolean(
+            originalContent.trim() || cleanedContent.trim()
+          )
+          if (hasAnyExistingContent || !hasIncomingContent) return prev
+          return {
+            ...prev,
+            [file.id]: {
+              ...existing,
+              originalContent,
+              cleanedContent,
+              isModified: cleanedContent !== originalContent,
+            },
+          }
+        }
         return {
           ...prev,
           [file.id]: {
-            ...existing,
+            id: file.id,
             originalContent,
             cleanedContent,
+            annotations: [],
+            tags: [],
+            category: null,
+            qualityScore: 0,
+            issues: [],
             isModified: cleanedContent !== originalContent,
           },
         }
-      }
-      return {
-        ...prev,
-        [file.id]: {
-          id: file.id,
-          originalContent,
-          cleanedContent,
-          annotations: [],
-          tags: [],
-          category: null,
-          qualityScore: 0,
-          issues: [],
-          isModified: cleanedContent !== originalContent,
-        },
-      }
-    })
-  }, [])
+      })
+    },
+    []
+  )
 
   // Ensure markdown is available after refresh: load from IndexedDB cache first, fallback to backend.
   useEffect(() => {
@@ -608,8 +745,15 @@ export function DataGovernancePanel() {
         if (markdown || original) {
           const nextMarkdown = markdown || original
           const nextOriginal = original || markdown
-          updateParsedFile(id, { markdownContent: nextMarkdown, originalMarkdownContent: nextOriginal })
-          initializeGovernanceState({ id, markdownContent: nextMarkdown, originalMarkdownContent: nextOriginal })
+          updateParsedFile(id, {
+            markdownContent: nextMarkdown,
+            originalMarkdownContent: nextOriginal,
+          })
+          initializeGovernanceState({
+            id,
+            markdownContent: nextMarkdown,
+            originalMarkdownContent: nextOriginal,
+          })
           return
         }
       } catch {
@@ -627,8 +771,15 @@ export function DataGovernancePanel() {
         if (!markdown && !original) return
         const nextMarkdown = markdown || original
         const nextOriginal = original || markdown
-        updateParsedFile(id, { markdownContent: nextMarkdown, originalMarkdownContent: nextOriginal })
-        initializeGovernanceState({ id, markdownContent: nextMarkdown, originalMarkdownContent: nextOriginal })
+        updateParsedFile(id, {
+          markdownContent: nextMarkdown,
+          originalMarkdownContent: nextOriginal,
+        })
+        initializeGovernanceState({
+          id,
+          markdownContent: nextMarkdown,
+          originalMarkdownContent: nextOriginal,
+        })
       } catch {
         // ignore
       }
@@ -644,13 +795,15 @@ export function DataGovernancePanel() {
       const target = files.find((f) => f.id === fileId)
       if (!target) return
 
-      detachPromise((async () => {
-        try {
-          await parsingApi.delete(fileId)
-        } catch {
-          // ignore: some entries may be local-only or already deleted on the backend
-        }
-      })())
+      detachPromise(
+        (async () => {
+          try {
+            await parsingApi.delete(fileId)
+          } catch {
+            // ignore: some entries may be local-only or already deleted on the backend
+          }
+        })()
+      )
 
       removeFile(fileId)
       setGovernanceStates((prev) => {
@@ -676,7 +829,8 @@ export function DataGovernancePanel() {
       return
     }
 
-    const stillVisible = selectedFileId && visibleFiles.some((f) => f.id === selectedFileId)
+    const stillVisible =
+      selectedFileId && visibleFiles.some((f) => f.id === selectedFileId)
     if (!stillVisible) {
       setSelectedFileId(visibleFiles[0].id)
       initializeGovernanceState(visibleFiles[0])
@@ -695,267 +849,324 @@ export function DataGovernancePanel() {
   }, [])
 
   // 涓婁紶骞惰В鏋愰€昏緫锛堟敮鎸?.zip 鎵归噺瑙ｅ帇锛?
-  const handleUploadAndParse = useCallback(async (incomingFiles: File[]) => {
-    uploadAbortRef.current?.abort()
-    const controller = new AbortController()
-    uploadAbortRef.current = controller
-    setUploading(true)
-    try {
-      const baseFolderId = activeFolderId || ROOT_FOLDER_ID
+  const handleUploadAndParse = useCallback(
+    async (incomingFiles: File[]) => {
+      uploadAbortRef.current?.abort()
+      const controller = new AbortController()
+      uploadAbortRef.current = controller
+      setUploading(true)
+      try {
+        const baseFolderId = activeFolderId || ROOT_FOLDER_ID
 
-      const folderIdByKey = new Map<string, string>()
-      for (const f of libraryFolders) {
-        folderIdByKey.set(`${f.parentId || ROOT_FOLDER_ID}::${f.name}`, f.id)
-      }
-
-      const getOrCreateFolder = (parentId: string, name: string) => {
-        const trimmed = name.trim()
-        const key = `${parentId}::${trimmed}`
-        const cached = folderIdByKey.get(key)
-        if (cached) return cached
-
-        const existing = libraryFolders.find((f) => (f.parentId || ROOT_FOLDER_ID) === parentId && f.name === trimmed)
-        if (existing) {
-          folderIdByKey.set(key, existing.id)
-          return existing.id
+        const folderIdByKey = new Map<string, string>()
+        for (const f of libraryFolders) {
+          folderIdByKey.set(`${f.parentId || ROOT_FOLDER_ID}::${f.name}`, f.id)
         }
 
-        const newId = createFolder(trimmed, parentId)
-        folderIdByKey.set(key, newId)
-        return newId
-      }
+        const getOrCreateFolder = (parentId: string, name: string) => {
+          const trimmed = name.trim()
+          const key = `${parentId}::${trimmed}`
+          const cached = folderIdByKey.get(key)
+          if (cached) return cached
 
-      const expanded: Array<{ file: File; folderId: string }> = []
-      let skipped = 0
-      let added = 0
+          const existing = libraryFolders.find(
+            (f) =>
+              (f.parentId || ROOT_FOLDER_ID) === parentId && f.name === trimmed
+          )
+          if (existing) {
+            folderIdByKey.set(key, existing.id)
+            return existing.id
+          }
 
-      for (const file of incomingFiles) {
-        if (isZipFile(file)) {
-          let extractedCount = 0
-          let addedInZip = 0
-          let skippedInZip = 0
-          try {
-            const extracted = await extractZipFiles(file)
-            extractedCount = extracted.length
-            for (const item of extracted) {
-              const parts = item.path.split('/').filter(Boolean)
-              const filename = parts.pop()
-              if (!filename) continue
+          const newId = createFolder(trimmed, parentId)
+          folderIdByKey.set(key, newId)
+          return newId
+        }
 
-              const ext = filename.split('.').pop()?.toLowerCase() || ''
-              if (!ZIP_ALLOWED_EXTENSIONS.has(ext)) {
-                skipped += 1
-                skippedInZip += 1
-                continue
+        const expanded: Array<{ file: File; folderId: string }> = []
+        let skipped = 0
+        let added = 0
+
+        for (const file of incomingFiles) {
+          if (isZipFile(file)) {
+            let extractedCount = 0
+            let addedInZip = 0
+            let skippedInZip = 0
+            try {
+              const extracted = await extractZipFiles(file)
+              extractedCount = extracted.length
+              for (const item of extracted) {
+                const parts = item.path.split('/').filter(Boolean)
+                const filename = parts.pop()
+                if (!filename) continue
+
+                const ext = filename.split('.').pop()?.toLowerCase() || ''
+                if (!ZIP_ALLOWED_EXTENSIONS.has(ext)) {
+                  skipped += 1
+                  skippedInZip += 1
+                  continue
+                }
+
+                let folderId = baseFolderId
+                for (const segment of parts) {
+                  folderId = getOrCreateFolder(folderId, segment)
+                }
+
+                expanded.push({ file: item.file, folderId })
+                added += 1
+                addedInZip += 1
               }
-
-              let folderId = baseFolderId
-              for (const segment of parts) {
-                folderId = getOrCreateFolder(folderId, segment)
-              }
-
-              expanded.push({ file: item.file, folderId })
-              added += 1
-              addedInZip += 1
+            } catch (e) {
+              console.error('Failed to extract zip:', e)
+              toast.error(t('toasts.zipExtractFailed', { filename: file.name }))
             }
-          } catch (e) {
-            console.error('Failed to extract zip:', e)
-            toast.error(t('toasts.zipExtractFailed', { filename: file.name }))
+
+            if (addedInZip === 0) {
+              toast.warning(
+                extractedCount === 0
+                  ? t('toasts.zipNoFilesFound', { filename: file.name })
+                  : t('toasts.zipNoSupportedFiles', { filename: file.name })
+              )
+            } else {
+              toast.success(
+                skippedInZip > 0
+                  ? t('toasts.zipAddedWithSkipped', {
+                      added: addedInZip,
+                      skipped: skippedInZip,
+                    })
+                  : t('toasts.zipAdded', { added: addedInZip })
+              )
+            }
+            continue
           }
 
-          if (addedInZip === 0) {
-            toast.warning(
-              extractedCount === 0
-                ? t('toasts.zipNoFilesFound', { filename: file.name })
-                : t('toasts.zipNoSupportedFiles', { filename: file.name })
-            )
-          } else {
-            toast.success(
-              skippedInZip > 0
-                ? t('toasts.zipAddedWithSkipped', { added: addedInZip, skipped: skippedInZip })
-                : t('toasts.zipAdded', { added: addedInZip })
-            )
+          const ext = file.name.split('.').pop()?.toLowerCase() || ''
+          if (!ZIP_ALLOWED_EXTENSIONS.has(ext)) {
+            skipped += 1
+            continue
           }
-          continue
+
+          expanded.push({ file, folderId: baseFolderId })
+          added += 1
         }
 
-        const ext = file.name.split('.').pop()?.toLowerCase() || ''
-        if (!ZIP_ALLOWED_EXTENSIONS.has(ext)) {
-          skipped += 1
-          continue
+        for (const { file, folderId } of expanded) {
+          // 浣跨敤 preview 鎺ュ彛蹇€熻幏鍙?Markdown
+          if (
+            controller.signal.aborted ||
+            uploadAbortRef.current !== controller
+          )
+            return
+          const data = await documentApi.preview(
+            file,
+            parserBackend,
+            undefined,
+            {
+              signal: controller.signal,
+              dataset_id: selectedDatasetId || undefined,
+            }
+          )
+          if (
+            controller.signal.aborted ||
+            uploadAbortRef.current !== controller
+          )
+            return
+
+          // 鎷兼帴 segments 鑾峰彇鍏ㄦ枃
+          const markdownContent = data.segments
+            .map((s) => s.content)
+            .join('\n\n')
+
+          const newId = addParsedFile({
+            filename: file.name,
+            fileType: file.name.split('.').pop()?.toLowerCase() || '',
+            fileSize: file.size,
+            markdownContent,
+            parser: data.parser_backend,
+            folderId,
+            datasetId: selectedDatasetId,
+            datasetName: selectedDatasetName,
+          })
+
+          // 濡傛灉鏄涓€涓枃浠讹紝鑷姩閫変腑
+          initializeGovernanceState({ id: newId, markdownContent })
+          setSelectedFileId((prev) => prev ?? newId)
         }
 
-        expanded.push({ file, folderId: baseFolderId })
-        added += 1
+        if (added > 0)
+          toast.success(t('toasts.parsedAndAdded', { count: added }))
+        if (skipped > 0)
+          toast.warning(t('toasts.skippedUnsupported', { count: skipped }))
+      } catch (error) {
+        if (controller.signal.aborted || uploadAbortRef.current !== controller)
+          return
+        console.error('Failed to parse file:', error)
+        toast.error(t('toasts.parseFailed'))
+      } finally {
+        if (uploadAbortRef.current === controller) {
+          uploadAbortRef.current = null
+          setUploading(false)
+        }
       }
+    },
+    [
+      activeFolderId,
+      addParsedFile,
+      createFolder,
+      initializeGovernanceState,
+      libraryFolders,
+      parserBackend,
+      selectedDatasetId,
+      selectedDatasetName,
+      t,
+    ]
+  )
 
-      for (const { file, folderId } of expanded) {
-        // 浣跨敤 preview 鎺ュ彛蹇€熻幏鍙?Markdown
-        if (controller.signal.aborted || uploadAbortRef.current !== controller) return
-        const data = await documentApi.preview(file, parserBackend, undefined, {
-          signal: controller.signal,
-          dataset_id: selectedDatasetId || undefined,
-        })
-        if (controller.signal.aborted || uploadAbortRef.current !== controller) return
-
-        // 鎷兼帴 segments 鑾峰彇鍏ㄦ枃
-        const markdownContent = data.segments.map((s) => s.content).join('\n\n')
-
-        const newId = addParsedFile({
-          filename: file.name,
-          fileType: file.name.split('.').pop()?.toLowerCase() || '',
-          fileSize: file.size,
-          markdownContent,
-          parser: data.parser_backend,
-          folderId,
-          datasetId: selectedDatasetId,
-          datasetName: selectedDatasetName,
-        })
-
-        // 濡傛灉鏄涓€涓枃浠讹紝鑷姩閫変腑
-        initializeGovernanceState({ id: newId, markdownContent })
-        setSelectedFileId((prev) => prev ?? newId)
+  const handleDrop = useCallback(
+    async (e: React.DragEvent) => {
+      e.preventDefault()
+      setIsDragging(false)
+      const files = Array.from(e.dataTransfer.files)
+      if (files.length > 0) {
+        await handleUploadAndParse(files)
       }
+    },
+    [handleUploadAndParse]
+  )
 
-      if (added > 0) toast.success(t('toasts.parsedAndAdded', { count: added }))
-      if (skipped > 0) toast.warning(t('toasts.skippedUnsupported', { count: skipped }))
-    } catch (error) {
-      if (controller.signal.aborted || uploadAbortRef.current !== controller) return
-      console.error('Failed to parse file:', error)
-      toast.error(t('toasts.parseFailed'))
-    } finally {
-      if (uploadAbortRef.current === controller) {
-        uploadAbortRef.current = null
-        setUploading(false)
+  const handleFileSelect = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files ? Array.from(e.target.files) : []
+      if (files.length > 0) {
+        await handleUploadAndParse(files)
       }
-    }
-  }, [
-    activeFolderId,
-    addParsedFile,
-    createFolder,
-    initializeGovernanceState,
-    libraryFolders,
-    parserBackend,
-    selectedDatasetId,
-    selectedDatasetName,
-    t,
-  ])
-
-  const handleDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault()
-    setIsDragging(false)
-    const files = Array.from(e.dataTransfer.files)
-    if (files.length > 0) {
-      await handleUploadAndParse(files)
-    }
-  }, [handleUploadAndParse])
-
-  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files ? Array.from(e.target.files) : []
-    if (files.length > 0) {
-      await handleUploadAndParse(files)
-    }
-    e.target.value = ''
-  }, [handleUploadAndParse])
+      e.target.value = ''
+    },
+    [handleUploadAndParse]
+  )
 
   // 鑾峰彇褰撳墠鏄剧ず鍐呭
   const displayContent = useMemo(() => {
     if (!governanceState) return ''
-    return viewMode === 'original' ? governanceState.originalContent : governanceState.cleanedContent
+    return viewMode === 'original'
+      ? governanceState.originalContent
+      : governanceState.cleanedContent
   }, [governanceState, viewMode])
   const libraryOnlyNotice = t('libraryFile.notice')
 
-
   // 鏂囦欢閫夋嫨
-  const handleSelectFile = useCallback((fileId: string) => {
-    const file = scopedFiles.find((f) => f.id === fileId)
-    if (file) {
-      setSelectedFileId(fileId)
-      initializeGovernanceState(file)
-    }
-  }, [scopedFiles, initializeGovernanceState])
+  const handleSelectFile = useCallback(
+    (fileId: string) => {
+      const file = scopedFiles.find((f) => f.id === fileId)
+      if (file) {
+        setSelectedFileId(fileId)
+        initializeGovernanceState(file)
+      }
+    },
+    [scopedFiles, initializeGovernanceState]
+  )
 
   // 鎵嬪姩缂栬緫鍥炶皟
-  const handleManualEdit = useCallback((newContent: string) => {
-    if (!selectedFileId) return
-    setGovernanceStates((prev) => ({
-      ...prev,
-      [selectedFileId]: {
-        ...prev[selectedFileId],
-        cleanedContent: newContent,
-        isModified: true, // 鎵嬪姩淇敼涔熻瑙嗕负宸蹭慨鏀?
-      },
-    }))
-  }, [selectedFileId])
-
-  // 璐ㄩ噺妫€娴嬪畬鎴愬洖璋?
-  const handleQualityCheck = useCallback((result: { score: number; issues: FileGovernanceState['issues'] }) => {
-    if (!selectedFileId) return
-    setGovernanceStates((prev) => ({
-      ...prev,
-      [selectedFileId]: {
-        ...prev[selectedFileId],
-        qualityScore: result.score,
-        issues: result.issues,
-      },
-    }))
-  }, [selectedFileId])
-
-  // 娓呮礂瀹屾垚鍥炶皟
-  const handleClean = useCallback((cleanedContent: string) => {
-    if (!selectedFileId) return
-    setGovernanceStates((prev) => ({
-      ...prev,
-      [selectedFileId]: {
-        ...prev[selectedFileId],
-        cleanedContent,
-        isModified: cleanedContent !== prev[selectedFileId].originalContent,
-      },
-    }))
-  }, [selectedFileId])
-
-  // 鏍囨敞瀹屾垚鍥炶皟
-  const handleAnnotate = useCallback((annotations: FileGovernanceState['annotations']) => {
-    if (!selectedFileId) return
-    setGovernanceStates((prev) => ({
-      ...prev,
-      [selectedFileId]: {
-        ...prev[selectedFileId],
-        annotations,
-        isModified: true,
-      },
-    }))
-  }, [selectedFileId])
-
-  const handleDocumentTags = useCallback((tags: string[]) => {
-    if (!selectedFileId) return
-    setGovernanceStates((prev) => {
-      const current = prev[selectedFileId]
-      const mergedTags = Array.from(new Set([...(current.tags || []), ...tags.filter(Boolean)]))
-      return {
+  const handleManualEdit = useCallback(
+    (newContent: string) => {
+      if (!selectedFileId) return
+      setGovernanceStates((prev) => ({
         ...prev,
         [selectedFileId]: {
-          ...current,
-          tags: mergedTags,
+          ...prev[selectedFileId],
+          cleanedContent: newContent,
+          isModified: true, // 鎵嬪姩淇敼涔熻瑙嗕负宸蹭慨鏀?
+        },
+      }))
+    },
+    [selectedFileId]
+  )
+
+  // 璐ㄩ噺妫€娴嬪畬鎴愬洖璋?
+  const handleQualityCheck = useCallback(
+    (result: { score: number; issues: FileGovernanceState['issues'] }) => {
+      if (!selectedFileId) return
+      setGovernanceStates((prev) => ({
+        ...prev,
+        [selectedFileId]: {
+          ...prev[selectedFileId],
+          qualityScore: result.score,
+          issues: result.issues,
+        },
+      }))
+    },
+    [selectedFileId]
+  )
+
+  // 娓呮礂瀹屾垚鍥炶皟
+  const handleClean = useCallback(
+    (cleanedContent: string) => {
+      if (!selectedFileId) return
+      setGovernanceStates((prev) => ({
+        ...prev,
+        [selectedFileId]: {
+          ...prev[selectedFileId],
+          cleanedContent,
+          isModified: cleanedContent !== prev[selectedFileId].originalContent,
+        },
+      }))
+    },
+    [selectedFileId]
+  )
+
+  // 鏍囨敞瀹屾垚鍥炶皟
+  const handleAnnotate = useCallback(
+    (annotations: FileGovernanceState['annotations']) => {
+      if (!selectedFileId) return
+      setGovernanceStates((prev) => ({
+        ...prev,
+        [selectedFileId]: {
+          ...prev[selectedFileId],
+          annotations,
           isModified: true,
         },
-      }
-    })
-  }, [selectedFileId])
+      }))
+    },
+    [selectedFileId]
+  )
+
+  const handleDocumentTags = useCallback(
+    (tags: string[]) => {
+      if (!selectedFileId) return
+      setGovernanceStates((prev) => {
+        const current = prev[selectedFileId]
+        const mergedTags = Array.from(
+          new Set([...(current.tags || []), ...tags.filter(Boolean)])
+        )
+        return {
+          ...prev,
+          [selectedFileId]: {
+            ...current,
+            tags: mergedTags,
+            isModified: true,
+          },
+        }
+      })
+    },
+    [selectedFileId]
+  )
 
   // 鍒嗙被瀹屾垚鍥炶皟
-  const handleClassify = useCallback((category: string, tags: string[]) => {
-    if (!selectedFileId) return
-    setGovernanceStates((prev) => ({
-      ...prev,
-      [selectedFileId]: {
-        ...prev[selectedFileId],
-        category,
-        tags,
-        isModified: true,
-      },
-    }))
-  }, [selectedFileId])
+  const handleClassify = useCallback(
+    (category: string, tags: string[]) => {
+      if (!selectedFileId) return
+      setGovernanceStates((prev) => ({
+        ...prev,
+        [selectedFileId]: {
+          ...prev[selectedFileId],
+          category,
+          tags,
+          isModified: true,
+        },
+      }))
+    },
+    [selectedFileId]
+  )
 
   // 閲嶇疆鏂囦欢鐘舵€?
   const handleReset = useCallback(() => {
@@ -983,14 +1194,20 @@ export function DataGovernancePanel() {
 
       // 濡傛灉鍘嗗彶鏁版嵁娌℃湁淇濆瓨 originalMarkdownContent锛屽厛鐢ㄥ綋鍓嶅唴瀹硅ˉ榻愶紝閬垮厤琚悗缁繚瀛樿鐩栨帀銆?
       const originalMarkdownContent =
-        typeof f.originalMarkdownContent === 'string' ? f.originalMarkdownContent : f.markdownContent
+        typeof f.originalMarkdownContent === 'string'
+          ? f.originalMarkdownContent
+          : f.markdownContent
 
-      const shouldUpdateMarkdown = state.cleanedContent != null && state.cleanedContent !== f.markdownContent
+      const shouldUpdateMarkdown =
+        state.cleanedContent != null &&
+        state.cleanedContent !== f.markdownContent
       const shouldSetOriginal = typeof f.originalMarkdownContent !== 'string'
 
       if (shouldUpdateMarkdown || shouldSetOriginal) {
         updateParsedFile(f.id, {
-          ...(shouldUpdateMarkdown ? { markdownContent: state.cleanedContent } : {}),
+          ...(shouldUpdateMarkdown
+            ? { markdownContent: state.cleanedContent }
+            : {}),
           ...(shouldSetOriginal ? { originalMarkdownContent } : {}),
         })
       }
@@ -1002,23 +1219,24 @@ export function DataGovernancePanel() {
     toast.success(t('toasts.resultsSaved'))
   }, [persistGovernanceEdits, t])
 
-
   const handlePushToChunkPreview = useCallback(() => {
     persistGovernanceEdits()
     router.push('/chunk-preview')
   }, [persistGovernanceEdits, router])
 
-
   // 缁熻鏁版嵁
   const stats = useMemo(() => {
     const scopedIds = new Set(scopedFiles.map((file) => file.id))
-    const scopedStates = Object.values(governanceStates).filter((state) => scopedIds.has(state.id))
+    const scopedStates = Object.values(governanceStates).filter((state) =>
+      scopedIds.has(state.id)
+    )
     const totalFiles = scopedFiles.length
     const completedFiles = scopedStates.filter((s) => s.qualityScore > 0).length
     const modifiedFiles = scopedStates.filter((s) => s.isModified).length
-    const avgScore = scopedStates
-      .filter((s) => s.qualityScore > 0)
-      .reduce((sum, s) => sum + s.qualityScore, 0) / completedFiles || 0
+    const avgScore =
+      scopedStates
+        .filter((s) => s.qualityScore > 0)
+        .reduce((sum, s) => sum + s.qualityScore, 0) / completedFiles || 0
 
     return { totalFiles, completedFiles, modifiedFiles, avgScore }
   }, [governanceStates, scopedFiles])
@@ -1034,7 +1252,10 @@ export function DataGovernancePanel() {
         compactHeader
         description={
           <span className="flex items-center gap-2 text-[13px] text-muted-foreground/80">
-            <span className="h-1.5 w-1.5 rounded-full bg-primary/20" aria-hidden="true" />
+            <span
+              className="h-1.5 w-1.5 rounded-full bg-primary/20"
+              aria-hidden="true"
+            />
             <span>{headerSubtitle}</span>
           </span>
         }
@@ -1045,102 +1266,110 @@ export function DataGovernancePanel() {
         mainPanel={
           <div className="flex-1 flex flex-col min-h-0">
             <div className="flex-1 flex items-center justify-center p-6 relative">
-	          <div
-	            className={cn(
-	              "group relative w-full max-w-3xl overflow-hidden rounded-3xl border border-dashed p-16 text-center transition-colors duration-200 motion-reduce:transition-none",
-	              isDragging
-	                ? "border-primary/50 bg-primary/10"
-	                : "border-border/60 bg-card hover:border-primary/25 hover:bg-card/[0.07] hover:shadow-md"
-	            )}
-	            onDragOver={handleDragOver}
-	            onDragLeave={handleDragLeave}
-	            onDrop={handleDrop}
-	          >
-		            {/* Holographic Grid Background */}
-		            <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-[0.03] pointer-events-none" />
-
-		            <div className="relative z-10 flex flex-col items-center">
-			              <button
-                      type="button"
-                      className="flex flex-col items-center rounded-2xl bg-transparent text-center"
-                      onClick={() => globalThis.document.getElementById('file-upload')?.click()}
-                      disabled={uploading}
-                      aria-label={t('emptyUpload.openUploadDialog')}
-                    >
-			                  <div className="mb-8 flex size-24 items-center justify-center rounded-full border border-primary/20 bg-primary/10 shadow-sm">
-			                    {uploading ? (
-			                      <Sparkles className="w-10 h-10 text-primary animate-spin motion-reduce:animate-none" />
-			                    ) : (
-			                      <Upload className="w-10 h-10 text-primary" />
-			                    )}
-			                  </div>
-
-                      <h3 className="text-3xl font-medium text-foreground mb-4">
-                        {uploading ? t('emptyUpload.uploadingTitle') : t('emptyUpload.idleTitle')}
-                      </h3>
-                      <p className="text-muted-foreground mb-10 max-w-lg mx-auto text-lg leading-relaxed">
-                        {uploading
-                          ? t('emptyUpload.uploadingDescription')
-                          : t('emptyUpload.idleDescription')
-                        }
-                      </p>
-                    </button>
-
-	              <div className="relative z-20 mx-auto mb-10 w-full max-w-md text-left">
-	                  <div className="mb-3 pl-2 text-xs font-medium text-muted-foreground">{t('emptyUpload.structureTitle')}</div>
-                <div className="max-h-48 overflow-y-auto overscroll-contain rounded-2xl border border-border/60 bg-muted/30 p-5 shadow-sm">
-                  <DocumentFolderTree />
-                </div>
-              </div>
-
-              <div className="flex justify-center gap-4 relative z-20">
-                <div className="relative">
-                  <input
-                    type="file"
-                    multiple
-                    accept={UPLOAD_ACCEPT_WITH_ZIP}
-                    className="hidden"
-                    id="file-upload"
-                    onChange={handleFileSelect}
-                    disabled={uploading}
-                  />
-                  <label
-                    htmlFor="file-upload"
-                    className={cn(
-                      "flex items-center gap-3 px-8 py-4 rounded-xl font-medium shadow-sm cursor-pointer border bg-info text-info-foreground hover:bg-info/90 border-info/25 dark:bg-info/20 dark:text-foreground dark:hover:bg-info/30 transition-colors duration-150 motion-reduce:transition-none",
-                      uploading && "opacity-50 cursor-not-allowed"
-                    )}
-                  >
-                    <Upload className="w-5 h-5" />
-                    {t('emptyUpload.selectLocalFiles')}
-                  </label>
-                </div>
-                {uploading && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={cancelUploadAndParse}
-                    className="flex items-center gap-2 px-8 py-4 rounded-xl border-border/40 bg-card hover:bg-destructive/10 dark:bg-destructive/20 hover:text-destructive hover:border-destructive/30 transition-colors duration-150 motion-reduce:transition-none text-muted-foreground"
-                  >
-                    <X className="w-5 h-5" />
-                    {t('emptyUpload.cancelParsing')}
-                  </Button>
+              <div
+                className={cn(
+                  'group relative w-full max-w-3xl overflow-hidden rounded-3xl border border-dashed p-16 text-center transition-colors duration-200 motion-reduce:transition-none',
+                  isDragging
+                    ? 'border-primary/50 bg-primary/10'
+                    : 'border-border/60 bg-card hover:border-primary/25 hover:bg-card/[0.07] hover:shadow-md'
                 )}
-              </div>
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+              >
+                {/* Holographic Grid Background */}
+                <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-[0.03] pointer-events-none" />
 
-              <div className="mt-12 flex items-center justify-center gap-8 text-xs font-mono text-muted-foreground uppercase ">
-                <span className="flex items-center gap-2 hover:text-info transition-colors">
-                  <FileText className="w-4 h-4" /> {t('emptyUpload.stages.parse')}
-                </span>
-                <span className="flex items-center gap-2 hover:text-info transition-colors">
-                  <ShieldCheck className="w-4 h-4" /> {t('emptyUpload.stages.quality')}
-                </span>
-                <span className="flex items-center gap-2 hover:text-info transition-colors">
-                  <Sparkles className="w-4 h-4" /> {t('emptyUpload.stages.clean')}
-                </span>
+                <div className="relative z-10 flex flex-col items-center">
+                  <button
+                    type="button"
+                    className="flex flex-col items-center rounded-2xl bg-transparent text-center"
+                    onClick={() =>
+                      globalThis.document.getElementById('file-upload')?.click()
+                    }
+                    disabled={uploading}
+                    aria-label={t('emptyUpload.openUploadDialog')}
+                  >
+                    <div className="mb-8 flex size-24 items-center justify-center rounded-full border border-primary/20 bg-primary/10 shadow-sm">
+                      {uploading ? (
+                        <Sparkles className="w-10 h-10 text-primary animate-spin motion-reduce:animate-none" />
+                      ) : (
+                        <Upload className="w-10 h-10 text-primary" />
+                      )}
+                    </div>
+
+                    <h3 className="text-3xl font-medium text-foreground mb-4">
+                      {uploading
+                        ? t('emptyUpload.uploadingTitle')
+                        : t('emptyUpload.idleTitle')}
+                    </h3>
+                    <p className="text-muted-foreground mb-10 max-w-lg mx-auto text-lg leading-relaxed">
+                      {uploading
+                        ? t('emptyUpload.uploadingDescription')
+                        : t('emptyUpload.idleDescription')}
+                    </p>
+                  </button>
+
+                  <div className="relative z-20 mx-auto mb-10 w-full max-w-md text-left">
+                    <div className="mb-3 pl-2 text-xs font-medium text-muted-foreground">
+                      {t('emptyUpload.structureTitle')}
+                    </div>
+                    <div className="max-h-48 overflow-y-auto overscroll-contain rounded-2xl border border-border/60 bg-muted/30 p-5 shadow-sm">
+                      <DocumentFolderTree />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-center gap-4 relative z-20">
+                    <div className="relative">
+                      <input
+                        type="file"
+                        multiple
+                        accept={UPLOAD_ACCEPT_WITH_ZIP}
+                        className="hidden"
+                        id="file-upload"
+                        onChange={handleFileSelect}
+                        disabled={uploading}
+                      />
+                      <label
+                        htmlFor="file-upload"
+                        className={cn(
+                          'flex items-center gap-3 px-8 py-4 rounded-xl font-medium shadow-sm cursor-pointer border bg-info text-info-foreground hover:bg-info/90 border-info/25 dark:bg-info/20 dark:text-foreground dark:hover:bg-info/30 transition-colors duration-150 motion-reduce:transition-none',
+                          uploading && 'opacity-50 cursor-not-allowed'
+                        )}
+                      >
+                        <Upload className="w-5 h-5" />
+                        {t('emptyUpload.selectLocalFiles')}
+                      </label>
+                    </div>
+                    {uploading && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={cancelUploadAndParse}
+                        className="flex items-center gap-2 px-8 py-4 rounded-xl border-border/40 bg-card hover:bg-destructive/10 dark:bg-destructive/20 hover:text-destructive hover:border-destructive/30 transition-colors duration-150 motion-reduce:transition-none text-muted-foreground"
+                      >
+                        <X className="w-5 h-5" />
+                        {t('emptyUpload.cancelParsing')}
+                      </Button>
+                    )}
+                  </div>
+
+                  <div className="mt-12 flex items-center justify-center gap-8 text-xs font-mono text-muted-foreground uppercase">
+                    <span className="flex items-center gap-2 hover:text-info transition-colors">
+                      <FileText className="w-4 h-4" />{' '}
+                      {t('emptyUpload.stages.parse')}
+                    </span>
+                    <span className="flex items-center gap-2 hover:text-info transition-colors">
+                      <ShieldCheck className="w-4 h-4" />{' '}
+                      {t('emptyUpload.stages.quality')}
+                    </span>
+                    <span className="flex items-center gap-2 hover:text-info transition-colors">
+                      <Sparkles className="w-4 h-4" />{' '}
+                      {t('emptyUpload.stages.clean')}
+                    </span>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
             </div>
           </div>
         }
@@ -1255,7 +1484,10 @@ export function DataGovernancePanel() {
       compactHeader
       description={
         <span className="flex items-center gap-2 text-[13px] text-muted-foreground/80">
-          <span className="w-1.5 h-1.5 rounded-full bg-info/10 dark:bg-info/20" aria-hidden="true" />
+          <span
+            className="w-1.5 h-1.5 rounded-full bg-info/10 dark:bg-info/20"
+            aria-hidden="true"
+          />
           <span>{t('header.workspaceSubtitle')}</span>
         </span>
       }
@@ -1301,577 +1533,722 @@ export function DataGovernancePanel() {
       mainPanel={
         <div className="flex-1 flex flex-col bg-background text-foreground min-h-0">
           <div className="flex-1 flex overflow-hidden min-h-0 relative bg-background">
-        {/* 宸︿晶鏂囦欢鍒楄〃 */}
-	        <aside
-	          ref={sidebarRef}
-	          className={cn(
-	            "group/sidebar relative flex flex-col flex-shrink-0 bg-card border-r border-border z-10",
-	            isSidebarCollapsed ? "w-0 border-r-0" : ""
-	          )}
-	          style={{ width: isSidebarCollapsed ? 0 : sidebarWidth }}
-	        >
-          {/* 鎶樺彔/灞曞紑鎸夐挳 */}
-	          <Button
-	            variant="ghost"
-	            size="icon"
-            className={cn(
-              "absolute -right-3 top-3 z-30 h-6 w-6 rounded-full border border-border bg-card shadow-sm text-muted-foreground hover:text-muted-foreground hover:bg-muted transition-opacity opacity-0 group-hover/sidebar:opacity-100",
-              isSidebarCollapsed && "opacity-100 -right-8 translate-x-2"
-            )}
-	            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-	            title={isSidebarCollapsed ? t('sidebar.expand') : t('sidebar.collapse')}
-	            aria-label={isSidebarCollapsed ? t('sidebar.expand') : t('sidebar.collapse')}
-	          >
-            {isSidebarCollapsed ? <PanelRightOpen className="w-3 h-3" /> : <PanelRightClose className="w-3 h-3" />}
-          </Button>
-
-          <div className={cn("flex-1 flex flex-col min-h-0 w-full overflow-hidden", isSidebarCollapsed && "invisible")}>
-            {/* 鐩綍鍒囨崲 & 鎼滅储 */}
-            <div className="p-3 border-b border-border space-y-3">
-              <Select value={activeFolderId || ROOT_FOLDER_ID} onValueChange={setActiveFolderId}>
-                <SelectTrigger className="h-9 text-xs bg-muted border-border text-foreground/80 focus:bg-card focus-ring transition-colors duration-200 motion-reduce:transition-none">
-                  <div className="flex items-center gap-2 truncate">
-                    <FolderTree className="w-3.5 h-3.5 text-primary" />
-                    <span className="truncate">{activeFolderLabel}</span>
-                  </div>
-                </SelectTrigger>
-                <SelectContent className="bg-card border-border text-foreground/80">
-                  <SelectItem value={ROOT_FOLDER_ID}>{t('sidebar.allFolders')}</SelectItem>
-                  {libraryFolders.map(f => (
-                    <SelectItem key={f.id} value={f.id}>
-                      {f.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                <input
-                  type="text"
-                  placeholder={t('sidebar.searchPlaceholder')}
-                  className="w-full rounded-lg border border-border bg-muted py-1.5 pl-9 pr-3 text-xs text-foreground/80 placeholder:text-muted-foreground focus:bg-card focus:outline-none focus:border-primary/30 focus-ring transition-colors duration-200 motion-reduce:transition-none"
-                />
-              </div>
-            </div>
-
-            <div className="relative border-b border-border/40">
-              <div aria-hidden className="absolute left-0 top-2 bottom-2 w-[2px] rounded-full bg-info/70" />
-              <div className="space-y-1.5 bg-gradient-to-r from-info/[0.08] via-info/[0.03] to-transparent py-2.5 pl-4 pr-3 dark:from-info/[0.14] dark:via-info/[0.05]">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-info/90 dark:text-info">
-                    {t('scope.title')}
-                  </span>
-                  <span
-                    className={cn(
-                      'rounded-full border px-1.5 py-0.5 text-[10px] font-medium tabular-nums transition-colors',
-                      selectedDatasetId
-                        ? 'border-info/30 bg-info/15 text-info'
-                        : 'border-border/60 bg-muted/60 text-muted-foreground'
-                    )}
-                  >
-                    {selectedDatasetId ? t('scope.datasetScoped') : t('scope.datasetAll')}
-                  </span>
-                </div>
-                <Select
-                  value={selectedDatasetId || ALL_DATASETS_VALUE}
-                  onValueChange={handleDatasetScopeChange}
-                >
-                  <SelectTrigger
-                    className={cn(
-                      'h-8 text-[11px] font-medium bg-card border-border/60 text-foreground transition-colors duration-200 motion-reduce:transition-none',
-                      'hover:border-info/40 focus:border-info/60 data-[state=open]:border-info/60',
-                      'focus-visible:ring-2 focus-visible:ring-info/20 focus-visible:ring-offset-0',
-                      'dark:bg-card'
-                    )}
-                  >
-                    <div className="flex items-center gap-1.5 truncate">
-                      <FolderTree className="w-3.5 h-3.5 text-info/80 flex-shrink-0" />
-                      <SelectValue placeholder={t('scope.placeholder')} />
-                    </div>
-                  </SelectTrigger>
-                  <SelectContent className="bg-card border-border/60 text-foreground">
-                    <SelectItem value={ALL_DATASETS_VALUE} className="text-[12px]">
-                      <span className="flex items-center gap-1.5">
-                        <span aria-hidden className="size-1.5 rounded-full bg-muted-foreground/50" />
-                        {t('scope.allDatasets')}
-                      </span>
-                    </SelectItem>
-                    {availableDatasets.map((dataset) => (
-                      <SelectItem key={dataset.id} value={dataset.id} className="text-[12px]">
-                        <span className="flex items-center gap-1.5">
-                          <span aria-hidden className="size-1.5 rounded-full bg-info/70" />
-                          <span className="truncate">{dataset.name}</span>
-                          <span className="ml-auto pl-2 text-[10px] tabular-nums text-muted-foreground/70">
-                            {datasetDocumentCounts.get(dataset.id) || 0}
-                          </span>
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* 鏂囦欢鐩綍鏍?- 鍙姌鍙犲尯鍩?*/}
-            {/* Folder tree section */}
-            <div className="space-y-1.5 border-b border-border/40 px-3 py-2">
-              <div className="flex items-center gap-1.5 px-1">
-                <FolderTree className="size-3 text-muted-foreground/65" />
-                <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/75">
-                  {t('sidebar.foldersHeader')}
-                </span>
-                <span className="ml-auto text-[10px] tabular-nums text-muted-foreground/60">
-                  {libraryFolders.length}
-                </span>
-              </div>
-              <div className="-mx-1 max-h-44 overflow-y-auto overscroll-contain no-scrollbar px-1">
-                <DocumentFolderTree />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between px-4 pt-3 pb-1.5">
-              <h3 className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/75">
-                {t('sidebar.filesTitle', { count: visibleFiles.length })}
-              </h3>
-            </div>
-
-            <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar px-3 pb-3 space-y-2">
-              {visibleFiles.length === 0 ? (
-                <div className="text-xs text-muted-foreground text-center py-8">{t('sidebar.emptyDirectory')}</div>
-              ) : (
-                visibleFiles.map((file) => {
-                  const state = governanceStates[file.id]
-                  const hasIssue = state?.issues.some((i) => i.type === 'error')
-                  const score = state?.qualityScore || 0
-
-	                  return (
-                      <div key={file.id} className="group relative">
-                        <button
-                          type="button"
-                          onClick={() => handleSelectFile(file.id)}
-                          className={cn(
-                            "relative w-full text-left p-3 rounded-lg border transition-[background,border,box-shadow,transform] duration-200 motion-reduce:transition-none cursor-pointer overflow-hidden",
-                            selectedFileId === file.id
-                              ? "border-info/30 bg-gradient-to-r from-info/[0.08] via-info/[0.03] to-transparent shadow-soft dark:from-info/[0.14]"
-                              : "border-border/60 bg-card hover:border-info/25 hover:bg-muted/40 hover:translate-x-[1px]"
-                          )}
-                          aria-label={t('a11y.openFile', { filename: file.filename })}
-                        >
-                          {selectedFileId === file.id ? (
-                            <span aria-hidden className="absolute left-0 top-2 bottom-2 w-[2px] rounded-full bg-info" />
-                          ) : null}
-	                      <div className="flex items-start gap-3">
-	                        {/* File Icon */}
-	                        {getFileIcon(file.filename, cn(
-	                          "size-10 rounded-lg border transition-colors motion-reduce:transition-none flex-shrink-0",
-                          selectedFileId === file.id
-                            ? "border-info/30 ring-1 ring-info/15"
-                            : "border-border/60 group-hover:border-info/30"
-                        ))}
-
-                        <div className="flex-1 min-w-0">
-                          {/* Row 1: Filename & Score */}
-                          <div className="flex items-center justify-between mb-1">
-                            <div className={cn(
-                              "text-sm font-medium truncate transition-colors",
-                              selectedFileId === file.id ? "text-foreground" : "text-foreground/85 group-hover:text-foreground"
-                            )}>
-                              {file.filename}
-                            </div>
-                            {score > 0 ? (
-                              <span className={cn(
-                                "flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded-md font-medium tabular-nums border",
-                                score >= 80
-                                  ? "bg-success/12 text-success border-success/25"
-                                  : score >= 60
-                                    ? "bg-warning/15 text-warning border-warning/30"
-                                    : "bg-rose/12 text-rose border-rose/25"
-                              )}>
-                                {t('sidebar.scoreLabel', { score })}
-                              </span>
-                            ) : (
-                              <span className="flex-shrink-0 text-[10px] text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded-md border border-border/60 font-medium tabular-nums">{t('sidebar.notScanned')}</span>
-                            )}
-                          </div>
-
-                          {/* Row 2: Metadata (Size & Date) */}
-                          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/80 mb-1.5 tabular-nums">
-                            <span>{formatFileSize(file.fileSize)}</span>
-                            <span className="text-muted-foreground/40">·</span>
-                            <span>
-                              {file.parsedAt ? new Date(file.parsedAt).toLocaleDateString([], {
-                                year: 'numeric',
-                                month: '2-digit',
-                                day: '2-digit'
-                              }) : ''}
-                            </span>
-                            {file.datasetName ? (
-                              <>
-                                <span className="text-muted-foreground/40">·</span>
-                                <span className="truncate">{file.datasetName}</span>
-                              </>
-                            ) : null}
-                          </div>
-
-                          {/* Row 3: Badges & Actions */}
-	                          <div className="flex items-center justify-between h-5 pr-8">
-	                            <div className="flex items-center gap-2">
-                              {file.source ? (
-                                <span className="text-[9px] text-muted-foreground flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded border border-border/60 font-medium uppercase tracking-wider">
-                                  {file.source === 'knowledge_base' ? t('scope.sourceKnowledge') : t('scope.sourceParsing')}
-                                </span>
-                              ) : null}
-	                              {state?.isModified && (
-	                                <span className="text-[9px] text-accent flex items-center gap-1 bg-accent/10 px-1.5 py-0.5 rounded border border-accent/25 font-medium">
-                                  <Sparkles className="w-2.5 h-2.5" /> {t('sidebar.cleaned')}
-                                </span>
-                              )}
-                              {hasIssue && (
-                                <span className="text-[9px] text-rose flex items-center gap-1 bg-rose/10 px-1.5 py-0.5 rounded border border-rose/25 font-medium">
-	                                  <AlertTriangle className="w-2.5 h-2.5" /> {t('sidebar.needsAttention')}
-	                                </span>
-	                              )}
-	                            </div>
-	                          </div>
-	                        </div>
-	                      </div>
-                        </button>
-                        {file.source !== 'knowledge_base' ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDeleteFileTarget({ id: file.id, filename: file.filename })
-                              setDeleteFileOpen(true)
-                            }}
-                            className="absolute bottom-2.5 right-2.5 opacity-0 group-hover:opacity-100 p-1 text-muted-foreground hover:text-rose hover:bg-rose/10 rounded transition-opacity transition-colors duration-150 motion-reduce:transition-none"
-                            aria-label={t('a11y.deleteFile', { filename: file.filename })}
-                            title={t('dialogs.deleteFile.confirm')}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        ) : null}
-                      </div>
-	                  )
-	                })
+            {/* 宸︿晶鏂囦欢鍒楄〃 */}
+            <aside
+              ref={sidebarRef}
+              className={cn(
+                'group/sidebar relative flex flex-col flex-shrink-0 bg-card border-r border-border z-10',
+                isSidebarCollapsed ? 'w-0 border-r-0' : ''
               )}
-            </div>
+              style={{ width: isSidebarCollapsed ? 0 : sidebarWidth }}
+            >
+              {/* 鎶樺彔/灞曞紑鎸夐挳 */}
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  'absolute -right-3 top-3 z-30 h-6 w-6 rounded-full border border-border bg-card shadow-sm text-muted-foreground hover:text-muted-foreground hover:bg-muted transition-opacity opacity-0 group-hover/sidebar:opacity-100',
+                  isSidebarCollapsed && 'opacity-100 -right-8 translate-x-2'
+                )}
+                onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                title={
+                  isSidebarCollapsed
+                    ? t('sidebar.expand')
+                    : t('sidebar.collapse')
+                }
+                aria-label={
+                  isSidebarCollapsed
+                    ? t('sidebar.expand')
+                    : t('sidebar.collapse')
+                }
+              >
+                {isSidebarCollapsed ? (
+                  <PanelRightOpen className="w-3 h-3" />
+                ) : (
+                  <PanelRightClose className="w-3 h-3" />
+                )}
+              </Button>
 
-            {/* 搴曢儴缁熻鏍?*/}
-            {/* Footer KPI bar */}
-            <div className="mt-auto border-t border-border/60 bg-gradient-to-b from-muted/30 to-muted/55 backdrop-blur-sm px-3 py-2.5 space-y-1.5">
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/75">
-                  {t('stats.storage')}
-                </span>
-                <span className="text-[10px] tabular-nums text-muted-foreground/80">
-                  {t('stats.processedRatio', { done: stats.completedFiles, total: stats.totalFiles })}
-                </span>
-              </div>
-              <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-muted/80 ring-1 ring-inset ring-border/50">
-                <div
-                  className={cn(
-                    "h-full rounded-full bg-gradient-to-r transition-[width] duration-500 motion-reduce:transition-none",
-                    stats.avgScore >= 80
-                      ? "from-success/80 via-success to-success"
-                      : stats.avgScore >= 60
-                        ? "from-warning/70 via-warning to-warning"
-                        : stats.avgScore > 0
-                          ? "from-rose/70 via-rose to-rose"
-                          : "from-info/40 to-info/70"
-                  )}
-                  style={{ width: stats.totalFiles > 0 ? `${Math.min(100, Math.round((stats.completedFiles / stats.totalFiles) * 100))}%` : '0%' }}
-                />
-              </div>
-              <div className="flex items-center justify-between text-[10px] text-muted-foreground/70 tabular-nums">
-                <span>
-                  {stats.totalFiles > 0
-                    ? `${Math.round((stats.completedFiles / stats.totalFiles) * 100)}%`
-                    : '0%'}
-                </span>
-                <span>
-                  {stats.avgScore > 0
-                    ? t('stats.avgScoreInline', { score: stats.avgScore.toFixed(1) })
-                    : `${t('stats.avgScore')} —`}
-                </span>
-              </div>
-            </div>
-          </div>
+              <div
+                className={cn(
+                  'flex-1 flex flex-col min-h-0 w-full overflow-hidden',
+                  isSidebarCollapsed && 'invisible'
+                )}
+              >
+                {/* 鐩綍鍒囨崲 & 鎼滅储 */}
+                <div className="p-3 border-b border-border space-y-3">
+                  <Select
+                    value={activeFolderId || ROOT_FOLDER_ID}
+                    onValueChange={setActiveFolderId}
+                  >
+                    <SelectTrigger className="h-9 text-xs bg-muted border-border text-foreground/80 focus:bg-card focus-ring transition-colors duration-200 motion-reduce:transition-none">
+                      <div className="flex items-center gap-2 truncate">
+                        <FolderTree className="w-3.5 h-3.5 text-primary" />
+                        <span className="truncate">{activeFolderLabel}</span>
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent className="bg-card border-border text-foreground/80">
+                      <SelectItem value={ROOT_FOLDER_ID}>
+                        {t('sidebar.allFolders')}
+                      </SelectItem>
+                      {libraryFolders.map((f) => (
+                        <SelectItem key={f.id} value={f.id}>
+                          {f.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
 
-          {/* 鎷栨嫿鎵嬫焺 */}
-          <button
-            type="button"
-            className={cn(
-              "absolute right-0 top-0 w-1 h-full cursor-col-resize z-20 border-0 bg-transparent p-0 transition-colors opacity-0 hover:opacity-100 hover:bg-primary/10 dark:hover:bg-primary/20 active:bg-primary/30",
-              isResizing && "bg-primary opacity-100"
-            )}
-            aria-label={t('sidebar.adjustWidth')}
-            onMouseDown={startResizing}
-          />
-        </aside>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                    <input
+                      type="text"
+                      placeholder={t('sidebar.searchPlaceholder')}
+                      className="w-full rounded-lg border border-border bg-muted py-1.5 pl-9 pr-3 text-xs text-foreground/80 placeholder:text-muted-foreground focus:bg-card focus:outline-none focus:border-primary/30 focus-ring transition-colors duration-200 motion-reduce:transition-none"
+                    />
+                  </div>
+                </div>
 
-        {/* 涓诲唴瀹瑰尯 (涓棿 + 鍙充晶闈㈡澘) */}
-        <main className="flex-1 flex overflow-hidden min-h-0 relative">
-
-          {selectedFile && governanceState ? (
-            <>
-              {/* 涓棿锛氶瑙堢敾甯?*/}
-              <div className="flex-1 flex flex-col overflow-hidden relative z-0">
-                {/* 鐢诲竷宸ュ叿鏍?(鎮诞鎴栭泦鎴? */}
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center bg-card border border-border/60 shadow-soft rounded-full px-2 py-1 gap-1 transition-colors duration-150 motion-reduce:transition-none">
-                  {/* Segmented view-mode control */}
-                  <div className="flex items-center bg-muted/60 rounded-full p-0.5 border border-border/60">
-                    {(['preview', 'edit', 'original'] as const).map((mode) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        onClick={() => setViewMode(mode)}
-                        aria-pressed={viewMode === mode}
+                <div className="relative border-b border-border/40">
+                  <div
+                    aria-hidden
+                    className="absolute left-0 top-2 bottom-2 w-[2px] rounded-full bg-info/70"
+                  />
+                  <div className="space-y-1.5 from-info/[0.08] via-info/[0.03] to-transparent py-2.5 pl-4 pr-3 dark:from-info/[0.14] dark:via-info/[0.05]">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-info/90 dark:text-info">
+                        {t('scope.title')}
+                      </span>
+                      <span
                         className={cn(
-                          "px-3 py-1 rounded-full text-xs font-medium transition-colors duration-150 motion-reduce:transition-none focus-ring-soft",
-                          viewMode === mode
-                            ? "bg-card text-foreground shadow-sm ring-1 ring-border/60"
-                            : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]"
+                          'rounded-full border px-1.5 py-0.5 text-[10px] font-medium tabular-nums transition-colors',
+                          selectedDatasetId
+                            ? 'border-info/30 bg-info/15 text-info'
+                            : 'border-border/60 bg-muted/60 text-muted-foreground'
                         )}
                       >
-                        {t(`canvas.viewModes.${mode}`)}
-                      </button>
-                    ))}
+                        {selectedDatasetId
+                          ? t('scope.datasetScoped')
+                          : t('scope.datasetAll')}
+                      </span>
+                    </div>
+                    <Select
+                      value={selectedDatasetId || ALL_DATASETS_VALUE}
+                      onValueChange={handleDatasetScopeChange}
+                    >
+                      <SelectTrigger
+                        className={cn(
+                          'h-8 text-[11px] font-medium bg-card border-border/60 text-foreground transition-colors duration-200 motion-reduce:transition-none',
+                          'hover:border-info/40 focus:border-info/60 data-[state=open]:border-info/60',
+                          'focus-visible:ring-2 focus-visible:ring-info/20 focus-visible:ring-offset-0',
+                          'dark:bg-card'
+                        )}
+                      >
+                        <div className="flex items-center gap-1.5 truncate">
+                          <FolderTree className="w-3.5 h-3.5 text-info/80 flex-shrink-0" />
+                          <SelectValue placeholder={t('scope.placeholder')} />
+                        </div>
+                      </SelectTrigger>
+                      <SelectContent className="bg-card border-border/60 text-foreground">
+                        <SelectItem
+                          value={ALL_DATASETS_VALUE}
+                          className="text-[12px]"
+                        >
+                          <span className="flex items-center gap-1.5">
+                            <span
+                              aria-hidden
+                              className="size-1.5 rounded-full bg-muted-foreground/50"
+                            />
+                            {t('scope.allDatasets')}
+                          </span>
+                        </SelectItem>
+                        {availableDatasets.map((dataset) => (
+                          <SelectItem
+                            key={dataset.id}
+                            value={dataset.id}
+                            className="text-[12px]"
+                          >
+                            <span className="flex items-center gap-1.5">
+                              <span
+                                aria-hidden
+                                className="size-1.5 rounded-full bg-info/70"
+                              />
+                              <span className="truncate">{dataset.name}</span>
+                              <span className="ml-auto pl-2 text-[10px] tabular-nums text-muted-foreground/70">
+                                {datasetDocumentCounts.get(dataset.id) || 0}
+                              </span>
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-
-                  <div className="w-px h-3 bg-border mx-1" />
-
-	                  <Button
-	                    variant="ghost"
-	                    size="icon"
-	                    className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground/80 hover:bg-muted"
-	                    onClick={() => setPreviewFormat(prev => prev === 'rendered' ? 'markdown' : 'rendered')}
-	                    title={previewFormat === 'rendered' ? t('canvas.viewSource') : t('canvas.viewRendered')}
-	                    aria-label={previewFormat === 'rendered' ? t('canvas.viewSource') : t('canvas.viewRendered')}
-	                  >
-	                    {previewFormat === 'rendered' ? <Hash className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-	                  </Button>
                 </div>
 
-                {/* 宸︿晶鏀惰捣鎸夐挳 (濡傛灉宸︿晶鏀惰捣) */}
-                {isSidebarCollapsed && (
-	                  <Button
-	                    variant="ghost"
-	                    size="icon"
-	                    onClick={() => setIsSidebarCollapsed(false)}
-	                    className="absolute left-4 top-4 z-20 h-8 w-8 bg-card border border-border/60 shadow-soft rounded-lg text-muted-foreground hover:text-info hover:bg-card transition-colors duration-150 motion-reduce:transition-none"
-	                    aria-label={t('sidebar.expand')}
-	                    title={t('sidebar.expand')}
-	                  >
-	                    <PanelRightOpen className="w-4 h-4" />
-	                  </Button>
-                )}
+                {/* 鏂囦欢鐩綍鏍?- 鍙姌鍙犲尯鍩?*/}
+                {/* Folder tree section */}
+                <div className="space-y-1.5 border-b border-border/40 px-3 py-2">
+                  <div className="flex items-center gap-1.5 px-1">
+                    <FolderTree className="size-3 text-muted-foreground/65" />
+                    <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/75">
+                      {t('sidebar.foldersHeader')}
+                    </span>
+                    <span className="ml-auto text-[10px] tabular-nums text-muted-foreground/60">
+                      {libraryFolders.length}
+                    </span>
+                  </div>
+                  <div className="-mx-1 max-h-44 overflow-y-auto overscroll-contain no-scrollbar px-1">
+                    <DocumentFolderTree />
+                  </div>
+                </div>
 
-                {isPanelCollapsed && (
-	                  <Button
-	                    variant="ghost"
-	                    size="icon"
-	                    onClick={() => setIsPanelCollapsed(false)}
-	                    className="absolute right-4 top-4 z-20 h-8 w-8 bg-card border border-border/60 shadow-soft rounded-lg text-muted-foreground hover:text-info hover:bg-card transition-colors duration-150 motion-reduce:transition-none"
-	                    aria-label={t('panel.expand')}
-	                    title={t('panel.expand')}
-	                  >
-	                    <PanelRightClose className="w-4 h-4 rotate-180" />
-	                  </Button>
-                )}
+                <div className="flex items-center justify-between px-4 pt-3 pb-1.5">
+                  <h3 className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/75">
+                    {t('sidebar.filesTitle', { count: visibleFiles.length })}
+                  </h3>
+                </div>
 
-                {/* 鍐呭鍖哄煙 */}
-                <div ref={contentScrollRef} className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-4 md:p-8">
-                  <div className={cn(
-                    "mx-auto",
-                    viewMode === 'edit' ? 'max-w-full' : 'max-w-4xl'
-                  )}>
-                    {/* 绾稿紶鏁堟灉瀹瑰櫒 */}
-                    <div className={cn(
-                      "bg-card min-h-[800px] shadow-sm border border-border/60 rounded-xl overflow-hidden relative",
-                      viewMode === 'edit' ? "h-[calc(100vh-140px)] border-0 shadow-none bg-transparent" : "p-10 md:p-14"
-                    )}>
-                      {/* 娌荤悊鐘舵€佹按鍗?寰界珷 */}
-                      {viewMode !== 'edit' && governanceState.isModified && (
-                        <div className="absolute top-0 right-0 p-4">
-                          <span className="bg-accent/10 dark:bg-accent/20 text-accent dark:text-accent border border-accent/30 text-xs px-2 py-1 rounded-md font-medium shadow-sm">
-                            {t('canvas.modified')}
-                          </span>
+                <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar px-3 pb-3 space-y-2">
+                  {visibleFiles.length === 0 ? (
+                    <div className="text-xs text-muted-foreground text-center py-8">
+                      {t('sidebar.emptyDirectory')}
+                    </div>
+                  ) : (
+                    visibleFiles.map((file) => {
+                      const state = governanceStates[file.id]
+                      const hasIssue = state?.issues.some(
+                        (i) => i.type === 'error'
+                      )
+                      const score = state?.qualityScore || 0
+
+                      return (
+                        <div key={file.id} className="group relative">
+                          <button
+                            type="button"
+                            onClick={() => handleSelectFile(file.id)}
+                            className={cn(
+                              'relative w-full text-left p-3 rounded-lg border transition-[background,border,box-shadow,transform] duration-200 motion-reduce:transition-none cursor-pointer overflow-hidden',
+                              selectedFileId === file.id
+                                ? 'border-info/30 from-info/[0.08] via-info/[0.03] to-transparent shadow-soft dark:from-info/[0.14]'
+                                : 'border-border/60 bg-card hover:border-info/25 hover:bg-muted/40 hover:translate-x-[1px]'
+                            )}
+                            aria-label={t('a11y.openFile', {
+                              filename: file.filename,
+                            })}
+                          >
+                            {selectedFileId === file.id ? (
+                              <span
+                                aria-hidden
+                                className="absolute left-0 top-2 bottom-2 w-[2px] rounded-full bg-info"
+                              />
+                            ) : null}
+                            <div className="flex items-start gap-3">
+                              {/* File Icon */}
+                              {getFileIcon(
+                                file.filename,
+                                cn(
+                                  'size-10 rounded-lg border transition-colors motion-reduce:transition-none flex-shrink-0',
+                                  selectedFileId === file.id
+                                    ? 'border-info/30 ring-1 ring-info/15'
+                                    : 'border-border/60 group-hover:border-info/30'
+                                )
+                              )}
+
+                              <div className="flex-1 min-w-0">
+                                {/* Row 1: Filename & Score */}
+                                <div className="flex items-center justify-between mb-1">
+                                  <div
+                                    className={cn(
+                                      'text-sm font-medium truncate transition-colors',
+                                      selectedFileId === file.id
+                                        ? 'text-foreground'
+                                        : 'text-foreground/85 group-hover:text-foreground'
+                                    )}
+                                  >
+                                    {file.filename}
+                                  </div>
+                                  {score > 0 ? (
+                                    <span
+                                      className={cn(
+                                        'flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded-md font-medium tabular-nums border',
+                                        score >= 80
+                                          ? 'bg-success/12 text-success border-success/25'
+                                          : score >= 60
+                                            ? 'bg-warning/15 text-warning border-warning/30'
+                                            : 'bg-rose/12 text-rose border-rose/25'
+                                      )}
+                                    >
+                                      {t('sidebar.scoreLabel', { score })}
+                                    </span>
+                                  ) : (
+                                    <span className="flex-shrink-0 text-[10px] text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded-md border border-border/60 font-medium tabular-nums">
+                                      {t('sidebar.notScanned')}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Row 2: Metadata (Size & Date) */}
+                                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/80 mb-1.5 tabular-nums">
+                                  <span>{formatFileSize(file.fileSize)}</span>
+                                  <span className="text-muted-foreground/40">
+                                    ·
+                                  </span>
+                                  <span>
+                                    {file.parsedAt
+                                      ? new Date(
+                                          file.parsedAt
+                                        ).toLocaleDateString([], {
+                                          year: 'numeric',
+                                          month: '2-digit',
+                                          day: '2-digit',
+                                        })
+                                      : ''}
+                                  </span>
+                                  {file.datasetName ? (
+                                    <>
+                                      <span className="text-muted-foreground/40">
+                                        ·
+                                      </span>
+                                      <span className="truncate">
+                                        {file.datasetName}
+                                      </span>
+                                    </>
+                                  ) : null}
+                                </div>
+
+                                {/* Row 3: Badges & Actions */}
+                                <div className="flex items-center justify-between h-5 pr-8">
+                                  <div className="flex items-center gap-2">
+                                    {file.source ? (
+                                      <span className="text-[9px] text-muted-foreground flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded border border-border/60 font-medium uppercase">
+                                        {file.source === 'knowledge_base'
+                                          ? t('scope.sourceKnowledge')
+                                          : t('scope.sourceParsing')}
+                                      </span>
+                                    ) : null}
+                                    {state?.isModified && (
+                                      <span className="text-[9px] text-accent flex items-center gap-1 bg-accent/10 px-1.5 py-0.5 rounded border border-accent/25 font-medium">
+                                        <Sparkles className="w-2.5 h-2.5" />{' '}
+                                        {t('sidebar.cleaned')}
+                                      </span>
+                                    )}
+                                    {hasIssue && (
+                                      <span className="text-[9px] text-rose flex items-center gap-1 bg-rose/10 px-1.5 py-0.5 rounded border border-rose/25 font-medium">
+                                        <AlertTriangle className="w-2.5 h-2.5" />{' '}
+                                        {t('sidebar.needsAttention')}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </button>
+                          {file.source !== 'knowledge_base' ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDeleteFileTarget({
+                                  id: file.id,
+                                  filename: file.filename,
+                                })
+                                setDeleteFileOpen(true)
+                              }}
+                              className="absolute bottom-2.5 right-2.5 opacity-0 group-hover:opacity-100 p-1 text-muted-foreground hover:text-rose hover:bg-rose/10 rounded transition-opacity transition-colors duration-150 motion-reduce:transition-none"
+                              aria-label={t('a11y.deleteFile', {
+                                filename: file.filename,
+                              })}
+                              title={t('dialogs.deleteFile.confirm')}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          ) : null}
                         </div>
-                      )}
+                      )
+                    })
+                  )}
+                </div>
 
-                      <div data-governance-selection-root="true">
-                        {contentBody}
+                {/* 搴曢儴缁熻鏍?*/}
+                {/* Footer KPI bar */}
+                <div className="mt-auto border-t border-border/60 from-muted/30 to-muted/55 backdrop-blur-sm px-3 py-2.5 space-y-1.5">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/75">
+                      {t('stats.storage')}
+                    </span>
+                    <span className="text-[10px] tabular-nums text-muted-foreground/80">
+                      {t('stats.processedRatio', {
+                        done: stats.completedFiles,
+                        total: stats.totalFiles,
+                      })}
+                    </span>
+                  </div>
+                  <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-muted/80 ring-1 ring-inset ring-border/50">
+                    <div
+                      className={cn(
+                        'h-full rounded-full transition-[width] duration-500 motion-reduce:transition-none',
+                        stats.avgScore >= 80
+                          ? 'from-success/80 via-success to-success'
+                          : stats.avgScore >= 60
+                            ? 'from-warning/70 via-warning to-warning'
+                            : stats.avgScore > 0
+                              ? 'from-rose/70 via-rose to-rose'
+                              : 'from-info/40 to-info/70'
+                      )}
+                      style={{
+                        width:
+                          stats.totalFiles > 0
+                            ? `${Math.min(100, Math.round((stats.completedFiles / stats.totalFiles) * 100))}%`
+                            : '0%',
+                      }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] text-muted-foreground/70 tabular-nums">
+                    <span>
+                      {stats.totalFiles > 0
+                        ? `${Math.round((stats.completedFiles / stats.totalFiles) * 100)}%`
+                        : '0%'}
+                    </span>
+                    <span>
+                      {stats.avgScore > 0
+                        ? t('stats.avgScoreInline', {
+                            score: stats.avgScore.toFixed(1),
+                          })
+                        : `${t('stats.avgScore')} —`}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 鎷栨嫿鎵嬫焺 */}
+              <button
+                type="button"
+                className={cn(
+                  'absolute right-0 top-0 w-1 h-full cursor-col-resize z-20 border-0 bg-transparent p-0 transition-colors opacity-0 hover:opacity-100 hover:bg-primary/10 dark:hover:bg-primary/20 active:bg-primary/30',
+                  isResizing && 'bg-primary opacity-100'
+                )}
+                aria-label={t('sidebar.adjustWidth')}
+                onMouseDown={startResizing}
+              />
+            </aside>
+
+            {/* 涓诲唴瀹瑰尯 (涓棿 + 鍙充晶闈㈡澘) */}
+            <main className="flex-1 flex overflow-hidden min-h-0 relative">
+              {selectedFile && governanceState ? (
+                <>
+                  {/* 涓棿锛氶瑙堢敾甯?*/}
+                  <div className="flex-1 flex flex-col overflow-hidden relative z-0">
+                    {/* 鐢诲竷宸ュ叿鏍?(鎮诞鎴栭泦鎴? */}
+                    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center bg-card border border-border/60 shadow-soft rounded-full px-2 py-1 gap-1 transition-colors duration-150 motion-reduce:transition-none">
+                      {/* Segmented view-mode control */}
+                      <div className="flex items-center bg-muted/60 rounded-full p-0.5 border border-border/60">
+                        {(['preview', 'edit', 'original'] as const).map(
+                          (mode) => (
+                            <button
+                              key={mode}
+                              type="button"
+                              onClick={() => setViewMode(mode)}
+                              aria-pressed={viewMode === mode}
+                              className={cn(
+                                'px-3 py-1 rounded-full text-xs font-medium transition-colors duration-150 motion-reduce:transition-none focus-ring-soft',
+                                viewMode === mode
+                                  ? 'bg-card text-foreground shadow-sm ring-1 ring-border/60'
+                                  : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]'
+                              )}
+                            >
+                              {t(`canvas.viewModes.${mode}`)}
+                            </button>
+                          )
+                        )}
+                      </div>
+
+                      <div className="w-px h-3 bg-border mx-1" />
+
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground/80 hover:bg-muted"
+                        onClick={() =>
+                          setPreviewFormat((prev) =>
+                            prev === 'rendered' ? 'markdown' : 'rendered'
+                          )
+                        }
+                        title={
+                          previewFormat === 'rendered'
+                            ? t('canvas.viewSource')
+                            : t('canvas.viewRendered')
+                        }
+                        aria-label={
+                          previewFormat === 'rendered'
+                            ? t('canvas.viewSource')
+                            : t('canvas.viewRendered')
+                        }
+                      >
+                        {previewFormat === 'rendered' ? (
+                          <Hash className="w-3.5 h-3.5" />
+                        ) : (
+                          <Eye className="w-3.5 h-3.5" />
+                        )}
+                      </Button>
+                    </div>
+
+                    {/* 宸︿晶鏀惰捣鎸夐挳 (濡傛灉宸︿晶鏀惰捣) */}
+                    {isSidebarCollapsed && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setIsSidebarCollapsed(false)}
+                        className="absolute left-4 top-4 z-20 h-8 w-8 bg-card border border-border/60 shadow-soft rounded-lg text-muted-foreground hover:text-info hover:bg-card transition-colors duration-150 motion-reduce:transition-none"
+                        aria-label={t('sidebar.expand')}
+                        title={t('sidebar.expand')}
+                      >
+                        <PanelRightOpen className="w-4 h-4" />
+                      </Button>
+                    )}
+
+                    {isPanelCollapsed && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setIsPanelCollapsed(false)}
+                        className="absolute right-4 top-4 z-20 h-8 w-8 bg-card border border-border/60 shadow-soft rounded-lg text-muted-foreground hover:text-info hover:bg-card transition-colors duration-150 motion-reduce:transition-none"
+                        aria-label={t('panel.expand')}
+                        title={t('panel.expand')}
+                      >
+                        <PanelRightClose className="w-4 h-4 rotate-180" />
+                      </Button>
+                    )}
+
+                    {/* 鍐呭鍖哄煙 */}
+                    <div
+                      ref={contentScrollRef}
+                      className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-4 md:p-8"
+                    >
+                      <div
+                        className={cn(
+                          'mx-auto',
+                          viewMode === 'edit' ? 'max-w-full' : 'max-w-4xl'
+                        )}
+                      >
+                        {/* 绾稿紶鏁堟灉瀹瑰櫒 */}
+                        <div
+                          className={cn(
+                            'bg-card min-h-[800px] shadow-sm border border-border/60 rounded-xl overflow-hidden relative',
+                            viewMode === 'edit'
+                              ? 'h-[calc(100vh-140px)] border-0 shadow-none bg-transparent'
+                              : 'p-10 md:p-14'
+                          )}
+                        >
+                          {/* 娌荤悊鐘舵€佹按鍗?寰界珷 */}
+                          {viewMode !== 'edit' &&
+                            governanceState.isModified && (
+                              <div className="absolute top-0 right-0 p-4">
+                                <span className="bg-accent/10 dark:bg-accent/20 text-accent dark:text-accent border border-accent/30 text-xs px-2 py-1 rounded-md font-medium shadow-sm">
+                                  {t('canvas.modified')}
+                                </span>
+                              </div>
+                            )}
+
+                          <div data-governance-selection-root="true">
+                            {contentBody}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              </div>
 
-              {/* 鍙充晶锛氭不鐞嗗伐鍏烽潰鏉?(鏁村悎浜?Tabs) */}
-                <div
-                  ref={panelRef}
-                  className={cn(
-                  "group/panel relative flex-shrink-0 border-l border-border bg-card flex flex-col transition-transform duration-200 ease-out motion-reduce:transition-none z-10 shadow-strong",
-                  isPanelCollapsed ? "w-0 border-l-0 translate-x-full" : ""
-                )}
-                  style={{ width: isPanelCollapsed ? 0 : panelWidth }}
-                >
-                {/* Toolbox header — compact */}
-                <div className="flex-shrink-0 border-b border-border/60 bg-card">
-                  <div className="flex items-center justify-between px-4 pt-3 pb-2 gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span
-                        aria-hidden
-                        className={cn(
-                          "size-1.5 rounded-full flex-shrink-0 transition-colors",
-                          TAB_COLOR_CLASSES[(governanceTabs.find((t) => t.id === activeTab)?.color) ?? 'info'].dot
-                        )}
-                      />
-                      <h2 className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground/85 truncate">
-                        {t('panel.title')}
-                      </h2>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 text-muted-foreground hover:text-muted-foreground hover:bg-muted"
-                      aria-label={t('panel.collapse')}
-                      title={t('panel.collapse')}
-                      onClick={() => setIsPanelCollapsed(true)}
-                    >
-                      <PanelRightClose className="w-4 h-4 rotate-180" />
-                    </Button>
-                  </div>
-
-                  {/* Token-colored tab pills */}
-                  <div className="px-3 pb-2.5">
-                    <div className="flex items-center gap-1 p-0.5 bg-muted/60 rounded-lg border border-border/60">
-                      {governanceTabs.map((tab) => {
-                        const Icon = tab.icon
-                        const isActive = activeTab === tab.id
-                        const palette = TAB_COLOR_CLASSES[tab.color]
-                        return (
-                          <button
-                            key={tab.id}
-                            onClick={() => setActiveTab(tab.id)}
+                  {/* 鍙充晶锛氭不鐞嗗伐鍏烽潰鏉?(鏁村悎浜?Tabs) */}
+                  <div
+                    ref={panelRef}
+                    className={cn(
+                      'group/panel relative flex-shrink-0 border-l border-border bg-card flex flex-col transition-transform duration-200 ease-out motion-reduce:transition-none z-10 shadow-strong',
+                      isPanelCollapsed ? 'w-0 border-l-0 translate-x-full' : ''
+                    )}
+                    style={{ width: isPanelCollapsed ? 0 : panelWidth }}
+                  >
+                    {/* Toolbox header — compact */}
+                    <div className="flex-shrink-0 border-b border-border/60 bg-card">
+                      <div className="flex items-center justify-between px-4 pt-3 pb-2 gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span
+                            aria-hidden
                             className={cn(
-                              "relative flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-[11px] font-medium transition-colors duration-150 motion-reduce:transition-none focus-ring-soft",
-                              isActive
-                                ? cn("ring-1 shadow-sm bg-card", palette.icon, palette.ringStatic)
-                                : "text-muted-foreground hover:text-foreground hover:bg-card/95"
+                              'size-1.5 rounded-full flex-shrink-0 transition-colors',
+                              TAB_COLOR_CLASSES[
+                                governanceTabs.find((t) => t.id === activeTab)
+                                  ?.color ?? 'info'
+                              ].dot
                             )}
-                            title={tab.label}
-                            aria-pressed={isActive}
-                          >
-                            <Icon className="size-3.5" />
-                            <span className="truncate">{tab.label}</span>
-                            {tab.id === 'clean' && governanceState.isModified && (
-                              <span className={cn("absolute top-1 right-1 size-1.5 rounded-full ring-1 ring-card", palette.dot)} />
-                            )}
-                          </button>
-                        )
-                      })}
+                          />
+                          <h2 className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground/85 truncate">
+                            {t('panel.title')}
+                          </h2>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-muted-foreground hover:text-muted-foreground hover:bg-muted"
+                          aria-label={t('panel.collapse')}
+                          title={t('panel.collapse')}
+                          onClick={() => setIsPanelCollapsed(true)}
+                        >
+                          <PanelRightClose className="w-4 h-4 rotate-180" />
+                        </Button>
+                      </div>
+
+                      {/* Token-colored tab pills */}
+                      <div className="px-3 pb-2.5">
+                        <div className="flex items-center gap-1 p-0.5 bg-muted/60 rounded-lg border border-border/60">
+                          {governanceTabs.map((tab) => {
+                            const Icon = tab.icon
+                            const isActive = activeTab === tab.id
+                            const palette = TAB_COLOR_CLASSES[tab.color]
+                            return (
+                              <button
+                                key={tab.id}
+                                onClick={() => setActiveTab(tab.id)}
+                                className={cn(
+                                  'relative flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-[11px] font-medium transition-colors duration-150 motion-reduce:transition-none focus-ring-soft',
+                                  isActive
+                                    ? cn(
+                                        'ring-1 shadow-sm bg-card',
+                                        palette.icon,
+                                        palette.ringStatic
+                                      )
+                                    : 'text-muted-foreground hover:text-foreground hover:bg-card/95'
+                                )}
+                                title={tab.label}
+                                aria-pressed={isActive}
+                              >
+                                <Icon className="size-3.5" />
+                                <span className="truncate">{tab.label}</span>
+                                {tab.id === 'clean' &&
+                                  governanceState.isModified && (
+                                    <span
+                                      className={cn(
+                                        'absolute top-1 right-1 size-1.5 rounded-full ring-1 ring-card',
+                                        palette.dot
+                                      )}
+                                    />
+                                  )}
+                              </button>
+                            )
+                          })}
+                        </div>
+                        {/* Active tool subhead — replaces the old info banner */}
+                        <p className="mt-2 px-1 text-[11px] leading-snug text-muted-foreground/80 flex items-start gap-1.5">
+                          <Info className="w-3 h-3 mt-0.5 flex-shrink-0 text-muted-foreground/50" />
+                          <span>
+                            {
+                              governanceTabs.find((tab) => tab.id === activeTab)
+                                ?.desc
+                            }
+                          </span>
+                        </p>
+                      </div>
                     </div>
-                    {/* Active tool subhead — replaces the old info banner */}
-                    <p className="mt-2 px-1 text-[11px] leading-snug text-muted-foreground/80 flex items-start gap-1.5">
-                      <Info className="w-3 h-3 mt-0.5 flex-shrink-0 text-muted-foreground/50" />
-                      <span>{governanceTabs.find(tab => tab.id === activeTab)?.desc}</span>
-                    </p>
+
+                    {/* 宸ュ叿鍐呭鍖?*/}
+                    <div
+                      key={activeTab}
+                      className="flex-1 overflow-y-auto overscroll-contain no-scrollbar bg-surface-2 animate-fade-in-up"
+                    >
+                      {activeTab === 'quality' && (
+                        <QualityChecker
+                          content={governanceState.originalContent}
+                          initialScore={governanceState.qualityScore}
+                          initialIssues={governanceState.issues}
+                          onComplete={handleQualityCheck}
+                        />
+                      )}
+                      {activeTab === 'clean' && (
+                        <DataCleaner
+                          content={governanceState.originalContent}
+                          cleanedContent={governanceState.cleanedContent}
+                          onClean={handleClean}
+                        />
+                      )}
+                      {activeTab === 'annotate' && (
+                        <DataAnnotator
+                          content={governanceState.cleanedContent}
+                          annotations={governanceState.annotations}
+                          onAnnotate={handleAnnotate}
+                          onDocumentTags={handleDocumentTags}
+                        />
+                      )}
+                      {activeTab === 'classify' && (
+                        <DataClassifier
+                          content={governanceState.cleanedContent}
+                          initialCategory={governanceState.category}
+                          initialTags={governanceState.tags}
+                          onClassify={handleClassify}
+                        />
+                      )}
+                    </div>
+
+                    {/* 鎷栨嫿鎵嬫焺 */}
+                    <button
+                      type="button"
+                      className={cn(
+                        'absolute left-0 top-0 w-1 h-full cursor-col-resize z-20 border-0 bg-transparent p-0 transition-colors opacity-0 hover:opacity-100 hover:bg-primary/10 dark:hover:bg-primary/20 active:bg-primary/30',
+                        isPanelResizing && 'bg-primary opacity-100'
+                      )}
+                      aria-label={t('panel.adjustWidth')}
+                      onMouseDown={startPanelResizing}
+                    />
                   </div>
+                </>
+              ) : (
+                // 绌虹姸鎬佸崰浣?
+                <div className="flex-1 flex flex-col items-center justify-center bg-muted">
+                  <div className="w-24 h-24 bg-card rounded-full border border-border flex items-center justify-center mb-6 shadow-sm">
+                    <FileSearch className="w-10 h-10 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-xl font-medium text-foreground mb-2">
+                    {t('emptySelection.title')}
+                  </h3>
+                  <p className="text-muted-foreground max-w-sm text-center">
+                    {t('emptySelection.description')}
+                  </p>
                 </div>
+              )}
+            </main>
+          </div>
 
-                {/* 宸ュ叿鍐呭鍖?*/}
-                <div key={activeTab} className="flex-1 overflow-y-auto overscroll-contain no-scrollbar bg-surface-2 animate-fade-in-up">
-                  {activeTab === 'quality' && (
-                    <QualityChecker
-                      content={governanceState.originalContent}
-                      initialScore={governanceState.qualityScore}
-                      initialIssues={governanceState.issues}
-                      onComplete={handleQualityCheck}
-                    />
-                  )}
-                  {activeTab === 'clean' && (
-                    <DataCleaner
-                      content={governanceState.originalContent}
-                      cleanedContent={governanceState.cleanedContent}
-                      onClean={handleClean}
-                    />
-                  )}
-                  {activeTab === 'annotate' && (
-                    <DataAnnotator
-                      content={governanceState.cleanedContent}
-                      annotations={governanceState.annotations}
-                      onAnnotate={handleAnnotate}
-                      onDocumentTags={handleDocumentTags}
-                    />
-                  )}
-                  {activeTab === 'classify' && (
-                    <DataClassifier
-                      content={governanceState.cleanedContent}
-                      initialCategory={governanceState.category}
-                      initialTags={governanceState.tags}
-                      onClassify={handleClassify}
-                    />
-                  )}
-                </div>
-
-                {/* 鎷栨嫿鎵嬫焺 */}
-                <button
-                  type="button"
-                  className={cn(
-                    "absolute left-0 top-0 w-1 h-full cursor-col-resize z-20 border-0 bg-transparent p-0 transition-colors opacity-0 hover:opacity-100 hover:bg-primary/10 dark:hover:bg-primary/20 active:bg-primary/30",
-                    isPanelResizing && "bg-primary opacity-100"
-                  )}
-                  aria-label={t('panel.adjustWidth')}
-                  onMouseDown={startPanelResizing}
-                />
-              </div>
-            </>
-          ) : (
-            // 绌虹姸鎬佸崰浣?
-            <div className="flex-1 flex flex-col items-center justify-center bg-muted">
-              <div className="w-24 h-24 bg-card rounded-full border border-border flex items-center justify-center mb-6 shadow-sm">
-                <FileSearch className="w-10 h-10 text-muted-foreground" />
-              </div>
-              <h3 className="text-xl font-medium text-foreground mb-2">{t('emptySelection.title')}</h3>
-              <p className="text-muted-foreground max-w-sm text-center">
-                {t('emptySelection.description')}
-              </p>
-            </div>
-          )}
-        </main>
-      </div>
-
-      <AlertDialog
-        open={deleteFileOpen}
-        onOpenChange={(open) => {
-          setDeleteFileOpen(open)
-          if (!open) setDeleteFileTarget(null)
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('dialogs.deleteFile.title')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('dialogs.deleteFile.description', { filename: deleteFileTarget?.filename || '-' })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('dialogs.deleteFile.cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                const id = deleteFileTarget?.id
-                if (!id) return
-                handleDeleteFile(id)
-              }}
-            >
-              {t('dialogs.deleteFile.confirm')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-        </AlertDialog>
-	    </div>
+          <AlertDialog
+            open={deleteFileOpen}
+            onOpenChange={(open) => {
+              setDeleteFileOpen(open)
+              if (!open) setDeleteFileTarget(null)
+            }}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {t('dialogs.deleteFile.title')}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  {t('dialogs.deleteFile.description', {
+                    filename: deleteFileTarget?.filename || '-',
+                  })}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>
+                  {t('dialogs.deleteFile.cancel')}
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => {
+                    const id = deleteFileTarget?.id
+                    if (!id) return
+                    handleDeleteFile(id)
+                  }}
+                >
+                  {t('dialogs.deleteFile.confirm')}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
       }
     />
   )

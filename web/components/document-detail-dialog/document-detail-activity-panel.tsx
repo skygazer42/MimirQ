@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react'
+import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Ban, Calendar, CheckCircle2, Copy, FileText, GitBranch, Loader2, Pencil, RefreshCw, Save, Search, X } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
@@ -16,7 +17,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { lineageApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
-import { cn, detachPromise, formatDate } from '@/lib/utils'
+import { queryKeys } from '@/lib/query-keys'
+import { cn, formatDate } from '@/lib/utils'
 import type { Document, DocumentChunk, DocumentTimelineItem, DocumentVersionList } from '@/types'
 
 const ACTIVE_PIPELINE_VALUE = '__active__'
@@ -123,25 +125,19 @@ function prettyJson(value: unknown): string {
 
 function ChunkLineageButton({ chunkId }: Readonly<{ chunkId: string }>) {
   const [open, setOpen] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [payload, setPayload] = useState<unknown>(null)
-  const [error, setError] = useState<string | null>(null)
+  const lineageQuery = useQuery({
+    queryKey: queryKeys.lineage.chunk(chunkId),
+    enabled: open,
+    queryFn: () => lineageApi.getChunkLineage(chunkId),
+  })
+  const error = lineageQuery.error
+    ? formatApiError(lineageQuery.error, '加载 Chunk 血缘失败')
+    : null
 
-  async function loadLineage(): Promise<void> {
-    setOpen(true)
-    setLoading(true)
-    setError(null)
-    try {
-      const next = await lineageApi.getChunkLineage(chunkId)
-      setPayload(next)
-    } catch (err) {
-      const message = formatApiError(err, '加载 Chunk 血缘失败')
-      setError(message)
-      toast.error(message)
-    } finally {
-      setLoading(false)
-    }
-  }
+  useEffect(() => {
+    if (!error) return
+    toast.error(error)
+  }, [error])
 
   return (
     <>
@@ -149,9 +145,9 @@ function ChunkLineageButton({ chunkId }: Readonly<{ chunkId: string }>) {
         label="查看 Chunk 血缘"
         variant="ghost"
         className="h-9 w-9 text-muted-foreground hover:text-foreground"
-        onClick={() => detachPromise(loadLineage())}
+        onClick={() => setOpen(true)}
       >
-        {loading ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <GitBranch className="h-4 w-4" />}
+        {lineageQuery.isFetching ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <GitBranch className="h-4 w-4" />}
       </IconButton>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -165,7 +161,7 @@ function ChunkLineageButton({ chunkId }: Readonly<{ chunkId: string }>) {
           </DialogHeader>
           {error ? <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</div> : null}
           <pre className={cn('max-h-[520px] overflow-auto rounded-lg border border-border/60 bg-muted/20 p-3 text-xs', 'whitespace-pre-wrap break-words')}>
-            {loading ? 'Loading...' : prettyJson(payload ?? { message: '暂无 Chunk 血缘数据' })}
+            {lineageQuery.isFetching ? 'Loading...' : prettyJson(lineageQuery.data ?? { message: '暂无 Chunk 血缘数据' })}
           </pre>
         </DialogContent>
       </Dialog>

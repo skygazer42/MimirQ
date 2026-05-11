@@ -3,6 +3,8 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
+import { readMessageCatalogSource } from './source-test-utils'
+
 const webRoot = path.resolve(__dirname, '..')
 
 function read(relativePath: string): string {
@@ -12,7 +14,7 @@ function read(relativePath: string): string {
 describe('task center messages catalog source', () => {
   it('keeps task center copy sourced from the next-intl catalog', () => {
     const taskCenter = read('components/task-center.tsx')
-    const messages = read('i18n/messages/zh-CN.ts')
+    const messages = readMessageCatalogSource(webRoot)
 
     expect(taskCenter).toContain("import { useTranslations } from 'next-intl'")
     expect(taskCenter).toContain("const t = useTranslations('TaskCenter')")

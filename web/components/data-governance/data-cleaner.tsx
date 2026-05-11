@@ -1,15 +1,17 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, Info, Loader2, Sparkles, TextCursorInput, Undo, Wrench } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { pipelineApi, promptTemplateApi, type PromptTemplate } from '@/lib/api'
+import { pipelineApi, promptTemplateApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { coerceOneOf } from '@/lib/one-of'
+import { queryKeys } from '@/lib/query-keys'
 import type {
   CleanPreviewRequest,
   CleanPreviewResponse,
@@ -62,29 +64,17 @@ export function DataCleaner({
   const [lastPreview, setLastPreview] = useState<CleanPreviewResponse | null>(null)
   const [inputFormat, setInputFormat] = useState<'markdown' | 'html'>('markdown')
   const [llmEnabled, setLlmEnabled] = useState(false)
-  const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([])
   const [promptTemplateId, setPromptTemplateId] = useState<string>('')
   const impact = useMemo(() => computeCleanPreviewImpact(lastPreview), [lastPreview])
 
-  useEffect(() => {
-    let cancelled = false
-
-    const loadTemplates = async () => {
-      try {
-        const response = await promptTemplateApi.list({ is_active: true, limit: 50 })
-        if (cancelled) return
-        setPromptTemplates(response.items || [])
-      } catch {
-        if (cancelled) return
-        setPromptTemplates([])
-      }
-    }
-
-    void loadTemplates()
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  const promptTemplatesQuery = useQuery({
+    queryKey: queryKeys.prompts.list({ is_active: true, limit: 50 }),
+    queryFn: async () => {
+      const response = await promptTemplateApi.list({ is_active: true, limit: 50 })
+      return response.items || []
+    },
+  })
+  const promptTemplates = promptTemplatesQuery.data || []
 
   const handleApply = useCallback(async () => {
     setIsApplying(true)

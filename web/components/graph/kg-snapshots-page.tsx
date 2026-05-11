@@ -38,10 +38,25 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react'
-import { startTransition, useDeferredValue, useEffect, useMemo, useState, type ReactNode } from 'react'
+import {
+  startTransition,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react'
 
 import { useSearchParams } from 'next/navigation'
-import { Bar, BarChart, CartesianGrid, Cell, Tooltip, XAxis, YAxis } from 'recharts'
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
 import { toast } from 'sonner'
 
 import { AppFrame } from '@/components/app-frame'
@@ -59,7 +74,12 @@ import { kgApi } from '@/lib/api/graph'
 import { metaApi } from '@/lib/api/meta'
 import { sanitizeFilename } from '@/lib/sanitize'
 import { cn, detachPromise } from '@/lib/utils'
-import type { Dataset, KGGraphLink, KGGraphNode, KGGraphResponse } from '@/types'
+import type {
+  Dataset,
+  KGGraphLink,
+  KGGraphNode,
+  KGGraphResponse,
+} from '@/types'
 
 type SnapshotPayload = Record<string, unknown>
 
@@ -88,7 +108,14 @@ type SnapshotView = 'diff' | 'a' | 'b'
 type WorkspaceTab = 'studio' | 'audit'
 type StudioCanvasView = 'graph' | 'table' | 'stats'
 type DiffCellStatus = 'same' | 'added' | 'removed' | 'empty'
-type JsonTokenKind = 'plain' | 'key' | 'string' | 'number' | 'boolean' | 'null' | 'punctuation'
+type JsonTokenKind =
+  | 'plain'
+  | 'key'
+  | 'string'
+  | 'number'
+  | 'boolean'
+  | 'null'
+  | 'punctuation'
 type AuditSeverity = 'healthy' | 'notice' | 'warning'
 
 type DiffCell = {
@@ -186,7 +213,8 @@ function getDatasetLabel(dataset: Dataset | null | undefined): string {
 }
 
 function getLinkEndpointId(value: unknown): string {
-  if (typeof value === 'string' || typeof value === 'number') return String(value)
+  if (typeof value === 'string' || typeof value === 'number')
+    return String(value)
   if (value && typeof value === 'object') {
     const record = value as Record<string, unknown>
     return String(record.id ?? record.name ?? record.label ?? '').trim()
@@ -206,28 +234,50 @@ function getNodeMetaValue(node: KGGraphNode, ...keys: string[]): unknown {
 }
 
 function getNodeType(node: KGGraphNode): string {
-  return String(getNodeMetaValue(node, 'type', 'entity_type', 'kind', 'node_type') || '节点')
+  return String(
+    getNodeMetaValue(node, 'type', 'entity_type', 'kind', 'node_type') || '节点'
+  )
 }
 
 function toneForNodeType(type: string): SnapshotStudioNode['tone'] {
   const normalized = type.toLowerCase()
-  if (normalized.includes('event') || normalized.includes('事件')) return 'orange'
-  if (normalized.includes('document') || normalized.includes('文档')) return 'amber'
-  if (normalized.includes('model') || normalized.includes('模型')) return 'purple'
-  if (normalized.includes('person') || normalized.includes('用户') || normalized.includes('人员')) return 'green'
-  if (normalized.includes('feedback') || normalized.includes('评价')) return 'rose'
-  if (normalized.includes('technology') || normalized.includes('技术')) return 'teal'
+  if (normalized.includes('event') || normalized.includes('事件'))
+    return 'orange'
+  if (normalized.includes('document') || normalized.includes('文档'))
+    return 'amber'
+  if (normalized.includes('model') || normalized.includes('模型'))
+    return 'purple'
+  if (
+    normalized.includes('person') ||
+    normalized.includes('用户') ||
+    normalized.includes('人员')
+  )
+    return 'green'
+  if (normalized.includes('feedback') || normalized.includes('评价'))
+    return 'rose'
+  if (normalized.includes('technology') || normalized.includes('技术'))
+    return 'teal'
   return 'blue'
 }
 
 function iconForNodeType(type: string): ReactNode {
   const normalized = type.toLowerCase()
-  if (normalized.includes('event') || normalized.includes('事件')) return <Sparkles className="h-5 w-5" aria-hidden="true" />
-  if (normalized.includes('document') || normalized.includes('文档')) return <FolderOpen className="h-5 w-5" aria-hidden="true" />
-  if (normalized.includes('model') || normalized.includes('模型')) return <Brain className="h-5 w-5" aria-hidden="true" />
-  if (normalized.includes('person') || normalized.includes('用户') || normalized.includes('人员')) return <User className="h-5 w-5" aria-hidden="true" />
-  if (normalized.includes('feedback') || normalized.includes('评价')) return <Star className="h-5 w-5" aria-hidden="true" />
-  if (normalized.includes('technology') || normalized.includes('技术')) return <Box className="h-5 w-5" aria-hidden="true" />
+  if (normalized.includes('event') || normalized.includes('事件'))
+    return <Sparkles className="h-5 w-5" aria-hidden="true" />
+  if (normalized.includes('document') || normalized.includes('文档'))
+    return <FolderOpen className="h-5 w-5" aria-hidden="true" />
+  if (normalized.includes('model') || normalized.includes('模型'))
+    return <Brain className="h-5 w-5" aria-hidden="true" />
+  if (
+    normalized.includes('person') ||
+    normalized.includes('用户') ||
+    normalized.includes('人员')
+  )
+    return <User className="h-5 w-5" aria-hidden="true" />
+  if (normalized.includes('feedback') || normalized.includes('评价'))
+    return <Star className="h-5 w-5" aria-hidden="true" />
+  if (normalized.includes('technology') || normalized.includes('技术'))
+    return <Box className="h-5 w-5" aria-hidden="true" />
   return <Network className="h-5 w-5" aria-hidden="true" />
 }
 
@@ -249,39 +299,70 @@ function buildSnapshotStudioGraphFromKgGraph(graph: KGGraphResponse | null): {
   const radiusX = 31
   const radiusY = 25
 
-  const nodes: SnapshotStudioNode[] = rawNodes.map((node, index): SnapshotStudioNode => {
-    const type = getNodeType(node)
-    const angle = (index / total) * Math.PI * 2 - Math.PI / 2
-    const id = String(node.id || node.label || `node-${index}`)
-    const occurrences = Number(getNodeMetaValue(node, 'occurrences', 'count', 'event_count', 'degree', 'val') ?? node.val ?? 0)
-    return {
-      id,
-      label: String(node.label || id),
-      type,
-      kind: String(getNodeMetaValue(node, 'kind', 'node_type', 'source') || type),
-      description: String(getNodeMetaValue(node, 'description', 'summary', 'content') || '来自 KG 图谱接口的真实节点。'),
-      x: Math.round((50 + Math.cos(angle) * radiusX) * 10) / 10,
-      y: Math.round((50 + Math.sin(angle) * radiusY) * 10) / 10,
-      tone: toneForNodeType(type),
-      icon: iconForNodeType(type),
-      occurrences: Number.isFinite(occurrences) ? Math.max(0, occurrences) : 0,
-      status: '一致' as const,
-      relations: [],
+  const nodes: SnapshotStudioNode[] = rawNodes.map(
+    (node, index): SnapshotStudioNode => {
+      const type = getNodeType(node)
+      const angle = (index / total) * Math.PI * 2 - Math.PI / 2
+      const id = String(node.id || node.label || `node-${index}`)
+      const occurrences = Number(
+        getNodeMetaValue(
+          node,
+          'occurrences',
+          'count',
+          'event_count',
+          'degree',
+          'val'
+        ) ??
+          node.val ??
+          0
+      )
+      return {
+        id,
+        label: String(node.label || id),
+        type,
+        kind: String(
+          getNodeMetaValue(node, 'kind', 'node_type', 'source') || type
+        ),
+        description: String(
+          getNodeMetaValue(node, 'description', 'summary', 'content') ||
+            '来自 KG 图谱接口的真实节点。'
+        ),
+        x: Math.round((50 + Math.cos(angle) * radiusX) * 10) / 10,
+        y: Math.round((50 + Math.sin(angle) * radiusY) * 10) / 10,
+        tone: toneForNodeType(type),
+        icon: iconForNodeType(type),
+        occurrences: Number.isFinite(occurrences)
+          ? Math.max(0, occurrences)
+          : 0,
+        status: '一致' as const,
+        relations: [],
+      }
     }
-  })
+  )
 
   const nodeById = new Map(nodes.map((node) => [node.id, node]))
   const links = rawLinks
     .map((link) => {
       const source = getLinkEndpointId((link as KGGraphLink).source)
       const target = getLinkEndpointId((link as KGGraphLink).target)
-      if (!source || !target || !nodeById.has(source) || !nodeById.has(target)) return null
-      const label = String((link as any).label || (link as any).predicate || (link as any).relation || (link as any).type || '关联')
+      if (!source || !target || !nodeById.has(source) || !nodeById.has(target))
+        return null
+      const label = String(
+        (link as any).label ||
+          (link as any).predicate ||
+          (link as any).relation ||
+          (link as any).type ||
+          '关联'
+      )
       return {
         source,
         target,
         label,
-        strength: strengthForWeight((link as any).weight ?? (link as any).confidence ?? (link as any).score),
+        strength: strengthForWeight(
+          (link as any).weight ??
+            (link as any).confidence ??
+            (link as any).score
+        ),
       } satisfies SnapshotStudioLink
     })
     .filter((link): link is SnapshotStudioLink => Boolean(link))
@@ -289,8 +370,10 @@ function buildSnapshotStudioGraphFromKgGraph(graph: KGGraphResponse | null): {
   for (const link of links) {
     const source = nodeById.get(link.source)
     const target = nodeById.get(link.target)
-    if (source && target) source.relations.push({ label: link.label, target: target.label })
-    if (target && source) target.relations.push({ label: link.label, target: source.label })
+    if (source && target)
+      source.relations.push({ label: link.label, target: target.label })
+    if (target && source)
+      target.relations.push({ label: link.label, target: source.label })
   }
 
   for (const node of nodes) {
@@ -334,7 +417,10 @@ function buildPairedRows(
   })
 }
 
-function buildSideBySideDiffRows(aText: string, bText: string): SideBySideDiffRow[] {
+function buildSideBySideDiffRows(
+  aText: string,
+  bText: string
+): SideBySideDiffRow[] {
   const changes = diffLines(aText, bText)
   const leftCounter = { value: 1 }
   const rightCounter = { value: 1 }
@@ -346,7 +432,16 @@ function buildSideBySideDiffRows(aText: string, bText: string): SideBySideDiffRo
 
     if (!change.added && !change.removed) {
       const lines = splitCodeLines(change.value)
-      rows.push(...buildPairedRows(lines, lines, 'same', 'same', leftCounter, rightCounter))
+      rows.push(
+        ...buildPairedRows(
+          lines,
+          lines,
+          'same',
+          'same',
+          leftCounter,
+          rightCounter
+        )
+      )
       continue
     }
 
@@ -382,19 +477,39 @@ function buildSideBySideDiffRows(aText: string, bText: string): SideBySideDiffRo
     }
 
     if (change.removed) {
-      rows.push(...buildPairedRows(splitCodeLines(change.value), [], 'removed', 'empty', leftCounter, rightCounter))
+      rows.push(
+        ...buildPairedRows(
+          splitCodeLines(change.value),
+          [],
+          'removed',
+          'empty',
+          leftCounter,
+          rightCounter
+        )
+      )
       continue
     }
 
     if (change.added) {
-      rows.push(...buildPairedRows([], splitCodeLines(change.value), 'empty', 'added', leftCounter, rightCounter))
+      rows.push(
+        ...buildPairedRows(
+          [],
+          splitCodeLines(change.value),
+          'empty',
+          'added',
+          leftCounter,
+          rightCounter
+        )
+      )
     }
   }
 
   return rows
 }
 
-function tokenizeJsonLine(line: string): Array<{ text: string; kind: JsonTokenKind }> {
+function tokenizeJsonLine(
+  line: string
+): Array<{ text: string; kind: JsonTokenKind }> {
   const tokens: Array<{ text: string; kind: JsonTokenKind }> = []
   const pattern =
     /("(?:\\.|[^"\\])*")(\s*:)?|\b-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b|\btrue\b|\bfalse\b|\bnull\b|[{}\[\],:]/g
@@ -448,7 +563,8 @@ function tabLabelForView(view: SnapshotView) {
 function cellSurfaceClass(status: DiffCellStatus, side: 'left' | 'right') {
   if (status === 'removed') return 'bg-rose-50/90'
   if (status === 'added') return 'bg-emerald-50/90'
-  if (status === 'empty') return side === 'left' ? 'bg-rose-50/35' : 'bg-emerald-50/35'
+  if (status === 'empty')
+    return side === 'left' ? 'bg-rose-50/35' : 'bg-emerald-50/35'
   return 'bg-card'
 }
 
@@ -499,17 +615,38 @@ function SnapshotInlineStat({
             : 'text-muted-foreground'
 
   return (
-    <div className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1', toneClasses)}>
-      {icon ? <span className="flex h-3.5 w-3.5 items-center justify-center opacity-80">{icon}</span> : null}
-      <span className="text-[10.5px] font-medium uppercase tracking-[0.1em] opacity-80">{label}</span>
-      <span title={valueTitle} className={cn('font-mono text-[11px] font-semibold tabular-nums', valueTone, valueClassName)}>
+    <div
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1',
+        toneClasses
+      )}
+    >
+      {icon ? (
+        <span className="flex h-3.5 w-3.5 items-center justify-center opacity-80">
+          {icon}
+        </span>
+      ) : null}
+      <span className="text-[10.5px] font-medium uppercase tracking-[0.1em] opacity-80">
+        {label}
+      </span>
+      <span
+        title={valueTitle}
+        className={cn(
+          'font-mono text-[11px] font-semibold tabular-nums',
+          valueTone,
+          valueClassName
+        )}
+      >
         {value}
       </span>
     </div>
   )
 }
 
-function snapshotToneClassName(tone: SnapshotStudioNode['tone'], selected: boolean) {
+function snapshotToneClassName(
+  tone: SnapshotStudioNode['tone'],
+  selected: boolean
+) {
   const base =
     tone === 'green'
       ? 'from-emerald-400 to-teal-500 ring-emerald-200'
@@ -524,7 +661,10 @@ function snapshotToneClassName(tone: SnapshotStudioNode['tone'], selected: boole
               : tone === 'teal'
                 ? 'from-teal-400 to-cyan-500 ring-teal-200'
                 : 'from-blue-500 to-sky-500 ring-blue-200'
-  return cn(base, selected ? 'ring-4 ring-offset-4 ring-offset-background' : 'ring-1')
+  return cn(
+    base,
+    selected ? 'ring-4 ring-offset-4 ring-offset-background' : 'ring-1'
+  )
 }
 
 function SnapshotStudioToolbar({
@@ -570,7 +710,10 @@ function SnapshotStudioToolbar({
       <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           <div className="relative min-w-[210px] flex-[1_1_240px] sm:max-w-[320px]">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" aria-hidden="true" />
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70"
+              aria-hidden="true"
+            />
             <Input
               value={searchValue}
               onChange={(event) => onSearchChange(event.target.value)}
@@ -580,7 +723,12 @@ function SnapshotStudioToolbar({
           </div>
 
           <div className="inline-flex shrink-0 items-center gap-2">
-            <select aria-label="节点类型" value={nodeType} onChange={(event) => onNodeTypeChange(event.target.value)} className={cn(selectClassName, 'w-[92px] shrink-0')}>
+            <select
+              aria-label="节点类型"
+              value={nodeType}
+              onChange={(event) => onNodeTypeChange(event.target.value)}
+              className={cn(selectClassName, 'w-[92px] shrink-0')}
+            >
               <option value="all">节点类型</option>
               {nodeTypes.map((type) => (
                 <option key={type} value={type}>
@@ -589,7 +737,12 @@ function SnapshotStudioToolbar({
               ))}
             </select>
 
-            <select aria-label="关系类型" value={relationType} onChange={(event) => onRelationTypeChange(event.target.value)} className={cn(selectClassName, 'w-[92px] shrink-0')}>
+            <select
+              aria-label="关系类型"
+              value={relationType}
+              onChange={(event) => onRelationTypeChange(event.target.value)}
+              className={cn(selectClassName, 'w-[92px] shrink-0')}
+            >
               <option value="all">关系类型</option>
               {relationTypes.map((type) => (
                 <option key={type} value={type}>
@@ -599,7 +752,12 @@ function SnapshotStudioToolbar({
             </select>
           </div>
 
-          <select aria-label="布局" value={layout} onChange={(event) => onLayoutChange(event.target.value)} className={cn(selectClassName, 'w-[76px] shrink-0')}>
+          <select
+            aria-label="布局"
+            value={layout}
+            onChange={(event) => onLayoutChange(event.target.value)}
+            className={cn(selectClassName, 'w-[76px] shrink-0')}
+          >
             <option value="force">布局</option>
             <option value="radial">径向</option>
             <option value="layered">分层</option>
@@ -609,9 +767,21 @@ function SnapshotStudioToolbar({
         <div className="flex flex-wrap items-center gap-2 xl:justify-end">
           <div className="grid h-8 shrink-0 grid-cols-3 gap-1 rounded-xl border border-border/70 bg-card p-1 shadow-sm">
             {[
-              { value: 'graph', label: '图谱视图', icon: <Network className="h-3.5 w-3.5" aria-hidden="true" /> },
-              { value: 'table', label: '表格视图', icon: <Table2 className="h-3.5 w-3.5" aria-hidden="true" /> },
-              { value: 'stats', label: '统计视图', icon: <BarChart3 className="h-3.5 w-3.5" aria-hidden="true" /> },
+              {
+                value: 'graph',
+                label: '图谱视图',
+                icon: <Network className="h-3.5 w-3.5" aria-hidden="true" />,
+              },
+              {
+                value: 'table',
+                label: '表格视图',
+                icon: <Table2 className="h-3.5 w-3.5" aria-hidden="true" />,
+              },
+              {
+                value: 'stats',
+                label: '统计视图',
+                icon: <BarChart3 className="h-3.5 w-3.5" aria-hidden="true" />,
+              },
             ].map((item) => (
               <button
                 key={item.value}
@@ -622,7 +792,9 @@ function SnapshotStudioToolbar({
                     ? 'bg-foreground text-background shadow-sm'
                     : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
                 )}
-                onClick={() => onStudioViewChange(item.value as StudioCanvasView)}
+                onClick={() =>
+                  onStudioViewChange(item.value as StudioCanvasView)
+                }
               >
                 <span className="hidden 2xl:inline-flex">{item.icon}</span>
                 {item.label}
@@ -635,7 +807,10 @@ function SnapshotStudioToolbar({
             onClick={onDiffClick}
             disabled={isRunning}
           >
-            <ArrowRightLeft className={cn('h-3.5 w-3.5', isRunning && 'animate-spin')} aria-hidden="true" />
+            <ArrowRightLeft
+              className={cn('h-3.5 w-3.5', isRunning && 'animate-spin')}
+              aria-hidden="true"
+            />
             Diff 对比
           </Button>
 
@@ -644,22 +819,30 @@ function SnapshotStudioToolbar({
               type="button"
               className={cn(
                 'inline-flex items-center justify-center gap-1 rounded-lg px-2 text-[11.5px] font-medium transition-colors',
-                activeSnapshotView === 'a' ? 'bg-emerald-50 text-emerald-700' : 'text-muted-foreground hover:bg-muted/50'
+                activeSnapshotView === 'a'
+                  ? 'bg-emerald-50 text-emerald-700'
+                  : 'text-muted-foreground hover:bg-muted/50'
               )}
               onClick={() => onSnapshotViewChange('a')}
             >
-              <span className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-full bg-emerald-100 text-[10px] font-bold text-emerald-700">A</span>
+              <span className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-full bg-emerald-100 text-[10px] font-bold text-emerald-700">
+                A
+              </span>
               视图 A
             </button>
             <button
               type="button"
               className={cn(
                 'inline-flex items-center justify-center gap-1 rounded-lg px-2 text-[11.5px] font-medium transition-colors',
-                activeSnapshotView === 'b' ? 'bg-sky-50 text-sky-700' : 'text-muted-foreground hover:bg-muted/50'
+                activeSnapshotView === 'b'
+                  ? 'bg-sky-50 text-sky-700'
+                  : 'text-muted-foreground hover:bg-muted/50'
               )}
               onClick={() => onSnapshotViewChange('b')}
             >
-              <span className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-full bg-sky-100 text-[10px] font-bold text-sky-700">B</span>
+              <span className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-full bg-sky-100 text-[10px] font-bold text-sky-700">
+                B
+              </span>
               视图 B
             </button>
           </div>
@@ -695,7 +878,10 @@ function SnapshotGraphCanvas({
   onSelectNode: (nodeId: string) => void
 }>) {
   const normalizedSearch = searchValue.trim().toLowerCase()
-  const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes])
+  const nodeById = useMemo(
+    () => new Map(nodes.map((node) => [node.id, node])),
+    [nodes]
+  )
   const filteredNodeIds = useMemo(() => {
     const ids = new Set<string>()
     for (const node of nodes) {
@@ -711,12 +897,15 @@ function SnapshotGraphCanvas({
   }, [nodeType, nodes, normalizedSearch])
   const filteredLinks = useMemo(() => {
     return links.filter((link) => {
-      const matchesRelation = relationType === 'all' || link.label === relationType
-      const matchesSearch = !normalizedSearch || link.label.toLowerCase().includes(normalizedSearch)
+      const matchesRelation =
+        relationType === 'all' || link.label === relationType
+      const matchesSearch =
+        !normalizedSearch || link.label.toLowerCase().includes(normalizedSearch)
       return matchesRelation && matchesSearch
     })
   }, [links, normalizedSearch, relationType])
-  const hasFilter = Boolean(normalizedSearch) || nodeType !== 'all' || relationType !== 'all'
+  const hasFilter =
+    Boolean(normalizedSearch) || nodeType !== 'all' || relationType !== 'all'
   const isEmpty = nodes.length === 0
   const legendRows = useMemo(() => {
     const colorByTone: Record<SnapshotStudioNode['tone'], string> = {
@@ -740,14 +929,21 @@ function SnapshotGraphCanvas({
       data-testid="kg-snapshot-graph-canvas"
       className="relative min-h-0 flex-1 overflow-hidden bg-[radial-gradient(circle_at_center,rgba(37,99,235,0.05),transparent_44%),radial-gradient(circle_at_70%_20%,rgba(14,165,233,0.04),transparent_28%)]"
     >
-      <div className="absolute inset-0 opacity-[0.42] [background-image:radial-gradient(circle,hsl(var(--muted-foreground)/0.26)_1px,transparent_1px)] [background-size:14px_14px]" aria-hidden />
+      <div
+        className="absolute inset-0 opacity-[0.42] [background-image:radial-gradient(circle,hsl(var(--muted-foreground)/0.26)_1px,transparent_1px)] [background-size:14px_14px]"
+        aria-hidden
+      />
 
       <div className="absolute left-7 top-7 z-20 rounded-2xl border border-border/70 bg-card/90 p-3 shadow-lg backdrop-blur">
         <div className="grid grid-cols-[auto_auto] gap-x-4 gap-y-1 text-[12px]">
           <span className="text-muted-foreground">节点</span>
-          <span className="font-mono font-semibold tabular-nums text-foreground">{nodeCount}</span>
+          <span className="font-mono font-semibold tabular-nums text-foreground">
+            {nodeCount}
+          </span>
           <span className="text-muted-foreground">关系</span>
-          <span className="font-mono font-semibold tabular-nums text-foreground">{relationCount}</span>
+          <span className="font-mono font-semibold tabular-nums text-foreground">
+            {relationCount}
+          </span>
         </div>
       </div>
 
@@ -755,25 +951,55 @@ function SnapshotGraphCanvas({
         <div className="absolute inset-0 z-10 flex items-center justify-center px-8">
           <div className="flex max-w-[460px] flex-col items-center text-center">
             <div className="relative">
-              <div className="absolute inset-0 rounded-full bg-primary/10 blur-2xl" aria-hidden />
+              <div
+                className="absolute inset-0 rounded-full bg-primary/10 blur-2xl"
+                aria-hidden
+              />
               <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-border/70 bg-card text-primary shadow-sm">
-                {isLoading ? <RefreshCcw className="h-7 w-7 animate-spin" aria-hidden="true" /> : <Network className="h-7 w-7" aria-hidden="true" />}
+                {isLoading ? (
+                  <RefreshCcw
+                    className="h-7 w-7 animate-spin"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <Network className="h-7 w-7" aria-hidden="true" />
+                )}
               </div>
             </div>
             <div className="mt-4 text-[15px] font-semibold text-foreground">
               {isLoading ? '正在读取真实 KG 图谱' : '暂无图谱节点'}
             </div>
             <div className="mt-1.5 text-[12px] leading-5 text-muted-foreground">
-              {isLoading ? '系统会按当前数据集、文档范围和 pipeline hash 请求后端接口。' : emptyMessage || '当前作用域没有返回 KG 节点，请先完成文档入库或 KG 抽取。'}
+              {isLoading
+                ? '系统会按当前数据集、文档范围和 pipeline hash 请求后端接口。'
+                : emptyMessage ||
+                  '当前作用域没有返回 KG 节点，请先完成文档入库或 KG 抽取。'}
             </div>
           </div>
         </div>
       ) : null}
 
-      <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+      <svg
+        className="absolute inset-0 h-full w-full"
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        aria-hidden="true"
+      >
         <defs>
-          <marker id="snapshot-arrow" viewBox="0 0 10 10" refX="7.5" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="rgb(148 163 184)" opacity="0.72" />
+          <marker
+            id="snapshot-arrow"
+            viewBox="0 0 10 10"
+            refX="7.5"
+            refY="5"
+            markerWidth="4"
+            markerHeight="4"
+            orient="auto-start-reverse"
+          >
+            <path
+              d="M 0 0 L 10 5 L 0 10 z"
+              fill="rgb(148 163 184)"
+              opacity="0.72"
+            />
           </marker>
         </defs>
         {filteredLinks.map((link) => {
@@ -782,7 +1008,14 @@ function SnapshotGraphCanvas({
           if (!source || !target) return null
           const sourceVisible = filteredNodeIds.has(source.id)
           const targetVisible = filteredNodeIds.has(target.id)
-          const opacity = hasFilter && (!sourceVisible || !targetVisible) ? 0.08 : link.strength === 'strong' ? 0.56 : link.strength === 'medium' ? 0.38 : 0.24
+          const opacity =
+            hasFilter && (!sourceVisible || !targetVisible)
+              ? 0.08
+              : link.strength === 'strong'
+                ? 0.56
+                : link.strength === 'medium'
+                  ? 0.38
+                  : 0.24
           const midX = (source.x + target.x) / 2
           const midY = (source.y + target.y) / 2
           const curve = source.x < target.x ? -6 : 6
@@ -793,7 +1026,9 @@ function SnapshotGraphCanvas({
                 fill="none"
                 stroke="rgb(148 163 184)"
                 strokeWidth={link.strength === 'strong' ? 0.36 : 0.24}
-                strokeDasharray={link.strength === 'weak' ? '1.1 1.1' : undefined}
+                strokeDasharray={
+                  link.strength === 'weak' ? '1.1 1.1' : undefined
+                }
                 opacity={opacity}
                 markerEnd="url(#snapshot-arrow)"
               />
@@ -827,7 +1062,12 @@ function SnapshotGraphCanvas({
             onClick={() => onSelectNode(node.id)}
             aria-label={`选择节点 ${node.label}`}
           >
-            <span className={cn('flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br text-white shadow-xl shadow-slate-900/10', snapshotToneClassName(node.tone, selected))}>
+            <span
+              className={cn(
+                'flex h-14 w-14 items-center justify-center rounded-full text-info-foreground shadow-strong shadow-slate-900/10',
+                snapshotToneClassName(node.tone, selected)
+              )}
+            >
               {node.icon}
             </span>
             <span className="rounded-full bg-background/78 px-2 py-0.5 text-[12px] font-semibold text-foreground shadow-sm backdrop-blur">
@@ -839,13 +1079,33 @@ function SnapshotGraphCanvas({
 
       <div className="absolute right-6 top-[52%] z-20 flex -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/90 shadow-lg backdrop-blur">
         {[
-          { label: '拖动画布', icon: <Hand className="h-4 w-4" aria-hidden="true" /> },
-          { label: '框选', icon: <Maximize2 className="h-4 w-4" aria-hidden="true" /> },
-          { label: '放大', icon: <ZoomIn className="h-4 w-4" aria-hidden="true" /> },
-          { label: '缩小', icon: <ZoomOut className="h-4 w-4" aria-hidden="true" /> },
-          { label: '重置', icon: <SlidersHorizontal className="h-4 w-4" aria-hidden="true" /> },
+          {
+            label: '拖动画布',
+            icon: <Hand className="h-4 w-4" aria-hidden="true" />,
+          },
+          {
+            label: '框选',
+            icon: <Maximize2 className="h-4 w-4" aria-hidden="true" />,
+          },
+          {
+            label: '放大',
+            icon: <ZoomIn className="h-4 w-4" aria-hidden="true" />,
+          },
+          {
+            label: '缩小',
+            icon: <ZoomOut className="h-4 w-4" aria-hidden="true" />,
+          },
+          {
+            label: '重置',
+            icon: <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />,
+          },
         ].map((item) => (
-          <button key={item.label} type="button" title={item.label} className="flex h-11 w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground">
+          <button
+            key={item.label}
+            type="button"
+            title={item.label}
+            className="flex h-11 w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+          >
             {item.icon}
           </button>
         ))}
@@ -861,18 +1121,21 @@ function SnapshotGraphCanvas({
 
       <div className="absolute bottom-7 left-1/2 z-20 flex -translate-x-1/2 items-center gap-5 rounded-2xl border border-border/70 bg-card/92 px-5 py-2.5 text-[12px] text-muted-foreground shadow-lg backdrop-blur">
         <span className="font-medium text-foreground">图例:</span>
-        {legendRows.length ? legendRows.map(([label, color]) => (
-          <span key={label} className="inline-flex items-center gap-1.5">
-            <span className={cn('h-2 w-2 rounded-full', color)} aria-hidden />
-            {label}
-          </span>
-        )) : <span>暂无类型</span>}
+        {legendRows.length ? (
+          legendRows.map(([label, color]) => (
+            <span key={label} className="inline-flex items-center gap-1.5">
+              <span className={cn('h-2 w-2 rounded-full', color)} aria-hidden />
+              {label}
+            </span>
+          ))
+        ) : (
+          <span>暂无类型</span>
+        )}
         <span className="ml-4 inline-flex items-center gap-2">
           关系强度:
           <span className="h-px w-10 bg-slate-300" aria-hidden />
           弱
-          <span className="h-0.5 w-14 bg-slate-500" aria-hidden />
-          强
+          <span className="h-0.5 w-14 bg-slate-500" aria-hidden />强
         </span>
       </div>
     </div>
@@ -889,8 +1152,15 @@ function SnapshotNodeDetailsRail({
   return (
     <aside className="hidden min-h-0 w-[332px] shrink-0 flex-col border-l border-border/70 bg-background xl:flex">
       <div className="flex shrink-0 items-center justify-between border-b border-border/70 px-4 py-4">
-        <div className="text-[14px] font-semibold text-foreground">节点详情</div>
-        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-muted-foreground" title="收起详情">
+        <div className="text-[14px] font-semibold text-foreground">
+          节点详情
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 rounded-lg text-muted-foreground"
+          title="收起详情"
+        >
           <X className="h-4 w-4" aria-hidden="true" />
         </Button>
       </div>
@@ -899,11 +1169,18 @@ function SnapshotNodeDetailsRail({
         {selectedNode ? (
           <>
             <div className="flex items-start gap-3">
-              <div className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br text-white shadow-lg', snapshotToneClassName(selectedNode.tone, false))}>
+              <div
+                className={cn(
+                  'flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-info-foreground shadow-lg',
+                  snapshotToneClassName(selectedNode.tone, false)
+                )}
+              >
                 {selectedNode.icon}
               </div>
               <div className="min-w-0">
-                <div className="truncate text-[16px] font-semibold text-foreground">{selectedNode.label}</div>
+                <div className="truncate text-[16px] font-semibold text-foreground">
+                  {selectedNode.label}
+                </div>
                 <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
                   <span>ID: {selectedNode.id}</span>
                   <Badge variant="soft" className="text-[10px]">
@@ -914,7 +1191,9 @@ function SnapshotNodeDetailsRail({
             </div>
 
             <section className="mt-5 rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
-              <div className="text-[12px] font-semibold text-foreground">属性</div>
+              <div className="text-[12px] font-semibold text-foreground">
+                属性
+              </div>
               <div className="mt-3 space-y-3 text-[12px]">
                 {[
                   ['名称', selectedNode.label],
@@ -923,7 +1202,10 @@ function SnapshotNodeDetailsRail({
                   ['出现次数', String(selectedNode.occurrences)],
                   ['A/B 状态', selectedNode.status],
                 ].map(([label, value]) => (
-                  <div key={label} className="grid grid-cols-[64px_minmax(0,1fr)] gap-3">
+                  <div
+                    key={label}
+                    className="grid grid-cols-[64px_minmax(0,1fr)] gap-3"
+                  >
                     <span className="text-muted-foreground">{label}</span>
                     <span className="min-w-0 text-foreground">{value}</span>
                   </div>
@@ -933,28 +1215,47 @@ function SnapshotNodeDetailsRail({
 
             <section className="mt-4 rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
               <div className="flex items-center justify-between">
-                <div className="text-[12px] font-semibold text-foreground">关联关系 ({selectedNode.relations.length})</div>
+                <div className="text-[12px] font-semibold text-foreground">
+                  关联关系 ({selectedNode.relations.length})
+                </div>
               </div>
               <div className="mt-3 divide-y divide-border/60">
                 {selectedNode.relations.map((relation) => (
-                  <button key={`${relation.label}:${relation.target}`} type="button" className="flex w-full items-center justify-between gap-3 py-2 text-left text-[12px] transition-colors hover:text-primary">
+                  <button
+                    key={`${relation.label}:${relation.target}`}
+                    type="button"
+                    className="flex w-full items-center justify-between gap-3 py-2 text-left text-[12px] transition-colors hover:text-primary"
+                  >
                     <span className="inline-flex items-center gap-2 text-muted-foreground">
-                      <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+                      <ChevronRight
+                        className="h-3.5 w-3.5"
+                        aria-hidden="true"
+                      />
                       {relation.label}
                     </span>
-                    <span className="truncate font-medium text-foreground">{relation.target}</span>
+                    <span className="truncate font-medium text-foreground">
+                      {relation.target}
+                    </span>
                   </button>
                 ))}
               </div>
-              <Button variant="link" className="mt-2 h-auto p-0 text-[12px] font-semibold">
+              <Button
+                variant="link"
+                className="mt-2 h-auto p-0 text-[12px] font-semibold"
+              >
                 查看全部 →
               </Button>
             </section>
           </>
         ) : (
           <div className="flex min-h-[220px] flex-col items-center justify-center rounded-2xl border border-dashed border-border/70 bg-card/60 px-4 text-center">
-            <Network className="h-8 w-8 text-muted-foreground/50" aria-hidden="true" />
-            <div className="mt-3 text-[13px] font-semibold text-foreground">未选中节点</div>
+            <Network
+              className="h-8 w-8 text-muted-foreground/50"
+              aria-hidden="true"
+            />
+            <div className="mt-3 text-[13px] font-semibold text-foreground">
+              未选中节点
+            </div>
             <div className="mt-1 text-[11px] leading-5 text-muted-foreground">
               图谱返回节点后，点击任一节点即可查看真实属性和关联关系。
             </div>
@@ -962,15 +1263,25 @@ function SnapshotNodeDetailsRail({
         )}
 
         <section className="mt-4 rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
-          <div className="text-[12px] font-semibold text-foreground">Diff 概览</div>
+          <div className="text-[12px] font-semibold text-foreground">
+            Diff 概览
+          </div>
           <div className="mt-3 space-y-2">
             {diffOverview.map((item) => (
-              <div key={item.label} className="flex items-center justify-between gap-3 text-[12px]">
+              <div
+                key={item.label}
+                className="flex items-center justify-between gap-3 text-[12px]"
+              >
                 <span className="inline-flex items-center gap-2 text-muted-foreground">
-                  <span className={cn('h-2.5 w-2.5 rounded-full', item.tone)} aria-hidden />
+                  <span
+                    className={cn('h-2.5 w-2.5 rounded-full', item.tone)}
+                    aria-hidden
+                  />
                   {item.label}
                 </span>
-                <span className="font-mono font-semibold tabular-nums text-foreground">{item.value}</span>
+                <span className="font-mono font-semibold tabular-nums text-foreground">
+                  {item.value}
+                </span>
               </div>
             ))}
           </div>
@@ -995,10 +1306,16 @@ function WorkspaceSection({
     <section className="space-y-2.5 rounded-xl border border-border/70 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.18))] p-3 shadow-sm">
       <div className="flex items-center justify-between gap-2">
         <div className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-          {icon ? <span className="flex h-3.5 w-3.5 items-center justify-center text-primary/70">{icon}</span> : null}
+          {icon ? (
+            <span className="flex h-3.5 w-3.5 items-center justify-center text-primary/70">
+              {icon}
+            </span>
+          ) : null}
           {label}
         </div>
-        {hint ? <span className="text-[10px] text-muted-foreground/70">{hint}</span> : null}
+        {hint ? (
+          <span className="text-[10px] text-muted-foreground/70">{hint}</span>
+        ) : null}
       </div>
       {children}
     </section>
@@ -1027,9 +1344,17 @@ function SectionHeading({
           </div>
         ) : null}
         <div className="min-w-0">
-          <div className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{eyebrow}</div>
-          <div className="mt-0.5 text-[15px] font-semibold tracking-[-0.01em] text-foreground md:text-base">{title}</div>
-          {description ? <div className="mt-1 max-w-[640px] text-[12px] leading-5 text-muted-foreground">{description}</div> : null}
+          <div className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            {eyebrow}
+          </div>
+          <div className="mt-0.5 text-[15px] font-semibold tracking-[-0.01em] text-foreground md:text-base">
+            {title}
+          </div>
+          {description ? (
+            <div className="mt-1 max-w-[640px] text-[12px] leading-5 text-muted-foreground">
+              {description}
+            </div>
+          ) : null}
         </div>
       </div>
       {extra ? <div className="shrink-0">{extra}</div> : null}
@@ -1050,16 +1375,30 @@ function DiffEmptyState({
     <div className="flex h-full min-h-[280px] items-center justify-center px-6 py-10">
       <div className="flex max-w-[440px] flex-col items-center text-center">
         <div className="relative">
-          <div className="absolute inset-0 -z-0 rounded-full bg-[radial-gradient(circle,hsl(var(--primary)/0.18),transparent_60%)] blur-xl" aria-hidden />
+          <div
+            className="absolute inset-0 -z-0 rounded-full bg-[radial-gradient(circle,hsl(var(--primary)/0.18),transparent_60%)] blur-xl"
+            aria-hidden
+          />
           <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-border/60 bg-[linear-gradient(180deg,hsl(var(--card)),hsl(var(--muted)/0.30))] text-primary shadow-sm">
-            <ArrowRightLeft className="h-7 w-7" strokeWidth={1.5} aria-hidden="true" />
+            <ArrowRightLeft
+              className="h-7 w-7"
+              strokeWidth={1.5}
+              aria-hidden="true"
+            />
           </div>
         </div>
-        <h3 className="mt-4 text-[15px] font-semibold tracking-tight text-foreground">{title}</h3>
-        <p className="mt-1.5 text-[12px] leading-5 text-muted-foreground">{description}</p>
+        <h3 className="mt-4 text-[15px] font-semibold text-foreground">
+          {title}
+        </h3>
+        <p className="mt-1.5 text-[12px] leading-5 text-muted-foreground">
+          {description}
+        </p>
         {hint ? (
           <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card px-3 py-1 text-[11px] text-muted-foreground">
-            <CircleDashed className="h-3.5 w-3.5 text-primary/60" aria-hidden="true" />
+            <CircleDashed
+              className="h-3.5 w-3.5 text-primary/60"
+              aria-hidden="true"
+            />
             {hint}
           </div>
         ) : null}
@@ -1094,17 +1433,31 @@ function auditSeverityMeta(severity: AuditSeverity): {
   }
 }
 
-function SnapshotChartTooltip({ active, payload }: Readonly<SnapshotChartTooltipProps>) {
+function SnapshotChartTooltip({
+  active,
+  payload,
+}: Readonly<SnapshotChartTooltipProps>) {
   const row = payload?.[0]?.payload
   if (!active || !row) return null
   const sign = row.delta > 0 ? '+' : ''
   return (
     <div className="rounded-lg border border-border/70 bg-card px-3 py-2 shadow-sm">
-      <div className="font-mono text-[11px] text-muted-foreground">{row.key}</div>
+      <div className="font-mono text-[11px] text-muted-foreground">
+        {row.key}
+      </div>
       <div className="mt-1 flex items-center gap-2 text-[11px]">
         <span className="font-mono text-muted-foreground">A {row.a}</span>
         <span className="font-mono text-muted-foreground">B {row.b}</span>
-        <span className={cn('font-mono font-semibold', row.delta > 0 ? 'text-emerald-700' : row.delta < 0 ? 'text-rose-700' : 'text-foreground')}>
+        <span
+          className={cn(
+            'font-mono font-semibold',
+            row.delta > 0
+              ? 'text-emerald-700'
+              : row.delta < 0
+                ? 'text-rose-700'
+                : 'text-foreground'
+          )}
+        >
           Δ {sign}
           {row.delta}
         </span>
@@ -1113,14 +1466,24 @@ function SnapshotChartTooltip({ active, payload }: Readonly<SnapshotChartTooltip
   )
 }
 
-function exactDiffCount(summary: SnapshotExactDiffSummary | null | undefined, key: keyof SnapshotExactDiffSummary): number {
+function exactDiffCount(
+  summary: SnapshotExactDiffSummary | null | undefined,
+  key: keyof SnapshotExactDiffSummary
+): number {
   const value = Number(summary?.[key] ?? 0)
   return Number.isFinite(value) ? value : 0
 }
 
-function exactDiffSample(diff: SnapshotDiffPayload | null, key: string): Array<Record<string, unknown>> {
+function exactDiffSample(
+  diff: SnapshotDiffPayload | null,
+  key: string
+): Array<Record<string, unknown>> {
   const value = diff?.[key]
-  return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object')) : []
+  return Array.isArray(value)
+    ? value.filter((item): item is Record<string, unknown> =>
+        Boolean(item && typeof item === 'object')
+      )
+    : []
 }
 
 function DriftCounterCluster({
@@ -1153,15 +1516,21 @@ function DriftCounterCluster({
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <span className="inline-flex min-w-[40px] items-center justify-center gap-0.5 rounded-md bg-emerald-50 px-1.5 py-1 font-mono text-[11px] font-semibold tabular-nums text-emerald-700 ring-1 ring-emerald-200/60">
-            <span aria-hidden className="opacity-70">+</span>
+            <span aria-hidden className="opacity-70">
+              +
+            </span>
             {added}
           </span>
           <span className="inline-flex min-w-[40px] items-center justify-center gap-0.5 rounded-md bg-rose-50 px-1.5 py-1 font-mono text-[11px] font-semibold tabular-nums text-rose-700 ring-1 ring-rose-200/60">
-            <span aria-hidden className="opacity-70">−</span>
+            <span aria-hidden className="opacity-70">
+              −
+            </span>
             {removed}
           </span>
           <span className="inline-flex min-w-[40px] items-center justify-center gap-0.5 rounded-md bg-amber-50 px-1.5 py-1 font-mono text-[11px] font-semibold tabular-nums text-amber-700 ring-1 ring-amber-200/60">
-            <span aria-hidden className="opacity-70">Δ</span>
+            <span aria-hidden className="opacity-70">
+              Δ
+            </span>
             {changed}
           </span>
         </div>
@@ -1170,17 +1539,55 @@ function DriftCounterCluster({
   )
 }
 
-function SnapshotExactDriftPanel({ diff }: Readonly<{ diff: SnapshotDiffPayload | null }>) {
+function SnapshotExactDriftPanel({
+  diff,
+}: Readonly<{ diff: SnapshotDiffPayload | null }>) {
   const nodeSummary = diff?.node_diff
   const edgeSummary = diff?.edge_diff
   const hasExactDiff = Boolean(nodeSummary || edgeSummary)
   const sampleRows = [
-    { label: '新增节点', key: 'nodes_added', icon: <Database className="h-3.5 w-3.5" />, tone: 'text-emerald-700', tint: 'bg-emerald-50' },
-    { label: '移除节点', key: 'nodes_removed', icon: <Database className="h-3.5 w-3.5" />, tone: 'text-rose-700', tint: 'bg-rose-50' },
-    { label: '变更节点', key: 'nodes_changed', icon: <Database className="h-3.5 w-3.5" />, tone: 'text-amber-700', tint: 'bg-amber-50' },
-    { label: '新增边', key: 'edges_added', icon: <Link2 className="h-3.5 w-3.5" />, tone: 'text-emerald-700', tint: 'bg-emerald-50' },
-    { label: '移除边', key: 'edges_removed', icon: <Link2 className="h-3.5 w-3.5" />, tone: 'text-rose-700', tint: 'bg-rose-50' },
-    { label: '变更边', key: 'edges_changed', icon: <Link2 className="h-3.5 w-3.5" />, tone: 'text-amber-700', tint: 'bg-amber-50' },
+    {
+      label: '新增节点',
+      key: 'nodes_added',
+      icon: <Database className="h-3.5 w-3.5" />,
+      tone: 'text-emerald-700',
+      tint: 'bg-emerald-50',
+    },
+    {
+      label: '移除节点',
+      key: 'nodes_removed',
+      icon: <Database className="h-3.5 w-3.5" />,
+      tone: 'text-rose-700',
+      tint: 'bg-rose-50',
+    },
+    {
+      label: '变更节点',
+      key: 'nodes_changed',
+      icon: <Database className="h-3.5 w-3.5" />,
+      tone: 'text-amber-700',
+      tint: 'bg-amber-50',
+    },
+    {
+      label: '新增边',
+      key: 'edges_added',
+      icon: <Link2 className="h-3.5 w-3.5" />,
+      tone: 'text-emerald-700',
+      tint: 'bg-emerald-50',
+    },
+    {
+      label: '移除边',
+      key: 'edges_removed',
+      icon: <Link2 className="h-3.5 w-3.5" />,
+      tone: 'text-rose-700',
+      tint: 'bg-rose-50',
+    },
+    {
+      label: '变更边',
+      key: 'edges_changed',
+      icon: <Link2 className="h-3.5 w-3.5" />,
+      tone: 'text-amber-700',
+      tint: 'bg-amber-50',
+    },
   ]
 
   return (
@@ -1188,7 +1595,10 @@ function SnapshotExactDriftPanel({ diff }: Readonly<{ diff: SnapshotDiffPayload 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-            <Sparkles className="h-3.5 w-3.5 text-primary/70" aria-hidden="true" />
+            <Sparkles
+              className="h-3.5 w-3.5 text-primary/70"
+              aria-hidden="true"
+            />
             精确节点/边 Diff
           </div>
           <div className="mt-1 max-w-[560px] text-[11px] leading-5 text-muted-foreground">
@@ -1224,17 +1634,36 @@ function SnapshotExactDriftPanel({ diff }: Readonly<{ diff: SnapshotDiffPayload 
               .map((item) => String(item.name || item.id || 'unknown'))
               .join(' / ')
             return (
-              <div key={row.key} className="rounded-lg border border-border/70 bg-card px-3 py-2 transition-shadow hover:shadow-sm">
+              <div
+                key={row.key}
+                className="rounded-lg border border-border/70 bg-card px-3 py-2 transition-shadow hover:shadow-sm"
+              >
                 <div className="flex items-center justify-between gap-2">
                   <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
-                    <span className={cn('flex h-5 w-5 items-center justify-center rounded-md', row.tint, row.tone)}>
+                    <span
+                      className={cn(
+                        'flex h-5 w-5 items-center justify-center rounded-md',
+                        row.tint,
+                        row.tone
+                      )}
+                    >
                       {row.icon}
                     </span>
                     {row.label}
                   </span>
-                  <span className={cn('font-mono text-[11px] font-semibold tabular-nums', row.tone)}>{items.length}</span>
+                  <span
+                    className={cn(
+                      'font-mono text-[11px] font-semibold tabular-nums',
+                      row.tone
+                    )}
+                  >
+                    {items.length}
+                  </span>
                 </div>
-                <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground" title={preview || '暂无样本'}>
+                <div
+                  className="mt-1 truncate font-mono text-[11px] text-muted-foreground"
+                  title={preview || '暂无样本'}
+                >
                   {preview || '暂无样本'}
                 </div>
               </div>
@@ -1269,16 +1698,26 @@ function JsonLine({
     <div
       className={cn(
         'grid min-w-0 grid-cols-[52px_minmax(0,1fr)] border-b border-border/60 text-[12px] leading-6',
-        status === 'single' ? 'bg-transparent' : cellSurfaceClass(status, side === 'single' ? 'left' : side)
+        status === 'single'
+          ? 'bg-transparent'
+          : cellSurfaceClass(status, side === 'single' ? 'left' : side)
       )}
     >
-      <div className={cn('select-none border-r border-border/70 px-3 text-right font-mono tabular-nums', lineNumberClass)}>
+      <div
+        className={cn(
+          'select-none border-r border-border/70 px-3 text-right font-mono tabular-nums',
+          lineNumberClass
+        )}
+      >
         {lineNumber ?? ''}
       </div>
       <div className="px-3 font-mono">
         <span className="inline-block min-w-full whitespace-pre">
           {tokens.map((token, index) => (
-            <span key={`${lineNumber ?? 'x'}:${index}:${token.kind}`} className={tokenClassName(token.kind)}>
+            <span
+              key={`${lineNumber ?? 'x'}:${index}:${token.kind}`}
+              className={tokenClassName(token.kind)}
+            >
               {token.text}
             </span>
           ))}
@@ -1314,10 +1753,18 @@ function JsonDiffCell({
       >
         {cell.lineNumber ?? ''}
       </div>
-      <div className={cn('px-3 py-0.5 font-mono text-[12px] leading-6', cellSurfaceClass(cell.status, side))}>
+      <div
+        className={cn(
+          'px-3 py-0.5 font-mono text-[12px] leading-6',
+          cellSurfaceClass(cell.status, side)
+        )}
+      >
         <span className="inline-block min-w-full whitespace-pre">
           {tokens.map((token, index) => (
-            <span key={`${cell.lineNumber ?? side}:${index}:${token.kind}`} className={tokenClassName(token.kind)}>
+            <span
+              key={`${cell.lineNumber ?? side}:${index}:${token.kind}`}
+              className={tokenClassName(token.kind)}
+            >
               {token.text}
             </span>
           ))}
@@ -1349,21 +1796,41 @@ function JsonCodePane({
   const lines = useMemo(() => splitCodeLines(code), [code])
 
   return (
-      <div className="flex h-full min-h-0 flex-col bg-card">
-        <div className="flex shrink-0 items-center justify-between border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.15))] px-4 py-2.5">
+    <div className="flex h-full min-h-0 flex-col bg-card">
+      <div className="flex shrink-0 items-center justify-between border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.15))] px-4 py-2.5">
         <div className="min-w-0">
           <div className="inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-card px-2 py-0.5 text-[10.5px] font-semibold tracking-[0.08em] text-muted-foreground">
             <FileJson className="h-3 w-3 text-primary/70" aria-hidden="true" />
             {label}
           </div>
-          <div className="mt-1 truncate text-[13px] font-semibold text-foreground">{title}</div>
-          {subtitle ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{subtitle}</div> : null}
+          <div className="mt-1 truncate text-[13px] font-semibold text-foreground">
+            {title}
+          </div>
+          {subtitle ? (
+            <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+              {subtitle}
+            </div>
+          ) : null}
         </div>
         <div className="ml-4 flex shrink-0 items-center gap-1 rounded-md border border-border/70 bg-card p-0.5">
-          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" title="复制 JSON" onClick={onCopy} disabled={isEmpty}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 rounded-lg"
+            title="复制 JSON"
+            onClick={onCopy}
+            disabled={isEmpty}
+          >
             <Copy className="h-4 w-4" aria-hidden="true" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" title="导出 JSON" onClick={onDownload} disabled={isEmpty}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 rounded-lg"
+            title="导出 JSON"
+            onClick={onDownload}
+            disabled={isEmpty}
+          >
             <Download className="h-4 w-4" aria-hidden="true" />
           </Button>
         </div>
@@ -1375,7 +1842,12 @@ function JsonCodePane({
         ) : (
           <div className="min-w-max">
             {lines.map((line, index) => (
-              <JsonLine key={`${title}:${index + 1}`} lineNumber={index + 1} text={line} status="single" />
+              <JsonLine
+                key={`${title}:${index + 1}`}
+                lineNumber={index + 1}
+                text={line}
+                status="single"
+              />
             ))}
           </div>
         )}
@@ -1411,16 +1883,22 @@ function SnapshotDiffView({
   onCopy: () => void
   onDownload: () => void
 }>) {
-  const rows = useMemo(() => buildSideBySideDiffRows(leftCode, rightCode), [leftCode, rightCode])
+  const rows = useMemo(
+    () => buildSideBySideDiffRows(leftCode, rightCode),
+    [leftCode, rightCode]
+  )
 
   return (
-      <div className="flex h-full min-h-0 flex-col bg-card">
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border/70 bg-background px-4 py-2">
+    <div className="flex h-full min-h-0 flex-col bg-card">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border/70 bg-background px-4 py-2">
         <div className="min-w-0 flex-1">
           {typeDrift.length > 0 ? (
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                <Layers className="h-3.5 w-3.5 text-primary/70" aria-hidden="true" />
+                <Layers
+                  className="h-3.5 w-3.5 text-primary/70"
+                  aria-hidden="true"
+                />
                 Type Drift
               </span>
               {typeDrift.slice(0, 8).map((row) => {
@@ -1434,23 +1912,42 @@ function SnapshotDiffView({
                     className="inline-flex items-center gap-1 font-mono text-[11px]"
                   >
                     <span className="text-muted-foreground">{type}</span>
-                    <span className={toneClassForDelta(delta)}>{sign + delta}</span>
+                    <span className={toneClassForDelta(delta)}>
+                      {sign + delta}
+                    </span>
                   </Badge>
                 )
               })}
             </div>
           ) : (
             <span className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              <Layers className="h-3.5 w-3.5 text-muted-foreground/60" aria-hidden="true" />
+              <Layers
+                className="h-3.5 w-3.5 text-muted-foreground/60"
+                aria-hidden="true"
+              />
               Type Drift · 暂无
             </span>
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" title="复制 Diff JSON" onClick={onCopy} disabled={isEmpty}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 rounded-lg"
+            title="复制 Diff JSON"
+            onClick={onCopy}
+            disabled={isEmpty}
+          >
             <Copy className="h-4 w-4" aria-hidden="true" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" title="导出 Diff JSON" onClick={onDownload} disabled={isEmpty}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 rounded-lg"
+            title="导出 Diff JSON"
+            onClick={onDownload}
+            disabled={isEmpty}
+          >
             <Download className="h-4 w-4" aria-hidden="true" />
           </Button>
         </div>
@@ -1464,20 +1961,39 @@ function SnapshotDiffView({
         ) : (
           <div className="min-w-[980px]">
             <div className="sticky top-0 z-10 grid grid-cols-[52px_minmax(0,1fr)_52px_minmax(0,1fr)] border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.10))] text-[12px] backdrop-blur">
-              <div className="border-r border-border/70 px-3 py-2 text-right font-mono text-muted-foreground">#</div>
-              <div className="border-r border-border/70 px-3 py-2">
-                <div className="text-[12px] font-semibold tracking-[-0.01em] text-foreground">{titleA}</div>
-                {subtitleA ? <div className="truncate text-[11px] text-muted-foreground">{subtitleA}</div> : null}
+              <div className="border-r border-border/70 px-3 py-2 text-right font-mono text-muted-foreground">
+                #
               </div>
-              <div className="border-r border-border/70 px-3 py-2 text-right font-mono text-muted-foreground">#</div>
+              <div className="border-r border-border/70 px-3 py-2">
+                <div className="text-[12px] font-semibold tracking-[-0.01em] text-foreground">
+                  {titleA}
+                </div>
+                {subtitleA ? (
+                  <div className="truncate text-[11px] text-muted-foreground">
+                    {subtitleA}
+                  </div>
+                ) : null}
+              </div>
+              <div className="border-r border-border/70 px-3 py-2 text-right font-mono text-muted-foreground">
+                #
+              </div>
               <div className="px-3 py-2">
-                <div className="text-[12px] font-semibold tracking-[-0.01em] text-foreground">{titleB}</div>
-                {subtitleB ? <div className="truncate text-[11px] text-muted-foreground">{subtitleB}</div> : null}
+                <div className="text-[12px] font-semibold tracking-[-0.01em] text-foreground">
+                  {titleB}
+                </div>
+                {subtitleB ? (
+                  <div className="truncate text-[11px] text-muted-foreground">
+                    {subtitleB}
+                  </div>
+                ) : null}
               </div>
             </div>
 
             {rows.map((row, index) => (
-              <div key={`diff-row:${index}`} className="grid grid-cols-[52px_minmax(0,1fr)_52px_minmax(0,1fr)]">
+              <div
+                key={`diff-row:${index}`}
+                className="grid grid-cols-[52px_minmax(0,1fr)_52px_minmax(0,1fr)]"
+              >
                 <JsonDiffCell cell={row.left} side="left" />
                 <JsonDiffCell cell={row.right} side="right" />
               </div>
@@ -1509,9 +2025,18 @@ function SnapshotAuditPanel({
   onCompactRowsChange: (value: boolean) => void
 }>) {
   const severityMeta = auditSeverityMeta(severity)
-  const chartRows = includeZeroDeltas ? deltaRows : deltaRows.filter((row) => row.delta !== 0)
-  const shownDriftRows = compactRows ? typeDriftRows.slice(0, 14) : typeDriftRows
-  const driftScoreTone: 'positive' | 'warning' | 'negative' = severity === 'healthy' ? 'positive' : severity === 'notice' ? 'warning' : 'negative'
+  const chartRows = includeZeroDeltas
+    ? deltaRows
+    : deltaRows.filter((row) => row.delta !== 0)
+  const shownDriftRows = compactRows
+    ? typeDriftRows.slice(0, 14)
+    : typeDriftRows
+  const driftScoreTone: 'positive' | 'warning' | 'negative' =
+    severity === 'healthy'
+      ? 'positive'
+      : severity === 'notice'
+        ? 'warning'
+        : 'negative'
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -1522,7 +2047,10 @@ function SnapshotAuditPanel({
           description="快速查看快照差异强度、类型漂移与整体风险等级。"
           icon={<BarChart3 className="h-5 w-5" aria-hidden="true" />}
           extra={
-            <Badge variant={severityMeta.variant} className="inline-flex items-center gap-1.5 font-mono text-[11px]">
+            <Badge
+              variant={severityMeta.variant}
+              className="inline-flex items-center gap-1.5 font-mono text-[11px]"
+            >
               {severityMeta.icon}
               {severityMeta.label}
             </Badge>
@@ -1554,12 +2082,18 @@ function SnapshotAuditPanel({
         <div className="min-h-0 border-b border-border/70 xl:border-b-0 xl:border-r">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 px-4 py-2.5">
             <div className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              <BarChart3 className="h-3.5 w-3.5 text-primary/70" aria-hidden="true" />
+              <BarChart3
+                className="h-3.5 w-3.5 text-primary/70"
+                aria-hidden="true"
+              />
               Delta Distribution
             </div>
             <div className="flex items-center gap-4">
               <label className="inline-flex items-center gap-2 text-[11px] text-muted-foreground">
-                <Switch checked={includeZeroDeltas} onCheckedChange={onIncludeZeroDeltasChange} />
+                <Switch
+                  checked={includeZeroDeltas}
+                  onCheckedChange={onIncludeZeroDeltasChange}
+                />
                 显示 0 值
               </label>
             </div>
@@ -1567,14 +2101,43 @@ function SnapshotAuditPanel({
 
           <div className="px-3 py-2">
             <SafeResponsiveChart className="h-[280px]" minHeight={280}>
-              <BarChart data={chartRows} margin={{ top: 8, right: 10, left: -16, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                <XAxis dataKey="key" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} allowDecimals={false} />
-                <Tooltip cursor={{ fill: 'rgba(148, 163, 184, 0.08)' }} content={<SnapshotChartTooltip />} />
+              <BarChart
+                data={chartRows}
+                margin={{ top: 8, right: 10, left: -16, bottom: 0 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  vertical={false}
+                  stroke="#e2e8f0"
+                />
+                <XAxis
+                  dataKey="key"
+                  tick={{ fontSize: 11, fill: '#64748b' }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  tick={{ fontSize: 11, fill: '#64748b' }}
+                  axisLine={false}
+                  tickLine={false}
+                  allowDecimals={false}
+                />
+                <Tooltip
+                  cursor={{ fill: 'rgba(148, 163, 184, 0.08)' }}
+                  content={<SnapshotChartTooltip />}
+                />
                 <Bar dataKey="delta" radius={[6, 6, 0, 0]}>
                   {chartRows.map((row) => (
-                    <Cell key={`delta:${row.key}`} fill={row.delta > 0 ? '#10b981' : row.delta < 0 ? '#f43f5e' : '#94a3b8'} />
+                    <Cell
+                      key={`delta:${row.key}`}
+                      fill={
+                        row.delta > 0
+                          ? '#10b981'
+                          : row.delta < 0
+                            ? '#f43f5e'
+                            : '#94a3b8'
+                      }
+                    />
                   ))}
                 </Bar>
               </BarChart>
@@ -1585,11 +2148,17 @@ function SnapshotAuditPanel({
         <div className="min-h-0 flex flex-col">
           <div className="flex items-center justify-between gap-2 border-b border-border/70 px-4 py-2.5">
             <div className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              <Layers className="h-3.5 w-3.5 text-primary/70" aria-hidden="true" />
+              <Layers
+                className="h-3.5 w-3.5 text-primary/70"
+                aria-hidden="true"
+              />
               Type Drift Rows
             </div>
             <label className="inline-flex items-center gap-2 text-[11px] text-muted-foreground">
-              <Switch checked={compactRows} onCheckedChange={onCompactRowsChange} />
+              <Switch
+                checked={compactRows}
+                onCheckedChange={onCompactRowsChange}
+              />
               紧凑模式
             </label>
           </div>
@@ -1600,8 +2169,18 @@ function SnapshotAuditPanel({
                 const type = String(row.type || 'unknown')
                 const delta = Number(row.delta ?? 0)
                 const sign = delta > 0 ? '+' : ''
-                const tone = delta > 0 ? 'text-emerald-700' : delta < 0 ? 'text-rose-700' : 'text-muted-foreground'
-                const tint = delta > 0 ? 'bg-emerald-50 ring-emerald-200/60' : delta < 0 ? 'bg-rose-50 ring-rose-200/60' : 'bg-muted/40 ring-border'
+                const tone =
+                  delta > 0
+                    ? 'text-emerald-700'
+                    : delta < 0
+                      ? 'text-rose-700'
+                      : 'text-muted-foreground'
+                const tint =
+                  delta > 0
+                    ? 'bg-emerald-50 ring-emerald-200/60'
+                    : delta < 0
+                      ? 'bg-rose-50 ring-rose-200/60'
+                      : 'bg-muted/40 ring-border'
                 return (
                   <button
                     key={`drift:${type}:${index}`}
@@ -1609,12 +2188,29 @@ function SnapshotAuditPanel({
                     className="grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 border-b border-border/60 px-4 py-2 text-left transition-colors hover:bg-muted/30"
                     title={`${type} Δ ${sign}${delta}`}
                   >
-                    <span className="truncate font-mono text-[12px] text-foreground">{type}</span>
-                    <span className={cn('inline-flex min-w-[52px] items-center justify-center rounded-md px-2 py-0.5 font-mono text-[11px] font-semibold tabular-nums ring-1', tint, tone)}>
+                    <span className="truncate font-mono text-[12px] text-foreground">
+                      {type}
+                    </span>
+                    <span
+                      className={cn(
+                        'inline-flex min-w-[52px] items-center justify-center rounded-md px-2 py-0.5 font-mono text-[11px] font-semibold tabular-nums ring-1',
+                        tint,
+                        tone
+                      )}
+                    >
                       Δ {sign}
                       {delta}
                     </span>
-                    <Badge variant={delta > 0 ? 'soft' : delta < 0 ? 'destructive' : 'outline'} className="font-mono text-[10.5px]">
+                    <Badge
+                      variant={
+                        delta > 0
+                          ? 'soft'
+                          : delta < 0
+                            ? 'destructive'
+                            : 'outline'
+                      }
+                      className="font-mono text-[10.5px]"
+                    >
                       {delta > 0 ? 'increase' : delta < 0 ? 'decrease' : 'flat'}
                     </Badge>
                   </button>
@@ -1626,7 +2222,9 @@ function SnapshotAuditPanel({
                   <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-card text-muted-foreground/70 shadow-sm">
                     <Layers className="h-5 w-5" aria-hidden="true" />
                   </div>
-                  <div className="mt-3 text-[13px] font-semibold text-foreground">暂无类型漂移</div>
+                  <div className="mt-3 text-[13px] font-semibold text-foreground">
+                    暂无类型漂移
+                  </div>
                   <div className="mt-1 text-[11px] leading-5 text-muted-foreground">
                     entity_types_delta 为空：A / B 之间的实体类型构成保持一致。
                   </div>
@@ -1658,7 +2256,8 @@ export function KGSnapshotsPage() {
   const [liveGraphError, setLiveGraphError] = useState<string | null>(null)
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('studio')
   const [activeView, setActiveView] = useState<SnapshotView>('diff')
-  const [studioCanvasView, setStudioCanvasView] = useState<StudioCanvasView>('graph')
+  const [studioCanvasView, setStudioCanvasView] =
+    useState<StudioCanvasView>('graph')
   const [studioSearch, setStudioSearch] = useState('')
   const [studioNodeType, setStudioNodeType] = useState('all')
   const [studioRelationType, setStudioRelationType] = useState('all')
@@ -1674,7 +2273,10 @@ export function KGSnapshotsPage() {
   const [latencyMs, setLatencyMs] = useState<number | null>(null)
   const [isRunning, setIsRunning] = useState(false)
 
-  const documentIds = useMemo(() => parseDocumentIds(documentIdsRaw), [documentIdsRaw])
+  const documentIds = useMemo(
+    () => parseDocumentIds(documentIdsRaw),
+    [documentIdsRaw]
+  )
   const selectedDataset = useMemo(
     () => datasets.find((dataset) => dataset.id === selectedDatasetId) ?? null,
     [datasets, selectedDatasetId]
@@ -1682,7 +2284,11 @@ export function KGSnapshotsPage() {
   const scopeDatasetId = selectedDatasetId || undefined
   const scopeDocumentIds = documentIds.length > 0 ? documentIds : undefined
   const scopeDocumentIdsKey = scopeDocumentIds?.join(',') ?? ''
-  const selectedDatasetLabel = selectedDataset ? getDatasetLabel(selectedDataset) : selectedDatasetId ? selectedDatasetId : '全部数据集'
+  const selectedDatasetLabel = selectedDataset
+    ? getDatasetLabel(selectedDataset)
+    : selectedDatasetId
+      ? selectedDatasetId
+      : '全部数据集'
   const scopeDocumentCountLabel = documentIds.length
     ? `${documentIds.length} 个文档`
     : selectedDatasetId
@@ -1714,13 +2320,25 @@ export function KGSnapshotsPage() {
     }
   }, [])
 
-  const snapAJson = useMemo(() => prettyJson(snapA ?? { hint: '点击左侧“导出 A”生成快照。' }), [snapA])
-  const snapBJson = useMemo(() => prettyJson(snapB ?? { hint: '点击左侧“导出 B”生成快照。' }), [snapB])
-  const diffJson = useMemo(() => prettyJson(diff ?? { hint: '点击左侧“开始对比”生成 diff。' }), [diff])
+  const snapAJson = useMemo(
+    () => prettyJson(snapA ?? { hint: '点击左侧“导出 A”生成快照。' }),
+    [snapA]
+  )
+  const snapBJson = useMemo(
+    () => prettyJson(snapB ?? { hint: '点击左侧“导出 B”生成快照。' }),
+    [snapB]
+  )
+  const diffJson = useMemo(
+    () => prettyJson(diff ?? { hint: '点击左侧“开始对比”生成 diff。' }),
+    [diff]
+  )
 
   const diffDelta = useMemo(() => {
-    const delta = diff?.delta && typeof diff.delta === 'object' ? diff.delta : null
-    const entityTypesDelta = Array.isArray(diff?.entity_types_delta) ? diff.entity_types_delta : []
+    const delta =
+      diff?.delta && typeof diff.delta === 'object' ? diff.delta : null
+    const entityTypesDelta = Array.isArray(diff?.entity_types_delta)
+      ? diff.entity_types_delta
+      : []
     return { delta, entityTypesDelta }
   }, [diff])
   const deferredEntityTypesDelta = useDeferredValue(diffDelta.entityTypesDelta)
@@ -1728,7 +2346,9 @@ export function KGSnapshotsPage() {
   async function runExport(which: 'a' | 'b'): Promise<void> {
     const pipelineHash = (which === 'a' ? pipelineHashA : pipelineHashB).trim()
     if (!pipelineHash) {
-      toast.error(which === 'a' ? '请输入 pipeline_hash A' : '请输入 pipeline_hash B')
+      toast.error(
+        which === 'a' ? '请输入 pipeline_hash A' : '请输入 pipeline_hash B'
+      )
       return
     }
 
@@ -1785,7 +2405,10 @@ export function KGSnapshotsPage() {
           include_details: true,
         }),
       ])
-      const result = await kgApi.diffSnapshots({ snapshot_a: snapshotA, snapshot_b: snapshotB })
+      const result = await kgApi.diffSnapshots({
+        snapshot_a: snapshotA,
+        snapshot_b: snapshotB,
+      })
       setLatencyMs(Math.max(0, Date.now() - start))
       setSnapA(snapshotA)
       setSnapB(snapshotB)
@@ -1839,11 +2462,17 @@ export function KGSnapshotsPage() {
   const hasHashB = Boolean(hashBValue)
   const hashATitle = hashAValue || '未设置'
   const hashBTitle = hashBValue || '未设置'
-  const hashPairStatus = hasHashA && hasHashB ? '已就绪' : hasHashA || hasHashB ? '待补全' : '未设置'
+  const hashPairStatus =
+    hasHashA && hasHashB ? '已就绪' : hasHashA || hasHashB ? '待补全' : '未设置'
   const hashPairTitle = `A: ${hashAValue || '未填写'}\nB: ${hashBValue || '未填写'}`
-  const diffBaseName = sanitizeFilename(`kg_snapshot_${hashAValue || 'A'}_vs_${hashBValue || 'B'}`) || 'kg_snapshot'
-  const snapshotAFileName = sanitizeFilename(`kg_snapshot_${hashAValue || 'A'}`) || 'kg_snapshot_A'
-  const snapshotBFileName = sanitizeFilename(`kg_snapshot_${hashBValue || 'B'}`) || 'kg_snapshot_B'
+  const diffBaseName =
+    sanitizeFilename(
+      `kg_snapshot_${hashAValue || 'A'}_vs_${hashBValue || 'B'}`
+    ) || 'kg_snapshot'
+  const snapshotAFileName =
+    sanitizeFilename(`kg_snapshot_${hashAValue || 'A'}`) || 'kg_snapshot_A'
+  const snapshotBFileName =
+    sanitizeFilename(`kg_snapshot_${hashBValue || 'B'}`) || 'kg_snapshot_B'
   useEffect(() => {
     let cancelled = false
     setLiveGraphLoading(true)
@@ -1854,7 +2483,9 @@ export function KGSnapshotsPage() {
         if (meta?.features?.kg_enabled === false) {
           if (!cancelled) {
             setLiveGraph({ nodes: [], links: [] })
-            setLiveGraphError('KG 功能未启用，已按后端能力状态跳过实时图谱读取。请在设置中开启 KG 抽取后刷新。')
+            setLiveGraphError(
+              'KG 功能未启用，已按后端能力状态跳过实时图谱读取。请在设置中开启 KG 抽取后刷新。'
+            )
           }
           return
         }
@@ -1893,11 +2524,24 @@ export function KGSnapshotsPage() {
     scopeDocumentIdsKey,
   ])
 
-  const studioGraph = useMemo(() => buildSnapshotStudioGraphFromKgGraph(liveGraph), [liveGraph])
-  const nodeTypes = useMemo(() => Array.from(new Set(studioGraph.nodes.map((node) => node.type))), [studioGraph.nodes])
-  const relationTypes = useMemo(() => Array.from(new Set(studioGraph.links.map((link) => link.label))), [studioGraph.links])
+  const studioGraph = useMemo(
+    () => buildSnapshotStudioGraphFromKgGraph(liveGraph),
+    [liveGraph]
+  )
+  const nodeTypes = useMemo(
+    () => Array.from(new Set(studioGraph.nodes.map((node) => node.type))),
+    [studioGraph.nodes]
+  )
+  const relationTypes = useMemo(
+    () => Array.from(new Set(studioGraph.links.map((link) => link.label))),
+    [studioGraph.links]
+  )
   const selectedStudioNode = useMemo(() => {
-    return studioGraph.nodes.find((node) => node.id === selectedStudioNodeId) ?? studioGraph.nodes[0] ?? null
+    return (
+      studioGraph.nodes.find((node) => node.id === selectedStudioNodeId) ??
+      studioGraph.nodes[0] ??
+      null
+    )
   }, [selectedStudioNodeId, studioGraph.nodes])
   useEffect(() => {
     if (studioGraph.nodes.length === 0) {
@@ -1923,14 +2567,23 @@ export function KGSnapshotsPage() {
     })
   }, [diffDelta.delta, snapA, snapB])
   const driftScore = useMemo(() => {
-    const denominator = deltaRows.reduce((acc, row) => acc + Math.max(Math.max(row.a, row.b), 1), 0)
+    const denominator = deltaRows.reduce(
+      (acc, row) => acc + Math.max(Math.max(row.a, row.b), 1),
+      0
+    )
     if (denominator <= 0) return 0
-    const totalDelta = deltaRows.reduce((acc, row) => acc + Math.abs(row.delta), 0)
+    const totalDelta = deltaRows.reduce(
+      (acc, row) => acc + Math.abs(row.delta),
+      0
+    )
     return totalDelta / denominator
   }, [deltaRows])
-  const auditSeverity: AuditSeverity = driftScore >= 0.35 ? 'warning' : driftScore >= 0.12 ? 'notice' : 'healthy'
+  const auditSeverity: AuditSeverity =
+    driftScore >= 0.35 ? 'warning' : driftScore >= 0.12 ? 'notice' : 'healthy'
   const auditDriftRows = useMemo(() => {
-    return [...deferredEntityTypesDelta].sort((a, b) => Math.abs(Number(b.delta ?? 0)) - Math.abs(Number(a.delta ?? 0)))
+    return [...deferredEntityTypesDelta].sort(
+      (a, b) => Math.abs(Number(b.delta ?? 0)) - Math.abs(Number(a.delta ?? 0))
+    )
   }, [deferredEntityTypesDelta])
   const diffOverview = useMemo(() => {
     const nodeAdded = exactDiffCount(diff?.node_diff, 'added_count')
@@ -1939,15 +2592,25 @@ export function KGSnapshotsPage() {
     const edgeAdded = exactDiffCount(diff?.edge_diff, 'added_count')
     const edgeRemoved = exactDiffCount(diff?.edge_diff, 'removed_count')
     return [
-      { label: '节点变化', value: nodeAdded + nodeRemoved + nodeChanged, tone: 'bg-slate-400' },
+      {
+        label: '节点变化',
+        value: nodeAdded + nodeRemoved + nodeChanged,
+        tone: 'bg-slate-400',
+      },
       { label: '属性变化', value: nodeChanged, tone: 'bg-emerald-400' },
       { label: '新增关系', value: edgeAdded, tone: 'bg-rose-400' },
       { label: '删除关系', value: edgeRemoved, tone: 'bg-red-400' },
-      { label: '重要变化', value: driftScore >= 0.35 ? 1 : 0, tone: 'bg-amber-400' },
+      {
+        label: '重要变化',
+        value: driftScore >= 0.35 ? 1 : 0,
+        tone: 'bg-amber-400',
+      },
     ]
   }, [diff, driftScore])
-  const formInputClassName = 'h-10 rounded-lg border-border/70 bg-card font-mono text-xs shadow-none'
-  const formTextareaClassName = 'min-h-[108px] resize-none rounded-lg border-border/70 bg-card font-mono text-xs shadow-none'
+  const formInputClassName =
+    'h-10 rounded-lg border-border/70 bg-card font-mono text-xs shadow-none'
+  const formTextareaClassName =
+    'min-h-[108px] resize-none rounded-lg border-border/70 bg-card font-mono text-xs shadow-none'
 
   return (
     <AppFrame showBackground={false}>
@@ -1967,11 +2630,18 @@ export function KGSnapshotsPage() {
                   variant="outline"
                   size="sm"
                   className="h-9 gap-2 rounded-lg border-border/70 bg-card text-xs font-medium"
-                  title={hashAValue && hashBValue ? '重新导出并刷新 A/B 对比结果' : '先填写快照 A / 快照 B'}
+                  title={
+                    hashAValue && hashBValue
+                      ? '重新导出并刷新 A/B 对比结果'
+                      : '先填写快照 A / 快照 B'
+                  }
                   disabled={isRunning || !hashAValue || !hashBValue}
                   onClick={() => detachPromise(runCompare())}
                 >
-                  <RefreshCcw className={cn('h-3.5 w-3.5', isRunning && 'animate-spin')} aria-hidden="true" />
+                  <RefreshCcw
+                    className={cn('h-3.5 w-3.5', isRunning && 'animate-spin')}
+                    aria-hidden="true"
+                  />
                   刷新对比
                 </Button>
 
@@ -2003,10 +2673,16 @@ export function KGSnapshotsPage() {
                   size="icon"
                   className="h-9 w-9 rounded-lg border-border/70 bg-card"
                   onClick={() => setLeftSidebarCollapsed((prev) => !prev)}
-                  aria-label={leftSidebarCollapsed ? '展开参数栏' : '折叠参数栏'}
+                  aria-label={
+                    leftSidebarCollapsed ? '展开参数栏' : '折叠参数栏'
+                  }
                   title={leftSidebarCollapsed ? '展开参数栏' : '折叠参数栏'}
                 >
-                  {leftSidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+                  {leftSidebarCollapsed ? (
+                    <PanelLeftOpen className="h-4 w-4" />
+                  ) : (
+                    <PanelLeftClose className="h-4 w-4" />
+                  )}
                 </Button>
               </div>
             </div>
@@ -2017,7 +2693,9 @@ export function KGSnapshotsPage() {
           <aside
             className={cn(
               'shrink-0 border-r border-border/70 bg-background transition-[width,opacity] duration-200',
-              leftSidebarCollapsed ? 'w-0 overflow-hidden border-r-0 opacity-0' : 'w-[304px] opacity-100',
+              leftSidebarCollapsed
+                ? 'w-0 overflow-hidden border-r-0 opacity-0'
+                : 'w-[304px] opacity-100',
               'flex min-h-0 flex-col'
             )}
           >
@@ -2094,11 +2772,20 @@ export function KGSnapshotsPage() {
 
               <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
                 <div className="space-y-3">
-                  <WorkspaceSection icon={<Hash className="h-3.5 w-3.5" />} label="对比参数" hint="流水线哈希">
+                  <WorkspaceSection
+                    icon={<Hash className="h-3.5 w-3.5" />}
+                    label="对比参数"
+                    hint="流水线哈希"
+                  >
                     <div className="space-y-3">
                       <div className="space-y-1.5">
-                        <Label htmlFor="pipeline-hash-a" className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                          <span className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-emerald-50 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200/60">A</span>
+                        <Label
+                          htmlFor="pipeline-hash-a"
+                          className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground"
+                        >
+                          <span className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-emerald-50 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200/60">
+                            A
+                          </span>
                           快照 A
                         </Label>
                         <Input
@@ -2111,8 +2798,13 @@ export function KGSnapshotsPage() {
                       </div>
 
                       <div className="space-y-1.5">
-                        <Label htmlFor="pipeline-hash-b" className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                          <span className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-sky-50 text-[10px] font-bold text-sky-700 ring-1 ring-sky-200/60">B</span>
+                        <Label
+                          htmlFor="pipeline-hash-b"
+                          className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground"
+                        >
+                          <span className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-sky-50 text-[10px] font-bold text-sky-700 ring-1 ring-sky-200/60">
+                            B
+                          </span>
                           快照 B
                         </Label>
                         <Input
@@ -2126,18 +2818,29 @@ export function KGSnapshotsPage() {
                     </div>
                   </WorkspaceSection>
 
-                  <WorkspaceSection icon={<Layers className="h-3.5 w-3.5" />} label="作用范围" hint="数据集绑定">
+                  <WorkspaceSection
+                    icon={<Layers className="h-3.5 w-3.5" />}
+                    label="作用范围"
+                    hint="数据集绑定"
+                  >
                     <div className="space-y-1.5">
-                      <Label htmlFor="snapshot-dataset" className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                      <Label
+                        htmlFor="snapshot-dataset"
+                        className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground"
+                      >
                         数据集
                       </Label>
                       <select
                         id="snapshot-dataset"
                         value={selectedDatasetId}
-                        onChange={(event) => setSelectedDatasetId(event.target.value)}
+                        onChange={(event) =>
+                          setSelectedDatasetId(event.target.value)
+                        }
                         className="h-10 w-full rounded-lg border border-border/70 bg-card px-3 text-xs font-medium text-foreground shadow-none outline-none transition-colors hover:bg-muted/20 focus:ring-2 focus:ring-primary/20"
                       >
-                        <option value="">{datasetsLoading ? '正在加载数据集…' : '全部数据集'}</option>
+                        <option value="">
+                          {datasetsLoading ? '正在加载数据集…' : '全部数据集'}
+                        </option>
                         {datasets.map((dataset) => (
                           <option key={dataset.id} value={dataset.id}>
                             {getDatasetLabel(dataset)}
@@ -2152,7 +2855,10 @@ export function KGSnapshotsPage() {
                     </div>
 
                     <div className="space-y-1.5">
-                      <Label htmlFor="document-ids" className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                      <Label
+                        htmlFor="document-ids"
+                        className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground"
+                      >
                         文档覆盖
                       </Label>
                       <Textarea
@@ -2176,7 +2882,11 @@ export function KGSnapshotsPage() {
                       <SnapshotInlineStat
                         icon={<FolderOpen className="h-3.5 w-3.5" />}
                         label="文档范围"
-                        value={documentIds.length ? `${documentIds.length} 覆盖` : scopeDocumentCountLabel}
+                        value={
+                          documentIds.length
+                            ? `${documentIds.length} 覆盖`
+                            : scopeDocumentCountLabel
+                        }
                         tone={scopeDocumentIds?.length ? 'neutral' : 'muted'}
                       />
                       <SnapshotInlineStat
@@ -2218,7 +2928,10 @@ export function KGSnapshotsPage() {
                   disabled={isRunning}
                 >
                   {isRunning ? (
-                    <RefreshCcw className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    <RefreshCcw
+                      className="h-4 w-4 animate-spin"
+                      aria-hidden="true"
+                    />
                   ) : (
                     <GitCompare className="h-4 w-4" aria-hidden="true" />
                   )}
@@ -2236,244 +2949,307 @@ export function KGSnapshotsPage() {
                 </Button>
 
                 <p className="mt-3 text-[11px] leading-5 text-muted-foreground/85">
-                  默认请求 bounded 明细：节点、边、属性 hash 都会参与 diff；完整溯源仍可结合 KG diagnostics 或 traces 排查。
+                  默认请求 bounded 明细：节点、边、属性 hash 都会参与
+                  diff；完整溯源仍可结合 KG diagnostics 或 traces 排查。
                 </p>
               </div>
             </div>
           </aside>
 
           <div className="flex min-w-0 flex-1 bg-card">
-          <section className="min-w-0 flex-1 bg-card">
-            {workspaceTab === 'studio' ? (
-              <div className="flex h-full min-h-0 flex-col">
-                <SnapshotStudioToolbar
-                  searchValue={studioSearch}
-                  nodeType={studioNodeType}
-                  relationType={studioRelationType}
-                  nodeTypes={nodeTypes}
-                  relationTypes={relationTypes}
-                  layout={studioLayout}
-                  studioView={studioCanvasView}
-                  activeSnapshotView={activeView}
-                  onSearchChange={setStudioSearch}
-                  onNodeTypeChange={setStudioNodeType}
-                  onRelationTypeChange={setStudioRelationType}
-                  onLayoutChange={setStudioLayout}
-                  onStudioViewChange={(value) => {
-                    startTransition(() => setStudioCanvasView(value))
-                  }}
-                  onSnapshotViewChange={(value) => {
-                    startTransition(() => {
-                      setActiveView(value)
-                      setStudioCanvasView('table')
-                    })
-                  }}
-                  onDiffClick={() => {
-                    startTransition(() => {
-                      setActiveView('diff')
-                      setStudioCanvasView('table')
-                    })
-                    detachPromise(runCompare())
-                  }}
-                  isRunning={isRunning}
-                />
-                {studioCanvasView === 'graph' ? (
-                  <SnapshotGraphCanvas
-                    nodes={studioGraph.nodes}
-                    links={studioGraph.links}
-                    selectedNodeId={selectedStudioNode?.id ?? ''}
+            <section className="min-w-0 flex-1 bg-card">
+              {workspaceTab === 'studio' ? (
+                <div className="flex h-full min-h-0 flex-col">
+                  <SnapshotStudioToolbar
                     searchValue={studioSearch}
                     nodeType={studioNodeType}
                     relationType={studioRelationType}
-                    nodeCount={studioGraph.nodes.length}
-                    relationCount={studioGraph.links.length}
-                    isLoading={liveGraphLoading}
-                    emptyMessage={
-                      liveGraphError ||
-                      (selectedDatasetId
-                        ? '当前数据集没有返回 KG 节点，请确认文档已完成入库且已开启 KG 抽取。'
-                        : '当前后端 KG 图谱接口没有返回节点。')
-                    }
-                    onSelectNode={setSelectedStudioNodeId}
+                    nodeTypes={nodeTypes}
+                    relationTypes={relationTypes}
+                    layout={studioLayout}
+                    studioView={studioCanvasView}
+                    activeSnapshotView={activeView}
+                    onSearchChange={setStudioSearch}
+                    onNodeTypeChange={setStudioNodeType}
+                    onRelationTypeChange={setStudioRelationType}
+                    onLayoutChange={setStudioLayout}
+                    onStudioViewChange={(value) => {
+                      startTransition(() => setStudioCanvasView(value))
+                    }}
+                    onSnapshotViewChange={(value) => {
+                      startTransition(() => {
+                        setActiveView(value)
+                        setStudioCanvasView('table')
+                      })
+                    }}
+                    onDiffClick={() => {
+                      startTransition(() => {
+                        setActiveView('diff')
+                        setStudioCanvasView('table')
+                      })
+                      detachPromise(runCompare())
+                    }}
+                    isRunning={isRunning}
                   />
-                ) : studioCanvasView === 'stats' ? (
-                  <SnapshotAuditPanel
-                    deltaRows={deltaRows}
-                    typeDriftRows={auditDriftRows}
-                    severity={auditSeverity}
-                    driftScore={driftScore}
-                    includeZeroDeltas={includeZeroDeltas}
-                    compactRows={compactAuditRows}
-                    onIncludeZeroDeltasChange={setIncludeZeroDeltas}
-                    onCompactRowsChange={setCompactAuditRows}
-                  />
-                ) : (
-              <Tabs
-                value={activeView}
-                onValueChange={(value) => {
-                  startTransition(() => setActiveView(value as SnapshotView))
-                }}
-                className="flex h-full min-h-0 flex-col"
-              >
-                <div className="hidden">
-                  <div className="px-4 py-3">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                          <FileJson className="h-3.5 w-3.5 text-primary/70" aria-hidden="true" />
-                          快照工作台
-                        </div>
-                        <div className="mt-0.5 truncate text-[15px] font-semibold text-foreground">
-                          {tabLabelForView(activeView)}
+                  {studioCanvasView === 'graph' ? (
+                    <SnapshotGraphCanvas
+                      nodes={studioGraph.nodes}
+                      links={studioGraph.links}
+                      selectedNodeId={selectedStudioNode?.id ?? ''}
+                      searchValue={studioSearch}
+                      nodeType={studioNodeType}
+                      relationType={studioRelationType}
+                      nodeCount={studioGraph.nodes.length}
+                      relationCount={studioGraph.links.length}
+                      isLoading={liveGraphLoading}
+                      emptyMessage={
+                        liveGraphError ||
+                        (selectedDatasetId
+                          ? '当前数据集没有返回 KG 节点，请确认文档已完成入库且已开启 KG 抽取。'
+                          : '当前后端 KG 图谱接口没有返回节点。')
+                      }
+                      onSelectNode={setSelectedStudioNodeId}
+                    />
+                  ) : studioCanvasView === 'stats' ? (
+                    <SnapshotAuditPanel
+                      deltaRows={deltaRows}
+                      typeDriftRows={auditDriftRows}
+                      severity={auditSeverity}
+                      driftScore={driftScore}
+                      includeZeroDeltas={includeZeroDeltas}
+                      compactRows={compactAuditRows}
+                      onIncludeZeroDeltasChange={setIncludeZeroDeltas}
+                      onCompactRowsChange={setCompactAuditRows}
+                    />
+                  ) : (
+                    <Tabs
+                      value={activeView}
+                      onValueChange={(value) => {
+                        startTransition(() =>
+                          setActiveView(value as SnapshotView)
+                        )
+                      }}
+                      className="flex h-full min-h-0 flex-col"
+                    >
+                      <div className="hidden">
+                        <div className="px-4 py-3">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                                <FileJson
+                                  className="h-3.5 w-3.5 text-primary/70"
+                                  aria-hidden="true"
+                                />
+                                快照工作台
+                              </div>
+                              <div className="mt-0.5 truncate text-[15px] font-semibold text-foreground">
+                                {tabLabelForView(activeView)}
+                              </div>
+                            </div>
+
+                            <TabsList className="h-9 gap-1 rounded-xl border border-border/70 bg-card p-1 shadow-sm">
+                              <TabsTrigger
+                                value="diff"
+                                className="inline-flex h-7 items-center gap-1.5 rounded-lg px-3 text-[12px] font-medium text-muted-foreground transition-colors data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm hover:text-foreground"
+                              >
+                                <ArrowRightLeft
+                                  className="h-3.5 w-3.5"
+                                  aria-hidden="true"
+                                />
+                                Diff 对比
+                              </TabsTrigger>
+                              <TabsTrigger
+                                value="a"
+                                className="inline-flex h-7 items-center gap-1.5 rounded-lg px-3 text-[12px] font-medium text-muted-foreground transition-colors data-[state=active]:bg-emerald-500 data-[state=active]:text-info-foreground data-[state=active]:shadow-sm hover:text-foreground"
+                              >
+                                <span className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-emerald-50 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200/60 data-[state=active]:bg-emerald-700 data-[state=active]:text-info-foreground data-[state=active]:ring-0">
+                                  A
+                                </span>
+                                视图 A
+                              </TabsTrigger>
+                              <TabsTrigger
+                                value="b"
+                                className="inline-flex h-7 items-center gap-1.5 rounded-lg px-3 text-[12px] font-medium text-muted-foreground transition-colors data-[state=active]:bg-sky-500 data-[state=active]:text-info-foreground data-[state=active]:shadow-sm hover:text-foreground"
+                              >
+                                <span className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-sky-50 text-[10px] font-bold text-sky-700 ring-1 ring-sky-200/60 data-[state=active]:bg-sky-700 data-[state=active]:text-info-foreground data-[state=active]:ring-0">
+                                  B
+                                </span>
+                                视图 B
+                              </TabsTrigger>
+                            </TabsList>
+                          </div>
+
+                          <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                            {diffDelta.delta ? (
+                              deltaRows.map((row) => {
+                                const sign = row.delta > 0 ? '+' : ''
+                                return (
+                                  <SnapshotInlineStat
+                                    key={row.key}
+                                    label={row.key}
+                                    value={`${row.a} → ${row.b} (${sign}${row.delta})`}
+                                    tone={
+                                      row.delta > 0
+                                        ? 'positive'
+                                        : row.delta < 0
+                                          ? 'negative'
+                                          : 'muted'
+                                    }
+                                  />
+                                )
+                              })
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-border/70 bg-card/60 px-2.5 py-1 text-[11px] text-muted-foreground">
+                                <CircleDashed
+                                  className="h-3.5 w-3.5 text-primary/60"
+                                  aria-hidden="true"
+                                />
+                                填写 A / B Hash 后点击「开始对比」即可查看 docs
+                                / events / entities / links / relations 增量
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
 
-                      <TabsList className="h-9 gap-1 rounded-xl border border-border/70 bg-card p-1 shadow-sm">
-                        <TabsTrigger
-                          value="diff"
-                          className="inline-flex h-7 items-center gap-1.5 rounded-lg px-3 text-[12px] font-medium text-muted-foreground transition-colors data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm hover:text-foreground"
-                        >
-                          <ArrowRightLeft className="h-3.5 w-3.5" aria-hidden="true" />
-                          Diff 对比
-                        </TabsTrigger>
-                        <TabsTrigger
-                          value="a"
-                          className="inline-flex h-7 items-center gap-1.5 rounded-lg px-3 text-[12px] font-medium text-muted-foreground transition-colors data-[state=active]:bg-emerald-500 data-[state=active]:text-white data-[state=active]:shadow-sm hover:text-foreground"
-                        >
-                          <span className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-emerald-50 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200/60 data-[state=active]:bg-emerald-700 data-[state=active]:text-white data-[state=active]:ring-0">A</span>
-                          视图 A
-                        </TabsTrigger>
-                        <TabsTrigger
-                          value="b"
-                          className="inline-flex h-7 items-center gap-1.5 rounded-lg px-3 text-[12px] font-medium text-muted-foreground transition-colors data-[state=active]:bg-sky-500 data-[state=active]:text-white data-[state=active]:shadow-sm hover:text-foreground"
-                        >
-                          <span className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-sky-50 text-[10px] font-bold text-sky-700 ring-1 ring-sky-200/60 data-[state=active]:bg-sky-700 data-[state=active]:text-white data-[state=active]:ring-0">B</span>
-                          视图 B
-                        </TabsTrigger>
-                      </TabsList>
-                    </div>
-
-                    <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                      {diffDelta.delta ? (
-                        deltaRows.map((row) => {
-                          const sign = row.delta > 0 ? '+' : ''
-                          return (
-                            <SnapshotInlineStat
-                              key={row.key}
-                              label={row.key}
-                              value={`${row.a} → ${row.b} (${sign}${row.delta})`}
-                              tone={row.delta > 0 ? 'positive' : row.delta < 0 ? 'negative' : 'muted'}
+                      <TabsContent value="diff" className="mt-0 min-h-0 flex-1">
+                        <SnapshotDiffView
+                          titleA={`Snapshot A · ${hashATitle}`}
+                          titleB={`Snapshot B · ${hashBTitle}`}
+                          subtitleA={
+                            scopeDocumentIds?.length
+                              ? `${scopeDocumentIds.length} 个文档范围`
+                              : scopeDatasetId
+                                ? `${selectedDatasetLabel} · 数据集范围`
+                                : '后端全局范围'
+                          }
+                          subtitleB={
+                            scopeDocumentIds?.length
+                              ? `${scopeDocumentIds.length} 个文档范围`
+                              : scopeDatasetId
+                                ? `${selectedDatasetLabel} · 数据集范围`
+                                : '后端全局范围'
+                          }
+                          leftCode={snapAJson}
+                          rightCode={snapBJson}
+                          diff={diff}
+                          typeDrift={auditDriftRows}
+                          isEmpty={!diff}
+                          emptyState={
+                            <DiffEmptyState
+                              title="还没有对比结果"
+                              description="填写左侧的快照 A / 快照 B，可以选择文档范围，然后点击「开始对比」生成左右差异与节点/边精确变更。"
+                              hint={
+                                hasHashA && hasHashB
+                                  ? '已就绪：直接点击「开始对比」'
+                                  : '提示：A / B Hash 二者皆需填写'
+                              }
                             />
-                          )
-                        })
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-border/70 bg-card/60 px-2.5 py-1 text-[11px] text-muted-foreground">
-                          <CircleDashed className="h-3.5 w-3.5 text-primary/60" aria-hidden="true" />
-                          填写 A / B Hash 后点击「开始对比」即可查看 docs / events / entities / links / relations 增量
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                          }
+                          onCopy={() =>
+                            detachPromise(
+                              copyToClipboard(diffJson, 'diff JSON')
+                            )
+                          }
+                          onDownload={() => {
+                            downloadJson(
+                              diff ?? {},
+                              `${diffBaseName}.diff.json`
+                            )
+                            toast.success('已导出 diff.json')
+                          }}
+                        />
+                      </TabsContent>
+
+                      <TabsContent value="a" className="mt-0 min-h-0 flex-1">
+                        <JsonCodePane
+                          label="A 视图"
+                          title="快照内容"
+                          subtitle={
+                            hashAValue ? `Hash · ${hashAValue}` : '尚未导出'
+                          }
+                          code={snapAJson}
+                          isEmpty={!snapA}
+                          emptyState={
+                            <DiffEmptyState
+                              title="A 视图为空"
+                              description="先在左侧填写快照 A，然后点击「导出 A」即可在此查看明细快照 JSON。"
+                              hint={
+                                hasHashA
+                                  ? '已填写快照 A，可点击「导出 A」'
+                                  : '请先填写快照 A'
+                              }
+                            />
+                          }
+                          onCopy={() =>
+                            detachPromise(
+                              copyToClipboard(snapAJson, 'snapshot A JSON')
+                            )
+                          }
+                          onDownload={() => {
+                            downloadJson(
+                              snapA ?? {},
+                              `${snapshotAFileName}.json`
+                            )
+                            toast.success('已导出 snapshot A')
+                          }}
+                        />
+                      </TabsContent>
+
+                      <TabsContent value="b" className="mt-0 min-h-0 flex-1">
+                        <JsonCodePane
+                          label="B 视图"
+                          title="快照内容"
+                          subtitle={
+                            hashBValue ? `Hash · ${hashBValue}` : '尚未导出'
+                          }
+                          code={snapBJson}
+                          isEmpty={!snapB}
+                          emptyState={
+                            <DiffEmptyState
+                              title="B 视图为空"
+                              description="先在左侧填写快照 B，然后点击「导出 B」即可在此查看明细快照 JSON。"
+                              hint={
+                                hasHashB
+                                  ? '已填写快照 B，可点击「导出 B」'
+                                  : '请先填写快照 B'
+                              }
+                            />
+                          }
+                          onCopy={() =>
+                            detachPromise(
+                              copyToClipboard(snapBJson, 'snapshot B JSON')
+                            )
+                          }
+                          onDownload={() => {
+                            downloadJson(
+                              snapB ?? {},
+                              `${snapshotBFileName}.json`
+                            )
+                            toast.success('已导出 snapshot B')
+                          }}
+                        />
+                      </TabsContent>
+                    </Tabs>
+                  )}
                 </div>
-
-                <TabsContent value="diff" className="mt-0 min-h-0 flex-1">
-                  <SnapshotDiffView
-                    titleA={`Snapshot A · ${hashATitle}`}
-                    titleB={`Snapshot B · ${hashBTitle}`}
-                    subtitleA={
-                      scopeDocumentIds?.length
-                        ? `${scopeDocumentIds.length} 个文档范围`
-                        : scopeDatasetId
-                          ? `${selectedDatasetLabel} · 数据集范围`
-                          : '后端全局范围'
-                    }
-                    subtitleB={
-                      scopeDocumentIds?.length
-                        ? `${scopeDocumentIds.length} 个文档范围`
-                        : scopeDatasetId
-                          ? `${selectedDatasetLabel} · 数据集范围`
-                          : '后端全局范围'
-                    }
-                    leftCode={snapAJson}
-                    rightCode={snapBJson}
-                    diff={diff}
-                    typeDrift={auditDriftRows}
-                    isEmpty={!diff}
-                    emptyState={
-                      <DiffEmptyState
-                        title="还没有对比结果"
-                        description="填写左侧的快照 A / 快照 B，可以选择文档范围，然后点击「开始对比」生成左右差异与节点/边精确变更。"
-                        hint={hasHashA && hasHashB ? '已就绪：直接点击「开始对比」' : '提示：A / B Hash 二者皆需填写'}
-                      />
-                    }
-                    onCopy={() => detachPromise(copyToClipboard(diffJson, 'diff JSON'))}
-                    onDownload={() => {
-                      downloadJson(diff ?? {}, `${diffBaseName}.diff.json`)
-                      toast.success('已导出 diff.json')
-                    }}
-                  />
-                </TabsContent>
-
-                <TabsContent value="a" className="mt-0 min-h-0 flex-1">
-                  <JsonCodePane
-                    label="A 视图"
-                    title="快照内容"
-                    subtitle={hashAValue ? `Hash · ${hashAValue}` : '尚未导出'}
-                    code={snapAJson}
-                    isEmpty={!snapA}
-                    emptyState={
-                      <DiffEmptyState
-                        title="A 视图为空"
-                        description="先在左侧填写快照 A，然后点击「导出 A」即可在此查看明细快照 JSON。"
-                        hint={hasHashA ? '已填写快照 A，可点击「导出 A」' : '请先填写快照 A'}
-                      />
-                    }
-                    onCopy={() => detachPromise(copyToClipboard(snapAJson, 'snapshot A JSON'))}
-                    onDownload={() => {
-                      downloadJson(snapA ?? {}, `${snapshotAFileName}.json`)
-                      toast.success('已导出 snapshot A')
-                    }}
-                  />
-                </TabsContent>
-
-                <TabsContent value="b" className="mt-0 min-h-0 flex-1">
-                  <JsonCodePane
-                    label="B 视图"
-                    title="快照内容"
-                    subtitle={hashBValue ? `Hash · ${hashBValue}` : '尚未导出'}
-                    code={snapBJson}
-                    isEmpty={!snapB}
-                    emptyState={
-                      <DiffEmptyState
-                        title="B 视图为空"
-                        description="先在左侧填写快照 B，然后点击「导出 B」即可在此查看明细快照 JSON。"
-                        hint={hasHashB ? '已填写快照 B，可点击「导出 B」' : '请先填写快照 B'}
-                      />
-                    }
-                    onCopy={() => detachPromise(copyToClipboard(snapBJson, 'snapshot B JSON'))}
-                    onDownload={() => {
-                      downloadJson(snapB ?? {}, `${snapshotBFileName}.json`)
-                      toast.success('已导出 snapshot B')
-                    }}
-                  />
-                </TabsContent>
-              </Tabs>
-                )}
-              </div>
-            ) : (
-              <SnapshotAuditPanel
-                deltaRows={deltaRows}
-                typeDriftRows={auditDriftRows}
-                severity={auditSeverity}
-                driftScore={driftScore}
-                includeZeroDeltas={includeZeroDeltas}
-                compactRows={compactAuditRows}
-                onIncludeZeroDeltasChange={setIncludeZeroDeltas}
-                onCompactRowsChange={setCompactAuditRows}
-              />
-            )}
-          </section>
-          <SnapshotNodeDetailsRail selectedNode={selectedStudioNode} diffOverview={diffOverview} />
+              ) : (
+                <SnapshotAuditPanel
+                  deltaRows={deltaRows}
+                  typeDriftRows={auditDriftRows}
+                  severity={auditSeverity}
+                  driftScore={driftScore}
+                  includeZeroDeltas={includeZeroDeltas}
+                  compactRows={compactAuditRows}
+                  onIncludeZeroDeltasChange={setIncludeZeroDeltas}
+                  onCompactRowsChange={setCompactAuditRows}
+                />
+              )}
+            </section>
+            <SnapshotNodeDetailsRail
+              selectedNode={selectedStudioNode}
+              diffOverview={diffOverview}
+            />
           </div>
         </div>
       </div>

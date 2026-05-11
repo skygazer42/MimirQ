@@ -79,22 +79,68 @@ export function parseBackendPrefixes() {
   return map
 }
 
+function resolveBackendModuleRel(mod) {
+  if (mod === 'kg') {
+    return 'app/rag/kg/api/routes.py'
+  }
+  return `app/api/v1/${mod}.py`
+}
+
+function joinBackendPrefixes(parentPrefix, childPrefix) {
+  const parent = String(parentPrefix || '').trim()
+  const child = String(childPrefix || '').trim()
+  if (!parent) return child
+  if (!child) return parent
+  return normalizeRoute(`${parent}/${child.replace(/^\/+/, '')}`)
+}
+
+function parseRouterIncludes(pyText) {
+  const constants = parsePythonStringConstants(pyText)
+  const includes = []
+
+  const re = /router\.include_router\(\s*([A-Za-z_][A-Za-z0-9_]*)\.router\b([\s\S]*?)\)/g
+  let m
+  while ((m = re.exec(pyText))) {
+    const mod = m[1]
+    const args = m[2] || ''
+    const prefixMatch = args.match(/prefix\s*=\s*(?:\"([^\"]*)\"|'([^']*)')/)
+    let prefix = prefixMatch ? (prefixMatch[1] || prefixMatch[2] || '') : ''
+    if (!prefix) {
+      const constMatch = args.match(/prefix\s*=\s*([A-Za-z_][A-Za-z0-9_]*)/)
+      const constName = constMatch ? constMatch[1] : ''
+      if (constName && constants.has(constName)) {
+        prefix = constants.get(constName) || ''
+      }
+    }
+    includes.push({ mod, prefix })
+  }
+
+  const routesExtendRe =
+    /router\.routes\.extend\(\s*([A-Za-z_][A-Za-z0-9_]*)\.router\.routes\s*\)/g
+  while ((m = routesExtendRe.exec(pyText))) {
+    includes.push({ mod: m[1], prefix: '' })
+  }
+  return includes
+}
+
 export function parseBackendRoutes() {
   const prefixes = parseBackendPrefixes()
   const routes = new Map() // key: METHOD PATH -> source
 
   const backendModules = []
   for (const [mod, prefix] of prefixes.entries()) {
-    if (mod === 'kg') {
-      backendModules.push({ mod, prefix, rel: 'app/rag/kg/api/routes.py' })
-    } else {
-      backendModules.push({ mod, prefix, rel: `app/api/v1/${mod}.py` })
-    }
+    backendModules.push({ mod, prefix, rel: resolveBackendModuleRel(mod) })
   }
 
   const routeRe = /@router\.(get|post|put|patch|delete)\(\s*(?:\"([^\"]*)\"|'([^']*)')/g
 
-  for (const mod of backendModules) {
+  const seenModules = new Set()
+  for (let index = 0; index < backendModules.length; index += 1) {
+    const mod = backendModules[index]
+    const seenKey = `${mod.rel}|${mod.prefix || ''}`
+    if (seenModules.has(seenKey)) continue
+    seenModules.add(seenKey)
+
     const abs = path.join(ROOT, mod.rel)
     if (!fs.existsSync(abs)) continue
     const text = fs.readFileSync(abs, 'utf8')
@@ -118,6 +164,14 @@ export function parseBackendRoutes() {
       const normalized = normalizeRoute(full)
       const key = `${method} ${normalized}`
       routes.set(key, mod.rel)
+    }
+
+    for (const child of parseRouterIncludes(text)) {
+      backendModules.push({
+        mod: child.mod,
+        prefix: joinBackendPrefixes(mod.prefix, child.prefix),
+        rel: resolveBackendModuleRel(child.mod),
+      })
     }
   }
 

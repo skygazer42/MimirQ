@@ -2,6 +2,7 @@
 
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { waitForAssertion } from '@/test/hook-harness'
@@ -37,9 +38,17 @@ function renderComponent(element: React.ReactElement) {
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root = createRoot(container)
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      mutations: { retry: false },
+      queries: { retry: false },
+    },
+  })
 
   act(() => {
-    root.render(element)
+    root.render(
+      React.createElement(QueryClientProvider, { client: queryClient }, element)
+    )
   })
 
   return {
@@ -48,6 +57,7 @@ function renderComponent(element: React.ReactElement) {
       act(() => {
         root.unmount()
       })
+      queryClient.clear()
       container.remove()
     },
   }

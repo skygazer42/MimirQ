@@ -3,6 +3,7 @@ Test question generator.
 
 Generates test questions from documents or conversation history for RAGAS regression.
 """
+import logging
 import re
 from collections import Counter
 from typing import Any
@@ -23,6 +24,8 @@ from app.models.chat import Conversation, Message
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.services.document_access import filter_allowed_document_ids
+
+logger = logging.getLogger(__name__)
 
 
 class GeneratedQuestion(BaseModel):
@@ -313,7 +316,7 @@ def generate_questions_from_documents(
                             )
                         )
             except Exception as e:
-                print(f"Failed to generate questions: {e}")
+                logger.warning("Failed to generate questions: %s", e)
                 continue
 
             if len(all_questions) >= num_questions:
@@ -461,7 +464,7 @@ def generate_questions_from_conversations(
             return questions[:num_questions]
         
         except Exception as e:
-            print(f"Failed to generate questions from conversation: {e}")
+            logger.warning("Failed to generate questions from conversation: %s", e)
             return []
     finally:
         if http_client is not None:

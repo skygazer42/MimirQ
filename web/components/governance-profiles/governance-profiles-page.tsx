@@ -1,7 +1,21 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Copy, Download, Eye, Layers, MoreHorizontal, Plus, RefreshCw, Search, ShieldCheck, Sparkles, Trash2, Upload } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMemo, useRef, useState } from 'react'
+import {
+  Copy,
+  Download,
+  Eye,
+  Layers,
+  MoreHorizontal,
+  Plus,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+  Upload,
+} from 'lucide-react'
 import { toast } from 'sonner'
 
 import { PageScaffold } from '@/components/ui/page-scaffold'
@@ -30,21 +44,30 @@ import {
 import { pipelineApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, detachPromise } from '@/lib/utils'
-import type { GovernanceProfileCreate, GovernanceProfileListResponse, GovernanceProfileSummary } from '@/types'
+import { queryKeys } from '@/lib/query-keys'
+import type {
+  GovernanceProfileCreate,
+  GovernanceProfileSummary,
+} from '@/types'
 import { ProfileEditorDrawer } from '@/components/governance-profiles/profile-editor-drawer'
-import { buildGovernanceProfileCreateFromExisting, buildIngestionPolicyExportFilename } from '@/lib/governance-profile-utils'
+import {
+  buildGovernanceProfileCreateFromExisting,
+  buildIngestionPolicyExportFilename,
+} from '@/lib/governance-profile-utils'
 
 export function GovernanceProfilesPage() {
-  const [loading, setLoading] = useState(false)
-  const [resp, setResp] = useState<GovernanceProfileListResponse | null>(null)
+  const queryClient = useQueryClient()
   const [query, setQuery] = useState('')
   const [includeBuiltin, setIncludeBuiltin] = useState(true)
   const [editorOpen, setEditorOpen] = useState(false)
-  const [editorMode, setEditorMode] = useState<'create' | 'edit' | 'view'>('create')
+  const [editorMode, setEditorMode] = useState<'create' | 'edit' | 'view'>(
+    'create'
+  )
   const [editorProfileRef, setEditorProfileRef] = useState<string | null>(null)
-  const [editorSeedCreate, setEditorSeedCreate] = useState<GovernanceProfileCreate | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<GovernanceProfileSummary | null>(null)
-  const [importing, setImporting] = useState(false)
+  const [editorSeedCreate, setEditorSeedCreate] =
+    useState<GovernanceProfileCreate | null>(null)
+  const [deleteTarget, setDeleteTarget] =
+    useState<GovernanceProfileSummary | null>(null)
   const [importOverwrite, setImportOverwrite] = useState(false)
   const importInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -57,34 +80,74 @@ export function GovernanceProfilesPage() {
     }
   }, [query, includeBuiltin])
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const data = await pipelineApi.listGovernanceProfiles(params)
-      setResp(data)
-    } catch (err: any) {
-      setResp(null)
-      toast.error(formatApiError(err, '加载治理 Profiles 失败'))
-    } finally {
-      setLoading(false)
-    }
-  }, [params])
+  const profilesQuery = useQuery({
+    queryKey: queryKeys.governance.profiles(params),
+    queryFn: () => pipelineApi.listGovernanceProfiles(params),
+  })
+  const resp = profilesQuery.data ?? null
+  const loading = profilesQuery.isFetching
+  const profileLoadError = profilesQuery.error
+    ? formatApiError(profilesQuery.error, '加载治理 Profiles 失败')
+    : null
 
-  // Keep it simple: fetch on param change.
-  useEffect(() => {
-    detachPromise(load())
-  }, [load])
+  const invalidateProfiles = () => {
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.governance.profiles(params),
+    })
+  }
 
-  const items = useMemo<GovernanceProfileSummary[]>(() => resp?.items || [], [resp?.items])
-  const builtinCount = useMemo(() => items.filter((item) => item.is_system).length, [items])
-  const customCount = useMemo(() => items.length - builtinCount, [items, builtinCount])
+  const importProfilesMutation = useMutation({
+    mutationFn: (file: File) =>
+      pipelineApi.importGovernanceProfiles(file, importOverwrite),
+    onSuccess: (result) => {
+      toast.success(`导入完成：created=${result.created}, updated=${result.updated}`)
+      invalidateProfiles()
+    },
+    onError: (err) => {
+      toast.error(formatApiError(err, '导入失败'))
+    },
+    onSettled: () => {
+      if (importInputRef.current) importInputRef.current.value = ''
+    },
+  })
+
+  const deleteProfileMutation = useMutation({
+    mutationFn: async (p: GovernanceProfileSummary) => {
+      if (p.is_system) return
+      const ref = String(p.id || '').trim() || p.key
+      if (!ref) return
+      await pipelineApi.deleteGovernanceProfile(ref)
+    },
+    onSuccess: () => {
+      toast.success('已删除')
+      invalidateProfiles()
+    },
+    onError: (err) => {
+      toast.error(formatApiError(err, '删除失败'))
+    },
+  })
+
+  const items = useMemo<GovernanceProfileSummary[]>(
+    () => resp?.items || [],
+    [resp?.items]
+  )
+  const builtinCount = useMemo(
+    () => items.filter((item) => item.is_system).length,
+    [items]
+  )
+  const customCount = useMemo(
+    () => items.length - builtinCount,
+    [items, builtinCount]
+  )
 
   const exportOne = async (p: GovernanceProfileSummary) => {
     const ref = p.is_system ? p.key : String(p.id || '').trim() || p.key
     if (!ref) return
     try {
       const blob = await pipelineApi.exportGovernanceProfile(ref)
-      const safe = (p.key || 'profile').replaceAll(/[\\/:*?"<>|]+/g, '_').slice(0, 120)
+      const safe = (p.key || 'profile')
+        .replaceAll(/[\\/:*?"<>|]+/g, '_')
+        .slice(0, 120)
       const filename = `${safe}.governance-profile.json`
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -116,22 +179,12 @@ export function GovernanceProfilesPage() {
     }
   }
 
-  const deleteOne = async (p: GovernanceProfileSummary) => {
-    if (p.is_system) return
-    const ref = String(p.id || '').trim() || p.key
-    if (!ref) return
-    try {
-      await pipelineApi.deleteGovernanceProfile(ref)
-      toast.success('已删除')
-      detachPromise(load())
-    } catch (err: any) {
-      toast.error(formatApiError(err, '删除失败'))
-    }
-  }
-
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+      <AlertDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>删除该治理配置？</AlertDialogTitle>
@@ -140,19 +193,25 @@ export function GovernanceProfilesPage() {
                 此操作不可恢复。
                 {deleteTarget ? (
                   <div className="mt-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
-                    <div className="truncate text-sm font-medium text-foreground/85">{deleteTarget.name || deleteTarget.key}</div>
-                    <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{deleteTarget.key}</div>
+                    <div className="truncate text-sm font-medium text-foreground/85">
+                      {deleteTarget.name || deleteTarget.key}
+                    </div>
+                    <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
+                      {deleteTarget.key}
+                    </div>
                   </div>
                 ) : null}
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setDeleteTarget(null)}>返回</AlertDialogCancel>
+            <AlertDialogCancel onClick={() => setDeleteTarget(null)}>
+              返回
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 if (!deleteTarget) return
-                detachPromise(deleteOne(deleteTarget))
+                deleteProfileMutation.mutate(deleteTarget)
                 setDeleteTarget(null)
               }}
             >
@@ -171,15 +230,17 @@ export function GovernanceProfilesPage() {
           setEditorOpen(next)
           if (!next) setEditorSeedCreate(null)
         }}
-        onSaved={() => detachPromise(load())}
-        onCreated={() => detachPromise(load())}
+        onSaved={invalidateProfiles}
+        onCreated={invalidateProfiles}
       />
       <PageScaffold
         title="治理配置"
         description={
           <span className="flex items-center gap-2 text-[13px] text-muted-foreground/85">
             <span className="size-1.5 rounded-full bg-info/40" aria-hidden />
-            <span>创建和管理可复用的治理模板，用于清洗规则与 pipeline_patch 编排。</span>
+            <span>
+              创建和管理可复用的治理模板，用于清洗规则与 pipeline_patch 编排。
+            </span>
           </span>
         }
         icon={ShieldCheck}
@@ -195,19 +256,7 @@ export function GovernanceProfilesPage() {
               onChange={(e) => {
                 const file = e.target.files?.[0]
                 if (!file) return
-                detachPromise((async () => {
-                  setImporting(true)
-                  try {
-                    const result = await pipelineApi.importGovernanceProfiles(file, importOverwrite)
-                    toast.success(`导入完成：created=${result.created}, updated=${result.updated}`)
-                    detachPromise(load())
-                  } catch (err: any) {
-                    toast.error(formatApiError(err, '导入失败'))
-                  } finally {
-                    setImporting(false)
-                    if (importInputRef.current) importInputRef.current.value = ''
-                  }
-                })())
+                importProfilesMutation.mutate(file)
               }}
             />
             <Button
@@ -215,19 +264,31 @@ export function GovernanceProfilesPage() {
               variant="outline"
               className="h-8 gap-1.5 text-[12px]"
               disabled={loading}
-              onClick={() => detachPromise(load())}
+              onClick={() => {
+                void profilesQuery.refetch()
+              }}
             >
-              <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin motion-reduce:animate-none')} />
+              <RefreshCw
+                className={cn(
+                  'w-3.5 h-3.5',
+                  loading && 'animate-spin motion-reduce:animate-none'
+                )}
+              />
               刷新
             </Button>
             <Button
               size="sm"
               variant="outline"
               className="h-8 gap-1.5 text-[12px]"
-              disabled={importing}
+              disabled={importProfilesMutation.isPending}
               onClick={() => importInputRef.current?.click()}
             >
-              <Upload className={cn('w-3.5 h-3.5', importing && 'animate-pulse')} />
+              <Upload
+                className={cn(
+                  'w-3.5 h-3.5',
+                  importProfilesMutation.isPending && 'animate-pulse'
+                )}
+              />
               导入
             </Button>
             <Button
@@ -245,13 +306,19 @@ export function GovernanceProfilesPage() {
             </Button>
           </div>
         }
-      >
+        >
+          {profileLoadError ? (
+            <Panel className="mt-4 border-destructive/30 bg-destructive/10 text-destructive" padding="md">
+              {profileLoadError}
+            </Panel>
+          ) : null}
+
         <Panel
           className="mt-4 overflow-hidden rounded-2xl border-border/50 bg-card shadow-none"
           padding="md"
         >
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <div className="relative overflow-hidden rounded-xl border border-border/50 bg-gradient-to-br from-muted/40 via-muted/15 to-transparent px-3 py-2.5">
+            <div className="relative overflow-hidden rounded-xl border border-border/50 from-muted/40 via-muted/15 to-transparent px-3 py-2.5">
               <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/75">
                 <Layers className="size-3 text-muted-foreground/60" />
                 总数
@@ -260,11 +327,16 @@ export function GovernanceProfilesPage() {
                 <span className="text-[20px] font-semibold tracking-[-0.02em] tabular-nums text-foreground">
                   {items.length}
                 </span>
-                <span className="text-[11px] text-muted-foreground/65">profiles</span>
+                <span className="text-[11px] text-muted-foreground/65">
+                  profiles
+                </span>
               </div>
             </div>
-            <div className="relative overflow-hidden rounded-xl border border-info/20 bg-gradient-to-br from-info/[0.10] via-info/[0.04] to-transparent px-3 py-2.5">
-              <span aria-hidden className="absolute left-0 top-2 bottom-2 w-[2px] rounded-full bg-info/70" />
+            <div className="relative overflow-hidden rounded-xl border border-info/20 from-info/[0.10] via-info/[0.04] to-transparent px-3 py-2.5">
+              <span
+                aria-hidden
+                className="absolute left-0 top-2 bottom-2 w-[2px] rounded-full bg-info/70"
+              />
               <div className="flex items-center gap-2 pl-1.5 text-[11px] font-medium uppercase tracking-[0.14em] text-info/85">
                 <ShieldCheck className="size-3 text-info" />
                 内置
@@ -273,11 +345,16 @@ export function GovernanceProfilesPage() {
                 <span className="text-[20px] font-semibold tracking-[-0.02em] tabular-nums text-foreground">
                   {builtinCount}
                 </span>
-                <span className="text-[11px] text-muted-foreground/65">系统基线</span>
+                <span className="text-[11px] text-muted-foreground/65">
+                  系统基线
+                </span>
               </div>
             </div>
-            <div className="relative overflow-hidden rounded-xl border border-accent/20 bg-gradient-to-br from-accent/[0.08] via-accent/[0.03] to-transparent px-3 py-2.5">
-              <span aria-hidden className="absolute left-0 top-2 bottom-2 w-[2px] rounded-full bg-accent/70" />
+            <div className="relative overflow-hidden rounded-xl border border-accent/20 from-accent/[0.08] via-accent/[0.03] to-transparent px-3 py-2.5">
+              <span
+                aria-hidden
+                className="absolute left-0 top-2 bottom-2 w-[2px] rounded-full bg-accent/70"
+              />
               <div className="flex items-center gap-2 pl-1.5 text-[11px] font-medium uppercase tracking-[0.14em] text-accent/85">
                 <Sparkles className="size-3 text-accent" />
                 自定义
@@ -286,13 +363,18 @@ export function GovernanceProfilesPage() {
                 <span className="text-[20px] font-semibold tracking-[-0.02em] tabular-nums text-foreground">
                   {customCount}
                 </span>
-                <span className="text-[11px] text-muted-foreground/65">团队沉淀</span>
+                <span className="text-[11px] text-muted-foreground/65">
+                  团队沉淀
+                </span>
               </div>
             </div>
           </div>
         </Panel>
 
-        <Panel className="mt-3 border-border/50 bg-card shadow-none" padding="md">
+        <Panel
+          className="mt-3 border-border/50 bg-card shadow-none"
+          padding="md"
+        >
           <div className="flex flex-col gap-2 md:flex-row md:items-center">
             <div className="relative md:flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
@@ -312,7 +394,11 @@ export function GovernanceProfilesPage() {
                     : 'border-border/60 bg-muted/40 text-muted-foreground hover:bg-muted/60 hover:text-foreground'
                 )}
               >
-                <Switch checked={includeBuiltin} onCheckedChange={setIncludeBuiltin} className="scale-90" />
+                <Switch
+                  checked={includeBuiltin}
+                  onCheckedChange={setIncludeBuiltin}
+                  className="scale-90"
+                />
                 <span>包含内置</span>
               </label>
               <label
@@ -324,7 +410,11 @@ export function GovernanceProfilesPage() {
                 )}
                 title="导入时覆盖同名 Profile"
               >
-                <Switch checked={importOverwrite} onCheckedChange={setImportOverwrite} className="scale-90" />
+                <Switch
+                  checked={importOverwrite}
+                  onCheckedChange={setImportOverwrite}
+                  className="scale-90"
+                />
                 <span>导入覆盖</span>
               </label>
             </div>
@@ -335,14 +425,20 @@ export function GovernanceProfilesPage() {
           <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
             {items.map((p) => {
               const tone = p.is_system ? 'info' : 'accent'
-              const toneRailClass = tone === 'info' ? 'bg-info/70' : 'bg-accent/70'
-              const toneGradientClass = tone === 'info'
-                ? 'from-info/[0.06] via-info/[0.02] to-transparent dark:from-info/[0.10]'
-                : 'from-accent/[0.05] via-accent/[0.015] to-transparent dark:from-accent/[0.10]'
-              const toneHoverBorderClass = tone === 'info' ? 'hover:border-info/40' : 'hover:border-accent/40'
-              const toneBadgeClass = tone === 'info'
-                ? 'border-info/30 bg-info/[0.12] text-info'
-                : 'border-accent/30 bg-accent/[0.12] text-accent'
+              const toneRailClass =
+                tone === 'info' ? 'bg-info/70' : 'bg-accent/70'
+              const toneGradientClass =
+                tone === 'info'
+                  ? 'from-info/[0.06] via-info/[0.02] to-transparent dark:from-info/[0.10]'
+                  : 'from-accent/[0.05] via-accent/[0.015] to-transparent dark:from-accent/[0.10]'
+              const toneHoverBorderClass =
+                tone === 'info'
+                  ? 'hover:border-info/40'
+                  : 'hover:border-accent/40'
+              const toneBadgeClass =
+                tone === 'info'
+                  ? 'border-info/30 bg-info/[0.12] text-info'
+                  : 'border-accent/30 bg-accent/[0.12] text-accent'
               const toneDotClass = tone === 'info' ? 'bg-info' : 'bg-accent'
               return (
                 <Panel
@@ -354,19 +450,36 @@ export function GovernanceProfilesPage() {
                     'hover:shadow-soft'
                   )}
                 >
-                  <span aria-hidden className={cn('absolute left-0 top-3 bottom-3 w-[2px] rounded-full', toneRailClass)} />
-                  <div className={cn('pointer-events-none absolute inset-0 bg-gradient-to-br opacity-80', toneGradientClass)} aria-hidden />
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'absolute left-0 top-3 bottom-3 w-[2px] rounded-full',
+                      toneRailClass
+                    )}
+                  />
+                  <div
+                    className={cn(
+                      'pointer-events-none absolute inset-0 opacity-80',
+                      toneGradientClass
+                    )}
+                    aria-hidden
+                  />
 
                   <div className="relative flex items-start justify-between gap-2.5">
                     <div className="min-w-0 flex-1 pl-2">
                       <div className="flex min-w-0 items-center gap-2">
-                        <div title={p.name} className="min-w-0 flex-1 truncate text-[14px] font-semibold tracking-[-0.005em] text-foreground">
+                        <div
+                          title={p.name}
+                          className="min-w-0 flex-1 truncate text-[14px] font-semibold tracking-[-0.005em] text-foreground"
+                        >
                           {p.name}
                         </div>
-                        <span className={cn(
-                          'flex-shrink-0 whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.10em]',
-                          toneBadgeClass
-                        )}>
+                        <span
+                          className={cn(
+                            'flex-shrink-0 whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.10em]',
+                            toneBadgeClass
+                          )}
+                        >
                           {p.is_system ? '内置' : '自定义'}
                         </span>
                       </div>
@@ -374,7 +487,10 @@ export function GovernanceProfilesPage() {
                         <span className="truncate">{p.key}</span>
                       </div>
                       <div className="mt-2 min-h-[2.6rem] text-[12px] leading-5 text-muted-foreground/85 line-clamp-3">
-                        {p.description || (p.is_system ? '适合作为治理基线模板，可直接查看并克隆为团队自定义配置。' : '用于沉淀团队治理经验，可继续编辑、导出或用于入库策略复用。')}
+                        {p.description ||
+                          (p.is_system
+                            ? '适合作为治理基线模板，可直接查看并克隆为团队自定义配置。'
+                            : '用于沉淀团队治理经验，可继续编辑、导出或用于入库策略复用。')}
                       </div>
                     </div>
 
@@ -386,8 +502,10 @@ export function GovernanceProfilesPage() {
                         className="h-7 gap-1 rounded-md px-2 text-[12px] font-medium"
                         onClick={() => {
                           setEditorMode(p.is_system ? 'view' : 'edit')
-                          // IMPORTANT: custom profiles should use `id` (UUID) as ref; `key` may be "custom:<uuid>".
-                          const ref = p.is_system ? p.key : String(p.id || '').trim() || p.key
+                          // IMPORTANT: custom profiles should use `id` (UUID) as ref; `key` may be"custom:<uuid>".
+                          const ref = p.is_system
+                            ? p.key
+                            : String(p.id || '').trim() || p.key
                           setEditorSeedCreate(null)
                           setEditorProfileRef(ref)
                           setEditorOpen(true)
@@ -404,19 +522,26 @@ export function GovernanceProfilesPage() {
                         aria-label="复制 Profile"
                         title="复制"
                         onClick={() =>
-                          detachPromise((async () => {
-                            const ref = p.is_system ? p.key : String(p.id || '').trim() || p.key
-                            if (!ref) return
-                            try {
-                              const prof = await pipelineApi.getGovernanceProfile(ref)
-                              setEditorMode('create')
-                              setEditorProfileRef(null)
-                              setEditorSeedCreate(buildGovernanceProfileCreateFromExisting(prof))
-                              setEditorOpen(true)
-                            } catch (err: any) {
-                              toast.error(formatApiError(err, '复制失败'))
-                            }
-                          })())
+                          detachPromise(
+                            (async () => {
+                              const ref = p.is_system
+                                ? p.key
+                                : String(p.id || '').trim() || p.key
+                              if (!ref) return
+                              try {
+                                const prof =
+                                  await pipelineApi.getGovernanceProfile(ref)
+                                setEditorMode('create')
+                                setEditorProfileRef(null)
+                                setEditorSeedCreate(
+                                  buildGovernanceProfileCreateFromExisting(prof)
+                                )
+                                setEditorOpen(true)
+                              } catch (err: any) {
+                                toast.error(formatApiError(err, '复制失败'))
+                              }
+                            })()
+                          )
                         }
                       >
                         <Copy className="h-3.5 w-3.5" />
@@ -435,11 +560,17 @@ export function GovernanceProfilesPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-48">
-                          <DropdownMenuItem onSelect={() => detachPromise(exportOne(p))}>
+                          <DropdownMenuItem
+                            onSelect={() => detachPromise(exportOne(p))}
+                          >
                             <Download className="mr-2 h-4 w-4" />
                             导出配置 JSON
                           </DropdownMenuItem>
-                          <DropdownMenuItem onSelect={() => detachPromise(exportAsIngestionPolicy(p))}>
+                          <DropdownMenuItem
+                            onSelect={() =>
+                              detachPromise(exportAsIngestionPolicy(p))
+                            }
+                          >
                             <Download className="mr-2 h-4 w-4" />
                             导出入库策略
                           </DropdownMenuItem>
@@ -462,8 +593,13 @@ export function GovernanceProfilesPage() {
 
                   <div className="relative mt-3 flex items-center justify-between border-t border-border/50 pt-2.5 pl-2">
                     <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/85">
-                      <span aria-hidden className={cn('size-1.5 rounded-full', toneDotClass)} />
-                      <span>{p.is_system ? '系统基线模板' : '团队自定义模板'}</span>
+                      <span
+                        aria-hidden
+                        className={cn('size-1.5 rounded-full', toneDotClass)}
+                      />
+                      <span>
+                        {p.is_system ? '系统基线模板' : '团队自定义模板'}
+                      </span>
                     </div>
                     <div className="text-[11px] text-muted-foreground/70">
                       {p.is_system ? '支持克隆' : '支持编辑与导出'}
@@ -478,7 +614,9 @@ export function GovernanceProfilesPage() {
             className="mt-6 border-border/60 bg-card"
             title={loading ? '正在加载…' : '暂无 Profiles'}
             description={
-              loading ? '请稍候' : '你可以创建一个自定义 Profile，或切换"包含内置"查看内置预设。'
+              loading
+                ? '请稍候'
+                : '你可以创建一个自定义 Profile，或切换"包含内置"查看内置预设。'
             }
             icon={ShieldCheck}
           >

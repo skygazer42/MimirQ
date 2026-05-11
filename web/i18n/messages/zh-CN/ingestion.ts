@@ -1,0 +1,86 @@
+const ingestionMessages = {
+IngestionDetailDialog: {
+    stages: {
+      queued: '排队',
+      parsing: '解析',
+      chunking: '切块',
+      embedding: '向量化',
+      completed: '完成',
+    },
+    status: {
+      pending: '待处理',
+      processing: '处理中',
+      completed: '已完成',
+      failed: '失败',
+      quarantined: '已隔离',
+      cancelled: '已取消',
+    },
+    header: {
+      fallbackTitle: '入库详情',
+    },
+    pipeline: {
+      title: '处理流程',
+      progress: '进度',
+    },
+    runtime: {
+      title: '运行时详情',
+      documentId: '文档 ID',
+      datasetId: '数据集 ID',
+      file: '文件',
+      chunks: '切片数',
+      progress: '进度',
+      stage: '阶段',
+      updated: '更新时间',
+      parser: '解析器',
+      chunker: '切块策略',
+      pipelineHash: 'Pipeline Hash',
+      taskId: '任务 ID',
+      kgTaskId: 'KG 任务 ID',
+      userTags: '用户标签',
+      pipeline: 'Pipeline',
+    },
+    versions: {
+      title: '版本对比（Pipeline Diff）',
+      fromLabel: '起始版本',
+      toLabel: '目标版本',
+      selectVersion: '选择版本',
+      activeTag: '激活',
+      metrics: {
+        fromChunks: '起始切片',
+        toChunks: '目标切片',
+        unchanged: '未变化',
+        added: '新增',
+        removed: '移除',
+        changedTransforms: '变更的处理链',
+      },
+      diffHintPrefix: '说明：对比基于 chunk',
+      diffHintSuffix: '的多重集差异；不会返回切片文本。',
+    },
+    actions: {
+      reload: '重新加载',
+      refreshVersions: '刷新版本',
+      compare: '对比',
+      viewParsedContent: '查看解析内容',
+      cancelTask: '取消任务',
+      retry: '重试入库',
+      forceRetry: '强制重跑',
+    },
+    errors: {
+      diffFailed: '对比失败',
+      cancelFailed: '取消失败',
+      retryFailed: '重试失败',
+      loadTitle: '加载失败',
+      loadDescription: '无法获取文档详情，请重试。',
+      loadVersions: '加载版本列表失败',
+      quarantineReason: '隔离原因',
+      errorMessage: '错误信息',
+    },
+    toasts: {
+      cancelSuccess: '已取消入库任务',
+      retry: '已触发重新入库',
+      retryForced: '已触发重新入库（强制）',
+    },
+  }
+} as const
+
+export default ingestionMessages

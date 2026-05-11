@@ -91,6 +91,7 @@ if __name__ == "__main__":
     # 4. Call parser to extract text
     results = parser(ppt_path, from_page, to_page)
     # 5. Print results (one paragraph per page)
+    logging.basicConfig(level=logging.INFO)
     for i, page_text in enumerate(results, start=from_page):
-        print(f"\n--- Page {i + 1} ---\n")
-        print(page_text)
+        logging.info("--- Page %s ---", i + 1)
+        logging.info("%s", page_text)

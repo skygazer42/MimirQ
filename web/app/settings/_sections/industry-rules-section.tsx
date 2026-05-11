@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { FileText, Loader2, RefreshCw, Save, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -11,8 +12,9 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { OperationResultPanel } from '@/components/ops/operation-result-panel'
 import { systemPageTokens, systemWorkbenchTokens } from '@/components/ui/system-page-tokens'
-import { industryRulesApi, type IndustryRulesetSummary } from '@/lib/api'
+import { industryRulesApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise } from '@/lib/utils'
 
 type ResultState = {
@@ -35,8 +37,6 @@ function parseJson<T>(raw: string, fallback: T): T {
 }
 
 export function IndustryRulesSection() {
-  const didLoadRulesetsRef = useRef(false)
-  const [rulesets, setRulesets] = useState<IndustryRulesetSummary[]>([])
   const [rulesetName, setRulesetName] = useState('industrial_control')
   const [query, setQuery] = useState('PLC 报警如何排查？')
   const [glossaryJson, setGlossaryJson] = useState('{}')
@@ -44,6 +44,12 @@ export function IndustryRulesSection() {
   const [intentsJson, setIntentsJson] = useState('[]')
   const [runningKey, setRunningKey] = useState<string | null>(null)
   const [result, setResult] = useState<ResultState | null>(null)
+
+  const rulesetsQuery = useQuery({
+    queryKey: queryKeys.industryRules.rulesets,
+    queryFn: () => industryRulesApi.listRulesets(),
+  })
+  const rulesets = rulesetsQuery.data?.rulesets || []
 
   async function runAction(
     key: string,
@@ -65,8 +71,9 @@ export function IndustryRulesSection() {
 
   async function loadRulesets(options?: { silentSuccess?: boolean }): Promise<void> {
     await runAction('list', '加载规则集', async () => {
-      const payload = await industryRulesApi.listRulesets()
-      setRulesets(payload.rulesets || [])
+      const { data, error } = await rulesetsQuery.refetch()
+      if (error) throw error
+      const payload = data || { rulesets: [] }
       const first = payload.rulesets?.[0]?.name
       if (first && !rulesetName.trim()) setRulesetName(first)
       return payload
@@ -82,13 +89,6 @@ export function IndustryRulesSection() {
       return payload
     })
   }
-
-  useEffect(() => {
-    if (didLoadRulesetsRef.current) return
-    didLoadRulesetsRef.current = true
-    detachPromise(loadRulesets({ silentSuccess: true }))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   const actionDisabled = Boolean(runningKey) || !rulesetName.trim()
   const actionButtonClass = 'h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold'

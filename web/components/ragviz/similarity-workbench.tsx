@@ -2,18 +2,19 @@
 
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { ragvizApi } from '@/lib/api'
 import { SimilarityDiagnosticsGraph } from '@/components/ragviz/similarity-diagnostics-graph'
 import type {
   RagvizSimilarityCollection,
   RagvizSimilarityCalculateResponse,
-  RagvizSimilarityCollectionsResponse,
   RagvizSimilarityMatrixResult,
   RagvizSimilarityRequest,
 } from '@/types'
 import { Button } from '@/components/ui/button'
 import { PageLoading } from '@/components/ui/page-loading'
 import { cn, detachPromise } from '@/lib/utils'
+import { queryKeys } from '@/lib/query-keys'
 import { buildSimilarityDiagnostics } from '@/components/ragviz/similarity-diagnostics'
 import type {
   DiagnosticDecision,
@@ -75,7 +76,12 @@ type PlotlyConfig = {
 }
 
 type PlotlyLike = {
-  react: (element: HTMLDivElement, data: PlotlyTrace[], layout: PlotlyLayout, config: PlotlyConfig) => void
+  react: (
+    element: HTMLDivElement,
+    data: PlotlyTrace[],
+    layout: PlotlyLayout,
+    config: PlotlyConfig
+  ) => void
   purge: (element: HTMLDivElement) => void
 }
 
@@ -91,7 +97,10 @@ type PlotlyClickEvent = {
 }
 
 type PlotlyEventTarget = HTMLDivElement & {
-  on?: (eventName: 'plotly_click', handler: (event: PlotlyClickEvent) => void) => void
+  on?: (
+    eventName: 'plotly_click',
+    handler: (event: PlotlyClickEvent) => void
+  ) => void
   removeAllListeners?: (eventName?: string) => void
 }
 
@@ -100,12 +109,15 @@ function isRecord(value: unknown): value is JsonRecord {
 }
 
 function isPlotlyLike(value: unknown): value is PlotlyLike {
-  if (!value || (typeof value !== 'object' && typeof value !== 'function')) return false
+  if (!value || (typeof value !== 'object' && typeof value !== 'function'))
+    return false
   const maybe = value as { react?: unknown; purge?: unknown }
   return typeof maybe.react === 'function' && typeof maybe.purge === 'function'
 }
 
-function isSimilarityMatrixResult(value: unknown): value is RagvizSimilarityMatrixResult {
+function isSimilarityMatrixResult(
+  value: unknown
+): value is RagvizSimilarityMatrixResult {
   return (
     isRecord(value) &&
     Array.isArray(value.matrix) &&
@@ -136,32 +148,44 @@ function isVisualConfig(value: unknown): value is VisualConfig {
 }
 
 function getErrorMessage(error: unknown, fallback = '操作失败'): string {
-  if (error instanceof Error && error.message.trim()) return error.message.trim()
+  if (error instanceof Error && error.message.trim())
+    return error.message.trim()
   const text = String(error || '').trim()
   return text || fallback
 }
 
 export function RagvizSimilarityWorkbench() {
-  const [collections, setCollections] = useState<RagvizSimilarityCollection[]>([])
-  const [collectionsLoading, setCollectionsLoading] = useState(false)
-  const [collectionsError, setCollectionsError] = useState<string>('')
-
   const [xSelections, setXSelections] = useState<string[]>([''])
   const [ySelections, setYSelections] = useState<string[]>([''])
   const [xMaxItems, setXMaxItems] = useState<number>(30)
   const [yMaxItems, setYMaxItems] = useState<number>(30)
   const [isCalculating, setIsCalculating] = useState(false)
-  const [calcProgress, setCalcProgress] = useState<{ done: number; total: number } | null>(null)
+  const [calcProgress, setCalcProgress] = useState<{
+    done: number
+    total: number
+  } | null>(null)
   const [colorScheme, setColorScheme] = useState<ColorSchemeKey>('viridis')
-  const [tempSimilarityRange, setTempSimilarityRange] = useState<{ min: number; max: number }>({ min: 0, max: 1 })
-  const [tempTopK, setTempTopK] = useState<{ value: number; axis: 'x' | 'y' }>({ value: 0, axis: 'x' })
+  const [tempSimilarityRange, setTempSimilarityRange] = useState<{
+    min: number
+    max: number
+  }>({ min: 0, max: 1 })
+  const [tempTopK, setTempTopK] = useState<{ value: number; axis: 'x' | 'y' }>({
+    value: 0,
+    axis: 'x',
+  })
   const [mainView, setMainView] = useState<MainViewMode>('heatmap')
-  const [diagnosticDecisions, setDiagnosticDecisions] = useState<Record<string, DiagnosticDecision>>({})
-  const [selectedCell, setSelectedCell] = useState<SelectedHeatmapCell | null>(null)
+  const [diagnosticDecisions, setDiagnosticDecisions] = useState<
+    Record<string, DiagnosticDecision>
+  >({})
+  const [selectedCell, setSelectedCell] = useState<SelectedHeatmapCell | null>(
+    null
+  )
 
   const [leftTopPanel, setLeftTopPanel] = useState<LeftTopPanel>('dataSource')
-  const [rightTopPanel, setRightTopPanel] = useState<RightTopPanel>('statistics')
-  const [rightBottomPanel, setRightBottomPanel] = useState<RightBottomPanel>('filters')
+  const [rightTopPanel, setRightTopPanel] =
+    useState<RightTopPanel>('statistics')
+  const [rightBottomPanel, setRightBottomPanel] =
+    useState<RightBottomPanel>('filters')
   const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(false)
   const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(false)
 
@@ -182,25 +206,29 @@ export function RagvizSimilarityWorkbench() {
   const [exclusiveIndex, setExclusiveIndex] = useState<number | null>(null)
   const [exportIndex, setExportIndex] = useState<number>(0)
 
-  const loadCollections = useCallback(async () => {
-    setCollectionsError('')
-    setCollectionsLoading(true)
-    try {
-      const res: RagvizSimilarityCollectionsResponse = await ragvizApi.listSimilarityCollections()
-      setCollections(res.collections || [])
-    } catch (error: unknown) {
-      setCollectionsError(getErrorMessage(error, '加载 collections 失败'))
-    } finally {
-      setCollectionsLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    detachPromise(loadCollections())
-  }, [loadCollections])
+  const collectionsQuery = useQuery({
+    queryKey: queryKeys.ragviz.similarityCollections,
+    queryFn: ragvizApi.listSimilarityCollections,
+  })
+  const collections: RagvizSimilarityCollection[] = useMemo(
+    () => collectionsQuery.data?.collections || [],
+    [collectionsQuery.data?.collections]
+  )
+  const collectionsLoading = collectionsQuery.isFetching
+  const collectionsError = collectionsQuery.error
+    ? getErrorMessage(collectionsQuery.error, '加载 collections 失败')
+    : ''
+  const refreshCollections = () => {
+    void collectionsQuery.refetch()
+  }
 
   const availableCollectionOptions = useMemo(() => {
-    return collections.map((c) => ({ value: c.id, label: c.label, kind: c.kind, count: c.count }))
+    return collections.map((c) => ({
+      value: c.id,
+      label: c.label,
+      kind: c.kind,
+      count: c.count,
+    }))
   }, [collections])
 
   const resolveCollectionLabel = (id: string) => {
@@ -248,12 +276,16 @@ export function RagvizSimilarityWorkbench() {
         }
 
         try {
-          const res: RagvizSimilarityCalculateResponse = await ragvizApi.calculateSimilarityMatrix(payload)
+          const res: RagvizSimilarityCalculateResponse =
+            await ragvizApi.calculateSimilarityMatrix(payload)
           if (!res.success || !res.result) {
             throw new Error(res.error || '计算失败')
           }
 
-          const visualConfig = createDefaultVisualConfig(res.result.x_available_fields, res.result.y_available_fields)
+          const visualConfig = createDefaultVisualConfig(
+            res.result.x_available_fields,
+            res.result.y_available_fields
+          )
           nextResults.push({
             xCollectionId: x,
             yCollectionId: y,
@@ -264,7 +296,9 @@ export function RagvizSimilarityWorkbench() {
           })
         } catch (error: unknown) {
           const msg = getErrorMessage(error, '计算失败')
-          toast.error(`${resolveCollectionLabel(x)} vs ${resolveCollectionLabel(y)}：${msg}`)
+          toast.error(
+            `${resolveCollectionLabel(x)} vs ${resolveCollectionLabel(y)}：${msg}`
+          )
         } finally {
           done += 1
           setCalcProgress({ done, total })
@@ -292,7 +326,11 @@ export function RagvizSimilarityWorkbench() {
       return
     }
 
-    const init: MatrixButtonState[] = entries.map(() => ({ applyData: false, applyFilter: false, exclusive: false }))
+    const init: MatrixButtonState[] = entries.map(() => ({
+      applyData: false,
+      applyFilter: false,
+      exclusive: false,
+    }))
     init[0] = { applyData: true, applyFilter: true, exclusive: true }
     setMatrixButtons(init)
     setPrimaryIndex(0)
@@ -303,7 +341,9 @@ export function RagvizSimilarityWorkbench() {
   }
 
   const downloadJson = (filename: string, data: unknown) => {
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' })
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: 'application/json;charset=utf-8',
+    })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -329,21 +369,35 @@ export function RagvizSimilarityWorkbench() {
 
   const parseImportedPayload = (raw: unknown): SimilarityMatrixEntry[] => {
     if (!raw) return []
-    const entries = Array.isArray(raw) ? raw : isRecord(raw) && Array.isArray(raw.entries) ? raw.entries : [raw]
+    const entries = Array.isArray(raw)
+      ? raw
+      : isRecord(raw) && Array.isArray(raw.entries)
+        ? raw.entries
+        : [raw]
     const out: SimilarityMatrixEntry[] = []
     for (const entry of entries) {
       if (!isRecord(entry)) continue
       const result = entry.result
       if (!isSimilarityMatrixResult(result)) continue
       const metadata = isRecord(result.metadata) ? result.metadata : null
-      const xCollectionId = String(entry.xCollectionId || entry.xCollection || metadata?.x_collection || '')
-      const yCollectionId = String(entry.yCollectionId || entry.yCollection || metadata?.y_collection || '')
-      const xCollectionLabel = String(entry.xCollectionLabel || xCollectionId || 'X')
-      const yCollectionLabel = String(entry.yCollectionLabel || yCollectionId || 'Y')
-      const visualConfig: VisualConfig =
-        isVisualConfig(entry.visualConfig)
-          ? entry.visualConfig
-          : createDefaultVisualConfig(result.x_available_fields || [], result.y_available_fields || [])
+      const xCollectionId = String(
+        entry.xCollectionId || entry.xCollection || metadata?.x_collection || ''
+      )
+      const yCollectionId = String(
+        entry.yCollectionId || entry.yCollection || metadata?.y_collection || ''
+      )
+      const xCollectionLabel = String(
+        entry.xCollectionLabel || xCollectionId || 'X'
+      )
+      const yCollectionLabel = String(
+        entry.yCollectionLabel || yCollectionId || 'Y'
+      )
+      const visualConfig: VisualConfig = isVisualConfig(entry.visualConfig)
+        ? entry.visualConfig
+        : createDefaultVisualConfig(
+            result.x_available_fields || [],
+            result.y_available_fields || []
+          )
 
       out.push({
         xCollectionId,
@@ -366,7 +420,9 @@ export function RagvizSimilarityWorkbench() {
         const json: unknown = JSON.parse(text)
         imported.push(...parseImportedPayload(json))
       } catch (error: unknown) {
-        toast.error(`导入失败：${file.name}（${getErrorMessage(error, 'JSON 解析错误')}）`)
+        toast.error(
+          `导入失败：${file.name}（${getErrorMessage(error, 'JSON 解析错误')}）`
+        )
       }
     }
 
@@ -383,7 +439,11 @@ export function RagvizSimilarityWorkbench() {
       return [...prev, ...imported]
     })
     setMatrixButtons((prev) => {
-      const appended = imported.map(() => ({ applyData: false, applyFilter: false, exclusive: false }))
+      const appended = imported.map(() => ({
+        applyData: false,
+        applyFilter: false,
+        exclusive: false,
+      }))
       return prev.length === 0 ? appended : [...prev, ...appended]
     })
     if (results.length === 0) {
@@ -396,7 +456,10 @@ export function RagvizSimilarityWorkbench() {
   const primaryEntry = primaryIndex === null ? null : results[primaryIndex]
   const subtractEntry = subtractIndex === null ? null : results[subtractIndex]
   const isDifferenceMode = Boolean(primaryEntry && subtractEntry)
-  const rangeBounds = useMemo(() => (isDifferenceMode ? { min: -1, max: 1 } : { min: 0, max: 1 }), [isDifferenceMode])
+  const rangeBounds = useMemo(
+    () => (isDifferenceMode ? { min: -1, max: 1 } : { min: 0, max: 1 }),
+    [isDifferenceMode]
+  )
 
   useEffect(() => {
     // Match Kumi: entering difference mode resets sliders to [-1, 1].
@@ -426,7 +489,8 @@ export function RagvizSimilarityWorkbench() {
     const a = primaryEntry.result.matrix
     if (!subtractEntry) return a
     const b = subtractEntry.result.matrix
-    if (a.length !== b.length || (a[0]?.length || 0) !== (b[0]?.length || 0)) return a
+    if (a.length !== b.length || (a[0]?.length || 0) !== (b[0]?.length || 0))
+      return a
     return a.map((row, i) => row.map((val, j) => val - b[i][j]))
   }, [primaryEntry, subtractEntry])
 
@@ -444,15 +508,25 @@ export function RagvizSimilarityWorkbench() {
     return results[exclusiveIndex]?.visualConfig || null
   }, [exclusiveIndex, results])
 
-  const uiSimilarityRange = exclusiveIndex !== null && activeVisualConfig ? activeVisualConfig.similarityRange : tempSimilarityRange
-  const uiTopK = exclusiveIndex !== null && activeVisualConfig ? activeVisualConfig.filters.topK : tempTopK
+  const uiSimilarityRange =
+    exclusiveIndex !== null && activeVisualConfig
+      ? activeVisualConfig.similarityRange
+      : tempSimilarityRange
+  const uiTopK =
+    exclusiveIndex !== null && activeVisualConfig
+      ? activeVisualConfig.filters.topK
+      : tempTopK
 
   const effectiveMask = useMemo(() => {
     if (!displayMatrix || !primaryEntry) return null
 
     // Exclusive mode: only use the editing matrix config.
     if (exclusiveIndex !== null && activeVisualConfig) {
-      return computeFinalMask(displayMatrix, activeVisualConfig.similarityRange, activeVisualConfig.filters.topK)
+      return computeFinalMask(
+        displayMatrix,
+        activeVisualConfig.similarityRange,
+        activeVisualConfig.filters.topK
+      )
     }
 
     // Apply-filter mode: OR masks of selected matrices (based on their own configs),
@@ -465,8 +539,16 @@ export function RagvizSimilarityWorkbench() {
         const entry = results[idx]
         if (!entry) return null
         const shape = matrixShape(entry)
-        if (shape.rows !== primaryShape.rows || shape.cols !== primaryShape.cols) return null
-        return computeFinalMask(entry.result.matrix, entry.visualConfig.similarityRange, entry.visualConfig.filters.topK)
+        if (
+          shape.rows !== primaryShape.rows ||
+          shape.cols !== primaryShape.cols
+        )
+          return null
+        return computeFinalMask(
+          entry.result.matrix,
+          entry.visualConfig.similarityRange,
+          entry.visualConfig.filters.topK
+        )
       })
       .filter(Boolean) as boolean[][][]
 
@@ -474,7 +556,11 @@ export function RagvizSimilarityWorkbench() {
       mask = combineWithOR(filterMasks)
     }
 
-    const tempMask = computeFinalMask(displayMatrix, tempSimilarityRange, tempTopK)
+    const tempMask = computeFinalMask(
+      displayMatrix,
+      tempSimilarityRange,
+      tempTopK
+    )
     return mask ? combineWithAND(mask, tempMask) : tempMask
   }, [
     activeFilterIndices,
@@ -496,20 +582,29 @@ export function RagvizSimilarityWorkbench() {
   const selectedCellDetails = useMemo(() => {
     if (!selectedCell || !displayLabels || !displayMatrix) return null
 
-    const rawValue = displayMatrix[selectedCell.rowIndex]?.[selectedCell.colIndex]
+    const rawValue =
+      displayMatrix[selectedCell.rowIndex]?.[selectedCell.colIndex]
     if (typeof rawValue !== 'number' || !Number.isFinite(rawValue)) return null
 
-    const maskedValue = maskedMatrix?.[selectedCell.rowIndex]?.[selectedCell.colIndex]
+    const maskedValue =
+      maskedMatrix?.[selectedCell.rowIndex]?.[selectedCell.colIndex]
     const isVisible = effectiveMask
       ? Boolean(effectiveMask[selectedCell.rowIndex]?.[selectedCell.colIndex])
       : true
 
     return {
       ...selectedCell,
-      xLabel: displayLabels.xLabels[selectedCell.colIndex] || `X${selectedCell.colIndex + 1}`,
-      yLabel: displayLabels.yLabels[selectedCell.rowIndex] || `Y${selectedCell.rowIndex + 1}`,
+      xLabel:
+        displayLabels.xLabels[selectedCell.colIndex] ||
+        `X${selectedCell.colIndex + 1}`,
+      yLabel:
+        displayLabels.yLabels[selectedCell.rowIndex] ||
+        `Y${selectedCell.rowIndex + 1}`,
       rawValue,
-      maskedValue: typeof maskedValue === 'number' && Number.isFinite(maskedValue) ? maskedValue : null,
+      maskedValue:
+        typeof maskedValue === 'number' && Number.isFinite(maskedValue)
+          ? maskedValue
+          : null,
       isVisible,
     }
   }, [displayLabels, displayMatrix, effectiveMask, maskedMatrix, selectedCell])
@@ -518,10 +613,12 @@ export function RagvizSimilarityWorkbench() {
     if (!selectedCell || !displayMatrix || !displayLabels) return
 
     const rowCount = displayMatrix.length
-    const colCount = rowCount > 0 ? (displayMatrix[0]?.length || 0) : 0
-    const outOfBounds = selectedCell.rowIndex >= rowCount || selectedCell.colIndex >= colCount
+    const colCount = rowCount > 0 ? displayMatrix[0]?.length || 0 : 0
+    const outOfBounds =
+      selectedCell.rowIndex >= rowCount || selectedCell.colIndex >= colCount
     const labelsMissing =
-      selectedCell.rowIndex >= displayLabels.yLabels.length || selectedCell.colIndex >= displayLabels.xLabels.length
+      selectedCell.rowIndex >= displayLabels.yLabels.length ||
+      selectedCell.colIndex >= displayLabels.xLabels.length
 
     if (outOfBounds || labelsMissing) {
       setSelectedCell(null)
@@ -534,16 +631,28 @@ export function RagvizSimilarityWorkbench() {
     if (!matrixForDiagnostics) return null
 
     return buildSimilarityDiagnostics({
-      matrix: matrixForDiagnostics.map((row) => row.map((value) => (typeof value === 'number' ? value : 0))),
+      matrix: matrixForDiagnostics.map((row) =>
+        row.map((value) => (typeof value === 'number' ? value : 0))
+      ),
       xItems: primaryEntry.result.x_data,
       yItems: primaryEntry.result.y_data,
       xLabels: displayLabels.xLabels,
       yLabels: displayLabels.yLabels,
       decisions: diagnosticDecisions,
     })
-  }, [diagnosticDecisions, displayLabels, displayMatrix, isDifferenceMode, maskedMatrix, primaryEntry])
+  }, [
+    diagnosticDecisions,
+    displayLabels,
+    displayMatrix,
+    isDifferenceMode,
+    maskedMatrix,
+    primaryEntry,
+  ])
 
-  const setDiagnosticDecision = (candidateId: string, decision: DiagnosticDecision | null) => {
+  const setDiagnosticDecision = (
+    candidateId: string,
+    decision: DiagnosticDecision | null
+  ) => {
     setDiagnosticDecisions((prev) => {
       if (decision === null || prev[candidateId] === decision) {
         const next = { ...prev }
@@ -581,16 +690,31 @@ export function RagvizSimilarityWorkbench() {
     )
 
     if (!displayMatrix) return null
-    const tempMask = computeFinalMask(displayMatrix, tempSimilarityRange, tempTopK)
-    const isTempDefault = tempSimilarityRange.min === -1 && tempSimilarityRange.max === 1 && tempTopK.value === 0
+    const tempMask = computeFinalMask(
+      displayMatrix,
+      tempSimilarityRange,
+      tempTopK
+    )
+    const isTempDefault =
+      tempSimilarityRange.min === -1 &&
+      tempSimilarityRange.max === 1 &&
+      tempTopK.value === 0
     const currentMask = isTempDefault ? subtractMask : tempMask
 
     return calculateDifferenceModeStatistics(groundTruthMask, currentMask)
-  }, [displayMatrix, primaryEntry, subtractEntry, tempSimilarityRange, tempTopK])
+  }, [
+    displayMatrix,
+    primaryEntry,
+    subtractEntry,
+    tempSimilarityRange,
+    tempTopK,
+  ])
 
   const handleHeatmapCellSelect = useCallback((cell: SelectedHeatmapCell) => {
     setSelectedCell((prev) =>
-      prev && prev.rowIndex === cell.rowIndex && prev.colIndex === cell.colIndex ? null : cell
+      prev && prev.rowIndex === cell.rowIndex && prev.colIndex === cell.colIndex
+        ? null
+        : cell
     )
   }, [])
 
@@ -646,7 +770,8 @@ export function RagvizSimilarityWorkbench() {
   }
 
   const updateSimilarityRange = (range: { min: number; max: number }) => {
-    const clamp = (v: number) => Math.max(rangeBounds.min, Math.min(rangeBounds.max, v))
+    const clamp = (v: number) =>
+      Math.max(rangeBounds.min, Math.min(rangeBounds.max, v))
     const min = clamp(range.min)
     const max = clamp(range.max)
     const next = { min: Math.min(min, max), max: Math.max(min, max) }
@@ -655,7 +780,10 @@ export function RagvizSimilarityWorkbench() {
       setResults((prev) =>
         prev.map((entry, idx) => {
           if (idx !== exclusiveIndex) return entry
-          return { ...entry, visualConfig: { ...entry.visualConfig, similarityRange: next } }
+          return {
+            ...entry,
+            visualConfig: { ...entry.visualConfig, similarityRange: next },
+          }
         })
       )
       return
@@ -664,14 +792,22 @@ export function RagvizSimilarityWorkbench() {
   }
 
   const updateTopK = (nextTopK: { value: number; axis: 'x' | 'y' }) => {
-    const shape = primaryEntry ? matrixShape(primaryEntry) : { rows: 0, cols: 0 }
+    const shape = primaryEntry
+      ? matrixShape(primaryEntry)
+      : { rows: 0, cols: 0 }
     const max = nextTopK.axis === 'x' ? shape.cols : shape.rows
-    const clamped = { ...nextTopK, value: Math.max(0, Math.min(Number(nextTopK.value) || 0, max)) }
+    const clamped = {
+      ...nextTopK,
+      value: Math.max(0, Math.min(Number(nextTopK.value) || 0, max)),
+    }
     if (exclusiveIndex !== null) {
       setResults((prev) =>
         prev.map((entry, idx) => {
           if (idx !== exclusiveIndex) return entry
-          return { ...entry, visualConfig: { ...entry.visualConfig, filters: { topK: clamped } } }
+          return {
+            ...entry,
+            visualConfig: { ...entry.visualConfig, filters: { topK: clamped } },
+          }
         })
       )
       return
@@ -682,11 +818,14 @@ export function RagvizSimilarityWorkbench() {
   const matrixShape = (entry: SimilarityMatrixEntry | null) => {
     const m = entry?.result?.matrix || []
     const rows = m.length
-    const cols = rows > 0 ? (m[0]?.length || 0) : 0
+    const cols = rows > 0 ? m[0]?.length || 0 : 0
     return { rows, cols }
   }
 
-  const sameShape = (a: SimilarityMatrixEntry | null, b: SimilarityMatrixEntry | null) => {
+  const sameShape = (
+    a: SimilarityMatrixEntry | null,
+    b: SimilarityMatrixEntry | null
+  ) => {
     const sa = matrixShape(a)
     const sb = matrixShape(b)
     return sa.rows === sb.rows && sa.cols === sb.cols
@@ -763,12 +902,18 @@ export function RagvizSimilarityWorkbench() {
 
       if (subtractIndex === null) {
         setSubtractIndex(index)
-        return next.map((s, i) => ({ ...s, applyData: i === primaryIndex || i === index }))
+        return next.map((s, i) => ({
+          ...s,
+          applyData: i === primaryIndex || i === index,
+        }))
       }
 
       // Replace subtract.
       setSubtractIndex(index)
-      return next.map((s, i) => ({ ...s, applyData: i === primaryIndex || i === index }))
+      return next.map((s, i) => ({
+        ...s,
+        applyData: i === primaryIndex || i === index,
+      }))
     })
   }
 
@@ -800,7 +945,9 @@ export function RagvizSimilarityWorkbench() {
     })
 
     setActiveFilterIndices((prev) => {
-      return prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
+      return prev.includes(index)
+        ? prev.filter((i) => i !== index)
+        : [...prev, index]
     })
   }
 
@@ -815,11 +962,21 @@ export function RagvizSimilarityWorkbench() {
         isLeftSidebarCollapsed,
         isRightSidebarCollapsed,
       }
-      localStorage.setItem('ragviz_similarity_layout_v2', JSON.stringify(payload))
+      localStorage.setItem(
+        'ragviz_similarity_layout_v2',
+        JSON.stringify(payload)
+      )
     } catch {
       // ignore
     }
-  }, [isLeftSidebarCollapsed, isRightSidebarCollapsed, leftWidth, rightWidth, leftTopHeight, rightTopHeight])
+  }, [
+    isLeftSidebarCollapsed,
+    isRightSidebarCollapsed,
+    leftWidth,
+    rightWidth,
+    leftTopHeight,
+    rightTopHeight,
+  ])
 
   useEffect(() => {
     try {
@@ -827,11 +984,16 @@ export function RagvizSimilarityWorkbench() {
       if (!raw) return
       const parsed = JSON.parse(raw)
       if (typeof parsed.leftWidth === 'number') setLeftWidth(parsed.leftWidth)
-      if (typeof parsed.rightWidth === 'number') setRightWidth(parsed.rightWidth)
-      if (typeof parsed.leftTopHeight === 'number') setLeftTopHeight(parsed.leftTopHeight)
-      if (typeof parsed.rightTopHeight === 'number') setRightTopHeight(parsed.rightTopHeight)
-      if (typeof parsed.isLeftSidebarCollapsed === 'boolean') setIsLeftSidebarCollapsed(parsed.isLeftSidebarCollapsed)
-      if (typeof parsed.isRightSidebarCollapsed === 'boolean') setIsRightSidebarCollapsed(parsed.isRightSidebarCollapsed)
+      if (typeof parsed.rightWidth === 'number')
+        setRightWidth(parsed.rightWidth)
+      if (typeof parsed.leftTopHeight === 'number')
+        setLeftTopHeight(parsed.leftTopHeight)
+      if (typeof parsed.rightTopHeight === 'number')
+        setRightTopHeight(parsed.rightTopHeight)
+      if (typeof parsed.isLeftSidebarCollapsed === 'boolean')
+        setIsLeftSidebarCollapsed(parsed.isLeftSidebarCollapsed)
+      if (typeof parsed.isRightSidebarCollapsed === 'boolean')
+        setIsRightSidebarCollapsed(parsed.isRightSidebarCollapsed)
     } catch {
       // ignore
     }
@@ -847,7 +1009,10 @@ export function RagvizSimilarityWorkbench() {
     return { height: rightTopHeight }
   }, [rightTopHeight])
 
-  const startResizeSidebar = (side: 'left' | 'right', event: ReactMouseEvent) => {
+  const startResizeSidebar = (
+    side: 'left' | 'right',
+    event: ReactMouseEvent
+  ) => {
     event.preventDefault()
     const startX = event.clientX
     const startWidth = side === 'left' ? leftWidth : rightWidth
@@ -871,11 +1036,15 @@ export function RagvizSimilarityWorkbench() {
 
   const startResizeSplit = (side: 'left' | 'right', event: ReactMouseEvent) => {
     event.preventDefault()
-    const container = side === 'left' ? leftSidebarRef.current : rightSidebarRef.current
+    const container =
+      side === 'left' ? leftSidebarRef.current : rightSidebarRef.current
     if (!container) return
     const rect = container.getBoundingClientRect()
     const startY = event.clientY
-    const initial = side === 'left' ? leftTopHeight ?? rect.height * 0.5 : rightTopHeight ?? rect.height * 0.5
+    const initial =
+      side === 'left'
+        ? (leftTopHeight ?? rect.height * 0.5)
+        : (rightTopHeight ?? rect.height * 0.5)
 
     const onMove = (e: MouseEvent) => {
       const delta = e.clientY - startY
@@ -902,14 +1071,24 @@ export function RagvizSimilarityWorkbench() {
     const rowCount = primaryEntry.result.y_data.length
     const colCount = primaryEntry.result.x_data.length
     const stats = primaryEntry.result.stats
-    const totalPairs = Math.max(0, Number(stats?.total_pairs || rowCount * colCount || 0))
+    const totalPairs = Math.max(
+      0,
+      Number(stats?.total_pairs || rowCount * colCount || 0)
+    )
     const highCount = Math.max(0, Number(stats?.high_similarity_count || 0))
     const highRatio = totalPairs > 0 ? highCount / totalPairs : 0
 
     return [
       { label: '矩阵规模', value: `${rowCount} × ${colCount}` },
-      { label: '平均相似度', value: formatHeatmapValue(stats?.avg_similarity ?? null) },
-      { label: '最高相似度', value: formatHeatmapValue(stats?.max_similarity ?? null), tone: 'danger' as const },
+      {
+        label: '平均相似度',
+        value: formatHeatmapValue(stats?.avg_similarity ?? null),
+      },
+      {
+        label: '最高相似度',
+        value: formatHeatmapValue(stats?.max_similarity ?? null),
+        tone: 'danger' as const,
+      },
       { label: '高相似占比', value: formatPercent(highRatio) },
     ]
   }, [primaryEntry])
@@ -919,14 +1098,30 @@ export function RagvizSimilarityWorkbench() {
 
     const selectedRow = displayMatrix[selectedCellDetails.rowIndex] || []
     const topX = selectedRow
-      .map((value, index) => ({ label: displayLabels.xLabels[index] || `X${index + 1}`, value, index }))
-      .filter((item) => item.index !== selectedCellDetails.colIndex && Number.isFinite(item.value))
+      .map((value, index) => ({
+        label: displayLabels.xLabels[index] || `X${index + 1}`,
+        value,
+        index,
+      }))
+      .filter(
+        (item) =>
+          item.index !== selectedCellDetails.colIndex &&
+          Number.isFinite(item.value)
+      )
       .sort((left, right) => right.value - left.value)
       .slice(0, 5)
 
     const topY = displayMatrix
-      .map((row, index) => ({ label: displayLabels.yLabels[index] || `Y${index + 1}`, value: row[selectedCellDetails.colIndex], index }))
-      .filter((item) => item.index !== selectedCellDetails.rowIndex && Number.isFinite(item.value))
+      .map((row, index) => ({
+        label: displayLabels.yLabels[index] || `Y${index + 1}`,
+        value: row[selectedCellDetails.colIndex],
+        index,
+      }))
+      .filter(
+        (item) =>
+          item.index !== selectedCellDetails.rowIndex &&
+          Number.isFinite(item.value)
+      )
       .sort((left, right) => right.value - left.value)
       .slice(0, 5)
 
@@ -955,7 +1150,13 @@ export function RagvizSimilarityWorkbench() {
               active={false}
               title={isLeftSidebarCollapsed ? '展开左侧栏' : '收起左侧栏'}
               onClick={() => setIsLeftSidebarCollapsed((prev) => !prev)}
-              icon={isLeftSidebarCollapsed ? <ChevronRight className="size-4" /> : <ChevronLeft className="size-4" />}
+              icon={
+                isLeftSidebarCollapsed ? (
+                  <ChevronRight className="size-4" />
+                ) : (
+                  <ChevronLeft className="size-4" />
+                )
+              }
             />
           </div>
           <div className="mt-auto pt-2">
@@ -987,13 +1188,33 @@ export function RagvizSimilarityWorkbench() {
           )}
 
           <div className="flex flex-col overflow-hidden">
-            <div className="border-b border-sidebar-border/70 bg-background/72 p-4" style={leftTopStyle}>
+            <div
+              className="border-b border-sidebar-border/70 bg-background/72 p-4"
+              style={leftTopStyle}
+            >
               {leftTopPanel === 'dataSource' ? (
-                <Panel title="数据源配置" subtitle="选择横/纵坐标 collections，计算两侧相似度。" rightSlot={
-	                  <Button variant="ghost" size="icon" onClick={loadCollections} disabled={collectionsLoading} title="刷新" aria-label="刷新">
-	                    <RefreshCw className={cn('size-4', collectionsLoading && 'animate-spin motion-reduce:animate-none')} />
-	                  </Button>
-	                }>
+                <Panel
+                  title="数据源配置"
+                  subtitle="选择横/纵坐标 collections，计算两侧相似度。"
+                  rightSlot={
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={refreshCollections}
+                      disabled={collectionsLoading}
+                      title="刷新"
+                      aria-label="刷新"
+                    >
+                      <RefreshCw
+                        className={cn(
+                          'size-4',
+                          collectionsLoading &&
+                            'animate-spin motion-reduce:animate-none'
+                        )}
+                      />
+                    </Button>
+                  }
+                >
                   <div className="overflow-hidden rounded-2xl border border-sidebar-border/70 bg-card shadow-soft">
                     <div className="border-b border-sidebar-border/70 p-4">
                       <div className="flex items-start gap-3">
@@ -1004,7 +1225,9 @@ export function RagvizSimilarityWorkbench() {
                           <div className="text-[12px] font-medium text-muted-foreground">
                             Matrix Setup
                           </div>
-                          <div className="mt-0.5 text-[15px] font-semibold text-foreground">矩阵设置</div>
+                          <div className="mt-0.5 text-[15px] font-semibold text-foreground">
+                            矩阵设置
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1029,7 +1252,13 @@ export function RagvizSimilarityWorkbench() {
                           onChange={setXSelections}
                           options={availableCollectionOptions}
                         />
-                        <NumberField label="最大项目数" value={xMaxItems} onChange={setXMaxItems} min={10} max={500} />
+                        <NumberField
+                          label="最大项目数"
+                          value={xMaxItems}
+                          onChange={setXMaxItems}
+                          min={10}
+                          max={500}
+                        />
                       </AxisConfigCard>
 
                       <AxisConfigCard
@@ -1045,18 +1274,28 @@ export function RagvizSimilarityWorkbench() {
                           onChange={setYSelections}
                           options={availableCollectionOptions}
                         />
-                        <NumberField label="最大项目数" value={yMaxItems} onChange={setYMaxItems} min={10} max={500} />
+                        <NumberField
+                          label="最大项目数"
+                          value={yMaxItems}
+                          onChange={setYMaxItems}
+                          min={10}
+                          max={500}
+                        />
                       </AxisConfigCard>
                     </div>
 
                     <div className="p-4 pt-2">
                       <Button
-                        className="h-10 w-full rounded-xl bg-[linear-gradient(180deg,#3f6df6,#1f55e8)] text-white shadow-soft hover:bg-primary"
+                        className="h-10 w-full rounded-xl bg-[linear-gradient(180deg,#3f6df6,#1f55e8)] text-info-foreground shadow-soft hover:bg-primary"
                         onClick={calculateSimilarity}
                         disabled={isCalculating}
                       >
-                        {isCalculating ? null : <Play className="mr-2 size-3.5 fill-current" />}
-                        {isCalculating && calcProgress ? `计算中... (${calcProgress.done}/${calcProgress.total})` : '计算相似度'}
+                        {isCalculating ? null : (
+                          <Play className="mr-2 size-3.5 fill-current" />
+                        )}
+                        {isCalculating && calcProgress
+                          ? `计算中... (${calcProgress.done}/${calcProgress.total})`
+                          : '计算相似度'}
                       </Button>
                     </div>
                   </div>
@@ -1069,19 +1308,27 @@ export function RagvizSimilarityWorkbench() {
                     </p>
 
                     <div className="space-y-2">
-                      <div className="text-xs font-medium text-foreground/80">选择要导出的图表</div>
+                      <div className="text-xs font-medium text-foreground/80">
+                        选择要导出的图表
+                      </div>
                       <select
                         className="w-full h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
                         value={String(exportIndex)}
-                        onChange={(e) => setExportIndex(Number(e.target.value) || 0)}
+                        onChange={(e) =>
+                          setExportIndex(Number(e.target.value) || 0)
+                        }
                         disabled={results.length === 0}
                       >
                         {results.length === 0 ? (
                           <option value="0">请先计算相似度</option>
                         ) : (
                           results.map((r, idx) => (
-                            <option key={`${r.xCollectionId}__${r.yCollectionId}`} value={idx}>
-                              {idx + 1}. {r.xCollectionLabel} vs {r.yCollectionLabel}
+                            <option
+                              key={`${r.xCollectionId}__${r.yCollectionId}`}
+                              value={idx}
+                            >
+                              {idx + 1}. {r.xCollectionLabel} vs{' '}
+                              {r.yCollectionLabel}
                             </option>
                           ))
                         )}
@@ -1089,10 +1336,18 @@ export function RagvizSimilarityWorkbench() {
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
-                      <Button variant="outline" onClick={exportOne} disabled={results.length === 0}>
+                      <Button
+                        variant="outline"
+                        onClick={exportOne}
+                        disabled={results.length === 0}
+                      >
                         导出JSON
                       </Button>
-                      <Button variant="outline" onClick={exportAll} disabled={results.length === 0}>
+                      <Button
+                        variant="outline"
+                        onClick={exportAll}
+                        disabled={results.length === 0}
+                      >
                         导出所有JSON
                       </Button>
                     </div>
@@ -1133,14 +1388,26 @@ export function RagvizSimilarityWorkbench() {
               <Panel title="图表选择与控制">
                 {results.length === 0 ? (
                   <div className="rounded-2xl border border-sidebar-border/70 bg-card p-4 text-center shadow-subtle">
-                    <div className="text-sm font-medium text-foreground">等待矩阵结果</div>
+                    <div className="text-sm font-medium text-foreground">
+                      等待矩阵结果
+                    </div>
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                      先在上方选择两个 collections，再生成热力图并在这里切换主图、筛选器和独占模式。
+                      先在上方选择两个
+                      collections，再生成热力图并在这里切换主图、筛选器和独占模式。
                     </p>
                     <div className="mt-4 grid grid-cols-3 gap-2">
-                      <EmptyControlTile icon={<Grid3X3 className="size-5" />} label="主图" />
-                      <EmptyControlTile icon={<Filter className="size-5" />} label="筛选器" />
-                      <EmptyControlTile icon={<Target className="size-5" />} label="独占模式" />
+                      <EmptyControlTile
+                        icon={<Grid3X3 className="size-5" />}
+                        label="主图"
+                      />
+                      <EmptyControlTile
+                        icon={<Filter className="size-5" />}
+                        label="筛选器"
+                      />
+                      <EmptyControlTile
+                        icon={<Target className="size-5" />}
+                        label="独占模式"
+                      />
                     </div>
                   </div>
                 ) : (
@@ -1160,19 +1427,28 @@ export function RagvizSimilarityWorkbench() {
                             key={`${entry.xCollectionId}__${entry.yCollectionId}`}
                             className={cn(
                               'flex items-center gap-2 rounded-lg border p-2',
-                              isPrimary ? 'border-primary/50 bg-primary/5' : 'border-border bg-background'
+                              isPrimary
+                                ? 'border-primary/50 bg-primary/5'
+                                : 'border-border bg-background'
                             )}
                           >
                             <div className="flex-1 min-w-0">
                               <div className="text-xs font-medium truncate">
-                                {entry.xCollectionLabel} <span className="text-muted-foreground">vs</span> {entry.yCollectionLabel}
+                                {entry.xCollectionLabel}{' '}
+                                <span className="text-muted-foreground">
+                                  vs
+                                </span>{' '}
+                                {entry.yCollectionLabel}
                               </div>
                               <div className="text-[11px] text-muted-foreground flex items-center gap-2">
                                 <span>
-                                  {matrixShape(entry).rows}×{matrixShape(entry).cols}
+                                  {matrixShape(entry).rows}×
+                                  {matrixShape(entry).cols}
                                 </span>
                                 {isPrimary ? (
-                                  <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary">主</span>
+                                  <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary">
+                                    主
+                                  </span>
                                 ) : null}
                                 {isSubtract ? (
                                   <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-300">
@@ -1188,37 +1464,43 @@ export function RagvizSimilarityWorkbench() {
                             </div>
 
                             <div className="flex items-center gap-1">
-	                              <Button
-	                                variant={btn?.applyData ? 'default' : 'outline'}
-	                                size="icon"
-	                                title="应用数据"
-	                                aria-label={`将 ${entry.xCollectionLabel} vs ${entry.yCollectionLabel} 设为显示数据矩阵`}
-	                                onClick={() => toggleApplyData(idx)}
-	                              >
-	                                <Eye className="size-4" />
-	                              </Button>
-	                              <Button
-	                                variant={btn?.applyFilter ? 'default' : 'outline'}
-	                                size="icon"
-	                                title="应用筛选器"
-	                                aria-label={`将 ${entry.xCollectionLabel} vs ${entry.yCollectionLabel} 的筛选条件加入当前视图`}
-	                                onClick={() => toggleApplyFilter(idx)}
-	                              >
-	                                <Filter className="size-4" />
-	                              </Button>
-	                              <Button
-	                                variant={btn?.exclusive ? 'default' : 'outline'}
-	                                size="icon"
-	                                title="独占模式"
-	                                aria-label={
-                                    btn?.exclusive
-                                      ? `退出 ${entry.xCollectionLabel} vs ${entry.yCollectionLabel} 的独占编辑模式`
-                                      : `将 ${entry.xCollectionLabel} vs ${entry.yCollectionLabel} 设为独占编辑矩阵`
-                                  }
-	                                onClick={() => (btn?.exclusive ? exitExclusiveMode() : enterExclusiveMode(idx))}
-	                              >
-	                                <Lock className="size-4" />
-	                              </Button>
+                              <Button
+                                variant={btn?.applyData ? 'default' : 'outline'}
+                                size="icon"
+                                title="应用数据"
+                                aria-label={`将 ${entry.xCollectionLabel} vs ${entry.yCollectionLabel} 设为显示数据矩阵`}
+                                onClick={() => toggleApplyData(idx)}
+                              >
+                                <Eye className="size-4" />
+                              </Button>
+                              <Button
+                                variant={
+                                  btn?.applyFilter ? 'default' : 'outline'
+                                }
+                                size="icon"
+                                title="应用筛选器"
+                                aria-label={`将 ${entry.xCollectionLabel} vs ${entry.yCollectionLabel} 的筛选条件加入当前视图`}
+                                onClick={() => toggleApplyFilter(idx)}
+                              >
+                                <Filter className="size-4" />
+                              </Button>
+                              <Button
+                                variant={btn?.exclusive ? 'default' : 'outline'}
+                                size="icon"
+                                title="独占模式"
+                                aria-label={
+                                  btn?.exclusive
+                                    ? `退出 ${entry.xCollectionLabel} vs ${entry.yCollectionLabel} 的独占编辑模式`
+                                    : `将 ${entry.xCollectionLabel} vs ${entry.yCollectionLabel} 设为独占编辑矩阵`
+                                }
+                                onClick={() =>
+                                  btn?.exclusive
+                                    ? exitExclusiveMode()
+                                    : enterExclusiveMode(idx)
+                                }
+                              >
+                                <Lock className="size-4" />
+                              </Button>
                             </div>
                           </div>
                         )
@@ -1238,8 +1520,10 @@ export function RagvizSimilarityWorkbench() {
           <div className="bg-background px-8 pb-3 pt-6">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <div>
-                <div className="text-[24px] font-semibold tracking-tight text-foreground">
-                  {mainView === 'diagnostics' ? '向量诊断' : '跨集合相似度热力图'}
+                <div className="text-[24px] font-semibold text-foreground">
+                  {mainView === 'diagnostics'
+                    ? '向量诊断'
+                    : '跨集合相似度热力图'}
                 </div>
                 <p className="mt-1.5 text-[13px] leading-5 text-muted-foreground">
                   {mainView === 'diagnostics'
@@ -1253,7 +1537,11 @@ export function RagvizSimilarityWorkbench() {
                   <Button
                     variant={mainView === 'heatmap' ? 'default' : 'outline'}
                     size="sm"
-                    className={cn('rounded-xl', mainView === 'heatmap' && 'bg-slate-950 text-white hover:bg-slate-900')}
+                    className={cn(
+                      'rounded-xl',
+                      mainView === 'heatmap' &&
+                        'bg-slate-950 text-info-foreground hover:bg-slate-900'
+                    )}
                     onClick={() => setMainView('heatmap')}
                   >
                     热力图
@@ -1263,8 +1551,14 @@ export function RagvizSimilarityWorkbench() {
                     size="sm"
                     className="rounded-xl"
                     onClick={() => setMainView('diagnostics')}
-                    disabled={!primaryEntry || !displayLabels || isDifferenceMode}
-                    title={isDifferenceMode ? '差值模式暂不支持向量诊断' : '查看向量诊断'}
+                    disabled={
+                      !primaryEntry || !displayLabels || isDifferenceMode
+                    }
+                    title={
+                      isDifferenceMode
+                        ? '差值模式暂不支持向量诊断'
+                        : '查看向量诊断'
+                    }
                   >
                     向量诊断
                   </Button>
@@ -1272,7 +1566,9 @@ export function RagvizSimilarityWorkbench() {
 
                 {mainView === 'heatmap' ? (
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-muted-foreground">配色方案：</span>
+                    <span className="text-xs font-medium text-muted-foreground">
+                      配色方案：
+                    </span>
                     <div className="flex items-center gap-1">
                       {COLOR_SCHEMES.map((scheme) => (
                         <button
@@ -1280,7 +1576,9 @@ export function RagvizSimilarityWorkbench() {
                           type="button"
                           className={cn(
                             'h-3 w-7 rounded-full border transition',
-                            scheme.key === colorScheme ? 'border-primary' : 'border-border hover:border-primary/50'
+                            scheme.key === colorScheme
+                              ? 'border-primary'
+                              : 'border-border hover:border-primary/50'
                           )}
                           title={scheme.label}
                           onClick={() => setColorScheme(scheme.key)}
@@ -1294,7 +1592,8 @@ export function RagvizSimilarityWorkbench() {
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <span>3D 投影预览</span>
                     <span className="rounded-full border border-border px-2 py-0.5">
-                      {diagnostics?.summary.activeOutlierCount ?? 0} 个活跃异常点
+                      {diagnostics?.summary.activeOutlierCount ?? 0}{' '}
+                      个活跃异常点
                     </span>
                   </div>
                 )}
@@ -1308,11 +1607,15 @@ export function RagvizSimilarityWorkbench() {
                     key={metric.label}
                     className="rounded-2xl border border-sidebar-border/70 bg-card px-4 py-3 text-center shadow-subtle"
                   >
-                    <div className="text-[11px] font-medium text-muted-foreground">{metric.label}</div>
+                    <div className="text-[11px] font-medium text-muted-foreground">
+                      {metric.label}
+                    </div>
                     <div
                       className={cn(
-                        'mt-1 text-2xl font-semibold tracking-tight tabular-nums',
-                        metric.tone === 'danger' ? 'text-destructive' : 'text-foreground'
+                        'mt-1 text-2xl font-semibold tabular-nums',
+                        metric.tone === 'danger'
+                          ? 'text-destructive'
+                          : 'text-foreground'
                       )}
                     >
                       {metric.value}
@@ -1326,13 +1629,19 @@ export function RagvizSimilarityWorkbench() {
             {primaryEntry && displayMatrix && displayLabels ? (
               mainView === 'diagnostics' ? (
                 diagnostics ? (
-                  <SimilarityDiagnosticsView diagnostics={diagnostics} onDecisionChange={setDiagnosticDecision} />
+                  <SimilarityDiagnosticsView
+                    diagnostics={diagnostics}
+                    onDecisionChange={setDiagnosticDecision}
+                  />
                 ) : (
                   <div className="flex h-full items-center justify-center px-6">
                     <div className="rounded-2xl border border-dashed border-sidebar-border/60 bg-muted/30 px-6 py-8 text-center">
-                      <div className="text-sm font-semibold text-foreground">向量诊断暂不可用</div>
+                      <div className="text-sm font-semibold text-foreground">
+                        向量诊断暂不可用
+                      </div>
                       <p className="mt-2 text-sm text-muted-foreground">
-                        当前处于差值模式，3D 投影预览和异常点标注只在单个主图矩阵上启用。
+                        当前处于差值模式，3D
+                        投影预览和异常点标注只在单个主图矩阵上启用。
                       </p>
                     </div>
                   </div>
@@ -1346,7 +1655,8 @@ export function RagvizSimilarityWorkbench() {
                           {primaryEntry.xCollectionLabel}（X 轴）
                         </div>
                         <div className="mt-0.5 text-[11px] text-muted-foreground">
-                          {displayLabels.xLabels.length} 项 × {displayLabels.yLabels.length} 项
+                          {displayLabels.xLabels.length} 项 ×{' '}
+                          {displayLabels.yLabels.length} 项
                         </div>
                       </div>
                       <div className="rounded-full border border-border/70 bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
@@ -1383,7 +1693,9 @@ export function RagvizSimilarityWorkbench() {
         <div className="flex w-12 flex-col items-center border-l border-sidebar-border/70 bg-background/82 py-2 shadow-[-8px_0_24px_-24px_rgba(15,23,42,0.45)]">
           <div className="flex flex-col gap-1">
             <IconBtn
-              active={!isRightSidebarCollapsed && rightTopPanel === 'statistics'}
+              active={
+                !isRightSidebarCollapsed && rightTopPanel === 'statistics'
+              }
               title="统计信息"
               onClick={handleStatisticsPanelToggle}
               icon={<BarChart3 className="size-4" />}
@@ -1392,12 +1704,20 @@ export function RagvizSimilarityWorkbench() {
               active={false}
               title={isRightSidebarCollapsed ? '展开右侧栏' : '收起右侧栏'}
               onClick={() => setIsRightSidebarCollapsed((prev) => !prev)}
-              icon={isRightSidebarCollapsed ? <ChevronLeft className="size-4" /> : <ChevronRight className="size-4" />}
+              icon={
+                isRightSidebarCollapsed ? (
+                  <ChevronLeft className="size-4" />
+                ) : (
+                  <ChevronRight className="size-4" />
+                )
+              }
             />
           </div>
           <div className="mt-auto pt-2">
             <IconBtn
-              active={!isRightSidebarCollapsed && rightBottomPanel === 'filters'}
+              active={
+                !isRightSidebarCollapsed && rightBottomPanel === 'filters'
+              }
               title="筛选器控制"
               onClick={handleFilterPanelToggle}
               icon={<Filter className="size-4" />}
@@ -1424,34 +1744,88 @@ export function RagvizSimilarityWorkbench() {
           )}
 
           <div className="flex flex-col overflow-hidden">
-            <div className="border-b border-sidebar-border/70 bg-background p-4" style={rightTopStyle}>
+            <div
+              className="border-b border-sidebar-border/70 bg-background p-4"
+              style={rightTopStyle}
+            >
               {rightTopPanel === 'statistics' ? (
                 <Panel title="统计信息" subtitle="数据概览与交互信息">
                   {(() => {
-    if (!primaryEntry || !effectiveMask) {
-        return <RightEmptyInfoCard title="选中单元" icon={<Grid3X3 className="size-5" />} description="点击热力图任意单元后，在这里查看坐标、相似度和 Top 相关项。" />;
-    }
-    else if (isDifferenceMode && differenceStats) {
-            return (<StatsGrid>
-                      <StatsItem label="True Positive" value={differenceStats.truePositive} tone="success"/>
-                      <StatsItem label="True Negative" value={differenceStats.trueNegative} tone="muted"/>
-                      <StatsItem label="False Positive" value={differenceStats.falsePositive} tone="warning"/>
-                      <StatsItem label="False Negative" value={differenceStats.falseNegative} tone="danger"/>
-                      <StatsItem label="上下文召回率" value={`${(differenceStats.contextRecall * 100).toFixed(2)}%`} tone="info"/>
-                      <StatsItem label="上下文精度" value={`${(differenceStats.contextPrecision * 100).toFixed(2)}%`} tone="info"/>
-                    </StatsGrid>);
-        }
-        else if (normalStats) {
-                return (<StatsGrid>
-                      <StatsItem label="当前显示对比数" value={`${normalStats.currentDisplayCount} / ${normalStats.totalCount}`}/>
-                      <StatsItem label="斜对角线对比数" value={`${normalStats.diagonalTrueCount} / ${normalStats.diagonalTotalCount}`}/>
-                      {normalStats.topKAxis === 'none' ? null : (<StatsItem label={`缺失匹配(${normalStats.topKAxis === 'x' ? '横轴' : '纵轴'})`} value={normalStats.missingMatchCount} tone={normalStats.missingMatchCount > 0 ? 'warning' : 'muted'}/>)}
-                    </StatsGrid>);
-            }
-            else {
-                return (<p className="text-xs text-muted-foreground">暂无统计数据</p>);
-            }
-})()}
+                    if (!primaryEntry || !effectiveMask) {
+                      return (
+                        <RightEmptyInfoCard
+                          title="选中单元"
+                          icon={<Grid3X3 className="size-5" />}
+                          description="点击热力图任意单元后，在这里查看坐标、相似度和 Top 相关项。"
+                        />
+                      )
+                    } else if (isDifferenceMode && differenceStats) {
+                      return (
+                        <StatsGrid>
+                          <StatsItem
+                            label="True Positive"
+                            value={differenceStats.truePositive}
+                            tone="success"
+                          />
+                          <StatsItem
+                            label="True Negative"
+                            value={differenceStats.trueNegative}
+                            tone="muted"
+                          />
+                          <StatsItem
+                            label="False Positive"
+                            value={differenceStats.falsePositive}
+                            tone="warning"
+                          />
+                          <StatsItem
+                            label="False Negative"
+                            value={differenceStats.falseNegative}
+                            tone="danger"
+                          />
+                          <StatsItem
+                            label="上下文召回率"
+                            value={`${(differenceStats.contextRecall * 100).toFixed(2)}%`}
+                            tone="info"
+                          />
+                          <StatsItem
+                            label="上下文精度"
+                            value={`${(differenceStats.contextPrecision * 100).toFixed(2)}%`}
+                            tone="info"
+                          />
+                        </StatsGrid>
+                      )
+                    } else if (normalStats) {
+                      return (
+                        <StatsGrid>
+                          <StatsItem
+                            label="当前显示对比数"
+                            value={`${normalStats.currentDisplayCount} / ${normalStats.totalCount}`}
+                          />
+                          <StatsItem
+                            label="斜对角线对比数"
+                            value={`${normalStats.diagonalTrueCount} / ${normalStats.diagonalTotalCount}`}
+                          />
+                          {normalStats.topKAxis === 'none' ? null : (
+                            <StatsItem
+                              label={`缺失匹配(${normalStats.topKAxis === 'x' ? '横轴' : '纵轴'})`}
+                              value={normalStats.missingMatchCount}
+                              tone={
+                                normalStats.missingMatchCount > 0
+                                  ? 'warning'
+                                  : 'muted'
+                              }
+                            />
+                          )}
+                        </StatsGrid>
+                      )
+                    } else {
+                      return (
+                        <p className="text-xs text-muted-foreground">
+                          暂无统计数据
+                        </p>
+                      )
+                    }
+                  })()}
 
                   {mainView === 'heatmap' && primaryEntry ? (
                     <div className="mt-4 border-t border-sidebar-border/60 pt-4">
@@ -1460,7 +1834,12 @@ export function RagvizSimilarityWorkbench() {
                           选中单元
                         </div>
                         {selectedCellDetails ? (
-                          <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px]" onClick={() => setSelectedCell(null)}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-[11px]"
+                            onClick={() => setSelectedCell(null)}
+                          >
                             清除
                           </Button>
                         ) : null}
@@ -1471,13 +1850,17 @@ export function RagvizSimilarityWorkbench() {
                           <div className="rounded-2xl border border-sidebar-border/70 bg-card p-3 shadow-soft">
                             <div className="grid grid-cols-2 gap-3">
                               <div className="min-w-0">
-                                <div className="text-[11px] font-medium text-muted-foreground">X（列）</div>
+                                <div className="text-[11px] font-medium text-muted-foreground">
+                                  X（列）
+                                </div>
                                 <div className="mt-1 truncate text-sm font-semibold text-foreground">
                                   {selectedCellDetails.xLabel}
                                 </div>
                               </div>
                               <div className="min-w-0">
-                                <div className="text-[11px] font-medium text-muted-foreground">Y（行）</div>
+                                <div className="text-[11px] font-medium text-muted-foreground">
+                                  Y（行）
+                                </div>
                                 <div className="mt-1 truncate text-sm font-semibold text-foreground">
                                   {selectedCellDetails.yLabel}
                                 </div>
@@ -1491,11 +1874,15 @@ export function RagvizSimilarityWorkbench() {
                                 </div>
                                 <div
                                   className={cn(
-                                    'mt-1 text-3xl font-semibold tracking-tight tabular-nums',
-                                    selectedCellDetails.rawValue >= 0.8 ? 'text-destructive' : 'text-foreground'
+                                    'mt-1 text-3xl font-semibold tabular-nums',
+                                    selectedCellDetails.rawValue >= 0.8
+                                      ? 'text-destructive'
+                                      : 'text-foreground'
                                   )}
                                 >
-                                  {formatHeatmapValue(selectedCellDetails.rawValue)}
+                                  {formatHeatmapValue(
+                                    selectedCellDetails.rawValue
+                                  )}
                                 </div>
                               </div>
                               <div
@@ -1506,7 +1893,9 @@ export function RagvizSimilarityWorkbench() {
                                     : 'border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300'
                                 )}
                               >
-                                {selectedCellDetails.isVisible ? '显示中' : '已过滤'}
+                                {selectedCellDetails.isVisible
+                                  ? '显示中'
+                                  : '已过滤'}
                               </div>
                             </div>
                           </div>
@@ -1517,12 +1906,26 @@ export function RagvizSimilarityWorkbench() {
                               value={
                                 selectedCellDetails.maskedValue === null
                                   ? '隐藏'
-                                  : formatHeatmapValue(selectedCellDetails.maskedValue)
+                                  : formatHeatmapValue(
+                                      selectedCellDetails.maskedValue
+                                    )
                               }
-                              tone={selectedCellDetails.maskedValue === null ? 'warning' : 'success'}
+                              tone={
+                                selectedCellDetails.maskedValue === null
+                                  ? 'warning'
+                                  : 'success'
+                              }
                             />
-                            <StatsItem label="行索引" value={selectedCellDetails.rowIndex + 1} tone="muted" />
-                            <StatsItem label="列索引" value={selectedCellDetails.colIndex + 1} tone="muted" />
+                            <StatsItem
+                              label="行索引"
+                              value={selectedCellDetails.rowIndex + 1}
+                              tone="muted"
+                            />
+                            <StatsItem
+                              label="列索引"
+                              value={selectedCellDetails.colIndex + 1}
+                              tone="muted"
+                            />
                           </div>
 
                           {selectedCellNeighbors ? (
@@ -1540,7 +1943,8 @@ export function RagvizSimilarityWorkbench() {
                         </div>
                       ) : (
                         <div className="rounded-2xl border border-dashed border-sidebar-border/70 bg-card/70 p-4 text-xs leading-5 text-muted-foreground">
-                          点击热力图任意单元后，在这里查看坐标、相似度和 Top 相关项。
+                          点击热力图任意单元后，在这里查看坐标、相似度和 Top
+                          相关项。
                         </div>
                       )}
                     </div>
@@ -1564,12 +1968,17 @@ export function RagvizSimilarityWorkbench() {
                   {primaryEntry ? (
                     <div className="space-y-5">
                       <div className="space-y-2">
-                        <div className="text-xs font-medium text-foreground/80">横坐标显示字段</div>
+                        <div className="text-xs font-medium text-foreground/80">
+                          横坐标显示字段
+                        </div>
                         <select
                           className="w-full h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
                           value={primaryEntry.visualConfig.displayFields.xField}
                           onChange={(e) =>
-                            updateDisplayFields(e.target.value, primaryEntry.visualConfig.displayFields.yField)
+                            updateDisplayFields(
+                              e.target.value,
+                              primaryEntry.visualConfig.displayFields.yField
+                            )
                           }
                         >
                           {primaryEntry.result.x_available_fields.map((f) => (
@@ -1581,12 +1990,17 @@ export function RagvizSimilarityWorkbench() {
                       </div>
 
                       <div className="space-y-2">
-                        <div className="text-xs font-medium text-foreground/80">纵坐标显示字段</div>
+                        <div className="text-xs font-medium text-foreground/80">
+                          纵坐标显示字段
+                        </div>
                         <select
                           className="w-full h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
                           value={primaryEntry.visualConfig.displayFields.yField}
                           onChange={(e) =>
-                            updateDisplayFields(primaryEntry.visualConfig.displayFields.xField, e.target.value)
+                            updateDisplayFields(
+                              primaryEntry.visualConfig.displayFields.xField,
+                              e.target.value
+                            )
                           }
                         >
                           {primaryEntry.result.y_available_fields.map((f) => (
@@ -1598,7 +2012,9 @@ export function RagvizSimilarityWorkbench() {
                       </div>
 
                       <div className="space-y-2">
-                        <div className="text-xs font-medium text-foreground/80">相似度阈值范围</div>
+                        <div className="text-xs font-medium text-foreground/80">
+                          相似度阈值范围
+                        </div>
                         <div className="space-y-2">
                           <div className="flex items-center gap-2">
                             <input
@@ -1608,7 +2024,10 @@ export function RagvizSimilarityWorkbench() {
                               step={0.01}
                               value={uiSimilarityRange.min}
                               onChange={(e) =>
-                                updateSimilarityRange({ min: Number(e.target.value), max: uiSimilarityRange.max })
+                                updateSimilarityRange({
+                                  min: Number(e.target.value),
+                                  max: uiSimilarityRange.max,
+                                })
                               }
                               className="flex-1"
                             />
@@ -1619,7 +2038,10 @@ export function RagvizSimilarityWorkbench() {
                               step={0.01}
                               value={uiSimilarityRange.min}
                               onChange={(e) =>
-                                updateSimilarityRange({ min: Number(e.target.value), max: uiSimilarityRange.max })
+                                updateSimilarityRange({
+                                  min: Number(e.target.value),
+                                  max: uiSimilarityRange.max,
+                                })
                               }
                               className="w-20 h-9 rounded-md border border-border bg-background px-2 text-sm"
                             />
@@ -1632,7 +2054,10 @@ export function RagvizSimilarityWorkbench() {
                               step={0.01}
                               value={uiSimilarityRange.max}
                               onChange={(e) =>
-                                updateSimilarityRange({ min: uiSimilarityRange.min, max: Number(e.target.value) })
+                                updateSimilarityRange({
+                                  min: uiSimilarityRange.min,
+                                  max: Number(e.target.value),
+                                })
                               }
                               className="flex-1"
                             />
@@ -1643,7 +2068,10 @@ export function RagvizSimilarityWorkbench() {
                               step={0.01}
                               value={uiSimilarityRange.max}
                               onChange={(e) =>
-                                updateSimilarityRange({ min: uiSimilarityRange.min, max: Number(e.target.value) })
+                                updateSimilarityRange({
+                                  min: uiSimilarityRange.min,
+                                  max: Number(e.target.value),
+                                })
                               }
                               className="w-20 h-9 rounded-md border border-border bg-background px-2 text-sm"
                             />
@@ -1652,30 +2080,54 @@ export function RagvizSimilarityWorkbench() {
                       </div>
 
                       <div className="space-y-2">
-                        <div className="text-xs font-medium text-foreground/80">Top-K 筛选</div>
+                        <div className="text-xs font-medium text-foreground/80">
+                          Top-K 筛选
+                        </div>
                         <div className="flex items-center gap-2">
                           <input
                             type="range"
                             min={0}
-                            max={Math.max(0, uiTopK.axis === 'x' ? matrixShape(primaryEntry).cols : matrixShape(primaryEntry).rows)}
+                            max={Math.max(
+                              0,
+                              uiTopK.axis === 'x'
+                                ? matrixShape(primaryEntry).cols
+                                : matrixShape(primaryEntry).rows
+                            )}
                             step={1}
                             value={uiTopK.value}
-                            onChange={(e) => updateTopK({ ...uiTopK, value: Number(e.target.value) })}
+                            onChange={(e) =>
+                              updateTopK({
+                                ...uiTopK,
+                                value: Number(e.target.value),
+                              })
+                            }
                             className="flex-1"
                           />
                           <input
                             type="number"
                             min={0}
-                            max={Math.max(0, uiTopK.axis === 'x' ? matrixShape(primaryEntry).cols : matrixShape(primaryEntry).rows)}
+                            max={Math.max(
+                              0,
+                              uiTopK.axis === 'x'
+                                ? matrixShape(primaryEntry).cols
+                                : matrixShape(primaryEntry).rows
+                            )}
                             step={1}
                             value={uiTopK.value}
-                            onChange={(e) => updateTopK({ ...uiTopK, value: Number(e.target.value) })}
+                            onChange={(e) =>
+                              updateTopK({
+                                ...uiTopK,
+                                value: Number(e.target.value),
+                              })
+                            }
                             className="w-20 h-9 rounded-md border border-border bg-background px-2 text-sm"
                           />
                         </div>
                         <div className="flex items-center gap-2">
                           <Button
-                            variant={uiTopK.axis === 'x' ? 'default' : 'outline'}
+                            variant={
+                              uiTopK.axis === 'x' ? 'default' : 'outline'
+                            }
                             size="sm"
                             onClick={() => updateTopK({ ...uiTopK, axis: 'x' })}
                             className="flex-1"
@@ -1683,7 +2135,9 @@ export function RagvizSimilarityWorkbench() {
                             横轴Top-K
                           </Button>
                           <Button
-                            variant={uiTopK.axis === 'y' ? 'default' : 'outline'}
+                            variant={
+                              uiTopK.axis === 'y' ? 'default' : 'outline'
+                            }
                             size="sm"
                             onClick={() => updateTopK({ ...uiTopK, axis: 'y' })}
                             className="flex-1"
@@ -1692,22 +2146,26 @@ export function RagvizSimilarityWorkbench() {
                           </Button>
                         </div>
                         <p className="text-[11px] text-muted-foreground">
-                          当前：Top-{uiTopK.value}（{(() => {
-    if (uiTopK.value === 0) {
-        return '显示全部';
-    }
-    else if (uiTopK.axis === 'x') {
-            return '按行取 Top-K';
-        }
-        else {
-            return '按列取 Top-K';
-        }
-})()}）
+                          当前：Top-{uiTopK.value}（
+                          {(() => {
+                            if (uiTopK.value === 0) {
+                              return '显示全部'
+                            } else if (uiTopK.axis === 'x') {
+                              return '按行取 Top-K'
+                            } else {
+                              return '按列取 Top-K'
+                            }
+                          })()}
+                          ）
                         </p>
                       </div>
                     </div>
                   ) : (
-                    <RightEmptyInfoCard title="" icon={<Filter className="size-5" />} description="请先生成相似度矩阵后，在这里选择一个主图矩阵。" />
+                    <RightEmptyInfoCard
+                      title=""
+                      icon={<Filter className="size-5" />}
+                      description="请先生成相似度矩阵后，在这里选择一个主图矩阵。"
+                    />
                   )}
                 </Panel>
               ) : (
@@ -1740,7 +2198,7 @@ function IconBtn({
       className={cn(
         'flex h-9 w-9 items-center justify-center rounded-xl border shadow-subtle transition-colors',
         active
-          ? 'border-slate-950 bg-slate-950 text-white'
+          ? 'border-slate-950 bg-slate-950 text-info-foreground'
           : 'border-sidebar-border/70 bg-card text-muted-foreground hover:border-primary/25 hover:text-primary'
       )}
     >
@@ -1749,11 +2207,16 @@ function IconBtn({
   )
 }
 
-function EmptyControlTile({ icon, label }: Readonly<{ icon: ReactNode; label: string }>) {
+function EmptyControlTile({
+  icon,
+  label,
+}: Readonly<{ icon: ReactNode; label: string }>) {
   return (
     <div className="flex min-h-[84px] flex-col items-center justify-center rounded-xl border border-sidebar-border/70 bg-background text-muted-foreground">
       <div className="text-primary/70">{icon}</div>
-      <div className="mt-2 text-[12px] font-medium text-foreground">{label}</div>
+      <div className="mt-2 text-[12px] font-medium text-foreground">
+        {label}
+      </div>
     </div>
   )
 }
@@ -1769,12 +2232,23 @@ function RightEmptyInfoCard({
 }>) {
   return (
     <section className="rounded-2xl border border-sidebar-border/70 bg-card p-4 shadow-subtle">
-      {title ? <div className="mb-3 text-[15px] font-semibold text-foreground">{title}</div> : null}
-      <div className={cn('flex flex-col items-center justify-center rounded-2xl border border-dashed border-sidebar-border/70 bg-background/70 px-5 text-center', title ? 'min-h-[188px]' : 'min-h-[160px]')}>
+      {title ? (
+        <div className="mb-3 text-[15px] font-semibold text-foreground">
+          {title}
+        </div>
+      ) : null}
+      <div
+        className={cn(
+          'flex flex-col items-center justify-center rounded-2xl border border-dashed border-sidebar-border/70 bg-background/70 px-5 text-center',
+          title ? 'min-h-[188px]' : 'min-h-[160px]'
+        )}
+      >
         <div className="flex size-12 items-center justify-center rounded-full border border-primary/15 bg-primary/[0.04] text-primary/65">
           {icon}
         </div>
-        <p className="mt-4 text-[13px] leading-6 text-muted-foreground">{description}</p>
+        <p className="mt-4 text-[13px] leading-6 text-muted-foreground">
+          {description}
+        </p>
       </div>
     </section>
   )
@@ -1793,7 +2267,11 @@ function SimilarityEmptyState() {
                 key={index}
                 className={cn(
                   'h-4 rounded-[4px]',
-                  index % 4 === 0 ? 'bg-blue-500/80' : index % 3 === 0 ? 'bg-blue-400/55' : 'bg-blue-200/80'
+                  index % 4 === 0
+                    ? 'bg-blue-500/80'
+                    : index % 3 === 0
+                      ? 'bg-blue-400/55'
+                      : 'bg-blue-200/80'
                 )}
               />
             ))}
@@ -1807,17 +2285,31 @@ function SimilarityEmptyState() {
         <span className="absolute right-16 top-28 size-2 rounded-full bg-blue-300/70" />
       </div>
 
-      <h2 className="mt-1 text-[28px] font-semibold tracking-tight text-foreground">等待相似度矩阵</h2>
+      <h2 className="mt-1 text-[28px] font-semibold text-foreground">
+        等待相似度矩阵
+      </h2>
       <p className="mt-3 max-w-[520px] text-[15px] leading-7 text-muted-foreground">
         请先在左侧选择横/纵坐标 Collection，点「计算相似度」后在这里查看热力图。
       </p>
 
       <div className="mt-8 flex w-full max-w-[560px] items-start justify-between">
-        <EmptyStep index={1} title="选择 X Collection" description="从下拉框选择横坐标 Collection" />
+        <EmptyStep
+          index={1}
+          title="选择 X Collection"
+          description="从下拉框选择横坐标 Collection"
+        />
         <EmptyStepConnector />
-        <EmptyStep index={2} title="选择 Y Collection" description="从下拉框选择纵坐标 Collection" />
+        <EmptyStep
+          index={2}
+          title="选择 Y Collection"
+          description="从下拉框选择纵坐标 Collection"
+        />
         <EmptyStepConnector />
-        <EmptyStep index={3} title="计算相似度" description="点击“计算相似度”生成矩阵" />
+        <EmptyStep
+          index={3}
+          title="计算相似度"
+          description="点击“计算相似度”生成矩阵"
+        />
       </div>
 
       <div className="mt-7 w-full max-w-[520px] rounded-2xl border border-sidebar-border/70 bg-background/80 px-8 py-5">
@@ -1838,11 +2330,15 @@ function SimilarityEmptyState() {
                 <span
                   key={index}
                   className={cn(
-                  'h-4 rounded-[3px]',
-                  index % 9 === 0 ? 'bg-blue-500/70' : index % 5 === 0 ? 'bg-blue-300/75' : 'bg-blue-100'
-                )}
-              />
-            ))}
+                    'h-4 rounded-[3px]',
+                    index % 9 === 0
+                      ? 'bg-blue-500/70'
+                      : index % 5 === 0
+                        ? 'bg-blue-300/75'
+                        : 'bg-blue-100'
+                  )}
+                />
+              ))}
             </div>
           </div>
         </div>
@@ -1850,7 +2346,9 @@ function SimilarityEmptyState() {
 
       <div className="mt-6 flex w-full max-w-[780px] items-center justify-between rounded-2xl border border-sidebar-border/70 bg-background/88 px-5 py-3 text-[13px] text-muted-foreground shadow-subtle">
         <div className="flex items-center gap-2">
-          <span className="flex size-5 items-center justify-center rounded-full border border-primary/20 text-primary">i</span>
+          <span className="flex size-5 items-center justify-center rounded-full border border-primary/20 text-primary">
+            i
+          </span>
           支持切换主图、筛选器和独占模式，进一步探索和聚焦数据
         </div>
         <div className="flex items-center gap-4 text-primary/70">
@@ -1874,17 +2372,23 @@ function EmptyStep({
 }>) {
   return (
     <div className="flex w-36 flex-col items-center">
-      <div className="flex size-8 items-center justify-center rounded-full bg-primary/55 text-sm font-semibold text-white shadow-subtle">
+      <div className="flex size-8 items-center justify-center rounded-full bg-primary/55 text-sm font-semibold text-info-foreground shadow-subtle">
         {index}
       </div>
-      <div className="mt-3 text-[13px] font-semibold text-foreground">{title}</div>
-      <div className="mt-1 text-[12px] leading-5 text-muted-foreground">{description}</div>
+      <div className="mt-3 text-[13px] font-semibold text-foreground">
+        {title}
+      </div>
+      <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
+        {description}
+      </div>
     </div>
   )
 }
 
 function EmptyStepConnector() {
-  return <div className="mt-4 h-px flex-1 border-t border-dashed border-primary/20" />
+  return (
+    <div className="mt-4 h-px flex-1 border-t border-dashed border-primary/20" />
+  )
 }
 
 function Panel({
@@ -1902,10 +2406,18 @@ function Panel({
     <div className="h-full flex flex-col">
       <div className="relative mb-2.5 min-h-8 pr-9">
         <div>
-          <div className="text-[15px] font-semibold tracking-tight text-foreground">{title}</div>
-          {subtitle ? <div className="mt-1 text-[12px] text-muted-foreground">{subtitle}</div> : null}
+          <div className="text-[15px] font-semibold text-foreground">
+            {title}
+          </div>
+          {subtitle ? (
+            <div className="mt-1 text-[12px] text-muted-foreground">
+              {subtitle}
+            </div>
+          ) : null}
         </div>
-        {rightSlot ? <div className="absolute right-0 top-0">{rightSlot}</div> : null}
+        {rightSlot ? (
+          <div className="absolute right-0 top-0">{rightSlot}</div>
+        ) : null}
       </div>
       <div className="flex-1">{children}</div>
     </div>
@@ -1917,7 +2429,10 @@ function SimilarityDiagnosticsView({
   onDecisionChange,
 }: Readonly<{
   diagnostics: SimilarityDiagnosticsResult
-  onDecisionChange: (candidateId: string, decision: DiagnosticDecision | null) => void
+  onDecisionChange: (
+    candidateId: string,
+    decision: DiagnosticDecision | null
+  ) => void
 }>) {
   return (
     <div className="h-full overflow-auto p-4">
@@ -1966,7 +2481,10 @@ function SimilarityDiagnosticsView({
             </div>
 
             <div className="mt-3">
-              <SimilarityDiagnosticsGraph nodes={diagnostics.nodes} links={diagnostics.links} />
+              <SimilarityDiagnosticsGraph
+                nodes={diagnostics.nodes}
+                links={diagnostics.links}
+              />
             </div>
           </section>
         </div>
@@ -1990,13 +2508,20 @@ function SimilarityDiagnosticsView({
                 const isMarked = candidate.decision === 'marked'
 
                 return (
-                  <article key={candidate.id} className="rounded-xl border border-sidebar-border/70 bg-muted/40 p-4 shadow-soft">
+                  <article
+                    key={candidate.id}
+                    className="rounded-xl border border-sidebar-border/70 bg-muted/40 p-4 shadow-soft"
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="text-sm font-medium text-foreground">
-                          {candidate.xLabel} <span className="text-muted-foreground">→</span> {candidate.yLabel}
+                          {candidate.xLabel}{' '}
+                          <span className="text-muted-foreground">→</span>{' '}
+                          {candidate.yLabel}
                         </div>
-                        <p className="mt-1 text-xs text-muted-foreground">{candidate.reason}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {candidate.reason}
+                        </p>
                       </div>
                       <span
                         className={cn(
@@ -2013,8 +2538,16 @@ function SimilarityDiagnosticsView({
                     </div>
 
                     <div className="mt-3 grid grid-cols-2 gap-2">
-                      <DiagnosticMetricCard label="相似度" value={formatPercent(candidate.similarity)} compact />
-                      <DiagnosticMetricCard label="词面重叠" value={formatPercent(candidate.lexicalOverlap)} compact />
+                      <DiagnosticMetricCard
+                        label="相似度"
+                        value={formatPercent(candidate.similarity)}
+                        compact
+                      />
+                      <DiagnosticMetricCard
+                        label="词面重叠"
+                        value={formatPercent(candidate.lexicalOverlap)}
+                        compact
+                      />
                     </div>
 
                     <div className="mt-3 flex gap-2">
@@ -2022,7 +2555,12 @@ function SimilarityDiagnosticsView({
                         variant={isDisabled ? 'default' : 'outline'}
                         size="sm"
                         className="flex-1"
-                        onClick={() => onDecisionChange(candidate.id, isDisabled ? null : 'disabled')}
+                        onClick={() =>
+                          onDecisionChange(
+                            candidate.id,
+                            isDisabled ? null : 'disabled'
+                          )
+                        }
                       >
                         {isDisabled ? '恢复候选' : '禁用候选'}
                       </Button>
@@ -2030,7 +2568,12 @@ function SimilarityDiagnosticsView({
                         variant={isMarked ? 'default' : 'outline'}
                         size="sm"
                         className="flex-1"
-                        onClick={() => onDecisionChange(candidate.id, isMarked ? null : 'marked')}
+                        onClick={() =>
+                          onDecisionChange(
+                            candidate.id,
+                            isMarked ? null : 'marked'
+                          )
+                        }
                       >
                         {isMarked ? '取消标记' : '标记待审'}
                       </Button>
@@ -2046,16 +2589,27 @@ function SimilarityDiagnosticsView({
   )
 }
 
-function LegendPill({ className, children }: Readonly<{ className?: string; children: ReactNode }>) {
-  return <span className={cn('rounded-full border px-2 py-0.5', className)}>{children}</span>
+function LegendPill({
+  className,
+  children,
+}: Readonly<{ className?: string; children: ReactNode }>) {
+  return (
+    <span className={cn('rounded-full border px-2 py-0.5', className)}>
+      {children}
+    </span>
+  )
 }
 
-function HeatmapScaleLegend({ isDifference }: Readonly<{ isDifference: boolean }>) {
+function HeatmapScaleLegend({
+  isDifference,
+}: Readonly<{ isDifference: boolean }>) {
   return (
     <div className="border-t border-sidebar-border/70 px-4 py-3">
       <div className="flex max-w-md items-center gap-3 text-xs font-medium text-foreground">
         <span>{isDifference ? '差值' : '相似度'}</span>
-        <span className="font-mono text-[11px] text-muted-foreground tabular-nums">{isDifference ? '-1' : '0'}</span>
+        <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
+          {isDifference ? '-1' : '0'}
+        </span>
         <div
           className={cn(
             'h-3 flex-1 rounded-full border border-border/50',
@@ -2064,7 +2618,9 @@ function HeatmapScaleLegend({ isDifference }: Readonly<{ isDifference: boolean }
               : 'bg-[linear-gradient(90deg,#3b82f6,#5eead4,#facc15,#fb923c,#dc2626)]'
           )}
         />
-        <span className="font-mono text-[11px] text-muted-foreground tabular-nums">1</span>
+        <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
+          1
+        </span>
       </div>
     </div>
   )
@@ -2079,20 +2635,31 @@ function RelatedListCard({
 }>) {
   return (
     <section className="rounded-2xl border border-sidebar-border/70 bg-card p-3 shadow-subtle">
-      <div className="mb-2 text-[12px] font-semibold text-foreground">{title}</div>
+      <div className="mb-2 text-[12px] font-semibold text-foreground">
+        {title}
+      </div>
       {items.length === 0 ? (
         <div className="text-xs text-muted-foreground">暂无可比较项</div>
       ) : (
         <div className="space-y-2">
           {items.map((item, index) => (
-            <div key={`${item.label}-${item.index}`} className="grid grid-cols-[18px_minmax(0,1fr)_44px] items-center gap-2">
-              <span className="text-[11px] font-medium text-muted-foreground">{index + 1}</span>
+            <div
+              key={`${item.label}-${item.index}`}
+              className="grid grid-cols-[18px_minmax(0,1fr)_44px] items-center gap-2"
+            >
+              <span className="text-[11px] font-medium text-muted-foreground">
+                {index + 1}
+              </span>
               <div className="min-w-0">
-                <div className="truncate text-[12px] font-medium text-foreground">{item.label}</div>
+                <div className="truncate text-[12px] font-medium text-foreground">
+                  {item.label}
+                </div>
                 <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
                   <div
                     className="h-full rounded-full bg-[linear-gradient(90deg,#fb923c,#ef4444)]"
-                    style={{ width: `${Math.max(4, Math.min(100, item.value * 100))}%` }}
+                    style={{
+                      width: `${Math.max(4, Math.min(100, item.value * 100))}%`,
+                    }}
                   />
                 </div>
               </div>
@@ -2119,10 +2686,26 @@ function DiagnosticMetricCard({
   compact?: boolean
 }>) {
   return (
-    <div className={cn('rounded-xl border border-sidebar-border/70 bg-muted/40', compact ? 'p-3' : 'p-4')}>
-      <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{label}</div>
-      <div className={cn('mt-1 font-semibold text-foreground', compact ? 'text-base' : 'text-2xl')}>{value}</div>
-      {hint ? <p className="mt-1 text-[11px] text-muted-foreground">{hint}</p> : null}
+    <div
+      className={cn(
+        'rounded-xl border border-sidebar-border/70 bg-muted/40',
+        compact ? 'p-3' : 'p-4'
+      )}
+    >
+      <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+        {label}
+      </div>
+      <div
+        className={cn(
+          'mt-1 font-semibold text-foreground',
+          compact ? 'text-base' : 'text-2xl'
+        )}
+      >
+        {value}
+      </div>
+      {hint ? (
+        <p className="mt-1 text-[11px] text-muted-foreground">{hint}</p>
+      ) : null}
     </div>
   )
 }
@@ -2131,7 +2714,12 @@ function formatPercent(value: number) {
   return `${(value * 100).toFixed(1)}%`
 }
 
-type SelectOption = { value: string; label: string; kind?: string; count?: number }
+type SelectOption = {
+  value: string
+  label: string
+  kind?: string
+  count?: number
+}
 
 function AxisConfigCard({
   eyebrow,
@@ -2150,8 +2738,12 @@ function AxisConfigCard({
     <section className="border-b border-sidebar-border/70 px-4 py-4 last:border-b-0">
       <div className="mb-2.5 flex items-start justify-between gap-2.5">
         <div className="min-w-0">
-          <div className="text-[12px] font-semibold text-primary">{eyebrow}</div>
-          <div className="mt-0.5 text-sm font-semibold text-foreground">{title}</div>
+          <div className="text-[12px] font-semibold text-primary">
+            {eyebrow}
+          </div>
+          <div className="mt-0.5 text-sm font-semibold text-foreground">
+            {title}
+          </div>
         </div>
         <span
           className={cn(
@@ -2192,7 +2784,11 @@ function CollectionSelectorBlock({
 
   return (
     <div className="space-y-1.5">
-      {showLabel ? <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-foreground/72">{label}</div> : null}
+      {showLabel ? (
+        <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-foreground/72">
+          {label}
+        </div>
+      ) : null}
       <div className="space-y-1.5">
         {keyedSelections.map(({ value, key }, idx) => (
           <div key={key} className="flex items-center gap-1.5">
@@ -2218,30 +2814,30 @@ function CollectionSelectorBlock({
               </span>
             </div>
 
-	            {idx === 0 ? (
-	              <Button
-	                type="button"
-	                variant="outline"
-	                size="icon"
-	                title="添加"
-	                aria-label={`为${label}添加一个 Collection 选择器`}
-	                className="h-9 w-9 rounded-[14px] border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(244,247,250,0.94))] text-muted-foreground shadow-[0_1px_0_rgba(255,255,255,0.85),0_6px_16px_rgba(15,23,42,0.06)] hover:border-primary/25 hover:bg-background hover:text-primary"
-	                onClick={() => onChange([...selections, ''])}
-	              >
-	                <Plus className="size-4" />
-	              </Button>
-	            ) : (
-	              <Button
-	                type="button"
-	                variant="outline"
-	                size="icon"
-	                title="删除"
-	                aria-label={`删除第 ${idx + 1} 个${label}选择器`}
-	                className="h-9 w-9 rounded-[14px] border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(244,247,250,0.94))] text-muted-foreground shadow-[0_1px_0_rgba(255,255,255,0.85),0_6px_16px_rgba(15,23,42,0.06)] hover:border-primary/25 hover:bg-background hover:text-primary"
-	                onClick={() => onChange(selections.filter((_, i) => i !== idx))}
-	              >
-	                <Minus className="size-4" />
-	              </Button>
+            {idx === 0 ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                title="添加"
+                aria-label={`为${label}添加一个 Collection 选择器`}
+                className="h-9 w-9 rounded-[14px] border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(244,247,250,0.94))] text-muted-foreground shadow-[0_1px_0_rgba(255,255,255,0.85),0_6px_16px_rgba(15,23,42,0.06)] hover:border-primary/25 hover:bg-background hover:text-primary"
+                onClick={() => onChange([...selections, ''])}
+              >
+                <Plus className="size-4" />
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                title="删除"
+                aria-label={`删除第 ${idx + 1} 个${label}选择器`}
+                className="h-9 w-9 rounded-[14px] border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(244,247,250,0.94))] text-muted-foreground shadow-[0_1px_0_rgba(255,255,255,0.85),0_6px_16px_rgba(15,23,42,0.06)] hover:border-primary/25 hover:bg-background hover:text-primary"
+                onClick={() => onChange(selections.filter((_, i) => i !== idx))}
+              >
+                <Minus className="size-4" />
+              </Button>
             )}
           </div>
         ))}
@@ -2266,7 +2862,9 @@ function NumberField({
   return (
     <label className="space-y-1.5 block">
       <div className="flex items-center justify-between gap-2">
-        <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-foreground/72">{label}</div>
+        <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-foreground/72">
+          {label}
+        </div>
         <div className="text-[11px] text-muted-foreground">
           {min}-{max}
         </div>
@@ -2303,7 +2901,10 @@ type VisualConfig = {
   sorting: { order: string }
 }
 
-function createDefaultVisualConfig(xFields: string[], yFields: string[]): VisualConfig {
+function createDefaultVisualConfig(
+  xFields: string[],
+  yFields: string[]
+): VisualConfig {
   const defaultXField = getDefaultDisplayField(xFields)
   const defaultYField = getDefaultDisplayField(yFields)
 
@@ -2335,12 +2936,36 @@ type MatrixButtonState = {
 
 type ColorSchemeKey = 'viridis' | 'plasma' | 'cividis' | 'YlGnBu' | 'hot'
 
-const COLOR_SCHEMES: Array<{ key: ColorSchemeKey; label: string; preview: string }> = [
-  { key: 'viridis', label: 'Viridis', preview: 'linear-gradient(90deg,#440154,#21908d,#fde725)' },
-  { key: 'plasma', label: 'Plasma', preview: 'linear-gradient(90deg,#0d0887,#cc4678,#f0f921)' },
-  { key: 'cividis', label: 'Cividis', preview: 'linear-gradient(90deg,#00204c,#5f7d7f,#fee838)' },
-  { key: 'YlGnBu', label: 'YlGnBu', preview: 'linear-gradient(90deg,#ffffcc,#1d91c0,#081d58)' },
-  { key: 'hot', label: 'Hot', preview: 'linear-gradient(90deg,#000000,#ff0000,#ffff00)' },
+const COLOR_SCHEMES: Array<{
+  key: ColorSchemeKey
+  label: string
+  preview: string
+}> = [
+  {
+    key: 'viridis',
+    label: 'Viridis',
+    preview: 'linear-gradient(90deg,#440154,#21908d,#fde725)',
+  },
+  {
+    key: 'plasma',
+    label: 'Plasma',
+    preview: 'linear-gradient(90deg,#0d0887,#cc4678,#f0f921)',
+  },
+  {
+    key: 'cividis',
+    label: 'Cividis',
+    preview: 'linear-gradient(90deg,#00204c,#5f7d7f,#fee838)',
+  },
+  {
+    key: 'YlGnBu',
+    label: 'YlGnBu',
+    preview: 'linear-gradient(90deg,#ffffcc,#1d91c0,#081d58)',
+  },
+  {
+    key: 'hot',
+    label: 'Hot',
+    preview: 'linear-gradient(90deg,#000000,#ff0000,#ffff00)',
+  },
 ]
 
 function toPlotlyColorScale(key: ColorSchemeKey) {
@@ -2354,7 +2979,10 @@ function toPlotlyColorScale(key: ColorSchemeKey) {
   return mapping[key]
 }
 
-function generateUniqueLabels(items: Array<Record<string, unknown>>, field: string) {
+function generateUniqueLabels(
+  items: Array<Record<string, unknown>>,
+  field: string
+) {
   const counts = new Map<string, number>()
   return items.map((item) => {
     const raw = String((item && field ? item[field] : '') ?? '').trim()
@@ -2382,7 +3010,9 @@ function PlotlyHeatmap({
 }>) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [plotly, setPlotly] = useState<PlotlyLike | null>(null)
-  const [plotlyLoadState, setPlotlyLoadState] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [plotlyLoadState, setPlotlyLoadState] = useState<
+    'loading' | 'ready' | 'error'
+  >('loading')
 
   useEffect(() => {
     let cancelled = false
@@ -2390,7 +3020,11 @@ function PlotlyHeatmap({
       try {
         const modUnknown: unknown = await import('plotly.js-dist-min')
         const mod = isRecord(modUnknown) ? modUnknown : null
-        const plotlyModule = isPlotlyLike(mod?.default) ? mod.default : isPlotlyLike(modUnknown) ? modUnknown : null
+        const plotlyModule = isPlotlyLike(mod?.default)
+          ? mod.default
+          : isPlotlyLike(modUnknown)
+            ? modUnknown
+            : null
         if (!cancelled) {
           setPlotly(plotlyModule)
           setPlotlyLoadState(plotlyModule ? 'ready' : 'error')
@@ -2451,7 +3085,15 @@ function PlotlyHeatmap({
       const cell = resolveHeatmapPoint(event)
       if (cell) onCellSelect?.(cell)
     })
-  }, [colorScheme, isDifference, matrix, onCellSelect, plotly, xLabels, yLabels])
+  }, [
+    colorScheme,
+    isDifference,
+    matrix,
+    onCellSelect,
+    plotly,
+    xLabels,
+    yLabels,
+  ])
 
   useEffect(() => {
     if (!plotly || !containerRef.current) return
@@ -2473,7 +3115,9 @@ function PlotlyHeatmap({
           srMessage="Loading similarity heatmap"
           className="min-h-0 flex-none"
         />
-        <p className="mt-2 text-xs text-muted-foreground">正在初始化图表引擎...</p>
+        <p className="mt-2 text-xs text-muted-foreground">
+          正在初始化图表引擎...
+        </p>
       </div>
     )
   }
@@ -2489,20 +3133,28 @@ function PlotlyHeatmap({
   return <div ref={containerRef} className="h-full w-full" />
 }
 
-function computeThresholdMask(matrix: number[][], minSim: number, maxSim: number) {
+function computeThresholdMask(
+  matrix: number[][],
+  minSim: number,
+  maxSim: number
+) {
   const min = Math.min(minSim, maxSim)
   const max = Math.max(minSim, maxSim)
-  return matrix.map((row) => row.map((val) => Number.isFinite(val) && val >= min && val <= max))
+  return matrix.map((row) =>
+    row.map((val) => Number.isFinite(val) && val >= min && val <= max)
+  )
 }
 
 function computeTopKMask(matrix: number[][], topK: number, axis: 'x' | 'y') {
   const rows = matrix.length
-  const cols = rows > 0 ? (matrix[0]?.length || 0) : 0
+  const cols = rows > 0 ? matrix[0]?.length || 0 : 0
   if (rows === 0 || cols === 0) return []
   if (!topK || topK <= 0) return matrix.map((row) => row.map(() => true))
 
   const k = axis === 'x' ? Math.min(topK, cols) : Math.min(topK, rows)
-  const mask: boolean[][] = Array.from({ length: rows }, () => Array.from({ length: cols }, () => false))
+  const mask: boolean[][] = Array.from({ length: rows }, () =>
+    Array.from({ length: cols }, () => false)
+  )
 
   if (axis === 'x') {
     for (let i = 0; i < rows; i++) {
@@ -2532,7 +3184,9 @@ function computeTopKMask(matrix: number[][], topK: number, axis: 'x' | 'y') {
 function combineWithAND(a: boolean[][], b: boolean[][]) {
   const rows = Math.min(a.length, b.length)
   const cols = rows > 0 ? Math.min(a[0]?.length || 0, b[0]?.length || 0) : 0
-  const out: boolean[][] = Array.from({ length: rows }, () => Array.from({ length: cols }, () => false))
+  const out: boolean[][] = Array.from({ length: rows }, () =>
+    Array.from({ length: cols }, () => false)
+  )
   for (let i = 0; i < rows; i++) {
     for (let j = 0; j < cols; j++) out[i][j] = Boolean(a[i][j] && b[i][j])
   }
@@ -2543,10 +3197,13 @@ function combineWithOR(masks: boolean[][][]) {
   if (masks.length === 0) return []
   const rows = masks[0].length
   const cols = rows > 0 ? masks[0][0].length : 0
-  const out: boolean[][] = Array.from({ length: rows }, () => Array.from({ length: cols }, () => false))
+  const out: boolean[][] = Array.from({ length: rows }, () =>
+    Array.from({ length: cols }, () => false)
+  )
   for (const mask of masks) {
     for (let i = 0; i < rows; i++) {
-      for (let j = 0; j < cols; j++) out[i][j] = out[i][j] || Boolean(mask[i][j])
+      for (let j = 0; j < cols; j++)
+        out[i][j] = out[i][j] || Boolean(mask[i][j])
     }
   }
   return out
@@ -2562,10 +3219,16 @@ function computeFinalMask(
   return combineWithAND(thresholdMask, topKMask)
 }
 
-function applyMask(matrix: number[][], mask: boolean[][]): Array<Array<number | null>> {
+function applyMask(
+  matrix: number[][],
+  mask: boolean[][]
+): Array<Array<number | null>> {
   const rows = Math.min(matrix.length, mask.length)
-  const cols = rows > 0 ? Math.min(matrix[0]?.length || 0, mask[0]?.length || 0) : 0
-  const out: Array<Array<number | null>> = Array.from({ length: rows }, () => Array.from({ length: cols }, () => null))
+  const cols =
+    rows > 0 ? Math.min(matrix[0]?.length || 0, mask[0]?.length || 0) : 0
+  const out: Array<Array<number | null>> = Array.from({ length: rows }, () =>
+    Array.from({ length: cols }, () => null)
+  )
   for (let i = 0; i < rows; i++) {
     for (let j = 0; j < cols; j++) {
       out[i][j] = mask[i][j] ? matrix[i][j] : null
@@ -2583,9 +3246,12 @@ type NormalModeStats = {
   topKAxis: 'x' | 'y' | 'none'
 }
 
-function calculateNormalModeStatistics(finalMask: boolean[][], topKAxis: 'x' | 'y' | 'none'): NormalModeStats {
+function calculateNormalModeStatistics(
+  finalMask: boolean[][],
+  topKAxis: 'x' | 'y' | 'none'
+): NormalModeStats {
   const rows = finalMask.length
-  const cols = rows > 0 ? (finalMask[0]?.length || 0) : 0
+  const cols = rows > 0 ? finalMask[0]?.length || 0 : 0
   const totalCount = rows * cols
 
   let currentDisplayCount = 0
@@ -2595,7 +3261,8 @@ function calculateNormalModeStatistics(finalMask: boolean[][], topKAxis: 'x' | '
 
   const diagonalTotalCount = Math.min(rows, cols)
   let diagonalTrueCount = 0
-  for (let i = 0; i < diagonalTotalCount; i++) if (finalMask[i][i]) diagonalTrueCount++
+  for (let i = 0; i < diagonalTotalCount; i++)
+    if (finalMask[i][i]) diagonalTrueCount++
 
   let missingMatchCount = 0
   if (topKAxis === 'x') {
@@ -2641,10 +3308,15 @@ type DifferenceModeStats = {
   contextPrecision: number
 }
 
-function calculateDifferenceModeStatistics(groundTruthMask: boolean[][], currentMask: boolean[][]): DifferenceModeStats {
+function calculateDifferenceModeStatistics(
+  groundTruthMask: boolean[][],
+  currentMask: boolean[][]
+): DifferenceModeStats {
   const rows = Math.min(groundTruthMask.length, currentMask.length)
   const cols =
-    rows > 0 ? Math.min(groundTruthMask[0]?.length || 0, currentMask[0]?.length || 0) : 0
+    rows > 0
+      ? Math.min(groundTruthMask[0]?.length || 0, currentMask[0]?.length || 0)
+      : 0
 
   let truePositive = 0
   let trueNegative = 0
@@ -2662,13 +3334,28 @@ function calculateDifferenceModeStatistics(groundTruthMask: boolean[][], current
     }
   }
 
-  const contextRecall = truePositive + falseNegative > 0 ? truePositive / (truePositive + falseNegative) : 0
-  const contextPrecision = truePositive + falsePositive > 0 ? truePositive / (truePositive + falsePositive) : 0
+  const contextRecall =
+    truePositive + falseNegative > 0
+      ? truePositive / (truePositive + falseNegative)
+      : 0
+  const contextPrecision =
+    truePositive + falsePositive > 0
+      ? truePositive / (truePositive + falsePositive)
+      : 0
 
-  return { truePositive, trueNegative, falsePositive, falseNegative, contextRecall, contextPrecision }
+  return {
+    truePositive,
+    trueNegative,
+    falsePositive,
+    falseNegative,
+    contextRecall,
+    contextPrecision,
+  }
 }
 
-function resolveHeatmapPoint(event: PlotlyClickEvent): SelectedHeatmapCell | null {
+function resolveHeatmapPoint(
+  event: PlotlyClickEvent
+): SelectedHeatmapCell | null {
   const point = event.points?.[0]
   if (!point) return null
 
@@ -2713,27 +3400,21 @@ function StatsItem({
   value: ReactNode
   tone?: 'default' | 'muted' | 'info' | 'success' | 'warning' | 'danger'
 }>) {
-  const toneClass =
-    (() => {
+  const toneClass = (() => {
     if (tone === 'success') {
-        return 'bg-success/10 text-success border-success/20';
+      return 'bg-success/10 text-success border-success/20'
+    } else if (tone === 'warning') {
+      return 'bg-amber-50 text-amber-800 border-amber-100 dark:bg-amber-900/15 dark:text-amber-200 dark:border-amber-900/30'
+    } else if (tone === 'danger') {
+      return 'bg-rose-50 text-rose-700 border-rose-100 dark:bg-rose-900/15 dark:text-rose-200 dark:border-rose-900/30'
+    } else if (tone === 'info') {
+      return 'bg-sky-50 text-sky-700 border-sky-100 dark:bg-sky-900/15 dark:text-sky-200 dark:border-sky-900/30'
+    } else if (tone === 'muted') {
+      return 'bg-muted text-muted-foreground border-border'
+    } else {
+      return 'bg-card text-foreground border-border'
     }
-    else if (tone === 'warning') {
-            return 'bg-amber-50 text-amber-800 border-amber-100 dark:bg-amber-900/15 dark:text-amber-200 dark:border-amber-900/30';
-        }
-        else if (tone === 'danger') {
-                return 'bg-rose-50 text-rose-700 border-rose-100 dark:bg-rose-900/15 dark:text-rose-200 dark:border-rose-900/30';
-            }
-            else if (tone === 'info') {
-                    return 'bg-sky-50 text-sky-700 border-sky-100 dark:bg-sky-900/15 dark:text-sky-200 dark:border-sky-900/30';
-                }
-                else if (tone === 'muted') {
-                        return 'bg-muted text-muted-foreground border-border';
-                    }
-                    else {
-                        return 'bg-card text-foreground border-border';
-                    }
-})()
+  })()
 
   return (
     <div className={cn('rounded-xl border p-2.5 shadow-subtle', toneClass)}>

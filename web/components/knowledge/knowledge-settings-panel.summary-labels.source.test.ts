@@ -3,10 +3,12 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
+import { readMessageCatalogSource } from '@/lib/source-test-utils'
+
 describe('KnowledgeSettingsPanel monitoring summary labels', () => {
   it('sources the monitoring header and summary chips from i18n messages', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'knowledge-settings-panel.tsx'), 'utf8')
-    const messages = fs.readFileSync(path.resolve(__dirname, '..', '..', 'i18n', 'messages', 'zh-CN.ts'), 'utf8')
+    const messages = readMessageCatalogSource(path.resolve(__dirname, '../..'))
 
     expect(src).toContain("t('connectorRuns.title')")
     expect(src).toContain("t('connectorRuns.liveBadge')")

@@ -12,6 +12,22 @@ test('command menu natural-language handoff routes into chat autorun', async ({ 
   const prompt = '请帮我总结当前页面有哪些可继续操作的重点。'
 
   await installCommonApiMocks(page, state)
+  await page.route('**/api/v1/datasets**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        items: [
+          {
+            id: 'dataset-e2e',
+            name: 'E2E Dataset',
+            description: 'Dataset scope for command-menu autorun',
+          },
+        ],
+        total: 1,
+      }),
+    })
+  })
   await page.goto('/')
 
   await expect(page.getByPlaceholder('问点什么... (Shift + Enter 换行)')).toBeVisible({ timeout: 60_000 })

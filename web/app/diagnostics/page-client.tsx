@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useCallback, useMemo, useState } from 'react'
 import {
   Activity,
   BarChart3,
@@ -32,33 +33,88 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
-import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useBackendHealth } from '@/hooks/use-backend-health'
 import { useBackendMeta } from '@/hooks/use-backend-meta'
 import { formatApiError } from '@/lib/api-errors'
 import { datasetApi, documentApi, observabilityApi, ragApi } from '@/lib/api'
 import { API_V1_BASE_URL } from '@/lib/env'
+import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
-import type { Dataset, Document as KnowledgeDocument, OnlineQualitySummaryResponse, PromptPreviewResponse } from '@/types'
+import type {
+  Dataset,
+  Document as KnowledgeDocument,
+  OnlineQualitySummaryResponse,
+  PromptPreviewResponse,
+} from '@/types'
 import type { DepsDiagnosticsResponse } from '@/types'
 
 // --- Constants & Styles ---
 
-const CARD_BASE = "bg-white rounded-2xl border border-slate-200/70 shadow-[0_1px_3px_rgba(15,23,42,0.03)] p-4"
-const SECTION_TITLE = "text-[14px] font-semibold text-slate-950 flex items-center gap-2 mb-4"
-const FIELD_LABEL = "text-[12px] font-medium text-slate-500 mb-1.5 block"
+const CARD_BASE =
+  'bg-card rounded-2xl border border-slate-200/70 shadow-[0_1px_3px_rgba(15,23,42,0.03)] p-4'
+const SECTION_TITLE =
+  'text-[14px] font-semibold text-slate-950 flex items-center gap-2 mb-4'
+const FIELD_LABEL = 'text-[12px] font-medium text-slate-500 mb-1.5 block'
 const ALL_DOCUMENTS_VALUE = '__all_documents__'
+const EMPTY_DATASETS: Dataset[] = []
+const EMPTY_DOCUMENTS: KnowledgeDocument[] = []
 
 const DIAGNOSTIC_DIMENSIONS = [
-  { id: 'retrieval_accuracy', icon: Search, title: '知识检索准确性', subtitle: '检索是否准确' },
-  { id: 'retrieval_recall', icon: CheckCircle2, title: '检索召回率', subtitle: '内容是否充分' },
-  { id: 'context_relevance', icon: LayoutGrid, title: '上下文相关性', subtitle: '上下文关联度' },
-  { id: 'generation_quality', icon: Activity, title: '生成质量', subtitle: '回答质量评估' },
-  { id: 'fact_consistency', icon: ShieldCheck, title: '事实一致性', subtitle: '事实是否一致' },
-  { id: 'safety_compliance', icon: ShieldCheck, title: '安全合规性', subtitle: '内容安全合规' },
-  { id: 'cost_analysis', icon: Cpu, title: '成本分析', subtitle: '成本与资源使用' },
-  { id: 'execution_perf', icon: Gauge, title: '执行性能', subtitle: '延迟与吞吐量' },
+  {
+    id: 'retrieval_accuracy',
+    icon: Search,
+    title: '知识检索准确性',
+    subtitle: '检索是否准确',
+  },
+  {
+    id: 'retrieval_recall',
+    icon: CheckCircle2,
+    title: '检索召回率',
+    subtitle: '内容是否充分',
+  },
+  {
+    id: 'context_relevance',
+    icon: LayoutGrid,
+    title: '上下文相关性',
+    subtitle: '上下文关联度',
+  },
+  {
+    id: 'generation_quality',
+    icon: Activity,
+    title: '生成质量',
+    subtitle: '回答质量评估',
+  },
+  {
+    id: 'fact_consistency',
+    icon: ShieldCheck,
+    title: '事实一致性',
+    subtitle: '事实是否一致',
+  },
+  {
+    id: 'safety_compliance',
+    icon: ShieldCheck,
+    title: '安全合规性',
+    subtitle: '内容安全合规',
+  },
+  {
+    id: 'cost_analysis',
+    icon: Cpu,
+    title: '成本分析',
+    subtitle: '成本与资源使用',
+  },
+  {
+    id: 'execution_perf',
+    icon: Gauge,
+    title: '执行性能',
+    subtitle: '延迟与吞吐量',
+  },
 ] as const
 
 type DiagnosticDimensionId = (typeof DIAGNOSTIC_DIMENSIONS)[number]['id']
@@ -93,12 +149,21 @@ function fmtMetric(v: number | null, d = 2, suffix = '') {
   return `${v.toFixed(d)}${suffix}`
 }
 
-function fmtMetricOrMissing(hasResult: boolean, value: number | null, d = 2, suffix = '') {
+function fmtMetricOrMissing(
+  hasResult: boolean,
+  value: number | null,
+  d = 2,
+  suffix = ''
+) {
   if (value !== null) return `${value.toFixed(d)}${suffix}`
   return hasResult ? '未返回' : '未运行'
 }
 
-function fmtCountOrMissing(hasResult: boolean, value: number | null, suffix = '') {
+function fmtCountOrMissing(
+  hasResult: boolean,
+  value: number | null,
+  suffix = ''
+) {
   if (value !== null) return `${value.toLocaleString()}${suffix}`
   return hasResult ? '未返回' : '未运行'
 }
@@ -115,7 +180,9 @@ function fmtDateTime(value?: string | null) {
     minute: '2-digit',
     second: '2-digit',
     hour12: false,
-  }).format(date).replaceAll('/', '-')
+  })
+    .format(date)
+    .replaceAll('/', '-')
 }
 
 function metricTone(v: number | null) {
@@ -144,7 +211,9 @@ function metricSource(hasResult: boolean, source: string) {
 
 function dependencyStatus(value: unknown): string {
   if (!value || typeof value !== 'object') return 'unknown'
-  const status = String((value as Record<string, unknown>).status || '').toLowerCase()
+  const status = String(
+    (value as Record<string, unknown>).status || ''
+  ).toLowerCase()
   if (status) return status
   if ((value as Record<string, unknown>).ok === true) return 'connected'
   if ((value as Record<string, unknown>).ok === false) return 'disconnected'
@@ -174,33 +243,46 @@ const TOP_HUD_TONE_CLASSES = {
   purple: 'bg-purple-50 text-purple-500 border-purple-100',
 } as const
 
-function TopHUDTile({ 
-  icon: Icon, 
-  label, 
-  value, 
-  detail, 
-  tone = 'slate' 
-}: { 
-  icon: LucideIcon; 
-  label: string; 
-  value: string; 
-  detail: string; 
-  tone?: keyof typeof TOP_HUD_TONE_CLASSES 
+function TopHUDTile({
+  icon: Icon,
+  label,
+  value,
+  detail,
+  tone = 'slate',
+}: {
+  icon: LucideIcon
+  label: string
+  value: string
+  detail: string
+  tone?: keyof typeof TOP_HUD_TONE_CLASSES
 }) {
   const toneClasses = TOP_HUD_TONE_CLASSES[tone] || TOP_HUD_TONE_CLASSES.slate
 
   return (
-    <div className="min-h-[84px] rounded-xl border border-slate-200/70 bg-white px-4 py-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.02)] flex items-center gap-3.5">
-      <div className={cn("size-11 shrink-0 rounded-full flex items-center justify-center border shadow-inner", toneClasses)}>
+    <div className="min-h-[84px] rounded-xl border border-slate-200/70 bg-card px-4 py-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.02)] flex items-center gap-3.5">
+      <div
+        className={cn(
+          'size-11 shrink-0 rounded-full flex items-center justify-center border shadow-inner',
+          toneClasses
+        )}
+      >
         <Icon className="size-5" />
       </div>
       <div className="min-w-0">
-        <span className="block truncate text-[11px] font-medium text-slate-500">{label}</span>
-        <h4 className={cn(
-          "mt-1 whitespace-nowrap font-semibold leading-none tracking-[-0.02em] text-slate-950",
-          value.length > 14 ? "text-[13px]" : "text-[15px]"
-        )}>{value}</h4>
-        <p className="mt-1.5 truncate text-[9px] font-bold uppercase tracking-[0.16em] text-slate-300">{detail}</p>
+        <span className="block truncate text-[11px] font-medium text-slate-500">
+          {label}
+        </span>
+        <h4
+          className={cn(
+            'mt-1 whitespace-nowrap font-semibold leading-none tracking-[-0.02em] text-slate-950',
+            value.length > 14 ? 'text-[13px]' : 'text-[15px]'
+          )}
+        >
+          {value}
+        </h4>
+        <p className="mt-1.5 truncate text-[9px] font-bold uppercase tracking-[0.16em] text-slate-300">
+          {detail}
+        </p>
       </div>
     </div>
   )
@@ -240,58 +322,109 @@ function DimensionMatrixItem({
       aria-pressed={selected}
       onClick={onToggle}
       className={cn(
-        "group flex min-h-[68px] w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-all",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/25",
+        'group flex min-h-[68px] w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-all',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/25',
         selected
-          ? "border-blue-200 bg-blue-50/40 shadow-[0_1px_6px_rgba(37,99,235,0.08)]"
-          : "border-slate-200/70 bg-white hover:border-slate-300 hover:bg-slate-50"
+          ? 'border-blue-200 bg-blue-50/40 shadow-[0_1px_6px_rgba(37,99,235,0.08)]'
+          : 'border-slate-200/70 bg-card hover:border-slate-300 hover:bg-slate-50'
       )}
     >
-      <div className={cn("size-8 shrink-0 rounded-xl flex items-center justify-center border transition-all", colorMap[tone])}>
+      <div
+        className={cn(
+          'size-8 shrink-0 rounded-xl flex items-center justify-center border transition-all',
+          colorMap[tone]
+        )}
+      >
         <Icon className="size-4" />
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="truncate text-[12px] font-semibold leading-tight text-slate-700 group-hover:text-slate-900">{title}</p>
-            <p className="mt-0.5 truncate text-[10px] font-medium text-slate-400 group-hover:text-slate-500">{subtitle}</p>
+            <p className="truncate text-[12px] font-semibold leading-tight text-slate-700 group-hover:text-slate-900">
+              {title}
+            </p>
+            <p className="mt-0.5 truncate text-[10px] font-medium text-slate-400 group-hover:text-slate-500">
+              {subtitle}
+            </p>
           </div>
-          <span className={cn(
-            "shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold",
-            selected ? "border-blue-100 bg-white text-blue-600" : "border-slate-100 bg-slate-50 text-slate-400"
-          )}>
+          <span
+            className={cn(
+              'shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold',
+              selected
+                ? 'border-blue-100 bg-card text-blue-600'
+                : 'border-slate-100 bg-slate-50 text-slate-400'
+            )}
+          >
             {selected ? '已选' : '未选'}
           </span>
         </div>
         <div className="mt-1.5 flex items-center justify-between gap-2">
-          <span className={cn("truncate text-[11px] font-semibold", value === '未运行' || value === '未返回' ? "text-slate-400" : "text-slate-700")}>{value}</span>
-          <span className="truncate text-[9px] font-medium uppercase tracking-[0.12em] text-slate-300">{source}</span>
+          <span
+            className={cn(
+              'truncate text-[11px] font-semibold',
+              value === '未运行' || value === '未返回'
+                ? 'text-slate-400'
+                : 'text-slate-700'
+            )}
+          >
+            {value}
+          </span>
+          <span className="truncate text-[9px] font-medium uppercase tracking-[0.12em] text-slate-300">
+            {source}
+          </span>
         </div>
       </div>
     </button>
   )
 }
 
-function MainMetricCard({ icon: Icon, label, value, loading = false, tone = 'slate' }: { icon: LucideIcon; label: string; value: string; loading?: boolean; tone?: string }) {
+function MainMetricCard({
+  icon: Icon,
+  label,
+  value,
+  loading = false,
+  tone = 'slate',
+}: {
+  icon: LucideIcon
+  label: string
+  value: string
+  loading?: boolean
+  tone?: string
+}) {
   const isWait = value === '未运行'
-  const toneClass = {
-    slate: 'bg-slate-50 text-slate-400 border-slate-100',
-    green: 'bg-emerald-50 text-emerald-500 border-emerald-100',
-    amber: 'bg-amber-50 text-amber-500 border-amber-100',
-    red: 'bg-red-50 text-red-500 border-red-100',
-  }[tone] || 'bg-slate-50 text-slate-400 border-slate-100'
+  const toneClass =
+    {
+      slate: 'bg-slate-50 text-slate-400 border-slate-100',
+      green: 'bg-emerald-50 text-emerald-500 border-emerald-100',
+      amber: 'bg-amber-50 text-amber-500 border-amber-100',
+      red: 'bg-red-50 text-red-500 border-red-100',
+    }[tone] || 'bg-slate-50 text-slate-400 border-slate-100'
 
   return (
-    <div className="group flex min-h-[86px] items-center gap-4 rounded-2xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.02)] transition-all hover:shadow-md">
-      <div className={cn("size-10 rounded-full border flex items-center justify-center transition-colors", toneClass)}>
+    <div className="group flex min-h-[86px] items-center gap-4 rounded-2xl border border-slate-200/70 bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.02)] transition-all hover:shadow-md">
+      <div
+        className={cn(
+          'size-10 rounded-full border flex items-center justify-center transition-colors',
+          toneClass
+        )}
+      >
         <Icon className="size-5" />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-medium text-slate-500 leading-none mb-2">{label}</p>
+        <p className="text-[11px] font-medium text-slate-500 leading-none mb-2">
+          {label}
+        </p>
         {loading ? (
           <div className="h-5 w-20 bg-slate-50 animate-pulse rounded" />
         ) : (
-          <p className={cn("text-[15px] font-semibold", isWait ? "text-slate-300" : "text-slate-800")}>{value}</p>
+          <p
+            className={cn(
+              'text-[15px] font-semibold',
+              isWait ? 'text-slate-300' : 'text-slate-800'
+            )}
+          >
+            {value}
+          </p>
         )}
       </div>
     </div>
@@ -304,157 +437,163 @@ export default function DiagnosticsPage() {
   const health = useBackendHealth()
   const meta = useBackendMeta()
 
-  const [onlineQuality, setOnlineQuality] = useState<OnlineQualitySummaryResponse | null>(null)
-  const [onlineQualityLoading, setOnlineQualityLoading] = useState(false)
-  const [readySnapshot, setReadySnapshot] = useState<Record<string, any> | null>(null)
-  const [readyLoading, setReadyLoading] = useState(false)
-  const [depsSnapshot, setDepsSnapshot] = useState<DepsDiagnosticsResponse | null>(null)
-  const [depsLoading, setDepsLoading] = useState(false)
-  const depsRefreshInFlightRef = useRef<Promise<void> | null>(null)
-
   // Config States
-  const [datasets, setDatasets] = useState<Dataset[]>([])
-  const [datasetsLoading, setDatasetsLoading] = useState(false)
-  const [documents, setDocuments] = useState<KnowledgeDocument[]>([])
-  const [documentsLoading, setDocumentsLoading] = useState(false)
   const [probeDatasetId, setProbeDatasetId] = useState('')
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([])
-  const [probeQuery, setProbeQuery] = useState('请输入要检索的问题或说明诊断目标...')
-  const [probeResult, setProbeResult] = useState<PromptPreviewResponse | null>(null)
-  const [probeRunning, setProbeRunning] = useState(false)
-  const [selectedDimensions, setSelectedDimensions] = useState<DiagnosticDimensionId[]>(
-    DIAGNOSTIC_DIMENSIONS.map((dimension) => dimension.id)
+  const [probeQuery, setProbeQuery] = useState(
+    '请输入要检索的问题或说明诊断目标...'
   )
+  const [probeResult, setProbeResult] = useState<PromptPreviewResponse | null>(
+    null
+  )
+  const [probeRunning, setProbeRunning] = useState(false)
+  const [selectedDimensions, setSelectedDimensions] = useState<
+    DiagnosticDimensionId[]
+  >(DIAGNOSTIC_DIMENSIONS.map((dimension) => dimension.id))
 
   // Param States
   const [driftSampleN, setDriftSampleN] = useState(200)
   const [driftThreshold, setDriftThreshold] = useState(0.05)
-  const [driftSnapshot, setDriftSnapshot] = useState<Record<string, any> | null>(null)
+  const [driftSnapshot, setDriftSnapshot] = useState<Record<
+    string,
+    any
+  > | null>(null)
   const [driftRunning, setDriftRunning] = useState(false)
 
   const [perfSuiteIterations, setPerfSuiteIterations] = useState(10)
   const [perfSuiteTimeoutSec, setPerfSuiteTimeoutSec] = useState(2.0)
-  const [perfSuiteResult, setPerfSuiteResult] = useState<Record<string, any> | null>(null)
+  const [perfSuiteResult, setPerfSuiteResult] = useState<Record<
+    string,
+    any
+  > | null>(null)
   const [perfSuiteRunning, setPerfSuiteRunning] = useState(false)
 
-  const refreshDatasets = useCallback(async () => {
-    setDatasetsLoading(true)
-    try {
+  const datasetsQuery = useQuery({
+    queryKey: queryKeys.datasets.list({ limit: 200 }),
+    queryFn: async (): Promise<Dataset[]> => {
       const res = await datasetApi.list({ limit: 200 })
-      const items = Array.isArray(res.items) ? res.items : []
-      setDatasets(items)
-      setProbeDatasetId((current) => current || items[0]?.id || '')
-    } catch (err) {
-      setDatasets([])
-      toast.error(formatApiError(err, '数据集加载失败'))
-    } finally {
-      setDatasetsLoading(false)
-    }
-  }, [])
+      return Array.isArray(res.items) ? res.items : []
+    },
+    staleTime: 30_000,
+  })
+  const datasets = datasetsQuery.data ?? EMPTY_DATASETS
+  const datasetsLoading = datasetsQuery.isPending
+  const activeDatasetId = probeDatasetId || datasets[0]?.id || ''
 
-  useEffect(() => { refreshDatasets() }, [refreshDatasets])
+  const documentsQuery = useQuery({
+    queryKey: queryKeys.documents.list({
+      dataset_id: activeDatasetId,
+      limit: 200,
+      order_by: 'created_at',
+      order_dir: 'desc',
+    }),
+    enabled: Boolean(activeDatasetId),
+    queryFn: async (): Promise<KnowledgeDocument[]> => {
+      const res = await documentApi.list({
+        skip: 0,
+        limit: 200,
+        dataset_id: activeDatasetId,
+        order_by: 'created_at',
+        order_dir: 'desc',
+      })
+      return Array.isArray(res.items) ? res.items : []
+    },
+    staleTime: 15_000,
+  })
+  const documents = documentsQuery.data ?? EMPTY_DOCUMENTS
+  const documentsLoading =
+    Boolean(activeDatasetId) &&
+    (documentsQuery.isPending || documentsQuery.isFetching)
+  const validSelectedDocumentIds = useMemo(() => {
+    if (selectedDocumentIds.length === 0) return []
+    const idSet = new Set(documents.map((document) => document.id))
+    return selectedDocumentIds.filter((id) => idSet.has(id))
+  }, [documents, selectedDocumentIds])
 
-  const refreshDocuments = useCallback(async (datasetId: string) => {
-    if (!datasetId) {
-      setDocuments([])
-      setSelectedDocumentIds([])
-      return
-    }
-    setDocumentsLoading(true)
-    try {
-      const res = await documentApi.list({ skip: 0, limit: 200, dataset_id: datasetId, order_by: 'created_at', order_dir: 'desc' })
-      const items = Array.isArray(res.items) ? res.items : []
-      setDocuments(items)
-      const idSet = new Set(items.map((item) => item.id))
-      setSelectedDocumentIds((current) => current.filter((id) => idSet.has(id)))
-    } catch (err) {
-      setDocuments([])
-      setSelectedDocumentIds([])
-      toast.error(formatApiError(err, '文档范围加载失败'))
-    } finally {
-      setDocumentsLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { refreshDocuments(probeDatasetId) }, [probeDatasetId, refreshDocuments])
-
-  const refreshOnlineQuality = useCallback(async () => {
-    setOnlineQualityLoading(true)
-    try {
-      const res = await observabilityApi.getOnlineQualitySummary({ window_minutes: 240, bucket_minutes: 5 })
-      setOnlineQuality(res)
-    } catch (err) {
-      setOnlineQuality(null)
-    } finally {
-      setOnlineQualityLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { refreshOnlineQuality() }, [refreshOnlineQuality])
-
-  const refreshReadySnapshot = useCallback(async () => {
-    setReadyLoading(true)
-    try {
-      const response = await fetch(`${API_V1_BASE_URL}/health/ready`, { cache: 'no-store' })
-      const payload = await response.json().catch(() => null)
-      setReadySnapshot(payload && typeof payload === 'object' ? payload : null)
-    } catch {
-      setReadySnapshot(null)
-    } finally {
-      setReadyLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    refreshReadySnapshot()
-    const timer = window.setInterval(() => { refreshReadySnapshot() }, 30_000)
-    return () => window.clearInterval(timer)
-  }, [refreshReadySnapshot])
-
-  const refreshDepsSnapshot = useCallback(async () => {
-    if (depsRefreshInFlightRef.current) return depsRefreshInFlightRef.current
-    setDepsLoading(true)
-    const task = (async () => {
+  const onlineQualityQuery = useQuery({
+    queryKey: queryKeys.diagnostics.onlineQuality({
+      window_minutes: 240,
+      bucket_minutes: 5,
+    }),
+    queryFn: async (): Promise<OnlineQualitySummaryResponse | null> => {
       try {
-        const res = await observabilityApi.getDepsDiagnosticsSnapshot()
-        setDepsSnapshot(res)
+        return await observabilityApi.getOnlineQualitySummary({
+          window_minutes: 240,
+          bucket_minutes: 5,
+        })
       } catch {
-        setDepsSnapshot(null)
-      } finally {
-        depsRefreshInFlightRef.current = null
-        setDepsLoading(false)
+        return null
       }
-    })()
-    depsRefreshInFlightRef.current = task
-    return task
-  }, [])
+    },
+    staleTime: 30_000,
+  })
+  const onlineQuality = onlineQualityQuery.data ?? null
+  const onlineQualityLoading =
+    onlineQualityQuery.isPending || onlineQualityQuery.isFetching
 
-  useEffect(() => { refreshDepsSnapshot() }, [refreshDepsSnapshot])
+  const readySnapshotQuery = useQuery({
+    queryKey: queryKeys.diagnostics.ready,
+    queryFn: async (): Promise<Record<string, any> | null> => {
+      try {
+        const response = await fetch(`${API_V1_BASE_URL}/health/ready`, {
+          cache: 'no-store',
+        })
+        const payload = await response.json().catch(() => null)
+        return payload && typeof payload === 'object' ? payload : null
+      } catch {
+        return null
+      }
+    },
+    refetchInterval: 30_000,
+    staleTime: 10_000,
+  })
+  const readySnapshot = readySnapshotQuery.data ?? null
+  const readyLoading =
+    readySnapshotQuery.isPending || readySnapshotQuery.isFetching
+
+  const depsSnapshotQuery = useQuery({
+    queryKey: queryKeys.diagnostics.deps,
+    queryFn: async (): Promise<DepsDiagnosticsResponse | null> => {
+      try {
+        return await observabilityApi.getDepsDiagnosticsSnapshot()
+      } catch {
+        return null
+      }
+    },
+    staleTime: 15_000,
+  })
+  const depsSnapshot = depsSnapshotQuery.data ?? null
+  const depsLoading = depsSnapshotQuery.isPending || depsSnapshotQuery.isFetching
 
   async function runPromptPreviewProbe() {
     if (!probeQuery.trim()) {
       toast.error('请先输入查询提示或问题')
       return
     }
-    setProbeRunning(true); setProbeResult(null)
+    setProbeRunning(true)
+    setProbeResult(null)
     try {
       const res = await ragApi.promptPreview({
         query: probeQuery.trim(),
-        dataset_id: probeDatasetId || undefined,
-        document_ids: selectedDocumentIds,
+        dataset_id: activeDatasetId || undefined,
+        document_ids: validSelectedDocumentIds,
         structured_output: false,
       })
       setProbeResult(res)
       toast.success('RAG 预览完成')
-    } catch (err) { toast.error(formatApiError(err, 'RAG 预览失败')) }
-    finally { setProbeRunning(false) }
+    } catch (err) {
+      toast.error(formatApiError(err, 'RAG 预览失败'))
+    } finally {
+      setProbeRunning(false)
+    }
   }
 
   async function runEmbeddingDriftProbe() {
-    setDriftRunning(true); setDriftSnapshot(null)
+    setDriftRunning(true)
+    setDriftSnapshot(null)
     try {
       const res = await observabilityApi.getEmbeddingDriftSnapshot({
-        dataset_id: probeDatasetId || undefined,
+        dataset_id: activeDatasetId || undefined,
         sample_n: driftSampleN,
         drift_threshold: driftThreshold,
       })
@@ -468,7 +607,8 @@ export default function DiagnosticsPage() {
   }
 
   async function runPerfSuiteProbe() {
-    setPerfSuiteRunning(true); setPerfSuiteResult(null)
+    setPerfSuiteRunning(true)
+    setPerfSuiteResult(null)
     try {
       const res = await observabilityApi.runPerfSuite({
         iterations: perfSuiteIterations,
@@ -488,48 +628,92 @@ export default function DiagnosticsPage() {
   const systemStatusLabel = healthOk && readyOk ? '正常' : '需要排查'
   const systemStatusTone = healthOk && readyOk ? 'green' : 'red'
   const serviceTime = fmtDateTime(meta.data?.time || health.data?.payload?.time)
-  const driftMetric = pickMetricNumber(driftSnapshot, ['drift_rate', 'driftRate', 'drifted_ratio', 'exceed_rate', 'avg_drift', 'mean_drift'])
+  const driftMetric = pickMetricNumber(driftSnapshot, [
+    'drift_rate',
+    'driftRate',
+    'drifted_ratio',
+    'exceed_rate',
+    'avg_drift',
+    'mean_drift',
+  ])
   const perfGateStatus = perfSuiteResult
-    ? String(perfSuiteResult.status || perfSuiteResult.gate_status || perfSuiteResult.result || '已运行')
+    ? String(
+        perfSuiteResult.status ||
+          perfSuiteResult.gate_status ||
+          perfSuiteResult.result ||
+          '已运行'
+      )
     : '未运行'
-  const perfGateTone = /pass|passed|ok|success|通过|已运行/i.test(perfGateStatus) ? 'green' : perfSuiteResult ? 'amber' : 'slate'
+  const perfGateTone = /pass|passed|ok|success|通过|已运行/i.test(
+    perfGateStatus
+  )
+    ? 'green'
+    : perfSuiteResult
+      ? 'amber'
+      : 'slate'
   const dependencyItems = [
-    { label: '检索库', status: dependencyStatus(depsSnapshot?.postgres || readySnapshot?.database) },
-    { label: '向量后端', status: dependencyStatus(readySnapshot?.vector || depsSnapshot?.milvus) },
-    { label: '向量库', status: dependencyStatus(readySnapshot?.vector || depsSnapshot?.milvus) },
-    { label: 'MinIO', status: dependencyStatus(depsSnapshot?.minio || readySnapshot?.minio) },
-    { label: 'Redis', status: dependencyStatus(depsSnapshot?.redis || readySnapshot?.redis) },
+    {
+      label: '检索库',
+      status: dependencyStatus(
+        depsSnapshot?.postgres || readySnapshot?.database
+      ),
+    },
+    {
+      label: '向量后端',
+      status: dependencyStatus(readySnapshot?.vector || depsSnapshot?.milvus),
+    },
+    {
+      label: '向量库',
+      status: dependencyStatus(readySnapshot?.vector || depsSnapshot?.milvus),
+    },
+    {
+      label: 'MinIO',
+      status: dependencyStatus(depsSnapshot?.minio || readySnapshot?.minio),
+    },
+    {
+      label: 'Redis',
+      status: dependencyStatus(depsSnapshot?.redis || readySnapshot?.redis),
+    },
     { label: '服务 API', status: healthOk ? 'connected' : 'disconnected' },
   ]
-  const selectedDataset = datasets.find((dataset) => dataset.id === probeDatasetId) || null
-  const selectedDocuments = documents.filter((document) => selectedDocumentIds.includes(document.id))
-  const selectedDocumentLabel = selectedDocumentIds.length > 0
-    ? `已选 ${selectedDocumentIds.length} 个文档`
-    : documentsLoading
-      ? '正在加载文档...'
-      : probeDatasetId
-        ? '当前数据集全部文档'
-        : '请先选择数据集'
+  const selectedDataset =
+    datasets.find((dataset) => dataset.id === activeDatasetId) || null
+  const selectedDocuments = documents.filter((document) =>
+    validSelectedDocumentIds.includes(document.id)
+  )
+  const selectedDocumentLabel =
+    validSelectedDocumentIds.length > 0
+      ? `已选 ${validSelectedDocumentIds.length} 个文档`
+      : documentsLoading
+        ? '正在加载文档...'
+        : activeDatasetId
+          ? '当前数据集全部文档'
+          : '请先选择数据集'
 
   const toggleDocument = useCallback((documentId: string) => {
     if (documentId === ALL_DOCUMENTS_VALUE) {
       setSelectedDocumentIds([])
       return
     }
-    setSelectedDocumentIds((current) => current.includes(documentId)
-      ? current.filter((id) => id !== documentId)
-      : [...current, documentId]
+    setSelectedDocumentIds((current) =>
+      current.includes(documentId)
+        ? current.filter((id) => id !== documentId)
+        : [...current, documentId]
     )
   }, [])
 
   const toggleDimension = useCallback((dimensionId: DiagnosticDimensionId) => {
-    setSelectedDimensions((current) => current.includes(dimensionId)
-      ? current.filter((id) => id !== dimensionId)
-      : [...current, dimensionId]
+    setSelectedDimensions((current) =>
+      current.includes(dimensionId)
+        ? current.filter((id) => id !== dimensionId)
+        : [...current, dimensionId]
     )
   }, [])
 
-  const selectedDimensionSet = useMemo(() => new Set(selectedDimensions), [selectedDimensions])
+  const selectedDimensionSet = useMemo(
+    () => new Set(selectedDimensions),
+    [selectedDimensions]
+  )
 
   const promptMetrics = probeResult?.metrics ?? null
   const retrievalScore = pickMetricNumber(promptMetrics, [
@@ -579,9 +763,14 @@ export default function DiagnosticsPage() {
     'total_ms',
     'retrieval_ms',
   ])
-  const citationCount = Array.isArray(probeResult?.citations) ? probeResult.citations.length : null
+  const citationCount = Array.isArray(probeResult?.citations)
+    ? probeResult.citations.length
+    : null
   const hasProbeResult = Boolean(probeResult)
-  const dimensionStatuses: Record<DiagnosticDimensionId, { value: string; source: string; tone: MetricTone }> = {
+  const dimensionStatuses: Record<
+    DiagnosticDimensionId,
+    { value: string; source: string; tone: MetricTone }
+  > = {
     retrieval_accuracy: {
       value: fmtMetricOrMissing(hasProbeResult, retrievalScore),
       source: metricSource(hasProbeResult, 'metrics'),
@@ -590,7 +779,12 @@ export default function DiagnosticsPage() {
     retrieval_recall: {
       value: fmtCountOrMissing(hasProbeResult, citationCount, ' 条'),
       source: metricSource(hasProbeResult, 'citations'),
-      tone: citationCount === null ? 'slate' : citationCount > 0 ? 'green' : 'amber',
+      tone:
+        citationCount === null
+          ? 'slate'
+          : citationCount > 0
+            ? 'green'
+            : 'amber',
     },
     context_relevance: {
       value: fmtMetricOrMissing(hasProbeResult, contextScore),
@@ -618,34 +812,75 @@ export default function DiagnosticsPage() {
       tone: promptTokenCount === null ? 'slate' : 'amber',
     },
     execution_perf: {
-      value: latencyMs !== null ? fmtMetric(latencyMs, 0, 'ms') : perfSuiteResult ? perfGateStatus : hasProbeResult ? '未返回' : '未运行',
-      source: latencyMs !== null ? 'metrics' : perfSuiteResult ? 'perf-suite' : '等待运行',
-      tone: latencyMs !== null ? (latencyMs <= 1000 ? 'green' : latencyMs <= 3000 ? 'amber' : 'red') : (perfGateTone as MetricTone),
+      value:
+        latencyMs !== null
+          ? fmtMetric(latencyMs, 0, 'ms')
+          : perfSuiteResult
+            ? perfGateStatus
+            : hasProbeResult
+              ? '未返回'
+              : '未运行',
+      source:
+        latencyMs !== null
+          ? 'metrics'
+          : perfSuiteResult
+            ? 'perf-suite'
+            : '等待运行',
+      tone:
+        latencyMs !== null
+          ? latencyMs <= 1000
+            ? 'green'
+            : latencyMs <= 3000
+              ? 'amber'
+              : 'red'
+          : (perfGateTone as MetricTone),
     },
   }
 
-  const backendSummaryJson = useMemo(() => prettyJson({
-    status: probeResult || driftSnapshot || perfSuiteResult ? "completed" : "not_run",
-    code: 0,
-    message: probeResult || driftSnapshot || perfSuiteResult ? "诊断已执行完毕" : "诊断尚未执行，请配置后运行",
-    data: {
-      dataset_id: probeDatasetId || null,
-      document_ids: selectedDocumentIds,
-      selected_dimensions: selectedDimensions,
-      rag_preview: probeResult ?? null,
-      embedding_drift: driftSnapshot ?? null,
-      perf_suite: perfSuiteResult ?? null,
-      deps: depsSnapshot ?? null,
-    },
-    metrics: {
-      ...(probeResult?.metrics ?? {}),
-      drift_rate: driftMetric,
-      perf_gate: perfGateStatus,
-    },
-    timestamp: health.data?.payload?.time ?? null,
-  }), [probeDatasetId, selectedDocumentIds, selectedDimensions, probeResult, driftSnapshot, perfSuiteResult, depsSnapshot, driftMetric, perfGateStatus, health.data])
+  const backendSummaryJson = useMemo(
+    () =>
+      prettyJson({
+        status:
+          probeResult || driftSnapshot || perfSuiteResult
+            ? 'completed'
+            : 'not_run',
+        code: 0,
+        message:
+          probeResult || driftSnapshot || perfSuiteResult
+            ? '诊断已执行完毕'
+            : '诊断尚未执行，请配置后运行',
+        data: {
+          dataset_id: activeDatasetId || null,
+          document_ids: validSelectedDocumentIds,
+          selected_dimensions: selectedDimensions,
+          rag_preview: probeResult ?? null,
+          embedding_drift: driftSnapshot ?? null,
+          perf_suite: perfSuiteResult ?? null,
+          deps: depsSnapshot ?? null,
+        },
+        metrics: {
+          ...(probeResult?.metrics ?? {}),
+          drift_rate: driftMetric,
+          perf_gate: perfGateStatus,
+        },
+        timestamp: health.data?.payload?.time ?? null,
+      }),
+    [
+      activeDatasetId,
+      validSelectedDocumentIds,
+      selectedDimensions,
+      probeResult,
+      driftSnapshot,
+      perfSuiteResult,
+      depsSnapshot,
+      driftMetric,
+      perfGateStatus,
+      health.data,
+    ]
+  )
 
-  const backendRecommendations = ((onlineQuality as any)?.recommendations ?? []) as string[]
+  const backendRecommendations = ((onlineQuality as any)?.recommendations ??
+    []) as string[]
 
   return (
     <AppFrame>
@@ -666,14 +901,20 @@ export default function DiagnosticsPage() {
                 <Activity className="size-5" />
               </div>
               <div className="min-w-0">
-                <h1 className="text-[24px] font-semibold leading-tight tracking-[-0.02em] text-slate-950">诊断中心</h1>
+                <h1 className="text-[24px] font-semibold leading-tight tracking-[-0.02em] text-slate-950">
+                  诊断中心
+                </h1>
                 <p className="mt-1 text-[13px] font-medium leading-relaxed text-slate-500">
                   全面诊断系统健康状态、服务依赖与 RAG 质量，保障稳定可靠运行
                 </p>
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-3">
-              <Button variant="outline" size="sm" className="h-8 gap-1.5 rounded-full border-red-100 bg-red-50 px-3 text-[12px] font-semibold text-red-500 shadow-none hover:bg-red-100 hover:text-red-600">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 rounded-full border-red-100 bg-red-50 px-3 text-[12px] font-semibold text-red-500 shadow-none hover:bg-red-100 hover:text-red-600"
+              >
                 <ShieldAlert className="size-3.5" />
                 服务健康排查
               </Button>
@@ -681,41 +922,104 @@ export default function DiagnosticsPage() {
                 variant="outline"
                 size="icon"
                 aria-label="刷新诊断状态"
-                className="h-8 w-8 rounded-lg border-slate-200 bg-white"
-                onClick={() => { health.refetch(); meta.refetch(); refreshReadySnapshot(); refreshOnlineQuality(); refreshDepsSnapshot() }}
+                className="h-8 w-8 rounded-lg border-slate-200 bg-card"
+                onClick={() => {
+                  health.refetch()
+                  meta.refetch()
+                  readySnapshotQuery.refetch()
+                  onlineQualityQuery.refetch()
+                  depsSnapshotQuery.refetch()
+                }}
               >
                 <RefreshCcw className="size-4" />
               </Button>
             </div>
           </div>
-          
+
           {/* Top HUD Cards Row */}
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-6">
-            <TopHUDTile icon={ShieldCheck} label="系统健康" value={health.isPending ? '检查中' : (healthOk ? '正常' : '异常')} detail="STATUS_OK" tone={healthOk ? 'green' : 'red'} />
-            <TopHUDTile icon={Clock} label="服务时间 / API 版本" value={serviceTime} detail={meta.data?.api_version || 'v1'} tone="green" />
-            <TopHUDTile icon={Database} label="依赖就绪" value={readyLoading && !readySnapshot ? '检查中' : (readyOk ? '全部就绪' : '异常')} detail="READY" tone={readyOk ? 'blue' : 'red'} />
-            <TopHUDTile icon={Activity} label="在线评估" value={onlineQualityLoading ? '检查中' : (onlineQuality?.enabled ? '已启用' : '未启用')} detail="ONLINE_METRICS" tone="purple" />
-            <TopHUDTile icon={Gauge} label="性能门禁" value={perfGateStatus} detail="PERF_GATE" tone={perfGateTone as keyof typeof TOP_HUD_TONE_CLASSES} />
-            <TopHUDTile icon={Timer} label="向量后端" value={readySnapshot?.vector?.backend || health.data?.payload?.vector_backend || 'milvus'} detail="VECTOR_PROVIDER" tone="green" />
+            <TopHUDTile
+              icon={ShieldCheck}
+              label="系统健康"
+              value={health.isPending ? '检查中' : healthOk ? '正常' : '异常'}
+              detail="STATUS_OK"
+              tone={healthOk ? 'green' : 'red'}
+            />
+            <TopHUDTile
+              icon={Clock}
+              label="服务时间 / API 版本"
+              value={serviceTime}
+              detail={meta.data?.api_version || 'v1'}
+              tone="green"
+            />
+            <TopHUDTile
+              icon={Database}
+              label="依赖就绪"
+              value={
+                readyLoading && !readySnapshot
+                  ? '检查中'
+                  : readyOk
+                    ? '全部就绪'
+                    : '异常'
+              }
+              detail="READY"
+              tone={readyOk ? 'blue' : 'red'}
+            />
+            <TopHUDTile
+              icon={Activity}
+              label="在线评估"
+              value={
+                onlineQualityLoading
+                  ? '检查中'
+                  : onlineQuality?.enabled
+                    ? '已启用'
+                    : '未启用'
+              }
+              detail="ONLINE_METRICS"
+              tone="purple"
+            />
+            <TopHUDTile
+              icon={Gauge}
+              label="性能门禁"
+              value={perfGateStatus}
+              detail="PERF_GATE"
+              tone={perfGateTone as keyof typeof TOP_HUD_TONE_CLASSES}
+            />
+            <TopHUDTile
+              icon={Timer}
+              label="向量后端"
+              value={
+                readySnapshot?.vector?.backend ||
+                health.data?.payload?.vector_backend ||
+                'milvus'
+              }
+              detail="VECTOR_PROVIDER"
+              tone="green"
+            />
           </div>
 
           {/* Main Config Section */}
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
             {/* 1. 诊断配置 */}
-            <div className={cn(CARD_BASE, "lg:col-span-4")}>
-              <h3 className={SECTION_TITLE}><FileJson className="size-4 text-blue-500" /> 诊断配置</h3>
+            <div className={cn(CARD_BASE, 'lg:col-span-4')}>
+              <h3 className={SECTION_TITLE}>
+                <FileJson className="size-4 text-blue-500" /> 诊断配置
+              </h3>
               <div className="space-y-3">
                 <div>
                   <Label className={FIELD_LABEL}>数据集</Label>
                   <Select
-                    value={probeDatasetId}
+                    value={activeDatasetId}
                     onValueChange={(value) => {
                       setProbeDatasetId(value)
                       setSelectedDocumentIds([])
                     }}
                     disabled={datasetsLoading || datasets.length === 0}
                   >
-                    <SelectTrigger id="diagnostics-dataset" className="h-9 rounded-lg border-slate-200 bg-slate-50/50 text-[13px]">
+                    <SelectTrigger
+                      id="diagnostics-dataset"
+                      className="h-9 rounded-lg border-slate-200 bg-slate-50/50 text-[13px]"
+                    >
                       <span className="truncate">
                         {datasetsLoading
                           ? '正在加载数据集...'
@@ -728,8 +1032,12 @@ export default function DiagnosticsPage() {
                       {datasets.map((dataset) => (
                         <SelectItem key={dataset.id} value={dataset.id}>
                           <span className="flex min-w-0 flex-col">
-                            <span className="truncate text-[13px] font-medium">{datasetLabel(dataset)}</span>
-                            <span className="truncate text-[10px] text-slate-400">{shortId(dataset.id, 12)}</span>
+                            <span className="truncate text-[13px] font-medium">
+                              {datasetLabel(dataset)}
+                            </span>
+                            <span className="truncate text-[10px] text-slate-400">
+                              {shortId(dataset.id, 12)}
+                            </span>
                           </span>
                         </SelectItem>
                       ))}
@@ -739,29 +1047,48 @@ export default function DiagnosticsPage() {
                 <div>
                   <Label className={FIELD_LABEL}>文档范围</Label>
                   <Select
-                    value={selectedDocumentIds[0] || ALL_DOCUMENTS_VALUE}
+                    value={validSelectedDocumentIds[0] || ALL_DOCUMENTS_VALUE}
                     onValueChange={toggleDocument}
-                    disabled={!probeDatasetId || documentsLoading || documents.length === 0}
+                    disabled={
+                      !activeDatasetId ||
+                      documentsLoading ||
+                      documents.length === 0
+                    }
                   >
-                    <SelectTrigger id="diagnostics-documents" className="h-9 rounded-lg border-slate-200 bg-slate-50/50 text-[13px]">
+                    <SelectTrigger
+                      id="diagnostics-documents"
+                      className="h-9 rounded-lg border-slate-200 bg-slate-50/50 text-[13px]"
+                    >
                       <span className="truncate">{selectedDocumentLabel}</span>
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={ALL_DOCUMENTS_VALUE}>当前数据集全部文档</SelectItem>
+                      <SelectItem value={ALL_DOCUMENTS_VALUE}>
+                        当前数据集全部文档
+                      </SelectItem>
                       {documents.map((document) => {
-                        const selected = selectedDocumentIds.includes(document.id)
+                        const selected = validSelectedDocumentIds.includes(
+                          document.id
+                        )
                         return (
                           <SelectItem key={document.id} value={document.id}>
                             <span className="flex min-w-0 items-center gap-2">
-                              <span className={cn(
-                                "flex size-4 shrink-0 items-center justify-center rounded border text-[10px]",
-                                selected ? "border-blue-200 bg-blue-50 text-blue-600" : "border-slate-200 bg-white text-transparent"
-                              )}>
+                              <span
+                                className={cn(
+                                  'flex size-4 shrink-0 items-center justify-center rounded border text-[10px]',
+                                  selected
+                                    ? 'border-blue-200 bg-blue-50 text-blue-600'
+                                    : 'border-slate-200 bg-card text-transparent'
+                                )}
+                              >
                                 {selected ? '✓' : ''}
                               </span>
                               <span className="flex min-w-0 flex-col">
-                                <span className="truncate text-[13px] font-medium">{documentLabel(document)}</span>
-                                <span className="truncate text-[10px] text-slate-400">{shortId(document.id, 12)}</span>
+                                <span className="truncate text-[13px] font-medium">
+                                  {documentLabel(document)}
+                                </span>
+                                <span className="truncate text-[10px] text-slate-400">
+                                  {shortId(document.id, 12)}
+                                </span>
                               </span>
                             </span>
                           </SelectItem>
@@ -772,7 +1099,10 @@ export default function DiagnosticsPage() {
                   {selectedDocuments.length > 0 ? (
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {selectedDocuments.slice(0, 3).map((document) => (
-                        <span key={document.id} className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-600">
+                        <span
+                          key={document.id}
+                          className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-600"
+                        >
                           {documentLabel(document)}
                         </span>
                       ))}
@@ -790,13 +1120,29 @@ export default function DiagnosticsPage() {
                 </div>
                 <div>
                   <Label className={FIELD_LABEL}>查询提示 / 问题</Label>
-                  <Textarea value={probeQuery} onChange={e => setProbeQuery(e.target.value)} className="min-h-[72px] bg-slate-50/50 border-slate-200 resize-none text-[13px]" />
+                  <Textarea
+                    value={probeQuery}
+                    onChange={(e) => setProbeQuery(e.target.value)}
+                    className="min-h-[72px] bg-slate-50/50 border-slate-200 resize-none text-[13px]"
+                  />
                 </div>
                 <div className="flex gap-2">
-                  <Button className="h-9 flex-1 bg-blue-600 text-[13px] font-semibold hover:bg-blue-700" onClick={runPromptPreviewProbe} disabled={probeRunning || !probeDatasetId}>
+                  <Button
+                    className="h-9 flex-1 bg-blue-600 text-[13px] font-semibold hover:bg-blue-700"
+                    onClick={runPromptPreviewProbe}
+                    disabled={probeRunning || !activeDatasetId}
+                  >
                     运行 RAG 预览
                   </Button>
-                  <Button variant="outline" className="h-9 flex-none gap-2 border-slate-200 text-[13px] font-semibold" onClick={() => { setProbeDatasetId(datasets[0]?.id || ''); setSelectedDocumentIds([]); setProbeQuery('') }}>
+                  <Button
+                    variant="outline"
+                    className="h-9 flex-none gap-2 border-slate-200 text-[13px] font-semibold"
+                    onClick={() => {
+                      setProbeDatasetId(datasets[0]?.id || '')
+                      setSelectedDocumentIds([])
+                      setProbeQuery('')
+                    }}
+                  >
                     <Eraser className="size-4" /> 清空配置
                   </Button>
                 </div>
@@ -804,7 +1150,7 @@ export default function DiagnosticsPage() {
             </div>
 
             {/* 2. 诊断维度矩阵 */}
-            <div className={cn(CARD_BASE, "lg:col-span-5")}>
+            <div className={cn(CARD_BASE, 'lg:col-span-5')}>
               <div className="mb-4 flex items-center justify-between gap-3">
                 <h3 className="m-0 flex items-center gap-2 text-[14px] font-semibold text-slate-950">
                   <LayoutGrid className="size-4 text-blue-500" /> 诊断维度
@@ -834,35 +1180,84 @@ export default function DiagnosticsPage() {
             </div>
 
             {/* 3. 参数配置 */}
-            <div className={cn(CARD_BASE, "lg:col-span-3")}>
-              <h3 className={SECTION_TITLE}><Settings2 className="size-4 text-blue-500" /> 参数配置</h3>
+            <div className={cn(CARD_BASE, 'lg:col-span-3')}>
+              <h3 className={SECTION_TITLE}>
+                <Settings2 className="size-4 text-blue-500" /> 参数配置
+              </h3>
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label className={FIELD_LABEL}>相似度阈值</Label>
-                    <Input type="number" step="0.01" value={driftThreshold} onChange={e => setDriftThreshold(Number(e.target.value))} className="h-9 bg-slate-50/50 border-slate-200 text-[13px]" />
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={driftThreshold}
+                      onChange={(e) =>
+                        setDriftThreshold(Number(e.target.value))
+                      }
+                      className="h-9 bg-slate-50/50 border-slate-200 text-[13px]"
+                    />
                   </div>
                   <div>
                     <Label className={FIELD_LABEL}>采样数量</Label>
-                    <Input type="number" value={driftSampleN} onChange={e => setDriftSampleN(Number(e.target.value))} className="h-9 bg-slate-50/50 border-slate-200 text-[13px]" />
+                    <Input
+                      type="number"
+                      value={driftSampleN}
+                      onChange={(e) => setDriftSampleN(Number(e.target.value))}
+                      className="h-9 bg-slate-50/50 border-slate-200 text-[13px]"
+                    />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label className={FIELD_LABEL}>迭代次数</Label>
-                    <Input type="number" value={perfSuiteIterations} onChange={e => setPerfSuiteIterations(Number(e.target.value))} className="h-9 bg-slate-50/50 border-slate-200 text-[13px]" />
+                    <Input
+                      type="number"
+                      value={perfSuiteIterations}
+                      onChange={(e) =>
+                        setPerfSuiteIterations(Number(e.target.value))
+                      }
+                      className="h-9 bg-slate-50/50 border-slate-200 text-[13px]"
+                    />
                   </div>
                   <div>
                     <Label className={FIELD_LABEL}>超时 (秒)</Label>
-                    <Input type="number" step="0.1" value={perfSuiteTimeoutSec} onChange={e => setPerfSuiteTimeoutSec(Number(e.target.value))} className="h-9 bg-slate-50/50 border-slate-200 text-[13px]" />
+                    <Input
+                      type="number"
+                      step="0.1"
+                      value={perfSuiteTimeoutSec}
+                      onChange={(e) =>
+                        setPerfSuiteTimeoutSec(Number(e.target.value))
+                      }
+                      className="h-9 bg-slate-50/50 border-slate-200 text-[13px]"
+                    />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2 pt-2">
-                  <Button variant="outline" className="h-9 w-full gap-2 border-slate-200 text-[13px] font-semibold" onClick={runEmbeddingDriftProbe} disabled={driftRunning}>
-                    <BarChart3 className={cn("size-4", driftRunning && "animate-pulse")} /> 漂移检查
+                  <Button
+                    variant="outline"
+                    className="h-9 w-full gap-2 border-slate-200 text-[13px] font-semibold"
+                    onClick={runEmbeddingDriftProbe}
+                    disabled={driftRunning}
+                  >
+                    <BarChart3
+                      className={cn('size-4', driftRunning && 'animate-pulse')}
+                    />{' '}
+                    漂移检查
                   </Button>
-                  <Button variant="outline" className="h-9 w-full gap-2 border-slate-200 text-[13px] font-semibold" onClick={runPerfSuiteProbe} disabled={perfSuiteRunning}>
-                    <ShieldCheck className={cn("size-4", perfSuiteRunning && "animate-pulse")} /> 性能门禁
+                  <Button
+                    variant="outline"
+                    className="h-9 w-full gap-2 border-slate-200 text-[13px] font-semibold"
+                    onClick={runPerfSuiteProbe}
+                    disabled={perfSuiteRunning}
+                  >
+                    <ShieldCheck
+                      className={cn(
+                        'size-4',
+                        perfSuiteRunning && 'animate-pulse'
+                      )}
+                    />{' '}
+                    性能门禁
                   </Button>
                 </div>
               </div>
@@ -880,82 +1275,177 @@ export default function DiagnosticsPage() {
               </p>
             </div>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
-              <MainMetricCard icon={Search} label="检索相关性" value={fmtMetricOrMissing(hasProbeResult, retrievalScore)} loading={probeRunning} tone={metricTone(retrievalScore)} />
-              <MainMetricCard icon={CheckCircle2} label="召回引用" value={fmtCountOrMissing(hasProbeResult, citationCount)} loading={probeRunning} tone={citationCount === null ? 'slate' : citationCount > 0 ? 'green' : 'amber'} />
-              <MainMetricCard icon={Hash} label="提示词 token" value={fmtCountOrMissing(hasProbeResult, promptTokenCount)} loading={probeRunning} tone={promptTokenCount === null ? 'slate' : 'amber'} />
-              <MainMetricCard icon={Timer} label="漂移率" value={driftRunning ? '检查中' : (driftSnapshot ? fmtScore(driftMetric, 3) : '未运行')} loading={driftRunning} tone={metricTone(driftMetric)} />
-              <MainMetricCard icon={ShieldCheck} label="性能门禁" value={perfSuiteRunning ? '执行中' : perfGateStatus} loading={perfSuiteRunning} tone={perfGateTone} />
+              <MainMetricCard
+                icon={Search}
+                label="检索相关性"
+                value={fmtMetricOrMissing(hasProbeResult, retrievalScore)}
+                loading={probeRunning}
+                tone={metricTone(retrievalScore)}
+              />
+              <MainMetricCard
+                icon={CheckCircle2}
+                label="召回引用"
+                value={fmtCountOrMissing(hasProbeResult, citationCount)}
+                loading={probeRunning}
+                tone={
+                  citationCount === null
+                    ? 'slate'
+                    : citationCount > 0
+                      ? 'green'
+                      : 'amber'
+                }
+              />
+              <MainMetricCard
+                icon={Hash}
+                label="提示词 token"
+                value={fmtCountOrMissing(hasProbeResult, promptTokenCount)}
+                loading={probeRunning}
+                tone={promptTokenCount === null ? 'slate' : 'amber'}
+              />
+              <MainMetricCard
+                icon={Timer}
+                label="漂移率"
+                value={
+                  driftRunning
+                    ? '检查中'
+                    : driftSnapshot
+                      ? fmtScore(driftMetric, 3)
+                      : '未运行'
+                }
+                loading={driftRunning}
+                tone={metricTone(driftMetric)}
+              />
+              <MainMetricCard
+                icon={ShieldCheck}
+                label="性能门禁"
+                value={perfSuiteRunning ? '执行中' : perfGateStatus}
+                loading={perfSuiteRunning}
+                tone={perfGateTone}
+              />
             </div>
           </div>
 
           {/* 5. 底层分析网格 */}
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
             {/* 分析结论 */}
-            <div className={cn(CARD_BASE, "lg:col-span-3")}>
-               <h3 className={SECTION_TITLE}><LayoutGrid className="size-4 text-blue-500" /> 分析结论</h3>
-               <div className="space-y-2 pt-1">
-                  <结论项 label="整体评估" status={probeResult || driftSnapshot || perfSuiteResult ? systemStatusLabel : '未运行'} />
-                  <结论项 label="门禁状态" status={perfGateStatus} />
-                  <结论项 label="召回引用" status={fmtCountOrMissing(hasProbeResult, citationCount)} />
-                  <结论项 label="报告时间" status={fmtDateTime(health.data?.payload?.time)} />
-               </div>
+            <div className={cn(CARD_BASE, 'lg:col-span-3')}>
+              <h3 className={SECTION_TITLE}>
+                <LayoutGrid className="size-4 text-blue-500" /> 分析结论
+              </h3>
+              <div className="space-y-2 pt-1">
+                <结论项
+                  label="整体评估"
+                  status={
+                    probeResult || driftSnapshot || perfSuiteResult
+                      ? systemStatusLabel
+                      : '未运行'
+                  }
+                />
+                <结论项 label="门禁状态" status={perfGateStatus} />
+                <结论项
+                  label="召回引用"
+                  status={fmtCountOrMissing(hasProbeResult, citationCount)}
+                />
+                <结论项
+                  label="报告时间"
+                  status={fmtDateTime(health.data?.payload?.time)}
+                />
+              </div>
             </div>
-            
+
             {/* 依赖资源 */}
-            <div className={cn(CARD_BASE, "lg:col-span-3")}>
-               <h3 className={SECTION_TITLE}><Database className="size-4 text-blue-500" /> 依赖资源</h3>
-               <div className="grid grid-cols-2 gap-2 pt-1">
-                  {dependencyItems.map(item => (
-                     <资源项 key={item.label} label={item.label} status={item.status === 'unknown' && (depsLoading || readyLoading) ? 'checking' : item.status} />
-                  ))}
-               </div>
+            <div className={cn(CARD_BASE, 'lg:col-span-3')}>
+              <h3 className={SECTION_TITLE}>
+                <Database className="size-4 text-blue-500" /> 依赖资源
+              </h3>
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                {dependencyItems.map((item) => (
+                  <资源项
+                    key={item.label}
+                    label={item.label}
+                    status={
+                      item.status === 'unknown' && (depsLoading || readyLoading)
+                        ? 'checking'
+                        : item.status
+                    }
+                  />
+                ))}
+              </div>
             </div>
 
             {/* 后端输出 */}
-            <div className={cn(CARD_BASE, "lg:col-span-3 flex flex-col")}>
-               <div className="flex items-center justify-between mb-3">
-                 <h3 className="text-[14px] font-semibold text-slate-950 flex items-center gap-2 m-0"><Terminal className="size-4 text-blue-500" /> 后端输出</h3>
-                 <Button variant="ghost" size="sm" aria-label="复制后端输出 JSON" className="h-7 gap-1.5 text-[11px] font-semibold" onClick={() => copyToClipboard(backendSummaryJson)}>
-                   <Copy className="size-3" /> 复制
-                 </Button>
-               </div>
-               <div className="flex-1 bg-slate-950 rounded-xl p-4 font-mono text-[12px] relative group overflow-hidden">
-                  <div className="absolute left-0 top-0 bottom-0 w-8 bg-slate-900/50 flex flex-col items-center pt-4 text-slate-600 select-none border-r border-slate-800">
-                    {[1,2,3,4,5,6,7,8,9].map(n => <span key={n} className="leading-5">{n}</span>)}
-                  </div>
-                  <pre className="pl-8 leading-5 text-blue-400/90 max-h-[170px] overflow-auto custom-scrollbar">
-                    {backendSummaryJson}
-                  </pre>
-               </div>
+            <div className={cn(CARD_BASE, 'lg:col-span-3 flex flex-col')}>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-[14px] font-semibold text-slate-950 flex items-center gap-2 m-0">
+                  <Terminal className="size-4 text-blue-500" /> 后端输出
+                </h3>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label="复制后端输出 JSON"
+                  className="h-7 gap-1.5 text-[11px] font-semibold"
+                  onClick={() => copyToClipboard(backendSummaryJson)}
+                >
+                  <Copy className="size-3" /> 复制
+                </Button>
+              </div>
+              <div className="flex-1 bg-slate-950 rounded-xl p-4 font-mono text-[12px] relative group overflow-hidden">
+                <div className="absolute left-0 top-0 bottom-0 w-8 bg-slate-900/50 flex flex-col items-center pt-4 text-slate-600 select-none border-r border-slate-800">
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+                    <span key={n} className="leading-5">
+                      {n}
+                    </span>
+                  ))}
+                </div>
+                <pre className="pl-8 leading-5 text-blue-400/90 max-h-[170px] overflow-auto custom-scrollbar">
+                  {backendSummaryJson}
+                </pre>
+              </div>
             </div>
 
             {/* 后端建议 */}
-            <div className={cn(CARD_BASE, "lg:col-span-3")}>
-               <h3 className={SECTION_TITLE}><Zap className="size-4 text-blue-500" /> 后端建议</h3>
-               {backendRecommendations.length > 0 ? (
-                 <div className="space-y-2">
-                   {backendRecommendations.map((r: string, i: number) => (
-                    <p key={i} className="rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2 text-[12px] leading-relaxed text-slate-600">{r}</p>
-                   ))}
-                 </div>
-               ) : (
-                 <div className="flex min-h-[170px] flex-col items-center justify-center">
-                    <div className="mb-4 flex size-14 items-center justify-center rounded-full border border-dashed border-slate-200 bg-slate-50">
-                      <Activity className="size-6 text-slate-200" />
-                    </div>
-                    <p className="text-[13px] font-semibold text-slate-400">未运行诊断，暂无建议</p>
-                    <p className="mt-1 text-[11px] text-slate-300">运行诊断后将提供优化建议</p>
-                 </div>
-               )}
+            <div className={cn(CARD_BASE, 'lg:col-span-3')}>
+              <h3 className={SECTION_TITLE}>
+                <Zap className="size-4 text-blue-500" /> 后端建议
+              </h3>
+              {backendRecommendations.length > 0 ? (
+                <div className="space-y-2">
+                  {backendRecommendations.map((r: string, i: number) => (
+                    <p
+                      key={i}
+                      className="rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2 text-[12px] leading-relaxed text-slate-600"
+                    >
+                      {r}
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex min-h-[170px] flex-col items-center justify-center">
+                  <div className="mb-4 flex size-14 items-center justify-center rounded-full border border-dashed border-slate-200 bg-slate-50">
+                    <Activity className="size-6 text-slate-200" />
+                  </div>
+                  <p className="text-[13px] font-semibold text-slate-400">
+                    未运行诊断，暂无建议
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-300">
+                    运行诊断后将提供优化建议
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 
           {/* Footer Collapsibles */}
           <div className="space-y-2">
-             <FooterCollapsible label="排障材料 (原始响应)" detail="用于排查诊断异常或问题的原始材料与响应内容" />
-             <FooterCollapsible label="更多明细" detail="查看各维度更详细的指标与数据" />
+            <FooterCollapsible
+              label="排障材料 (原始响应)"
+              detail="用于排查诊断异常或问题的原始材料与响应内容"
+            />
+            <FooterCollapsible
+              label="更多明细"
+              detail="查看各维度更详细的指标与数据"
+            />
           </div>
-
         </div>
       </PageScaffold>
     </AppFrame>
@@ -964,14 +1454,16 @@ export default function DiagnosticsPage() {
 
 function 结论项({ label, status }: { label: string; status: string }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 bg-white px-2.5 py-2">
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 bg-card px-2.5 py-2">
       <div className="flex items-center gap-3">
         <div className="size-5 rounded bg-slate-50 border border-slate-100 flex items-center justify-center">
-           <LayoutGrid className="size-3 text-slate-400" />
+          <LayoutGrid className="size-3 text-slate-400" />
         </div>
         <span className="text-[12px] font-medium text-slate-600">{label}</span>
       </div>
-      <span className="truncate text-right text-[11px] font-semibold text-slate-400">{status}</span>
+      <span className="truncate text-right text-[11px] font-semibold text-slate-400">
+        {status}
+      </span>
     </div>
   )
 }
@@ -982,25 +1474,33 @@ function 资源项({ label, status }: { label: string; status: string }) {
   const isChecking = ['checking', 'pending'].includes(normalized)
 
   return (
-    <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-white px-2.5 py-2">
+    <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-card px-2.5 py-2">
       <span className="text-[12px] font-medium text-slate-600">{label}</span>
-      <span className={cn(
-        "rounded border px-2 py-0.5 text-[9px] font-bold uppercase",
-        isOk
-          ? "border-emerald-100/70 bg-emerald-50 text-emerald-600"
-          : isChecking
-            ? "border-blue-100/70 bg-blue-50 text-blue-600"
-            : "border-red-100/70 bg-red-50 text-red-500"
-      )}>
+      <span
+        className={cn(
+          'rounded border px-2 py-0.5 text-[9px] font-bold uppercase',
+          isOk
+            ? 'border-emerald-100/70 bg-emerald-50 text-emerald-600'
+            : isChecking
+              ? 'border-blue-100/70 bg-blue-50 text-blue-600'
+              : 'border-red-100/70 bg-red-50 text-red-500'
+        )}
+      >
         {status}
       </span>
     </div>
   )
 }
 
-function FooterCollapsible({ label, detail }: { label: string; detail: string }) {
+function FooterCollapsible({
+  label,
+  detail,
+}: {
+  label: string
+  detail: string
+}) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200/70 px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors group">
+    <div className="bg-card rounded-xl border border-slate-200/70 px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors group">
       <div className="flex items-center gap-4">
         <div className="size-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400 group-hover:text-blue-500 group-hover:bg-blue-50">
           <FileJson className="size-4" />

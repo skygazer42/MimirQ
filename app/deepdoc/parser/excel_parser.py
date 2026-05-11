@@ -195,9 +195,9 @@ if __name__ == "__main__":
 
     # Parse text content
     lines = parser(file_bytes)
-    print("📄 Table content:")
+    logging.info("Table content:")
     for line in lines:
-        print(line)
+        logging.info("%s", line)
 
     # # HTML format (suitable for frontend preview)
     # print("\n📊 HTML chunks (suitable for frontend preview):")

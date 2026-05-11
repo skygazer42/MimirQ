@@ -3,10 +3,12 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
+import { readMessageCatalogSource } from '@/lib/source-test-utils'
+
 describe('AuditRetentionPanel source', () => {
   it('exposes audit log export and purge as explicit business actions', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'audit-retention-panel.tsx'), 'utf8')
-    const messages = fs.readFileSync(path.resolve(__dirname, '../../i18n/messages/zh-CN.ts'), 'utf8')
+    const messages = readMessageCatalogSource(path.resolve(__dirname, '../..'))
 
     expect(src).toContain('auditApi.exportLogs')
     expect(src).toContain('auditApi.purgeLogs')

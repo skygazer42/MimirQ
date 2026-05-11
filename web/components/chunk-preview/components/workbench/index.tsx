@@ -12,7 +12,12 @@ import { Sidebar } from './sidebar'
 import { OriginalPreview } from './preview/original-preview'
 import { ChunkList } from './preview/chunk-list'
 import { useChunkPreview } from '@/components/chunk-preview/context'
-import { PipelineRail, WorkbenchPane, WorkbenchPanelDialog, WorkbenchScaffold } from '@/components/workbench'
+import {
+  PipelineRail,
+  WorkbenchPane,
+  WorkbenchPanelDialog,
+  WorkbenchScaffold,
+} from '@/components/workbench'
 import { cn } from '@/lib/utils'
 
 function ChunkPreviewHeaderChip({
@@ -34,7 +39,12 @@ function ChunkPreviewHeaderChip({
       )}
     >
       <span className="shrink-0">{label}</span>
-      <span className={cn('min-w-0 truncate font-semibold text-foreground', valueClassName)}>
+      <span
+        className={cn(
+          'min-w-0 truncate font-semibold text-foreground',
+          valueClassName
+        )}
+      >
         {value}
       </span>
     </span>
@@ -57,7 +67,7 @@ function ChunkPreviewHeaderStat({
       </div>
       <div
         className={cn(
-          'mt-1 truncate text-[13px] font-semibold tracking-tight',
+          'mt-1 truncate text-[13px] font-semibold ',
           emphasis ? 'text-primary' : 'text-foreground'
         )}
       >
@@ -84,12 +94,14 @@ function ChunkPreviewWorkbenchHeader() {
   const scopeLabel = datasetId
     ? currentFileItem?.datasetName || t('workbench.header.datasetBound')
     : t('workbench.header.allSources')
-  const currentFileLabel = currentFileItem?.displayName || t('workbench.header.noFile')
+  const currentFileLabel =
+    currentFileItem?.displayName || t('workbench.header.noFile')
   const statusLabel = (() => {
     if (isSubmitting) return t('workbench.header.submitting')
     if (isLoading) return t('workbench.header.generating')
     if (scopeSyncLoading) return t('workbench.header.syncing')
-    if (previewData) return t('workbench.header.ready', { count: previewData.total_chunks })
+    if (previewData)
+      return t('workbench.header.ready', { count: previewData.total_chunks })
     return t('workbench.header.waiting')
   })()
   const durationMs =
@@ -118,7 +130,7 @@ function ChunkPreviewWorkbenchHeader() {
             {t('workbench.header.eyebrow')}
           </div>
           <div className="mt-0.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <h1 className="text-[18px] font-semibold leading-6 tracking-tight text-foreground md:text-[21px]">
+            <h1 className="text-[18px] font-semibold leading-6 text-foreground md:text-[21px]">
               {t('workbench.title')}
             </h1>
             <p className="max-w-[62ch] text-[12px] leading-[1.55] text-muted-foreground/76 md:text-[13px]">
@@ -127,19 +139,29 @@ function ChunkPreviewWorkbenchHeader() {
           </div>
 
           <div className="mt-2 flex max-w-full flex-wrap items-center gap-1.5">
-            <ChunkPreviewHeaderChip label={t('workbench.header.scope')} value={scopeLabel} />
+            <ChunkPreviewHeaderChip
+              label={t('workbench.header.scope')}
+              value={scopeLabel}
+            />
             <ChunkPreviewHeaderChip
               label={t('workbench.header.files')}
-              value={t('workbench.header.fileCount', { count: fileList.length })}
+              value={t('workbench.header.fileCount', {
+                count: fileList.length,
+              })}
             />
             <ChunkPreviewHeaderChip
               label={t('workbench.header.status')}
               value={statusLabel}
               className={cn(
-                previewData && !isLoading ? 'border-primary/20 bg-primary/[0.07] text-primary/78' : null,
-                (isLoading || scopeSyncLoading) && 'border-warning/20 bg-warning/[0.08] text-warning'
+                previewData && !isLoading
+                  ? 'border-primary/20 bg-primary/[0.07] text-primary/78'
+                  : null,
+                (isLoading || scopeSyncLoading) &&
+                  'border-warning/20 bg-warning/[0.08] text-warning'
               )}
-              valueClassName={previewData && !isLoading ? 'text-primary' : undefined}
+              valueClassName={
+                previewData && !isLoading ? 'text-primary' : undefined
+              }
             />
             <ChunkPreviewHeaderChip
               label={<FileStack className="size-3.5" aria-hidden />}
@@ -168,7 +190,13 @@ function ChunkPreviewWorkbenchHeader() {
 
 export function Workbench() {
   const t = useTranslations('ChunkPreview')
-  const { currentFile, currentFileItem, showOriginalPanel, showSettingsPanel, toggleSettingsPanel } = useChunkPreview()
+  const {
+    currentFile,
+    currentFileItem,
+    showOriginalPanel,
+    showSettingsPanel,
+    toggleSettingsPanel,
+  } = useChunkPreview()
   const toolbar = currentFile && currentFileItem ? <TopBar /> : null
 
   return (
@@ -188,7 +216,10 @@ export function Workbench() {
           </WorkbenchPane>
         }
         mainPanel={
-          <WorkbenchPane className="flex-1 min-w-0" bodyClassName="p-0 overflow-hidden">
+          <WorkbenchPane
+            className="flex-1 min-w-0"
+            bodyClassName="p-0 overflow-hidden"
+          >
             <main className="flex h-full min-h-0 min-w-0 flex-col lg:flex-row overflow-hidden bg-background">
               {showOriginalPanel ? <OriginalPreview /> : null}
               <ChunkList />

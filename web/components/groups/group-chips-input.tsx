@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useMemo, useState } from 'react'
 import { Check, ChevronsUpDown, Loader2, X } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -10,8 +11,11 @@ import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { groupApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
-import { cn, detachPromise } from '@/lib/utils'
+import { queryKeys } from '@/lib/query-keys'
+import { cn } from '@/lib/utils'
 import type { TenantGroupOut } from '@/types/backend'
+
+const GROUP_LIST_PARAMS = { limit: 1000 } as const
 
 export function GroupChipsInput({
   value,
@@ -29,32 +33,21 @@ export function GroupChipsInput({
   className?: string
 }>) {
   const [open, setOpen] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [groups, setGroups] = useState<TenantGroupOut[]>([])
-
-  useEffect(() => {
-    let cancelled = false
-
-    const load = async () => {
-      setLoading(true)
+  const groupsQuery = useQuery<TenantGroupOut[]>({
+    queryKey: queryKeys.groups.list(GROUP_LIST_PARAMS),
+    retry: false,
+    queryFn: async () => {
       try {
-        const res = await groupApi.listGroups({ limit: 1000 })
-        if (cancelled) return
-        setGroups(Array.isArray(res.items) ? res.items : [])
-      } catch (err) {
-        if (cancelled) return
+        const res = await groupApi.listGroups(GROUP_LIST_PARAMS)
+        return Array.isArray(res.items) ? res.items : []
+      } catch (err: unknown) {
         toast.error(formatApiError(err, '加载组列表失败'))
-      } finally {
-        if (cancelled) return
-        setLoading(false)
+        throw err
       }
-    }
-
-    detachPromise(load())
-    return () => {
-      cancelled = true
-    }
-  }, [])
+    },
+  })
+  const groups = useMemo(() => groupsQuery.data || [], [groupsQuery.data])
+  const loading = groupsQuery.isFetching
 
   const groupById = useMemo(() => new Map(groups.map((g) => [g.id, g])), [groups])
 
@@ -173,4 +166,3 @@ export function GroupChipsInput({
     </div>
   )
 }
-

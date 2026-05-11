@@ -52,7 +52,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 type QuarantineAction = 'release' | 'retry' | 'delete' | 'review' | 'tune'
 type ActingState = { id: string; action: QuarantineAction } | null
@@ -86,19 +92,30 @@ function extractTuningOverrides(doc: Document): DocumentPipelineOptions {
   if (!meta || typeof meta !== 'object') return {}
   const pipeline = (meta as any).pipeline
   if (!pipeline || typeof pipeline !== 'object') return {}
-  const governance = (pipeline).governance
+  const governance = pipeline.governance
   if (!governance || typeof governance !== 'object') return {}
 
   const out: DocumentPipelineOptions = {}
 
-  if (typeof governance.drop_outline_only === 'boolean') out.governance_drop_outline_only = governance.drop_outline_only
-  if (typeof governance.drop_outline_min_content_chars === 'number') out.governance_drop_outline_min_content_chars = governance.drop_outline_min_content_chars
-  if (typeof governance.drop_outline_max_heading_ratio === 'number') out.governance_drop_outline_max_heading_ratio = governance.drop_outline_max_heading_ratio
-  if (typeof governance.drop_low_density === 'boolean') out.governance_drop_low_density = governance.drop_low_density
-  if (typeof governance.drop_low_density_threshold === 'number') out.governance_drop_low_density_threshold = governance.drop_low_density_threshold
-  if (typeof governance.pii_max_hits === 'number') out.governance_pii_max_hits = governance.pii_max_hits
-  if (typeof governance.secrets_max_hits === 'number') out.governance_secrets_max_hits = governance.secrets_max_hits
-  if (typeof governance.quarantine_on_drop === 'boolean') out.governance_quarantine_on_drop = governance.quarantine_on_drop
+  if (typeof governance.drop_outline_only === 'boolean')
+    out.governance_drop_outline_only = governance.drop_outline_only
+  if (typeof governance.drop_outline_min_content_chars === 'number')
+    out.governance_drop_outline_min_content_chars =
+      governance.drop_outline_min_content_chars
+  if (typeof governance.drop_outline_max_heading_ratio === 'number')
+    out.governance_drop_outline_max_heading_ratio =
+      governance.drop_outline_max_heading_ratio
+  if (typeof governance.drop_low_density === 'boolean')
+    out.governance_drop_low_density = governance.drop_low_density
+  if (typeof governance.drop_low_density_threshold === 'number')
+    out.governance_drop_low_density_threshold =
+      governance.drop_low_density_threshold
+  if (typeof governance.pii_max_hits === 'number')
+    out.governance_pii_max_hits = governance.pii_max_hits
+  if (typeof governance.secrets_max_hits === 'number')
+    out.governance_secrets_max_hits = governance.secrets_max_hits
+  if (typeof governance.quarantine_on_drop === 'boolean')
+    out.governance_quarantine_on_drop = governance.quarantine_on_drop
 
   return out
 }
@@ -124,16 +141,29 @@ function buildReviewAdvice(doc: Document): string[] {
   const reasons = new Set(getDropReasons(doc))
   const advice: string[] = []
 
-  if (reasons.has('outline_only')) advice.push('如果正文有效但被判定为大纲文档，可关闭 outline_only 过滤后重试。')
-  if (reasons.has('low_density')) advice.push('如果文本主要由表格或短句构成，可放宽 low_density 阈值后重新入库。')
-  if (reasons.has('pii_exceeded')) advice.push('确认是否包含真实敏感信息；若仅为误报，建议先抽样预览再决定放行。')
-  if (reasons.has('secrets_exceeded')) advice.push('优先确认命中的内容是否为真实密钥或凭证，再执行放行。')
-  if (!advice.length) advice.push('先查看命中规则与原文片段，再决定放行、重试或删除。')
+  if (reasons.has('outline_only'))
+    advice.push(
+      '如果正文有效但被判定为大纲文档，可关闭 outline_only 过滤后重试。'
+    )
+  if (reasons.has('low_density'))
+    advice.push(
+      '如果文本主要由表格或短句构成，可放宽 low_density 阈值后重新入库。'
+    )
+  if (reasons.has('pii_exceeded'))
+    advice.push(
+      '确认是否包含真实敏感信息；若仅为误报，建议先抽样预览再决定放行。'
+    )
+  if (reasons.has('secrets_exceeded'))
+    advice.push('优先确认命中的内容是否为真实密钥或凭证，再执行放行。')
+  if (!advice.length)
+    advice.push('先查看命中规则与原文片段，再决定放行、重试或删除。')
 
   return advice
 }
 
-function createReviewMetadataPatch(extra?: Record<string, any>): Record<string, any> {
+function createReviewMetadataPatch(
+  extra?: Record<string, any>
+): Record<string, any> {
   const patch: Record<string, any> = {
     quarantine_reviewed: true,
     quarantine_reviewed_at: new Date().toISOString(),
@@ -144,10 +174,16 @@ function createReviewMetadataPatch(extra?: Record<string, any>): Record<string, 
   return patch
 }
 
-function getBusyIconClassName(acting: ActingState, docId: string, action: QuarantineAction): string {
+function getBusyIconClassName(
+  acting: ActingState,
+  docId: string,
+  action: QuarantineAction
+): string {
   return cn(
     'h-4 w-4 mr-1',
-    acting?.id === docId && acting.action === action ? 'animate-spin motion-reduce:animate-none' : ''
+    acting?.id === docId && acting.action === action
+      ? 'animate-spin motion-reduce:animate-none'
+      : ''
   )
 }
 
@@ -165,8 +201,12 @@ function makeDemoQuarantineDocument(
   id: number,
   overrides: Partial<Document> & { filename: string; file_type: string }
 ): Document {
-  const createdAt = new Date(Date.UTC(2026, 2, 31, 3, 0, 0) - id * 36 * 60_000).toISOString()
-  const updatedAt = new Date(Date.UTC(2026, 2, 31, 11, 45, 0) - id * 22 * 60_000).toISOString()
+  const createdAt = new Date(
+    Date.UTC(2026, 2, 31, 3, 0, 0) - id * 36 * 60_000
+  ).toISOString()
+  const updatedAt = new Date(
+    Date.UTC(2026, 2, 31, 11, 45, 0) - id * 22 * 60_000
+  ).toISOString()
   const { filename, file_type: fileType, ...restOverrides } = overrides
 
   return {
@@ -254,16 +294,44 @@ function buildDemoQuarantineDocuments(): Document[] {
   ]
 
   const reasons = [
-    { key: 'pii_exceeded', filename: '员工信息名录', fileType: 'docx', source: '文档解析', error: '包含手机号、身份证号等敏感信息' },
-    { key: 'outline_only', filename: '项目大纲', fileType: 'pptx', source: '数据导入', error: '包含未公开产品规划' },
-    { key: 'low_density', filename: '扫描件归档', fileType: 'pdf', source: '文档解析', error: '正文密度过低，建议人工复核' },
-    { key: 'secrets_exceeded', filename: '环境变量清单', fileType: 'csv', source: 'API 接入', error: '疑似命中 token / secret' },
+    {
+      key: 'pii_exceeded',
+      filename: '员工信息名录',
+      fileType: 'docx',
+      source: '文档解析',
+      error: '包含手机号、身份证号等敏感信息',
+    },
+    {
+      key: 'outline_only',
+      filename: '项目大纲',
+      fileType: 'pptx',
+      source: '数据导入',
+      error: '包含未公开产品规划',
+    },
+    {
+      key: 'low_density',
+      filename: '扫描件归档',
+      fileType: 'pdf',
+      source: '文档解析',
+      error: '正文密度过低，建议人工复核',
+    },
+    {
+      key: 'secrets_exceeded',
+      filename: '环境变量清单',
+      fileType: 'csv',
+      source: 'API 接入',
+      error: '疑似命中 token / secret',
+    },
   ] as const
 
   const extraRows = Array.from({ length: 242 }, (_, index) => {
     const bucket = reasons[index % reasons.length]
     const reviewed = index >= 23 && index < 179
-    const status = reviewed ? 'completed' : index < 23 ? 'quarantined' : 'cancelled'
+    const status = reviewed
+      ? 'completed'
+      : index < 23
+        ? 'quarantined'
+        : 'cancelled'
     const suffix = `${String(index + 7).padStart(3, '0')}`
     return makeDemoQuarantineDocument(index + 7, {
       filename: `${bucket.filename}_${suffix}.${bucket.fileType}`,
@@ -272,7 +340,9 @@ function buildDemoQuarantineDocuments(): Document[] {
       dataset_id: bucket.source,
       governance: { drop_reasons: { [bucket.key]: 1 } } as any,
       error_message: bucket.error,
-      metadata: reviewed ? ({ user: { quarantine_reviewed: true } } as any) : {},
+      metadata: reviewed
+        ? ({ user: { quarantine_reviewed: true } } as any)
+        : {},
       status,
     })
   })
@@ -284,11 +354,21 @@ type QuarantineSeverity = '高' | '中' | '低'
 
 function getQuarantineSource(doc: Document): string {
   const kind = getDocumentKind(doc.filename)
-  if (kind === 'pdf' || kind === 'markdown' || kind === 'html' || String(doc.file_type || '').toLowerCase() === 'docx') {
+  if (
+    kind === 'pdf' ||
+    kind === 'markdown' ||
+    kind === 'html' ||
+    String(doc.file_type || '').toLowerCase() === 'docx'
+  ) {
     return '文档解析'
   }
   if (kind === 'spreadsheet') return '数据导入'
-  if (String(doc.dataset_id || '').toLowerCase().includes('api')) return 'API 接入'
+  if (
+    String(doc.dataset_id || '')
+      .toLowerCase()
+      .includes('api')
+  )
+    return 'API 接入'
   return '其他'
 }
 
@@ -304,7 +384,11 @@ function getQuarantineSeverity(doc: Document): QuarantineSeverity {
   ) {
     return '高'
   }
-  if (reasons.has('low_density') || reasons.has('outline_only') || doc.status === 'quarantined') {
+  if (
+    reasons.has('low_density') ||
+    reasons.has('outline_only') ||
+    doc.status === 'quarantined'
+  ) {
     return '中'
   }
   return '低'
@@ -348,10 +432,14 @@ function buildConicGradient(values: number[], colors: string[]): string {
   return `conic-gradient(${stops.join(', ')})`
 }
 
-const TYPO_EYEBROW = 'text-[0.68rem] font-medium uppercase tracking-[0.24em] text-muted-foreground/64'
-const TYPO_SECTION_TITLE = 'text-[0.98rem] font-medium tracking-[-0.015em] leading-[1.2] text-foreground/90'
-const TYPO_ITEM_TITLE = 'text-[0.88rem] font-medium tracking-[-0.005em] leading-[1.3] text-foreground/92'
-const TYPO_META = 'font-code tabular-nums text-[0.7rem] font-normal tracking-[0.01em] text-muted-foreground/62'
+const TYPO_EYEBROW =
+  'text-[0.68rem] font-medium uppercase tracking-[0.24em] text-muted-foreground/64'
+const TYPO_SECTION_TITLE =
+  'text-[0.98rem] font-medium tracking-[-0.015em] leading-[1.2] text-foreground/90'
+const TYPO_ITEM_TITLE =
+  'text-[0.88rem] font-medium tracking-[-0.005em] leading-[1.3] text-foreground/92'
+const TYPO_META =
+  'font-code tabular-nums text-[0.7rem] font-normal tracking-[0.01em] text-muted-foreground/62'
 
 function FileKindGlyph({
   kind,
@@ -359,47 +447,148 @@ function FileKindGlyph({
 }: Readonly<{ kind: ReturnType<typeof getDocumentKind>; className?: string }>) {
   if (kind === 'pdf') {
     return (
-      <svg viewBox="0 0 24 24" className={cn('h-4 w-4', className)} aria-hidden="true">
+      <svg
+        viewBox="0 0 24 24"
+        className={cn('h-4 w-4', className)}
+        aria-hidden="true"
+      >
         <path d="M7 3.5h7l4 4V20.5H7z" fill="currentColor" opacity="0.18" />
-        <path d="M14 3.5v4h4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
-        <path d="M8.5 15.5h7" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-        <path d="M8.5 18h5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        <path
+          d="M14 3.5v4h4"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M8.5 15.5h7"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+        />
+        <path
+          d="M8.5 18h5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+        />
       </svg>
     )
   }
 
   if (kind === 'markdown') {
     return (
-      <svg viewBox="0 0 24 24" className={cn('h-4 w-4', className)} aria-hidden="true">
-        <rect x="5" y="5" width="14" height="14" rx="3" fill="currentColor" opacity="0.12" />
-        <path d="M8 16V9l2.5 3 2.5-3v7" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M15.5 10.5v4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-        <path d="m14 13 1.5 1.5L17 13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <svg
+        viewBox="0 0 24 24"
+        className={cn('h-4 w-4', className)}
+        aria-hidden="true"
+      >
+        <rect
+          x="5"
+          y="5"
+          width="14"
+          height="14"
+          rx="3"
+          fill="currentColor"
+          opacity="0.12"
+        />
+        <path
+          d="M8 16V9l2.5 3 2.5-3v7"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M15.5 10.5v4"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+        />
+        <path
+          d="m14 13 1.5 1.5L17 13"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </svg>
     )
   }
 
   if (kind === 'spreadsheet') {
     return (
-      <svg viewBox="0 0 24 24" className={cn('h-4 w-4', className)} aria-hidden="true">
-        <rect x="5" y="4.5" width="14" height="15" rx="2.5" fill="currentColor" opacity="0.12" />
-        <path d="M5 9.5h14M10 4.5v15M14.5 9.5v10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <svg
+        viewBox="0 0 24 24"
+        className={cn('h-4 w-4', className)}
+        aria-hidden="true"
+      >
+        <rect
+          x="5"
+          y="4.5"
+          width="14"
+          height="15"
+          rx="2.5"
+          fill="currentColor"
+          opacity="0.12"
+        />
+        <path
+          d="M5 9.5h14M10 4.5v15M14.5 9.5v10"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+        />
       </svg>
     )
   }
 
   if (kind === 'html') {
     return (
-      <svg viewBox="0 0 24 24" className={cn('h-4 w-4', className)} aria-hidden="true">
-        <path d="m8.5 8.5-3 3 3 3M15.5 8.5l3 3-3 3M13.5 7l-3 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <svg
+        viewBox="0 0 24 24"
+        className={cn('h-4 w-4', className)}
+        aria-hidden="true"
+      >
+        <path
+          d="m8.5 8.5-3 3 3 3M15.5 8.5l3 3-3 3M13.5 7l-3 10"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </svg>
     )
   }
 
   return (
-    <svg viewBox="0 0 24 24" className={cn('h-4 w-4', className)} aria-hidden="true">
-      <rect x="6" y="4.5" width="12" height="15" rx="2.5" fill="currentColor" opacity="0.12" />
-      <path d="M9 9h6M9 12.5h6M9 16h4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    <svg
+      viewBox="0 0 24 24"
+      className={cn('h-4 w-4', className)}
+      aria-hidden="true"
+    >
+      <rect
+        x="6"
+        y="4.5"
+        width="12"
+        height="15"
+        rx="2.5"
+        fill="currentColor"
+        opacity="0.12"
+      />
+      <path
+        d="M9 9h6M9 12.5h6M9 16h4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
     </svg>
   )
 }
@@ -433,26 +622,39 @@ function SummaryStatCard({
       <div
         className={cn(
           'pointer-events-none absolute inset-0 opacity-95',
-          tone === 'neutral' && 'bg-[radial-gradient(circle_at_top_right,rgba(37,99,235,0.12),transparent_58%)]',
-          tone === 'success' && 'bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.14),transparent_58%)]',
-          tone === 'warning' && 'bg-[radial-gradient(circle_at_top_right,rgba(245,158,11,0.18),transparent_58%)]',
-          tone === 'danger' && 'bg-[radial-gradient(circle_at_top_right,rgba(239,68,68,0.14),transparent_58%)]',
-          tone === 'info' && 'bg-[radial-gradient(circle_at_top_right,rgba(124,58,237,0.14),transparent_58%)]'
+          tone === 'neutral' &&
+            'bg-[radial-gradient(circle_at_top_right,rgba(37,99,235,0.12),transparent_58%)]',
+          tone === 'success' &&
+            'bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.14),transparent_58%)]',
+          tone === 'warning' &&
+            'bg-[radial-gradient(circle_at_top_right,rgba(245,158,11,0.18),transparent_58%)]',
+          tone === 'danger' &&
+            'bg-[radial-gradient(circle_at_top_right,rgba(239,68,68,0.14),transparent_58%)]',
+          tone === 'info' &&
+            'bg-[radial-gradient(circle_at_top_right,rgba(124,58,237,0.14),transparent_58%)]'
         )}
       />
       <div className="relative flex items-start justify-between gap-4">
         <div className="space-y-1">
-          <div className="text-[10px] font-medium uppercase tracking-[0.14em] leading-none text-muted-foreground/80">{label}</div>
-          <div className="text-[1.55rem] font-semibold leading-none tracking-tight text-foreground">{value}</div>
+          <div className="text-[10px] font-medium uppercase tracking-[0.14em] leading-none text-muted-foreground/80">
+            {label}
+          </div>
+          <div className="text-[1.55rem] font-semibold leading-none text-foreground">
+            {value}
+          </div>
         </div>
         <div
           className={cn(
             'flex size-9 shrink-0 items-center justify-center rounded-[0.9rem] border shadow-[0_14px_30px_-22px_currentColor]',
-            tone === 'neutral' && 'border-blue-500/10 bg-blue-500/10 text-blue-600',
-            tone === 'success' && 'border-emerald-500/10 bg-emerald-500/10 text-emerald-600',
-            tone === 'warning' && 'border-amber-500/10 bg-amber-500/10 text-amber-600',
+            tone === 'neutral' &&
+              'border-blue-500/10 bg-blue-500/10 text-blue-600',
+            tone === 'success' &&
+              'border-emerald-500/10 bg-emerald-500/10 text-emerald-600',
+            tone === 'warning' &&
+              'border-amber-500/10 bg-amber-500/10 text-amber-600',
             tone === 'danger' && 'border-red-500/10 bg-red-500/10 text-red-600',
-            tone === 'info' && 'border-violet-500/10 bg-violet-500/10 text-violet-600'
+            tone === 'info' &&
+              'border-violet-500/10 bg-violet-500/10 text-violet-600'
           )}
         >
           <Icon className="size-4" />
@@ -461,7 +663,9 @@ function SummaryStatCard({
 
       <div className="relative mt-2.5 flex items-end justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-[11px] font-medium text-muted-foreground">{hint}</div>
+          <div className="text-[11px] font-medium text-muted-foreground">
+            {hint}
+          </div>
           {delta ? (
             <div
               className={cn(
@@ -513,33 +717,60 @@ function DonutSummaryCard({
 
   return (
     <div className="h-full min-h-[178px] rounded-[1.1rem] border border-border/60 bg-background/92 p-3.5 shadow-[0_18px_44px_-38px_rgba(15,23,42,0.18)] backdrop-blur-sm">
-      <div className="text-[0.9rem] font-medium tracking-tight text-foreground">{title}</div>
-      {subtitle ? <div className="mt-1 text-[11px] text-muted-foreground">{subtitle}</div> : null}
+      <div className="text-[0.9rem] font-medium text-foreground">{title}</div>
+      {subtitle ? (
+        <div className="mt-1 text-[11px] text-muted-foreground">{subtitle}</div>
+      ) : null}
       <div className="mt-3.5 grid gap-3.5 md:grid-cols-[100px_minmax(0,1fr)] md:items-center">
         <div className="flex items-center justify-center">
-          <div className="relative h-[86px] w-[86px] rounded-full shadow-[inset_0_0_0_1px_rgba(148,163,184,0.18)]" style={{ backgroundImage: gradient }}>
+          <div
+            className="relative h-[86px] w-[86px] rounded-full shadow-[inset_0_0_0_1px_rgba(148,163,184,0.18)]"
+            style={{ backgroundImage: gradient }}
+          >
             <div className="absolute inset-[16px] rounded-full bg-background shadow-[inset_0_0_0_1px_rgba(148,163,184,0.12)]" />
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-[1.2rem] font-semibold leading-none tracking-tight text-foreground">{total}</span>
-              <span className="mt-1 text-[10px] font-medium text-muted-foreground/85">总量</span>
+              <span className="text-[1.2rem] font-semibold leading-none text-foreground">
+                {total}
+              </span>
+              <span className="mt-1 text-[10px] font-medium text-muted-foreground/85">
+                总量
+              </span>
             </div>
           </div>
         </div>
         <div className="space-y-2">
           {items.length ? (
             items.map((item, index) => (
-              <div key={item.label} className="flex items-center justify-between gap-3 text-[11px]">
+              <div
+                key={item.label}
+                className="flex items-center justify-between gap-3 text-[11px]"
+              >
                 <div className="flex min-w-0 items-center gap-2.5 text-muted-foreground">
-                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: colors[index] }} />
+                  <span
+                    className="h-2 w-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: colors[index] }}
+                  />
                   <span className="truncate">{item.label}</span>
                 </div>
                 <div className="shrink-0 text-right">
-                  <span className="text-[12px] tabular-nums text-foreground">{item.value}</span>
-                  {item.hint ? <span className="ml-1.5 text-[10px] text-muted-foreground">{item.hint}</span> : null}
-                  {!item.hint && total > 0 ? (
-                    <span className="ml-1.5 text-[10px] text-muted-foreground">({((item.value / total) * 100).toFixed(1)}%)</span>
+                  <span className="text-[12px] tabular-nums text-foreground">
+                    {item.value}
+                  </span>
+                  {item.hint ? (
+                    <span className="ml-1.5 text-[10px] text-muted-foreground">
+                      {item.hint}
+                    </span>
                   ) : null}
-                  {!item.hint && total === 0 ? <span className="ml-1.5 text-[10px] text-muted-foreground">(0%)</span> : null}
+                  {!item.hint && total > 0 ? (
+                    <span className="ml-1.5 text-[10px] text-muted-foreground">
+                      ({((item.value / total) * 100).toFixed(1)}%)
+                    </span>
+                  ) : null}
+                  {!item.hint && total === 0 ? (
+                    <span className="ml-1.5 text-[10px] text-muted-foreground">
+                      (0%)
+                    </span>
+                  ) : null}
                 </div>
               </div>
             ))
@@ -559,7 +790,12 @@ function QuickActionCard({
   description,
   icon: Icon,
   onClick,
-}: Readonly<{ title: string; description: string; icon: LucideIcon; onClick: () => void }>) {
+}: Readonly<{
+  title: string
+  description: string
+  icon: LucideIcon
+  onClick: () => void
+}>) {
   return (
     <button
       type="button"
@@ -570,8 +806,12 @@ function QuickActionCard({
         <Icon className="size-3.5" />
       </span>
       <span className="min-w-0">
-        <span className="block text-[12px] font-medium tracking-tight text-foreground">{title}</span>
-        <span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">{description}</span>
+        <span className="block text-[12px] font-medium text-foreground">
+          {title}
+        </span>
+        <span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">
+          {description}
+        </span>
       </span>
     </button>
   )
@@ -592,15 +832,23 @@ function StatusPill({ status }: Readonly<{ status: Document['status'] }>) {
               : '已取消'
 
   return (
-    <span className={cn(
-      'inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium',
-      status === 'completed' && 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
-      status === 'failed' && 'border-red-500/20 bg-red-500/10 text-red-600 dark:text-red-300',
-      status === 'quarantined' && 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300',
-      status === 'pending' && 'border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-300',
-      status === 'processing' && 'border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-300',
-      status === 'cancelled' && 'border-border/60 bg-muted/60 text-muted-foreground',
-    )}>
+    <span
+      className={cn(
+        'inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium',
+        status === 'completed' &&
+          'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+        status === 'failed' &&
+          'border-red-500/20 bg-red-500/10 text-red-600 dark:text-red-300',
+        status === 'quarantined' &&
+          'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+        status === 'pending' &&
+          'border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-300',
+        status === 'processing' &&
+          'border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-300',
+        status === 'cancelled' &&
+          'border-border/60 bg-muted/60 text-muted-foreground'
+      )}
+    >
       {label}
     </span>
   )
@@ -633,8 +881,10 @@ function QuarantineEmptyState({
         <span className="absolute right-2 top-10 size-1.5 rounded-full bg-blue-200" />
       </div>
 
-      <div className="text-[0.98rem] font-semibold tracking-tight text-foreground">
-        {hasActiveFilters ? '当前筛选条件下暂无隔离记录' : '当前没有待审隔离样本'}
+      <div className="text-[0.98rem] font-semibold text-foreground">
+        {hasActiveFilters
+          ? '当前筛选条件下暂无隔离记录'
+          : '当前没有待审隔离样本'}
       </div>
       <p className="mt-1 max-w-lg text-[10px] leading-5 text-muted-foreground">
         {hasActiveFilters
@@ -657,13 +907,20 @@ function QuarantineEmptyState({
           className="h-8 rounded-xl bg-blue-600 px-3.5 text-[11px] font-semibold text-primary-foreground shadow-[0_16px_30px_-22px_rgba(37,99,235,0.8)] hover:bg-blue-500"
           onClick={onRefresh}
         >
-          <RefreshCw className={cn('size-4', isFetching ? 'animate-spin motion-reduce:animate-none' : '')} />
+          <RefreshCw
+            className={cn(
+              'size-4',
+              isFetching ? 'animate-spin motion-reduce:animate-none' : ''
+            )}
+          />
           同步数据
         </Button>
       </div>
 
       <div className="mt-2 text-[11px] text-muted-foreground">
-        {autoRefresh ? '自动刷新已开启，每 5 秒轮询一次。' : '自动刷新已关闭，仅手动同步。'}
+        {autoRefresh
+          ? '自动刷新已开启，每 5 秒轮询一次。'
+          : '自动刷新已关闭，仅手动同步。'}
       </div>
     </div>
   )
@@ -673,7 +930,9 @@ interface QuarantineDetailPanelProps {
   selected: Document | null
 }
 
-function QuarantineDetailPanel({ selected }: Readonly<QuarantineDetailPanelProps>) {
+function QuarantineDetailPanel({
+  selected,
+}: Readonly<QuarantineDetailPanelProps>) {
   if (!selected) return null
 
   return (
@@ -688,8 +947,12 @@ function QuarantineDetailPanel({ selected }: Readonly<QuarantineDetailPanelProps
             { label: '切片数量', value: String(selected.chunk_count ?? 0) },
           ].map((item) => (
             <div key={item.label} className="space-y-1">
-              <div className="text-[10px] font-medium uppercase  text-muted-foreground/60">{item.label}</div>
-              <div className="break-words text-xs font-mono font-medium text-foreground/90">{item.value}</div>
+              <div className="text-[10px] font-medium uppercase text-muted-foreground/60">
+                {item.label}
+              </div>
+              <div className="break-words text-xs font-mono font-medium text-foreground/90">
+                {item.value}
+              </div>
             </div>
           ))}
         </div>
@@ -697,7 +960,9 @@ function QuarantineDetailPanel({ selected }: Readonly<QuarantineDetailPanelProps
 
       {selected.error_message && (
         <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
-          <div className="text-[10px] font-medium uppercase  text-amber-600">隔离原因 / RISKS</div>
+          <div className="text-[10px] font-medium uppercase text-amber-600">
+            隔离原因 / RISKS
+          </div>
           <div className="mt-2 break-words text-xs font-mono leading-relaxed text-amber-900/80 dark:text-amber-200/80">
             {selected.error_message}
           </div>
@@ -708,7 +973,10 @@ function QuarantineDetailPanel({ selected }: Readonly<QuarantineDetailPanelProps
         <div className={TYPO_EYEBROW}>处置建议 / ADVICE</div>
         <div className="mt-3 space-y-3">
           {buildReviewAdvice(selected).map((tip) => (
-            <div key={tip} className="flex items-start gap-3 text-[13px] font-medium text-foreground/80 leading-relaxed">
+            <div
+              key={tip}
+              className="flex items-start gap-3 text-[13px] font-medium text-foreground/80 leading-relaxed"
+            >
               <div className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]" />
               <div>{tip}</div>
             </div>
@@ -718,13 +986,15 @@ function QuarantineDetailPanel({ selected }: Readonly<QuarantineDetailPanelProps
 
       {getDropReasons(selected).length > 0 ? (
         <div className="rounded-xl border border-border/40 bg-muted/30 p-4">
-          <div className="text-[10px] font-medium uppercase  text-muted-foreground/60">命中规则 / RULES</div>
+          <div className="text-[10px] font-medium uppercase text-muted-foreground/60">
+            命中规则 / RULES
+          </div>
           <div className="mt-3 flex flex-wrap gap-1.5">
             {getDropReasons(selected).map((reason) => (
               <Badge
                 key={reason}
                 variant="secondary"
-                className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-[10px] font-medium uppercase  text-amber-700 dark:text-amber-300"
+                className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-[10px] font-medium uppercase text-amber-700 dark:text-amber-300"
               >
                 {reasonLabel(reason)}
               </Badge>
@@ -776,18 +1046,26 @@ function QuarantineReviewDrawer({
             <div className="flex items-start justify-between gap-3 pr-8">
               <div className="min-w-0">
                 <div className={TYPO_EYEBROW}>Audit Inspection</div>
-                <div className="mt-1.5 truncate text-xl font-semibold  text-foreground">{selected?.filename || '未选择记录'}</div>
+                <div className="mt-1.5 truncate text-xl font-semibold text-foreground">
+                  {selected?.filename || '未选择记录'}
+                </div>
                 {selected ? (
                   <div className="mt-1 flex items-center gap-2">
-                    <span className="font-mono text-[10px] font-medium uppercase text-muted-foreground/45">{selected.id}</span>
+                    <span className="font-mono text-[10px] font-medium uppercase text-muted-foreground/45">
+                      {selected.id}
+                    </span>
                     <div className="h-1 w-1 rounded-full bg-border" />
-                    <span className="font-mono text-[10px] font-medium text-muted-foreground/50">{formatDate(selected.updated_at)}</span>
+                    <span className="font-mono text-[10px] font-medium text-muted-foreground/50">
+                      {formatDate(selected.updated_at)}
+                    </span>
                   </div>
                 ) : null}
               </div>
               {selected ? (
                 <div className="shrink-0 pt-1">
-                  <StatusPill status={isReviewed(selected) ? 'completed' : 'quarantined'} />
+                  <StatusPill
+                    status={isReviewed(selected) ? 'completed' : 'quarantined'}
+                  />
                 </div>
               ) : null}
             </div>
@@ -809,7 +1087,13 @@ function QuarantineReviewDrawer({
                     disabled={acting?.id === selected.id}
                     onClick={() => onRelease(selected)}
                   >
-                    <RotateCcw className={getBusyIconClassName(acting, selected.id, 'release')} />
+                    <RotateCcw
+                      className={getBusyIconClassName(
+                        acting,
+                        selected.id,
+                        'release'
+                      )}
+                    />
                     放行并重试
                   </Button>
                   <Button
@@ -819,7 +1103,13 @@ function QuarantineReviewDrawer({
                     disabled={acting?.id === selected.id}
                     onClick={() => onRetry(selected)}
                   >
-                    <RefreshCw className={getBusyIconClassName(acting, selected.id, 'retry')} />
+                    <RefreshCw
+                      className={getBusyIconClassName(
+                        acting,
+                        selected.id,
+                        'retry'
+                      )}
+                    />
                     直接重试
                   </Button>
                 </div>
@@ -863,10 +1153,18 @@ function QuarantineReviewDrawer({
                     size="sm"
                     variant="outline"
                     className="h-9 flex-1 rounded-xl border-success/25 bg-success/[0.06] text-[11px] font-medium text-success hover:bg-success/[0.12]"
-                    disabled={acting?.id === selected.id || isReviewed(selected)}
+                    disabled={
+                      acting?.id === selected.id || isReviewed(selected)
+                    }
                     onClick={() => onMarkReviewed(selected)}
                   >
-                    <CheckCircle2 className={getBusyIconClassName(acting, selected.id, 'review')} />
+                    <CheckCircle2
+                      className={getBusyIconClassName(
+                        acting,
+                        selected.id,
+                        'review'
+                      )}
+                    />
                     标记为已解决
                   </Button>
 
@@ -911,7 +1209,9 @@ export default function QuarantineQueuePage() {
   const [selectedSeverity, setSelectedSeverity] = useState('all')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
-  const [reviewState, setReviewState] = useState<'all' | 'pending' | 'reviewed'>('all')
+  const [reviewState, setReviewState] = useState<
+    'all' | 'pending' | 'reviewed'
+  >('all')
   const [page, setPage] = useState(1)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [reviewDrawerOpen, setReviewDrawerOpen] = useState(false)
@@ -938,7 +1238,10 @@ export default function QuarantineQueuePage() {
     refetchInterval: autoRefresh ? 5_000 : false,
   })
 
-  const documents = useMemo(() => (demoMode ? buildDemoQuarantineDocuments() : data?.items || []), [data, demoMode])
+  const documents = useMemo(
+    () => (demoMode ? buildDemoQuarantineDocuments() : data?.items || []),
+    [data, demoMode]
+  )
 
   const reasonCounts = useMemo(() => {
     const counts: Record<string, number> = {}
@@ -960,15 +1263,20 @@ export default function QuarantineQueuePage() {
   const datasetOptions = useMemo(
     () =>
       Array.from(
-        new Set(documents.map((doc) => doc.dataset_id).filter((value): value is string => Boolean(value)))
+        new Set(
+          documents
+            .map((doc) => doc.dataset_id)
+            .filter((value): value is string => Boolean(value))
+        )
       ).sort((a, b) => a.localeCompare(b)),
     [documents]
   )
 
   const sourceOptions = useMemo(
     () =>
-      Array.from(new Set(documents.map((doc) => getQuarantineSource(doc))))
-        .sort((a, b) => a.localeCompare(b)),
+      Array.from(
+        new Set(documents.map((doc) => getQuarantineSource(doc)))
+      ).sort((a, b) => a.localeCompare(b)),
     [documents]
   )
 
@@ -994,7 +1302,9 @@ export default function QuarantineQueuePage() {
   const stats = useMemo(() => {
     const total = documents.length
     const reviewed = documents.filter(isReviewed).length
-    const highRisk = documents.filter((doc) => getQuarantineSeverity(doc) === '高').length
+    const highRisk = documents.filter(
+      (doc) => getQuarantineSeverity(doc) === '高'
+    ).length
     return {
       total,
       reviewed,
@@ -1011,7 +1321,9 @@ export default function QuarantineQueuePage() {
         .map(([reason, count]) => ({
           label: `R${Math.max(1, sortedReasons.indexOf(reason) + 1)} ${reasonLabel(reason)}`,
           value: count,
-          hint: documents.length ? `(${((count / documents.length) * 100).toFixed(1)}%)` : '(0%)',
+          hint: documents.length
+            ? `(${((count / documents.length) * 100).toFixed(1)}%)`
+            : '(0%)',
         })),
     [documents.length, reasonCounts, sortedReasons]
   )
@@ -1037,12 +1349,26 @@ export default function QuarantineQueuePage() {
     let out = documents
     if (reviewState === 'pending') out = out.filter((d) => !isReviewed(d))
     if (reviewState === 'reviewed') out = out.filter((d) => isReviewed(d))
-    if (selectedReason !== 'all') out = out.filter((d) => getDropReasons(d).includes(selectedReason))
-    if (selectedDataset !== 'all') out = out.filter((d) => d.dataset_id === selectedDataset)
-    if (selectedSource !== 'all') out = out.filter((d) => getQuarantineSource(d) === selectedSource)
-    if (selectedSeverity !== 'all') out = out.filter((d) => getQuarantineSeverity(d) === selectedSeverity)
-    if (dateFrom) out = out.filter((d) => new Date(String(d.updated_at || d.created_at || '')).getTime() >= new Date(`${dateFrom}T00:00:00`).getTime())
-    if (dateTo) out = out.filter((d) => new Date(String(d.updated_at || d.created_at || '')).getTime() <= new Date(`${dateTo}T23:59:59`).getTime())
+    if (selectedReason !== 'all')
+      out = out.filter((d) => getDropReasons(d).includes(selectedReason))
+    if (selectedDataset !== 'all')
+      out = out.filter((d) => d.dataset_id === selectedDataset)
+    if (selectedSource !== 'all')
+      out = out.filter((d) => getQuarantineSource(d) === selectedSource)
+    if (selectedSeverity !== 'all')
+      out = out.filter((d) => getQuarantineSeverity(d) === selectedSeverity)
+    if (dateFrom)
+      out = out.filter(
+        (d) =>
+          new Date(String(d.updated_at || d.created_at || '')).getTime() >=
+          new Date(`${dateFrom}T00:00:00`).getTime()
+      )
+    if (dateTo)
+      out = out.filter(
+        (d) =>
+          new Date(String(d.updated_at || d.created_at || '')).getTime() <=
+          new Date(`${dateTo}T23:59:59`).getTime()
+      )
 
     const q = search.trim().toLowerCase()
     if (q) {
@@ -1057,12 +1383,29 @@ export default function QuarantineQueuePage() {
           .join(' ')
           .toLowerCase()
 
-        return filename.includes(q) || id.includes(q) || dataset.includes(q) || reasons.includes(q) || source.includes(q) || severity.includes(q)
+        return (
+          filename.includes(q) ||
+          id.includes(q) ||
+          dataset.includes(q) ||
+          reasons.includes(q) ||
+          source.includes(q) ||
+          severity.includes(q)
+        )
       })
     }
 
     return out
-  }, [dateFrom, dateTo, documents, reviewState, search, selectedDataset, selectedReason, selectedSeverity, selectedSource])
+  }, [
+    dateFrom,
+    dateTo,
+    documents,
+    reviewState,
+    search,
+    selectedDataset,
+    selectedReason,
+    selectedSeverity,
+    selectedSource,
+  ])
 
   const listSummary = useMemo(() => {
     if (!documents.length) return null
@@ -1075,12 +1418,31 @@ export default function QuarantineQueuePage() {
     const hasReviewFilter = reviewState !== 'all'
     const hasDateFilter = Boolean(dateFrom || dateTo)
 
-    if (hasSearch || hasReasonFilter || hasDatasetFilter || hasSourceFilter || hasSeverityFilter || hasReviewFilter || hasDateFilter) {
+    if (
+      hasSearch ||
+      hasReasonFilter ||
+      hasDatasetFilter ||
+      hasSourceFilter ||
+      hasSeverityFilter ||
+      hasReviewFilter ||
+      hasDateFilter
+    ) {
       return `筛出 ${filtered.length} / ${documents.length}`
     }
 
     return `共 ${filtered.length} 条`
-  }, [dateFrom, dateTo, documents.length, filtered.length, reviewState, search, selectedDataset, selectedReason, selectedSeverity, selectedSource])
+  }, [
+    dateFrom,
+    dateTo,
+    documents.length,
+    filtered.length,
+    reviewState,
+    search,
+    selectedDataset,
+    selectedReason,
+    selectedSeverity,
+    selectedSource,
+  ])
 
   const hasActiveFilters =
     Boolean(search.trim()) ||
@@ -1091,9 +1453,16 @@ export default function QuarantineQueuePage() {
     reviewState !== 'all' ||
     Boolean(dateFrom || dateTo)
 
-  const totalPages = useMemo(() => Math.max(1, Math.ceil(filtered.length / QUARANTINE_PAGE_SIZE)), [filtered.length])
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(filtered.length / QUARANTINE_PAGE_SIZE)),
+    [filtered.length]
+  )
   const paginated = useMemo(
-    () => filtered.slice((page - 1) * QUARANTINE_PAGE_SIZE, page * QUARANTINE_PAGE_SIZE),
+    () =>
+      filtered.slice(
+        (page - 1) * QUARANTINE_PAGE_SIZE,
+        page * QUARANTINE_PAGE_SIZE
+      ),
     [filtered, page]
   )
 
@@ -1118,7 +1487,16 @@ export default function QuarantineQueuePage() {
 
   useEffect(() => {
     setPage(1)
-  }, [search, selectedReason, selectedDataset, selectedSource, selectedSeverity, dateFrom, dateTo, reviewState])
+  }, [
+    search,
+    selectedReason,
+    selectedDataset,
+    selectedSource,
+    selectedSeverity,
+    dateFrom,
+    dateTo,
+    reviewState,
+  ])
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages)
@@ -1135,131 +1513,162 @@ export default function QuarantineQueuePage() {
     setReviewState('all')
   }, [])
 
-  const markReviewed = useCallback(async (docId: string, extra?: Record<string, any>) => {
-    const patch = createReviewMetadataPatch(extra)
-    await documentApi.patchUserMetadata(docId, { patch, replace: false })
-  }, [])
+  const markReviewed = useCallback(
+    async (docId: string, extra?: Record<string, any>) => {
+      const patch = createReviewMetadataPatch(extra)
+      await documentApi.patchUserMetadata(docId, { patch, replace: false })
+    },
+    []
+  )
 
-  const buildRecommendedPatch = useCallback((doc: Document): DocumentPipelineOptions => {
-    const reasons = new Set(getDropReasons(doc))
-    const patch: DocumentPipelineOptions = {}
-    if (reasons.has('outline_only')) patch.governance_drop_outline_only = false
-    if (reasons.has('low_density')) patch.governance_drop_low_density = false
-    return patch
-  }, [])
+  const buildRecommendedPatch = useCallback(
+    (doc: Document): DocumentPipelineOptions => {
+      const reasons = new Set(getDropReasons(doc))
+      const patch: DocumentPipelineOptions = {}
+      if (reasons.has('outline_only'))
+        patch.governance_drop_outline_only = false
+      if (reasons.has('low_density')) patch.governance_drop_low_density = false
+      return patch
+    },
+    []
+  )
 
-  const handleRetry = useCallback(async (doc: Document) => {
-    if (demoMode) {
-      toast.success('Demo 模式仅用于预览布局，不执行真实重试')
-      return
-    }
-    setActing({ id: doc.id, action: 'retry' })
-    try {
-      await documentApi.retry(doc.id)
-      await markReviewed(doc.id, { quarantine_action: 'retry' })
-      toast.success('已触发重新入库')
-      await refetch()
-    } catch (err: any) {
-      toast.error(formatApiError(err, '重试失败'))
-    } finally {
-      setActing(null)
-    }
-  }, [demoMode, markReviewed, refetch])
-
-  const handleRelease = useCallback(async (doc: Document) => {
-    if (demoMode) {
-      toast.success('Demo 模式仅用于预览布局，不执行真实放行')
-      return
-    }
-    setActing({ id: doc.id, action: 'release' })
-    try {
-      const patch = buildRecommendedPatch(doc)
-      if (Object.keys(patch).length) {
-        await documentApi.patchPipeline(doc.id, { patch, replace: false })
+  const handleRetry = useCallback(
+    async (doc: Document) => {
+      if (demoMode) {
+        toast.success('Demo 模式仅用于预览布局，不执行真实重试')
+        return
       }
-      await documentApi.retry(doc.id)
-      await markReviewed(doc.id, { quarantine_action: 'release_retry', quarantine_reason: getDropReasons(doc).join(',') })
-      toast.success('已放行并重试')
-      await refetch()
-    } catch (err: any) {
-      toast.error(formatApiError(err, '放行失败'))
-    } finally {
-      setActing(null)
-    }
-  }, [buildRecommendedPatch, demoMode, markReviewed, refetch])
-
-  const handleDelete = useCallback(async (doc: Document) => {
-    if (demoMode) {
-      toast.success('Demo 模式仅用于预览布局，不执行真实删除')
-      return
-    }
-    setActing({ id: doc.id, action: 'delete' })
-    try {
-      await documentApi.delete(doc.id)
-      toast.success('已删除文档')
-      if (selectedId === doc.id) {
-        setSelectedId(null)
-        setReviewDrawerOpen(false)
-      }
-      await refetch()
-    } catch (err: any) {
-      toast.error(formatApiError(err, '删除失败'))
-    } finally {
-      setActing(null)
-    }
-  }, [demoMode, refetch, selectedId])
-
-  const handleMarkReviewedOnly = useCallback(async (doc: Document) => {
-    if (demoMode) {
-      toast.success('Demo 模式仅用于预览布局，不写入真实审核状态')
-      return
-    }
-    setActing({ id: doc.id, action: 'review' })
-    try {
-      await markReviewed(doc.id, { quarantine_action: 'reviewed' })
-      toast.success('已标记为已处理')
-      await refetch()
-    } catch (err: any) {
-      toast.error(formatApiError(err, '标记失败'))
-    } finally {
-      setActing(null)
-    }
-  }, [demoMode, markReviewed, refetch])
-
-  const openTuneDialog = useCallback((doc: Document) => {
-    const current = extractTuningOverrides(doc)
-    const recommended = buildRecommendedPatch(doc)
-    setTuneTarget(doc)
-    setTunePatch({ ...current, ...recommended })
-    setTuneOpen(true)
-  }, [buildRecommendedPatch])
-
-  const saveTune = useCallback(async (opts: { retryAfterSave: boolean }) => {
-    if (!tuneTarget) return
-    if (demoMode) {
-      toast.success('Demo 模式仅用于预览布局，不写入真实规则配置')
-      setTuneOpen(false)
-      return
-    }
-    const doc = tuneTarget
-    setActing({ id: doc.id, action: 'tune' })
-    try {
-      await documentApi.patchPipeline(doc.id, { patch: tunePatch, replace: false })
-      if (opts.retryAfterSave) {
+      setActing({ id: doc.id, action: 'retry' })
+      try {
         await documentApi.retry(doc.id)
-        await markReviewed(doc.id, { quarantine_action: 'tune_retry' })
-        toast.success('已保存配置并重试')
-      } else {
-        toast.success('已保存配置')
+        await markReviewed(doc.id, { quarantine_action: 'retry' })
+        toast.success('已触发重新入库')
+        await refetch()
+      } catch (err: any) {
+        toast.error(formatApiError(err, '重试失败'))
+      } finally {
+        setActing(null)
       }
-      setTuneOpen(false)
-      await refetch()
-    } catch (err: any) {
-      toast.error(formatApiError(err, '保存失败'))
-    } finally {
-      setActing(null)
-    }
-  }, [demoMode, markReviewed, refetch, tunePatch, tuneTarget])
+    },
+    [demoMode, markReviewed, refetch]
+  )
+
+  const handleRelease = useCallback(
+    async (doc: Document) => {
+      if (demoMode) {
+        toast.success('Demo 模式仅用于预览布局，不执行真实放行')
+        return
+      }
+      setActing({ id: doc.id, action: 'release' })
+      try {
+        const patch = buildRecommendedPatch(doc)
+        if (Object.keys(patch).length) {
+          await documentApi.patchPipeline(doc.id, { patch, replace: false })
+        }
+        await documentApi.retry(doc.id)
+        await markReviewed(doc.id, {
+          quarantine_action: 'release_retry',
+          quarantine_reason: getDropReasons(doc).join(','),
+        })
+        toast.success('已放行并重试')
+        await refetch()
+      } catch (err: any) {
+        toast.error(formatApiError(err, '放行失败'))
+      } finally {
+        setActing(null)
+      }
+    },
+    [buildRecommendedPatch, demoMode, markReviewed, refetch]
+  )
+
+  const handleDelete = useCallback(
+    async (doc: Document) => {
+      if (demoMode) {
+        toast.success('Demo 模式仅用于预览布局，不执行真实删除')
+        return
+      }
+      setActing({ id: doc.id, action: 'delete' })
+      try {
+        await documentApi.delete(doc.id)
+        toast.success('已删除文档')
+        if (selectedId === doc.id) {
+          setSelectedId(null)
+          setReviewDrawerOpen(false)
+        }
+        await refetch()
+      } catch (err: any) {
+        toast.error(formatApiError(err, '删除失败'))
+      } finally {
+        setActing(null)
+      }
+    },
+    [demoMode, refetch, selectedId]
+  )
+
+  const handleMarkReviewedOnly = useCallback(
+    async (doc: Document) => {
+      if (demoMode) {
+        toast.success('Demo 模式仅用于预览布局，不写入真实审核状态')
+        return
+      }
+      setActing({ id: doc.id, action: 'review' })
+      try {
+        await markReviewed(doc.id, { quarantine_action: 'reviewed' })
+        toast.success('已标记为已处理')
+        await refetch()
+      } catch (err: any) {
+        toast.error(formatApiError(err, '标记失败'))
+      } finally {
+        setActing(null)
+      }
+    },
+    [demoMode, markReviewed, refetch]
+  )
+
+  const openTuneDialog = useCallback(
+    (doc: Document) => {
+      const current = extractTuningOverrides(doc)
+      const recommended = buildRecommendedPatch(doc)
+      setTuneTarget(doc)
+      setTunePatch({ ...current, ...recommended })
+      setTuneOpen(true)
+    },
+    [buildRecommendedPatch]
+  )
+
+  const saveTune = useCallback(
+    async (opts: { retryAfterSave: boolean }) => {
+      if (!tuneTarget) return
+      if (demoMode) {
+        toast.success('Demo 模式仅用于预览布局，不写入真实规则配置')
+        setTuneOpen(false)
+        return
+      }
+      const doc = tuneTarget
+      setActing({ id: doc.id, action: 'tune' })
+      try {
+        await documentApi.patchPipeline(doc.id, {
+          patch: tunePatch,
+          replace: false,
+        })
+        if (opts.retryAfterSave) {
+          await documentApi.retry(doc.id)
+          await markReviewed(doc.id, { quarantine_action: 'tune_retry' })
+          toast.success('已保存配置并重试')
+        } else {
+          toast.success('已保存配置')
+        }
+        setTuneOpen(false)
+        await refetch()
+      } catch (err: any) {
+        toast.error(formatApiError(err, '保存失败'))
+      } finally {
+        setActing(null)
+      }
+    },
+    [demoMode, markReviewed, refetch, tunePatch, tuneTarget]
+  )
 
   const handleExportFiltered = useCallback(() => {
     const payload = filtered.map((doc) => ({
@@ -1272,7 +1681,11 @@ export default function QuarantineQueuePage() {
       reasons: getDropReasons(doc),
       updated_at: doc.updated_at,
     }))
-    downloadTextFile('quarantine-review-samples.json', JSON.stringify(payload, null, 2), 'application/json;charset=utf-8')
+    downloadTextFile(
+      'quarantine-review-samples.json',
+      JSON.stringify(payload, null, 2),
+      'application/json;charset=utf-8'
+    )
     toast.success('已导出隔离样本')
   }, [filtered])
 
@@ -1312,10 +1725,7 @@ export default function QuarantineQueuePage() {
   }, [pathname, router, searchParams])
 
   return (
-    <AppFrame
-      rightPanel={<DocumentViewerPanel />}
-      withDocumentViewerPadding
-    >
+    <AppFrame rightPanel={<DocumentViewerPanel />} withDocumentViewerPadding>
       <PageScaffold
         title="隔离审核中心"
         icon={ShieldAlert}
@@ -1330,7 +1740,9 @@ export default function QuarantineQueuePage() {
                   <ShieldCheck className="size-6" />
                 </div>
                 <div className="space-y-1 pt-0.5">
-                  <div className="text-[1.5rem] font-semibold tracking-tight text-foreground">隔离审核中心</div>
+                  <div className="text-[1.5rem] font-semibold text-foreground">
+                    隔离审核中心
+                  </div>
                   <p className="max-w-4xl text-[12px] leading-5 text-muted-foreground">
                     聚合命中规则，抽样预览原文，一键调参回放。这里集中处理被隔离的异常样本，帮助你快速完成复核和回放。
                   </p>
@@ -1361,12 +1773,21 @@ export default function QuarantineQueuePage() {
                     void refetch()
                   }}
                 >
-                  <RefreshCw className={cn('h-4 w-4', isFetching ? 'animate-spin motion-reduce:animate-none' : '')} />
+                  <RefreshCw
+                    className={cn(
+                      'h-4 w-4',
+                      isFetching
+                        ? 'animate-spin motion-reduce:animate-none'
+                        : ''
+                    )}
+                  />
                   同步数据
                 </Button>
 
                 <div className="flex h-9 items-center gap-2 rounded-xl border border-transparent bg-background/70 px-2.5">
-                  <span className="text-[11px] font-medium text-muted-foreground">自动刷新</span>
+                  <span className="text-[11px] font-medium text-muted-foreground">
+                    自动刷新
+                  </span>
                   <Switch
                     checked={autoRefresh}
                     onCheckedChange={setAutoRefresh}
@@ -1401,7 +1822,11 @@ export default function QuarantineQueuePage() {
               <SummaryStatCard
                 label="规则集中率"
                 value={stats.highRisk}
-                hint={stats.total ? `占比 ${((stats.highRisk / Math.max(stats.total, 1)) * 100).toFixed(1)}%` : '占比 0%'}
+                hint={
+                  stats.total
+                    ? `占比 ${((stats.highRisk / Math.max(stats.total, 1)) * 100).toFixed(1)}%`
+                    : '占比 0%'
+                }
                 icon={BarChart3}
                 tone="info"
               />
@@ -1419,7 +1844,9 @@ export default function QuarantineQueuePage() {
               <div className="flex flex-col gap-2.5 xl:flex-row xl:items-start xl:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-3">
-                    <div className="text-[0.98rem] font-semibold tracking-tight text-foreground">异常隔离审查表</div>
+                    <div className="text-[0.98rem] font-semibold text-foreground">
+                      异常隔离审查表
+                    </div>
                     <span className="rounded-full border border-border/60 bg-muted/35 px-2 py-0.5 text-[10px] font-medium text-muted-foreground tabular-nums">
                       {listSummary || '当前空队列'}
                     </span>
@@ -1431,42 +1858,66 @@ export default function QuarantineQueuePage() {
                   {hasActiveFilters ? (
                     <div className="mt-3 flex flex-wrap gap-1.5">
                       {reviewState !== 'all' ? (
-                        <Badge variant="secondary" className="rounded-full px-2.5 py-1 text-[11px] font-medium">
+                        <Badge
+                          variant="secondary"
+                          className="rounded-full px-2.5 py-1 text-[11px] font-medium"
+                        >
                           {reviewState === 'pending' ? '仅待审核' : '仅已处理'}
                         </Badge>
                       ) : null}
                       {selectedReason !== 'all' ? (
-                        <Badge variant="secondary" className="rounded-full px-2.5 py-1 text-[11px] font-medium">
+                        <Badge
+                          variant="secondary"
+                          className="rounded-full px-2.5 py-1 text-[11px] font-medium"
+                        >
                           原因: {reasonLabel(selectedReason)}
                         </Badge>
                       ) : null}
                       {selectedDataset !== 'all' ? (
-                        <Badge variant="secondary" className="rounded-full px-2.5 py-1 text-[11px] font-medium">
+                        <Badge
+                          variant="secondary"
+                          className="rounded-full px-2.5 py-1 text-[11px] font-medium"
+                        >
                           数据集: {selectedDataset}
                         </Badge>
                       ) : null}
                       {selectedSource !== 'all' ? (
-                        <Badge variant="secondary" className="rounded-full px-2.5 py-1 text-[11px] font-medium">
+                        <Badge
+                          variant="secondary"
+                          className="rounded-full px-2.5 py-1 text-[11px] font-medium"
+                        >
                           来源: {selectedSource}
                         </Badge>
                       ) : null}
                       {selectedSeverity !== 'all' ? (
-                        <Badge variant="secondary" className="rounded-full px-2.5 py-1 text-[11px] font-medium">
+                        <Badge
+                          variant="secondary"
+                          className="rounded-full px-2.5 py-1 text-[11px] font-medium"
+                        >
                           疑似度: {selectedSeverity}
                         </Badge>
                       ) : null}
                       {search.trim() ? (
-                        <Badge variant="secondary" className="rounded-full px-2.5 py-1 text-[11px] font-medium">
+                        <Badge
+                          variant="secondary"
+                          className="rounded-full px-2.5 py-1 text-[11px] font-medium"
+                        >
                           搜索: {search.trim()}
                         </Badge>
                       ) : null}
                       {dateFrom ? (
-                        <Badge variant="secondary" className="rounded-full px-2.5 py-1 text-[11px] font-medium">
+                        <Badge
+                          variant="secondary"
+                          className="rounded-full px-2.5 py-1 text-[11px] font-medium"
+                        >
                           开始: {dateFrom}
                         </Badge>
                       ) : null}
                       {dateTo ? (
-                        <Badge variant="secondary" className="rounded-full px-2.5 py-1 text-[11px] font-medium">
+                        <Badge
+                          variant="secondary"
+                          className="rounded-full px-2.5 py-1 text-[11px] font-medium"
+                        >
                           结束: {dateTo}
                         </Badge>
                       ) : null}
@@ -1490,7 +1941,12 @@ export default function QuarantineQueuePage() {
               <div className="flex flex-col gap-2.5 xl:flex-row xl:items-center xl:justify-between">
                 <div className="grid gap-2 md:grid-cols-3 xl:min-w-0 xl:flex-1 xl:grid-cols-7">
                   <div className="min-w-0">
-                    <Select value={reviewState} onValueChange={(value) => setReviewState(value as ReviewState)}>
+                    <Select
+                      value={reviewState}
+                      onValueChange={(value) =>
+                        setReviewState(value as ReviewState)
+                      }
+                    >
                       <SelectTrigger className="h-9 rounded-xl border-border/60 bg-background px-3 text-[11px] font-normal shadow-none">
                         <SelectValue placeholder="处理状态" />
                       </SelectTrigger>
@@ -1503,7 +1959,10 @@ export default function QuarantineQueuePage() {
                   </div>
 
                   <div className="min-w-0">
-                    <Select value={selectedReason} onValueChange={setSelectedReason}>
+                    <Select
+                      value={selectedReason}
+                      onValueChange={setSelectedReason}
+                    >
                       <SelectTrigger className="h-9 rounded-xl border-border/60 bg-background px-3 text-[11px] font-normal shadow-none">
                         <SelectValue placeholder="隔离原因" />
                       </SelectTrigger>
@@ -1519,7 +1978,10 @@ export default function QuarantineQueuePage() {
                   </div>
 
                   <div className="min-w-0">
-                    <Select value={selectedSource} onValueChange={setSelectedSource}>
+                    <Select
+                      value={selectedSource}
+                      onValueChange={setSelectedSource}
+                    >
                       <SelectTrigger className="h-9 rounded-xl border-border/60 bg-background px-3 text-[11px] font-normal shadow-none">
                         <SelectValue placeholder="来源" />
                       </SelectTrigger>
@@ -1535,7 +1997,10 @@ export default function QuarantineQueuePage() {
                   </div>
 
                   <div className="min-w-0">
-                    <Select value={selectedSeverity} onValueChange={setSelectedSeverity}>
+                    <Select
+                      value={selectedSeverity}
+                      onValueChange={setSelectedSeverity}
+                    >
                       <SelectTrigger className="h-9 rounded-xl border-border/60 bg-background px-3 text-[11px] font-normal shadow-none">
                         <SelectValue placeholder="疑似度" />
                       </SelectTrigger>
@@ -1549,7 +2014,10 @@ export default function QuarantineQueuePage() {
                   </div>
 
                   <div className="min-w-0">
-                    <Select value={selectedDataset} onValueChange={setSelectedDataset}>
+                    <Select
+                      value={selectedDataset}
+                      onValueChange={setSelectedDataset}
+                    >
                       <SelectTrigger className="h-9 rounded-xl border-border/60 bg-background px-3 text-[11px] font-normal shadow-none">
                         <SelectValue placeholder="数据集" />
                       </SelectTrigger>
@@ -1611,7 +2079,14 @@ export default function QuarantineQueuePage() {
                     className="h-9 rounded-xl border-border/60 bg-background px-3.5 text-[11px] font-medium"
                     onClick={() => refetch()}
                   >
-                    <RefreshCw className={cn('size-3.5', isFetching ? 'animate-spin motion-reduce:animate-none' : '')} />
+                    <RefreshCw
+                      className={cn(
+                        'size-3.5',
+                        isFetching
+                          ? 'animate-spin motion-reduce:animate-none'
+                          : ''
+                      )}
+                    />
                     同步数据
                   </Button>
                 </div>
@@ -1634,7 +2109,11 @@ export default function QuarantineQueuePage() {
                 <thead className="border-b border-border/60 bg-muted/40 text-[11px] font-medium text-muted-foreground">
                   <tr>
                     <th className="w-10 px-5 py-2.5">
-                      <input type="checkbox" className="h-3.5 w-3.5 rounded border-border/60" aria-label="全选隔离记录" />
+                      <input
+                        type="checkbox"
+                        className="h-3.5 w-3.5 rounded border-border/60"
+                        aria-label="全选隔离记录"
+                      />
                     </th>
                     <th className="px-4 py-2.5 font-medium">文件 / ID</th>
                     <th className="px-4 py-2.5 font-medium">命中规则 / 原因</th>
@@ -1642,7 +2121,9 @@ export default function QuarantineQueuePage() {
                     <th className="px-4 py-2.5 font-medium">来源</th>
                     <th className="px-4 py-2.5 font-medium">疑似度</th>
                     <th className="px-4 py-2.5 font-medium text-right">大小</th>
-                    <th className="px-4 py-2.5 font-medium text-right">同步时间</th>
+                    <th className="px-4 py-2.5 font-medium text-right">
+                      同步时间
+                    </th>
                     <th className="w-12 px-4 py-2.5"></th>
                   </tr>
                 </thead>
@@ -1668,11 +2149,16 @@ export default function QuarantineQueuePage() {
                           key={doc.id}
                           className={cn(
                             'group transition-colors hover:bg-muted/30',
-                            selectedId === doc.id && 'bg-primary/5 hover:bg-primary/5'
+                            selectedId === doc.id &&
+                              'bg-primary/5 hover:bg-primary/5'
                           )}
                         >
                           <td className="px-5 py-2.5">
-                            <input type="checkbox" className="h-3.5 w-3.5 rounded border-border/60" aria-label={`选择 ${doc.filename}`} />
+                            <input
+                              type="checkbox"
+                              className="h-3.5 w-3.5 rounded border-border/60"
+                              aria-label={`选择 ${doc.filename}`}
+                            />
                           </td>
                           <td className="px-4 py-2.5">
                             <button
@@ -1684,7 +2170,10 @@ export default function QuarantineQueuePage() {
                               }}
                             >
                               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[0.85rem] border border-blue-500/10 bg-blue-500/8 text-blue-600">
-                                <FileKindGlyph kind={getDocumentKind(doc.filename)} className="h-4 w-4" />
+                                <FileKindGlyph
+                                  kind={getDocumentKind(doc.filename)}
+                                  className="h-4 w-4"
+                                />
                               </div>
                               <div className="min-w-0">
                                 <span className="block truncate text-[12px] font-medium text-foreground transition-colors group-hover:text-primary">
@@ -1707,19 +2196,32 @@ export default function QuarantineQueuePage() {
                                 </span>
                               ))}
                               {reasons.length === 0 ? (
-                                <span className="text-xs text-muted-foreground/50">人工触发</span>
+                                <span className="text-xs text-muted-foreground/50">
+                                  人工触发
+                                </span>
                               ) : null}
                             </div>
                           </td>
                           <td className="px-4 py-2.5">
-                            <StatusPill status={isReviewed(doc) ? 'completed' : 'quarantined'} />
+                            <StatusPill
+                              status={
+                                isReviewed(doc) ? 'completed' : 'quarantined'
+                              }
+                            />
                           </td>
                           <td className="px-4 py-2.5 text-[11px] font-medium text-muted-foreground">
                             {getQuarantineSource(doc)}
                           </td>
                           <td className="px-4 py-2.5">
                             <div className="flex items-center gap-2">
-                              <span className={cn('min-w-[1rem] text-[11px] font-medium', getSeverityClassName(severity))}>{severity}</span>
+                              <span
+                                className={cn(
+                                  'min-w-[1rem] text-[11px] font-medium',
+                                  getSeverityClassName(severity)
+                                )}
+                              >
+                                {severity}
+                              </span>
                               <span className="h-1.5 w-10 overflow-hidden rounded-full bg-muted/50">
                                 <span
                                   className={cn(
@@ -1799,34 +2301,45 @@ export default function QuarantineQueuePage() {
                       type="button"
                       className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/60 bg-background text-foreground disabled:opacity-40"
                       disabled={page <= 1}
-                      onClick={() => setPage((previous) => Math.max(1, previous - 1))}
+                      onClick={() =>
+                        setPage((previous) => Math.max(1, previous - 1))
+                      }
                     >
                       <ChevronLeft className="h-3.5 w-3.5" />
                     </button>
-                    {Array.from({ length: Math.min(totalPages, 5) }, (_, index) => {
-                      const pageNumber = index + 1
-                      return (
-                        <button
-                          key={pageNumber}
-                          type="button"
-                          onClick={() => setPage(pageNumber)}
-                          className={cn(
-                            'inline-flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-[12px] font-medium tabular-nums',
-                            page === pageNumber ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
-                          )}
-                        >
-                          {pageNumber}
-                        </button>
-                      )
-                    })}
-                    {totalPages > 5 ? <span className="px-1 text-[11px]">…</span> : null}
+                    {Array.from(
+                      { length: Math.min(totalPages, 5) },
+                      (_, index) => {
+                        const pageNumber = index + 1
+                        return (
+                          <button
+                            key={pageNumber}
+                            type="button"
+                            onClick={() => setPage(pageNumber)}
+                            className={cn(
+                              'inline-flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-[12px] font-medium tabular-nums',
+                              page === pageNumber
+                                ? 'bg-primary text-primary-foreground'
+                                : 'text-muted-foreground hover:text-foreground'
+                            )}
+                          >
+                            {pageNumber}
+                          </button>
+                        )
+                      }
+                    )}
+                    {totalPages > 5 ? (
+                      <span className="px-1 text-[11px]">…</span>
+                    ) : null}
                     {totalPages > 5 ? (
                       <button
                         type="button"
                         onClick={() => setPage(totalPages)}
                         className={cn(
                           'inline-flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-[12px] font-medium tabular-nums',
-                          page === totalPages ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
+                          page === totalPages
+                            ? 'bg-primary text-primary-foreground'
+                            : 'text-muted-foreground hover:text-foreground'
                         )}
                       >
                         {totalPages}
@@ -1836,7 +2349,11 @@ export default function QuarantineQueuePage() {
                       type="button"
                       className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/60 bg-background text-foreground disabled:opacity-40"
                       disabled={page >= totalPages}
-                      onClick={() => setPage((previous) => Math.min(totalPages, previous + 1))}
+                      onClick={() =>
+                        setPage((previous) =>
+                          Math.min(totalPages, previous + 1)
+                        )
+                      }
                     >
                       <ChevronRight className="h-3.5 w-3.5" />
                     </button>
@@ -1867,7 +2384,9 @@ export default function QuarantineQueuePage() {
             />
 
             <div className="flex h-full flex-col rounded-[1.2rem] border border-border/60 bg-background/92 p-4 shadow-[0_20px_48px_-40px_rgba(15,23,42,0.2)] backdrop-blur-sm">
-              <div className="text-[0.95rem] font-medium tracking-tight text-foreground">快捷操作</div>
+              <div className="text-[0.95rem] font-medium text-foreground">
+                快捷操作
+              </div>
               <div className="mt-3.5 grid flex-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-2">
                 <QuickActionCard
                   title="批量审核"
@@ -1919,7 +2438,11 @@ export default function QuarantineQueuePage() {
         onDelete={handleDelete}
       />
 
-      <IngestionDetailDialog open={detailOpen} onOpenChange={setDetailOpen} documentId={detailDocumentId} />
+      <IngestionDetailDialog
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        documentId={detailDocumentId}
+      />
 
       <Dialog open={tuneOpen} onOpenChange={(v) => setTuneOpen(v)}>
         <DialogContent className="sm:max-w-[720px]">
@@ -1929,7 +2452,8 @@ export default function QuarantineQueuePage() {
               调参回放
             </DialogTitle>
             <DialogDescription>
-              仅修改该文档的 pipeline overrides（`metadata.pipeline`），用于快速回放重试；不会影响其他文档。
+              仅修改该文档的 pipeline
+              overrides（`metadata.pipeline`），用于快速回放重试；不会影响其他文档。
             </DialogDescription>
           </DialogHeader>
 
@@ -1937,7 +2461,9 @@ export default function QuarantineQueuePage() {
             <div className="rounded-xl border border-border bg-muted/40 p-4">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <div className="text-sm font-medium text-foreground">推荐预设</div>
+                  <div className="text-sm font-medium text-foreground">
+                    推荐预设
+                  </div>
                   <div className="mt-1 text-xs text-muted-foreground">
                     关闭对应质量过滤器，让更多内容进入切块（仍建议人工抽检）。
                   </div>
@@ -1981,41 +2507,77 @@ export default function QuarantineQueuePage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-sm font-medium">大纲过滤</div>
-                    <div className="text-xs text-muted-foreground">outline_only</div>
+                    <div className="text-xs text-muted-foreground">
+                      outline_only
+                    </div>
                   </div>
                   <Switch
                     checked={Boolean(tunePatch.governance_drop_outline_only)}
-                    onCheckedChange={(v) => setTunePatch((p) => ({ ...p, governance_drop_outline_only: v }))}
+                    onCheckedChange={(v) =>
+                      setTunePatch((p) => ({
+                        ...p,
+                        governance_drop_outline_only: v,
+                      }))
+                    }
                     className="data-[state=checked]:bg-warning"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">最小内容字符</Label>
+                    <Label className="text-xs text-muted-foreground">
+                      最小内容字符
+                    </Label>
                     <Input
                       type="number"
                       min={0}
                       max={200000}
-                      value={typeof tunePatch.governance_drop_outline_min_content_chars === 'number' ? tunePatch.governance_drop_outline_min_content_chars : ''}
+                      value={
+                        typeof tunePatch.governance_drop_outline_min_content_chars ===
+                        'number'
+                          ? tunePatch.governance_drop_outline_min_content_chars
+                          : ''
+                      }
                       onChange={(e) => {
-                        const val = e.target.value === '' ? undefined : Number(e.target.value)
-                        setTunePatch((p) => ({ ...p, governance_drop_outline_min_content_chars: Number.isFinite(val as any) ? (val as any) : undefined }))
+                        const val =
+                          e.target.value === ''
+                            ? undefined
+                            : Number(e.target.value)
+                        setTunePatch((p) => ({
+                          ...p,
+                          governance_drop_outline_min_content_chars:
+                            Number.isFinite(val as any)
+                              ? (val as any)
+                              : undefined,
+                        }))
                       }}
                       className="h-9 rounded-lg"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">标题占比阈值</Label>
+                    <Label className="text-xs text-muted-foreground">
+                      标题占比阈值
+                    </Label>
                     <Input
                       type="number"
                       min={0}
                       max={1}
                       step={0.01}
-                      value={typeof tunePatch.governance_drop_outline_max_heading_ratio === 'number' ? tunePatch.governance_drop_outline_max_heading_ratio : ''}
+                      value={
+                        typeof tunePatch.governance_drop_outline_max_heading_ratio ===
+                        'number'
+                          ? tunePatch.governance_drop_outline_max_heading_ratio
+                          : ''
+                      }
                       onChange={(e) => {
                         const raw = e.target.value
                         const val = raw === '' ? undefined : Number(raw)
-                        setTunePatch((p) => ({ ...p, governance_drop_outline_max_heading_ratio: Number.isFinite(val as any) ? (val as any) : undefined }))
+                        setTunePatch((p) => ({
+                          ...p,
+                          governance_drop_outline_max_heading_ratio:
+                            Number.isFinite(val as any)
+                              ? (val as any)
+                              : undefined,
+                        }))
                       }}
                       className="h-9 rounded-lg"
                     />
@@ -2027,26 +2589,47 @@ export default function QuarantineQueuePage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-sm font-medium">低密度过滤</div>
-                    <div className="text-xs text-muted-foreground">low_density</div>
+                    <div className="text-xs text-muted-foreground">
+                      low_density
+                    </div>
                   </div>
                   <Switch
                     checked={Boolean(tunePatch.governance_drop_low_density)}
-                    onCheckedChange={(v) => setTunePatch((p) => ({ ...p, governance_drop_low_density: v }))}
+                    onCheckedChange={(v) =>
+                      setTunePatch((p) => ({
+                        ...p,
+                        governance_drop_low_density: v,
+                      }))
+                    }
                     className="data-[state=checked]:bg-warning"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">密度阈值</Label>
+                  <Label className="text-xs text-muted-foreground">
+                    密度阈值
+                  </Label>
                   <Input
                     type="number"
                     min={0}
                     max={1}
                     step={0.01}
-                    value={typeof tunePatch.governance_drop_low_density_threshold === 'number' ? tunePatch.governance_drop_low_density_threshold : ''}
+                    value={
+                      typeof tunePatch.governance_drop_low_density_threshold ===
+                      'number'
+                        ? tunePatch.governance_drop_low_density_threshold
+                        : ''
+                    }
                     onChange={(e) => {
                       const raw = e.target.value
                       const val = raw === '' ? undefined : Number(raw)
-                      setTunePatch((p) => ({ ...p, governance_drop_low_density_threshold: Number.isFinite(val as any) ? (val as any) : undefined }))
+                      setTunePatch((p) => ({
+                        ...p,
+                        governance_drop_low_density_threshold: Number.isFinite(
+                          val as any
+                        )
+                          ? (val as any)
+                          : undefined,
+                      }))
                     }}
                     className="h-9 rounded-lg"
                   />
@@ -2058,16 +2641,24 @@ export default function QuarantineQueuePage() {
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-sm font-medium">隔离策略</div>
-                  <div className="text-xs text-muted-foreground">quarantine_on_drop</div>
+                  <div className="text-xs text-muted-foreground">
+                    quarantine_on_drop
+                  </div>
                 </div>
                 <Switch
                   checked={Boolean(tunePatch.governance_quarantine_on_drop)}
-                  onCheckedChange={(v) => setTunePatch((p) => ({ ...p, governance_quarantine_on_drop: v }))}
+                  onCheckedChange={(v) =>
+                    setTunePatch((p) => ({
+                      ...p,
+                      governance_quarantine_on_drop: v,
+                    }))
+                  }
                   className="data-[state=checked]:bg-primary"
                 />
               </div>
               <div className="text-xs text-muted-foreground">
-                开启后：触发质量过滤时标记为 quarantined（而非 failed），便于人工复核。
+                开启后：触发质量过滤时标记为 quarantined（而非
+                failed），便于人工复核。
               </div>
             </div>
           </div>
@@ -2089,7 +2680,14 @@ export default function QuarantineQueuePage() {
               onClick={() => saveTune({ retryAfterSave: false })}
               disabled={acting?.action === 'tune'}
             >
-              <Settings2 className={cn('size-4 mr-1', acting?.action === 'tune' ? 'animate-spin motion-reduce:animate-none' : '')} />
+              <Settings2
+                className={cn(
+                  'size-4 mr-1',
+                  acting?.action === 'tune'
+                    ? 'animate-spin motion-reduce:animate-none'
+                    : ''
+                )}
+              />
               保存配置
             </Button>
             <Button
@@ -2099,7 +2697,14 @@ export default function QuarantineQueuePage() {
               onClick={() => saveTune({ retryAfterSave: true })}
               disabled={acting?.action === 'tune'}
             >
-              <RotateCcw className={cn('size-4 mr-1', acting?.action === 'tune' ? 'animate-spin motion-reduce:animate-none' : '')} />
+              <RotateCcw
+                className={cn(
+                  'size-4 mr-1',
+                  acting?.action === 'tune'
+                    ? 'animate-spin motion-reduce:animate-none'
+                    : ''
+                )}
+              />
               保存并重试
             </Button>
           </DialogFooter>

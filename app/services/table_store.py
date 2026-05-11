@@ -64,6 +64,11 @@ def sql_table_name_for_sheet(sheet_index: int) -> str:
     return f"sheet_{idx}"
 
 
+def quote_sqlite_ident(name: str) -> str:
+    """Quote a SQLite identifier for dynamic internal table names."""
+    return '"' + str(name).replace('"', '""') + '"'
+
+
 def table_store_path(*, tenant_id: UUID, dataset_id: UUID, document_id: UUID) -> Path:
     """
     Return the SQLite file path for a document-scoped table store.

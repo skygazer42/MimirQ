@@ -4,7 +4,8 @@
  * Integrated pipeline 风格的解析器下拉选择组件
  * 带图标、描述和徽章的下拉菜单
  */
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import {
   Sparkles,
   FileText,
@@ -23,6 +24,7 @@ import { PARSER_BACKEND_OPTIONS, getParserOption } from '@/lib/parser-options'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 import { normalizeParserBackendName, resolveParserBackendForFilename } from '@/lib/parser-compat'
 import { settingsApi } from '@/lib/api/settings'
+import { queryKeys } from '@/lib/query-keys'
 
 // 图标映射
 const ICON_MAP = {
@@ -58,11 +60,26 @@ interface ParserDropdownProps {
   compact?: boolean
 }
 
+type ParserStatusWithHealth = {
+  health?: {
+    pipeline_version?: unknown
+    version?: unknown
+  }
+}
+
 export function ParserDropdown({ value, onChange, className, filename, compact = false }: Readonly<ParserDropdownProps>) {
   const [isOpen, setIsOpen] = useState(false)
-  const [paddleVlVersionBadge, setPaddleVlVersionBadge] = useState<string | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const { capabilities, loading, error, refresh, parserBackendAvailable } = usePipelineCapabilities()
+  const isPaddleVlAvailable = parserBackendAvailable('paddle_vl') === true
+
+  const paddleVlStatusQuery = useQuery({
+    queryKey: queryKeys.settings.status,
+    queryFn: settingsApi.getStatus,
+    enabled: isPaddleVlAvailable,
+    staleTime: 60_000,
+    retry: 1,
+  })
 
   const parserNotesByName = new Map<string, string>()
   for (const info of capabilities?.pdf_backends || []) {
@@ -75,38 +92,18 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
   const SelectedIcon = ICON_MAP[selectedOption.icon]
   const selectedColor = COLOR_MAP[selectedOption.icon]
 
-  useEffect(() => {
-    let cancelled = false
-
-    async function loadPaddleVlHealth() {
-      try {
-        const status: any = await settingsApi.getStatus()
-        const health = status?.parsers?.paddle_vl?.health
-        let pv = ''
-        if (typeof health?.pipeline_version === 'string') {
-          pv = health.pipeline_version
-        } else if (typeof health?.version === 'string') {
-          pv = health.version
-        }
-        if (!cancelled) {
-          setPaddleVlVersionBadge(pv ? `PaddleOCR-VL ${pv}` : null)
-        }
-      } catch {
-        if (!cancelled) setPaddleVlVersionBadge(null)
-      }
-    }
-
-    // Only show version badge when the backend considers PaddleOCR-VL available.
-    if (parserBackendAvailable('paddle_vl')) {
-      loadPaddleVlHealth()
-    } else {
-      setPaddleVlVersionBadge(null)
-    }
-
-    return () => {
-      cancelled = true
-    }
-  }, [parserBackendAvailable])
+  const paddleVlVersionBadge = useMemo(() => {
+    if (!isPaddleVlAvailable) return null
+    const parserStatus = paddleVlStatusQuery.data?.parsers?.paddle_vl as ParserStatusWithHealth | undefined
+    const health = parserStatus?.health
+    const version =
+      typeof health?.pipeline_version === 'string'
+        ? health.pipeline_version
+        : typeof health?.version === 'string'
+          ? health.version
+          : ''
+    return version ? `PaddleOCR-VL ${version}` : null
+  }, [isPaddleVlAvailable, paddleVlStatusQuery.data])
 
   // 点击外部关闭
   useEffect(() => {

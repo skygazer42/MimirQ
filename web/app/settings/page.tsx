@@ -56,9 +56,12 @@ const SETTINGS_SECTIONS = [
   { id: 'sec-observability', label: '可观测性' },
   { id: 'sec-runtime', label: '运行时控制' },
 ] as const
-const SETTINGS_CARD_CLASS = 'rounded-[16px] border border-slate-200/75 bg-white shadow-sm'
-const SETTINGS_OUTLINE_BUTTON = 'h-8 rounded-[12px] border-slate-200 bg-white px-3 text-[12px] font-medium text-slate-700 shadow-sm hover:bg-slate-50'
-const SETTINGS_PRIMARY_BUTTON = 'h-8 rounded-[12px] bg-blue-600 px-3 text-[12px] font-medium text-white shadow-sm hover:bg-blue-700 disabled:opacity-80 disabled:bg-blue-500 disabled:text-white'
+const SETTINGS_CARD_CLASS =
+  'rounded-[16px] border border-slate-200/75 bg-card shadow-sm'
+const SETTINGS_OUTLINE_BUTTON =
+  'h-8 rounded-[12px] border-slate-200 bg-card px-3 text-[12px] font-medium text-slate-700 shadow-sm hover:bg-slate-50'
+const SETTINGS_PRIMARY_BUTTON =
+  'h-8 rounded-[12px] bg-blue-600 px-3 text-[12px] font-medium text-info-foreground shadow-sm hover:bg-blue-700 disabled:opacity-80 disabled:bg-blue-500 disabled:text-info-foreground'
 
 type SettingsMetricTone = 'blue' | 'green' | 'indigo' | 'slate'
 
@@ -77,7 +80,9 @@ const SETTINGS_METRIC_TONE_CLASS: Record<SettingsMetricTone, string> = {
   slate: 'bg-slate-100 text-slate-500',
 }
 
-function SettingsMetricStrip({ items }: Readonly<{ items: readonly SettingsMetricItem[] }>) {
+function SettingsMetricStrip({
+  items,
+}: Readonly<{ items: readonly SettingsMetricItem[] }>) {
   return (
     <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
       {items.map((item) => {
@@ -85,14 +90,29 @@ function SettingsMetricStrip({ items }: Readonly<{ items: readonly SettingsMetri
         return (
           <div
             key={item.label}
-            className={cn(SETTINGS_CARD_CLASS, 'flex min-h-[68px] items-center gap-3 px-4 py-3')}
+            className={cn(
+              SETTINGS_CARD_CLASS,
+              'flex min-h-[68px] items-center gap-3 px-4 py-3'
+            )}
           >
-            <div className={cn('flex size-9 shrink-0 items-center justify-center rounded-[13px]', SETTINGS_METRIC_TONE_CLASS[item.tone])}>
+            <div
+              className={cn(
+                'flex size-9 shrink-0 items-center justify-center rounded-[13px]',
+                SETTINGS_METRIC_TONE_CLASS[item.tone]
+              )}
+            >
               <Icon className="size-[17px]" />
             </div>
             <div className="min-w-0">
-              <p className="text-[11px] font-medium text-slate-500">{item.label}</p>
-              <p className={cn('mt-1 text-[16px] font-semibold leading-none text-slate-950', item.valueClassName)}>
+              <p className="text-[11px] font-medium text-slate-500">
+                {item.label}
+              </p>
+              <p
+                className={cn(
+                  'mt-1 text-[16px] font-semibold leading-none text-slate-950',
+                  item.valueClassName
+                )}
+              >
                 {item.value}
               </p>
             </div>
@@ -114,7 +134,7 @@ function SettingsToggleIndicator({ checked }: Readonly<{ checked: boolean }>) {
     >
       <span
         className={cn(
-          'size-4 rounded-full bg-white shadow-sm transition-transform',
+          'size-4 rounded-full bg-card shadow-sm transition-transform',
           checked && 'translate-x-4'
         )}
       />
@@ -144,12 +164,20 @@ function EnhancementCard({
   const toneClass =
     tone === 'emerald'
       ? {
-          card: checked ? 'border-emerald-200/90 bg-emerald-50/35' : 'border-slate-200 bg-white',
-          icon: checked ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500',
+          card: checked
+            ? 'border-emerald-200/90 bg-emerald-50/35'
+            : 'border-slate-200 bg-card',
+          icon: checked
+            ? 'bg-emerald-100 text-emerald-600'
+            : 'bg-slate-100 text-slate-500',
         }
       : {
-          card: checked ? 'border-blue-200/90 bg-blue-50/35' : 'border-slate-200 bg-white',
-          icon: checked ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500',
+          card: checked
+            ? 'border-blue-200/90 bg-blue-50/35'
+            : 'border-slate-200 bg-card',
+          icon: checked
+            ? 'bg-blue-100 text-blue-600'
+            : 'bg-slate-100 text-slate-500',
         }
 
   return (
@@ -162,19 +190,28 @@ function EnhancementCard({
         toneClass.card
       )}
     >
-        <span className="flex min-w-0 items-center gap-2.5">
-        <span className={cn('flex size-6 shrink-0 items-center justify-center rounded-[10px]', toneClass.icon)}>
+      <span className="flex min-w-0 items-center gap-2.5">
+        <span
+          className={cn(
+            'flex size-6 shrink-0 items-center justify-center rounded-[10px]',
+            toneClass.icon
+          )}
+        >
           <Icon className="size-3.5" />
         </span>
         <span className="min-w-0">
-          <span className="block text-[12px] font-medium leading-4 text-slate-900">{title}</span>
-          <span className="mt-0.5 block truncate text-[10.5px] leading-4 text-slate-500">{description}</span>
+          <span className="block text-[12px] font-medium leading-4 text-slate-900">
+            {title}
+          </span>
+          <span className="mt-0.5 block truncate text-[10.5px] leading-4 text-slate-500">
+            {description}
+          </span>
           {tags.length > 0 ? (
             <span className="mt-1 flex flex-wrap gap-1">
               {tags.map((tag) => (
                 <span
                   key={tag}
-                  className="rounded-md border border-slate-200 bg-white/80 px-1.5 py-0.5 text-[10px] leading-[14px] text-slate-500"
+                  className="rounded-md border border-slate-200 bg-card/80 px-1.5 py-0.5 text-[10px] leading-[14px] text-slate-500"
                 >
                   {tag}
                 </span>
@@ -193,9 +230,11 @@ function RetrievalEnhancementSection({ state }: Readonly<{ state: any }>) {
   const kgEnabled = state.getFeatureValue('kg_enabled')
 
   return (
-    <section className="rounded-[16px] border border-slate-200/75 bg-white p-3.5 shadow-sm">
+    <section className="rounded-[16px] border border-slate-200/75 bg-card p-3.5 shadow-sm">
       <div className="mb-2.5">
-        <h2 className="text-[13px] font-medium text-slate-950">关键词增强配置</h2>
+        <h2 className="text-[13px] font-medium text-slate-950">
+          关键词增强配置
+        </h2>
         <p className="mt-0.5 text-[11px] leading-4 text-slate-500">
           绑定后端 RAG 与 KG 开关，控制关键词索引和图谱增强是否参与检索。
         </p>
@@ -251,7 +290,7 @@ function useSettingsScrollSpy(sectionIds: readonly string[]) {
       {
         root: document.querySelector('[data-page-scroll-container]'),
         threshold: [0, 0.1, 0.25, 0.5],
-      },
+      }
     )
 
     for (const id of sectionIds) {
@@ -267,7 +306,10 @@ function useSettingsScrollSpy(sectionIds: readonly string[]) {
 
 export default function SettingsPage() {
   return (
-    <TenantPermissionGate permission={TENANT_PERMISSIONS.SETTINGS_READ} pageName="系统设置">
+    <TenantPermissionGate
+      permission={TENANT_PERMISSIONS.SETTINGS_READ}
+      pageName="系统设置"
+    >
       <SettingsPageContent />
     </TenantPermissionGate>
   )
@@ -278,7 +320,12 @@ function SettingsPageContent() {
   const { parserBackend, setParserBackend } = useParserBackendPreference()
   const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
   const statusMetricItems: SettingsMetricItem[] = [
-    { label: '配置分区', value: SETTINGS_SECTIONS.length, icon: LayoutGrid, tone: 'blue' },
+    {
+      label: '配置分区',
+      value: SETTINGS_SECTIONS.length,
+      icon: LayoutGrid,
+      tone: 'blue',
+    },
     {
       label: '环境变量',
       value: state.hasChanges ? '待保存' : '已同步',
@@ -308,7 +355,9 @@ function SettingsPageContent() {
     },
     {
       label: '最近更新',
-      value: state.lastUpdatedKeys.length ? `${state.lastUpdatedKeys.length} 项` : '0 秒前',
+      value: state.lastUpdatedKeys.length
+        ? `${state.lastUpdatedKeys.length} 项`
+        : '0 秒前',
       icon: Clock,
       tone: 'blue',
     },
@@ -323,14 +372,17 @@ function SettingsPageContent() {
         size="full"
         compact
         density="system-dense"
-        headerClassName="[&_h1]:!text-[21px] [&_h1]:md:!text-[23px] [&_h1]:!font-semibold [&_h1]:!leading-tight [&_h1]:!tracking-[-0.026em] [&_[class*='rounded-full']]:border-blue-100 [&_[class*='rounded-full']]:bg-blue-50 [&_[class*='rounded-full']]:font-medium [&_[class*='rounded-full']]:normal-case [&_[class*='rounded-full']]:tracking-normal [&_[class*='rounded-full']]:text-blue-600"
+        headerClassName="[&_h1]:!text-[21px] [&_h1]:md:!text-[23px] [&_h1]:!font-semibold [&_h1]:!leading-tight [&_h1]:!tracking-[-0.026em] [&_[class*='rounded-full']]:border-blue-100 [&_[class*='rounded-full']]:bg-blue-50 [&_[class*='rounded-full']]:font-medium [&_[class*='rounded-full']]:normal-case [&_[class*='rounded-full']]: [&_[class*='rounded-full']]:text-blue-600"
         topClassName="pb-2.5"
         bodyClassName="pt-0.5"
         top={
           <div className="space-y-2">
             <SettingsMetricStrip items={statusMetricItems} />
             {state.loadError ? (
-              <Alert variant="destructive" className="rounded-xl border-rose-200/80 bg-rose-50/70 shadow-none">
+              <Alert
+                variant="destructive"
+                className="rounded-xl border-rose-200/80 bg-rose-50/70 shadow-none"
+              >
                 <XCircle className="size-4" />
                 <div>
                   <AlertTitle>加载失败</AlertTitle>
@@ -342,7 +394,11 @@ function SettingsPageContent() {
             ) : null}
             {state.saveMessage ? (
               <Alert
-                variant={state.saveMessage.type === 'success' ? 'success' : 'destructive'}
+                variant={
+                  state.saveMessage.type === 'success'
+                    ? 'success'
+                    : 'destructive'
+                }
                 className="rounded-xl border-border/70 shadow-none"
               >
                 {state.saveMessage.type === 'success' ? (
@@ -352,14 +408,19 @@ function SettingsPageContent() {
                 )}
                 <div>
                   <AlertTitle>
-                    {state.saveMessage.type === 'success' ? '保存成功' : '保存失败'}
+                    {state.saveMessage.type === 'success'
+                      ? '保存成功'
+                      : '保存失败'}
                   </AlertTitle>
                   <AlertDescription className="text-foreground/80 space-y-2">
                     <div>{state.saveMessage.text}</div>
-                    {state.saveMessage.type === 'success' && state.lastUpdatedKeys.length > 0 ? (
+                    {state.saveMessage.type === 'success' &&
+                    state.lastUpdatedKeys.length > 0 ? (
                       <div className={systemPageTokens.subtle}>
                         已更新：{state.lastUpdatedKeys.slice(0, 10).join(', ')}
-                        {state.lastUpdatedKeys.length > 10 ? ` (+${state.lastUpdatedKeys.length - 10})` : ''}
+                        {state.lastUpdatedKeys.length > 10
+                          ? ` (+${state.lastUpdatedKeys.length - 10})`
+                          : ''}
                       </div>
                     ) : null}
                   </AlertDescription>
@@ -376,7 +437,12 @@ function SettingsPageContent() {
               disabled={state.loading}
               className={SETTINGS_OUTLINE_BUTTON}
             >
-              <RefreshCw className={cn('size-4', state.loading && 'animate-spin motion-reduce:animate-none')} />
+              <RefreshCw
+                className={cn(
+                  'size-4',
+                  state.loading && 'animate-spin motion-reduce:animate-none'
+                )}
+              />
               刷新
             </Button>
             <Button
@@ -384,7 +450,12 @@ function SettingsPageContent() {
               disabled={!state.hasChanges || state.saving}
               className={SETTINGS_PRIMARY_BUTTON}
             >
-              <Save className={cn('size-4', state.saving && 'animate-pulse motion-reduce:animate-none')} />
+              <Save
+                className={cn(
+                  'size-4',
+                  state.saving && 'animate-pulse motion-reduce:animate-none'
+                )}
+              />
               {state.saving ? '保存中...' : '保存配置'}
             </Button>
           </>
@@ -395,7 +466,13 @@ function SettingsPageContent() {
             <RefreshCw className="size-8 animate-spin text-muted-foreground motion-reduce:animate-none" />
           </div>
         ) : (
-          <SettingsContent state={state} parserBackend={parserBackend} setParserBackend={setParserBackend} chunkStrategy={chunkStrategy} setChunkStrategy={setChunkStrategy} />
+          <SettingsContent
+            state={state}
+            parserBackend={parserBackend}
+            setParserBackend={setParserBackend}
+            chunkStrategy={chunkStrategy}
+            setChunkStrategy={setChunkStrategy}
+          />
         )}
       </PageScaffold>
 
@@ -409,7 +486,13 @@ function SettingsPageContent() {
   )
 }
 
-function SettingsContent({ state, parserBackend, setParserBackend, chunkStrategy, setChunkStrategy }: any) {
+function SettingsContent({
+  state,
+  parserBackend,
+  setParserBackend,
+  chunkStrategy,
+  setChunkStrategy,
+}: any) {
   const sectionIds = SETTINGS_SECTIONS.map((s) => s.id)
   const activeId = useSettingsScrollSpy(sectionIds)
 
@@ -421,7 +504,12 @@ function SettingsContent({ state, parserBackend, setParserBackend, chunkStrategy
 
   return (
     <div className="grid gap-4 lg:grid-cols-[176px_minmax(0,1fr)]">
-      <nav className={cn(SETTINGS_CARD_CLASS, 'sticky top-4 hidden shrink-0 self-start p-1.5 lg:block')}>
+      <nav
+        className={cn(
+          SETTINGS_CARD_CLASS,
+          'sticky top-4 hidden shrink-0 self-start p-1.5 lg:block'
+        )}
+      >
         <ul className="space-y-0.5">
           {SETTINGS_SECTIONS.map((sec) => (
             <li key={sec.id}>
@@ -433,7 +521,7 @@ function SettingsContent({ state, parserBackend, setParserBackend, chunkStrategy
                   'text-[12px] font-medium leading-[18px]',
                   activeId === sec.id
                     ? 'bg-blue-50/90 text-blue-600 before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[3px] before:rounded-full before:bg-blue-600'
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950',
+                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950'
                 )}
               >
                 {sec.label}
@@ -479,7 +567,10 @@ function SettingsContent({ state, parserBackend, setParserBackend, chunkStrategy
 
         <div id="sec-status" className="scroll-mt-24">
           {state.status ? (
-            <SystemStatusSection status={state.status} backendMeta={state.backendMeta} />
+            <SystemStatusSection
+              status={state.status}
+              backendMeta={state.backendMeta}
+            />
           ) : null}
         </div>
 

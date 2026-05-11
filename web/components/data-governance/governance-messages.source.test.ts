@@ -3,8 +3,16 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
+import {
+  expectSourceNotToContain,
+  expectSourceToContain,
+} from '@/lib/source-test-utils'
+
 function read(relativePath: string) {
-  return fs.readFileSync(path.resolve(__dirname, '..', '..', relativePath), 'utf8')
+  return fs.readFileSync(
+    path.resolve(__dirname, '..', '..', relativePath),
+    'utf8'
+  )
 }
 
 describe('data governance message sources', () => {
@@ -13,12 +21,18 @@ describe('data governance message sources', () => {
     const profilesSrc = read('app/data-governance/profiles/page.tsx')
     const commonLinesSrc = read('app/data-governance/common-lines/page.tsx')
 
-    expect(pageSrc).toContain("useTranslations('DataGovernancePage')")
-    expect(pageSrc).toContain("message={t('loading.message')}")
-    expect(profilesSrc).toContain("useTranslations('GovernanceProfilesRoutePage')")
-    expect(profilesSrc).toContain("message={t('loading.message')}")
-    expect(commonLinesSrc).toContain("useTranslations('GovernanceCommonLinesRoutePage')")
-    expect(commonLinesSrc).toContain("message={t('loading.message')}")
+    expectSourceToContain(pageSrc, "useTranslations('DataGovernancePage')")
+    expectSourceToContain(pageSrc, "message={t('loading.message')}")
+    expectSourceToContain(
+      profilesSrc,
+      "useTranslations('GovernanceProfilesRoutePage')"
+    )
+    expectSourceToContain(profilesSrc, "message={t('loading.message')}")
+    expectSourceToContain(
+      commonLinesSrc,
+      "useTranslations('GovernanceCommonLinesRoutePage')"
+    )
+    expectSourceToContain(commonLinesSrc, "message={t('loading.message')}")
   })
 
   it('moves core data-governance component copy into next-intl catalogs', () => {
@@ -28,55 +42,82 @@ describe('data governance message sources', () => {
     const cleanerSrc = read('components/data-governance/data-cleaner.tsx')
     const qualitySrc = read('components/data-governance/quality-checker.tsx')
 
-    expect(panelSrc).toContain("useTranslations('DataGovernancePanel')")
-    expect(panelSrc).toContain("label: t(`tabs.${id}.label`)")
-    expect(panelSrc).toContain("desc: t(`tabs.${id}.description`)")
-    expect(panelSrc).toContain('t("header.title")')
-    expect(panelSrc).toContain('t("header.subtitle")')
+    expectSourceToContain(panelSrc, "useTranslations('DataGovernancePanel')")
+    expectSourceToContain(panelSrc, 'label: t(`tabs.${id}.label`)')
+    expectSourceToContain(panelSrc, 'desc: t(`tabs.${id}.description`)')
+    expectSourceToContain(panelSrc, 't("header.title")')
+    expectSourceToContain(panelSrc, 't("header.subtitle")')
 
-    expect(annotatorSrc).toContain("useTranslations('DataAnnotator')")
-    expect(annotatorSrc).toContain("label: t(`types.${id}.label`)")
-    expect(annotatorSrc).toContain("description: t(`types.${id}.description`)")
-    expect(annotatorSrc).toContain('pipelineApi.autoAnnotations')
-    expect(annotatorSrc).toContain("mode: 'document_focus'")
-    expect(annotatorSrc).toContain('autoTagProvider')
-    expect(annotatorSrc).toContain('AUTO_TAG_PROVIDER_OPTIONS')
-    expect(annotatorSrc).toContain('providers: selectedProviderConfig.providers')
-    expect(annotatorSrc).toContain('enable_llm: selectedProviderConfig.enableLlm')
-    expect(annotatorSrc).toContain('enable_sensitive: selectedProviderConfig.enableSensitive')
-    expect(annotatorSrc).toContain("t(`auto.providers.${option.id}.label`)")
-    expect(annotatorSrc).toContain("t('auto.providerTitle')")
-    expect(annotatorSrc).toContain("t('semantic.title')")
-    expect(annotatorSrc).toContain("t('auto.action')")
+    expectSourceToContain(annotatorSrc, "useTranslations('DataAnnotator')")
+    expectSourceToContain(annotatorSrc, 'label: t(`types.${id}.label`)')
+    expectSourceToContain(
+      annotatorSrc,
+      'description: t(`types.${id}.description`)'
+    )
+    expectSourceToContain(annotatorSrc, 'pipelineApi.autoAnnotations')
+    expectSourceToContain(annotatorSrc, "mode: 'document_focus'")
+    expectSourceToContain(annotatorSrc, 'autoTagProvider')
+    expectSourceToContain(annotatorSrc, 'AUTO_TAG_PROVIDER_OPTIONS')
+    expectSourceToContain(
+      annotatorSrc,
+      'providers: selectedProviderConfig.providers'
+    )
+    expectSourceToContain(
+      annotatorSrc,
+      'enable_llm: selectedProviderConfig.enableLlm'
+    )
+    expectSourceToContain(
+      annotatorSrc,
+      'enable_sensitive: selectedProviderConfig.enableSensitive'
+    )
+    expectSourceToContain(
+      annotatorSrc,
+      't(`auto.providers.${option.id}.label`)'
+    )
+    expectSourceToContain(annotatorSrc, "t('auto.providerTitle')")
+    expectSourceToContain(annotatorSrc, "t('semantic.title')")
+    expectSourceToContain(annotatorSrc, "t('auto.action')")
 
-    expect(classifierSrc).toContain("useTranslations('DataClassifier')")
-    expect(classifierSrc).toContain("label: t(`categories.${id}.label`)")
-    expect(classifierSrc).toContain("t.raw('suggestedTags') as string[]")
-    expect(classifierSrc).toContain('pipelineApi.autoAnnotations')
-    expect(classifierSrc).toContain("mode: 'document_focus'")
-    expect(classifierSrc).toContain('document_tags')
-    expect(classifierSrc).not.toContain('setTimeout(resolve, 1000)')
+    expectSourceToContain(classifierSrc, "useTranslations('DataClassifier')")
+    expectSourceToContain(classifierSrc, 'label: t(`categories.${id}.label`)')
+    expectSourceToContain(classifierSrc, "t.raw('suggestedTags') as string[]")
+    expectSourceToContain(classifierSrc, 'pipelineApi.autoAnnotations')
+    expectSourceToContain(classifierSrc, "mode: 'document_focus'")
+    expectSourceToContain(classifierSrc, 'document_tags')
+    expectSourceNotToContain(classifierSrc, 'setTimeout(resolve, 1000)')
 
-    expect(cleanerSrc).toContain("useTranslations('DataCleaner')")
-    expect(cleanerSrc).toContain('t("header.title")')
-    expect(cleanerSrc).toContain('t("actions.apply")')
+    expectSourceToContain(cleanerSrc, "useTranslations('DataCleaner')")
+    expectSourceToContain(cleanerSrc, 't("header.title")')
+    expectSourceToContain(cleanerSrc, 't("actions.apply")')
 
-    expect(qualitySrc).toContain("useTranslations('QualityChecker')")
-    expect(qualitySrc).toContain("label: t(`checkItems.${id}.label`)")
-    expect(qualitySrc).toContain('t("header.title")')
-    expect(qualitySrc).toContain('t("actions.scan")')
-    expect(qualitySrc).toContain('const [backendScanEnabled, setBackendScanEnabled] = useState(true)')
-    expect(qualitySrc).toContain('pipelineApi.governanceAnalyze')
-    expect(qualitySrc).not.toContain('setTimeout(resolve, step.delay)')
+    expectSourceToContain(qualitySrc, "useTranslations('QualityChecker')")
+    expectSourceToContain(qualitySrc, 'label: t(`checkItems.${id}.label`)')
+    expectSourceToContain(qualitySrc, 't("header.title")')
+    expectSourceToContain(qualitySrc, 't("actions.scan")')
+    expectSourceToContain(
+      qualitySrc,
+      'const [backendScanEnabled, setBackendScanEnabled] = useState(true)'
+    )
+    expectSourceToContain(qualitySrc, 'pipelineApi.governanceAnalyze')
+    expectSourceNotToContain(qualitySrc, 'setTimeout(resolve, step.delay)')
   })
 
   it('wires manual annotation selection to the document canvas instead of the tool panel', () => {
     const panelSrc = read('components/data-governance-panel.tsx')
     const annotatorSrc = read('components/data-governance/data-annotator.tsx')
 
-    expect(panelSrc).toContain('data-governance-selection-root="true"')
-    expect(annotatorSrc).toContain("querySelector('[data-governance-selection-root=\"true\"]')")
-    expect(annotatorSrc).toContain("addEventListener('mouseup', captureSelection)")
-    expect(annotatorSrc).toContain('findSelectionRange(content, selectedText)')
+    expectSourceToContain(panelSrc, 'data-governance-selection-root="true"')
+    expectSourceToContain(
+      annotatorSrc,
+      'querySelector(\'[data-governance-selection-root="true"]\')'
+    )
+    expectSourceToContain(
+      annotatorSrc,
+      "addEventListener('mouseup', captureSelection)"
+    )
+    expectSourceToContain(
+      annotatorSrc,
+      'findSelectionRange(content, selectedText)'
+    )
   })
 })

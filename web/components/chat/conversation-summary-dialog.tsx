@@ -9,12 +9,11 @@
  */
 'use client'
 
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as React from 'react'
 import { Copy, RefreshCw, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { chatApi } from '@/lib/api'
-import { formatApiError } from '@/lib/api-errors'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import {
@@ -25,7 +24,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { detachPromise } from '@/lib/utils'
+import { chatApi } from '@/lib/api'
+import { formatApiError } from '@/lib/api-errors'
+import { queryKeys } from '@/lib/query-keys'
 
 
 export function ConversationSummaryDialog(props: Readonly<{
@@ -34,33 +35,56 @@ export function ConversationSummaryDialog(props: Readonly<{
   conversationId?: string
 }>) {
   const { open, onOpenChange, conversationId } = props
-  const [loading, setLoading] = React.useState(false)
-  const [updating, setUpdating] = React.useState(false)
-  const [clearing, setClearing] = React.useState(false)
-  const [available, setAvailable] = React.useState(false)
-  const [summary, setSummary] = React.useState<string>('')
+  const queryClient = useQueryClient()
+  const conversationIdForQuery = (conversationId || '').trim()
+  const hasConversation = Boolean(conversationIdForQuery)
+  const summaryQueryKey = queryKeys.chat.summary(conversationIdForQuery)
 
-  const load = React.useCallback(async () => {
-    const id = (conversationId || '').trim()
-    if (!id) return
-    setLoading(true)
-    try {
-      const res = await chatApi.getConversationSummary(id)
-      setAvailable(Boolean(res?.available))
-      setSummary(String(res?.summary || ''))
-    } catch (err: any) {
-      setAvailable(false)
-      setSummary('')
-      toast.error(formatApiError(err, '加载摘要失败'))
-    } finally {
-      setLoading(false)
-    }
-  }, [conversationId])
+  const summaryQuery = useQuery({
+    queryKey: summaryQueryKey,
+    enabled: open && hasConversation,
+    retry: false,
+    queryFn: async () => {
+      try {
+        return await chatApi.getConversationSummary(conversationIdForQuery)
+      } catch (err: unknown) {
+        toast.error(formatApiError(err, '加载摘要失败'))
+        throw err
+      }
+    },
+  })
 
-  React.useEffect(() => {
-    if (!open) return
-    detachPromise(load())
-  }, [open, load])
+  const updateMutation = useMutation({
+    mutationFn: async () => chatApi.updateConversationSummary(conversationIdForQuery),
+    onSuccess: (res) => {
+      queryClient.setQueryData(summaryQueryKey, {
+        available: true,
+        summary: String(res?.summary || ''),
+      })
+      toast.success('摘要已更新')
+    },
+    onError: (err: unknown) => {
+      toast.error(formatApiError(err, '更新摘要失败'))
+    },
+  })
+
+  const clearMutation = useMutation({
+    mutationFn: async () => chatApi.deleteConversationSummary(conversationIdForQuery),
+    onSuccess: () => {
+      queryClient.setQueryData(summaryQueryKey, { available: false, summary: '' })
+      toast.success('摘要已清空')
+    },
+    onError: (err: unknown) => {
+      toast.error(formatApiError(err, '清空摘要失败'))
+    },
+  })
+
+  const available = Boolean(summaryQuery.data?.available)
+  const summary = String(summaryQuery.data?.summary || '')
+  const loading = summaryQuery.isFetching
+  const updating = updateMutation.isPending
+  const clearing = clearMutation.isPending
+  const statusText = loading ? '加载中…' : available ? '可用' : '暂无'
 
   const copy = React.useCallback(async () => {
     const text = (summary || '').trim()
@@ -72,40 +96,6 @@ export function ConversationSummaryDialog(props: Readonly<{
       toast.error('复制失败')
     }
   }, [summary])
-
-  const update = React.useCallback(async () => {
-    const id = (conversationId || '').trim()
-    if (!id) return
-    setUpdating(true)
-    try {
-      const res = await chatApi.updateConversationSummary(id)
-      setAvailable(true)
-      setSummary(String(res?.summary || ''))
-      toast.success('摘要已更新')
-    } catch (err: any) {
-      toast.error(formatApiError(err, '更新摘要失败'))
-    } finally {
-      setUpdating(false)
-    }
-  }, [conversationId])
-
-  const clear = React.useCallback(async () => {
-    const id = (conversationId || '').trim()
-    if (!id) return
-    setClearing(true)
-    try {
-      await chatApi.deleteConversationSummary(id)
-      setAvailable(false)
-      setSummary('')
-      toast.success('摘要已清空')
-    } catch (err: any) {
-      toast.error(formatApiError(err, '清空摘要失败'))
-    } finally {
-      setClearing(false)
-    }
-  }, [conversationId])
-
-  const hasConversation = Boolean((conversationId || '').trim())
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -121,24 +111,16 @@ export function ConversationSummaryDialog(props: Readonly<{
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-3">
               <div className="text-xs text-muted-foreground">
-                状态：{(() => {
-    if (loading) {
-        return '加载中…';
-    }
-    else if (available) {
-            return '可用';
-        }
-        else {
-            return '暂无';
-        }
-})()}
+                状态：{statusText}
               </div>
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
                   className="h-8 gap-2"
-                  onClick={() => detachPromise(load())}
+                  onClick={() => {
+                    void summaryQuery.refetch()
+                  }}
                   disabled={loading || !hasConversation}
                 >
                   <RefreshCw className={loading ? 'size-4 animate-spin motion-reduce:animate-none' : 'size-4'} />
@@ -148,7 +130,7 @@ export function ConversationSummaryDialog(props: Readonly<{
                   variant="outline"
                   size="sm"
                   className="h-8 gap-2"
-                  onClick={() => detachPromise(update())}
+                  onClick={() => updateMutation.mutate()}
                   disabled={updating || !hasConversation}
                 >
                   <RefreshCw className={updating ? 'size-4 animate-spin motion-reduce:animate-none' : 'size-4'} />
@@ -158,7 +140,9 @@ export function ConversationSummaryDialog(props: Readonly<{
                   variant="outline"
                   size="sm"
                   className="h-8 gap-2"
-                  onClick={() => detachPromise(copy())}
+                  onClick={() => {
+                    void copy()
+                  }}
                   disabled={!summary.trim()}
                 >
                   <Copy className="size-4" />
@@ -171,7 +155,7 @@ export function ConversationSummaryDialog(props: Readonly<{
                   cancelLabel="返回"
                   confirmVariant="destructive"
                   confirmDisabled={clearing || !hasConversation}
-                  onConfirm={() => detachPromise(clear())}
+                  onConfirm={() => clearMutation.mutate()}
                 >
                   <Button
                     variant="outline"

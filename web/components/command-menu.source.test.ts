@@ -36,7 +36,7 @@ describe('command menu source', () => {
   it('supports slash commands and current-view analysis handoff', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'command-menu.tsx'), 'utf8')
 
-    expect(src).toContain('query.trim().startsWith("/")')
+    expect(src).toContain('const isSlashMode = trimmedQuery.startsWith("/")')
     expect(src).toContain("heading={t('groups.slash')}")
     expect(src).toContain('shortcut: "/report"')
     expect(src).toContain('shortcut: "/resume"')
@@ -116,13 +116,28 @@ describe('command menu source', () => {
     expect(src).toContain('router.push(`/history?id=${conversation.id}`)')
   })
 
+  it('loads typed search results through TanStack Query instead of effect-owned state', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'command-menu.tsx'), 'utf8')
+
+    expect(src).toContain("import { useQuery } from '@tanstack/react-query'")
+    expect(src).toContain("import { queryKeys } from '@/lib/query-keys'")
+    expect(src).toContain('queryKey: queryKeys.documents.list')
+    expect(src).toContain('queryKey: queryKeys.datasets.list')
+    expect(src).toContain('queryKey: queryKeys.chat.conversations')
+    expect(src).not.toContain('const [docResults')
+    expect(src).not.toContain('const [datasetResults')
+    expect(src).not.toContain('const [conversationResults')
+    expect(src).not.toContain('requestSeqRef')
+    expect(src).not.toContain('Promise.allSettled')
+  })
+
   it('offers a natural-language command handoff for non-slash typed queries', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'command-menu.tsx'), 'utf8')
 
     expect(src).toContain("heading={t('groups.aiActions')}")
     expect(src).toContain('t("aiAction.label")')
     expect(src).toContain('autorun: "1"')
-    expect(src).toContain('prompt: query.trim()')
+    expect(src).toContain('prompt: trimmedQuery')
   })
 
   it('includes bilingual keyword aliases for power-user slash navigation', () => {
@@ -145,7 +160,7 @@ describe('command menu source', () => {
   it('hides disabled shortcut reference groups while the user is actively searching', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'command-menu.tsx'), 'utf8')
 
-    expect(src).toContain('const shouldShowShortcutReference = query.trim().length === 0')
+    expect(src).toContain('const shouldShowShortcutReference = trimmedQuery.length === 0')
     expect(src).toContain('{shouldShowShortcutReference ? (')
     expect(src).toContain("heading={t('groups.viewerShortcuts')}")
     expect(src).toContain("heading={t('groups.shortcutMap')}")

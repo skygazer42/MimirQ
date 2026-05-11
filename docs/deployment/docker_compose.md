@@ -25,6 +25,8 @@ cp web/.env.local.example web/.env.local
 - `LLM_API_KEY`（以及可选的 `LLM_API_BASE/LLM_MODEL`）
 - 若启用生产 JWT：`AUTH_MODE=jwt` + `SECRET_KEY`（长度 >= 32）
 
+根目录 `.env.example` 是本地启动最小模板；解析、RAG、KG、可观测性等高级项见 `config/env/*.env.example`。
+
 前端（Docker）可选配置（`docker/docker-compose.web.yml` 使用）：
 
 - `WEB_PORT`：前端端口（默认 `3000`）

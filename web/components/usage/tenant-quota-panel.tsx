@@ -29,7 +29,9 @@ async function copyText(text: string) {
 
 export function TenantQuotaPanel() {
   const [loading, setLoading] = useState(false)
-  const [payload, setPayload] = useState<unknown>({ message: '点击刷新查看租户配额总览' })
+  const [payload, setPayload] = useState<unknown>({
+    message: '点击刷新查看租户配额总览',
+  })
   const json = useMemo(() => prettyJson(payload), [payload])
   const lines = useMemo(() => json.split('\n'), [json])
 
@@ -47,22 +49,32 @@ export function TenantQuotaPanel() {
   }
 
   return (
-    <Panel padding="none" className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_1px_0_rgba(15,23,42,0.03)]">
+    <Panel
+      padding="none"
+      className="overflow-hidden rounded-2xl border border-slate-200/80 bg-card shadow-[0_1px_0_rgba(15,23,42,0.03)]"
+    >
       <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="text-[17px] font-medium tracking-[-0.01em] text-slate-950">租户配额总览</h2>
+          <h2 className="text-[17px] font-medium tracking-[-0.01em] text-slate-950">
+            租户配额总览
+          </h2>
           <p className="mt-1 text-[13px] leading-5 text-slate-500">
-            当前 tenant quota API 的原始结果，用于管理员核对不同配额维度是否与聊天用量一致。
+            当前 tenant quota API
+            的原始结果，用于管理员核对不同配额维度是否与聊天用量一致。
           </p>
         </div>
         <Button
           size="sm"
           variant="outline"
-          className="h-10 gap-2 rounded-xl border-slate-200 bg-white px-4 text-[13px] font-medium text-slate-800 shadow-sm hover:bg-slate-50"
+          className="h-10 gap-2 rounded-xl border-slate-200 bg-card px-4 text-[13px] font-medium text-slate-800 shadow-sm hover:bg-slate-50"
           disabled={loading}
           onClick={() => detachPromise(loadQuota())}
         >
-          {loading ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="size-4" />}
+          {loading ? (
+            <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+          ) : (
+            <RefreshCw className="size-4" />
+          )}
           刷新租户配额
         </Button>
       </div>
@@ -72,7 +84,7 @@ export function TenantQuotaPanel() {
           <Button
             variant="ghost"
             size="icon"
-            className="absolute right-3 top-3 z-10 size-8 rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm hover:bg-slate-50"
+            className="absolute right-3 top-3 z-10 size-8 rounded-lg border border-slate-200 bg-card text-slate-500 shadow-sm hover:bg-slate-50"
             onClick={() => detachPromise(copyText(json))}
             aria-label="复制租户配额 JSON"
           >
@@ -80,11 +92,19 @@ export function TenantQuotaPanel() {
           </Button>
           <pre className="max-h-[220px] overflow-auto py-3 pr-12 text-[13px] leading-7">
             {lines.map((line, index) => (
-              <div key={`${index}-${line}`} className="grid grid-cols-[44px_1fr]">
+              <div
+                key={`${index}-${line}`}
+                className="grid grid-cols-[44px_1fr]"
+              >
                 <span className="select-none border-r border-slate-200 pr-3 text-right font-mono text-slate-400">
                   {index + 1}
                 </span>
-                <code className={cn('pl-4 font-mono text-slate-700', line.includes('"message"') && 'text-teal-700')}>
+                <code
+                  className={cn(
+                    'pl-4 font-mono text-slate-700',
+                    line.includes('"message"') && 'text-teal-700'
+                  )}
+                >
                   {line || ' '}
                 </code>
               </div>

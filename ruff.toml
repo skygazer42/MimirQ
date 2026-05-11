@@ -14,7 +14,7 @@ extend-exclude = [
 ]
 
 [lint]
-select = ["E4", "E7", "E9", "F", "I", "B007", "B009", "B010", "B011", "B039", "B904", "B905", "BLE001", "N"]
+select = ["E4", "E7", "E9", "F", "I", "B007", "B009", "B010", "B011", "B039", "B904", "B905", "BLE001", "N", "T201"]
 ignore = ["N813"]
 fixable = ["ALL"]
 
@@ -28,6 +28,6 @@ fixable = ["ALL"]
 "app/services/**" = ["BLE001"]
 "app/storage/**" = ["BLE001"]
 "app/third_party/**" = ["B", "BLE001", "N"]
-"scripts/**" = ["BLE001"]
+"scripts/**" = ["BLE001", "T201"]
 "tests/**" = ["BLE001"]
 "docker/olmocr/**" = ["BLE001", "B904"]

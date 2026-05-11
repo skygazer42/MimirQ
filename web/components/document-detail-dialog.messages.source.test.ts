@@ -3,6 +3,8 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
+import { readMessageCatalogSource } from '@/lib/source-test-utils'
+
 function read(relativePath: string) {
   return fs.readFileSync(path.resolve(__dirname, relativePath), 'utf8')
 }
@@ -33,7 +35,7 @@ describe('document detail message sources', () => {
     ].join('\n')
     const accessSrc = read('document-detail-dialog/document-access-dialog.tsx')
     const versionsSrc = read('document-detail-dialog/document-versions-dialog.tsx')
-    const messagesSrc = read('../i18n/messages/zh-CN.ts')
+    const messagesSrc = readMessageCatalogSource(path.resolve(__dirname, '..'))
 
     expectTranslationNamespace(detailSrc, 'DocumentDetailDialog')
     ;[

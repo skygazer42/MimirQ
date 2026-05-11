@@ -31,9 +31,6 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.auth import get_current_account_id, get_current_account_id_from_headers
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.document import (
-    BatchTaskStatus,
-    BatchUploadRequest,
-    BatchUploadResponse,
     ChunkPreviewItem,
     ChunkPreviewParams,
     ChunkPreviewQualityGate,
@@ -74,7 +71,6 @@ from app.api.schemas.document import (
     DocumentParsePreview,
     DocumentPipelineOptions,
     DocumentPipelinePatchRequest,
-    DocumentStats,
     DocumentStatus,
     DocumentUserMetadataPatchRequest,
     DocumentVersionDiff,
@@ -82,7 +78,6 @@ from app.api.schemas.document import (
     ManualDocumentCreate,
     ParsedSegment,
 )
-from app.api.schemas.document_folders import DocumentFolderTreeResponse
 from app.api.schemas.document_health import (
     DocumentHealthCard,
     DocumentHealthChunkCoverage,
@@ -95,6 +90,7 @@ from app.api.schemas.document_timeline import DocumentTimelineItem, DocumentTime
 from app.api.schemas.qa import DocumentQAGenerateRequest, DocumentQAGenerateResponse, QAPairPreview
 from app.api.utils.upload import save_upload_file, save_upload_file_with_hash
 from app.api.utils.url_ingest import download_url_to_path, validate_url_for_ingest
+from app.api.v1 import document_batch_upload, document_folders, document_stats
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
 from app.core.env import is_production_env
@@ -120,7 +116,6 @@ from app.services.audit_log_service import audit_log_event
 from app.services.dataset_precheck_ingestion_suggestion import apply_ingestion_policy_suggestion
 from app.services.dataset_precheck_scan_runner import run_dataset_precheck_scan
 from app.services.dataset_service import EDIT_ROLES, DatasetService
-from app.services.document_folders import build_document_folder_tree
 from app.services.document_permission_service import DocumentGroupPermissionService, DocumentPermissionService
 from app.services.document_qa_service import generate_and_index_document_qa
 from app.services.index_audit_service import build_index_drift_marker
@@ -131,7 +126,6 @@ from app.services.ingestion_policy import (
     resolve_governance_profile_ref,
 )
 from app.services.ingestion_run_service import IngestionRunService
-from app.services.mineru_service import mineru_service
 from app.services.pipeline_config import (
     build_indexing_options,
     merge_pipeline_options,
@@ -158,6 +152,9 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 }
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+router.include_router(document_batch_upload.router)
+router.include_router(document_folders.router)
+router.include_router(document_stats.router)
 
 # Filename validation:
 # - We store uploads by UUID on disk/MinIO, so we don't need a strict character allowlist.
@@ -4562,204 +4559,6 @@ def _source_path_prefix_expr(prefix: str | None):  # noqa: ANN201
     if len(val) > 500:
         val = val[:500]
     return DBDocument.doc_metadata["source_path"].astext.startswith(val)  # type: ignore[attr-defined]
-
-
-@router.get("/folders", response_model=DocumentFolderTreeResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def list_document_folders(
-    dataset_id: Annotated[UUID, Query(...)],
-    lifecycle: Annotated[Literal["active", "archived", "disabled", "all"], Query()] = "active",
-    max_depth: Annotated[int, Query(ge=1, le=50)] = 20,
-    *,
-    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
-    account_id: Annotated[str, Depends(get_current_account_id)],
-    db: Annotated[Session, Depends(get_db)],
-):
-    """
-    Build a folder tree derived from `document.metadata.source_path`.
-
-    Notes:
-    - `source_path` is only present when the client uploads with directory-preserving keys (e.g. folder/sub/file.pdf).
-    - The tree is dataset-scoped for performance and permission clarity.
-    """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
-
-    query = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id, DBDocument.dataset_id == dataset_id)
-
-    # Document-level ACL filter ("security trimming") - keep consistent with list endpoints.
-    doc_perm_subq = select(DocumentPermission.document_id).where(
-        DocumentPermission.tenant_id == tenant_id,
-        DocumentPermission.account_id == account_id,
-    )
-    owner_dataset_ids_subq = select(Dataset.id).where(
-        Dataset.tenant_id == tenant_id,
-        Dataset.owner_id == account_id,
-    )
-    query = query.filter(
-        or_(
-            DBDocument.dataset_id.in_(owner_dataset_ids_subq),
-            DBDocument.access_mode.is_(None),
-            DBDocument.access_mode.in_(["inherit", "all_team_members"]),
-            DBDocument.owner_id == account_id,
-            and_(
-                DBDocument.access_mode == "partial_members",
-                DBDocument.id.in_(doc_perm_subq),
-            ),
-        )
-    )
-
-    # Lifecycle filter.
-    lifecycle0 = str(lifecycle or "active").strip().lower()
-    if lifecycle0 != "all":
-        if lifecycle0 == "archived":
-            query = query.filter(DBDocument.archived_at.isnot(None))
-        elif lifecycle0 == "disabled":
-            query = query.filter(DBDocument.disabled_at.isnot(None))
-        else:
-            query = query.filter(DBDocument.archived_at.is_(None), DBDocument.disabled_at.is_(None))
-
-    total = int(query.count() or 0)
-
-    rows = query.with_entities(DBDocument.doc_metadata["source_path"].astext).all()  # type: ignore[attr-defined]
-    source_paths = [r[0] for r in rows if isinstance(r, tuple) and isinstance(r[0], str) and r[0].strip()]
-
-    root = build_document_folder_tree(source_paths, total_documents=total, max_depth=int(max_depth or 20))
-    return DocumentFolderTreeResponse(
-        dataset_id=dataset_id,
-        total_documents=int(total),
-        total_with_source_path=int(len(source_paths)),
-        root=root,
-    )
-
-
-@router.get("/stats", response_model=DocumentStats, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def get_document_stats(
-    dataset_id: UUID | None = None,
-    lifecycle: Annotated[Literal["active", "archived", "disabled", "all"], Query()] = "active",
-    file_type: Annotated[str | None, Query(max_length=20)] = None,
-    owner_id: Annotated[str | None, Query(max_length=255)] = None,
-    q: Annotated[str | None, Query(max_length=200)] = None,
-    *,
-    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
-    account_id: Annotated[str, Depends(get_current_account_id)],
-    db: Annotated[Session, Depends(get_db)],
-):
-    """
-    Document stats for knowledge-base dashboards.
-
-    Notes:
-    - Enforces the same dataset permission semantics as `list_documents`.
-    - Supports lightweight filename search via `q`.
-    """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-
-    query = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id)
-
-    if dataset_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-        DatasetService.assert_dataset_readable(db, dataset, account_id)
-        query = query.filter(DBDocument.dataset_id == dataset_id)
-    else:
-        partial_member_subq = (
-            db.query(DatasetPermission.dataset_id)
-            .filter(
-                DatasetPermission.tenant_id == tenant_id,
-                DatasetPermission.account_id == account_id,
-            )
-            .subquery()
-        )
-
-        allowed_dataset_filter = or_(
-            Dataset.owner_id == account_id,
-            Dataset.permission == DatasetPermissionEnum.ALL_TEAM_MEMBERS,
-            and_(
-                Dataset.permission == DatasetPermissionEnum.PARTIAL_MEMBERS,
-                Dataset.id.in_(partial_member_subq),
-            ),
-        )
-
-        allowed_dataset_ids_subq = (
-            db.query(Dataset.id)
-            .filter(
-                Dataset.tenant_id == tenant_id,
-                allowed_dataset_filter,
-            )
-            .subquery()
-        )
-
-        query = query.filter(
-            or_(
-                DBDocument.dataset_id.is_(None),
-                DBDocument.dataset_id.in_(allowed_dataset_ids_subq),
-            )
-        )
-
-    # Document-level ACL filter ("security trimming").
-    doc_perm_subq = select(DocumentPermission.document_id).where(
-        DocumentPermission.tenant_id == tenant_id,
-        DocumentPermission.account_id == account_id,
-    )
-    owner_dataset_ids_subq = select(Dataset.id).where(
-        Dataset.tenant_id == tenant_id,
-        Dataset.owner_id == account_id,
-    )
-    query = query.filter(
-        or_(
-            DBDocument.dataset_id.in_(owner_dataset_ids_subq),
-            DBDocument.access_mode.is_(None),
-            DBDocument.access_mode.in_(["inherit", "all_team_members"]),
-            DBDocument.owner_id == account_id,
-            and_(DBDocument.access_mode == "partial_members", DBDocument.id.in_(doc_perm_subq)),
-        )
-    )
-
-    lifecycle0 = str(lifecycle or "active").strip().lower()
-    if lifecycle0 != "all":
-        if lifecycle0 == "archived":
-            query = query.filter(DBDocument.archived_at.isnot(None))
-        elif lifecycle0 == "disabled":
-            query = query.filter(DBDocument.disabled_at.isnot(None))
-        else:
-            query = query.filter(DBDocument.archived_at.is_(None), DBDocument.disabled_at.is_(None))
-
-    if q:
-        term = q.strip()
-        if term:
-            query = query.filter(DBDocument.filename.ilike(f"%{term}%"))
-
-    if file_type:
-        ft = str(file_type or "").strip().lower()
-        if ft:
-            query = query.filter(DBDocument.file_type == ft)
-
-    if owner_id:
-        oid = str(owner_id or "").strip()
-        if oid:
-            query = query.filter(DBDocument.owner_id == oid)
-
-    status_rows = (
-        query.with_entities(DBDocument.status, func.count(DBDocument.id))
-        .group_by(DBDocument.status)
-        .all()
-    )
-    by_status = {str(status): int(count) for status, count in status_rows if status is not None}
-    total = int(sum(by_status.values()))
-
-    sums = query.with_entities(
-        func.coalesce(func.sum(DBDocument.chunk_count), 0),
-        func.coalesce(func.sum(DBDocument.file_size), 0),
-    ).one()
-    total_chunks = int(sums[0] or 0)
-    total_size = int(sums[1] or 0)
-
-    return {
-        "total": total,
-        "by_status": by_status,
-        "total_chunks": total_chunks,
-        "total_size": total_size,
-    }
 
 
 @router.get("/duplicates", response_model=DocumentDuplicateList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -11657,114 +11456,3 @@ async def preview_chunking_by_sha(
         parser_backend=resolved_backend,
         chunk_strategy=resolved_chunk_strategy,
     )
-
-
-# ==================== MinerU batch upload API ====================
-
-@router.post("/batch-upload/apply-urls", response_model=BatchUploadResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def apply_batch_upload_urls(
-    request: BatchUploadRequest,
-    *,
-    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
-    account_id: Annotated[str, Depends(get_current_account_id)],
-    db: Annotated[Session, Depends(get_db)],
-):
-    """
-    Batch request file upload URLs (MinerU online parsing).
-
-    Use case: batch upload local files for parsing.
-
-    Flow:
-    1. Call this endpoint to request upload URLs (up to 200 files)
-    2. Upload files to returned URLs (PUT; no Content-Type needed)
-    3. After upload, the system submits parsing tasks automatically
-    4. Query status using batch_id
-
-    Notes:
-    - Upload links are valid for 24 hours
-    - No Content-Type header required for uploads
-    - No manual submit needed; the system scans and processes automatically
-
-    Example:
-        # Step 1: request upload URLs
-        response = requests.post("http://localhost:8000/api/v1/documents/batch-upload/apply-urls", headers={
-            "X-User-ID": "demo",
-        }, json={
-            "files": [
-                {"name": "file1.pdf", "data_id": "doc1"},
-                {"name": "file2.pdf", "data_id": "doc2"}
-            ]
-        })
-
-        # Step 2: upload files
-        batch_id = response.json()["batch_id"]
-        urls = response.json()["file_urls"]
-
-        for i, url in enumerate(urls):
-            with open(f"file{i+1}.pdf", "rb") as f:
-                requests.put(url, data=f)
-
-        # Step 3: query status
-        requests.get(f"http://localhost:8000/api/v1/documents/batch-upload/status/{batch_id}", headers={
-            "X-User-ID": "demo",
-        })
-    """
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
-    role = (member.role or "").lower()
-    if role not in EDIT_ROLES:
-        raise HTTPException(status_code=403, detail="No permission to apply upload URLs")
-
-    try:
-        result = await mineru_service.aapply_batch_upload_urls(
-            files=[f.model_dump() for f in request.files]
-        )
-
-        return BatchUploadResponse(
-            batch_id=result["batch_id"],
-            file_urls=result["file_urls"],
-            files=request.files
-        )
-
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to apply upload URLs: {str(e)}") from e
-
-
-@router.get("/batch-upload/status/{batch_id}", response_model=BatchTaskStatus, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def get_batch_task_status(
-    batch_id: str,
-    *,
-    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
-    account_id: Annotated[str, Depends(get_current_account_id)],
-    db: Annotated[Session, Depends(get_db)],
-):
-    """
-    Query batch parsing task status.
-
-    Args:
-        batch_id: Batch ID (from apply upload URLs).
-
-    Returns:
-        Task status info, including progress and completion counts.
-    """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    try:
-        status = await mineru_service.aget_task_status(batch_id)
-
-        # Normalize to a standard format.
-        return BatchTaskStatus(
-            batch_id=batch_id,
-            status=status.get("status", "pending"),
-            total_files=status.get("total_files", 0),
-            completed_files=status.get("completed_files", 0),
-            failed_files=status.get("failed_files", 0),
-            progress=status.get("progress", 0),
-            result_url=status.get("result_url"),
-            error=status.get("error")
-        )
-
-    except LookupError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get task status: {str(e)}") from e

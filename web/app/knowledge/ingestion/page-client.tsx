@@ -1,6 +1,13 @@
 'use client'
 
-import { type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  type MouseEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -49,12 +56,28 @@ import { useDatasets } from '@/hooks/use-datasets'
 import { usePathname, useRouter } from '@/i18n/navigation'
 import { Button } from '@/components/ui/button'
 import { EChart } from '@/components/ui/echart'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
 import { DropZone, type DropZoneHandle } from '@/components/ingestion/drop-zone'
 import { EmptyState } from '@/components/ingestion/empty-state'
 import { IngestionDetailDialog } from '@/components/ingestion/ingestion-detail-dialog'
-import { LiveVelocity, persistVelocityUnit, readStoredVelocityUnit } from '@/components/ingestion/live-velocity'
+import {
+  LiveVelocity,
+  persistVelocityUnit,
+  readStoredVelocityUnit,
+} from '@/components/ingestion/live-velocity'
 import {
   buildEvidenceSlotReason,
   buildEvidenceSlotTags,
@@ -185,55 +208,57 @@ function buildReportHtml({
     .slice(0, 12)
     .map(
       (document) => `
-        <tr>
-          <td>${escapeHtml(document.filename)}</td>
-          <td>${escapeHtml(document.status || '-')}</td>
-          <td>${escapeHtml(document.current_stage || '-')}</td>
-          <td>${formatFileSize(document.file_size || 0)}</td>
-          <td>${escapeHtml(document.error_message || '—')}</td>
-        </tr>`
+ <tr>
+ <td>${escapeHtml(document.filename)}</td>
+ <td>${escapeHtml(document.status || '-')}</td>
+ <td>${escapeHtml(document.current_stage || '-')}</td>
+ <td>${formatFileSize(document.file_size || 0)}</td>
+ <td>${escapeHtml(document.error_message || '—')}</td>
+ </tr>`
     )
     .join('')
   const findingRows = (salesAuditSummary?.findings ?? [])
     .slice(0, 8)
     .map(
       (item) => `
-        <tr>
-          <td>${escapeHtml(item.label)}</td>
-          <td><span class="status-pill">${escapeHtml(item.severity)}</span></td>
-          <td>${Number(item.count || 0).toLocaleString()}</td>
-          <td>${escapeHtml(item.key)}</td>
-        </tr>`
+ <tr>
+ <td>${escapeHtml(item.label)}</td>
+ <td><span class="status-pill">${escapeHtml(item.severity)}</span></td>
+ <td>${Number(item.count || 0).toLocaleString()}</td>
+ <td>${escapeHtml(item.key)}</td>
+ </tr>`
     )
     .join('')
   const pocRows = salesPocCandidates
     ?.slice(0, 8)
     .map(
       (item) => `
-        <tr>
-          <td>${escapeHtml(item.fileName)}</td>
-          <td>${escapeHtml(item.fileType)}</td>
-          <td>${escapeHtml(item.fileSizeLabel)}</td>
-          <td>${escapeHtml(item.primaryRisk)}</td>
-          <td><span class="action-pill">${escapeHtml(item.actionLabel)}</span></td>
-          <td>${escapeHtml(item.riskDescription)}</td>
-        </tr>`
+ <tr>
+ <td>${escapeHtml(item.fileName)}</td>
+ <td>${escapeHtml(item.fileType)}</td>
+ <td>${escapeHtml(item.fileSizeLabel)}</td>
+ <td>${escapeHtml(item.primaryRisk)}</td>
+ <td><span class="action-pill">${escapeHtml(item.actionLabel)}</span></td>
+ <td>${escapeHtml(item.riskDescription)}</td>
+ </tr>`
     )
     .join('')
   const highRiskRows = salesHighRiskFiles
     ?.slice(0, 8)
     .map(
       (item) => `
-        <tr>
-          <td>${escapeHtml(item.fileName)}</td>
-          <td>${escapeHtml(item.fileType)}</td>
-          <td>${escapeHtml(item.fileSizeLabel)}</td>
-          <td>${escapeHtml(item.primaryRisk)}</td>
-          <td>${escapeHtml(item.riskDescription)}</td>
-        </tr>`
+ <tr>
+ <td>${escapeHtml(item.fileName)}</td>
+ <td>${escapeHtml(item.fileType)}</td>
+ <td>${escapeHtml(item.fileSizeLabel)}</td>
+ <td>${escapeHtml(item.primaryRisk)}</td>
+ <td>${escapeHtml(item.riskDescription)}</td>
+ </tr>`
     )
     .join('')
-  const totalPrecheckFiles = Number(salesAuditSummary?.total_files || totalDocs || 0)
+  const totalPrecheckFiles = Number(
+    salesAuditSummary?.total_files || totalDocs || 0
+  )
   const scannedPdf = Number(salesAuditSummary?.pdf_scan.scanned || 0)
   const mixedPdf = Number(salesAuditSummary?.pdf_scan.unknown || 0)
   const blockingCount = (salesAuditSummary?.findings ?? [])
@@ -248,417 +273,452 @@ function buildReportHtml({
   }).format(new Date())
   const metricCards = [
     { glyph: 'S', label: '范围', tone: 'blue', value: datasetLabel },
-    { glyph: 'DOC', label: '文件总数', tone: 'blue', value: totalPrecheckFiles.toLocaleString() },
+    {
+      glyph: 'DOC',
+      label: '文件总数',
+      tone: 'blue',
+      value: totalPrecheckFiles.toLocaleString(),
+    },
     { glyph: '%', label: '健康可入库', tone: 'steel', value: `${readyRate}%` },
-    { glyph: 'H', label: '待人工处理', tone: 'violet', value: manualQueue.toLocaleString() },
+    {
+      glyph: 'H',
+      label: '待人工处理',
+      tone: 'violet',
+      value: manualQueue.toLocaleString(),
+    },
     { glyph: 'MB', label: '处理效率', tone: 'cyan', value: efficiency },
     { glyph: 'P90', label: 'P90 周期', tone: 'violet', value: latencyP90 },
-    { glyph: 'F', label: '当前聚焦线索', tone: 'blue', value: selectedReason || '全部' },
+    {
+      glyph: 'F',
+      label: '当前聚焦线索',
+      tone: 'blue',
+      value: selectedReason || '全部',
+    },
     { glyph: 'JPG', label: '导出方式', tone: 'cyan', value: 'JPG 图片' },
   ]
     .map(
       (item) => `
-        <article class="kpi-card kpi-card--${item.tone}">
-          <div class="metric-icon" aria-hidden="true">${escapeHtml(item.glyph)}</div>
-          <div class="metric-copy">
-            <div class="metric-label">${escapeHtml(item.label)}</div>
-            <div class="metric-value">${escapeHtml(item.value)}</div>
-          </div>
-        </article>`
+ <article class="kpi-card kpi-card--${item.tone}">
+ <div class="metric-icon" aria-hidden="true">${escapeHtml(item.glyph)}</div>
+ <div class="metric-copy">
+ <div class="metric-label">${escapeHtml(item.label)}</div>
+ <div class="metric-value">${escapeHtml(item.value)}</div>
+ </div>
+ </article>`
     )
     .join('')
   const basisCards = [
-    { glyph: 'I', label: '摸底总量', tone: 'cyan', value: totalPrecheckFiles.toLocaleString() },
-    { glyph: 'DB', label: '总体体量', tone: 'blue', value: formatFileSize(salesAuditSummary?.total_size_bytes || 0) },
-    { glyph: 'PDF', label: '扫描 / 混排', tone: 'violet', value: (scannedPdf + mixedPdf).toLocaleString() },
-    { glyph: '!', label: '阻断项', tone: 'orange', value: blockingCount.toLocaleString() },
+    {
+      glyph: 'I',
+      label: '摸底总量',
+      tone: 'cyan',
+      value: totalPrecheckFiles.toLocaleString(),
+    },
+    {
+      glyph: 'DB',
+      label: '总体体量',
+      tone: 'blue',
+      value: formatFileSize(salesAuditSummary?.total_size_bytes || 0),
+    },
+    {
+      glyph: 'PDF',
+      label: '扫描 / 混排',
+      tone: 'violet',
+      value: (scannedPdf + mixedPdf).toLocaleString(),
+    },
+    {
+      glyph: '!',
+      label: '阻断项',
+      tone: 'orange',
+      value: blockingCount.toLocaleString(),
+    },
   ]
     .map(
       (item) => `
-        <article class="basis-card basis-card--${item.tone}">
-          <div class="metric-icon metric-icon--small" aria-hidden="true">${escapeHtml(item.glyph)}</div>
-          <div>
-            <div class="metric-label">${escapeHtml(item.label)}</div>
-            <div class="metric-value metric-value--compact">${escapeHtml(item.value)}</div>
-          </div>
-        </article>`
+ <article class="basis-card basis-card--${item.tone}">
+ <div class="metric-icon metric-icon--small" aria-hidden="true">${escapeHtml(item.glyph)}</div>
+ <div>
+ <div class="metric-label">${escapeHtml(item.label)}</div>
+ <div class="metric-value metric-value--compact">${escapeHtml(item.value)}</div>
+ </div>
+ </article>`
     )
     .join('')
 
   return `<!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>项目数据盘点报告</title>
-  <style>
-    :root {
-      --paper: #f5f8fc;
-      --paper-strong: #ffffff;
-      --ink: #0c1730;
-      --muted: #52627a;
-      --line: #dfe7f2;
-      --line-soft: #edf2f8;
-      --blue: #1264e8;
-      --cyan: #0ea5b7;
-      --violet: #6d47e8;
-      --orange: #f97316;
-      --shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      min-height: 100vh;
-      color: var(--ink);
-      background:
-        radial-gradient(circle at 18% 0%, rgba(18, 100, 232, 0.08), transparent 26rem),
-        linear-gradient(180deg, #f8fbff 0%, var(--paper) 52%, #eef4fb 100%);
-      font-family: "Inter", "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
-      padding: 36px;
-    }
-    .report-shell {
-      max-width: 1760px;
-      margin: 0 auto;
-    }
-    .report-header {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 24px;
-      margin-bottom: 24px;
-    }
-    h1 {
-      margin: 0;
-      font-size: clamp(28px, 2.3vw, 40px);
-      line-height: 1.1;
-      letter-spacing: -0.05em;
-    }
-    h2 {
-      margin: 0;
-      font-size: 20px;
-      letter-spacing: -0.03em;
-    }
-    .report-subtitle {
-      max-width: 980px;
-      margin: 10px 0 0;
-      color: var(--muted);
-      font-size: 15px;
-      line-height: 1.6;
-    }
-    .generated-at {
-      margin-top: 8px;
-      color: #718096;
-      font-size: 12px;
-    }
-    .toolbar {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      justify-content: flex-end;
-    }
-    .toolbar button {
-      min-height: 48px;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      background: rgba(255, 255, 255, 0.82);
-      color: var(--ink);
-      cursor: pointer;
-      font: inherit;
-      font-weight: 700;
-      padding: 0 20px;
-      box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
-    }
-    .toolbar .primary {
-      border-color: #0d5bd6;
-      background: linear-gradient(135deg, #1668ee, #0d5bd6);
-      color: #ffffff;
-    }
-    .button-icon {
-      display: inline-flex;
-      min-width: 24px;
-      margin-right: 8px;
-      font-size: 12px;
-      letter-spacing: -0.04em;
-    }
-    .kpi-grid,
-    .basis-grid {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 16px;
-    }
-    .kpi-grid {
-      margin-bottom: 12px;
-    }
-    .kpi-card,
-    .basis-card,
-    .section-card {
-      border: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.86);
-      box-shadow: var(--shadow);
-    }
-    .kpi-card,
-    .basis-card {
-      display: flex;
-      align-items: center;
-      gap: 20px;
-      min-height: 108px;
-      border-radius: 12px;
-      padding: 22px;
-    }
-    .metric-icon {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 64px;
-      height: 64px;
-      flex: 0 0 auto;
-      border-radius: 16px;
-      background: #eef5ff;
-      color: var(--blue);
-      font-size: 13px;
-      font-weight: 900;
-      letter-spacing: -0.05em;
-    }
-    .metric-icon--small {
-      width: 48px;
-      height: 48px;
-      border-radius: 14px;
-      font-size: 12px;
-    }
-    .kpi-card--cyan .metric-icon,
-    .basis-card--cyan .metric-icon { background: #e9fbfd; color: var(--cyan); }
-    .kpi-card--violet .metric-icon,
-    .basis-card--violet .metric-icon { background: #f0ebff; color: var(--violet); }
-    .basis-card--orange .metric-icon { background: #fff2e8; color: var(--orange); }
-    .kpi-card--steel .metric-icon { background: #edf2f8; color: #334155; }
-    .metric-label {
-      color: var(--muted);
-      font-size: 14px;
-      line-height: 1.2;
-    }
-    .metric-value {
-      margin-top: 8px;
-      color: var(--ink);
-      font-size: 26px;
-      font-weight: 900;
-      letter-spacing: -0.04em;
-      line-height: 1.1;
-    }
-    .metric-value--compact {
-      font-size: 22px;
-    }
-    .section-card {
-      margin-top: 12px;
-      border-radius: 12px;
-      padding: 16px 20px;
-    }
-    .section-head {
-      display: flex;
-      align-items: flex-end;
-      justify-content: space-between;
-      gap: 18px;
-      margin-bottom: 14px;
-    }
-    .section-note {
-      margin: 4px 0 0;
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.5;
-    }
-    .table-frame {
-      overflow: hidden;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      background: var(--paper-strong);
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 14px;
-    }
-    th,
-    td {
-      border-bottom: 1px solid var(--line-soft);
-      padding: 12px 16px;
-      text-align: left;
-      vertical-align: top;
-    }
-    th {
-      color: #475569;
-      background: #f8fbff;
-      font-size: 12px;
-      font-weight: 800;
-    }
-    tbody tr:last-child td {
-      border-bottom: 0;
-    }
-    .status-pill,
-    .action-pill {
-      display: inline-flex;
-      align-items: center;
-      min-height: 24px;
-      border: 1px solid #a7c9ff;
-      border-radius: 7px;
-      background: #eaf3ff;
-      color: #075bd8;
-      font-size: 12px;
-      font-weight: 700;
-      padding: 2px 9px;
-    }
-    .action-pill {
-      border-color: #9bdfb8;
-      background: #e9fbf0;
-      color: #067647;
-    }
-    .split-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 16px;
-      margin-top: 12px;
-    }
-    .empty {
-      border: 1px dashed var(--line);
-      border-radius: 10px;
-      color: var(--muted);
-      padding: 18px;
-      background: #f8fbff;
-    }
-    @media (max-width: 980px) {
-      body { padding: 20px; }
-      .report-header { display: block; }
-      .toolbar { justify-content: flex-start; margin-top: 16px; }
-      .kpi-grid,
-      .basis-grid,
-      .split-grid { grid-template-columns: 1fr; }
-    }
-    @media print {
-      body { background: #ffffff; padding: 0; }
-      .report-shell { max-width: none; }
-      .toolbar { display: none; }
-      .kpi-card,
-      .basis-card,
-      .section-card { box-shadow: none; break-inside: avoid; }
-    }
-  </style>
+ <meta charset="utf-8" />
+ <meta name="viewport" content="width=device-width, initial-scale=1" />
+ <title>项目数据盘点报告</title>
+ <style>
+ :root {
+ --paper: #f5f8fc;
+ --paper-strong: #ffffff;
+ --ink: #0c1730;
+ --muted: #52627a;
+ --line: #dfe7f2;
+ --line-soft: #edf2f8;
+ --blue: #1264e8;
+ --cyan: #0ea5b7;
+ --violet: #6d47e8;
+ --orange: #f97316;
+ --shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
+ }
+ * { box-sizing: border-box; }
+ body {
+ margin: 0;
+ min-height: 100vh;
+ color: var(--ink);
+ background:
+ radial-gradient(circle at 18% 0%, rgba(18, 100, 232, 0.08), transparent 26rem),
+ linear-gradient(180deg, #f8fbff 0%, var(--paper) 52%, #eef4fb 100%);
+ font-family:"Inter","PingFang SC","Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+ padding: 36px;
+ }
+ .report-shell {
+ max-width: 1760px;
+ margin: 0 auto;
+ }
+ .report-header {
+ display: flex;
+ align-items: flex-start;
+ justify-content: space-between;
+ gap: 24px;
+ margin-bottom: 24px;
+ }
+ h1 {
+ margin: 0;
+ font-size: clamp(28px, 2.3vw, 40px);
+ line-height: 1.1;
+ letter-spacing: -0.05em;
+ }
+ h2 {
+ margin: 0;
+ font-size: 20px;
+ letter-spacing: -0.03em;
+ }
+ .report-subtitle {
+ max-width: 980px;
+ margin: 10px 0 0;
+ color: var(--muted);
+ font-size: 15px;
+ line-height: 1.6;
+ }
+ .generated-at {
+ margin-top: 8px;
+ color: #718096;
+ font-size: 12px;
+ }
+ .toolbar {
+ display: flex;
+ flex-wrap: wrap;
+ gap: 12px;
+ justify-content: flex-end;
+ }
+ .toolbar button {
+ min-height: 48px;
+ border: 1px solid var(--line);
+ border-radius: 10px;
+ background: rgba(255, 255, 255, 0.82);
+ color: var(--ink);
+ cursor: pointer;
+ font: inherit;
+ font-weight: 700;
+ padding: 0 20px;
+ box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
+ }
+ .toolbar .primary {
+ border-color: #0d5bd6;
+ background: linear-gradient(135deg, #1668ee, #0d5bd6);
+ color: #ffffff;
+ }
+ .button-icon {
+ display: inline-flex;
+ min-width: 24px;
+ margin-right: 8px;
+ font-size: 12px;
+ letter-spacing: -0.04em;
+ }
+ .kpi-grid,
+ .basis-grid {
+ display: grid;
+ grid-template-columns: repeat(4, minmax(0, 1fr));
+ gap: 16px;
+ }
+ .kpi-grid {
+ margin-bottom: 12px;
+ }
+ .kpi-card,
+ .basis-card,
+ .section-card {
+ border: 1px solid var(--line);
+ background: rgba(255, 255, 255, 0.86);
+ box-shadow: var(--shadow);
+ }
+ .kpi-card,
+ .basis-card {
+ display: flex;
+ align-items: center;
+ gap: 20px;
+ min-height: 108px;
+ border-radius: 12px;
+ padding: 22px;
+ }
+ .metric-icon {
+ display: inline-flex;
+ align-items: center;
+ justify-content: center;
+ width: 64px;
+ height: 64px;
+ flex: 0 0 auto;
+ border-radius: 16px;
+ background: #eef5ff;
+ color: var(--blue);
+ font-size: 13px;
+ font-weight: 900;
+ letter-spacing: -0.05em;
+ }
+ .metric-icon--small {
+ width: 48px;
+ height: 48px;
+ border-radius: 14px;
+ font-size: 12px;
+ }
+ .kpi-card--cyan .metric-icon,
+ .basis-card--cyan .metric-icon { background: #e9fbfd; color: var(--cyan); }
+ .kpi-card--violet .metric-icon,
+ .basis-card--violet .metric-icon { background: #f0ebff; color: var(--violet); }
+ .basis-card--orange .metric-icon { background: #fff2e8; color: var(--orange); }
+ .kpi-card--steel .metric-icon { background: #edf2f8; color: #334155; }
+ .metric-label {
+ color: var(--muted);
+ font-size: 14px;
+ line-height: 1.2;
+ }
+ .metric-value {
+ margin-top: 8px;
+ color: var(--ink);
+ font-size: 26px;
+ font-weight: 900;
+ letter-spacing: -0.04em;
+ line-height: 1.1;
+ }
+ .metric-value--compact {
+ font-size: 22px;
+ }
+ .section-card {
+ margin-top: 12px;
+ border-radius: 12px;
+ padding: 16px 20px;
+ }
+ .section-head {
+ display: flex;
+ align-items: flex-end;
+ justify-content: space-between;
+ gap: 18px;
+ margin-bottom: 14px;
+ }
+ .section-note {
+ margin: 4px 0 0;
+ color: var(--muted);
+ font-size: 13px;
+ line-height: 1.5;
+ }
+ .table-frame {
+ overflow: hidden;
+ border: 1px solid var(--line);
+ border-radius: 10px;
+ background: var(--paper-strong);
+ }
+ table {
+ width: 100%;
+ border-collapse: collapse;
+ font-size: 14px;
+ }
+ th,
+ td {
+ border-bottom: 1px solid var(--line-soft);
+ padding: 12px 16px;
+ text-align: left;
+ vertical-align: top;
+ }
+ th {
+ color: #475569;
+ background: #f8fbff;
+ font-size: 12px;
+ font-weight: 800;
+ }
+ tbody tr:last-child td {
+ border-bottom: 0;
+ }
+ .status-pill,
+ .action-pill {
+ display: inline-flex;
+ align-items: center;
+ min-height: 24px;
+ border: 1px solid #a7c9ff;
+ border-radius: 7px;
+ background: #eaf3ff;
+ color: #075bd8;
+ font-size: 12px;
+ font-weight: 700;
+ padding: 2px 9px;
+ }
+ .action-pill {
+ border-color: #9bdfb8;
+ background: #e9fbf0;
+ color: #067647;
+ }
+ .split-grid {
+ display: grid;
+ grid-template-columns: repeat(2, minmax(0, 1fr));
+ gap: 16px;
+ margin-top: 12px;
+ }
+ .empty {
+ border: 1px dashed var(--line);
+ border-radius: 10px;
+ color: var(--muted);
+ padding: 18px;
+ background: #f8fbff;
+ }
+ @media (max-width: 980px) {
+ body { padding: 20px; }
+ .report-header { display: block; }
+ .toolbar { justify-content: flex-start; margin-top: 16px; }
+ .kpi-grid,
+ .basis-grid,
+ .split-grid { grid-template-columns: 1fr; }
+ }
+ @media print {
+ body { background: #ffffff; padding: 0; }
+ .report-shell { max-width: none; }
+ .toolbar { display: none; }
+ .kpi-card,
+ .basis-card,
+ .section-card { box-shadow: none; break-inside: avoid; }
+ }
+ </style>
 </head>
 <body>
-  <main class="report-shell">
-    <header class="report-header">
-      <div>
-        <h1>项目数据盘点报告</h1>
-        <p class="report-subtitle">Sensitive Data Policy: 默认仅展示脱敏后的聚合事实与待确认线索，不做主观评分；需要人工判断的项统一保留在样本槽与风险清单里。</p>
-        <div class="generated-at">生成时间：${escapeHtml(generatedAt)}</div>
-      </div>
-      <div class="toolbar" aria-label="报告操作">
-        <button type="button" onclick="window.location.reload()"><span class="button-icon">R</span>刷新数据</button>
-        <button class="primary" type="button"><span class="button-icon">JPG</span>导出 JPG</button>
-      </div>
-    </header>
+ <main class="report-shell">
+ <header class="report-header">
+ <div>
+ <h1>项目数据盘点报告</h1>
+ <p class="report-subtitle">Sensitive Data Policy: 默认仅展示脱敏后的聚合事实与待确认线索，不做主观评分；需要人工判断的项统一保留在样本槽与风险清单里。</p>
+ <div class="generated-at">生成时间：${escapeHtml(generatedAt)}</div>
+ </div>
+ <div class="toolbar" aria-label="报告操作">
+ <button type="button" onclick="window.location.reload()"><span class="button-icon">R</span>刷新数据</button>
+ <button class="primary" type="button"><span class="button-icon">JPG</span>导出 JPG</button>
+ </div>
+ </header>
 
-    <section class="kpi-grid" aria-label="项目指标">
-      ${metricCards}
-    </section>
+ <section class="kpi-grid" aria-label="项目指标">
+ ${metricCards}
+ </section>
 
-    <section class="section-card">
-      <div class="section-head">
-        <div>
-          <h2>报价依据</h2>
-          <p class="section-note">面向入库前摸底与报价沟通，仅保留脱敏后的规模、体量和阻断线索。</p>
-        </div>
-      </div>
-      <div class="basis-grid">
-        ${basisCards}
-      </div>
-    </section>
+ <section class="section-card">
+ <div class="section-head">
+ <div>
+ <h2>报价依据</h2>
+ <p class="section-note">面向入库前摸底与报价沟通，仅保留脱敏后的规模、体量和阻断线索。</p>
+ </div>
+ </div>
+ <div class="basis-grid">
+ ${basisCards}
+ </div>
+ </section>
 
-    <section class="section-card">
-      <div class="section-head">
-        <div>
-          <h2>风险分布</h2>
-          <p class="section-note">按后端预检 findings 聚合，等级用于排查优先级，不代表最终主观评分。</p>
-        </div>
-      </div>
-      ${
-        findingRows
-          ? `<div class="table-frame">
-              <table>
-                <thead>
-                  <tr><th>类型</th><th>等级</th><th>数量</th><th>KEY</th></tr>
-                </thead>
-                <tbody>${findingRows}</tbody>
-              </table>
-            </div>`
-          : '<div class="empty">暂无风险分布数据</div>'
-      }
-    </section>
+ <section class="section-card">
+ <div class="section-head">
+ <div>
+ <h2>风险分布</h2>
+ <p class="section-note">按后端预检 findings 聚合，等级用于排查优先级，不代表最终主观评分。</p>
+ </div>
+ </div>
+ ${
+   findingRows
+     ? `<div class="table-frame">
+ <table>
+ <thead>
+ <tr><th>类型</th><th>等级</th><th>数量</th><th>KEY</th></tr>
+ </thead>
+ <tbody>${findingRows}</tbody>
+ </table>
+ </div>`
+     : '<div class="empty">暂无风险分布数据</div>'
+ }
+ </section>
 
-    <div class="split-grid">
-      <section class="section-card">
-        <div class="section-head">
-          <div>
-            <h2>建议 POC 样本</h2>
-            <p class="section-note">优先挑选能代表复杂度、体量和阻断原因的样本。</p>
-          </div>
-        </div>
-        ${
-          pocRows
-            ? `<div class="table-frame">
-                <table>
-                  <thead>
-                    <tr><th>文件</th><th>类型</th><th>大小</th><th>主要风险</th><th>建议动作</th><th>原因</th></tr>
-                  </thead>
-                  <tbody>${pocRows}</tbody>
-                </table>
-              </div>`
-            : '<div class="empty">暂无 POC 样本数据</div>'
-        }
-      </section>
+ <div class="split-grid">
+ <section class="section-card">
+ <div class="section-head">
+ <div>
+ <h2>建议 POC 样本</h2>
+ <p class="section-note">优先挑选能代表复杂度、体量和阻断原因的样本。</p>
+ </div>
+ </div>
+ ${
+   pocRows
+     ? `<div class="table-frame">
+ <table>
+ <thead>
+ <tr><th>文件</th><th>类型</th><th>大小</th><th>主要风险</th><th>建议动作</th><th>原因</th></tr>
+ </thead>
+ <tbody>${pocRows}</tbody>
+ </table>
+ </div>`
+     : '<div class="empty">暂无 POC 样本数据</div>'
+ }
+ </section>
 
-      <section class="section-card">
-        <div class="section-head">
-          <div>
-            <h2>高风险文件</h2>
-            <p class="section-note">用于人工复核与实施排期，不在报告中暴露原始敏感内容。</p>
-          </div>
-        </div>
-        ${
-          highRiskRows
-            ? `<div class="table-frame">
-                <table>
-                  <thead>
-                    <tr><th>文件</th><th>类型</th><th>大小</th><th>风险</th><th>原因</th></tr>
-                  </thead>
-                  <tbody>${highRiskRows}</tbody>
-                </table>
-              </div>`
-            : '<div class="empty">暂无高风险文件数据</div>'
-        }
-      </section>
-    </div>
+ <section class="section-card">
+ <div class="section-head">
+ <div>
+ <h2>高风险文件</h2>
+ <p class="section-note">用于人工复核与实施排期，不在报告中暴露原始敏感内容。</p>
+ </div>
+ </div>
+ ${
+   highRiskRows
+     ? `<div class="table-frame">
+ <table>
+ <thead>
+ <tr><th>文件</th><th>类型</th><th>大小</th><th>风险</th><th>原因</th></tr>
+ </thead>
+ <tbody>${highRiskRows}</tbody>
+ </table>
+ </div>`
+     : '<div class="empty">暂无高风险文件数据</div>'
+ }
+ </section>
+ </div>
 
-    <section class="section-card">
-      <div class="section-head">
-        <div>
-          <h2>当前页面样本</h2>
-          <p class="section-note">导出时页面内可见文件的脱敏状态快照。</p>
-        </div>
-      </div>
-      <div class="table-frame">
-        <table>
-          <thead>
-            <tr>
-              <th>文件</th>
-              <th>状态</th>
-              <th>阶段</th>
-              <th>大小</th>
-              <th>线索</th>
-            </tr>
-          </thead>
-          <tbody>${rows || '<tr><td colspan="5">暂无当前页面样本</td></tr>'}</tbody>
-        </table>
-      </div>
-    </section>
-  </main>
+ <section class="section-card">
+ <div class="section-head">
+ <div>
+ <h2>当前页面样本</h2>
+ <p class="section-note">导出时页面内可见文件的脱敏状态快照。</p>
+ </div>
+ </div>
+ <div class="table-frame">
+ <table>
+ <thead>
+ <tr>
+ <th>文件</th>
+ <th>状态</th>
+ <th>阶段</th>
+ <th>大小</th>
+ <th>线索</th>
+ </tr>
+ </thead>
+ <tbody>${rows || '<tr><td colspan="5">暂无当前页面样本</td></tr>'}</tbody>
+ </table>
+ </div>
+ </section>
+ </main>
 </body>
 </html>`
 }
@@ -688,7 +748,11 @@ function waitForNextPaint(): Promise<void> {
   })
 }
 
-function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality?: number): Promise<Blob> {
+function canvasToBlob(
+  canvas: HTMLCanvasElement,
+  type: string,
+  quality?: number
+): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob(
       (blob) => {
@@ -743,8 +807,12 @@ async function renderReportHtmlToJpeg(html: string, filename: string) {
     await frameDocument.fonts?.ready.catch(() => undefined)
     await waitForNextPaint()
 
-    const getText = (selector: string, root: ParentNode = frameDocument): string =>
-      root.querySelector(selector)?.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+    const getText = (
+      selector: string,
+      root: ParentNode = frameDocument
+    ): string =>
+      root.querySelector(selector)?.textContent?.replace(/\s+/g, ' ').trim() ??
+      ''
     const readCards = (selector: string): CanvasReportCard[] =>
       Array.from(frameDocument.querySelectorAll<HTMLElement>(selector))
         .map((card) => ({
@@ -755,16 +823,20 @@ async function renderReportHtmlToJpeg(html: string, filename: string) {
     const readTable = (section: HTMLElement): CanvasReportTable | null => {
       const table = section.querySelector('table')
       if (!table) return null
-      const headers = Array.from(table.querySelectorAll('thead th')).map((cell) => cell.textContent?.trim() ?? '')
+      const headers = Array.from(table.querySelectorAll('thead th')).map(
+        (cell) => cell.textContent?.trim() ?? ''
+      )
       const rows = Array.from(table.querySelectorAll('tbody tr')).map((row) =>
-        Array.from(row.querySelectorAll('td')).map((cell) => cell.textContent?.replace(/\s+/g, ' ').trim() ?? '')
+        Array.from(row.querySelectorAll('td')).map(
+          (cell) => cell.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+        )
       )
       return headers.length || rows.length ? { headers, rows } : null
     }
     const readSection = (titlePart: string): CanvasReportSection | null => {
-      const section = Array.from(frameDocument.querySelectorAll<HTMLElement>('.section-card, .section')).find((item) =>
-        getText('h2', item).includes(titlePart)
-      )
+      const section = Array.from(
+        frameDocument.querySelectorAll<HTMLElement>('.section-card, .section')
+      ).find((item) => getText('h2', item).includes(titlePart))
       if (!section) return null
       return {
         note: getText('.section-note, .notes', section),
@@ -773,44 +845,73 @@ async function renderReportHtmlToJpeg(html: string, filename: string) {
       }
     }
 
-    const title = getText('.report-header h1') || getText('.title') || frameDocument.title || '项目数据盘点报告'
+    const title =
+      getText('.report-header h1') ||
+      getText('.title') ||
+      frameDocument.title ||
+      '项目数据盘点报告'
     const subtitle = getText('.report-subtitle') || getText('.sub')
     const generatedAt = getText('.generated-at')
     const metricCards = readCards('.kpi-card')
     const fallbackCards = readCards('.grid .card')
-    const kpiCards = metricCards.length ? metricCards : fallbackCards.slice(0, 8)
-    const basisCards = readCards('.basis-card').length ? readCards('.basis-card') : fallbackCards.slice(8, 12)
+    const kpiCards = metricCards.length
+      ? metricCards
+      : fallbackCards.slice(0, 8)
+    const basisCards = readCards('.basis-card').length
+      ? readCards('.basis-card')
+      : fallbackCards.slice(8, 12)
     const riskSection = readSection('风险分布') ?? readSection('问题清单')
     const pocSection = readSection('建议 POC') ?? readSection('代表性样本')
-    const highRiskSection = readSection('高风险文件') ?? readSection('需复核样本')
+    const highRiskSection =
+      readSection('高风险文件') ?? readSection('需复核样本')
     const sampleSection = readSection('当前页面样本')
 
     const width = 1760
     const margin = 36
     const gap = 16
     const contentWidth = width - margin * 2
-    const pixelRatio = Math.min(2, Math.max(1, globalThis.window.devicePixelRatio || 1))
+    const pixelRatio = Math.min(
+      2,
+      Math.max(1, globalThis.window.devicePixelRatio || 1)
+    )
     const canvas = document.createElement('canvas')
     const context = canvas.getContext('2d')
     if (!context) throw new Error('Report image canvas unavailable')
 
     const setFont = (size: number, weight: number | string = 400) => {
-      context.font = `${weight} ${size}px "PingFang SC", "Microsoft YaHei", "Inter", sans-serif`
+      context.font = `${weight} ${size}px"PingFang SC","Microsoft YaHei","Inter", sans-serif`
     }
-    const roundRect = (x: number, y: number, rectWidth: number, rectHeight: number, radius: number) => {
+    const roundRect = (
+      x: number,
+      y: number,
+      rectWidth: number,
+      rectHeight: number,
+      radius: number
+    ) => {
       context.beginPath()
       context.moveTo(x + radius, y)
       context.lineTo(x + rectWidth - radius, y)
       context.quadraticCurveTo(x + rectWidth, y, x + rectWidth, y + radius)
       context.lineTo(x + rectWidth, y + rectHeight - radius)
-      context.quadraticCurveTo(x + rectWidth, y + rectHeight, x + rectWidth - radius, y + rectHeight)
+      context.quadraticCurveTo(
+        x + rectWidth,
+        y + rectHeight,
+        x + rectWidth - radius,
+        y + rectHeight
+      )
       context.lineTo(x + radius, y + rectHeight)
       context.quadraticCurveTo(x, y + rectHeight, x, y + rectHeight - radius)
       context.lineTo(x, y + radius)
       context.quadraticCurveTo(x, y, x + radius, y)
       context.closePath()
     }
-    const drawCardBase = (x: number, y: number, rectWidth: number, rectHeight: number, radius = 14) => {
+    const drawCardBase = (
+      x: number,
+      y: number,
+      rectWidth: number,
+      rectHeight: number,
+      radius = 14
+    ) => {
       context.save()
       context.shadowColor = 'rgba(15, 23, 42, 0.08)'
       context.shadowBlur = 26
@@ -848,14 +949,34 @@ async function renderReportHtmlToJpeg(html: string, filename: string) {
       }
       if (current && lines.length < maxLines) lines.push(current)
       lines.forEach((line, index) => {
-        const suffix = index === maxLines - 1 && chars.join('').length > lines.join('').length ? '...' : ''
+        const suffix =
+          index === maxLines - 1 &&
+          chars.join('').length > lines.join('').length
+            ? '...'
+            : ''
         context.fillText(`${line}${suffix}`, x, y + index * lineHeight)
       })
       return y + Math.max(1, lines.length) * lineHeight
     }
-    const drawMetricCard = (card: CanvasReportCard, index: number, x: number, y: number, rectWidth: number, rectHeight: number) => {
+    const drawMetricCard = (
+      card: CanvasReportCard,
+      index: number,
+      x: number,
+      y: number,
+      rectWidth: number,
+      rectHeight: number
+    ) => {
       drawCardBase(x, y, rectWidth, rectHeight, 12)
-      const tones = ['#1264e8', '#1264e8', '#334155', '#6d47e8', '#0ea5b7', '#6d47e8', '#1264e8', '#0ea5b7']
+      const tones = [
+        '#1264e8',
+        '#1264e8',
+        '#334155',
+        '#6d47e8',
+        '#0ea5b7',
+        '#6d47e8',
+        '#1264e8',
+        '#0ea5b7',
+      ]
       const tone = tones[index % tones.length] ?? '#1264e8'
       context.fillStyle = `${tone}18`
       roundRect(x + 22, y + 24, 60, 60, 16)
@@ -883,9 +1004,13 @@ async function renderReportHtmlToJpeg(html: string, filename: string) {
     ): number => {
       const table = section.table
       const rows = table?.rows.slice(0, options.maxRows ?? 8) ?? []
-      const headers = table?.headers.length ? table.headers : rows[0]?.map((_, index) => `列 ${index + 1}`) ?? []
+      const headers = table?.headers.length
+        ? table.headers
+        : (rows[0]?.map((_, index) => `列 ${index + 1}`) ?? [])
       const rowHeight = 48
-      const tableHeight = headers.length ? 44 + Math.max(1, rows.length) * rowHeight : 58
+      const tableHeight = headers.length
+        ? 44 + Math.max(1, rows.length) * rowHeight
+        : 58
       const noteHeight = section.note ? 22 : 0
       const rectHeight = 70 + noteHeight + tableHeight
       drawCardBase(x, y, rectWidth, rectHeight, 12)
@@ -921,7 +1046,14 @@ async function renderReportHtmlToJpeg(html: string, filename: string) {
       setFont(12, 800)
       context.fillStyle = '#475569'
       headers.forEach((header, index) => {
-        drawTextLines(header, x + 34 + index * columnWidth, tableY + 28, columnWidth - 24, 14, 1)
+        drawTextLines(
+          header,
+          x + 34 + index * columnWidth,
+          tableY + 28,
+          columnWidth - 24,
+          14,
+          1
+        )
       })
       rows.forEach((row, rowIndex) => {
         const currentY = tableY + 44 + rowIndex * rowHeight
@@ -933,7 +1065,14 @@ async function renderReportHtmlToJpeg(html: string, filename: string) {
         setFont(13, rowIndex === 0 ? 650 : 500)
         context.fillStyle = '#0c1730'
         row.slice(0, headers.length).forEach((cell, index) => {
-          drawTextLines(cell || '-', x + 34 + index * columnWidth, currentY + 22, columnWidth - 24, 16, 2)
+          drawTextLines(
+            cell || '-',
+            x + 34 + index * columnWidth,
+            currentY + 22,
+            columnWidth - 24,
+            16,
+            2
+          )
         })
       })
       if (!rows.length) {
@@ -981,7 +1120,14 @@ async function renderReportHtmlToJpeg(html: string, filename: string) {
     kpiCards.slice(0, 8).forEach((card, index) => {
       const col = index % 4
       const row = Math.floor(index / 4)
-      drawMetricCard(card, index, margin + col * (cardWidth + gap), y + row * 124, cardWidth, 108)
+      drawMetricCard(
+        card,
+        index,
+        margin + col * (cardWidth + gap),
+        y + row * 124,
+        cardWidth,
+        108
+      )
     })
     y += kpiRows * 124 + 12
 
@@ -1004,14 +1150,27 @@ async function renderReportHtmlToJpeg(html: string, filename: string) {
     })
     y += 190
 
-    if (riskSection) y = drawSection(riskSection, margin, y, contentWidth, { maxRows: 8 }) + 12
+    if (riskSection)
+      y = drawSection(riskSection, margin, y, contentWidth, { maxRows: 8 }) + 12
     if (pocSection || highRiskSection) {
       const splitWidth = (contentWidth - gap) / 2
-      const leftEnd = pocSection ? drawSection(pocSection, margin, y, splitWidth, { maxRows: 5 }) : y
-      const rightEnd = highRiskSection ? drawSection(highRiskSection, margin + splitWidth + gap, y, splitWidth, { maxRows: 5 }) : y
+      const leftEnd = pocSection
+        ? drawSection(pocSection, margin, y, splitWidth, { maxRows: 5 })
+        : y
+      const rightEnd = highRiskSection
+        ? drawSection(
+            highRiskSection,
+            margin + splitWidth + gap,
+            y,
+            splitWidth,
+            { maxRows: 5 }
+          )
+        : y
       y = Math.max(leftEnd, rightEnd) + 12
     }
-    if (sampleSection) y = drawSection(sampleSection, margin, y, contentWidth, { maxRows: 8 }) + 12
+    if (sampleSection)
+      y =
+        drawSection(sampleSection, margin, y, contentWidth, { maxRows: 8 }) + 12
 
     const jpeg = await canvasToBlob(canvas, 'image/jpeg', 0.94)
     downloadBlob(jpeg, filename)
@@ -1029,7 +1188,9 @@ function anonymizeEvidenceName(name: string): string {
   return `FILE_${hash.toString(36).toUpperCase().padStart(6, '0').slice(-6)}`
 }
 
-function buildDemoPrecheckSummary(documents: Document[]): DatasetPrecheckSummary {
+function buildDemoPrecheckSummary(
+  documents: Document[]
+): DatasetPrecheckSummary {
   return {
     dataset_id: 'demo-dataset',
     scan_run_id: 'demo-run',
@@ -1074,7 +1235,12 @@ function buildDemoPrecheckSummary(documents: Document[]): DatasetPrecheckSummary
     pii_hits_total: { phone: 524, email: 58, id_card: 19 },
     secrets_hits_total: {},
     findings: [
-      { key: 'pdf_scanned', label: '扫描件', severity: 'warning', count: 1_956 },
+      {
+        key: 'pdf_scanned',
+        label: '扫描件',
+        severity: 'warning',
+        count: 1_956,
+      },
       { key: 'parse_failed', label: '解析失败', severity: 'error', count: 412 },
       { key: 'pii', label: '合敏感信息', severity: 'warning', count: 736 },
       { key: 'exact_dup', label: '重复文件', severity: 'info', count: 1_128 },
@@ -1084,7 +1250,9 @@ function buildDemoPrecheckSummary(documents: Document[]): DatasetPrecheckSummary
   }
 }
 
-function buildDemoPrecheckSamples(documents: Document[]): DatasetPrecheckSamplesResponse {
+function buildDemoPrecheckSamples(
+  documents: Document[]
+): DatasetPrecheckSamplesResponse {
   const fileItems: DatasetPrecheckFileOut[] = [
     {
       name: '财务报表_2024Q1.pdf',
@@ -1094,7 +1262,16 @@ function buildDemoPrecheckSamples(documents: Document[]): DatasetPrecheckSamples
       text_characters: 220,
       estimated_text: false,
       pdf_scanned: true,
-      pdf_pages: { page_count: 84, sampled_pages: 10, scanned_pages: 77, text_pages: 5, low_density_pages: 2, unknown_pages: 0, scan_ratio: 0.92, low_density_ratio: 0.02 },
+      pdf_pages: {
+        page_count: 84,
+        sampled_pages: 10,
+        scanned_pages: 77,
+        text_pages: 5,
+        low_density_pages: 2,
+        unknown_pages: 0,
+        scan_ratio: 0.92,
+        low_density_ratio: 0.02,
+      },
       spreadsheet: null,
       pii_hits: {},
       secrets_hits: {},
@@ -1139,7 +1316,16 @@ function buildDemoPrecheckSamples(documents: Document[]): DatasetPrecheckSamples
       text_characters: 2310,
       estimated_text: false,
       pdf_scanned: false,
-      pdf_pages: { page_count: 48, sampled_pages: 10, scanned_pages: 8, text_pages: 34, low_density_pages: 6, unknown_pages: 0, scan_ratio: 0.17, low_density_ratio: 0.12 },
+      pdf_pages: {
+        page_count: 48,
+        sampled_pages: 10,
+        scanned_pages: 8,
+        text_pages: 34,
+        low_density_pages: 6,
+        unknown_pages: 0,
+        scan_ratio: 0.17,
+        low_density_ratio: 0.12,
+      },
       spreadsheet: null,
       pii_hits: {},
       secrets_hits: {},
@@ -1168,12 +1354,20 @@ function buildDemoPrecheckSamples(documents: Document[]): DatasetPrecheckSamples
     strata_count: 4,
     representative: fileItems.slice(0, 3),
     needs_review: {
-      pdf_scanned: fileItems.filter((file) => file.findings.includes('pdf_scanned')),
-      parse_failed: fileItems.filter((file) => file.findings.includes('parse_failed')),
+      pdf_scanned: fileItems.filter((file) =>
+        file.findings.includes('pdf_scanned')
+      ),
+      parse_failed: fileItems.filter((file) =>
+        file.findings.includes('parse_failed')
+      ),
       pii: fileItems.filter((file) => file.findings.includes('pii')),
     },
-    top_large_files: [...fileItems].sort((left, right) => right.file_size - left.file_size).slice(0, 5),
-    top_long_text: [...fileItems].sort((left, right) => right.text_characters - left.text_characters).slice(0, 5),
+    top_large_files: [...fileItems]
+      .sort((left, right) => right.file_size - left.file_size)
+      .slice(0, 5),
+    top_long_text: [...fileItems]
+      .sort((left, right) => right.text_characters - left.text_characters)
+      .slice(0, 5),
   }
 }
 
@@ -1183,7 +1377,9 @@ function buildDemoNearDupResponse(): DatasetPrecheckNearDupResponse {
     max_pairs: 20,
     pairs_returned: 2,
     clusters_returned: 1,
-    clusters: [{ id: 'demo-cluster-1', members: ['FILE_00A1BC', 'FILE_00A1BD'] }],
+    clusters: [
+      { id: 'demo-cluster-1', members: ['FILE_00A1BC', 'FILE_00A1BD'] },
+    ],
     pairs: [
       { a: 'FILE_00A1BC', b: 'FILE_00A1BD', distance: 2 },
       { a: 'FILE_00A1BE', b: 'FILE_00A1BF', distance: 3 },
@@ -1206,7 +1402,10 @@ function LoadingWireframe() {
             <div className="h-12 rounded-[1rem] border border-border/50" />
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               {Array.from({ length: 4 }).map((_, index) => (
-                <div key={index} className="h-24 rounded-[1.25rem] border border-dashed border-border/60 bg-muted/20" />
+                <div
+                  key={index}
+                  className="h-24 rounded-[1.25rem] border border-dashed border-border/60 bg-muted/20"
+                />
               ))}
             </div>
             <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
@@ -1239,8 +1438,10 @@ type SalesEvidenceTableRow = {
   iconTone: string
 }
 
-const SALES_PANEL_CLASS = 'rounded-[1rem] border border-border/55 bg-background/92 shadow-[0_14px_28px_-24px_rgba(15,23,42,0.12)]'
-const SALES_PANEL_INSET_CLASS = 'rounded-[0.9rem] border border-border/50 bg-background/82'
+const SALES_PANEL_CLASS =
+  'rounded-[1rem] border border-border/55 bg-background/92 shadow-[0_14px_28px_-24px_rgba(15,23,42,0.12)]'
+const SALES_PANEL_INSET_CLASS =
+  'rounded-[0.9rem] border border-border/50 bg-background/82'
 const SALES_SUMMARY_STRIP_CLASS =
   'overflow-hidden rounded-[1rem] border border-border/55 bg-background/72 shadow-[0_12px_28px_-24px_rgba(15,23,42,0.1)]'
 
@@ -1268,7 +1469,11 @@ function SalesPanelHeader({
           <Icon className={cn('h-3 w-3 shrink-0', iconTone)} />
           <span className="truncate">{title}</span>
         </div>
-        {subtitle ? <div className="mt-0.5 pl-[18px] text-[8px] leading-3 text-muted-foreground">{subtitle}</div> : null}
+        {subtitle ? (
+          <div className="mt-0.5 pl-[18px] text-[8px] leading-3 text-muted-foreground">
+            {subtitle}
+          </div>
+        ) : null}
       </div>
       {actionLabel ? (
         <button
@@ -1292,17 +1497,28 @@ export default function KnowledgeIngestionPageClient() {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const dropZoneRef = useRef<DropZoneHandle>(null)
   const demoMode = searchParams.get('demo') === '1'
-  const mode: IngestionMode = searchParams.get('mode') === 'execution-monitor' ? 'execution-monitor' : 'sales-audit'
-  const [datasetScope, setDatasetScope] = useState(searchParams.get('datasetId') || DATASET_ALL)
+  const mode: IngestionMode =
+    searchParams.get('mode') === 'execution-monitor'
+      ? 'execution-monitor'
+      : 'sales-audit'
+  const [datasetScope, setDatasetScope] = useState(
+    searchParams.get('datasetId') || DATASET_ALL
+  )
   const [desktopScopeCollapsed, setDesktopScopeCollapsed] = useState(false)
   const [headerCollapsed, setHeaderCollapsed] = useState(false)
   const [selectedReason, setSelectedReason] = useState<string | null>(null)
-  const [auditDispositionFilter, setAuditDispositionFilter] = useState<AuditDispositionFilter>('all')
+  const [auditDispositionFilter, setAuditDispositionFilter] =
+    useState<AuditDispositionFilter>('all')
   const [selectedAuditIds, setSelectedAuditIds] = useState<string[]>([])
-  const [sampleDispositions, setSampleDispositions] = useState<Record<string, SampleDisposition>>({})
+  const [sampleDispositions, setSampleDispositions] = useState<
+    Record<string, SampleDisposition>
+  >({})
   const [activeDetailId, setActiveDetailId] = useState<string | null>(null)
-  const [selectedEvidenceFile, setSelectedEvidenceFile] = useState<DatasetPrecheckFileOut | null>(null)
-  const [velocityUnit, setVelocityUnit] = useState<'docs' | 'bytes'>(readStoredVelocityUnit)
+  const [selectedEvidenceFile, setSelectedEvidenceFile] =
+    useState<DatasetPrecheckFileOut | null>(null)
+  const [velocityUnit, setVelocityUnit] = useState<'docs' | 'bytes'>(
+    readStoredVelocityUnit
+  )
   const [canvasGlow, setCanvasGlow] = useState({ x: 36, y: 24 })
   const [successPulseVisible, setSuccessPulseVisible] = useState(false)
   const [renderTimestamp] = useState(() => Date.now())
@@ -1343,25 +1559,29 @@ export default function KnowledgeIngestionPageClient() {
     refetchInterval: demoMode ? false : 25_000,
   })
 
-  const taskQueueQuery = useQuery<TaskQueueObservabilitySnapshotResponse | null>({
-    queryKey: ['knowledge-ingestion-task-queue'],
-    queryFn: async () => {
-      try {
-        return await observabilityApi.getTaskQueueSnapshot()
-      } catch {
-        return null
-      }
-    },
-    enabled: mode === 'execution-monitor' && !demoMode,
-    staleTime: 10_000,
-    refetchInterval: demoMode ? false : 25_000,
-  })
+  const taskQueueQuery =
+    useQuery<TaskQueueObservabilitySnapshotResponse | null>({
+      queryKey: ['knowledge-ingestion-task-queue'],
+      queryFn: async () => {
+        try {
+          return await observabilityApi.getTaskQueueSnapshot()
+        } catch {
+          return null
+        }
+      },
+      enabled: mode === 'execution-monitor' && !demoMode,
+      staleTime: 10_000,
+      refetchInterval: demoMode ? false : 25_000,
+    })
 
   const precheckRunsQuery = useQuery({
     queryKey: ['knowledge-ingestion-precheck-runs', selectedDatasetId],
     queryFn: async () => {
       if (!selectedDatasetId) return []
-      const response = await datasetApi.listPrecheckScanRuns(selectedDatasetId, { skip: 0, limit: 20 })
+      const response = await datasetApi.listPrecheckScanRuns(
+        selectedDatasetId,
+        { skip: 0, limit: 20 }
+      )
       return response.items ?? []
     },
     enabled: Boolean(selectedDatasetId) && !demoMode,
@@ -1370,44 +1590,71 @@ export default function KnowledgeIngestionPageClient() {
 
   const latestPrecheckRun = useMemo(
     () =>
-      (precheckRunsQuery.data ?? []).find((run) => String(run.status || '').toLowerCase() === 'completed') ??
+      (precheckRunsQuery.data ?? []).find(
+        (run) => String(run.status || '').toLowerCase() === 'completed'
+      ) ??
       (precheckRunsQuery.data ?? [])[0] ??
       null,
     [precheckRunsQuery.data]
   )
 
   const precheckSummaryQuery = useQuery<DatasetPrecheckSummary | null>({
-    queryKey: ['knowledge-ingestion-precheck-summary', selectedDatasetId, latestPrecheckRun?.id],
+    queryKey: [
+      'knowledge-ingestion-precheck-summary',
+      selectedDatasetId,
+      latestPrecheckRun?.id,
+    ],
     queryFn: async () => {
       if (!selectedDatasetId || !latestPrecheckRun?.id) return null
-      return await datasetApi.getPrecheckSummary(selectedDatasetId, latestPrecheckRun.id)
+      return await datasetApi.getPrecheckSummary(
+        selectedDatasetId,
+        latestPrecheckRun.id
+      )
     },
     enabled: Boolean(selectedDatasetId && latestPrecheckRun?.id) && !demoMode,
     staleTime: 10_000,
   })
 
   const precheckSamplesQuery = useQuery<DatasetPrecheckSamplesResponse | null>({
-    queryKey: ['knowledge-ingestion-precheck-samples', selectedDatasetId, latestPrecheckRun?.id],
+    queryKey: [
+      'knowledge-ingestion-precheck-samples',
+      selectedDatasetId,
+      latestPrecheckRun?.id,
+    ],
     queryFn: async () => {
       if (!selectedDatasetId || !latestPrecheckRun?.id) return null
-      return await datasetApi.getPrecheckSamples(selectedDatasetId, latestPrecheckRun.id, { prefer_artifact: true, size: 12 })
+      return await datasetApi.getPrecheckSamples(
+        selectedDatasetId,
+        latestPrecheckRun.id,
+        { prefer_artifact: true, size: 12 }
+      )
     },
     enabled: Boolean(selectedDatasetId && latestPrecheckRun?.id) && !demoMode,
     staleTime: 10_000,
   })
 
   const precheckNearDupQuery = useQuery<DatasetPrecheckNearDupResponse | null>({
-    queryKey: ['knowledge-ingestion-precheck-near-dup', selectedDatasetId, latestPrecheckRun?.id],
+    queryKey: [
+      'knowledge-ingestion-precheck-near-dup',
+      selectedDatasetId,
+      latestPrecheckRun?.id,
+    ],
     queryFn: async () => {
       if (!selectedDatasetId || !latestPrecheckRun?.id) return null
-      return await datasetApi.getPrecheckNearDups(selectedDatasetId, latestPrecheckRun.id)
+      return await datasetApi.getPrecheckNearDups(
+        selectedDatasetId,
+        latestPrecheckRun.id
+      )
     },
     enabled: Boolean(selectedDatasetId && latestPrecheckRun?.id) && !demoMode,
     staleTime: 10_000,
   })
 
   const documents = useMemo(
-    () => (demoMode ? buildDemoDocuments(documentsQuery.data ?? []) : documentsQuery.data ?? []),
+    () =>
+      demoMode
+        ? buildDemoDocuments(documentsQuery.data ?? [])
+        : (documentsQuery.data ?? []),
     [demoMode, documentsQuery.data]
   )
   const summary = useMemo(
@@ -1424,21 +1671,33 @@ export default function KnowledgeIngestionPageClient() {
     return 'Broker 正常'
   }, [demoMode, taskQueueQuery.isFetching, taskQueueSnapshot])
   const taskQueueStatusTone = useMemo(() => {
-    if (demoMode || !taskQueueSnapshot) return 'border-border/18 bg-muted/[0.08] text-foreground'
-    if (!taskQueueSnapshot.enabled) return 'border-warning/18 bg-warning/[0.08] text-warning'
-    if (!taskQueueSnapshot.broker_up) return 'border-rose/18 bg-rose/[0.08] text-rose'
+    if (demoMode || !taskQueueSnapshot)
+      return 'border-border/18 bg-muted/[0.08] text-foreground'
+    if (!taskQueueSnapshot.enabled)
+      return 'border-warning/18 bg-warning/[0.08] text-warning'
+    if (!taskQueueSnapshot.broker_up)
+      return 'border-rose/18 bg-rose/[0.08] text-rose'
     return 'border-success/18 bg-success/[0.08] text-success'
   }, [demoMode, taskQueueSnapshot])
   const salesAuditSummary = useMemo(
-    () => (demoMode ? buildDemoPrecheckSummary(documents) : precheckSummaryQuery.data ?? null),
+    () =>
+      demoMode
+        ? buildDemoPrecheckSummary(documents)
+        : (precheckSummaryQuery.data ?? null),
     [demoMode, documents, precheckSummaryQuery.data]
   )
   const salesAuditSamples = useMemo(
-    () => (demoMode ? buildDemoPrecheckSamples(documents) : precheckSamplesQuery.data ?? null),
+    () =>
+      demoMode
+        ? buildDemoPrecheckSamples(documents)
+        : (precheckSamplesQuery.data ?? null),
     [demoMode, documents, precheckSamplesQuery.data]
   )
   const salesAuditNearDup = useMemo(
-    () => (demoMode ? buildDemoNearDupResponse() : precheckNearDupQuery.data ?? null),
+    () =>
+      demoMode
+        ? buildDemoNearDupResponse()
+        : (precheckNearDupQuery.data ?? null),
     [demoMode, precheckNearDupQuery.data]
   )
 
@@ -1475,7 +1734,10 @@ export default function KnowledgeIngestionPageClient() {
 
   const selectedDatasetLabel = useMemo(() => {
     if (!selectedDatasetId) return '全部项目'
-    return datasets.find((dataset) => dataset.id === selectedDatasetId)?.name || selectedDatasetId
+    return (
+      datasets.find((dataset) => dataset.id === selectedDatasetId)?.name ||
+      selectedDatasetId
+    )
   }, [datasets, selectedDatasetId])
 
   const statusCounts = useMemo(
@@ -1489,7 +1751,10 @@ export default function KnowledgeIngestionPageClient() {
     [summary.by_status]
   )
 
-  const throughputRows = useMemo(() => buildThroughputAreaRows(summary.timeseries), [summary.timeseries])
+  const throughputRows = useMemo(
+    () => buildThroughputAreaRows(summary.timeseries),
+    [summary.timeseries]
+  )
   const docsPerMinute = useMemo(
     () =>
       computeDocsPerMinute(
@@ -1502,38 +1767,73 @@ export default function KnowledgeIngestionPageClient() {
       ),
     [throughputRows]
   )
-  const megabytesPerSecond = useMemo(() => computeMegabytesPerSecond(documents), [documents])
-  const durationPercentiles = useMemo(() => computeDurationPercentiles(documents), [documents])
-  const meanFileSize = useMemo(() => computeMeanFileSize(documents), [documents])
-  const fileTypeDistribution = useMemo(() => buildFileTypeDistribution(documents), [documents])
-  const fileSizeDistribution = useMemo(() => buildFileSizeDistribution(documents), [documents])
-  const pdfDisposition = useMemo(() => buildPdfDispositionBreakdown(documents), [documents])
+  const megabytesPerSecond = useMemo(
+    () => computeMegabytesPerSecond(documents),
+    [documents]
+  )
+  const durationPercentiles = useMemo(
+    () => computeDurationPercentiles(documents),
+    [documents]
+  )
+  const meanFileSize = useMemo(
+    () => computeMeanFileSize(documents),
+    [documents]
+  )
+  const fileTypeDistribution = useMemo(
+    () => buildFileTypeDistribution(documents),
+    [documents]
+  )
+  const fileSizeDistribution = useMemo(
+    () => buildFileSizeDistribution(documents),
+    [documents]
+  )
+  const pdfDisposition = useMemo(
+    () => buildPdfDispositionBreakdown(documents),
+    [documents]
+  )
 
   const reviewQueue = statusCounts.failed + statusCounts.quarantined
   const pendingQueue = statusCounts.processing + statusCounts.pending
-  const approvedCount = Object.values(sampleDispositions).filter((value) => value === 'approved').length
-  const manualCount = Object.values(sampleDispositions).filter((value) => value === 'manual').length
+  const approvedCount = Object.values(sampleDispositions).filter(
+    (value) => value === 'approved'
+  ).length
+  const manualCount = Object.values(sampleDispositions).filter(
+    (value) => value === 'manual'
+  ).length
   const readyRate = documents.length
-    ? Math.round(((statusCounts.completed + approvedCount) / documents.length) * 100)
+    ? Math.round(
+        ((statusCounts.completed + approvedCount) / documents.length) * 100
+      )
     : 0
 
   const auditCandidates = useMemo(() => {
     const prioritised = documents.filter(
       (document) =>
-        ['failed', 'quarantined', 'processing', 'pending'].includes(String(document.status)) || Boolean(document.error_message)
+        ['failed', 'quarantined', 'processing', 'pending'].includes(
+          String(document.status)
+        ) || Boolean(document.error_message)
     )
     return (prioritised.length ? prioritised : documents).slice(0, 10)
   }, [documents])
 
   const reasonFilteredAuditSamples = useMemo(
-    () => auditCandidates.filter((document) => matchesReasonFilter(document, selectedReason)),
+    () =>
+      auditCandidates.filter((document) =>
+        matchesReasonFilter(document, selectedReason)
+      ),
     [auditCandidates, selectedReason]
   )
 
   const auditRailCounts = useMemo(() => {
-    const pending = reasonFilteredAuditSamples.filter((document) => !sampleDispositions[document.id]).length
-    const approved = reasonFilteredAuditSamples.filter((document) => sampleDispositions[document.id] === 'approved').length
-    const manual = reasonFilteredAuditSamples.filter((document) => sampleDispositions[document.id] === 'manual').length
+    const pending = reasonFilteredAuditSamples.filter(
+      (document) => !sampleDispositions[document.id]
+    ).length
+    const approved = reasonFilteredAuditSamples.filter(
+      (document) => sampleDispositions[document.id] === 'approved'
+    ).length
+    const manual = reasonFilteredAuditSamples.filter(
+      (document) => sampleDispositions[document.id] === 'manual'
+    ).length
 
     return {
       total: reasonFilteredAuditSamples.length,
@@ -1554,7 +1854,8 @@ export default function KnowledgeIngestionPageClient() {
   }, [auditDispositionFilter, reasonFilteredAuditSamples, sampleDispositions])
 
   const selectedAuditDocuments = useMemo(
-    () => documents.filter((document) => selectedAuditIds.includes(document.id)),
+    () =>
+      documents.filter((document) => selectedAuditIds.includes(document.id)),
     [documents, selectedAuditIds]
   )
 
@@ -1562,7 +1863,9 @@ export default function KnowledgeIngestionPageClient() {
     () => documents.find((document) => document.id === activeDetailId) || null,
     [activeDetailId, documents]
   )
-  const activeAuditIsDemo = Boolean(activeAuditDocument?.id?.startsWith('demo-'))
+  const activeAuditIsDemo = Boolean(
+    activeAuditDocument?.id?.startsWith('demo-')
+  )
 
   const executionRuntimeLabel = useMemo(() => {
     const startMs = new Date(String(summary.window_start || '')).getTime()
@@ -1572,18 +1875,27 @@ export default function KnowledgeIngestionPageClient() {
     }
 
     const timestamps = documents
-      .flatMap((document) => [document.created_at, document.updated_at, document.processed_at].filter(Boolean))
+      .flatMap((document) =>
+        [
+          document.created_at,
+          document.updated_at,
+          document.processed_at,
+        ].filter(Boolean)
+      )
       .map((value) => new Date(String(value)).getTime())
       .filter((value) => Number.isFinite(value))
       .sort((left, right) => left - right)
     if (timestamps.length >= 2) {
-      return formatDurationClock((timestamps[timestamps.length - 1] - timestamps[0]) / 1000)
+      return formatDurationClock(
+        (timestamps[timestamps.length - 1] - timestamps[0]) / 1000
+      )
     }
     return '00:00:00'
   }, [documents, summary.window_end, summary.window_start])
 
   const executionProcessedTotal = useMemo(
-    () => statusCounts.completed + statusCounts.failed + statusCounts.quarantined,
+    () =>
+      statusCounts.completed + statusCounts.failed + statusCounts.quarantined,
     [statusCounts.completed, statusCounts.failed, statusCounts.quarantined]
   )
 
@@ -1594,7 +1906,11 @@ export default function KnowledgeIngestionPageClient() {
 
   const executionRetryRate = useMemo(() => {
     if (!executionProcessedTotal) return 0
-    return Math.round(((statusCounts.failed + statusCounts.quarantined) / executionProcessedTotal) * 100)
+    return Math.round(
+      ((statusCounts.failed + statusCounts.quarantined) /
+        executionProcessedTotal) *
+        100
+    )
   }, [executionProcessedTotal, statusCounts.failed, statusCounts.quarantined])
 
   const executionOcrUsageRate = useMemo(() => {
@@ -1614,24 +1930,56 @@ export default function KnowledgeIngestionPageClient() {
 
   const executionTopStripItems = useMemo(
     () => [
-      { label: '范围', value: selectedDatasetLabel, icon: FolderOpen, tone: 'text-info', detail: '全部项目' },
+      {
+        label: '范围',
+        value: selectedDatasetLabel,
+        icon: FolderOpen,
+        tone: 'text-info',
+        detail: '全部项目',
+      },
       {
         label: '队列深度',
-        value: taskQueueSnapshot?.queue_depth == null ? '--' : `${taskQueueSnapshot.queue_depth}`,
+        value:
+          taskQueueSnapshot?.queue_depth == null
+            ? '--'
+            : `${taskQueueSnapshot.queue_depth}`,
         icon: ListTodo,
         tone: taskQueueSnapshot?.broker_up ? 'text-success' : 'text-warning',
         detail: taskQueueSnapshot?.queue_name || 'task queue',
       },
       {
         label: '活跃 Worker',
-        value: taskQueueSnapshot?.workers_active == null ? '--' : `${taskQueueSnapshot.workers_active}`,
+        value:
+          taskQueueSnapshot?.workers_active == null
+            ? '--'
+            : `${taskQueueSnapshot.workers_active}`,
         icon: Activity,
-        tone: taskQueueSnapshot?.workers_active ? 'text-success' : 'text-muted-foreground',
+        tone: taskQueueSnapshot?.workers_active
+          ? 'text-success'
+          : 'text-muted-foreground',
         detail: taskQueueStatusLabel,
       },
-      { label: '待人工处理', value: `${reviewQueue + manualCount}`, icon: ShieldAlert, tone: 'text-warning', detail: '待确认清单' },
-      { label: '当前吞吐', value: `${docsPerMinute?.toFixed(1) ?? '0.0'} docs/min`, icon: Activity, tone: 'text-accent', detail: '近 5 分钟均值' },
-      { label: '运行时长', value: executionRuntimeLabel, icon: Clock3, tone: 'text-success', detail: '窗口时长' },
+      {
+        label: '待人工处理',
+        value: `${reviewQueue + manualCount}`,
+        icon: ShieldAlert,
+        tone: 'text-warning',
+        detail: '待确认清单',
+      },
+      {
+        label: '当前吞吐',
+        value: `${docsPerMinute?.toFixed(1) ?? '0.0'} docs/min`,
+        icon: Activity,
+        tone: 'text-accent',
+        detail: '近 5 分钟均值',
+      },
+      {
+        label: '运行时长',
+        value: executionRuntimeLabel,
+        icon: Clock3,
+        tone: 'text-success',
+        detail: '窗口时长',
+      },
     ],
     [
       docsPerMinute,
@@ -1655,7 +2003,11 @@ export default function KnowledgeIngestionPageClient() {
 
     const mapped = topReasons.map(([reason, count], index) => {
       const lower = reason.toLowerCase()
-      if (lower.includes('pii') || lower.includes('phone') || lower.includes('email')) {
+      if (
+        lower.includes('pii') ||
+        lower.includes('phone') ||
+        lower.includes('email')
+      ) {
         return {
           title: '潜在 PII 检测',
           detail: reason,
@@ -1675,7 +2027,10 @@ export default function KnowledgeIngestionPageClient() {
         title: reason,
         detail: index === 0 ? '需尽快人工复核并分流' : '建议加入阻塞跟踪',
         count: Number(count),
-        tone: index === 0 ? 'border-rose/18 bg-rose/[0.06] text-rose' : 'border-border/18 bg-muted/[0.05] text-foreground/85',
+        tone:
+          index === 0
+            ? 'border-rose/18 bg-rose/[0.06] text-rose'
+            : 'border-border/18 bg-muted/[0.05] text-foreground/85',
       }
     })
 
@@ -1708,7 +2063,8 @@ export default function KnowledgeIngestionPageClient() {
   }, [documents.length, executionProcessedTotal])
 
   const executionPipelineCards = useMemo(() => {
-    const parserDone = statusCounts.completed + statusCounts.failed + statusCounts.quarantined
+    const parserDone =
+      statusCounts.completed + statusCounts.failed + statusCounts.quarantined
     const parserFailures = statusCounts.failed + statusCounts.quarantined
     const chunkerProcessing = statusCounts.processing
     const chunkerWaiting = statusCounts.pending
@@ -1735,7 +2091,12 @@ export default function KnowledgeIngestionPageClient() {
         metrics: [
           ['进行中', `${chunkerProcessing}`],
           ['等待中', `${chunkerWaiting}`],
-          ['耗时', durationPercentiles.p50 ? `${durationPercentiles.p50.toFixed(1)}m` : '--'],
+          [
+            '耗时',
+            durationPercentiles.p50
+              ? `${durationPercentiles.p50.toFixed(1)}m`
+              : '--',
+          ],
         ],
       },
       {
@@ -1776,11 +2137,28 @@ export default function KnowledgeIngestionPageClient() {
 
   const executionKpiCards = useMemo(
     () => [
-      { label: '处理效率', value: `${docsPerMinute?.toFixed(1) ?? '0.0'}`, suffix: 'docs/min', icon: Activity, tone: 'text-info', detail: '近 5 分钟平均' },
-      { label: '平均处理耗时', value: executionAverageDuration.replace(' / 文件', ''), suffix: '/ 文件', icon: Clock3, tone: 'text-indigo', detail: '近 5 分钟平均' },
+      {
+        label: '处理效率',
+        value: `${docsPerMinute?.toFixed(1) ?? '0.0'}`,
+        suffix: 'docs/min',
+        icon: Activity,
+        tone: 'text-info',
+        detail: '近 5 分钟平均',
+      },
+      {
+        label: '平均处理耗时',
+        value: executionAverageDuration.replace(' / 文件', ''),
+        suffix: '/ 文件',
+        icon: Clock3,
+        tone: 'text-indigo',
+        detail: '近 5 分钟平均',
+      },
       {
         label: '队列深度',
-        value: taskQueueSnapshot?.queue_depth == null ? '--' : `${taskQueueSnapshot.queue_depth}`,
+        value:
+          taskQueueSnapshot?.queue_depth == null
+            ? '--'
+            : `${taskQueueSnapshot.queue_depth}`,
         suffix: '',
         icon: ListTodo,
         tone: taskQueueSnapshot?.broker_up ? 'text-success' : 'text-warning',
@@ -1788,16 +2166,49 @@ export default function KnowledgeIngestionPageClient() {
       },
       {
         label: '活跃 Worker',
-        value: taskQueueSnapshot?.workers_active == null ? '--' : `${taskQueueSnapshot.workers_active}`,
+        value:
+          taskQueueSnapshot?.workers_active == null
+            ? '--'
+            : `${taskQueueSnapshot.workers_active}`,
         suffix: '',
         icon: Activity,
-        tone: taskQueueSnapshot?.workers_active ? 'text-success' : 'text-muted-foreground',
+        tone: taskQueueSnapshot?.workers_active
+          ? 'text-success'
+          : 'text-muted-foreground',
         detail: taskQueueStatusLabel,
       },
-      { label: 'OCR 使用率', value: `${executionOcrUsageRate}%`, suffix: '', icon: Gauge, tone: 'text-success', detail: `${pdfDisposition.reduce((sum, item) => sum + item.count, 0)} 个 PDF` },
-      { label: '解析成功率', value: `${executionSuccessRate}%`, suffix: '', icon: CheckCircle2, tone: 'text-success', detail: `${statusCounts.completed} / ${Math.max(1, executionProcessedTotal)} 成功` },
-      { label: '失败重试率', value: `${executionRetryRate}%`, suffix: '', icon: RefreshCcw, tone: 'text-warning', detail: `${statusCounts.failed + statusCounts.quarantined} / ${Math.max(1, executionProcessedTotal)} 文件` },
-      { label: '队列总数', value: `${pendingQueue}`, suffix: '', icon: ListTodo, tone: 'text-accent', detail: '等待处理' },
+      {
+        label: 'OCR 使用率',
+        value: `${executionOcrUsageRate}%`,
+        suffix: '',
+        icon: Gauge,
+        tone: 'text-success',
+        detail: `${pdfDisposition.reduce((sum, item) => sum + item.count, 0)} 个 PDF`,
+      },
+      {
+        label: '解析成功率',
+        value: `${executionSuccessRate}%`,
+        suffix: '',
+        icon: CheckCircle2,
+        tone: 'text-success',
+        detail: `${statusCounts.completed} / ${Math.max(1, executionProcessedTotal)} 成功`,
+      },
+      {
+        label: '失败重试率',
+        value: `${executionRetryRate}%`,
+        suffix: '',
+        icon: RefreshCcw,
+        tone: 'text-warning',
+        detail: `${statusCounts.failed + statusCounts.quarantined} / ${Math.max(1, executionProcessedTotal)} 文件`,
+      },
+      {
+        label: '队列总数',
+        value: `${pendingQueue}`,
+        suffix: '',
+        icon: ListTodo,
+        tone: 'text-accent',
+        detail: '等待处理',
+      },
     ],
     [
       docsPerMinute,
@@ -1822,11 +2233,19 @@ export default function KnowledgeIngestionPageClient() {
   const recentQueueOutcomes = useMemo(() => {
     const outcomes = taskQueueSnapshot?.recent_job_outcomes ?? []
     return outcomes.slice(0, 5).map((item, index) => {
-      const jobName = String(item.job_name || item.run_id || item.document_id || `job-${index + 1}`)
+      const jobName = String(
+        item.job_name || item.run_id || item.document_id || `job-${index + 1}`
+      )
       const ok = item.ok === true
-      const finishedAt = item.finished_at ? String(item.finished_at) : taskQueueSnapshot?.generated_at || renderTimestamp
+      const finishedAt = item.finished_at
+        ? String(item.finished_at)
+        : taskQueueSnapshot?.generated_at || renderTimestamp
       const elapsed = Number(item.elapsed_sec || 0)
-      const reason = item.reason ? String(item.reason) : ok ? '任务完成' : '任务失败或被跳过'
+      const reason = item.reason
+        ? String(item.reason)
+        : ok
+          ? '任务完成'
+          : '任务失败或被跳过'
       return {
         detail: `${jobName} · ${elapsed ? `${elapsed.toFixed(2)}s` : reason}`,
         id: `${jobName}-${index}`,
@@ -1835,15 +2254,25 @@ export default function KnowledgeIngestionPageClient() {
         tone: ok ? 'bg-success' : 'bg-rose',
       }
     })
-  }, [renderTimestamp, taskQueueSnapshot?.generated_at, taskQueueSnapshot?.recent_job_outcomes])
+  }, [
+    renderTimestamp,
+    taskQueueSnapshot?.generated_at,
+    taskQueueSnapshot?.recent_job_outcomes,
+  ])
 
   const executionRecentLogs = useMemo(() => {
     if (recentQueueOutcomes.length) return recentQueueOutcomes
 
     return [...documents]
       .sort((left, right) => {
-        const rightTs = new Date(String(right.updated_at || right.processed_at || right.created_at || '')).getTime()
-        const leftTs = new Date(String(left.updated_at || left.processed_at || left.created_at || '')).getTime()
+        const rightTs = new Date(
+          String(
+            right.updated_at || right.processed_at || right.created_at || ''
+          )
+        ).getTime()
+        const leftTs = new Date(
+          String(left.updated_at || left.processed_at || left.created_at || '')
+        ).getTime()
         return rightTs - leftTs
       })
       .slice(0, 5)
@@ -1851,7 +2280,12 @@ export default function KnowledgeIngestionPageClient() {
         const status = String(document.status || '').toLowerCase()
         return {
           id: document.id,
-          time: formatClockSecondsLabel(document.updated_at || document.processed_at || document.created_at || renderTimestamp),
+          time: formatClockSecondsLabel(
+            document.updated_at ||
+              document.processed_at ||
+              document.created_at ||
+              renderTimestamp
+          ),
           stage: String(document.current_stage || '系统'),
           detail:
             status === 'failed'
@@ -1859,7 +2293,12 @@ export default function KnowledgeIngestionPageClient() {
               : status === 'completed'
                 ? `解析成功：${document.filename}`
                 : `开始解析：${document.filename}`,
-          tone: status === 'failed' ? 'bg-rose' : status === 'completed' ? 'bg-success' : 'bg-muted-foreground/40',
+          tone:
+            status === 'failed'
+              ? 'bg-rose'
+              : status === 'completed'
+                ? 'bg-success'
+                : 'bg-muted-foreground/40',
         }
       })
   }, [documents, recentQueueOutcomes, renderTimestamp])
@@ -1867,8 +2306,14 @@ export default function KnowledgeIngestionPageClient() {
   const executionTaskRows = useMemo(() => {
     return [...documents]
       .sort((left, right) => {
-        const rightTs = new Date(String(right.updated_at || right.processed_at || right.created_at || '')).getTime()
-        const leftTs = new Date(String(left.updated_at || left.processed_at || left.created_at || '')).getTime()
+        const rightTs = new Date(
+          String(
+            right.updated_at || right.processed_at || right.created_at || ''
+          )
+        ).getTime()
+        const leftTs = new Date(
+          String(left.updated_at || left.processed_at || left.created_at || '')
+        ).getTime()
         return rightTs - leftTs
       })
       .slice(0, 8)
@@ -1882,14 +2327,22 @@ export default function KnowledgeIngestionPageClient() {
     const stepMinutes = summary.bucket_minutes || 20
     return Array.from({ length: 3 }, (_, index) => ({
       ts: (last?.ts ?? renderTimestamp) + (index + 1) * stepMinutes * 60_000,
-      total: Number((base + ((rate * stepMinutes) / 60) * (index + 1)).toFixed(1)),
+      total: Number(
+        (base + ((rate * stepMinutes) / 60) * (index + 1)).toFixed(1)
+      ),
     }))
   }, [docsPerMinute, renderTimestamp, summary.bucket_minutes, throughputRows])
 
   const predictionOption = useMemo<EChartsOption>(() => {
     const actualSeries = throughputRows.map((row) => [row.ts, row.total])
     const forecastSeries = actualSeries.length
-      ? [[actualSeries[actualSeries.length - 1][0], actualSeries[actualSeries.length - 1][1]], ...forecastPoints.map((row) => [row.ts, row.total])]
+      ? [
+          [
+            actualSeries[actualSeries.length - 1][0],
+            actualSeries[actualSeries.length - 1][1],
+          ],
+          ...forecastPoints.map((row) => [row.ts, row.total]),
+        ]
       : []
 
     return {
@@ -1947,56 +2400,74 @@ export default function KnowledgeIngestionPageClient() {
   }, [forecastPoints, throughputRows])
 
   const ocrRadarValues = useMemo(() => {
-    const pdfCount = documents.filter((document) => String(document.file_type || '').toLowerCase() === 'pdf').length
+    const pdfCount = documents.filter(
+      (document) => String(document.file_type || '').toLowerCase() === 'pdf'
+    ).length
     const meanSizeMb = meanFileSize / (1024 * 1024)
     const formatVariety = Math.min(100, fileTypeDistribution.length * 18)
     const ocrComplexity = Math.min(100, pdfCount * 18 + meanSizeMb * 8)
     const formatRegularity = Math.max(12, 100 - formatVariety)
     const sensitiveDensity = Math.min(100, reviewQueue * 22 + manualCount * 12)
     return [ocrComplexity, formatRegularity, sensitiveDensity]
-  }, [documents, fileTypeDistribution.length, manualCount, meanFileSize, reviewQueue])
+  }, [
+    documents,
+    fileTypeDistribution.length,
+    manualCount,
+    meanFileSize,
+    reviewQueue,
+  ])
 
   const radarOption = useMemo<EChartsOption>(
-    () => ({
-      tooltip: { trigger: 'item' },
-      radar: {
-        radius: '62%',
-        splitNumber: 4,
-        axisName: { color: '#475569', fontSize: 11 },
-        splitLine: { lineStyle: { color: 'rgba(148,163,184,0.22)' } },
-        splitArea: { areaStyle: { color: ['rgba(248,250,252,0.82)', 'rgba(241,245,249,0.46)'] } },
-        indicator: [
-          { name: 'OCR 复杂度', max: 100 },
-          { name: '格式规范度', max: 100 },
-          { name: '敏感信息密度', max: 100 },
-        ],
-      },
-      series: [
-        {
-          type: 'radar',
-          data: [
-            {
-              value: ocrRadarValues,
-              areaStyle: { color: 'rgba(88,28,135,0.12)' },
-              lineStyle: { color: '#6d28d9', width: 2 },
-              itemStyle: { color: '#6d28d9' },
+    () =>
+      ({
+        tooltip: { trigger: 'item' },
+        radar: {
+          radius: '62%',
+          splitNumber: 4,
+          axisName: { color: '#475569', fontSize: 11 },
+          splitLine: { lineStyle: { color: 'rgba(148,163,184,0.22)' } },
+          splitArea: {
+            areaStyle: {
+              color: ['rgba(248,250,252,0.82)', 'rgba(241,245,249,0.46)'],
             },
+          },
+          indicator: [
+            { name: 'OCR 复杂度', max: 100 },
+            { name: '格式规范度', max: 100 },
+            { name: '敏感信息密度', max: 100 },
           ],
         },
-      ],
-    } as EChartsOption),
+        series: [
+          {
+            type: 'radar',
+            data: [
+              {
+                value: ocrRadarValues,
+                areaStyle: { color: 'rgba(88,28,135,0.12)' },
+                lineStyle: { color: '#6d28d9', width: 2 },
+                itemStyle: { color: '#6d28d9' },
+              },
+            ],
+          },
+        ],
+      }) as EChartsOption,
     [ocrRadarValues]
   )
 
   const salesAuditProfile = useMemo(
-    () => (salesAuditSummary ? buildSalesAuditProfile(salesAuditSummary, salesAuditNearDup) : null),
+    () =>
+      salesAuditSummary
+        ? buildSalesAuditProfile(salesAuditSummary, salesAuditNearDup)
+        : null,
     [salesAuditNearDup, salesAuditSummary]
   )
 
   const salesEvidenceItems = useMemo(() => {
     if (!salesAuditSamples) return []
     const representative = salesAuditSamples.representative ?? []
-    const needsReview = Object.values(salesAuditSamples.needs_review ?? {}).flat()
+    const needsReview = Object.values(
+      salesAuditSamples.needs_review ?? {}
+    ).flat()
     const topLargeFiles = salesAuditSamples.top_large_files ?? []
     const unique = new Map<string, DatasetPrecheckFileOut>()
 
@@ -2008,13 +2479,19 @@ export default function KnowledgeIngestionPageClient() {
   }, [salesAuditSamples])
 
   const selectedSalesEvidence = useMemo(
-    () => salesEvidenceItems.filter((file) => selectedAuditIds.includes(String(file.name))),
+    () =>
+      salesEvidenceItems.filter((file) =>
+        selectedAuditIds.includes(String(file.name))
+      ),
     [salesEvidenceItems, selectedAuditIds]
   )
 
   const salesHeatmapData = useMemo(() => {
     if (!salesAuditSummary?.findings?.length) return []
-    const peak = Math.max(1, ...salesAuditSummary.findings.map((item) => Number(item.count || 0)))
+    const peak = Math.max(
+      1,
+      ...salesAuditSummary.findings.map((item) => Number(item.count || 0))
+    )
     const labelMap: Record<string, string> = {
       pdf_scanned: '扫描件',
       parse_failed: '解析失败',
@@ -2043,31 +2520,81 @@ export default function KnowledgeIngestionPageClient() {
       })
   }, [salesAuditSummary])
 
-  const salesCoreSummary = useMemo(
-    () => {
-      const totalFiles = Number(salesAuditSummary?.total_files || 0)
-      const pdfScanned = Number(salesAuditSummary?.pdf_scan.scanned || 0)
-      const pdfUnknown = Number(salesAuditSummary?.pdf_scan.unknown || 0)
-      const scanRatio = totalFiles ? Math.round(((pdfScanned + pdfUnknown) / totalFiles) * 100) : 0
+  const salesCoreSummary = useMemo(() => {
+    const totalFiles = Number(salesAuditSummary?.total_files || 0)
+    const pdfScanned = Number(salesAuditSummary?.pdf_scan.scanned || 0)
+    const pdfUnknown = Number(salesAuditSummary?.pdf_scan.unknown || 0)
+    const scanRatio = totalFiles
+      ? Math.round(((pdfScanned + pdfUnknown) / totalFiles) * 100)
+      : 0
 
-      return [
-        ['文档总数', totalFiles.toLocaleString(), '全量摸底范围'],
-        ['总体体量', formatFileSize(salesAuditSummary?.total_size_bytes || 0), '估算工时与算力'],
-        ['阻断项', String(salesAuditProfile?.costDrivers.find((item) => item.key === 'blocking')?.count ?? 0), '需人工介入处理'],
-        ['扫描 / 混排', `${scanRatio}%`, 'OCR 前置处理占比'],
-      ]
-    },
-    [salesAuditProfile, salesAuditSummary]
-  )
+    return [
+      ['文档总数', totalFiles.toLocaleString(), '全量摸底范围'],
+      [
+        '总体体量',
+        formatFileSize(salesAuditSummary?.total_size_bytes || 0),
+        '估算工时与算力',
+      ],
+      [
+        '阻断项',
+        String(
+          salesAuditProfile?.costDrivers.find((item) => item.key === 'blocking')
+            ?.count ?? 0
+        ),
+        '需人工介入处理',
+      ],
+      ['扫描 / 混排', `${scanRatio}%`, 'OCR 前置处理占比'],
+    ]
+  }, [salesAuditProfile, salesAuditSummary])
 
   const salesProcessingLanes = useMemo<SalesProcessingLane[]>(() => {
     if (!salesAuditSummary) return []
-    const countByFinding = (key: string) => Number(salesAuditSummary.findings.find((item) => item.key === key)?.count || 0)
+    const countByFinding = (key: string) =>
+      Number(
+        salesAuditSummary.findings.find((item) => item.key === key)?.count || 0
+      )
     return [
-      { key: 'ocr', label: 'OCR 处理', count: countByFinding('pdf_scanned') + countByFinding('pdf_unknown'), tone: 'text-info bg-info/8 border-info/15' },
-      { key: 'table', label: '格式转换', count: countByFinding('large_spreadsheet') + countByFinding('wide_spreadsheet') + countByFinding('merged_heavy_spreadsheet'), tone: 'text-orange bg-orange/8 border-orange/15' },
-      { key: 'manual', label: '人工审核', count: countByFinding('pii') + countByFinding('secrets') + countByFinding('parse_failed'), tone: 'text-rose bg-rose/8 border-rose/15' },
-      { key: 'straight', label: '去重处理', count: Math.max(0, Number(salesAuditSummary.total_files || 0) - (countByFinding('pdf_scanned') + countByFinding('pdf_unknown') + countByFinding('large_spreadsheet') + countByFinding('wide_spreadsheet') + countByFinding('merged_heavy_spreadsheet') + countByFinding('pii') + countByFinding('secrets') + countByFinding('parse_failed'))), tone: 'text-success bg-success/8 border-success/15' },
+      {
+        key: 'ocr',
+        label: 'OCR 处理',
+        count: countByFinding('pdf_scanned') + countByFinding('pdf_unknown'),
+        tone: 'text-info bg-info/8 border-info/15',
+      },
+      {
+        key: 'table',
+        label: '格式转换',
+        count:
+          countByFinding('large_spreadsheet') +
+          countByFinding('wide_spreadsheet') +
+          countByFinding('merged_heavy_spreadsheet'),
+        tone: 'text-orange bg-orange/8 border-orange/15',
+      },
+      {
+        key: 'manual',
+        label: '人工审核',
+        count:
+          countByFinding('pii') +
+          countByFinding('secrets') +
+          countByFinding('parse_failed'),
+        tone: 'text-rose bg-rose/8 border-rose/15',
+      },
+      {
+        key: 'straight',
+        label: '去重处理',
+        count: Math.max(
+          0,
+          Number(salesAuditSummary.total_files || 0) -
+            (countByFinding('pdf_scanned') +
+              countByFinding('pdf_unknown') +
+              countByFinding('large_spreadsheet') +
+              countByFinding('wide_spreadsheet') +
+              countByFinding('merged_heavy_spreadsheet') +
+              countByFinding('pii') +
+              countByFinding('secrets') +
+              countByFinding('parse_failed'))
+        ),
+        tone: 'text-success bg-success/8 border-success/15',
+      },
     ]
   }, [salesAuditSummary])
 
@@ -2087,8 +2614,26 @@ export default function KnowledgeIngestionPageClient() {
                 : firstTag === 'VERSION_CONFLICT'
                   ? '版本冲突'
                   : '通用文档'
-      const icon = firstTag === 'OCR_REQUIRED' ? CircleDashed : firstTag === 'TABLE_HEAVY' ? TableProperties : firstTag === 'PARSE_FAILED' ? CircleAlert : firstTag === 'SENSITIVE_REVIEW' ? ShieldAlert : FileDigit
-      const iconTone = firstTag === 'OCR_REQUIRED' ? 'text-info' : firstTag === 'TABLE_HEAVY' ? 'text-orange' : firstTag === 'PARSE_FAILED' ? 'text-rose' : firstTag === 'SENSITIVE_REVIEW' ? 'text-warning' : 'text-success'
+      const icon =
+        firstTag === 'OCR_REQUIRED'
+          ? CircleDashed
+          : firstTag === 'TABLE_HEAVY'
+            ? TableProperties
+            : firstTag === 'PARSE_FAILED'
+              ? CircleAlert
+              : firstTag === 'SENSITIVE_REVIEW'
+                ? ShieldAlert
+                : FileDigit
+      const iconTone =
+        firstTag === 'OCR_REQUIRED'
+          ? 'text-info'
+          : firstTag === 'TABLE_HEAVY'
+            ? 'text-orange'
+            : firstTag === 'PARSE_FAILED'
+              ? 'text-rose'
+              : firstTag === 'SENSITIVE_REVIEW'
+                ? 'text-warning'
+                : 'text-success'
 
       return {
         id: String(file.name),
@@ -2097,7 +2642,14 @@ export default function KnowledgeIngestionPageClient() {
         fileSizeLabel: formatFileSize(file.file_size || 0),
         primaryRisk,
         riskDescription: buildEvidenceSlotReason(file),
-        actionLabel: firstTag === 'OCR_REQUIRED' ? 'OCR 处理' : firstTag === 'PARSE_FAILED' ? '人工审核' : firstTag === 'TABLE_HEAVY' ? '格式转换' : '纳入 POC',
+        actionLabel:
+          firstTag === 'OCR_REQUIRED'
+            ? 'OCR 处理'
+            : firstTag === 'PARSE_FAILED'
+              ? '人工审核'
+              : firstTag === 'TABLE_HEAVY'
+                ? '格式转换'
+                : '纳入 POC',
         icon,
         iconTone,
       }
@@ -2105,8 +2657,12 @@ export default function KnowledgeIngestionPageClient() {
   }, [salesEvidenceItems])
 
   const salesHighRiskFiles = useMemo<SalesEvidenceTableRow[]>(() => {
-    const reviewBuckets = Object.values(salesAuditSamples?.needs_review ?? {}).flat()
-    const source = (reviewBuckets.length ? reviewBuckets : salesEvidenceItems).slice(0, 5)
+    const reviewBuckets = Object.values(
+      salesAuditSamples?.needs_review ?? {}
+    ).flat()
+    const source = (
+      reviewBuckets.length ? reviewBuckets : salesEvidenceItems
+    ).slice(0, 5)
     return source.map((file) => {
       const tags = buildEvidenceSlotTags(file)
       const firstTag = tags[0] || 'STRAIGHT_THROUGH'
@@ -2122,8 +2678,26 @@ export default function KnowledgeIngestionPageClient() {
                 : firstTag === 'VERSION_CONFLICT'
                   ? '版本冲突'
                   : '通用文档'
-      const icon = firstTag === 'OCR_REQUIRED' ? CircleDashed : firstTag === 'TABLE_HEAVY' ? TableProperties : firstTag === 'PARSE_FAILED' ? CircleAlert : firstTag === 'SENSITIVE_REVIEW' ? ShieldAlert : FileDigit
-      const iconTone = firstTag === 'OCR_REQUIRED' ? 'text-info' : firstTag === 'TABLE_HEAVY' ? 'text-orange' : firstTag === 'PARSE_FAILED' ? 'text-rose' : firstTag === 'SENSITIVE_REVIEW' ? 'text-warning' : 'text-success'
+      const icon =
+        firstTag === 'OCR_REQUIRED'
+          ? CircleDashed
+          : firstTag === 'TABLE_HEAVY'
+            ? TableProperties
+            : firstTag === 'PARSE_FAILED'
+              ? CircleAlert
+              : firstTag === 'SENSITIVE_REVIEW'
+                ? ShieldAlert
+                : FileDigit
+      const iconTone =
+        firstTag === 'OCR_REQUIRED'
+          ? 'text-info'
+          : firstTag === 'TABLE_HEAVY'
+            ? 'text-orange'
+            : firstTag === 'PARSE_FAILED'
+              ? 'text-rose'
+              : firstTag === 'SENSITIVE_REVIEW'
+                ? 'text-warning'
+                : 'text-success'
 
       return {
         id: String(file.name),
@@ -2141,11 +2715,17 @@ export default function KnowledgeIngestionPageClient() {
 
   const visibleSalesEvidenceItems = useMemo(() => {
     if (!selectedReason) return salesEvidenceItems
-    const matchedFinding = salesAuditSummary?.findings.find((item) => item.label === selectedReason)
+    const matchedFinding = salesAuditSummary?.findings.find(
+      (item) => item.label === selectedReason
+    )
     return salesEvidenceItems.filter((file) => {
       const tags = buildEvidenceSlotTags(file).join(' ')
       const reason = buildEvidenceSlotReason(file)
-      const findings = (file.findings || []).map((item) => String(item || '').trim().toLowerCase())
+      const findings = (file.findings || []).map((item) =>
+        String(item || '')
+          .trim()
+          .toLowerCase()
+      )
       return (
         tags.includes(selectedReason) ||
         reason.includes(selectedReason) ||
@@ -2155,11 +2735,23 @@ export default function KnowledgeIngestionPageClient() {
   }, [salesAuditSummary?.findings, salesEvidenceItems, selectedReason])
 
   const salesPdfSplitOption = useMemo<EChartsOption>(() => {
-    const pdfDetection = salesAuditSummary?.pdf_detection as Record<string, unknown> | undefined
+    const pdfDetection = salesAuditSummary?.pdf_detection as
+      | Record<string, unknown>
+      | undefined
     const rows = [
-      { name: 'TEXT', value: Number(pdfDetection?.text || salesAuditSummary?.pdf_scan.not_scanned || 0) },
+      {
+        name: 'TEXT',
+        value: Number(
+          pdfDetection?.text || salesAuditSummary?.pdf_scan.not_scanned || 0
+        ),
+      },
       { name: 'MIXED', value: Number(pdfDetection?.mixed || 0) },
-      { name: 'SCAN', value: Number(pdfDetection?.scan || salesAuditSummary?.pdf_scan.scanned || 0) },
+      {
+        name: 'SCAN',
+        value: Number(
+          pdfDetection?.scan || salesAuditSummary?.pdf_scan.scanned || 0
+        ),
+      },
     ].filter((row) => row.value > 0)
 
     return {
@@ -2172,7 +2764,12 @@ export default function KnowledgeIngestionPageClient() {
           data: rows.map((row) => ({
             ...row,
             itemStyle: {
-              color: row.name === 'SCAN' ? '#f59e0b' : row.name === 'MIXED' ? '#94a3b8' : '#10b981',
+              color:
+                row.name === 'SCAN'
+                  ? '#f59e0b'
+                  : row.name === 'MIXED'
+                    ? '#94a3b8'
+                    : '#10b981',
             },
           })),
         },
@@ -2207,8 +2804,22 @@ export default function KnowledgeIngestionPageClient() {
             label: { color: '#64748b' },
             lineStyle: { type: 'dashed', color: '#94a3b8' },
             data: [
-              { name: 'P50', xAxis: histogram.findIndex((item) => p50 >= Number(item.min || 0) && p50 < Number(item.max || Number.POSITIVE_INFINITY)) },
-              { name: 'P90', xAxis: histogram.findIndex((item) => p90 >= Number(item.min || 0) && p90 < Number(item.max || Number.POSITIVE_INFINITY)) },
+              {
+                name: 'P50',
+                xAxis: histogram.findIndex(
+                  (item) =>
+                    p50 >= Number(item.min || 0) &&
+                    p50 < Number(item.max || Number.POSITIVE_INFINITY)
+                ),
+              },
+              {
+                name: 'P90',
+                xAxis: histogram.findIndex(
+                  (item) =>
+                    p90 >= Number(item.min || 0) &&
+                    p90 < Number(item.max || Number.POSITIVE_INFINITY)
+                ),
+              },
             ].filter((item) => Number(item.xAxis) >= 0),
           },
         },
@@ -2219,23 +2830,59 @@ export default function KnowledgeIngestionPageClient() {
   const salesRadarOption = useMemo<EChartsOption>(() => {
     if (!salesAuditSummary) return { series: [] }
     const totalFiles = Math.max(1, Number(salesAuditSummary.total_files || 0))
-    const ocrRatio = (Number(salesAuditSummary.pdf_scan.scanned || 0) + Number(salesAuditSummary.pdf_scan.unknown || 0)) / Math.max(
-      1,
-      Number(salesAuditSummary.pdf_scan.scanned || 0) + Number(salesAuditSummary.pdf_scan.not_scanned || 0) + Number(salesAuditSummary.pdf_scan.unknown || 0)
-    )
+    const ocrRatio =
+      (Number(salesAuditSummary.pdf_scan.scanned || 0) +
+        Number(salesAuditSummary.pdf_scan.unknown || 0)) /
+      Math.max(
+        1,
+        Number(salesAuditSummary.pdf_scan.scanned || 0) +
+          Number(salesAuditSummary.pdf_scan.not_scanned || 0) +
+          Number(salesAuditSummary.pdf_scan.unknown || 0)
+      )
     const tableHeavyRatio =
-      (Number(salesAuditSummary.findings.find((item) => item.key === 'large_spreadsheet')?.count || 0) +
-        Number(salesAuditSummary.findings.find((item) => item.key === 'wide_spreadsheet')?.count || 0) +
-        Number(salesAuditSummary.findings.find((item) => item.key === 'merged_heavy_spreadsheet')?.count || 0)) /
+      (Number(
+        salesAuditSummary.findings.find(
+          (item) => item.key === 'large_spreadsheet'
+        )?.count || 0
+      ) +
+        Number(
+          salesAuditSummary.findings.find(
+            (item) => item.key === 'wide_spreadsheet'
+          )?.count || 0
+        ) +
+        Number(
+          salesAuditSummary.findings.find(
+            (item) => item.key === 'merged_heavy_spreadsheet'
+          )?.count || 0
+        )) /
       totalFiles
     const sensitiveRatio =
-      (Number(salesAuditSummary.findings.find((item) => item.key === 'pii')?.count || 0) +
-        Number(salesAuditSummary.findings.find((item) => item.key === 'secrets')?.count || 0)) /
+      (Number(
+        salesAuditSummary.findings.find((item) => item.key === 'pii')?.count ||
+          0
+      ) +
+        Number(
+          salesAuditSummary.findings.find((item) => item.key === 'secrets')
+            ?.count || 0
+        )) /
       totalFiles
-    const successRatio = 1 - Number(salesAuditSummary.findings.find((item) => item.key === 'parse_failed')?.count || 0) / totalFiles
+    const successRatio =
+      1 -
+      Number(
+        salesAuditSummary.findings.find((item) => item.key === 'parse_failed')
+          ?.count || 0
+      ) /
+        totalFiles
     const imageHeavyProxy = Math.max(
       0,
-      Math.min(1, Number(salesAuditSummary.pdf_scan.scanned || 0) / totalFiles + Number((salesAuditSummary.by_file_type as Record<string, number>).pptx || 0) / totalFiles)
+      Math.min(
+        1,
+        Number(salesAuditSummary.pdf_scan.scanned || 0) / totalFiles +
+          Number(
+            (salesAuditSummary.by_file_type as Record<string, number>).pptx || 0
+          ) /
+            totalFiles
+      )
     )
 
     return {
@@ -2253,7 +2900,11 @@ export default function KnowledgeIngestionPageClient() {
         ],
         axisName: { color: '#475569', fontSize: 9 },
         splitLine: { lineStyle: { color: 'rgba(148,163,184,0.22)' } },
-        splitArea: { areaStyle: { color: ['rgba(248,250,252,0.82)', 'rgba(241,245,249,0.48)'] } },
+        splitArea: {
+          areaStyle: {
+            color: ['rgba(248,250,252,0.82)', 'rgba(241,245,249,0.48)'],
+          },
+        },
       },
       series: [
         {
@@ -2285,19 +2936,27 @@ export default function KnowledgeIngestionPageClient() {
     })
   }, [])
 
-  const handleSampleDisposition = useCallback((documentId: string, disposition: SampleDisposition) => {
-    setSampleDispositions((previous) => ({ ...previous, [documentId]: disposition }))
-    if (disposition === 'approved') {
-      setSuccessPulseVisible(true)
-      toast.success('样本已标记为可入库')
-      return
-    }
-    toast.success('样本已移入人工处理清单')
-  }, [])
+  const handleSampleDisposition = useCallback(
+    (documentId: string, disposition: SampleDisposition) => {
+      setSampleDispositions((previous) => ({
+        ...previous,
+        [documentId]: disposition,
+      }))
+      if (disposition === 'approved') {
+        setSuccessPulseVisible(true)
+        toast.success('样本已标记为可入库')
+        return
+      }
+      toast.success('样本已移入人工处理清单')
+    },
+    []
+  )
 
   const handleSelectAudit = useCallback((documentId: string) => {
     setSelectedAuditIds((previous) =>
-      previous.includes(documentId) ? previous.filter((item) => item !== documentId) : [...previous, documentId]
+      previous.includes(documentId)
+        ? previous.filter((item) => item !== documentId)
+        : [...previous, documentId]
     )
   }, [])
 
@@ -2336,10 +2995,17 @@ export default function KnowledgeIngestionPageClient() {
     })
 
     try {
-      await renderReportHtmlToJpeg(html, buildSafeReportFilename(selectedDatasetLabel, '.audit-report.jpg'))
+      await renderReportHtmlToJpeg(
+        html,
+        buildSafeReportFilename(selectedDatasetLabel, '.audit-report.jpg')
+      )
       toast.success('已导出 JPG 报告')
     } catch (error) {
-      const reportWindow = globalThis.window.open('', '_blank', 'noopener,noreferrer')
+      const reportWindow = globalThis.window.open(
+        '',
+        '_blank',
+        'noopener,noreferrer'
+      )
       if (reportWindow) {
         reportWindow.document.write(html)
         reportWindow.document.close()
@@ -2347,7 +3013,11 @@ export default function KnowledgeIngestionPageClient() {
         return
       }
 
-      downloadTextFile('ingestion-audit-report.html', html, 'text/html;charset=utf-8')
+      downloadTextFile(
+        'ingestion-audit-report.html',
+        html,
+        'text/html;charset=utf-8'
+      )
       toast.error('JPG 生成失败，已回退到 HTML 文件')
     }
   }, [
@@ -2374,15 +3044,28 @@ export default function KnowledgeIngestionPageClient() {
     }
 
     try {
-      const blob = await datasetApi.exportPrecheckHtml(selectedDatasetId, latestPrecheckRun.id, { redact: true })
+      const blob = await datasetApi.exportPrecheckHtml(
+        selectedDatasetId,
+        latestPrecheckRun.id,
+        { redact: true }
+      )
       const html = await blob.text()
-      await renderReportHtmlToJpeg(html, buildSafeReportFilename(selectedDatasetLabel, '.precheck.jpg'))
+      await renderReportHtmlToJpeg(
+        html,
+        buildSafeReportFilename(selectedDatasetLabel, '.precheck.jpg')
+      )
       toast.success('已导出脱敏 JPG 报告')
     } catch (error) {
       toast.error('导出脱敏 JPG 报告失败，已回退到当前页面报告')
       await handleDownloadReport()
     }
-  }, [demoMode, handleDownloadReport, latestPrecheckRun?.id, selectedDatasetId, selectedDatasetLabel])
+  }, [
+    demoMode,
+    handleDownloadReport,
+    latestPrecheckRun?.id,
+    selectedDatasetId,
+    selectedDatasetLabel,
+  ])
 
   useEffect(() => {
     const off = globalEventBus.on('ingestion:download-report', () => {
@@ -2405,7 +3088,11 @@ export default function KnowledgeIngestionPageClient() {
       clue: document.error_message,
     }))
 
-    downloadTextFile('audit-sample-selection.json', JSON.stringify(payload, null, 2), 'application/json;charset=utf-8')
+    downloadTextFile(
+      'audit-sample-selection.json',
+      JSON.stringify(payload, null, 2),
+      'application/json;charset=utf-8'
+    )
     toast.success('已导出当前预检抽样清单')
   }, [sampleDispositions, selectedAuditDocuments])
 
@@ -2455,17 +3142,22 @@ export default function KnowledgeIngestionPageClient() {
 
   const showEmptyState =
     mode === 'sales-audit'
-      ? !demoMode && !documentsQuery.isLoading && !precheckSummaryQuery.isLoading && !salesAuditSummary
+      ? !demoMode &&
+        !documentsQuery.isLoading &&
+        !precheckSummaryQuery.isLoading &&
+        !salesAuditSummary
       : !documentsQuery.isLoading && documents.length === 0
-  const showDesktopAuditRail = mode === 'execution-monitor' && !showEmptyState && !desktopScopeCollapsed
-  const showDesktopAuditRailToggle = mode === 'execution-monitor' && !showEmptyState
+  const showDesktopAuditRail =
+    mode === 'execution-monitor' && !showEmptyState && !desktopScopeCollapsed
+  const showDesktopAuditRailToggle =
+    mode === 'execution-monitor' && !showEmptyState
 
   return (
-      <div
-        ref={scrollContainerRef}
-        data-page-scroll-container="true"
-        className="flex-1 h-full min-h-0 overflow-y-auto overscroll-contain no-scrollbar scroll-fade-bottom bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.18),transparent_42%),linear-gradient(180deg,rgba(248,250,252,0.98),rgba(241,245,249,0.92))] text-foreground"
-      >
+    <div
+      ref={scrollContainerRef}
+      data-page-scroll-container="true"
+      className="flex-1 h-full min-h-0 overflow-y-auto overscroll-contain no-scrollbar scroll-fade-bottom bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.18),transparent_42%),linear-gradient(180deg,rgba(248,250,252,0.98),rgba(241,245,249,0.92))] text-foreground"
+    >
       <DropZone
         ref={dropZoneRef}
         datasetId={selectedDatasetId}
@@ -2475,8 +3167,18 @@ export default function KnowledgeIngestionPageClient() {
         }}
       />
 
-      <div className={cn('flex w-full max-w-none gap-0 px-3 pt-3 md:px-5 lg:px-6 xl:px-7 2xl:px-8', mode === 'sales-audit' ? 'pb-2' : 'pb-8')}>
-        <div className={cn('relative flex w-full gap-0', mode === 'sales-audit' ? 'min-h-0' : 'min-h-[calc(100dvh-2rem)]')}>
+      <div
+        className={cn(
+          'flex w-full max-w-none gap-0 px-3 pt-3 md:px-5 lg:px-6 xl:px-7 2xl:px-8',
+          mode === 'sales-audit' ? 'pb-2' : 'pb-8'
+        )}
+      >
+        <div
+          className={cn(
+            'relative flex w-full gap-0',
+            mode === 'sales-audit' ? 'min-h-0' : 'min-h-[calc(100dvh-2rem)]'
+          )}
+        >
           <button
             type="button"
             aria-label="展开预检抽样侧栏"
@@ -2494,18 +3196,22 @@ export default function KnowledgeIngestionPageClient() {
           <aside
             className={cn(
               'hidden shrink-0 overflow-hidden pr-4 transition-all duration-300 ease-out lg:block',
-              showDesktopAuditRail ? 'w-[18rem] opacity-100' : 'w-0 opacity-0 -translate-x-4 pointer-events-none'
+              showDesktopAuditRail
+                ? 'w-[18rem] opacity-100'
+                : 'w-0 opacity-0 -translate-x-4 pointer-events-none'
             )}
           >
             <div className="sticky top-4 space-y-3">
               <div className="rounded-[1.45rem] border border-info/20 bg-background/94 p-3 shadow-[0_22px_58px_-34px_rgba(37,99,235,0.25)] backdrop-blur-xl">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="inline-flex items-center gap-1.5 text-[12px] font-medium tracking-tight text-foreground">
+                    <div className="inline-flex items-center gap-1.5 text-[12px] font-medium text-foreground">
                       {mode === 'sales-audit' ? '证据槽' : '预检抽样'}
                       <Check className="h-3.5 w-3.5 text-success" />
                     </div>
-                    <div className="mt-1 text-[17px] font-semibold leading-none tracking-tight text-foreground">{mode === 'sales-audit' ? '报价证据' : '待确认线索'}</div>
+                    <div className="mt-1 text-[17px] font-semibold leading-none text-foreground">
+                      {mode === 'sales-audit' ? '报价证据' : '待确认线索'}
+                    </div>
                   </div>
                   <button
                     type="button"
@@ -2521,7 +3227,10 @@ export default function KnowledgeIngestionPageClient() {
                     <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                       Dataset Scope
                     </div>
-                    <Select value={datasetScope} onValueChange={setDatasetScope}>
+                    <Select
+                      value={datasetScope}
+                      onValueChange={setDatasetScope}
+                    >
                       <SelectTrigger className="h-9 rounded-xl border-border/60 bg-background/80 text-[11px] font-medium shadow-none">
                         <SelectValue placeholder="全部项目" />
                       </SelectTrigger>
@@ -2537,12 +3246,24 @@ export default function KnowledgeIngestionPageClient() {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
-                    {([
-                      ['all', '全部', auditRailCounts.total, 'blue'],
-                      ['pending', '待确认', auditRailCounts.pending, 'emerald'],
-                      ['manual', '人工处理', auditRailCounts.manual, 'amber'],
-                      ['approved', '已确认', auditRailCounts.approved, 'blue'],
-                    ] as const).map(([value, label, count, tone]) => (
+                    {(
+                      [
+                        ['all', '全部', auditRailCounts.total, 'blue'],
+                        [
+                          'pending',
+                          '待确认',
+                          auditRailCounts.pending,
+                          'emerald',
+                        ],
+                        ['manual', '人工处理', auditRailCounts.manual, 'amber'],
+                        [
+                          'approved',
+                          '已确认',
+                          auditRailCounts.approved,
+                          'blue',
+                        ],
+                      ] as const
+                    ).map(([value, label, count, tone]) => (
                       <button
                         key={value}
                         type="button"
@@ -2550,7 +3271,8 @@ export default function KnowledgeIngestionPageClient() {
                         onClick={() => setAuditDispositionFilter(value)}
                         className={cn(
                           'rounded-full border px-2.5 py-1 transition-colors',
-                          auditDispositionFilter !== value && 'border-border/60 bg-background/70 hover:text-foreground',
+                          auditDispositionFilter !== value &&
+                            'border-border/60 bg-background/70 hover:text-foreground',
                           auditDispositionFilter === value &&
                             tone === 'blue' &&
                             'border-info/30 bg-info/10 text-info',
@@ -2588,8 +3310,12 @@ export default function KnowledgeIngestionPageClient() {
                             <div className="relative z-10 rounded-[0.85rem] bg-background/92 p-2">
                               <div className="flex items-start gap-3">
                                 <input
-                                  checked={selectedAuditIds.includes(selectionKey)}
-                                  onChange={() => handleSelectAudit(selectionKey)}
+                                  checked={selectedAuditIds.includes(
+                                    selectionKey
+                                  )}
+                                  onChange={() =>
+                                    handleSelectAudit(selectionKey)
+                                  }
                                   className="mt-1 h-4 w-4 rounded border-border/60 text-foreground"
                                   type="checkbox"
                                   aria-label={`选择 ${selectionKey}`}
@@ -2620,16 +3346,26 @@ export default function KnowledgeIngestionPageClient() {
                                     ))}
                                     {disposition ? (
                                       <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
-                                        {disposition === 'approved' ? '已入 POC' : '已加阻断'}
+                                        {disposition === 'approved'
+                                          ? '已入 POC'
+                                          : '已加阻断'}
                                       </span>
                                     ) : null}
                                   </div>
-                                  <div className="mt-1 text-[13px] font-medium text-foreground">{file.file_type.toUpperCase()}</div>
-                                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
-                                    <span className="font-mono tabular-nums">{formatFileSize(file.file_size || 0)}</span>
-                                    <span className="font-mono tabular-nums">{file.text_characters} chars</span>
+                                  <div className="mt-1 text-[13px] font-medium text-foreground">
+                                    {file.file_type.toUpperCase()}
                                   </div>
-                                  <div className="mt-1 line-clamp-2 text-[10px] leading-4 text-muted-foreground">{reason}</div>
+                                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
+                                    <span className="font-mono tabular-nums">
+                                      {formatFileSize(file.file_size || 0)}
+                                    </span>
+                                    <span className="font-mono tabular-nums">
+                                      {file.text_characters} chars
+                                    </span>
+                                  </div>
+                                  <div className="mt-1 line-clamp-2 text-[10px] leading-4 text-muted-foreground">
+                                    {reason}
+                                  </div>
                                 </div>
                               </div>
                               <div className="mt-2.5 grid grid-cols-3 gap-1.5">
@@ -2638,7 +3374,12 @@ export default function KnowledgeIngestionPageClient() {
                                   size="sm"
                                   variant="outline"
                                   className="h-8 rounded-lg border-success/20 bg-success/8 px-2 text-[9px] text-success"
-                                  onClick={() => handleSampleDisposition(selectionKey, 'approved')}
+                                  onClick={() =>
+                                    handleSampleDisposition(
+                                      selectionKey,
+                                      'approved'
+                                    )
+                                  }
                                 >
                                   纳入 POC
                                 </Button>
@@ -2647,7 +3388,12 @@ export default function KnowledgeIngestionPageClient() {
                                   size="sm"
                                   variant="outline"
                                   className="h-8 rounded-lg border-warning/20 bg-warning/8 px-2 text-[9px] text-warning"
-                                  onClick={() => handleSampleDisposition(selectionKey, 'manual')}
+                                  onClick={() =>
+                                    handleSampleDisposition(
+                                      selectionKey,
+                                      'manual'
+                                    )
+                                  }
                                 >
                                   加入阻断
                                 </Button>
@@ -2675,8 +3421,10 @@ export default function KnowledgeIngestionPageClient() {
                             dragConstraints={{ left: 0, right: 0 }}
                             dragElastic={0.16}
                             onDragEnd={(_, info) => {
-                              if (info.offset.x > 100) handleSampleDisposition(document.id, 'approved')
-                              if (info.offset.x < -100) handleSampleDisposition(document.id, 'manual')
+                              if (info.offset.x > 100)
+                                handleSampleDisposition(document.id, 'approved')
+                              if (info.offset.x < -100)
+                                handleSampleDisposition(document.id, 'manual')
                             }}
                             className="relative overflow-hidden rounded-[1.15rem] border border-border/60 bg-[linear-gradient(90deg,rgba(219,234,254,0.48),rgba(255,255,255,0.92)_22%,rgba(255,255,255,0.92)_78%,rgba(226,232,240,0.5))] p-2 shadow-[0_18px_44px_-34px_rgba(15,23,42,0.28)]"
                           >
@@ -2689,8 +3437,12 @@ export default function KnowledgeIngestionPageClient() {
                             <div className="relative z-10 rounded-[0.95rem] bg-background/96 p-2.5">
                               <div className="flex items-start gap-2.5">
                                 <input
-                                  checked={selectedAuditIds.includes(document.id)}
-                                  onChange={() => handleSelectAudit(document.id)}
+                                  checked={selectedAuditIds.includes(
+                                    document.id
+                                  )}
+                                  onChange={() =>
+                                    handleSelectAudit(document.id)
+                                  }
                                   className="mt-1 h-3.5 w-3.5 rounded border-border/60 text-foreground"
                                   type="checkbox"
                                   aria-label={`选择 ${document.filename}`}
@@ -2698,8 +3450,15 @@ export default function KnowledgeIngestionPageClient() {
                                 <div className="min-w-0 flex-1">
                                   <div className="flex items-center justify-between gap-2">
                                     <div className="flex min-w-0 items-center gap-1.5">
-                                      <span className={cn('rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase', getDocumentKindAccent(kind))}>
-                                        {String(document.file_type || kind).toUpperCase()}
+                                      <span
+                                        className={cn(
+                                          'rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase',
+                                          getDocumentKindAccent(kind)
+                                        )}
+                                      >
+                                        {String(
+                                          document.file_type || kind
+                                        ).toUpperCase()}
                                       </span>
                                     </div>
                                     {disposition ? (
@@ -2711,7 +3470,9 @@ export default function KnowledgeIngestionPageClient() {
                                             : 'border-warning/25 bg-warning/10 text-warning'
                                         )}
                                       >
-                                        {disposition === 'approved' ? '已确认' : '转人工'}
+                                        {disposition === 'approved'
+                                          ? '已确认'
+                                          : '转人工'}
                                       </span>
                                     ) : (
                                       <span className="shrink-0 rounded-full border border-success/20 bg-success/8 px-2 py-0.5 text-[9px] font-medium text-success">
@@ -2719,13 +3480,23 @@ export default function KnowledgeIngestionPageClient() {
                                       </span>
                                     )}
                                   </div>
-                                  <div className="mt-2 truncate text-[12px] font-medium leading-4 text-foreground">{document.filename}</div>
+                                  <div className="mt-2 truncate text-[12px] font-medium leading-4 text-foreground">
+                                    {document.filename}
+                                  </div>
                                   <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
-                                    <span className="font-mono tabular-nums">{formatFileSize(document.file_size || 0)}</span>
-                                    <span>{formatDate(document.updated_at || document.created_at)}</span>
+                                    <span className="font-mono tabular-nums">
+                                      {formatFileSize(document.file_size || 0)}
+                                    </span>
+                                    <span>
+                                      {formatDate(
+                                        document.updated_at ||
+                                          document.created_at
+                                      )}
+                                    </span>
                                   </div>
                                   <div className="mt-1.5 line-clamp-2 text-[10px] leading-4 text-muted-foreground">
-                                    {document.error_message || '无明确异常文本，建议抽样核查内容密度与脱敏边界。'}
+                                    {document.error_message ||
+                                      '无明确异常文本，建议抽样核查内容密度与脱敏边界。'}
                                   </div>
                                 </div>
                               </div>
@@ -2738,7 +3509,12 @@ export default function KnowledgeIngestionPageClient() {
                                   size="sm"
                                   variant="outline"
                                   className="h-7 rounded-lg border-success/20 bg-success/8 px-2 text-[9px] font-medium text-success"
-                                  onClick={() => handleSampleDisposition(document.id, 'approved')}
+                                  onClick={() =>
+                                    handleSampleDisposition(
+                                      document.id,
+                                      'approved'
+                                    )
+                                  }
                                 >
                                   入库
                                 </Button>
@@ -2747,7 +3523,12 @@ export default function KnowledgeIngestionPageClient() {
                                   size="sm"
                                   variant="outline"
                                   className="h-7 rounded-lg border-warning/20 bg-warning/8 px-2 text-[9px] font-medium text-warning"
-                                  onClick={() => handleSampleDisposition(document.id, 'manual')}
+                                  onClick={() =>
+                                    handleSampleDisposition(
+                                      document.id,
+                                      'manual'
+                                    )
+                                  }
                                 >
                                   人工处理
                                 </Button>
@@ -2756,7 +3537,9 @@ export default function KnowledgeIngestionPageClient() {
                                   size="sm"
                                   variant="outline"
                                   className="h-7 rounded-lg px-2 text-[9px] font-medium"
-                                  onClick={() => handleOpenAuditSnapshot(document.id)}
+                                  onClick={() =>
+                                    handleOpenAuditSnapshot(document.id)
+                                  }
                                 >
                                   审计快照
                                 </Button>
@@ -2765,7 +3548,8 @@ export default function KnowledgeIngestionPageClient() {
                           </motion.article>
                         )
                       })}
-                  {mode === 'execution-monitor' && visibleAuditSamples.length === 0 ? (
+                  {mode === 'execution-monitor' &&
+                  visibleAuditSamples.length === 0 ? (
                     <div className="rounded-[1rem] border border-dashed border-border/70 bg-background/70 px-4 py-6 text-center text-[11px] text-muted-foreground">
                       当前没有待确认线索
                     </div>
@@ -2809,17 +3593,21 @@ export default function KnowledgeIngestionPageClient() {
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <div className="inline-flex items-center rounded-full border border-border/60 bg-background/72 p-0.5">
-                          {([
-                            ['sales-audit', '售前摸底'],
-                            ['execution-monitor', '执行监控'],
-                          ] as const).map(([value, label]) => (
+                          {(
+                            [
+                              ['sales-audit', '售前摸底'],
+                              ['execution-monitor', '执行监控'],
+                            ] as const
+                          ).map(([value, label]) => (
                             <button
                               key={value}
                               type="button"
                               onClick={() => handleChangeMode(value)}
                               className={cn(
                                 'rounded-full px-2.5 py-0.5 text-[8px] font-medium transition-colors',
-                                mode === value ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'
+                                mode === value
+                                  ? 'bg-foreground text-background'
+                                  : 'text-muted-foreground hover:text-foreground'
                               )}
                             >
                               {label}
@@ -2831,7 +3619,7 @@ export default function KnowledgeIngestionPageClient() {
                         </span>
                         {demoMode ? (
                           <span className="inline-flex items-center rounded-full border border-info/20 bg-info/10 px-2 py-0.5 text-[7px] font-medium uppercase tracking-[0.16em] text-info">
-                            Demo Canvas
+                            演示模式
                           </span>
                         ) : null}
                       </div>
@@ -2846,11 +3634,18 @@ export default function KnowledgeIngestionPageClient() {
                         )}
                       >
                         <div className="flex flex-wrap items-center gap-2">
-                          <h1 className="text-[clamp(0.96rem,1.18vw,1.26rem)] font-semibold tracking-tight text-foreground">
-                            {mode === 'sales-audit' ? '售前报价证据台' : '执行监控工作台'}
+                          <h1 className="text-[clamp(0.96rem,1.18vw,1.26rem)] font-semibold text-foreground">
+                            {mode === 'sales-audit'
+                              ? '售前报价证据台'
+                              : '执行监控工作台'}
                           </h1>
                           {mode === 'execution-monitor' ? (
-                            <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[8px] font-medium', taskQueueStatusTone)}>
+                            <span
+                              className={cn(
+                                'inline-flex items-center rounded-full border px-2 py-0.5 text-[8px] font-medium',
+                                taskQueueStatusTone
+                              )}
+                            >
                               {taskQueueStatusLabel}
                             </span>
                           ) : null}
@@ -2865,8 +3660,13 @@ export default function KnowledgeIngestionPageClient() {
 
                     <div className="flex flex-wrap items-center gap-1">
                       {demoMode ? (
-                        <Button type="button" variant="outline" className="h-7 rounded-lg px-2 text-[9px]" onClick={handleExitDemoMode}>
-                          退出 Demo
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-7 rounded-lg px-2 text-[9px]"
+                          onClick={handleExitDemoMode}
+                        >
+                          退出演示
                         </Button>
                       ) : null}
                       {mode === 'sales-audit' ? (
@@ -2877,7 +3677,9 @@ export default function KnowledgeIngestionPageClient() {
                             className="h-7 rounded-lg px-2 text-[9px]"
                             onClick={() => {
                               if (selectedDatasetId) {
-                                router.push(`/datasets/${selectedDatasetId}/precheck`)
+                                router.push(
+                                  `/datasets/${selectedDatasetId}/precheck`
+                                )
                                 return
                               }
                               toast.error('请先选择一个数据集')
@@ -2886,7 +3688,11 @@ export default function KnowledgeIngestionPageClient() {
                             <UploadCloud className="mr-1.5 h-3.5 w-3.5" />
                             数据预检
                           </Button>
-                          <Button type="button" className="h-7 rounded-lg px-2 text-[9px]" onClick={() => void handleExportSalesAuditReport()}>
+                          <Button
+                            type="button"
+                            className="h-7 rounded-lg px-2 text-[9px]"
+                            onClick={() => void handleExportSalesAuditReport()}
+                          >
                             <Download className="mr-1.5 h-3.5 w-3.5" />
                             脱敏报告导出
                           </Button>
@@ -2897,7 +3703,11 @@ export default function KnowledgeIngestionPageClient() {
                             type="button"
                             variant="outline"
                             className="h-7 rounded-lg px-2 text-[9px]"
-                            disabled={documentsQuery.isFetching || summaryQuery.isFetching || taskQueueQuery.isFetching}
+                            disabled={
+                              documentsQuery.isFetching ||
+                              summaryQuery.isFetching ||
+                              taskQueueQuery.isFetching
+                            }
                             onClick={() => void handleRefreshExecutionMonitor()}
                           >
                             <RefreshCcw className="mr-1.5 h-3.5 w-3.5" />
@@ -2907,7 +3717,9 @@ export default function KnowledgeIngestionPageClient() {
                             type="button"
                             variant="outline"
                             className="h-7 rounded-lg px-2 text-[9px]"
-                            onClick={() => dropZoneRef.current?.triggerFilePicker()}
+                            onClick={() =>
+                              dropZoneRef.current?.triggerFilePicker()
+                            }
                           >
                             <UploadCloud className="mr-1.5 h-3.5 w-3.5" />
                             上传样本
@@ -2918,7 +3730,11 @@ export default function KnowledgeIngestionPageClient() {
                             megabytesPerSecond={megabytesPerSecond}
                             onToggle={handleToggleVelocity}
                           />
-                          <Button type="button" className="h-7 rounded-lg px-2 text-[9px]" onClick={handleDownloadReport}>
+                          <Button
+                            type="button"
+                            className="h-7 rounded-lg px-2 text-[9px]"
+                            onClick={handleDownloadReport}
+                          >
                             <Download className="mr-1.5 h-3.5 w-3.5" />
                             导出报告
                           </Button>
@@ -2928,27 +3744,76 @@ export default function KnowledgeIngestionPageClient() {
                   </div>
 
                   <div className={cn('mt-2.5', SALES_SUMMARY_STRIP_CLASS)}>
-                    <div className={cn('grid gap-px', mode === 'sales-audit' ? 'sm:grid-cols-4' : 'sm:grid-cols-3 xl:grid-cols-6')}>
+                    <div
+                      className={cn(
+                        'grid gap-px',
+                        mode === 'sales-audit'
+                          ? 'sm:grid-cols-4'
+                          : 'sm:grid-cols-3 xl:grid-cols-6'
+                      )}
+                    >
                       {(mode === 'sales-audit'
                         ? [
-                            { label: '范围', value: selectedDatasetLabel, icon: FileSearch, tone: 'text-muted-foreground/65', detail: '' },
-                            { label: '建议报价模式', value: salesAuditProfile?.pricingMode || '待预检', icon: Workflow, tone: 'text-accent', detail: '' },
-                            { label: '建议 POC 样本量', value: salesAuditProfile ? `${salesAuditProfile.pocSampleCount} 份` : '待预检', icon: FileCheck2, tone: 'text-info', detail: '' },
-                            { label: '复杂度', value: salesAuditProfile?.complexity || '待预检', icon: Radar, tone: 'text-warning', detail: '' },
+                            {
+                              label: '范围',
+                              value: selectedDatasetLabel,
+                              icon: FileSearch,
+                              tone: 'text-muted-foreground/65',
+                              detail: '',
+                            },
+                            {
+                              label: '建议报价模式',
+                              value: salesAuditProfile?.pricingMode || '待预检',
+                              icon: Workflow,
+                              tone: 'text-accent',
+                              detail: '',
+                            },
+                            {
+                              label: '建议 POC 样本量',
+                              value: salesAuditProfile
+                                ? `${salesAuditProfile.pocSampleCount} 份`
+                                : '待预检',
+                              icon: FileCheck2,
+                              tone: 'text-info',
+                              detail: '',
+                            },
+                            {
+                              label: '复杂度',
+                              value: salesAuditProfile?.complexity || '待预检',
+                              icon: Radar,
+                              tone: 'text-warning',
+                              detail: '',
+                            },
                           ]
                         : executionTopStripItems
                       ).map(({ label, value, icon: Icon, tone, detail }) => (
-                        <div key={label} className={cn('relative bg-background/78 px-2.5 py-2', mode === 'sales-audit' ? 'min-h-[3.4rem]' : 'min-h-[4.2rem]')}>
+                        <div
+                          key={label}
+                          className={cn(
+                            'relative bg-background/78 px-2.5 py-2',
+                            mode === 'sales-audit'
+                              ? 'min-h-[3.4rem]'
+                              : 'min-h-[4.2rem]'
+                          )}
+                        >
                           <div className="flex items-start justify-between gap-2">
                             <div className="text-[7px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
                               {label}
                             </div>
                             <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-border/45 bg-muted/30">
-                              <Icon className={cn('h-2.5 w-2.5 shrink-0', tone)} />
+                              <Icon
+                                className={cn('h-2.5 w-2.5 shrink-0', tone)}
+                              />
                             </span>
                           </div>
-                          <div className="mt-1 font-mono text-[10px] tabular-nums leading-none text-foreground">{value}</div>
-                          {detail ? <div className="mt-1 text-[7px] text-muted-foreground">{detail}</div> : null}
+                          <div className="mt-1 font-mono text-[10px] tabular-nums leading-none text-foreground">
+                            {value}
+                          </div>
+                          {detail ? (
+                            <div className="mt-1 text-[7px] text-muted-foreground">
+                              {detail}
+                            </div>
+                          ) : null}
                         </div>
                       ))}
                     </div>
@@ -2999,12 +3864,17 @@ export default function KnowledgeIngestionPageClient() {
                         <div className="grid gap-1.5 xl:grid-cols-[184px_minmax(0,1fr)] xl:items-stretch">
                           <div className="rounded-[0.9rem] border border-border/50 bg-[linear-gradient(180deg,rgba(255,255,255,0.9),rgba(248,250,252,0.9))] px-2.5 py-2">
                             <div className="flex items-center justify-between gap-2">
-                              <div className="text-[7px] font-medium uppercase tracking-[0.18em] text-muted-foreground">报价依据</div>
+                              <div className="text-[7px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                                报价依据
+                              </div>
                               <FileDigit className="h-3 w-3 text-muted-foreground/65" />
                             </div>
-                            <div className="mt-1 text-[11px] font-medium tracking-tight text-foreground">核心摘要</div>
+                            <div className="mt-1 text-[11px] font-medium text-foreground">
+                              核心摘要
+                            </div>
                             <p className="mt-1 text-[9px] leading-3.5 text-muted-foreground">
-                              默认输出脱敏后的客观事实，用于解释报价、POC 范围与人工阻断来源。
+                              默认输出脱敏后的客观事实，用于解释报价、POC
+                              范围与人工阻断来源。
                             </p>
                             <div className="mt-1.5 inline-flex items-center rounded-full border border-border/60 bg-background/80 px-1.5 py-0.5 text-[8px] font-medium text-muted-foreground">
                               Evidence-first · De-identified
@@ -3012,31 +3882,77 @@ export default function KnowledgeIngestionPageClient() {
                           </div>
 
                           <div className="grid gap-1 sm:grid-cols-2 xl:grid-cols-4">
-                            {salesCoreSummary.map(([label, value, note], index) => {
-                              const Icon = index === 0 ? FileSearch : index === 1 ? Workflow : index === 2 ? CircleAlert : ShieldAlert
-                              const iconTone = index === 0 ? 'text-muted-foreground' : index === 1 ? 'text-accent' : index === 2 ? 'text-rose' : 'text-warning'
-                              return (
-                                <div key={label} className={cn(SALES_PANEL_INSET_CLASS, 'px-1.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.58)]')}>
-                                  <div className="flex items-center gap-1.5">
-                                    <div className="flex h-4 w-4 items-center justify-center rounded-full bg-muted/30">
-                                      <Icon className={cn('h-2.5 w-2.5', iconTone)} />
+                            {salesCoreSummary.map(
+                              ([label, value, note], index) => {
+                                const Icon =
+                                  index === 0
+                                    ? FileSearch
+                                    : index === 1
+                                      ? Workflow
+                                      : index === 2
+                                        ? CircleAlert
+                                        : ShieldAlert
+                                const iconTone =
+                                  index === 0
+                                    ? 'text-muted-foreground'
+                                    : index === 1
+                                      ? 'text-accent'
+                                      : index === 2
+                                        ? 'text-rose'
+                                        : 'text-warning'
+                                return (
+                                  <div
+                                    key={label}
+                                    className={cn(
+                                      SALES_PANEL_INSET_CLASS,
+                                      'px-1.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.58)]'
+                                    )}
+                                  >
+                                    <div className="flex items-center gap-1.5">
+                                      <div className="flex h-4 w-4 items-center justify-center rounded-full bg-muted/30">
+                                        <Icon
+                                          className={cn(
+                                            'h-2.5 w-2.5',
+                                            iconTone
+                                          )}
+                                        />
+                                      </div>
+                                      <div className="text-[8px] font-medium uppercase tracking-[0.1em] text-muted-foreground">
+                                        {label}
+                                      </div>
                                     </div>
-                                    <div className="text-[8px] font-medium uppercase tracking-[0.1em] text-muted-foreground">{label}</div>
+                                    <div className="mt-1 font-mono text-[11px] font-medium leading-none text-foreground">
+                                      {value}
+                                    </div>
+                                    <div
+                                      className={cn(
+                                        'mt-0.5 text-[7px] leading-3',
+                                        index === 2
+                                          ? 'text-rose'
+                                          : 'text-muted-foreground'
+                                      )}
+                                    >
+                                      {note}
+                                    </div>
                                   </div>
-                                  <div className="mt-1 font-mono text-[11px] font-medium leading-none text-foreground">{value}</div>
-                                  <div className={cn('mt-0.5 text-[7px] leading-3', index === 2 ? 'text-rose' : 'text-muted-foreground')}>
-                                    {note}
-                                  </div>
-                                </div>
-                              )
-                            })}
+                                )
+                              }
+                            )}
                           </div>
                         </div>
                       </section>
 
                       <div className="grid gap-1.5 xl:grid-cols-[0.96fr_1.12fr_0.8fr]">
-                        <section className={cn(SALES_PANEL_CLASS, 'flex h-full flex-col p-2.5')}>
-                          <SalesPanelHeader title="PDF 类型分布" icon={CircleDashed} />
+                        <section
+                          className={cn(
+                            SALES_PANEL_CLASS,
+                            'flex h-full flex-col p-2.5'
+                          )}
+                        >
+                          <SalesPanelHeader
+                            title="PDF 类型分布"
+                            icon={CircleDashed}
+                          />
                           <div className="mt-1 h-[9rem]">
                             <EChart option={salesPdfSplitOption} />
                           </div>
@@ -3046,21 +3962,52 @@ export default function KnowledgeIngestionPageClient() {
                         </section>
 
                         <section className={cn(SALES_PANEL_CLASS, 'p-2.5')}>
-                          <SalesPanelHeader title="文档长度分布（按字符数）" icon={FileSearch} />
+                          <SalesPanelHeader
+                            title="文档长度分布（按字符数）"
+                            icon={FileSearch}
+                          />
                           <div className="mt-1.5 grid gap-2 xl:grid-cols-[1fr_148px]">
                             <div className="h-[8rem]">
                               <EChart option={salesLengthOption} />
                             </div>
-                            <div className={cn(SALES_PANEL_INSET_CLASS, 'space-y-1 px-2 py-1.5')}>
+                            <div
+                              className={cn(
+                                SALES_PANEL_INSET_CLASS,
+                                'space-y-1 px-2 py-1.5'
+                              )}
+                            >
                               {[
-                                ['P50（中位数）', salesAuditSummary?.length_percentiles.p50 || 0],
-                                ['P90', salesAuditSummary?.length_percentiles.p90 || 0],
-                                ['P99', salesAuditSummary?.length_percentiles.p99 || 0],
-                                ['最大值', salesAuditSummary?.length_percentiles.p99 || 0],
+                                [
+                                  'P50（中位数）',
+                                  salesAuditSummary?.length_percentiles.p50 ||
+                                    0,
+                                ],
+                                [
+                                  'P90',
+                                  salesAuditSummary?.length_percentiles.p90 ||
+                                    0,
+                                ],
+                                [
+                                  'P99',
+                                  salesAuditSummary?.length_percentiles.p99 ||
+                                    0,
+                                ],
+                                [
+                                  '最大值',
+                                  salesAuditSummary?.length_percentiles.p99 ||
+                                    0,
+                                ],
                               ].map(([label, value]) => (
-                                <div key={label} className="flex items-center justify-between gap-2 text-[8px]">
-                                  <span className="text-muted-foreground">{label}</span>
-                                  <span className="font-mono text-[9px] text-foreground">{value}</span>
+                                <div
+                                  key={label}
+                                  className="flex items-center justify-between gap-2 text-[8px]"
+                                >
+                                  <span className="text-muted-foreground">
+                                    {label}
+                                  </span>
+                                  <span className="font-mono text-[9px] text-foreground">
+                                    {value}
+                                  </span>
                                 </div>
                               ))}
                             </div>
@@ -3068,28 +4015,44 @@ export default function KnowledgeIngestionPageClient() {
                         </section>
 
                         <section className={cn(SALES_PANEL_CLASS, 'p-2.5')}>
-                          <SalesPanelHeader title="复杂度细节" icon={Radar} iconTone="text-accent" />
+                          <SalesPanelHeader
+                            title="复杂度细节"
+                            icon={Radar}
+                            iconTone="text-accent"
+                          />
                           <div className="mt-1.5 space-y-1">
-                            {(salesAuditProfile?.costDrivers || []).map((driver) => (
-                              <div key={driver.key} className={cn(SALES_PANEL_INSET_CLASS, 'flex items-center justify-between gap-3 px-2 py-1 text-[8px]')}>
-                                <div className="flex items-center gap-2">
-                                  <span
-                                    className={cn(
-                                      'h-2 w-2 rounded-full',
-                                      driver.key === 'ocr'
-                                        ? 'bg-info'
-                                        : driver.key === 'table_heavy'
-                                          ? 'bg-warning'
-                                          : driver.key === 'blocking'
-                                            ? 'bg-rose'
-                                            : 'bg-accent'
-                                    )}
-                                  />
-                                  <span className="text-foreground">{driver.label}</span>
+                            {(salesAuditProfile?.costDrivers || []).map(
+                              (driver) => (
+                                <div
+                                  key={driver.key}
+                                  className={cn(
+                                    SALES_PANEL_INSET_CLASS,
+                                    'flex items-center justify-between gap-3 px-2 py-1 text-[8px]'
+                                  )}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span
+                                      className={cn(
+                                        'h-2 w-2 rounded-full',
+                                        driver.key === 'ocr'
+                                          ? 'bg-info'
+                                          : driver.key === 'table_heavy'
+                                            ? 'bg-warning'
+                                            : driver.key === 'blocking'
+                                              ? 'bg-rose'
+                                              : 'bg-accent'
+                                      )}
+                                    />
+                                    <span className="text-foreground">
+                                      {driver.label}
+                                    </span>
+                                  </div>
+                                  <span className="font-mono text-[9px] text-foreground">
+                                    {driver.count}
+                                  </span>
                                 </div>
-                                <span className="font-mono text-[9px] text-foreground">{driver.count}</span>
-                              </div>
-                            ))}
+                              )
+                            )}
                           </div>
                           <div className="mt-1.5 h-[7.25rem] overflow-visible">
                             <EChart option={salesRadarOption} />
@@ -3112,11 +4075,29 @@ export default function KnowledgeIngestionPageClient() {
                                 key={item.name}
                                 type="button"
                                 onClick={() => handleHeatmapSelect(item.name)}
-                                className={cn(SALES_PANEL_INSET_CLASS, 'px-2 py-1.5 text-left')}
+                                className={cn(
+                                  SALES_PANEL_INSET_CLASS,
+                                  'px-2 py-1.5 text-left'
+                                )}
                               >
-                                <div className="text-[8px] text-muted-foreground">{item.name}</div>
-                                <div className="mt-1 font-mono text-[12px] font-medium text-foreground">{item.count.toLocaleString()}</div>
-                                <div className="mt-0.5 text-[8px] text-muted-foreground">占比 {((item.count / Math.max(1, salesAuditSummary?.total_files || 1)) * 100).toFixed(1)}%</div>
+                                <div className="text-[8px] text-muted-foreground">
+                                  {item.name}
+                                </div>
+                                <div className="mt-1 font-mono text-[12px] font-medium text-foreground">
+                                  {item.count.toLocaleString()}
+                                </div>
+                                <div className="mt-0.5 text-[8px] text-muted-foreground">
+                                  占比{' '}
+                                  {(
+                                    (item.count /
+                                      Math.max(
+                                        1,
+                                        salesAuditSummary?.total_files || 1
+                                      )) *
+                                    100
+                                  ).toFixed(1)}
+                                  %
+                                </div>
                               </button>
                             ))}
                           </div>
@@ -3132,9 +4113,17 @@ export default function KnowledgeIngestionPageClient() {
                           />
                           <div className="mt-1.5 grid gap-1.5 sm:grid-cols-4">
                             {salesProcessingLanes.map((lane) => (
-                              <div key={lane.key} className={cn('rounded-[0.9rem] border px-2 py-1.5', lane.tone)}>
+                              <div
+                                key={lane.key}
+                                className={cn(
+                                  'rounded-[0.9rem] border px-2 py-1.5',
+                                  lane.tone
+                                )}
+                              >
                                 <div className="text-[8px]">{lane.label}</div>
-                                <div className="mt-1 text-center font-mono text-[14px] font-semibold">{lane.count.toLocaleString()}</div>
+                                <div className="mt-1 text-center font-mono text-[14px] font-semibold">
+                                  {lane.count.toLocaleString()}
+                                </div>
                               </div>
                             ))}
                           </div>
@@ -3154,22 +4143,45 @@ export default function KnowledgeIngestionPageClient() {
                             <table className="w-full text-left text-[8px]">
                               <thead className="bg-muted/25 text-muted-foreground">
                                 <tr>
-                                  <th className="px-2 py-1 font-medium">文件名</th>
-                                  <th className="px-2 py-1 font-medium">类型</th>
-                                  <th className="px-2 py-1 font-medium">大小</th>
-                                  <th className="px-2 py-1 font-medium">主要风险</th>
-                                  <th className="px-2 py-1 font-medium">建议处理</th>
+                                  <th className="px-2 py-1 font-medium">
+                                    文件名
+                                  </th>
+                                  <th className="px-2 py-1 font-medium">
+                                    类型
+                                  </th>
+                                  <th className="px-2 py-1 font-medium">
+                                    大小
+                                  </th>
+                                  <th className="px-2 py-1 font-medium">
+                                    主要风险
+                                  </th>
+                                  <th className="px-2 py-1 font-medium">
+                                    建议处理
+                                  </th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {salesPocCandidates.map((row) => (
-                                  <tr key={row.id} className="border-t border-border/50">
-                                    <td className="px-2 py-1 font-mono text-foreground">{row.fileName}</td>
-                                    <td className="px-2 py-1 text-muted-foreground">{row.fileType}</td>
-                                    <td className="px-2 py-1 font-mono text-muted-foreground">{row.fileSizeLabel}</td>
-                                    <td className="px-2 py-1 text-muted-foreground">{row.primaryRisk}</td>
+                                  <tr
+                                    key={row.id}
+                                    className="border-t border-border/50"
+                                  >
+                                    <td className="px-2 py-1 font-mono text-foreground">
+                                      {row.fileName}
+                                    </td>
+                                    <td className="px-2 py-1 text-muted-foreground">
+                                      {row.fileType}
+                                    </td>
+                                    <td className="px-2 py-1 font-mono text-muted-foreground">
+                                      {row.fileSizeLabel}
+                                    </td>
+                                    <td className="px-2 py-1 text-muted-foreground">
+                                      {row.primaryRisk}
+                                    </td>
                                     <td className="px-2 py-1">
-                                      <span className="rounded-full border border-border/60 px-1.5 py-0.5 text-[7px] text-foreground">{row.actionLabel}</span>
+                                      <span className="rounded-full border border-border/60 px-1.5 py-0.5 text-[7px] text-foreground">
+                                        {row.actionLabel}
+                                      </span>
                                     </td>
                                   </tr>
                                 ))}
@@ -3190,24 +4202,45 @@ export default function KnowledgeIngestionPageClient() {
                             <table className="w-full text-left text-[8px]">
                               <thead className="bg-muted/25 text-muted-foreground">
                                 <tr>
-                                  <th className="px-2 py-1 font-medium">文件名</th>
-                                  <th className="px-2 py-1 font-medium">风险类型</th>
-                                  <th className="px-2 py-1 font-medium">风险描述</th>
-                                  <th className="px-2 py-1 font-medium">操作</th>
+                                  <th className="px-2 py-1 font-medium">
+                                    文件名
+                                  </th>
+                                  <th className="px-2 py-1 font-medium">
+                                    风险类型
+                                  </th>
+                                  <th className="px-2 py-1 font-medium">
+                                    风险描述
+                                  </th>
+                                  <th className="px-2 py-1 font-medium">
+                                    操作
+                                  </th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {salesHighRiskFiles.map((row) => (
-                                  <tr key={row.id} className="border-t border-border/50">
-                                    <td className="px-2 py-1 font-mono text-foreground">{row.fileName}</td>
-                                    <td className="px-2 py-1 text-muted-foreground">{row.primaryRisk}</td>
-                                    <td className="px-2 py-1 text-muted-foreground">{row.riskDescription}</td>
+                                  <tr
+                                    key={row.id}
+                                    className="border-t border-border/50"
+                                  >
+                                    <td className="px-2 py-1 font-mono text-foreground">
+                                      {row.fileName}
+                                    </td>
+                                    <td className="px-2 py-1 text-muted-foreground">
+                                      {row.primaryRisk}
+                                    </td>
+                                    <td className="px-2 py-1 text-muted-foreground">
+                                      {row.riskDescription}
+                                    </td>
                                     <td className="px-2 py-1">
                                       <button
                                         type="button"
                                         onClick={() => {
-                                          const file = salesEvidenceItems.find((item) => String(item.name) === row.id)
-                                          if (file) setSelectedEvidenceFile(file)
+                                          const file = salesEvidenceItems.find(
+                                            (item) =>
+                                              String(item.name) === row.id
+                                          )
+                                          if (file)
+                                            setSelectedEvidenceFile(file)
                                         }}
                                         className="text-[7px] text-info transition-colors hover:text-info"
                                       >
@@ -3226,7 +4259,11 @@ export default function KnowledgeIngestionPageClient() {
                 )
               ) : (
                 <>
-                  {documentsQuery.isLoading && !documents.length && !demoMode ? <LoadingWireframe /> : null}
+                  {documentsQuery.isLoading &&
+                  !documents.length &&
+                  !demoMode ? (
+                    <LoadingWireframe />
+                  ) : null}
                   {showEmptyState ? (
                     <EmptyState mode="truly-empty" />
                   ) : (
@@ -3250,31 +4287,54 @@ export default function KnowledgeIngestionPageClient() {
                         <div className="grid gap-4 xl:grid-cols-[0.82fr_1.18fr]">
                           <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
                             <div className="flex items-center justify-between gap-3">
-                              <div className="text-[11px] font-medium text-foreground">风险与阻塞（需关注）</div>
+                              <div className="text-[11px] font-medium text-foreground">
+                                风险与阻塞（需关注）
+                              </div>
                               <span className="text-[9px] text-muted-foreground">
-                                {taskQueueSnapshot?.generated_at ? `队列快照 ${formatClockSecondsLabel(taskQueueSnapshot.generated_at)}` : '文档状态聚合'}
+                                {taskQueueSnapshot?.generated_at
+                                  ? `队列快照 ${formatClockSecondsLabel(taskQueueSnapshot.generated_at)}`
+                                  : '文档状态聚合'}
                               </span>
                             </div>
                             <div className="mt-3 space-y-2">
                               {executionRiskItems.map((item) => (
-                                <div key={item.title} className={cn('rounded-[1rem] border px-3 py-2.5', item.tone)}>
+                                <div
+                                  key={item.title}
+                                  className={cn(
+                                    'rounded-[1rem] border px-3 py-2.5',
+                                    item.tone
+                                  )}
+                                >
                                   <div className="flex items-start justify-between gap-3">
                                     <div className="flex items-start gap-2.5">
                                       <span className="mt-0.5 inline-flex h-7 w-7 items-center justify-center rounded-full border border-current/12 bg-card/70">
                                         <AlertTriangle className="h-4 w-4" />
                                       </span>
                                       <div>
-                                        <div className="text-[11px] font-medium text-foreground">{item.title}</div>
-                                        <div className="mt-0.5 text-[9px] text-muted-foreground">{item.detail}</div>
+                                        <div className="text-[11px] font-medium text-foreground">
+                                          {item.title}
+                                        </div>
+                                        <div className="mt-0.5 text-[9px] text-muted-foreground">
+                                          {item.detail}
+                                        </div>
                                       </div>
                                     </div>
-                                    <div className="text-[11px] font-medium">{item.count} 项</div>
+                                    <div className="text-[11px] font-medium">
+                                      {item.count} 项
+                                    </div>
                                   </div>
                                 </div>
                               ))}
                             </div>
                             <div className="mt-3 flex items-center justify-between text-[9px] text-muted-foreground">
-                              <span>共 {executionRiskItems.reduce((sum, item) => sum + item.count, 0)} 项阻塞</span>
+                              <span>
+                                共{' '}
+                                {executionRiskItems.reduce(
+                                  (sum, item) => sum + item.count,
+                                  0
+                                )}{' '}
+                                项阻塞
+                              </span>
                               <button
                                 type="button"
                                 className="inline-flex items-center gap-1 font-medium text-info transition-colors hover:text-info"
@@ -3288,7 +4348,9 @@ export default function KnowledgeIngestionPageClient() {
 
                           <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
                             <div className="flex items-center justify-between gap-3">
-                              <div className="text-[11px] font-medium text-foreground">处理流水线</div>
+                              <div className="text-[11px] font-medium text-foreground">
+                                处理流水线
+                              </div>
                               <div className="flex flex-wrap items-center gap-3 text-[9px] text-muted-foreground">
                                 {[
                                   ['完成', 'bg-success'],
@@ -3296,8 +4358,16 @@ export default function KnowledgeIngestionPageClient() {
                                   ['等待中', 'bg-warning'],
                                   ['未开始', 'bg-muted'],
                                 ].map(([label, tone]) => (
-                                  <span key={label} className="inline-flex items-center gap-1.5">
-                                    <span className={cn('h-2.5 w-2.5 rounded-full', tone)} />
+                                  <span
+                                    key={label}
+                                    className="inline-flex items-center gap-1.5"
+                                  >
+                                    <span
+                                      className={cn(
+                                        'h-2.5 w-2.5 rounded-full',
+                                        tone
+                                      )}
+                                    />
                                     <span>{label}</span>
                                   </span>
                                 ))}
@@ -3309,16 +4379,35 @@ export default function KnowledgeIngestionPageClient() {
                                   {index < executionPipelineCards.length - 1 ? (
                                     <ChevronRight className="absolute -right-2 top-1/2 hidden h-5 w-5 -translate-y-1/2 text-muted-foreground/50 xl:block" />
                                   ) : null}
-                                  <div className={cn('rounded-[1rem] border p-3', card.tone)}>
+                                  <div
+                                    className={cn(
+                                      'rounded-[1rem] border p-3',
+                                      card.tone
+                                    )}
+                                  >
                                     <div className="flex items-center gap-2">
-                                      <span className={cn('h-2.5 w-2.5 rounded-full', card.statusTone)} />
-                                      <span className="text-[11px] font-medium text-foreground">{card.label}</span>
+                                      <span
+                                        className={cn(
+                                          'h-2.5 w-2.5 rounded-full',
+                                          card.statusTone
+                                        )}
+                                      />
+                                      <span className="text-[11px] font-medium text-foreground">
+                                        {card.label}
+                                      </span>
                                     </div>
                                     <div className="mt-3 space-y-1.5">
                                       {card.metrics.map(([label, value]) => (
-                                        <div key={label} className="flex items-center justify-between gap-3 text-[9px]">
-                                          <span className="text-muted-foreground">{label}</span>
-                                          <span className="font-mono text-[10px] font-medium text-foreground">{value}</span>
+                                        <div
+                                          key={label}
+                                          className="flex items-center justify-between gap-3 text-[9px]"
+                                        >
+                                          <span className="text-muted-foreground">
+                                            {label}
+                                          </span>
+                                          <span className="font-mono text-[10px] font-medium text-foreground">
+                                            {value}
+                                          </span>
                                         </div>
                                       ))}
                                     </div>
@@ -3327,35 +4416,63 @@ export default function KnowledgeIngestionPageClient() {
                               ))}
                             </div>
                             <div className="mt-4 flex items-center gap-3">
-                              <div className="text-[10px] font-medium text-foreground">总体进度 {executionOverallProgress}%</div>
+                              <div className="text-[10px] font-medium text-foreground">
+                                总体进度 {executionOverallProgress}%
+                              </div>
                               <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted/60">
-                                <div className="h-full rounded-full bg-info" style={{ width: `${executionOverallProgress}%` }} />
+                                <div
+                                  className="h-full rounded-full bg-info"
+                                  style={{
+                                    width: `${executionOverallProgress}%`,
+                                  }}
+                                />
                               </div>
                               <div className="text-[10px] text-muted-foreground">
-                                已处理 <span className="font-mono text-foreground">{executionProcessedTotal}</span> / 总计{documents.length}
+                                已处理{' '}
+                                <span className="font-mono text-foreground">
+                                  {executionProcessedTotal}
+                                </span>{' '}
+                                / 总计{documents.length}
                               </div>
                             </div>
                           </section>
                         </div>
 
                         <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
-                          <div className="text-[11px] font-medium text-foreground">关键指标（实时）</div>
+                          <div className="text-[11px] font-medium text-foreground">
+                            关键指标（实时）
+                          </div>
                           <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
                             {executionKpiCards.map((item) => {
                               const Icon = item.icon
                               return (
-                                <div key={item.label} className="rounded-[1rem] border border-border/55 bg-background/80 p-3">
+                                <div
+                                  key={item.label}
+                                  className="rounded-[1rem] border border-border/55 bg-background/80 p-3"
+                                >
                                   <div className="flex items-start justify-between gap-3">
-                                    <div className="text-[9px] text-muted-foreground">{item.label}</div>
+                                    <div className="text-[9px] text-muted-foreground">
+                                      {item.label}
+                                    </div>
                                     <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/45 bg-muted/25">
-                                      <Icon className={cn('h-3.5 w-3.5', item.tone)} />
+                                      <Icon
+                                        className={cn('h-3.5 w-3.5', item.tone)}
+                                      />
                                     </span>
                                   </div>
                                   <div className="mt-2 flex items-end gap-1">
-                                    <span className="font-mono text-[15px] font-semibold text-foreground">{item.value}</span>
-                                    {item.suffix ? <span className="pb-0.5 text-[9px] text-muted-foreground">{item.suffix}</span> : null}
+                                    <span className="font-mono text-[15px] font-semibold text-foreground">
+                                      {item.value}
+                                    </span>
+                                    {item.suffix ? (
+                                      <span className="pb-0.5 text-[9px] text-muted-foreground">
+                                        {item.suffix}
+                                      </span>
+                                    ) : null}
                                   </div>
-                                  <div className="mt-1 text-[8px] text-muted-foreground">{item.detail}</div>
+                                  <div className="mt-1 text-[8px] text-muted-foreground">
+                                    {item.detail}
+                                  </div>
                                 </div>
                               )
                             })}
@@ -3365,8 +4482,12 @@ export default function KnowledgeIngestionPageClient() {
                         <div className="grid gap-4 xl:grid-cols-[1.1fr_0.8fr_0.9fr]">
                           <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
                             <div className="flex items-center justify-between gap-3">
-                              <div className="text-[11px] font-medium text-foreground">处理吞吐趋势</div>
-                              <span className="rounded-full border border-border/60 px-2 py-0.5 text-[9px] text-muted-foreground">近 1 小时</span>
+                              <div className="text-[11px] font-medium text-foreground">
+                                处理吞吐趋势
+                              </div>
+                              <span className="rounded-full border border-border/60 px-2 py-0.5 text-[9px] text-muted-foreground">
+                                近 1 小时
+                              </span>
                             </div>
                             <div className="mt-3 h-[12rem]">
                               <EChart option={predictionOption} />
@@ -3375,7 +4496,9 @@ export default function KnowledgeIngestionPageClient() {
 
                           <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
                             <div className="flex items-center justify-between gap-3">
-                              <div className="text-[11px] font-medium text-foreground">OCR 成本预警雷达</div>
+                              <div className="text-[11px] font-medium text-foreground">
+                                OCR 成本预警雷达
+                              </div>
                               <Radar className="h-4 w-4 text-accent" />
                             </div>
                             <div className="mt-3 h-[12rem]">
@@ -3385,21 +4508,37 @@ export default function KnowledgeIngestionPageClient() {
 
                           <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
                             <div className="flex items-center justify-between gap-3">
-                              <div className="text-[11px] font-medium text-foreground">运行日志（最近）</div>
+                              <div className="text-[11px] font-medium text-foreground">
+                                运行日志（最近）
+                              </div>
                               <span className="text-[9px] text-muted-foreground">
-                                {recentQueueOutcomes.length ? '来自任务队列' : '来自文档状态'}
+                                {recentQueueOutcomes.length
+                                  ? '来自任务队列'
+                                  : '来自文档状态'}
                               </span>
                             </div>
                             <div className="mt-3 space-y-2">
                               {executionRecentLogs.map((log) => (
-                                <div key={log.id} className="flex items-start gap-2.5 rounded-[0.9rem] border border-border/50 bg-background/78 px-2.5 py-2">
-                                  <span className={cn('mt-1 h-2.5 w-2.5 shrink-0 rounded-full', log.tone)} />
+                                <div
+                                  key={log.id}
+                                  className="flex items-start gap-2.5 rounded-[0.9rem] border border-border/50 bg-background/78 px-2.5 py-2"
+                                >
+                                  <span
+                                    className={cn(
+                                      'mt-1 h-2.5 w-2.5 shrink-0 rounded-full',
+                                      log.tone
+                                    )}
+                                  />
                                   <div className="min-w-0 flex-1">
                                     <div className="flex items-center gap-2 text-[9px] text-muted-foreground">
-                                      <span className="font-mono">{log.time}</span>
+                                      <span className="font-mono">
+                                        {log.time}
+                                      </span>
                                       <span>{log.stage}</span>
                                     </div>
-                                    <div className="mt-0.5 truncate text-[10px] text-foreground">{log.detail}</div>
+                                    <div className="mt-0.5 truncate text-[10px] text-foreground">
+                                      {log.detail}
+                                    </div>
                                   </div>
                                 </div>
                               ))}
@@ -3409,28 +4548,51 @@ export default function KnowledgeIngestionPageClient() {
 
                         <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
                           <div className="flex items-center justify-between gap-3">
-                            <div className="text-[11px] font-medium text-foreground">任务列表</div>
-                            <div className="text-[9px] text-muted-foreground">{executionTaskRows.length} 个最新任务</div>
+                            <div className="text-[11px] font-medium text-foreground">
+                              任务列表
+                            </div>
+                            <div className="text-[9px] text-muted-foreground">
+                              {executionTaskRows.length} 个最新任务
+                            </div>
                           </div>
                           <div className="mt-3 overflow-hidden rounded-[1rem] border border-border/50">
                             <table className="w-full text-left text-[9px]">
                               <thead className="bg-muted/20 text-muted-foreground">
                                 <tr>
-                                  <th className="px-3 py-2 font-medium">文件名</th>
-                                  <th className="px-3 py-2 font-medium">类型</th>
-                                  <th className="px-3 py-2 font-medium">大小</th>
-                                  <th className="px-3 py-2 font-medium">当前阶段</th>
-                                  <th className="px-3 py-2 font-medium">状态</th>
-                                  <th className="px-3 py-2 font-medium">处理进度</th>
-                                  <th className="px-3 py-2 font-medium">耗时</th>
-                                  <th className="px-3 py-2 font-medium">操作</th>
+                                  <th className="px-3 py-2 font-medium">
+                                    文件名
+                                  </th>
+                                  <th className="px-3 py-2 font-medium">
+                                    类型
+                                  </th>
+                                  <th className="px-3 py-2 font-medium">
+                                    大小
+                                  </th>
+                                  <th className="px-3 py-2 font-medium">
+                                    当前阶段
+                                  </th>
+                                  <th className="px-3 py-2 font-medium">
+                                    状态
+                                  </th>
+                                  <th className="px-3 py-2 font-medium">
+                                    处理进度
+                                  </th>
+                                  <th className="px-3 py-2 font-medium">
+                                    耗时
+                                  </th>
+                                  <th className="px-3 py-2 font-medium">
+                                    操作
+                                  </th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {executionTaskRows.map((document) => {
                                   const progress =
-                                    typeof document.processing_progress === 'number'
-                                      ? Math.round(Number(document.processing_progress))
+                                    typeof document.processing_progress ===
+                                    'number'
+                                      ? Math.round(
+                                          Number(document.processing_progress)
+                                        )
                                       : document.status === 'completed'
                                         ? 100
                                         : document.status === 'processing'
@@ -3439,10 +4601,21 @@ export default function KnowledgeIngestionPageClient() {
                                             ? 15
                                             : 0
                                   const elapsedMinutes = (() => {
-                                    const created = new Date(String(document.created_at || '')).getTime()
-                                    const updated = new Date(String(document.updated_at || '')).getTime()
-                                    if (!Number.isFinite(created) || !Number.isFinite(updated) || updated <= created) return '--'
-                                    return formatDurationClock((updated - created) / 1000)
+                                    const created = new Date(
+                                      String(document.created_at || '')
+                                    ).getTime()
+                                    const updated = new Date(
+                                      String(document.updated_at || '')
+                                    ).getTime()
+                                    if (
+                                      !Number.isFinite(created) ||
+                                      !Number.isFinite(updated) ||
+                                      updated <= created
+                                    )
+                                      return '--'
+                                    return formatDurationClock(
+                                      (updated - created) / 1000
+                                    )
                                   })()
                                   const statusLabel =
                                     document.status === 'completed'
@@ -3453,7 +4626,9 @@ export default function KnowledgeIngestionPageClient() {
                                           ? '进行中'
                                           : document.status === 'pending'
                                             ? '等待中'
-                                            : String(document.status || '未开始')
+                                            : String(
+                                                document.status || '未开始'
+                                              )
                                   const statusTone =
                                     document.status === 'completed'
                                       ? 'text-success'
@@ -3464,26 +4639,59 @@ export default function KnowledgeIngestionPageClient() {
                                           : 'text-muted-foreground'
 
                                   return (
-                                    <tr key={document.id} className="border-t border-border/40">
-                                      <td className="px-3 py-2 font-medium text-foreground">{document.filename}</td>
-                                      <td className="px-3 py-2 text-muted-foreground">{String(document.file_type || '').toUpperCase()}</td>
-                                      <td className="px-3 py-2 font-mono text-muted-foreground">{formatFileSize(document.file_size || 0)}</td>
-                                      <td className="px-3 py-2 text-muted-foreground">{String(document.current_stage || 'Parser')}</td>
-                                      <td className={cn('px-3 py-2 font-medium', statusTone)}>{statusLabel}</td>
+                                    <tr
+                                      key={document.id}
+                                      className="border-t border-border/40"
+                                    >
+                                      <td className="px-3 py-2 font-medium text-foreground">
+                                        {document.filename}
+                                      </td>
+                                      <td className="px-3 py-2 text-muted-foreground">
+                                        {String(
+                                          document.file_type || ''
+                                        ).toUpperCase()}
+                                      </td>
+                                      <td className="px-3 py-2 font-mono text-muted-foreground">
+                                        {formatFileSize(
+                                          document.file_size || 0
+                                        )}
+                                      </td>
+                                      <td className="px-3 py-2 text-muted-foreground">
+                                        {String(
+                                          document.current_stage || 'Parser'
+                                        )}
+                                      </td>
+                                      <td
+                                        className={cn(
+                                          'px-3 py-2 font-medium',
+                                          statusTone
+                                        )}
+                                      >
+                                        {statusLabel}
+                                      </td>
                                       <td className="px-3 py-2">
                                         <div className="flex items-center gap-2">
                                           <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted/60">
-                                            <div className="h-full rounded-full bg-info" style={{ width: `${progress}%` }} />
+                                            <div
+                                              className="h-full rounded-full bg-info"
+                                              style={{ width: `${progress}%` }}
+                                            />
                                           </div>
-                                          <span className="font-mono text-[8px] text-foreground">{progress}%</span>
+                                          <span className="font-mono text-[8px] text-foreground">
+                                            {progress}%
+                                          </span>
                                         </div>
                                       </td>
-                                      <td className="px-3 py-2 font-mono text-muted-foreground">{elapsedMinutes}</td>
+                                      <td className="px-3 py-2 font-mono text-muted-foreground">
+                                        {elapsedMinutes}
+                                      </td>
                                       <td className="px-3 py-2">
                                         <button
                                           type="button"
                                           className="text-[9px] font-medium text-info transition-colors hover:text-info"
-                                          onClick={() => handleOpenAuditSnapshot(document.id)}
+                                          onClick={() =>
+                                            handleOpenAuditSnapshot(document.id)
+                                          }
                                         >
                                           详情
                                         </button>
@@ -3506,31 +4714,53 @@ export default function KnowledgeIngestionPageClient() {
       </div>
 
       {selectedEvidenceFile ? (
-        <Sheet open={Boolean(selectedEvidenceFile)} onOpenChange={(open) => !open && setSelectedEvidenceFile(null)}>
+        <Sheet
+          open={Boolean(selectedEvidenceFile)}
+          onOpenChange={(open) => !open && setSelectedEvidenceFile(null)}
+        >
           <SheetContent
             side="right"
             className="h-[100dvh] w-[min(820px,100vw)] max-w-[820px] overflow-hidden border-l border-border/60 bg-background/95 shadow-strong"
           >
             <SheetHeader className="sr-only">
-              <SheetTitle>{anonymizeEvidenceName(selectedEvidenceFile.name)}</SheetTitle>
-              <SheetDescription>{selectedEvidenceFile.file_type}</SheetDescription>
+              <SheetTitle>
+                {anonymizeEvidenceName(selectedEvidenceFile.name)}
+              </SheetTitle>
+              <SheetDescription>
+                {selectedEvidenceFile.file_type}
+              </SheetDescription>
             </SheetHeader>
             <div className="flex h-full min-h-0 flex-col">
               <div className="border-b border-border/60 px-6 py-5">
-                <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">审计依据</div>
-                <div className="mt-1 text-lg font-semibold text-foreground">{anonymizeEvidenceName(selectedEvidenceFile.name)}</div>
+                <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                  审计依据
+                </div>
+                <div className="mt-1 text-lg font-semibold text-foreground">
+                  {anonymizeEvidenceName(selectedEvidenceFile.name)}
+                </div>
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <span className="font-mono tabular-nums">{selectedEvidenceFile.file_type.toUpperCase()}</span>
-                  <span className="font-mono tabular-nums">{formatFileSize(selectedEvidenceFile.file_size || 0)}</span>
-                  <span className="font-mono tabular-nums">{selectedEvidenceFile.text_characters} chars</span>
+                  <span className="font-mono tabular-nums">
+                    {selectedEvidenceFile.file_type.toUpperCase()}
+                  </span>
+                  <span className="font-mono tabular-nums">
+                    {formatFileSize(selectedEvidenceFile.file_size || 0)}
+                  </span>
+                  <span className="font-mono tabular-nums">
+                    {selectedEvidenceFile.text_characters} chars
+                  </span>
                 </div>
               </div>
               <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
                 <div className="rounded-[1.3rem] border border-border/60 bg-muted/20 p-4">
-                  <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">处理标签</div>
+                  <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                    处理标签
+                  </div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {buildEvidenceSlotTags(selectedEvidenceFile).map((tag) => (
-                      <span key={tag} className="rounded-full border border-border/60 bg-background/86 px-2.5 py-1 text-[11px] font-medium text-foreground">
+                      <span
+                        key={tag}
+                        className="rounded-full border border-border/60 bg-background/86 px-2.5 py-1 text-[11px] font-medium text-foreground"
+                      >
                         {tag}
                       </span>
                     ))}
@@ -3538,42 +4768,76 @@ export default function KnowledgeIngestionPageClient() {
                 </div>
 
                 <div className="rounded-[1.3rem] border border-border/60 bg-background/80 p-4">
-                  <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">为何复杂</div>
-                  <div className="mt-2 text-sm leading-6 text-foreground">{buildEvidenceSlotReason(selectedEvidenceFile)}</div>
+                  <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                    为何复杂
+                  </div>
+                  <div className="mt-2 text-sm leading-6 text-foreground">
+                    {buildEvidenceSlotReason(selectedEvidenceFile)}
+                  </div>
                 </div>
 
                 {selectedEvidenceFile.pdf_pages ? (
                   <div className="rounded-[1.3rem] border border-border/60 bg-background/80 p-4">
-                    <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">PDF 类型分流依据</div>
+                    <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                      PDF 类型分流依据
+                    </div>
                     <div className="mt-3 grid gap-3 md:grid-cols-2">
-                      <div className="rounded-[1rem] border border-border/55 bg-muted/20 px-3 py-2.5 text-sm">总页数：{selectedEvidenceFile.pdf_pages.page_count}</div>
-                      <div className="rounded-[1rem] border border-border/55 bg-muted/20 px-3 py-2.5 text-sm">扫描页：{selectedEvidenceFile.pdf_pages.scanned_pages}</div>
-                      <div className="rounded-[1rem] border border-border/55 bg-muted/20 px-3 py-2.5 text-sm">文字页：{selectedEvidenceFile.pdf_pages.text_pages}</div>
-                      <div className="rounded-[1rem] border border-border/55 bg-muted/20 px-3 py-2.5 text-sm">扫描占比：{Math.round(selectedEvidenceFile.pdf_pages.scan_ratio * 100)}%</div>
+                      <div className="rounded-[1rem] border border-border/55 bg-muted/20 px-3 py-2.5 text-sm">
+                        总页数：{selectedEvidenceFile.pdf_pages.page_count}
+                      </div>
+                      <div className="rounded-[1rem] border border-border/55 bg-muted/20 px-3 py-2.5 text-sm">
+                        扫描页：{selectedEvidenceFile.pdf_pages.scanned_pages}
+                      </div>
+                      <div className="rounded-[1rem] border border-border/55 bg-muted/20 px-3 py-2.5 text-sm">
+                        文字页：{selectedEvidenceFile.pdf_pages.text_pages}
+                      </div>
+                      <div className="rounded-[1rem] border border-border/55 bg-muted/20 px-3 py-2.5 text-sm">
+                        扫描占比：
+                        {Math.round(
+                          selectedEvidenceFile.pdf_pages.scan_ratio * 100
+                        )}
+                        %
+                      </div>
                     </div>
                   </div>
                 ) : null}
 
                 {selectedEvidenceFile.pii_samples?.length ? (
                   <div className="rounded-[1.3rem] border border-border/60 bg-background/80 p-4">
-                    <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">敏感信息待审核列表</div>
+                    <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                      敏感信息待审核列表
+                    </div>
                     <div className="mt-3 space-y-3">
-                      {selectedEvidenceFile.pii_samples.slice(0, 3).map((item, index) => (
-                        <div key={`${item.kind}-${index}`} className="rounded-[1rem] border border-border/55 bg-muted/20 p-3 text-sm">
-                          <div className="font-mono text-xs text-muted-foreground">{item.kind}</div>
-                          <div className="mt-1 font-mono text-foreground">{item.masked}</div>
-                          <div className="mt-2 rounded-lg border border-border/50 bg-background/80 px-3 py-2 font-mono text-xs text-muted-foreground">
-                            {item.context}
+                      {selectedEvidenceFile.pii_samples
+                        .slice(0, 3)
+                        .map((item, index) => (
+                          <div
+                            key={`${item.kind}-${index}`}
+                            className="rounded-[1rem] border border-border/55 bg-muted/20 p-3 text-sm"
+                          >
+                            <div className="font-mono text-xs text-muted-foreground">
+                              {item.kind}
+                            </div>
+                            <div className="mt-1 font-mono text-foreground">
+                              {item.masked}
+                            </div>
+                            <div className="mt-2 rounded-lg border border-border/50 bg-background/80 px-3 py-2 font-mono text-xs text-muted-foreground">
+                              {item.context}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        ))}
                     </div>
                   </div>
                 ) : null}
 
                 <div className="rounded-[1.3rem] border border-border/60 bg-background/80 p-4">
-                  <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">本地复核</div>
-                  <div className="mt-2 text-sm leading-6 text-muted-foreground">一键打开本地文件仅在本地审计模式可用；普通 Web 部署默认禁用。</div>
+                  <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                    本地复核
+                  </div>
+                  <div className="mt-2 text-sm leading-6 text-muted-foreground">
+                    一键打开本地文件仅在本地审计模式可用；普通 Web
+                    部署默认禁用。
+                  </div>
                   <Button className="mt-3 rounded-xl" disabled>
                     打开本地文件
                   </Button>
@@ -3583,14 +4847,21 @@ export default function KnowledgeIngestionPageClient() {
           </SheetContent>
         </Sheet>
       ) : activeAuditIsDemo ? (
-        <Sheet open={Boolean(activeAuditDocument)} onOpenChange={(open) => !open && setActiveDetailId(null)}>
+        <Sheet
+          open={Boolean(activeAuditDocument)}
+          onOpenChange={(open) => !open && setActiveDetailId(null)}
+        >
           <SheetContent
             side="right"
             className="h-[100dvh] w-[min(820px,100vw)] max-w-[820px] overflow-hidden border-l border-border/60 bg-background/95 shadow-strong"
           >
             <SheetHeader className="sr-only">
-              <SheetTitle>{activeAuditDocument?.filename || '审计快照'}</SheetTitle>
-              <SheetDescription>{activeAuditDocument?.id || ''}</SheetDescription>
+              <SheetTitle>
+                {activeAuditDocument?.filename || '审计快照'}
+              </SheetTitle>
+              <SheetDescription>
+                {activeAuditDocument?.id || ''}
+              </SheetDescription>
             </SheetHeader>
             {activeAuditDocument ? (
               <div className="flex h-full min-h-0 flex-col">
@@ -3598,10 +4869,19 @@ export default function KnowledgeIngestionPageClient() {
                   <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
                     审计快照
                   </div>
-                  <div className="mt-1 text-lg font-semibold text-foreground">{activeAuditDocument.filename}</div>
+                  <div className="mt-1 text-lg font-semibold text-foreground">
+                    {activeAuditDocument.filename}
+                  </div>
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <span className="font-mono tabular-nums">{formatFileSize(activeAuditDocument.file_size || 0)}</span>
-                    <span>{formatDate(activeAuditDocument.updated_at || activeAuditDocument.created_at)}</span>
+                    <span className="font-mono tabular-nums">
+                      {formatFileSize(activeAuditDocument.file_size || 0)}
+                    </span>
+                    <span>
+                      {formatDate(
+                        activeAuditDocument.updated_at ||
+                          activeAuditDocument.created_at
+                      )}
+                    </span>
                   </div>
                 </div>
                 <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
@@ -3616,15 +4896,27 @@ export default function KnowledgeIngestionPageClient() {
                   <div className="grid gap-4 md:grid-cols-2">
                     {[
                       ['状态', String(activeAuditDocument.status || '-')],
-                      ['阶段', String(activeAuditDocument.current_stage || '-')],
+                      [
+                        '阶段',
+                        String(activeAuditDocument.current_stage || '-'),
+                      ],
                       ['数据集', String(activeAuditDocument.dataset_id || '-')],
-                      ['风险线索', activeAuditDocument.error_message || '无明确错误，建议抽样核查'],
+                      [
+                        '风险线索',
+                        activeAuditDocument.error_message ||
+                          '无明确错误，建议抽样核查',
+                      ],
                     ].map(([label, value]) => (
-                      <div key={label} className="rounded-[1.2rem] border border-border/60 bg-background/80 p-4">
+                      <div
+                        key={label}
+                        className="rounded-[1.2rem] border border-border/60 bg-background/80 p-4"
+                      >
                         <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
                           {label}
                         </div>
-                        <div className="mt-2 text-sm font-medium text-foreground">{value}</div>
+                        <div className="mt-2 text-sm font-medium text-foreground">
+                          {value}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -3633,10 +4925,27 @@ export default function KnowledgeIngestionPageClient() {
                       建议动作
                     </div>
                     <div className="mt-3 grid gap-3 md:grid-cols-2">
-                      <Button className="rounded-xl" onClick={() => handleSampleDisposition(activeAuditDocument.id, 'approved')}>
+                      <Button
+                        className="rounded-xl"
+                        onClick={() =>
+                          handleSampleDisposition(
+                            activeAuditDocument.id,
+                            'approved'
+                          )
+                        }
+                      >
                         确认可入库
                       </Button>
-                      <Button variant="outline" className="rounded-xl" onClick={() => handleSampleDisposition(activeAuditDocument.id, 'manual')}>
+                      <Button
+                        variant="outline"
+                        className="rounded-xl"
+                        onClick={() =>
+                          handleSampleDisposition(
+                            activeAuditDocument.id,
+                            'manual'
+                          )
+                        }
+                      >
                         需人工处理
                       </Button>
                     </div>
@@ -3653,7 +4962,7 @@ export default function KnowledgeIngestionPageClient() {
           documentId={activeDetailId}
         />
       )}
-      </div>
+    </div>
   )
 }
 

@@ -45,8 +45,8 @@ def _build_client(  # noqa: ANN001
     inline_text_parse_enabled: bool = False,
 ):
     import app.api.v1.documents as documents_module
-    from app.core.config import settings
     from app.api.v1.documents import preview_chunking, preview_chunking_by_sha
+    from app.core.config import settings
     from app.rag.chunking.factory import chunker_factory
     from app.services.dataset_service import DatasetService
 

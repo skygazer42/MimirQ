@@ -8,11 +8,13 @@ safe `ALTER TABLE ... IF NOT EXISTS` operations.
 Only runs on PostgreSQL. Failures are ignored to avoid blocking startup.
 """
 
-
+from collections.abc import Mapping
 from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
+
+MigrationStatement = str | tuple[str, Mapping[str, object]]
 
 
 def _default_tenant_uuid() -> str:
@@ -32,7 +34,7 @@ def _default_tenant_uuid() -> str:
         return fallback
 
 
-def _tenant_id_migrations(table: str, default_tenant: str) -> list[str]:
+def _tenant_id_migrations(table: str, default_tenant: str) -> list[MigrationStatement]:
     """
     Add tenant_id to legacy tables and ensure it is non-null with a stable default.
 
@@ -41,12 +43,16 @@ def _tenant_id_migrations(table: str, default_tenant: str) -> list[str]:
       with DEFAULT_TENANT_ID.
     - Each statement is idempotent and executed best-effort.
     """
+    params = {"default_tenant": default_tenant}
     return [
         # Add column for legacy schemas (covers the "column does not exist" crashes).
-        f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS tenant_id UUID NOT NULL DEFAULT '{default_tenant}'::uuid;",
+        (
+            f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS tenant_id UUID NOT NULL DEFAULT CAST(:default_tenant AS uuid);",
+            params,
+        ),
         # If the column existed but was nullable, backfill and harden.
-        f"UPDATE {table} SET tenant_id = '{default_tenant}'::uuid WHERE tenant_id IS NULL;",
-        f"ALTER TABLE {table} ALTER COLUMN tenant_id SET DEFAULT '{default_tenant}'::uuid;",
+        (f"UPDATE {table} SET tenant_id = CAST(:default_tenant AS uuid) WHERE tenant_id IS NULL;", params),
+        (f"ALTER TABLE {table} ALTER COLUMN tenant_id SET DEFAULT CAST(:default_tenant AS uuid);", params),
         f"ALTER TABLE {table} ALTER COLUMN tenant_id SET NOT NULL;",
     ]
 
@@ -369,9 +375,13 @@ def apply_runtime_migrations(engine) -> None:
         # must run in its own transaction so one failure doesn't block the rest.
         with engine.connect() as conn:
             for ddl in ddl_statements:
+                if isinstance(ddl, tuple):
+                    statement, params = ddl
+                else:
+                    statement, params = ddl, {}
                 try:
                     with conn.begin():
-                        conn.execute(text(ddl))
+                        conn.execute(text(statement), params)
                 except SQLAlchemyError:
                     # Best-effort migrations should never block startup.
                     continue

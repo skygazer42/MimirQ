@@ -1,8 +1,9 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef } from "react"
 import dynamic from "next/dynamic"
 import { useTheme } from "next-themes"
+import { useQuery } from "@tanstack/react-query"
 import { AlertCircle, Database, Loader2, RefreshCw } from "lucide-react"
 import * as THREE from "three"
 
@@ -10,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { formatApiError } from "@/lib/api-errors"
 import { documentApi } from "@/lib/api/documents"
 import { getCssHslColor } from "@/lib/css-vars"
+import { queryKeys } from "@/lib/query-keys"
 
 const THREE_CLOCK_DEPRECATION_WARNING = "THREE.THREE.Clock"
 
@@ -277,12 +279,37 @@ function buildNebula(documents: DocumentListItem[], chunksByDocument: Map<string
   }
 }
 
+async function loadVectorNebulaData(): Promise<NebulaData> {
+  const documentList = await documentApi.list({ limit: 24, status: "completed" })
+  const documents = (documentList.items || []) as DocumentListItem[]
+  const chunksByDocument = new Map<string, DocumentChunkItem[]>()
+
+  await Promise.all(
+    documents.slice(0, 8).map(async (document) => {
+      try {
+        const chunkList = await documentApi.listChunks(document.id, { limit: 80 })
+        chunksByDocument.set(document.id, (chunkList.items || []) as DocumentChunkItem[])
+      } catch {
+        chunksByDocument.set(document.id, [])
+      }
+    })
+  )
+
+  return buildNebula(documents, chunksByDocument)
+}
+
 export function VectorNebula() {
   const { resolvedTheme } = useTheme()
   const fgRef = useRef<any>(null)
-  const [data, setData] = useState<NebulaData>(EMPTY_NEBULA)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const nebulaQuery = useQuery({
+    queryKey: queryKeys.documents.nebula,
+    queryFn: loadVectorNebulaData,
+  })
+  const data = nebulaQuery.data ?? EMPTY_NEBULA
+  const loading = nebulaQuery.isFetching
+  const error = nebulaQuery.error
+    ? formatApiError(nebulaQuery.error, "语义星云数据加载失败")
+    : null
 
   useEffect(() => {
     const originalWarn = console.warn
@@ -296,79 +323,6 @@ export function VectorNebula() {
       if (console.warn === patchedWarn) {
         console.warn = originalWarn
       }
-    }
-  }, [])
-
-  const loadNebula = useCallback(async () => {
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-
-    try {
-      const documentList = await documentApi.list({ limit: 24, status: "completed" })
-      if (cancelled) return
-      const documents = (documentList.items || []) as DocumentListItem[]
-      const chunksByDocument = new Map<string, DocumentChunkItem[]>()
-
-      await Promise.all(
-        documents.slice(0, 8).map(async (document) => {
-          try {
-            const chunkList = await documentApi.listChunks(document.id, { limit: 80 })
-            chunksByDocument.set(document.id, (chunkList.items || []) as DocumentChunkItem[])
-          } catch {
-            chunksByDocument.set(document.id, [])
-          }
-        })
-      )
-
-      if (!cancelled) setData(buildNebula(documents, chunksByDocument))
-    } catch (err) {
-      if (!cancelled) {
-        setData(EMPTY_NEBULA)
-        setError(formatApiError(err, "语义星云数据加载失败"))
-      }
-    } finally {
-      if (!cancelled) setLoading(false)
-    }
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const documentList = await documentApi.list({ limit: 24, status: "completed" })
-        if (cancelled) return
-        const documents = (documentList.items || []) as DocumentListItem[]
-        const chunksByDocument = new Map<string, DocumentChunkItem[]>()
-        await Promise.all(
-          documents.slice(0, 8).map(async (document) => {
-            try {
-              const chunkList = await documentApi.listChunks(document.id, { limit: 80 })
-              chunksByDocument.set(document.id, (chunkList.items || []) as DocumentChunkItem[])
-            } catch {
-              chunksByDocument.set(document.id, [])
-            }
-          })
-        )
-        if (!cancelled) setData(buildNebula(documents, chunksByDocument))
-      } catch (err) {
-        if (!cancelled) {
-          setData(EMPTY_NEBULA)
-          setError(formatApiError(err, "语义星云数据加载失败"))
-        }
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    })()
-
-    return () => {
-      cancelled = true
     }
   }, [])
 
@@ -449,7 +403,14 @@ export function VectorNebula() {
               <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               <span>{error}</span>
             </div>
-            <Button size="sm" variant="outline" className="h-8 text-xs" onClick={loadNebula}>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 text-xs"
+              onClick={() => {
+                void nebulaQuery.refetch()
+              }}
+            >
               <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
               重新加载
             </Button>

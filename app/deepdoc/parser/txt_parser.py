@@ -14,6 +14,7 @@
 #  limitations under the License.
 #
 
+import logging
 import re
 
 from app.core.token_utils import num_tokens_from_string
@@ -75,8 +76,9 @@ if __name__ == "__main__":
     parser = IntegratedPipelineTxtParser()
     # Parse txt file
     chunks = parser(file_path, chunk_token_num=128)
-    print(f"📄 Split into {len(chunks)} chunks:")
+    logging.basicConfig(level=logging.INFO)
+    logging.info("Split into %s chunks:", len(chunks))
     for i, (text, _) in enumerate(chunks):
-        print(f"\n=== Chunk {i + 1} ===")
-        print(f"Content (first 60 chars): {text[:60]}...")
-        print(f"Token count: {num_tokens_from_string(text)}")
+        logging.info("=== Chunk %s ===", i + 1)
+        logging.info("Content (first 60 chars): %s...", text[:60])
+        logging.info("Token count: %s", num_tokens_from_string(text))

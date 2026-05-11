@@ -782,7 +782,10 @@ class Settings(BaseSettings):
     CORS_ALLOW_CREDENTIALS: bool = True
     # Allow browsers to read diagnostic headers from cross-origin responses.
     # NOTE: This does not affect which headers the backend sends, only what the browser exposes to JS.
-    CORS_EXPOSE_HEADERS: str = "X-Request-ID,X-Process-Time-Ms,Server-Timing,Retry-After"
+    CORS_EXPOSE_HEADERS: str = (
+        "X-Request-ID,X-Process-Time-Ms,Server-Timing,Retry-After,"
+        "X-Conversation-ID,X-Assistant-Message-ID"
+    )
     # Allowed Host header values (Starlette TrustedHostMiddleware).
     # - Dev default: empty => middleware disabled outside production.
     # - Production: required when TRUSTED_HOSTS_ENABLED=true.
