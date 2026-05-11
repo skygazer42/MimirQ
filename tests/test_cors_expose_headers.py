@@ -6,7 +6,8 @@ from app.main import _build_cors_expose_headers
 
 
 def test_cors_exposes_stream_chat_conversation_headers_by_default() -> None:
-    headers = set(parse_csv(Settings().CORS_EXPOSE_HEADERS))
+    default_headers = str(Settings.model_fields["CORS_EXPOSE_HEADERS"].default)
+    headers = set(parse_csv(default_headers))
 
     assert "X-Request-ID" in headers
     assert "X-Conversation-ID" in headers

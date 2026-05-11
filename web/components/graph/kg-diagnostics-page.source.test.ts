@@ -222,11 +222,22 @@ describe('KG diagnostics quality report wiring', () => {
       'utf8'
     )
 
-    expectSourceToContain(pageSrc, 'datasetApi.list({ limit: 200 })')
+    expectSourceToContain(
+      pageSrc,
+      'const KG_DIAGNOSTICS_DATASET_LIST_PARAMS = { limit: 200 } as const'
+    )
+    expectSourceToContain(
+      pageSrc,
+      'queryKey: queryKeys.datasets.list(KG_DIAGNOSTICS_DATASET_LIST_PARAMS)'
+    )
+    expectSourceToContain(
+      pageSrc,
+      'queryFn: () => datasetApi.list(KG_DIAGNOSTICS_DATASET_LIST_PARAMS)'
+    )
+    expectSourceToContain(pageSrc, 'const datasets = useMemo')
     expectSourceToContain(pageSrc, 'const selectedDataset')
-    expectSourceToContain(pageSrc, 'setDatasets(items)')
     expectSourceToContain(pageSrc, 'setDatasetId((current)')
-    expectSourceToContain(pageSrc, "String(items[0]?.id || '').trim()")
+    expectSourceToContain(pageSrc, "String(datasets[0]?.id || '').trim()")
     expectSourceToContain(
       pageSrc,
       '<Select value={datasetId} onValueChange={handleDatasetChange}'

@@ -113,7 +113,7 @@ def test_connectors_validate_db_connectivity_is_exposed_under_checks_db_connecti
     connector_id: str,
     config: dict,
 ) -> None:
-    import app.api.v1.connectors as connectors_module
+    import app.api.v1.connectors_validation as connectors_module
 
     monkeypatch.setattr(connectors_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
 

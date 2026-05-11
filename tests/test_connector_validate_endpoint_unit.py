@@ -35,7 +35,7 @@ def _override_get_current_account_id() -> str:
 
 
 def test_connectors_validate_endpoint_happy_path(monkeypatch):  # noqa: ANN001
-    import app.api.v1.connectors as connectors_module
+    import app.api.v1.connectors_validation as connectors_module
 
     # Endpoint must exist.
     assert hasattr(connectors_module, "validate_connector_config")
@@ -75,7 +75,7 @@ def test_connectors_validate_endpoint_happy_path(monkeypatch):  # noqa: ANN001
 
 
 def test_connectors_validate_redacts_password(monkeypatch):  # noqa: ANN001
-    import app.api.v1.connectors as connectors_module
+    import app.api.v1.connectors_validation as connectors_module
 
     monkeypatch.setattr(connectors_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
 
@@ -101,7 +101,7 @@ def test_connectors_validate_redacts_password(monkeypatch):  # noqa: ANN001
 
 
 def test_connectors_validate_accepts_jira_config_and_redacts_password(monkeypatch):  # noqa: ANN001
-    import app.api.v1.connectors as connectors_module
+    import app.api.v1.connectors_validation as connectors_module
 
     monkeypatch.setattr(connectors_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(connectors_module, "_unknown_tenant_groups", lambda *_a, **_k: [], raising=True)
@@ -143,7 +143,7 @@ def test_connectors_validate_accepts_jira_config_and_redacts_password(monkeypatc
 
 
 def test_connectors_validate_rejects_unknown_source_acl_groups(monkeypatch):  # noqa: ANN001
-    import app.api.v1.connectors as connectors_module
+    import app.api.v1.connectors_validation as connectors_module
 
     # Bypass membership checks for unit test.
     monkeypatch.setattr(connectors_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
@@ -196,7 +196,7 @@ def test_connectors_validate_rejects_unknown_source_acl_groups(monkeypatch):  # 
 
 
 def test_connectors_validate_rejects_unknown_access_groups(monkeypatch):  # noqa: ANN001
-    import app.api.v1.connectors as connectors_module
+    import app.api.v1.connectors_validation as connectors_module
 
     monkeypatch.setattr(connectors_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
 

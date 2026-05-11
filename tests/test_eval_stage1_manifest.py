@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 def test_stage1_manifest_matches_seed_file_counts() -> None:
-    root = Path("/data/temp34/MimirQ/.worktrees/feat-backend/app/rag/evaluation/datasets/stage1")
+    root = Path("app/rag/evaluation/datasets/stage1")
     manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
     rows = [json.loads(line) for line in (root / "seed.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
 
