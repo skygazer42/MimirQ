@@ -46,7 +46,7 @@ async def test_mineru_service_raises_lookup_error_for_missing_batch(monkeypatch)
 
 
 def test_batch_upload_status_returns_404_for_missing_remote_task(monkeypatch):
-    import app.api.v1.documents as documents_module
+    import app.api.v1.document_batch_upload as batch_upload_module
     from app.services.dataset_service import DatasetService
 
     app = FastAPI()
@@ -59,9 +59,9 @@ def test_batch_upload_status_returns_404_for_missing_remote_task(monkeypatch):
     async def _fake_get_task_status(_batch_id: str):  # noqa: ANN001
         raise LookupError("task not found or expire")
 
-    monkeypatch.setattr(documents_module.mineru_service, "aget_task_status", _fake_get_task_status, raising=True)
+    monkeypatch.setattr(batch_upload_module.mineru_service, "aget_task_status", _fake_get_task_status, raising=True)
 
-    app.get("/api/v1/documents/batch-upload/status/{batch_id}")(documents_module.get_batch_task_status)
+    app.get("/api/v1/documents/batch-upload/status/{batch_id}")(batch_upload_module.get_batch_task_status)
     client = TestClient(app)
 
     res = client.get("/api/v1/documents/batch-upload/status/invalid")

@@ -37,7 +37,7 @@ class _FakeDB:
 
 @pytest.mark.asyncio
 async def test_get_document_stats_dataset_scoped(monkeypatch: pytest.MonkeyPatch):
-    from app.api.v1.documents import get_document_stats
+    from app.api.v1.document_stats import get_document_stats
     from app.services.dataset_service import DatasetService
 
     called: dict[str, object] = {}

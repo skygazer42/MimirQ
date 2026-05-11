@@ -27,6 +27,7 @@ def test_resolve_allowed_documents_dedupes(monkeypatch: pytest.MonkeyPatch):
     d2 = UUID(int=2)
     out = routes_mod._resolve_allowed_documents(
         document_ids=[d1, d1, d2],
+        dataset_id=None,
         tenant_id=UUID(int=3),
         account_id="u",
         db=object(),
@@ -52,6 +53,7 @@ def test_resolve_allowed_documents_rejects_too_many(monkeypatch: pytest.MonkeyPa
     with pytest.raises(HTTPException) as exc:
         routes_mod._resolve_allowed_documents(
             document_ids=doc_ids,
+            dataset_id=None,
             tenant_id=UUID(int=3),
             account_id="u",
             db=object(),

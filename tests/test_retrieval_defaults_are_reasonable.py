@@ -11,11 +11,15 @@ def test_retrieval_defaults_are_reasonable_for_mid_scale() -> None:
     """
     from app.core.config import Settings
 
-    s = Settings()
+    defaults = Settings.model_fields
 
-    assert 8 <= int(s.RETRIEVAL_TOP_K) <= 20
-    assert 2 <= int(s.RETRIEVAL_MMR_FETCH_K_MULTIPLIER) <= 8
-    assert 10 <= int(s.RETRIEVAL_RRF_K) <= 200
+    top_k = int(defaults["RETRIEVAL_TOP_K"].default)
+    mmr_fetch_multiplier = int(defaults["RETRIEVAL_MMR_FETCH_K_MULTIPLIER"].default)
+    rrf_k = int(defaults["RETRIEVAL_RRF_K"].default)
+
+    assert 8 <= top_k <= 20
+    assert 2 <= mmr_fetch_multiplier <= 8
+    assert 10 <= rrf_k <= 200
 
     # Derived guardrail: MMR mode over-fetch must stay bounded.
-    assert int(s.RETRIEVAL_TOP_K) * int(s.RETRIEVAL_MMR_FETCH_K_MULTIPLIER) <= 80
+    assert top_k * mmr_fetch_multiplier <= 80

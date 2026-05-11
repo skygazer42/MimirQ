@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
-from app.api.v1.chat import get_conversation_messages
+from app.api.v1.chat_conversations import get_conversation_messages
 from app.api.v1.documents import batch_delete_documents, list_documents
 from app.core.database import get_db
 
@@ -79,4 +79,3 @@ def test_chat_messages_paging_validation() -> None:
         params={"limit": 10, "before": "not-a-uuid"},
     )
     assert res.status_code == 422
-

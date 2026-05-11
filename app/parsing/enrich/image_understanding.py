@@ -151,6 +151,143 @@ def ocr_image(image: PILImage.Image, *, _max_chars: int = 2000) -> str:
     return text0
 
 
+_EAN13_LEFT_ODD = {
+    "0001101": "0",
+    "0011001": "1",
+    "0010011": "2",
+    "0111101": "3",
+    "0100011": "4",
+    "0110001": "5",
+    "0101111": "6",
+    "0111011": "7",
+    "0110111": "8",
+    "0001011": "9",
+}
+_EAN13_LEFT_EVEN = {
+    "0100111": "0",
+    "0110011": "1",
+    "0011011": "2",
+    "0100001": "3",
+    "0011101": "4",
+    "0111001": "5",
+    "0000101": "6",
+    "0010001": "7",
+    "0001001": "8",
+    "0010111": "9",
+}
+_EAN13_RIGHT = {
+    "1110010": "0",
+    "1100110": "1",
+    "1101100": "2",
+    "1000010": "3",
+    "1011100": "4",
+    "1001110": "5",
+    "1010000": "6",
+    "1000100": "7",
+    "1001000": "8",
+    "1110100": "9",
+}
+_EAN13_PARITY_PREFIX = {
+    "LLLLLL": "0",
+    "LLGLGG": "1",
+    "LLGGLG": "2",
+    "LLGGGL": "3",
+    "LGLLGG": "4",
+    "LGGLLG": "5",
+    "LGGGLL": "6",
+    "LGLGLG": "7",
+    "LGLGGL": "8",
+    "LGGLGL": "9",
+}
+
+
+def _ean13_check_digit(payload12: str) -> str:
+    total = 0
+    for index, char in enumerate(payload12):
+        total += int(char) * (1 if index % 2 == 0 else 3)
+    return str((10 - (total % 10)) % 10)
+
+
+def _decode_clean_ean13_from_pixels(image: PILImage.Image) -> str:
+    """
+    Decode clean, generated EAN-13 fixtures without requiring system zbar.
+
+    This is intentionally narrow: it only handles high-contrast, axis-aligned
+    barcode images used by local parser fixtures and tests. Production paths
+    still prefer pyzbar when that optional native dependency is available.
+    """
+    try:
+        import numpy as np
+    except Exception:
+        return ""
+
+    try:
+        gray = image.convert("L")
+        arr = np.array(gray)
+    except Exception:
+        return ""
+    if arr.ndim != 2 or arr.size == 0:
+        return ""
+
+    height, width = arr.shape
+    if height < 16 or width < 95:
+        return ""
+
+    band_top = max(0, int(height * 0.25))
+    band_bottom = min(height, int(height * 0.75)) or height
+    darkness = (arr[band_top:band_bottom, :] < 128).mean(axis=0)
+    dark_columns = darkness > 0.5
+    dark_indexes = np.flatnonzero(dark_columns)
+    if dark_indexes.size == 0:
+        return ""
+
+    start = int(dark_indexes[0])
+    end = int(dark_indexes[-1])
+    module_width = float(end - start + 1) / 95.0
+    if module_width < 1.0:
+        return ""
+
+    bits = []
+    for index in range(95):
+        center = int(round(start + (index + 0.5) * module_width))
+        center = max(0, min(width - 1, center))
+        bits.append("1" if dark_columns[center] else "0")
+    bit_string = "".join(bits)
+
+    if bit_string[:3] != "101" or bit_string[45:50] != "01010" or bit_string[92:] != "101":
+        return ""
+
+    left_digits: list[str] = []
+    parity: list[str] = []
+    for offset in range(3, 45, 7):
+        chunk = bit_string[offset : offset + 7]
+        if chunk in _EAN13_LEFT_ODD:
+            left_digits.append(_EAN13_LEFT_ODD[chunk])
+            parity.append("L")
+        elif chunk in _EAN13_LEFT_EVEN:
+            left_digits.append(_EAN13_LEFT_EVEN[chunk])
+            parity.append("G")
+        else:
+            return ""
+
+    right_digits: list[str] = []
+    for offset in range(50, 92, 7):
+        chunk = bit_string[offset : offset + 7]
+        digit = _EAN13_RIGHT.get(chunk)
+        if digit is None:
+            return ""
+        right_digits.append(digit)
+
+    prefix = _EAN13_PARITY_PREFIX.get("".join(parity))
+    if prefix is None:
+        return ""
+
+    value = prefix + "".join(left_digits) + "".join(right_digits)
+    if len(value) != 13 or _ean13_check_digit(value[:12]) != value[-1]:
+        return ""
+    return value
+
+
 def decode_image_codes(image: PILImage.Image) -> dict[str, Any]:
     """
     Best-effort decode of QR/barcode content from an image.
@@ -198,6 +335,12 @@ def decode_image_codes(image: PILImage.Image) -> dict[str, Any]:
                     break
         except Exception:
             pass
+
+    if not values:
+        text = _decode_clean_ean13_from_pixels(image)
+        if text:
+            values.append(text)
+            visual_kind = "barcode"
 
     if not values:
         return {}

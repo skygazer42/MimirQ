@@ -7,7 +7,7 @@ from app.rag.evaluation.datasets.validator import validate_eval_dataset
 
 
 def test_stage3_adversarial_manifest_matches_rows_and_includes_target_taxonomy() -> None:
-    root = Path("/data/temp34/MimirQ/.worktrees/feat-backend/app/rag/evaluation/datasets/stage3_adversarial")
+    root = Path("app/rag/evaluation/datasets/stage3_adversarial")
     manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
 
     rows = []

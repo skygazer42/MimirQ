@@ -1,119 +1,10 @@
 from __future__ import annotations
 
-import sys
-import types
 import uuid
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
-from tests.helpers.async_utils import yield_control
-
-_STUBBED_MODULES: dict[str, types.ModuleType] = {}
-
-
-def _remember_stub(name: str, module: types.ModuleType) -> None:
-    # This test module installs lightweight stubs into `sys.modules` to avoid
-    # importing the full connector stack. Ensure we clean them up after this
-    # module finishes so other tests can import the real implementations.
-    _STUBBED_MODULES[name] = module
-
-
-@pytest.fixture(scope="module", autouse=True)
-def _cleanup_module_stubs():  # noqa: ANN201
-    yield
-    for name, module in list(_STUBBED_MODULES.items()):
-        if sys.modules.get(name) is module:
-            sys.modules.pop(name, None)
-
-
-if "app.core.config" not in sys.modules:
-    config_mod = types.ModuleType("app.core.config")
-    config_mod.settings = types.SimpleNamespace(
-        DATABASE_URL="sqlite:///./tests_connectors_endpoints_stub.db",
-        SECRET_KEY="tests-secret-key",
-        SECRET_KEY_FALLBACKS="",
-        URL_INGEST_ENABLED=True,
-        URL_INGEST_TIMEOUT_SEC=30.0,
-        URL_INGEST_MAX_BYTES=0,
-        URL_INGEST_FOLLOW_REDIRECTS=False,
-        MAX_FILE_SIZE=10_000_000,
-        TASK_QUEUE_ENABLED=False,
-        MINIO_ENABLED=False,
-        DB_CATALOG_ENABLED=False,
-    )
-    sys.modules["app.core.config"] = config_mod
-    _remember_stub("app.core.config", config_mod)
-
-if "app.api.v1" not in sys.modules:
-    v1_pkg = types.ModuleType("app.api.v1")
-    v1_pkg.__path__ = [str(Path(__file__).resolve().parents[1] / "app" / "api" / "v1")]
-    sys.modules["app.api.v1"] = v1_pkg
-    _remember_stub("app.api.v1", v1_pkg)
-
-if "app.api.v1.documents" not in sys.modules:
-    documents_mod = types.ModuleType("app.api.v1.documents")
-
-    class _DummyRequest:
-        def __init__(self, *args, **kwargs):  # noqa: ANN002, ANN003
-            for idx, arg in enumerate(args):
-                setattr(self, f"arg_{idx}", arg)
-            for key, value in kwargs.items():
-                setattr(self, key, value)
-
-    async def _noop_async(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-        await yield_control()
-        return None
-
-    documents_mod.LocalHtmlIngestRequest = _DummyRequest
-    documents_mod.UrlUploadRequest = _DummyRequest
-    documents_mod._ingest_local_html_request = _noop_async
-    documents_mod._ingest_url_upload_request = _noop_async
-    documents_mod._normalize_datetime_utc_iso = lambda *_a, **_k: None
-    documents_mod._resolve_writable_dataset = lambda *_a, **_k: None
-    sys.modules["app.api.v1.documents"] = documents_mod
-    _remember_stub("app.api.v1.documents", documents_mod)
-
-if "app.services.web_crawler" not in sys.modules:
-    web_crawler_mod = types.ModuleType("app.services.web_crawler")
-
-    @dataclass(frozen=True)
-    class _StubWebCrawlOptions:
-        start_urls: list[str] = field(default_factory=list)
-        max_pages: int = 0
-        max_depth: int = 0
-        same_host_only: bool = True
-        include_patterns: list[str] = field(default_factory=list)
-        exclude_patterns: list[str] = field(default_factory=list)
-        use_sitemaps: bool = False
-        sitemap_urls: list[str] | None = None
-        respect_robots: bool = False
-        dedup_canonical: bool = True
-        headers: dict[str, str] | None = None
-        user_agent: str | None = None
-        timeout_sec: float | None = None
-        max_bytes: int | None = None
-        follow_redirects: bool | None = None
-
-    async def _crawl_noop(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-        await yield_control()
-        return None
-
-    web_crawler_mod.WebCrawlOptions = _StubWebCrawlOptions
-    web_crawler_mod.crawl_site = _crawl_noop
-    sys.modules["app.services.web_crawler"] = web_crawler_mod
-    _remember_stub("app.services.web_crawler", web_crawler_mod)
-
-if "app.tasks.queue" not in sys.modules:
-    queue_mod = types.ModuleType("app.tasks.queue")
-    queue_mod.enqueue_connector_run = lambda *_a, **_k: None
-    queue_mod.get_queue = lambda *_a, **_k: None
-    sys.modules["app.tasks.queue"] = queue_mod
-    _remember_stub("app.tasks.queue", queue_mod)
 
 from app.api.dependencies.auth import get_current_account_id  # noqa: E402
 from app.api.dependencies.tenant import get_tenant_id  # noqa: E402
@@ -152,7 +43,7 @@ def _override_get_current_account_id() -> str:
 
 
 def test_connectors_list_contains_url_batch():  # noqa: ANN001
-    from app.api.v1.connectors import list_connectors
+    from app.api.v1.connectors_catalog import list_connectors
 
     app = FastAPI()
     app.get("/api/v1/connectors", response_model=list[ConnectorInfo])(list_connectors)
@@ -168,7 +59,7 @@ def test_connectors_list_contains_url_batch():  # noqa: ANN001
 
 
 def test_connectors_list_exposes_resume_capabilities():  # noqa: ANN001
-    from app.api.v1.connectors import list_connectors
+    from app.api.v1.connectors_catalog import list_connectors
 
     app = FastAPI()
     app.get("/api/v1/connectors", response_model=list[ConnectorInfo])(list_connectors)

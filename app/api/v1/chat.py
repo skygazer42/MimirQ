@@ -41,6 +41,9 @@ from app.services.chat_conversation_titles import (
     CONVERSATION_TITLE_SOURCE_AUTO,
 )
 from app.services.chat_conversation_titles import (
+    CONVERSATION_TITLE_SOURCE_MANUAL as CONVERSATION_TITLE_SOURCE_MANUAL,
+)
+from app.services.chat_conversation_titles import (
     apply_auto_conversation_title as _apply_auto_conversation_title,
 )
 from app.services.chat_response_cache import (
