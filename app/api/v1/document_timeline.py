@@ -1,0 +1,195 @@
+from __future__ import annotations
+
+import uuid
+from typing import Annotated, Any
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import desc
+from sqlalchemy.orm import Session
+
+from app.api.dependencies.auth import get_current_account_id
+from app.api.dependencies.tenant import get_tenant_id
+from app.api.schemas.document_timeline import DocumentTimelineItem, DocumentTimelineResponse
+from app.core.database import get_db
+from app.models.audit_log import AuditLog
+from app.models.dataset import Dataset
+from app.models.document import Document as DBDocument
+from app.services.dataset_service import DatasetService
+from app.services.document_access_service import assert_document_acl_readable
+
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+DOC_NOT_FOUND_DETAIL = "Document not found"
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+
+_TIMELINE_REDACT_KEYS = {
+    "content",
+    "text",
+    "markdown",
+    "html",
+    "raw",
+    "prompt",
+    "question",
+    "answer",
+    "secret",
+    "token",
+    "password",
+    "api_key",
+}
+
+
+def _sanitize_timeline_details(details: Any) -> dict[str, Any]:
+    """
+    Best-effort PII-minimal details projection for user-facing timelines.
+
+    Audit logs should already be small, but timeline is displayed broadly; keep it safe by default.
+    """
+    if not isinstance(details, dict):
+        return {}
+
+    out: dict[str, Any] = {}
+    for key, value in details.items():
+        key_norm = str(key or "").strip()
+        if not key_norm:
+            continue
+        key_l = key_norm.lower()
+        if any(redact in key_l for redact in _TIMELINE_REDACT_KEYS):
+            continue
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            out[key_norm] = value
+        elif isinstance(value, list):
+            safe_items: list[Any] = []
+            for item in value[:20]:
+                if isinstance(item, (str, int, float, bool)) or item is None:
+                    safe_items.append(item)
+                elif isinstance(item, dict):
+                    safe_item = {
+                        str(k): v
+                        for k, v in list(item.items())[:20]
+                        if isinstance(v, (str, int, float, bool)) or v is None
+                    }
+                    safe_items.append(safe_item)
+            if safe_items:
+                out[key_norm] = safe_items
+        elif isinstance(value, dict):
+            safe_map = {
+                str(k): v
+                for k, v in list(value.items())[:20]
+                if isinstance(v, (str, int, float, bool)) or v is None
+            }
+            if safe_map:
+                out[key_norm] = safe_map
+    return out
+
+
+@router.get("/{document_id}/timeline", response_model=DocumentTimelineResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+async def get_document_timeline(
+    document_id: uuid.UUID,
+    limit: Annotated[int, Query(ge=1, le=200)] = 200,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """User-facing document timeline (audit logs + synthetic document state events)."""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    document = (
+        db.query(DBDocument)
+        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
+
+    dataset: Dataset | None = None
+    if document.dataset_id:
+        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_readable(db, dataset, account_id)
+    assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=dataset)
+
+    audit_rows = (
+        db.query(AuditLog)
+        .filter(
+            AuditLog.tenant_id == tenant_id,
+            AuditLog.resource_type == "document",
+            AuditLog.resource_id == str(document_id),
+        )
+        .order_by(desc(AuditLog.created_at), desc(AuditLog.id))
+        .limit(int(limit or 200))
+        .all()
+    )
+
+    items: list[DocumentTimelineItem] = []
+
+    created_at = getattr(document, "created_at", None)
+    if created_at is not None:
+        items.append(
+            DocumentTimelineItem(
+                id=f"synthetic:created:{document_id}",
+                action="document.created",
+                created_at=created_at,
+                source="synthetic",
+                actor_id=(getattr(document, "owner_id", None) or None),
+                stage=(getattr(document, "current_stage", None) or None),
+                status=(str(getattr(document, "status", "") or "").strip() or None),
+                progress=int(getattr(document, "processing_progress", 0) or 0),
+            )
+        )
+
+    updated_at = getattr(document, "updated_at", None)
+    if updated_at is not None and (created_at is None or updated_at != created_at):
+        items.append(
+            DocumentTimelineItem(
+                id=f"synthetic:status:{document_id}",
+                action="document.status",
+                created_at=updated_at,
+                source="synthetic",
+                stage=(getattr(document, "current_stage", None) or None),
+                status=(str(getattr(document, "status", "") or "").strip() or None),
+                progress=int(getattr(document, "processing_progress", 0) or 0),
+            )
+        )
+
+    for row in audit_rows:
+        raw_details = getattr(row, "details", None)
+        safe_details = _sanitize_timeline_details(raw_details)
+
+        stage = safe_details.get("stage") if isinstance(safe_details.get("stage"), str) else None
+        status = safe_details.get("status") if isinstance(safe_details.get("status"), str) else None
+        progress_val = safe_details.get("progress")
+        progress = int(progress_val) if isinstance(progress_val, (int, float)) else None
+
+        items.append(
+            DocumentTimelineItem(
+                id=str(getattr(row, "id", "") or ""),
+                action=str(getattr(row, "action", "") or ""),
+                created_at=getattr(row, "created_at", None),
+                source="audit",
+                actor_id=(getattr(row, "actor_id", None) or None),
+                request_id=(getattr(row, "request_id", None) or None),
+                stage=stage,
+                status=status,
+                progress=progress,
+                details=safe_details,
+            )
+        )
+
+    def _dt_ts(value: Any) -> float:
+        try:
+            return float(value.timestamp()) if value is not None else 0.0
+        except Exception:
+            return 0.0
+
+    items.sort(key=lambda item: (_dt_ts(item.created_at), str(item.id)), reverse=True)
+    items = items[: int(limit or 200)]
+
+    return DocumentTimelineResponse(total=len(items), items=items)

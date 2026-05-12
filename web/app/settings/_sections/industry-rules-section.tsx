@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { FileText, Loader2, RefreshCw, Save, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -37,6 +37,7 @@ function parseJson<T>(raw: string, fallback: T): T {
 }
 
 export function IndustryRulesSection() {
+  const queryClient = useQueryClient()
   const [rulesetName, setRulesetName] = useState('industrial_control')
   const [query, setQuery] = useState('PLC 报警如何排查？')
   const [glossaryJson, setGlossaryJson] = useState('{}')
@@ -50,6 +51,12 @@ export function IndustryRulesSection() {
     queryFn: () => industryRulesApi.listRulesets(),
   })
   const rulesets = rulesetsQuery.data?.rulesets || []
+  const trimmedRulesetName = rulesetName.trim()
+  const rulesetDetailQuery = useQuery({
+    queryKey: queryKeys.industryRules.ruleset(trimmedRulesetName),
+    queryFn: () => industryRulesApi.getRuleset(trimmedRulesetName),
+    enabled: false,
+  })
 
   async function runAction(
     key: string,
@@ -78,16 +85,6 @@ export function IndustryRulesSection() {
       if (first && !rulesetName.trim()) setRulesetName(first)
       return payload
     }, options)
-  }
-
-  async function loadRuleset(): Promise<void> {
-    await runAction('detail', '加载规则详情', async () => {
-      const payload = await industryRulesApi.getRuleset(rulesetName.trim())
-      setGlossaryJson(prettyJson(payload.ruleset.glossary || {}))
-      setPatternsJson(prettyJson(payload.ruleset.patterns || []))
-      setIntentsJson(prettyJson(payload.ruleset.intents || []))
-      return payload
-    })
   }
 
   const actionDisabled = Boolean(runningKey) || !rulesetName.trim()
@@ -155,7 +152,24 @@ export function IndustryRulesSection() {
             {runningKey === 'list' ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-3.5 w-3.5" />}
             列表
           </Button>
-          <Button variant="outline" className={actionButtonClass} disabled={actionDisabled} onClick={() => detachPromise(loadRuleset())}>
+          <Button
+            variant="outline"
+            className={actionButtonClass}
+            disabled={actionDisabled}
+            onClick={() =>
+              detachPromise(
+                runAction('detail', '加载规则详情', async () => {
+                  const { data, error } = await rulesetDetailQuery.refetch()
+                  if (error) throw error
+                  const payload = data || { ruleset: { glossary: {}, patterns: [], intents: [] } }
+                  setGlossaryJson(prettyJson(payload.ruleset.glossary || {}))
+                  setPatternsJson(prettyJson(payload.ruleset.patterns || []))
+                  setIntentsJson(prettyJson(payload.ruleset.intents || []))
+                  return payload
+                })
+              )
+            }
+          >
             <FileText className="h-3.5 w-3.5" />
             详情
           </Button>
@@ -181,9 +195,16 @@ export function IndustryRulesSection() {
             onClick={() =>
               detachPromise(
                 runAction('glossary', '保存 glossary', () =>
-                  industryRulesApi.updateGlossary(rulesetName.trim(), {
-                    glossary: parseJson<Record<string, string[]>>(glossaryJson, {}),
-                  })
+                  industryRulesApi
+                    .updateGlossary(trimmedRulesetName, {
+                      glossary: parseJson<Record<string, string[]>>(glossaryJson, {}),
+                    })
+                    .then((payload) => {
+                      void queryClient.invalidateQueries({
+                        queryKey: queryKeys.industryRules.ruleset(trimmedRulesetName),
+                      })
+                      return payload
+                    })
                 )
               )
             }
@@ -198,9 +219,16 @@ export function IndustryRulesSection() {
             onClick={() =>
               detachPromise(
                 runAction('patterns', '保存 patterns', () =>
-                  industryRulesApi.updatePatterns(rulesetName.trim(), {
-                    patterns: parseJson<Array<Record<string, unknown>>>(patternsJson, []),
-                  })
+                  industryRulesApi
+                    .updatePatterns(trimmedRulesetName, {
+                      patterns: parseJson<Array<Record<string, unknown>>>(patternsJson, []),
+                    })
+                    .then((payload) => {
+                      void queryClient.invalidateQueries({
+                        queryKey: queryKeys.industryRules.ruleset(trimmedRulesetName),
+                      })
+                      return payload
+                    })
                 )
               )
             }
@@ -215,9 +243,16 @@ export function IndustryRulesSection() {
             onClick={() =>
               detachPromise(
                 runAction('intents', '保存 intents', () =>
-                  industryRulesApi.updateIntents(rulesetName.trim(), {
-                    intents: parseJson<Array<Record<string, unknown>>>(intentsJson, []),
-                  })
+                  industryRulesApi
+                    .updateIntents(trimmedRulesetName, {
+                      intents: parseJson<Array<Record<string, unknown>>>(intentsJson, []),
+                    })
+                    .then((payload) => {
+                      void queryClient.invalidateQueries({
+                        queryKey: queryKeys.industryRules.ruleset(trimmedRulesetName),
+                      })
+                      return payload
+                    })
                 )
               )
             }

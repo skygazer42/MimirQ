@@ -25,4 +25,24 @@ describe('queryKeys', () => {
     expect(queryKeys.indexAudit.result('dataset-1')).toEqual(['indexAudit', 'dataset-1'])
     expect(queryKeys.health.meta).toEqual(['meta'])
   })
+
+  it('covers document detail dialog query namespaces', () => {
+    expect(queryKeys.documents.detail('doc-1')).toEqual(['documents', 'detail', 'doc-1'])
+    expect(queryKeys.documents.access('doc-1')).toEqual(['documents', 'access', 'doc-1'])
+    expect(queryKeys.documents.versions('doc-1')).toEqual(['documents', 'versions', 'doc-1'])
+    expect(queryKeys.documents.timeline('doc-1', { limit: 200 })).toEqual([
+      'documents',
+      'timeline',
+      'doc-1',
+      { limit: 200 },
+    ])
+  })
+
+  it('covers industry rules detail namespace', () => {
+    expect(queryKeys.industryRules.ruleset('industrial_control')).toEqual([
+      'industry-rules',
+      'ruleset',
+      'industrial_control',
+    ])
+  })
 })

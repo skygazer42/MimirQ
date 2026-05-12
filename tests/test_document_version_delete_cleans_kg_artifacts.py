@@ -45,14 +45,14 @@ class _FakeDB:
 
 @pytest.mark.asyncio
 async def test_delete_document_version_cleans_kg_relations_and_events(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.documents as docs_mod
-    from app.api.v1.documents import delete_document_version
+    import app.api.v1.document_versions as doc_versions_mod
+    from app.api.v1.document_versions import delete_document_version
     from app.services.dataset_service import DatasetService
 
     monkeypatch.setattr(DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(DatasetService, "get_dataset", lambda *_a, **_k: object(), raising=True)
     monkeypatch.setattr(DatasetService, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(docs_mod, "audit_log_event", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(doc_versions_mod, "audit_log_event", lambda *_a, **_k: None, raising=True)
 
     called: dict[str, object] = {"indexer_called": False, "chunk_ids": None}
 
@@ -68,7 +68,7 @@ async def test_delete_document_version_cleans_kg_relations_and_events(monkeypatc
         def prune_orphan_entities(self, **_kwargs):  # noqa: ANN003
             return 0
 
-    monkeypatch.setattr(docs_mod, "Indexer", _FakeIndexer, raising=True)
+    monkeypatch.setattr(doc_versions_mod, "Indexer", _FakeIndexer, raising=True)
 
     tenant_id = UUID(int=1)
     document_id = UUID(int=2)
@@ -100,4 +100,3 @@ async def test_delete_document_version_cleans_kg_relations_and_events(monkeypatc
     assert rel_delete_query.delete_called is True
     assert called["indexer_called"] is True
     assert called["chunk_ids"] == chunk_ids
-

@@ -58,6 +58,7 @@ class _FakeDB:
 
 
 def test_document_health_card_endpoint_aggregates_parsing_chunking_kg_and_hits(monkeypatch):  # noqa: ANN001
+    import app.api.v1.document_health as document_health_module
     import app.api.v1.documents as documents_module
 
     tenant_id = uuid.uuid4()
@@ -105,9 +106,9 @@ def test_document_health_card_endpoint_aggregates_parsing_chunking_kg_and_hits(m
         chunk_contents=[("Alpha chunk",), ("Beta chunk",)],
     )
 
-    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(documents_module, "_assert_document_acl_readable", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(documents_module, "datetime", type("_FixedDatetime", (), {"now": staticmethod(lambda _tz=None: now)}))
+    monkeypatch.setattr(document_health_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(document_health_module, "assert_document_acl_readable", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(document_health_module, "datetime", type("_FixedDatetime", (), {"now": staticmethod(lambda _tz=None: now)}))
     monkeypatch.setattr("app.core.pipeline_versions.resolve_doc_pipeline_key", lambda *_a, **_k: "doc:pipeline-v1", raising=True)
 
     def _fake_score_chunk_semantic_quality(content: str, prev_token_set=None):  # noqa: ANN001, ANN202

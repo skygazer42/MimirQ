@@ -13,6 +13,7 @@ from app.core.database import get_db
 
 
 def _build_client(monkeypatch, *, doc):  # noqa: ANN001
+    import app.api.v1.document_lifecycle as lifecycle_module
     import app.api.v1.documents as documents_module
     from app.models.document import Document as DBDocument
 
@@ -53,15 +54,15 @@ def _build_client(monkeypatch, *, doc):  # noqa: ANN001
         return "test-account"
 
     # Bypass membership checks in unit tests (covered by dedicated RBAC tests).
-    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(documents_module.DatasetService, "get_dataset", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(lifecycle_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(lifecycle_module.DatasetService, "get_dataset", lambda *_a, **_k: object(), raising=True)
 
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_get_db
     app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
     app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
     app.include_router(documents_module.router, prefix="/api/v1/documents")
-    return TestClient(app), documents_module
+    return TestClient(app), lifecycle_module
 
 
 def test_document_lifecycle_metadata_get_and_patch(monkeypatch):  # noqa: ANN001

@@ -1,6 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Copy, Loader2, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -8,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Panel } from '@/components/ui/panel'
 import { usageApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise } from '@/lib/utils'
 
 function prettyJson(value: unknown) {
@@ -28,23 +30,25 @@ async function copyText(text: string) {
 }
 
 export function TenantQuotaPanel() {
-  const [loading, setLoading] = useState(false)
-  const [payload, setPayload] = useState<unknown>({
-    message: '点击刷新查看租户配额总览',
+  const quotaQuery = useQuery({
+    queryKey: queryKeys.usage.tenantQuotaSummary,
+    queryFn: () => usageApi.getTenantQuotaSummary(),
+    enabled: false,
   })
+  const payload = quotaQuery.data ?? ({
+    message: '点击刷新查看租户配额总览',
+  } satisfies Record<string, string>)
   const json = useMemo(() => prettyJson(payload), [payload])
   const lines = useMemo(() => json.split('\n'), [json])
 
-  async function loadQuota() {
-    setLoading(true)
-    try {
-      const next = await usageApi.getTenantQuotaSummary()
-      setPayload(next)
+  async function refreshQuota() {
+    const result = await quotaQuery.refetch()
+    if (result.error) {
+      toast.error(formatApiError(result.error, '加载租户配额失败'))
+      return
+    }
+    if (result.data) {
       toast.success('租户配额总览已刷新')
-    } catch (error) {
-      toast.error(formatApiError(error, '加载租户配额失败'))
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -67,10 +71,10 @@ export function TenantQuotaPanel() {
           size="sm"
           variant="outline"
           className="h-10 gap-2 rounded-xl border-slate-200 bg-card px-4 text-[13px] font-medium text-slate-800 shadow-sm hover:bg-slate-50"
-          disabled={loading}
-          onClick={() => detachPromise(loadQuota())}
+          disabled={quotaQuery.isFetching}
+          onClick={() => detachPromise(refreshQuota())}
         >
-          {loading ? (
+          {quotaQuery.isFetching ? (
             <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
           ) : (
             <RefreshCw className="size-4" />
