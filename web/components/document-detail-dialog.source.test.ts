@@ -72,4 +72,18 @@ describe('document detail dialog source', () => {
     expect(fs.existsSync(path.resolve(__dirname, 'document-detail-dialog/document-detail-lifecycle-panel.tsx'))).toBe(true)
     expect(fs.existsSync(path.resolve(__dirname, 'document-detail-dialog/document-detail-activity-panel.tsx'))).toBe(true)
   })
+
+  it('loads document detail, versions, and timeline through TanStack Query instead of hand-rolled loaders', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'document-detail-dialog.tsx'), 'utf8')
+
+    expect(src).toContain('useQuery')
+    expect(src).toContain('useQueryClient')
+    expect(src).toContain('queryKeys.documents.detail')
+    expect(src).toContain('queryKeys.documents.access')
+    expect(src).toContain('queryKeys.documents.versions')
+    expect(src).toContain('queryKeys.documents.timeline')
+    expect(src).not.toContain('const loadDetail = useCallback')
+    expect(src).not.toContain('const loadVersions = useCallback')
+    expect(src).not.toContain('const loadTimeline = useCallback')
+  })
 })

@@ -90,7 +90,7 @@ def test_groups_create_emits_audit_log(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.asyncio
 async def test_document_access_update_emits_audit_log_without_pii(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.documents as docs
+    import app.api.v1.document_access as docs
 
     tenant_id = uuid4()
     dataset_id = uuid4()

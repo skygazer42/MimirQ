@@ -131,7 +131,8 @@ def test_dataset_create_and_update_round_trips_group_allowlist(monkeypatch: pyte
 
 
 def test_document_access_api_enforces_group_allowlist(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.documents as docs_api
+    import app.api.v1.document_access as docs_api
+    import app.services.document_access_service as access_service
     from app.api.schemas.document import DocumentAccessInfo
 
     tenant_id = uuid.uuid4()
@@ -165,7 +166,7 @@ def test_document_access_api_enforces_group_allowlist(monkeypatch: pytest.Monkey
                     return doc
                 return None
 
-            if self._model is docs_api.DocumentPermission:
+            if self._model is access_service.DocumentPermission:
                 tid = self._filters.get("tenant_id")
                 did = self._filters.get("document_id")
                 aid = self._filters.get("account_id")
@@ -232,7 +233,7 @@ def test_document_access_api_enforces_group_allowlist(monkeypatch: pytest.Monkey
     # Group membership mapping for access check.
     membership = {"bob": [group_id], "charlie": []}
     monkeypatch.setattr(
-        docs_api.TenantGroupService,
+        access_service.TenantGroupService,
         "resolve_account_group_ids",
         lambda *_a, **_k: membership.get(current_account["value"], []),
         raising=True,
@@ -264,7 +265,7 @@ def test_document_access_api_enforces_group_allowlist(monkeypatch: pytest.Monkey
 
 
 def test_document_access_put_get_round_trips_member_and_group_lists(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.documents as docs_api
+    import app.api.v1.document_access as docs_api
     from app.api.schemas.document import DocumentAccessInfo
 
     tenant_id = uuid.uuid4()

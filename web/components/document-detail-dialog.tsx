@@ -5,6 +5,7 @@
 
 import { startTransition, useActionState, useCallback, useEffect, useId, useMemo, useOptimistic, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import { useFormStatus } from 'react-dom'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Calendar, Database, Download, Eye, FileType, Hash, Loader2, Shield } from 'lucide-react'
 import { useTranslations } from 'next-intl'
@@ -26,6 +27,7 @@ import { formatApiError } from '@/lib/api-errors'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { buildTagsPatch, getUserTagsFromDocument, normalizeTags } from '@/lib/document-user-tags'
 import { getParserLabel } from '@/lib/parser-options'
+import { queryKeys } from '@/lib/query-keys'
 import { formatDate, formatFileSize, detachPromise } from '@/lib/utils'
 import type {
   Document,
@@ -217,11 +219,9 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   const timelineTabId = `${viewTabsId}-timeline-tab`
   const chunksPanelId = `${viewTabsId}-chunks-panel`
   const timelinePanelId = `${viewTabsId}-timeline-panel`
+  const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const [activeView, setActiveView] = useState<'chunks' | 'timeline'>('chunks')
-  const [detail, setDetail] = useState<Document | null>(null)
-  const [isLoadingDoc, setIsLoadingDoc] = useState(false)
-  const [docError, setDocError] = useState<string | null>(null)
 
   const scrollParentRef = useRef<HTMLDivElement>(null)
 
@@ -229,14 +229,6 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   const [chunksTotal, setChunksTotal] = useState(0)
   const [isLoadingChunks, setIsLoadingChunks] = useState(false)
   const [chunkError, setChunkError] = useState<string | null>(null)
-
-  const [timeline, setTimeline] = useState<DocumentTimelineResponse | null>(null)
-  const [isLoadingTimeline, setIsLoadingTimeline] = useState(false)
-  const [timelineError, setTimelineError] = useState<string | null>(null)
-
-  const [versions, setVersions] = useState<DocumentVersionList | null>(null)
-  const [isLoadingVersions, setIsLoadingVersions] = useState(false)
-  const [versionsError, setVersionsError] = useState<string | null>(null)
   const [versionsDialogOpen, setVersionsDialogOpen] = useState(false)
   const [isVersionWorking, setIsVersionWorking] = useState(false)
   const [viewPipelineHash, setViewPipelineHash] = useState<string>(ACTIVE_PIPELINE_VALUE)
@@ -247,21 +239,9 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   const [editingChunkId, setEditingChunkId] = useState<string | null>(null)
   const [editingChunkContent, setEditingChunkContent] = useState<string>('')
   const [chunkOpWorkingId, setChunkOpWorkingId] = useState<string | null>(null)
-  const [accessInfo, setAccessInfo] = useState<DocumentAccessInfo | null>(null)
   const [accessDialogOpen, setAccessDialogOpen] = useState(false)
   const [accessMode, setAccessMode] = useState<DocumentAccessMode>('inherit')
 
-  const persistedTags = useMemo(() => getUserTagsFromDocument(detail || initialDocument), [detail, initialDocument])
-  const [optimisticTags, applyOptimisticTags] = useOptimistic(
-    persistedTags,
-    (_currentTags, nextTags: string[]) => normalizeTags(nextTags)
-  )
-  const [tagsEditing, setTagsEditing] = useState(false)
-  const [tagsDraft, setTagsDraft] = useState<string[]>([])
-  const [tagsError, setTagsError] = useState<string | null>(null)
-
-  const [lifecycleWritable, setLifecycleWritable] = useState<boolean | null>(null)
-  const [lifecyclePermError, setLifecyclePermError] = useState<string | null>(null)
   const [lifecycleEditing, setLifecycleEditing] = useState(false)
   const [lifecyclePublicationStatusDraft, setLifecyclePublicationStatusDraft] = useState<
     'draft' | 'published' | 'deprecated'
@@ -271,6 +251,83 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   const [lifecycleAuthorityDraft, setLifecycleAuthorityDraft] = useState('')
   const [lifecycleSupersedesDraft, setLifecycleSupersedesDraft] = useState('')
   const [lifecycleError, setLifecycleError] = useState<string | null>(null)
+
+  const detailQueryKey = queryKeys.documents.detail(initialDocument.id)
+  const accessQueryKey = queryKeys.documents.access(initialDocument.id)
+  const versionsQueryKey = queryKeys.documents.versions(initialDocument.id)
+  const timelineQueryParams = { limit: 200 } as const
+  const timelineQueryKey = queryKeys.documents.timeline(initialDocument.id, timelineQueryParams)
+
+  const detailQuery = useQuery({
+    queryKey: detailQueryKey,
+    queryFn: () => documentApi.get(initialDocument.id),
+    enabled: open,
+  })
+
+  const accessQuery = useQuery<DocumentAccessInfo | null>({
+    queryKey: accessQueryKey,
+    queryFn: async () => {
+      try {
+        return await documentApi.getAccess(initialDocument.id)
+      } catch (err) {
+        console.warn('Load document access error:', err)
+        return null
+      }
+    },
+    enabled: open,
+  })
+
+  const lifecyclePermissionQuery = useQuery({
+    queryKey: ['documents', 'lifecycle-permission', initialDocument.id] as const,
+    queryFn: async () => {
+      try {
+        await documentApi.getLifecycleMetadata(initialDocument.id)
+        return { writable: true as boolean | null, error: null as string | null }
+      } catch (err: any) {
+        const status = err?.response?.status
+        if (status === 403) return { writable: false as boolean | null, error: null as string | null }
+        return {
+          writable: null as boolean | null,
+          error: formatApiError(err, t('errors.lifecyclePermissionCheckUnknown')),
+        }
+      }
+    },
+    enabled: open,
+  })
+
+  const versionsQuery = useQuery<DocumentVersionList>({
+    queryKey: versionsQueryKey,
+    queryFn: () => documentApi.listVersions(initialDocument.id),
+    enabled: open,
+  })
+
+  const timelineQuery = useQuery<DocumentTimelineResponse>({
+    queryKey: timelineQueryKey,
+    queryFn: () => documentApi.getTimeline(initialDocument.id, timelineQueryParams),
+    enabled: open && activeView === 'timeline',
+  })
+
+  const detail = detailQuery.data ?? null
+  const accessInfo = accessQuery.data ?? null
+  const versions = versionsQuery.data ?? null
+  const timeline = timelineQuery.data ?? null
+  const lifecycleWritable = lifecyclePermissionQuery.data?.writable ?? null
+  const lifecyclePermError = lifecyclePermissionQuery.data?.error ?? null
+  const isLoadingDoc = open && (detailQuery.isLoading || accessQuery.isLoading || lifecyclePermissionQuery.isLoading)
+  const isLoadingVersions = versionsQuery.isFetching
+  const isLoadingTimeline = timelineQuery.isFetching
+  const docError = detailQuery.error ? formatApiError(detailQuery.error, t('errors.loadDetailFailed')) : null
+  const versionsError = versionsQuery.error ? formatApiError(versionsQuery.error, t('errors.loadVersionsFailed')) : null
+  const timelineError = timelineQuery.error ? formatApiError(timelineQuery.error, t('errors.loadTimelineFailed')) : null
+
+  const persistedTags = useMemo(() => getUserTagsFromDocument(detail || initialDocument), [detail, initialDocument])
+  const [optimisticTags, applyOptimisticTags] = useOptimistic(
+    persistedTags,
+    (_currentTags, nextTags: string[]) => normalizeTags(nextTags)
+  )
+  const [tagsEditing, setTagsEditing] = useState(false)
+  const [tagsDraft, setTagsDraft] = useState<string[]>([])
+  const [tagsError, setTagsError] = useState<string | null>(null)
 
   const canMutateChunks = viewPipelineHash === ACTIVE_PIPELINE_VALUE
 
@@ -363,7 +420,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
 
     try {
       const updated = await documentApi.patchUserMetadata(initialDocument.id, buildTagsPatch(nextTags))
-      setDetail(updated)
+      queryClient.setQueryData(detailQueryKey, updated)
       toast.success(t("toasts.tagsUpdated"))
     } catch (err: any) {
       console.error('Update document tags failed:', err)
@@ -442,39 +499,6 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   )
   const [accessMembersText, setAccessMembersText] = useState('')
   const [accessGroupIds, setAccessGroupIds] = useState<string[]>([])
-
-  const loadDetail = useCallback(async () => {
-    setIsLoadingDoc(true)
-    setDocError(null)
-    setLifecyclePermError(null)
-    setLifecycleWritable(null)
-    try {
-      const [data, acl, lifecyclePerm] = await Promise.all([
-        documentApi.get(initialDocument.id),
-        documentApi.getAccess(initialDocument.id).catch((err) => {
-          console.warn('Load document access error:', err)
-          return null
-        }),
-        documentApi
-          .getLifecycleMetadata(initialDocument.id)
-          .then(() => ({ writable: true, error: null }))
-          .catch((err) => {
-            const status = err?.response?.status
-            if (status === 403) return { writable: false, error: null }
-            return { writable: null, error: formatApiError(err, t('errors.lifecyclePermissionCheckUnknown')) }
-          }),
-      ])
-      setDetail(data)
-      setAccessInfo(acl)
-      setLifecycleWritable(lifecyclePerm.writable)
-      if (lifecyclePerm.error) setLifecyclePermError(lifecyclePerm.error)
-    } catch (err: any) {
-      console.error('Load document detail error:', err)
-      setDocError(formatApiError(err, t('errors.loadDetailFailed')))
-    } finally {
-      setIsLoadingDoc(false)
-    }
-  }, [initialDocument.id, t])
 
   const beginEditLifecycle = useCallback(() => {
     const doc = detail || initialDocument
@@ -556,7 +580,11 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       })
       toast.success(t('toasts.lifecycleUpdated'))
       cancelEditLifecycle()
-      await loadDetail()
+      await Promise.all([
+        detailQuery.refetch(),
+        accessQuery.refetch(),
+        lifecyclePermissionQuery.refetch(),
+      ])
     } catch (err: any) {
       console.error('Update document lifecycle metadata failed:', err)
       const msg = formatApiError(err, t('errors.saveLifecycleFailed'))
@@ -568,34 +596,6 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   }, null)
 
   const canSaveLifecycle = lifecycleEditing && !isSavingLifecycle && !lifecycleValidationError && lifecycleHasChanges
-
-  const loadVersions = useCallback(async () => {
-    setIsLoadingVersions(true)
-    setVersionsError(null)
-    try {
-      const data = await documentApi.listVersions(initialDocument.id)
-      setVersions(data)
-    } catch (err: any) {
-      console.error('Load document versions error:', err)
-      setVersionsError(formatApiError(err, t('errors.loadVersionsFailed')))
-    } finally {
-      setIsLoadingVersions(false)
-    }
-  }, [initialDocument.id, t])
-
-  const loadTimeline = useCallback(async () => {
-    setIsLoadingTimeline(true)
-    setTimelineError(null)
-    try {
-      const data = await documentApi.getTimeline(initialDocument.id, { limit: 200 })
-      setTimeline(data)
-    } catch (err: any) {
-      console.error('Load document timeline error:', err)
-      setTimelineError(formatApiError(err, t('errors.loadTimelineFailed')))
-    } finally {
-      setIsLoadingTimeline(false)
-    }
-  }, [initialDocument.id, t])
 
   const fetchChunksPage = useCallback(
     async (skip: number) => {
@@ -649,9 +649,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   useEffect(() => {
     if (!open) return
     setActiveView('chunks')
-    detachPromise(loadDetail())
-    detachPromise(loadVersions())
-  }, [open, loadDetail, loadVersions])
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -661,13 +659,6 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
     }, chunkQuery.trim() ? 250 : 0)
     return () => globalThis.window.clearTimeout(handle)
   }, [open, activeView, chunkQuery, viewPipelineHash, reloadChunks])
-
-  useEffect(() => {
-    if (!open) return
-    if (activeView !== 'timeline') return
-    detachPromise(loadTimeline())
-  }, [open, activeView, loadTimeline])
-
   const parserBackend =
     (detail?.metadata?.parser_backend as string) || (initialDocument.metadata?.parser_backend as string) || ''
   const chunkStrategy =
@@ -782,7 +773,12 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
         await documentApi.activateVersion(initialDocument.id, ph)
         toast.success(t('toasts.versionActivated'))
         setViewPipelineHash(ACTIVE_PIPELINE_VALUE)
-        await Promise.all([loadDetail(), loadVersions()])
+        await Promise.all([
+          detailQuery.refetch(),
+          accessQuery.refetch(),
+          lifecyclePermissionQuery.refetch(),
+          versionsQuery.refetch(),
+        ])
         await reloadChunks()
       } catch (err: any) {
         console.error('Activate document version failed:', err)
@@ -791,7 +787,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
         setIsVersionWorking(false)
       }
     },
-    [initialDocument.id, loadDetail, loadVersions, reloadChunks, t]
+    [accessQuery, detailQuery, initialDocument.id, lifecyclePermissionQuery, reloadChunks, t, versionsQuery]
   )
 
   const handleDeleteVersion = useCallback(
@@ -807,8 +803,12 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
         if (viewPipelineHash === ph) {
           setViewPipelineHash(ACTIVE_PIPELINE_VALUE)
         }
-        await loadVersions()
-        await loadDetail()
+        await Promise.all([
+          versionsQuery.refetch(),
+          detailQuery.refetch(),
+          accessQuery.refetch(),
+          lifecyclePermissionQuery.refetch(),
+        ])
         await reloadChunks()
       } catch (err: any) {
         console.error('Delete document version failed:', err)
@@ -817,7 +817,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
         setIsVersionWorking(false)
       }
     },
-    [initialDocument.id, loadDetail, loadVersions, reloadChunks, t, viewPipelineHash]
+    [accessQuery, detailQuery, initialDocument.id, lifecyclePermissionQuery, reloadChunks, t, versionsQuery, viewPipelineHash]
   )
 
   const handleExtractKG = async () => {
@@ -894,11 +894,11 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
           nextAccessMode === 'partial_members' ? parseAccessMembers(nextAccessMembersText) : null,
         partial_group_list: nextAccessMode === 'partial_members' ? nextAccessGroupIds : null,
       })
-      setAccessInfo(res)
+      queryClient.setQueryData(accessQueryKey, res)
       setAccessMode(res.mode)
       setAccessMembersText((res.partial_member_list || []).join('\n'))
       setAccessGroupIds((res.partial_group_list || []).map(String))
-      setDetail((prev) =>
+      queryClient.setQueryData<Document | null>(detailQueryKey, (prev) =>
         prev
           ? {
               ...prev,
@@ -920,9 +920,9 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   const handleVersionsDialogOpenChange = useCallback((next: boolean) => {
     setVersionsDialogOpen(next)
     if (next) {
-      detachPromise(loadVersions())
+      void versionsQuery.refetch()
     }
-  }, [loadVersions])
+  }, [versionsQuery])
 
   const handleAccessDialogOpenChange = useCallback((next: boolean) => {
     if (!next && isSavingAccess) return
@@ -935,8 +935,8 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   }, [accessInfo?.partial_group_list, accessInfo?.partial_member_list, effectiveAccessMode, isSavingAccess])
 
   const handleVersionsRefresh = useCallback(() => {
-    detachPromise(loadVersions())
-  }, [loadVersions])
+    void versionsQuery.refetch()
+  }, [versionsQuery])
 
   const handleCopyText = useCallback((text: string) => {
     detachPromise(copyToClipboard(text))
@@ -1106,8 +1106,10 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
             isLoadingChunks={isLoadingChunks}
             loadError={loadError}
             onRetryChunks={() => {
-              detachPromise(loadDetail())
-              detachPromise(loadVersions())
+              void detailQuery.refetch()
+              void accessQuery.refetch()
+              void lifecyclePermissionQuery.refetch()
+              void versionsQuery.refetch()
               detachPromise(reloadChunks())
             }}
             onClose={() => setOpen(false)}
@@ -1132,7 +1134,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
             isLoadingTimeline={isLoadingTimeline}
             timelineError={timelineError}
             docError={docError}
-            onLoadTimeline={() => detachPromise(loadTimeline())}
+            onLoadTimeline={() => void timelineQuery.refetch()}
             timelineRowVirtualizer={timelineRowVirtualizer}
           />
         </main>

@@ -5,7 +5,10 @@ export const queryKeys = {
     all: ['documents'] as const,
     list: (params?: QueryParams) => ['documents', 'list', params] as const,
     detail: (id: string) => ['documents', 'detail', id] as const,
+    access: (id: string) => ['documents', 'access', id] as const,
     chunks: (id: string) => ['documents', 'chunks', id] as const,
+    versions: (id: string) => ['documents', 'versions', id] as const,
+    timeline: (id: string, params?: QueryParams) => ['documents', 'timeline', id, params] as const,
     health: (id: string, params?: QueryParams) => ['documents', 'health', id, params] as const,
     folders: (params?: QueryParams) => ['documents', 'folders', params] as const,
     nebula: ['documents', 'nebula'] as const,
@@ -65,6 +68,7 @@ export const queryKeys = {
     summary: (params?: QueryParams) => ['usage', 'summary', params] as const,
     cost: (params?: QueryParams) => ['usage', 'cost', params] as const,
     quota: ['usage', 'quota'] as const,
+    tenantQuotaSummary: ['usage', 'tenant-quota-summary'] as const,
   },
   prompts: {
     all: ['prompts'] as const,
@@ -80,6 +84,7 @@ export const queryKeys = {
   },
   industryRules: {
     rulesets: ['industry-rules', 'rulesets'] as const,
+    ruleset: (name: string) => ['industry-rules', 'ruleset', name] as const,
   },
   datasetCategories: {
     tree: ['dataset-categories', 'tree'] as const,
