@@ -829,6 +829,7 @@ function HistoryMessageEntry({
 }>) {
   const isUser = message.role === 'user'
   const requestId = isUser ? '' : extractMessageRequestId(message)
+  const showAnswerLineage = Boolean(requestId && hasAnswerLineageEvidence(message))
 
   return (
     <motion.div 
@@ -847,7 +848,7 @@ function HistoryMessageEntry({
       )}>
         <div className={cn('flex min-w-0 flex-col gap-1', isUser ? 'items-end' : 'items-start')}>
           <ChatMessageItem message={message} variant="minimal" />
-          {requestId ? <AnswerLineageAction requestId={requestId} /> : null}
+          {showAnswerLineage ? <AnswerLineageAction requestId={requestId} /> : null}
         </div>
       </div>
     </motion.div>
@@ -868,6 +869,32 @@ function extractMessageRequestId(message: Message): string {
   }
 
   return ''
+}
+
+function hasEvidenceArray(value: unknown): boolean {
+  return Array.isArray(value) && value.length > 0
+}
+
+function hasClaimEvidence(value: unknown): boolean {
+  if (!Array.isArray(value)) return false
+  return value.some((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return false
+    return hasEvidenceArray((item as Record<string, unknown>).evidence)
+  })
+}
+
+function hasAnswerLineageEvidence(message: Message): boolean {
+  if (hasEvidenceArray(message.citations)) return true
+
+  const metadata = message.message_metadata
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return false
+
+  if (hasEvidenceArray(metadata.retrieved_docs)) return true
+  if (hasClaimEvidence(metadata.claim_evidence)) return true
+  if (hasClaimEvidence(metadata.sentence_citations)) return true
+
+  const docsReturned = metadata.docs_returned
+  return typeof docsReturned === 'number' && Number.isFinite(docsReturned) && docsReturned > 0
 }
 
 function HistoryMessageRoleBadge({
