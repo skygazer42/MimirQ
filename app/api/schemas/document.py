@@ -604,6 +604,10 @@ class DocumentDetail(OrmModel):
     status: DocumentStatusEnum
     processing_progress: int
     current_stage: str | None = None
+    failed_stage: str | None = None
+    error_code: str | None = None
+    processing_attempts: int = 0
+    next_retry_at: datetime | None = None
     chunk_count: int
     total_characters: int
     owner_id: str | None = None
@@ -856,6 +860,44 @@ class DocumentList(BaseModel):
     items: list[DocumentDetail]
 
 
+class IngestDeadLetterItem(OrmModel):
+    """Persistent ingest dead-letter item."""
+
+    id: UUID
+    document_id: UUID | None = None
+    dataset_id: UUID | None = None
+    status: str
+    failed_stage: str
+    error_code: str
+    error_message: str | None = None
+    source_ref: str | None = None
+    original_payload: dict[str, Any] = Field(default_factory=dict)
+    retry_count: int = 0
+    producer_service: str
+    schema_version: str
+    first_failed_at: datetime
+    last_attempt_at: datetime
+    replayed_at: datetime | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class IngestDeadLetterList(BaseModel):
+    """Paged ingest dead-letter list."""
+
+    total: int
+    items: list[IngestDeadLetterItem] = Field(default_factory=list)
+
+
+class IngestDeadLetterReplayResponse(BaseModel):
+    """Dead-letter replay result."""
+
+    dead_letter_id: UUID
+    document_id: UUID
+    dead_letter_status: str
+    document_status: "DocumentStatus"
+
+
 class DocumentStats(BaseModel):
     """Document stats for knowledge-base dashboards."""
 
@@ -939,6 +981,10 @@ class DocumentStatus(OrmModel):
     status: DocumentStatusEnum
     processing_progress: int
     current_stage: str | None = None
+    failed_stage: str | None = None
+    error_code: str | None = None
+    processing_attempts: int = 0
+    next_retry_at: datetime | None = None
     error_message: str | None = None
 
 

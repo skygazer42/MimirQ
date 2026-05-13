@@ -4051,6 +4051,9 @@ class DocumentProcessorService:
                 return
 
             prev_stage = str(getattr(db_doc, "current_stage", None) or "")
+            status_norm = str(status or "").strip().lower()
+            failed_stage_hint = kwargs.pop("failed_stage", None)
+            error_code_hint = kwargs.pop("error_code", None)
             db_doc.status = status
             db_doc.processing_progress = progress
             db_doc.current_stage = stage
@@ -4058,8 +4061,35 @@ class DocumentProcessorService:
             for key, value in kwargs.items():
                 setattr(db_doc, key, value)
 
+            if status_norm in {"pending", "completed", "cancelled"}:
+                if hasattr(db_doc, "failed_stage"):
+                    db_doc.failed_stage = None
+                if hasattr(db_doc, "error_code"):
+                    db_doc.error_code = None
+                if hasattr(db_doc, "next_retry_at"):
+                    db_doc.next_retry_at = None
+
             db.commit()
             db.refresh(db_doc)
+
+            if status_norm in {"failed", "quarantined"}:
+                try:
+                    from app.services.ingest_dead_letter_service import record_ingest_dead_letter
+
+                    record_ingest_dead_letter(
+                        db,
+                        document=db_doc,
+                        failed_stage=str(failed_stage_hint or prev_stage or stage or "").strip() or None,
+                        error_code=(str(error_code_hint).strip() if error_code_hint else None),
+                        error_message=getattr(db_doc, "error_message", None),
+                        original_payload={
+                            "status": status_norm,
+                            "stage": str(stage or ""),
+                            "previous_stage": prev_stage,
+                        },
+                    )
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical ingest DLQ write failure: %s", exc)
 
             # Prometheus gauge: docs currently processing by stage (best-effort).
             try:

@@ -35,6 +35,7 @@ from app.api.v1 import (
     document_batches_lifecycle,
     document_chunks_read,
     document_content,
+    document_dead_letters,
     document_detail,
     document_duplicates,
     document_folders,
@@ -241,6 +242,7 @@ router.include_router(document_batches_lifecycle.router)
 router.include_router(document_batch_upload.router)
 router.include_router(document_chunks_read.router)
 router.include_router(document_content.router)
+router.include_router(document_dead_letters.router)
 router.include_router(document_detail.router)
 router.include_router(document_duplicates.router)
 router.include_router(document_folders.router)

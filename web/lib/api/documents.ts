@@ -42,6 +42,8 @@ import type {
   DocumentUserMetadataPatchRequest,
   DocumentVersionDiff,
   DocumentVersionList,
+  IngestDeadLetterList,
+  IngestDeadLetterReplayResponse,
   ManualChunk,
 } from '@/types'
 import { z } from 'zod'
@@ -181,6 +183,34 @@ export const documentApi = {
       method: 'get',
       query: params,
       signal: options?.signal,
+    })
+  },
+
+  async listDeadLetters(
+    params?: {
+      skip?: number
+      limit?: number
+      status?: string | null
+      dataset_id?: string | null
+      document_id?: string | null
+      error_code?: string | null
+      failed_stage?: string | null
+    },
+    options?: ApiRequestOptions
+  ): Promise<IngestDeadLetterList> {
+    return openapiRequest({
+      path: '/api/v1/documents/dead-letters',
+      method: 'get',
+      query: params,
+      signal: options?.signal,
+    })
+  },
+
+  async replayDeadLetter(deadLetterId: string): Promise<IngestDeadLetterReplayResponse> {
+    return openapiRequest({
+      path: '/api/v1/documents/dead-letters/{dead_letter_id}/replay',
+      method: 'post',
+      pathParams: { dead_letter_id: deadLetterId },
     })
   },
 

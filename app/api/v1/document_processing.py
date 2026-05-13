@@ -34,6 +34,20 @@ def _documents_module():
     return importlib.import_module("app.api.v1.documents")
 
 
+def _document_status_payload(document: DBDocument) -> dict:
+    return {
+        "id": document.id,
+        "status": document.status,
+        "processing_progress": document.processing_progress,
+        "current_stage": document.current_stage,
+        "failed_stage": getattr(document, "failed_stage", None),
+        "error_code": getattr(document, "error_code", None),
+        "processing_attempts": int(getattr(document, "processing_attempts", 0) or 0),
+        "next_retry_at": getattr(document, "next_retry_at", None),
+        "error_message": document.error_message,
+    }
+
+
 @router.get("/{document_id}/status", response_model=DocumentStatus, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_document_status(
     document_id: uuid.UUID,
@@ -68,13 +82,7 @@ async def get_document_status(
         dataset=dataset,
     )
 
-    return {
-        "id": document.id,
-        "status": document.status,
-        "processing_progress": document.processing_progress,
-        "current_stage": document.current_stage,
-        "error_message": document.error_message,
-    }
+    return _document_status_payload(document)
 
 
 @router.post("/{document_id}/cancel", response_model=DocumentStatus, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -158,13 +166,7 @@ async def cancel_document_processing(
                         with contextlib.suppress(TimeoutError, asyncio.TimeoutError):
                             await job.abort(timeout=0.2)
 
-    return {
-        "id": document.id,
-        "status": document.status,
-        "processing_progress": document.processing_progress,
-        "current_stage": document.current_stage,
-        "error_message": document.error_message,
-    }
+    return _document_status_payload(document)
 
 
 @router.post("/{document_id}/retry", response_model=DocumentStatus, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -266,13 +268,7 @@ async def retry_document_processing(
                         db.commit()
                     except Exception:
                         db.rollback()
-                    return {
-                        "id": document.id,
-                        "status": document.status,
-                        "processing_progress": document.processing_progress,
-                        "current_stage": document.current_stage,
-                        "error_message": document.error_message,
-                    }
+                    return _document_status_payload(document)
 
     object_name: str | None = None
     file_path: Path | None = None
@@ -372,6 +368,9 @@ async def retry_document_processing(
     document.status = "pending"
     document.processing_progress = 0
     document.current_stage = "queued"
+    document.failed_stage = None
+    document.error_code = None
+    document.next_retry_at = None
     document.error_message = None
     if not preserve_existing_versions:
         document.chunk_count = 0
@@ -469,13 +468,7 @@ async def retry_document_processing(
 
             background_tasks.add_task(_process_from_object_store)
 
-    return {
-        "id": document.id,
-        "status": document.status,
-        "processing_progress": document.processing_progress,
-        "current_stage": document.current_stage,
-        "error_message": document.error_message,
-    }
+    return _document_status_payload(document)
 
 
 @router.delete("/{document_id}", status_code=204, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)

@@ -35,6 +35,9 @@ export type Document = OpenApiSchema<'DocumentDetail'>
 export type DocumentList = OpenApiSchema<'DocumentList'>
 export type DocumentStatus = OpenApiSchema<'DocumentStatus'>
 export type DocumentStatusEnum = OpenApiSchema<'DocumentStatusEnum'>
+export type IngestDeadLetterItem = OpenApiSchema<'IngestDeadLetterItem'>
+export type IngestDeadLetterList = OpenApiSchema<'IngestDeadLetterList'>
+export type IngestDeadLetterReplayResponse = OpenApiSchema<'IngestDeadLetterReplayResponse'>
 export type GovernanceInfo = OpenApiSchema<'GovernanceInfo'>
 
 export type DocumentFolderNode = OpenApiSchema<'DocumentFolderNode'>
