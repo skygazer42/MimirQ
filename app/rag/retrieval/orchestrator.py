@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import json
+import logging
 import time
 from pathlib import Path
 from typing import Any
@@ -93,6 +94,7 @@ from app.services.hardcase_discovery_service import (
 from app.services.router_prometheus_metrics import observe_router_layers
 
 _CHANNEL_BUDGET_POLICY_SCHEMA_V1 = "mimirq.channel_budget_policy.v1"
+logger = logging.getLogger(__name__)
 
 
 def get_rag_engine():  # noqa: ANN201
@@ -2472,8 +2474,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                             family_features=family_features,
                             strategy=hierarchy_family_aggregation,
                         )
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical retrieval orchestrator fallback failure: %s", exc)
 
                 want_non_mq = max(0, int(top_k) - int(mq_diversify_budget))
                 want_mq = int(mq_diversify_budget)
@@ -2685,8 +2687,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                     try:
                         if raw.get("hops") is not None:
                             out["hops"] = int(raw.get("hops") or 0)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical retrieval orchestrator fallback failure: %s", exc)
 
                     nodes_raw = raw.get("nodes")
                     if isinstance(nodes_raw, list) and nodes_raw:
@@ -2783,8 +2785,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                     if owns_db and db is not None:
                         try:
                             db.close()
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("Ignoring non-critical retrieval orchestrator fallback failure: %s", exc)
 
                 chunk_by_id: dict[UUID, Any] = {}
                 for ch in (rows or []):
@@ -2942,8 +2944,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             meta["kg_edge_conf_low"] = low
             meta["kg_edge_conf_mid"] = mid
             meta["kg_edge_conf_high"] = high
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring non-critical retrieval orchestrator fallback failure: %s", exc)
 
     # Optional: post-fusion rerank (evidence-first) on the final candidate list.
     post_rerank_enabled = bool(getattr(settings, "EVIDENCE_POST_RERANK_ENABLED", False))
@@ -3193,8 +3195,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                             if post_rerank_cache_enabled and cache_key:
                                 try:
                                     set_cached_evidence_post_rerank_result(cache_key, rr)
-                                except Exception:
-                                    pass
+                                except Exception as exc:
+                                    logger.debug("Ignoring non-critical retrieval orchestrator fallback failure: %s", exc)
                             elapsed_i = float(rr.elapsed_sec or (time.time() - rr_start))
                         else:
                             elapsed_i = 0.0
@@ -3346,8 +3348,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                             if post_rerank_cache_enabled and cache_key:
                                 try:
                                     set_cached_evidence_post_rerank_result(cache_key, rr)
-                                except Exception:
-                                    pass
+                                except Exception as exc:
+                                    logger.debug("Ignoring non-critical retrieval orchestrator fallback failure: %s", exc)
                             post_rerank_elapsed = float(rr.elapsed_sec or (time.time() - rr_start))
                         else:
                             post_rerank_elapsed = 0.0
@@ -3520,8 +3522,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                 finally:
                     try:
                         db.close()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical retrieval orchestrator fallback failure: %s", exc)
 
             max_added = max(0, int(top_k) * (int(hierarchy_parent_depth) + (2 * int(hierarchy_sibling_window))))
             max_added = min(400, max_added or 120)
@@ -5222,8 +5224,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                     length=32,
                 )
             metrics["hardcase_candidate"] = hc
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring non-critical retrieval orchestrator fallback failure: %s", exc)
 
     return {
         **state,

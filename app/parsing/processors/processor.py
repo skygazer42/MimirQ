@@ -722,14 +722,14 @@ class ParsingStage:
             except SubprocessCancelled as exc:
                 try:
                     shutil.rmtree(artifact_root, ignore_errors=True)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
                 raise DocumentCancelledError(str(exc)) from exc
             except asyncio.CancelledError:
                 try:
                     shutil.rmtree(artifact_root, ignore_errors=True)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
                 raise
             except ParsingError as exc:
                 raise RuntimeError(f"Integrated pipeline parsing failed: {str(exc)[:200]}") from exc
@@ -830,8 +830,8 @@ class ParsingStage:
                             db_document.doc_metadata = meta_patch
                             db.commit()
                             db.refresh(db_document)
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
         except Exception:
             parse_cache_hit = False
 
@@ -870,14 +870,14 @@ class ParsingStage:
             except SubprocessCancelled as exc:
                 try:
                     shutil.rmtree(artifact_root, ignore_errors=True)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
                 raise DocumentCancelledError(str(exc)) from exc
             except asyncio.CancelledError:
                 try:
                     shutil.rmtree(artifact_root, ignore_errors=True)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
                 raise
             except ParsingError as exc:
                 raise RuntimeError(f"Parsing failed: {str(exc)[:200]}") from exc
@@ -901,8 +901,8 @@ class ParsingStage:
                 db_document.doc_metadata = meta
                 db.commit()
                 db.refresh(db_document)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
 
         # Attach lightweight parsed-text quality metrics for observability/tuning.
         try:
@@ -934,13 +934,13 @@ class ParsingStage:
                     detect_language=bool(getattr(settings, "GOVERNANCE_DETECT_LANGUAGE", False)),
                     language_min_chars=int(getattr(settings, "GOVERNANCE_LANGUAGE_MIN_CHARS", 40) or 40),
                 ).to_dict()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
             db_document.doc_metadata = meta
             db.commit()
             db.refresh(db_document)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
 
         # Parse cache write-through (best-effort, only when miss).
         if (not parse_cache_hit) and parse_cache_key and documents:
@@ -971,8 +971,8 @@ class ParsingStage:
                     entry=entry,
                     max_bytes=int(getattr(settings, "PARSE_CACHE_MAX_BYTES", 0) or 0),
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
 
         parsed_backend = parsed.get("resolved_backend") if isinstance(parsed, dict) else None
         resolved_backend = str(parsed_backend or effective_parser_backend or parser_backend or "auto")
@@ -1066,8 +1066,8 @@ class InlineAssetStage:
                             derived.append(item)
                         if derived:
                             next_meta["derived_elements"] = derived
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
             # Opt3: Formula OCR / LaTeX conversion (best-effort) before asset rewriting
             # so we can still read local image files.
             if formula_enabled and next_content:
@@ -1117,8 +1117,8 @@ class InlineAssetStage:
                     charts_added_total += int(added or 0)
                     chart_backend = "chart_http"
                     chart_audit = audit.to_dict()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
 
             # Opt5: image captions (best-effort) before asset rewriting so we can still
             # read local image files when using an external VLM backend.
@@ -1333,8 +1333,8 @@ class ChunkingStage:
 
                     escaped = sep_value.replace("\"", "\\\"")
                     sep_value = _json.loads(f"\"{escaped}\"")
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
 
             keep_sep = params.get("keep_separator")
             keep_sep_norm = _to_bool(keep_sep)
@@ -1532,8 +1532,8 @@ class ChunkAssetStage:
                         if should_close and img is not None:
                             try:
                                 img.close()
-                            except Exception:
-                                pass
+                            except Exception as exc:
+                                logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
 
                 # Policy-driven safety: OCR/caption text is appended after governance cleaning, so apply
                 # PII/secret redactions here (best-effort).
@@ -1596,8 +1596,8 @@ class ChunkAssetStage:
             # Per-chunk quality scoring (noise/boilerplate) for debug + downstream filtering.
             try:
                 meta.setdefault("chunk_quality", score_chunk_quality(content_norm, meta=meta))
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
             # Lightweight semantic role labels (deterministic): helps filtering/reranking.
             # Keep separate from existing `chunk_role` (parent/child/qa/etc).
             try:
@@ -1605,15 +1605,15 @@ class ChunkAssetStage:
                     "chunk_semantic_role",
                     classify_chunk_semantic_role(content=content_norm, meta=meta),
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
             try:
                 meta.setdefault(
                     "chunk_type",
                     classify_chunk_type(content=content_norm, meta=meta),
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
             if not isinstance(meta.get("content_hash"), str) or not str(meta.get("content_hash") or "").strip():
                 meta["content_hash"] = hashlib.sha256(content_norm.strip().encode("utf-8", "ignore")).hexdigest()
                 meta.setdefault("content_hash_algo", "sha256")
@@ -1674,29 +1674,29 @@ class ChunkAssetStage:
                     infer_chunk_structure(ocr_meta, ocr_content_norm)
                     try:
                         ocr_meta.setdefault("chunk_quality", score_chunk_quality(ocr_content_norm, meta=ocr_meta))
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
                     try:
                         ocr_meta.setdefault(
                             "chunk_semantic_role",
                             classify_chunk_semantic_role(content=ocr_content_norm, meta=ocr_meta),
                         )
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
                     try:
                         ocr_meta.setdefault(
                             "chunk_type",
                             classify_chunk_type(content=ocr_content_norm, meta=ocr_meta),
                         )
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
                     ocr_meta["content_hash"] = hashlib.sha256(ocr_content_norm.strip().encode("utf-8", "ignore")).hexdigest()
                     ocr_meta.setdefault("content_hash_algo", "sha256")
                     try:
                         ocr_meta["simhash64"] = simhash64_hex(simhash64(ocr_content_norm))
                         ocr_meta.setdefault("simhash_algo", "simhash64_sha1")
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
 
                     out_chunks.append(Document(page_content=ocr_text, metadata=ocr_meta))
                     out_idx += 1
@@ -1956,8 +1956,8 @@ class DocumentProcessorService:
                         db_document.doc_metadata = next_meta
                         db.commit()
                         db.refresh(db_document)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
                     if bool(getattr(result, "changed", False)):
                         out_path = Path(str(getattr(result, "output_path", "") or "")).resolve(strict=False)
                         preprocessed_temp_path = out_path
@@ -1992,8 +1992,8 @@ class DocumentProcessorService:
                                             db_document.doc_metadata = next_meta
                                             db.commit()
                                             db.refresh(db_document)
-                                    except Exception:
-                                        pass
+                                    except Exception as exc:
+                                        logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
                                 except Exception:
                                     pdf_quality = None
                             result = preprocess_image_document(
@@ -2009,8 +2009,8 @@ class DocumentProcessorService:
                             db_document.doc_metadata = next_meta
                             db.commit()
                             db.refresh(db_document)
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
                         if bool(getattr(result, "changed", False)):
                             out_path = Path(str(getattr(result, "output_path", "") or "")).resolve(strict=False)
                             preprocessed_temp_path = out_path
@@ -2060,8 +2060,8 @@ class DocumentProcessorService:
                         db_document.doc_metadata = next_meta
                         db.commit()
                         db.refresh(db_document)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
 
                 # When auto-route says "rag", continue the normal parsing+indexing pipeline.
                 should_tag = True
@@ -2802,8 +2802,8 @@ class DocumentProcessorService:
                             db_document.doc_metadata = meta_patch
                             db.commit()
                             db.refresh(db_document)
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
                 else:
                     parsed_documents = None
 
@@ -2825,8 +2825,8 @@ class DocumentProcessorService:
                         db_document.doc_metadata = meta_patch
                         db.commit()
                         db.refresh(db_document)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
 
                 pdf_quality = (db_document.doc_metadata or {}).get("pdf_quality") if isinstance((db_document.doc_metadata or {}).get("pdf_quality"), dict) else None
                 if (
@@ -3056,8 +3056,8 @@ class DocumentProcessorService:
                             db_document.doc_metadata = meta_patch
                             db.commit()
                             db.refresh(db_document)
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
                 else:
                     parsed_documents = None
 
@@ -3855,8 +3855,8 @@ class DocumentProcessorService:
             # Roll back any uncommitted DB work (e.g., flushed chunks) to avoid committing partial results.
             try:
                 db.rollback()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
             # Best-effort cleanup for vector/BM25 side effects (indexing is not transactional).
             try:
                 meta = dict(getattr(db_document, "doc_metadata", None) or {})
@@ -3871,8 +3871,8 @@ class DocumentProcessorService:
                     )
                 else:
                     Indexer(db).delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
             await self._update_status(
                 db,
                 tenant_id,
@@ -3888,8 +3888,8 @@ class DocumentProcessorService:
             # arq Job.abort cancels the coroutine; ensure we stop the child parser process and persist status.
             try:
                 db.rollback()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
             try:
                 meta = dict(getattr(db_document, "doc_metadata", None) or {})
                 active_hash = str(meta.get("active_pipeline_hash") or "").strip()
@@ -3903,8 +3903,8 @@ class DocumentProcessorService:
                     )
                 else:
                     Indexer(db).delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
             try:
                 await asyncio.shield(
                     self._update_status(
@@ -3918,8 +3918,8 @@ class DocumentProcessorService:
                         doc_metadata=_with_stage_durations(dict(getattr(db_document, "doc_metadata", None) or {})),
                     )
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
             raise
         except TenantQuotaExceededError as e:
             # NOTE: Keep this block after asyncio.CancelledError so task cancellations propagate.
@@ -3940,8 +3940,8 @@ class DocumentProcessorService:
             )
             try:
                 db.rollback()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
 
             meta_patch = dict(getattr(db_document, "doc_metadata", None) or {})
             meta_patch["tenant_quota_exceeded"] = {
@@ -3983,8 +3983,8 @@ class DocumentProcessorService:
             log_metrics({"event": "ingest.failed", "success": False, "error": str(e)[:200]})
             try:
                 db.rollback()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
             try:
                 meta = dict(getattr(db_document, "doc_metadata", None) or {})
                 active_hash = str(meta.get("active_pipeline_hash") or "").strip()
@@ -3998,8 +3998,8 @@ class DocumentProcessorService:
                     )
                 else:
                     Indexer(db).delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
             await self._update_status(
                 db,
                 tenant_id,
@@ -4015,8 +4015,8 @@ class DocumentProcessorService:
             if preprocessed_temp_path is not None:
                 try:
                     preprocessed_temp_path.unlink(missing_ok=True)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
             if owns_db:
                 db.close()
 
@@ -4071,8 +4071,8 @@ class DocumentProcessorService:
                     new_status=str(status or ""),
                     new_stage=str(stage or ""),
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
 
             # Best-effort: update ingestion run manifest (never block ingestion/status updates).
             try:
@@ -4086,8 +4086,8 @@ class DocumentProcessorService:
                     error_message=getattr(db_doc, "error_message", None),
                     doc_meta=(dict(getattr(db_doc, "doc_metadata", None) or {}) if isinstance(getattr(db_doc, "doc_metadata", None), dict) else None),
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
 
     async def _rebuild_bm25_index_for_tenant(self, db: Session, tenant_id: UUID):
         """Rebuild BM25 index for a specific tenant."""
@@ -5256,13 +5256,13 @@ class DocumentProcessorService:
                     if converted is not None:
                         try:
                             converted.close()
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
                     if img is not None:
                         try:
                             img.close()
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
 
                 digest = hashlib.sha256(image_bytes).hexdigest()
                 img_id = cache.get(digest)
@@ -5399,8 +5399,8 @@ class DocumentProcessorService:
                                 metadata.pop("image_path", None)
                                 try:
                                     candidate.unlink()
-                                except Exception:
-                                    pass
+                                except Exception as exc:
+                                    logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
                             else:
                                 image_path = candidate
                                 raw_image = candidate.read_bytes()
@@ -5459,8 +5459,8 @@ class DocumentProcessorService:
             if raw_image is not None and not isinstance(raw_image, bytes) and hasattr(raw_image, "close"):
                 try:
                     raw_image.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
 
         # Upload to MinIO.
         try:
@@ -5486,8 +5486,8 @@ class DocumentProcessorService:
             if image_path is not None:
                 try:
                     image_path.unlink()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
 
             logger.info("Image uploaded and bound: img_id=%s", img_id)
             return img_id

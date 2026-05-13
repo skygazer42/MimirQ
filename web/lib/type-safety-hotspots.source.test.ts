@@ -109,6 +109,12 @@ describe('type safety hotspots', () => {
     const evidenceWhyMissed = read('lib/evidence-why-missed.ts')
     const localSearch = read('hooks/use-local-search.ts')
     const graphAlgorithms = read('lib/graph-algorithms.ts')
+    const scimApi = read('lib/api/scim.ts')
+    const documentDetailDialog = read('components/document-detail-dialog.tsx')
+    const datasetProfilePage = read('app/datasets/[id]/profile/page-client.tsx')
+    const graphViewer = read('components/graph/graph-viewer.tsx')
+    const graph3d = read('components/graph/force-graph-3d.tsx')
+    const graph2dWrapper = read('components/graph/force-graph-2d-wrapper.tsx')
 
     expect(openApiHelpers).not.toContain('Record<string, any>')
     expect(openApiHelpers).not.toContain('Record<number, any>')
@@ -118,6 +124,25 @@ describe('type safety hotspots', () => {
     expect(evidenceWhyMissed).not.toContain(': any')
     expect(localSearch).not.toContain('[key: string]: any')
     expect(graphAlgorithms).not.toContain('as any')
+    expect(scimApi).not.toContain('payload: any')
+    expect(scimApi).not.toContain('Promise<any>')
+    expect(documentDetailDialog).not.toContain(': any')
+    expect(datasetProfilePage).not.toContain(': any')
+    expect(graphViewer).not.toContain(': any')
+    expect(graph3d).not.toContain(': any')
+    expect(graph2dWrapper).not.toContain(': any')
+  })
+
+  it('keeps static skeleton maps off index keys in the remaining hotspot views', () => {
+    const graphCanvas = read('app/graph/_components/graph-canvas.tsx')
+    const feedbackPage = read('app/knowledge/feedback/page.tsx')
+    const ingestionPage = read('app/knowledge/ingestion/page-client.tsx')
+    const similarityWorkbench = read('components/ragviz/similarity-workbench.tsx')
+
+    expect(graphCanvas).not.toContain('key={index}')
+    expect(feedbackPage).not.toContain('key={index}')
+    expect(ingestionPage).not.toContain('key={index}')
+    expect(similarityWorkbench).not.toContain('key={index}')
   })
 
   it('keeps chunk preview shared types and review/export helpers on unknown-safe objects', () => {

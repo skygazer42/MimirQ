@@ -4,6 +4,8 @@ Global constants.
 Centralize magic strings and hardcoded values for maintainability.
 """
 
+DEFAULT_OPENAI_API_BASE = "https://api.openai.com/v1"
+
 
 # =============================================================================
 # Timeout constants (seconds)

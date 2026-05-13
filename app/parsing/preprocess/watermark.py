@@ -9,18 +9,32 @@ This provides three best-effort paths:
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import math
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
-import requests
+import httpx
 from PIL import Image, ImageDraw
 
 from app.parsing.preprocess.model_loader import get_preprocess_model_loader
 
 _RASTER_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff"}
+logger = logging.getLogger(__name__)
+
+
+def _run_coroutine_sync(factory: Any) -> Any:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(factory())
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        return executor.submit(lambda: asyncio.run(factory())).result()
 
 
 def _positive_int(value: Any) -> int | None:
@@ -107,8 +121,8 @@ def _ocr_lines_for_mask(image: Image.Image) -> list[dict[str, Any]]:
         try:
             if tmp_path is not None and tmp_path.exists():
                 tmp_path.unlink()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical watermark preprocess fallback failure: %s", exc)
 
     out: list[dict[str, Any]] = []
     for line in result or []:
@@ -347,11 +361,11 @@ def strip_pdf_watermark_annotations(
         try:
             if doc is not None:
                 doc.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical watermark preprocess fallback failure: %s", exc)
 
 
-def remove_watermark_via_http(
+async def _remove_watermark_via_http_async(
     *,
     input_path: Path,
     output_path: Path,
@@ -367,11 +381,12 @@ def remove_watermark_via_http(
     """
     try:
         file_bytes = input_path.read_bytes()
-        resp = requests.post(
-            str(url).strip(),
-            files={"file": (input_path.name, file_bytes, "application/octet-stream")},
-            timeout=float(timeout_sec),
-        )
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                str(url).strip(),
+                files={"file": (input_path.name, file_bytes, "application/octet-stream")},
+                timeout=float(timeout_sec),
+            )
     except Exception as exc:  # noqa: BLE001
         return False, f"watermark_http_failed:{exc.__class__.__name__}"
 
@@ -386,6 +401,23 @@ def remove_watermark_via_http(
         return True, "watermark_ok"
     except Exception as exc:  # noqa: BLE001
         return False, f"watermark_write_failed:{exc.__class__.__name__}"
+
+
+def remove_watermark_via_http(
+    *,
+    input_path: Path,
+    output_path: Path,
+    url: str,
+    timeout_sec: float,
+) -> tuple[bool, str]:
+    return _run_coroutine_sync(
+        lambda: _remove_watermark_via_http_async(
+            input_path=input_path,
+            output_path=output_path,
+            url=url,
+            timeout_sec=timeout_sec,
+        )
+    )
 
 
 def cleanup_watermark_document(

@@ -9,6 +9,7 @@ This module is intended for ops tooling and incident response:
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -17,6 +18,7 @@ from typing import Any
 from app.core.config import settings
 
 _SCHEMA_V1 = "mimirq.observability.deps.v1"
+logger = logging.getLogger(__name__)
 
 
 def _now_utc_iso() -> str:
@@ -52,8 +54,8 @@ def _probe_postgres() -> dict[str, Any]:
         finally:
             try:
                 db.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical deps diagnostics fallback failure: %s", exc)
     except Exception as exc:  # noqa: BLE001
         status["error"] = str(exc)[:200]
     status["elapsed_ms"] = round((time.perf_counter() - t0) * 1000.0, 2)
@@ -141,8 +143,8 @@ def _probe_minio() -> dict[str, Any]:
         v = importlib.metadata.version("minio")
         if v:
             out["version"] = f"client:{str(v).strip()[:40]}"
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring non-critical deps diagnostics fallback failure: %s", exc)
 
     return out
 
@@ -174,8 +176,8 @@ def _probe_milvus() -> dict[str, Any]:
         v = utility.get_server_version()
         if v:
             status["version"] = str(v).strip()[:40]
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring non-critical deps diagnostics fallback failure: %s", exc)
 
     status["elapsed_ms"] = round((time.perf_counter() - t0) * 1000.0, 2)
     return status

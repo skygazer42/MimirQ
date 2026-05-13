@@ -25,9 +25,13 @@ def test_mathpix_parser_parses_via_backend(monkeypatch: pytest.MonkeyPatch, tmp_
 
     monkeypatch.setattr(settings, "MATHPIX_APP_ID", "id", raising=False)
     monkeypatch.setattr(settings, "MATHPIX_APP_KEY", "key", raising=False)
+
+    async def _fake_backend_async(**_kwargs):  # noqa: ANN001
+        return "# Parsed by Mathpix\n\nEquation: $a^2+b^2=c^2$"
+
     monkeypatch.setattr(
-        "app.parsing.parsers.mathpix_parser._call_mathpix_backend",
-        lambda **_kwargs: "# Parsed by Mathpix\n\nEquation: $a^2+b^2=c^2$",
+        "app.parsing.parsers.mathpix_parser._call_mathpix_backend_async",
+        _fake_backend_async,
     )
 
     pdf = tmp_path / "sample.pdf"

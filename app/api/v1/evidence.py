@@ -13,6 +13,7 @@ import csv
 import hashlib
 import io
 import json
+import logging
 import re
 import zipfile
 from datetime import UTC, datetime, timedelta
@@ -75,6 +76,7 @@ _DETAIL_SUITE_NOT_FOUND = "Suite not found"
 _DETAIL_ITEM_NOT_FOUND = "Item not found"
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+logger = logging.getLogger(__name__)
 
 
 def _now_utc() -> datetime:
@@ -417,8 +419,8 @@ async def repair_evidence_suite_reference_sources(
             except Exception:
                 try:
                     db.rollback()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical evidence router fallback failure: %s", exc)
 
             if response is not None:
                 response.status_code = 202
@@ -1873,8 +1875,8 @@ async def export_evidence_suite_ltr_training_bundle(
     except Exception:
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical evidence router fallback failure: %s", exc)
 
     # Write ZIP bundle in memory (bounded by max_items).
     buf = io.BytesIO()

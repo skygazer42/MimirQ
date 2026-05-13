@@ -655,8 +655,8 @@ export function GraphCanvas({
                   onPointerCancel={handleSemanticPanelPointerUp}
                 >
                   <div className="grid grid-cols-2 gap-[3px]">
-                    {Array.from({ length: 6 }).map((_, index) => (
-                      <span key={index} className="h-1 w-1 rounded-full bg-current/60" />
+                    {Array.from({ length: 6 }, (_, dotIndex) => dotIndex).map((dotIndex) => (
+                      <span key={dotIndex} className="h-1 w-1 rounded-full bg-current/60" />
                     ))}
                   </div>
                 </div>

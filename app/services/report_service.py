@@ -7,6 +7,7 @@ Goal:
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -38,6 +39,8 @@ from app.services.dataset_profile_utils import HistogramBinSpec, histogram, perc
 from app.services.dataset_service import DatasetService
 from app.services.document_folders import build_document_folder_tree
 
+logger = logging.getLogger(__name__)
+
 
 def _aggregate_governance_metrics(
     *,
@@ -63,16 +66,16 @@ def _aggregate_governance_metrics(
 
         try:
             rules_applied_total += int(meta.get("governance_rules_applied") or 0)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical service fallback failure: %s", exc)
         try:
             changed_documents_total += int(meta.get("governance_changed_documents") or 0)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical service fallback failure: %s", exc)
         try:
             dropped_documents_total += int(meta.get("governance_dropped_documents") or 0)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical service fallback failure: %s", exc)
 
         reasons = meta.get("governance_drop_reasons")
         if isinstance(reasons, dict):
@@ -156,13 +159,13 @@ def _aggregate_governance_audit(
         try:
             if int(meta.get("governance_changed_documents") or 0) > 0:
                 docs_changed += 1
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical service fallback failure: %s", exc)
         try:
             if int(meta.get("governance_dropped_documents") or 0) > 0:
                 docs_dropped += 1
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical service fallback failure: %s", exc)
 
         def _add_int(key: str) -> int:
             raw = meta.get(key)
@@ -535,7 +538,8 @@ def _aggregate_must_recall_summary(
     if pass_rate_raw is not None:
         try:
             pass_rate = min(1.0, max(0.0, float(pass_rate_raw)))
-        except Exception:
+        except Exception as exc:
+            logger.debug("Ignoring non-critical service fallback failure: %s", exc)
             pass_rate = None
 
     def _as_int(*keys: str) -> int | None:

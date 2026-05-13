@@ -22,9 +22,9 @@ def test_chart_data_block_uses_v1_schema_and_stable_cache_key(
 
     monkeypatch.setattr(settings, "CHART_TO_DATA_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "CHART_TO_DATA_API_URL", "http://chart.local/extract", raising=False)
-    monkeypatch.setattr(
-        "app.parsing.enrich.chart_to_data._call_chart_backend",
-        lambda **_kwargs: (
+
+    async def _fake_backend_async(**_kwargs):  # noqa: ANN001
+        return (
             {
                 "title": "Revenue Trend",
                 "series": [{"name": "Revenue", "points": [["2024", 120], ["2025", 150]]}],
@@ -32,8 +32,9 @@ def test_chart_data_block_uses_v1_schema_and_stable_cache_key(
                 "confidence": 0.91,
             },
             "ok_json",
-        ),
-    )
+        )
+
+    monkeypatch.setattr("app.parsing.enrich.chart_to_data._call_chart_backend_async", _fake_backend_async)
 
     image_path = tmp_path / "finance-chart.png"
     image_path.write_bytes(b"\x89PNG\r\n\x1a\nfinance-chart")
@@ -56,4 +57,3 @@ def test_chart_data_block_uses_v1_schema_and_stable_cache_key(
     assert payload["cache_key"].startswith("chart_data:v1:")
     assert audit.chart_elements[0]["chart_id"] == payload["chart_id"]
     assert audit.chart_elements[0]["cache_key"] == payload["cache_key"]
-

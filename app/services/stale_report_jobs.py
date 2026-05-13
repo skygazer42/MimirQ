@@ -16,6 +16,7 @@ from __future__ import annotations
 from collections import Counter
 from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -25,6 +26,8 @@ from app.models.audit_log import AuditLog
 from app.models.connector import ConnectorRun, ConnectorRunDocument
 from app.models.document import Document as DBDocument
 from app.services.audit_log_service import audit_log_event
+
+logger = logging.getLogger(__name__)
 
 
 def _dt_to_json(v: datetime | None) -> str | None:

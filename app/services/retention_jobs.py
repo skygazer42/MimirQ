@@ -14,6 +14,7 @@ Principles:
 
 from __future__ import annotations
 
+import logging
 from collections import Counter
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -26,6 +27,7 @@ from app.services.audit_log_retention import plan_audit_log_purge, purge_audit_l
 from app.services.audit_log_service import audit_log_event
 from app.services.regression_run_retention import plan_regression_run_purge, purge_regression_run_rows
 
+logger = logging.getLogger(__name__)
 SYSTEM_RETENTION_ACTOR_ID = "system:retention"
 
 _delete_document_lifecycle = None
@@ -166,8 +168,8 @@ def run_audit_log_retention(
     except Exception:
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical retention fallback failure: %s", exc)
 
     return {
         "tenant_id": str(tenant_id),
@@ -255,8 +257,8 @@ def run_regression_run_retention(
     except Exception:
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical retention fallback failure: %s", exc)
 
     return {
         "tenant_id": str(tenant_id),
@@ -380,8 +382,8 @@ async def run_knowledge_asset_retention(
     except Exception:
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical retention fallback failure: %s", exc)
 
     return summary
 

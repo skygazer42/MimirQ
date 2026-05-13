@@ -791,8 +791,8 @@ class Indexer:
                     tenant_id=tenant_id,
                     enable_vectors=True,
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical indexer fallback failure: %s", exc)
         db_chunks = self._persist_document_chunks(
             document_id=document_id,
             tenant_id=tenant_id,
@@ -929,13 +929,13 @@ class Indexer:
                 if hasattr(ent, "evidence_start_char") and ent.evidence_start_char is not None:
                     try:
                         link_extra["evidence_start_char"] = int(ent.evidence_start_char)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical indexer fallback failure: %s", exc)
                 if hasattr(ent, "evidence_end_char") and ent.evidence_end_char is not None:
                     try:
                         link_extra["evidence_end_char"] = int(ent.evidence_end_char)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical indexer fallback failure: %s", exc)
 
                 self._db.add(
                     KgEventEntity(

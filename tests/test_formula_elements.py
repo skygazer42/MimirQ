@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import uuid4
 
-import requests
 from langchain_core.documents import Document
 
 from app.core.config import settings
@@ -28,10 +27,13 @@ def test_formula_ocr_collects_structured_equation_elements(monkeypatch, tmp_path
     img = tmp_path / "eq.png"
     img.write_bytes(b"fake-bytes")
 
-    def _fake_post(*_args, **_kwargs):  # noqa: ANN001, ANN002, ANN003
-        return _FakeResponse()
+    async def _fake_backend_async(**_kwargs):  # noqa: ANN001
+        return ("a^2 + b^2 = c^2", "ok_json")
 
-    monkeypatch.setattr(requests, "post", _fake_post)
+    monkeypatch.setattr(
+        "app.parsing.enrich.formula_ocr._call_formula_backend_async",
+        _fake_backend_async,
+    )
 
     out, added, audit = add_formula_latex_blocks(
         "![formula](eq.png)\n",
@@ -51,10 +53,13 @@ def test_inline_asset_stage_surfaces_formula_sidecar_elements(monkeypatch, tmp_p
     img = tmp_path / "eq.png"
     img.write_bytes(b"fake-bytes")
 
-    def _fake_post(*_args, **_kwargs):  # noqa: ANN001, ANN002, ANN003
-        return _FakeResponse(json_body={"latex": "E = mc^2"})
+    async def _fake_backend_async(**_kwargs):  # noqa: ANN001
+        return ("E = mc^2", "ok_json")
 
-    monkeypatch.setattr(requests, "post", _fake_post)
+    monkeypatch.setattr(
+        "app.parsing.enrich.formula_ocr._call_formula_backend_async",
+        _fake_backend_async,
+    )
     monkeypatch.setattr(settings, "MINIO_ENABLED", False, raising=False)
     monkeypatch.setattr(settings, "FORMULA_OCR_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "FORMULA_OCR_API_URL", "http://example/formula", raising=False)

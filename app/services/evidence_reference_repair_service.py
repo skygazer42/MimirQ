@@ -12,6 +12,7 @@ PII safety:
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -22,6 +23,8 @@ from app.models.document import DocumentChunk
 from app.models.evidence import EvidenceItem, EvidenceSuite
 from app.services.audit_log_service import audit_log_event
 from app.services.evidence_drift_audit import classify_reference_source_drift
+
+logger = logging.getLogger(__name__)
 
 
 class EvidenceSuiteNotFoundError(RuntimeError):
@@ -402,8 +405,8 @@ def repair_evidence_suite_reference_sources_with_dataset(
                         if active_key:
                             try:
                                 q2 = q2.filter(DocumentChunk.doc_metadata["doc_pipeline_key"].astext == active_key)  # type: ignore[attr-defined]
-                            except Exception:
-                                pass
+                            except Exception as exc:
+                                logger.debug("Ignoring non-critical evidence repair fallback failure: %s", exc)
                         rows = q2.limit(20).all()
                         if rows:
                             # Pick the lowest chunk_index (stable) among matches.
@@ -432,8 +435,8 @@ def repair_evidence_suite_reference_sources_with_dataset(
                 # Refresh audit fields from the newly linked chunk (best-effort).
                 try:
                     patched["chunk_index"] = int(new_chunk_row.get("chunk_index") or 0)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical evidence repair fallback failure: %s", exc)
                 cmeta = new_chunk_row.get("metadata") if isinstance(new_chunk_row.get("metadata"), dict) else {}
                 ph = str(cmeta.get("pipeline_hash") or "").strip()
                 if ph:
@@ -517,8 +520,8 @@ def repair_evidence_suite_reference_sources_with_dataset(
             except Exception:
                 try:
                     db.rollback()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical evidence repair fallback failure: %s", exc)
 
     return {
         "suite_id": str(suite_id),
@@ -540,4 +543,3 @@ __all__ = [
     "repair_evidence_suite_reference_sources",
     "repair_evidence_suite_reference_sources_with_dataset",
 ]
-

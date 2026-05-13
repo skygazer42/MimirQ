@@ -782,8 +782,8 @@ async def dataset_profile_scan_job(ctx, tenant_id: str, dataset_id: str, scan_ru
                     run.error_message = str(exc)[:200]
                     run.finished_at = datetime.now(UTC)
                     db.commit()
-            except SQLAlchemyError:
-                pass
+            except SQLAlchemyError as exc:
+                logger.debug("Ignoring non-critical task job rollback fallback failure: %s", exc)
             raise
 
         return await _job_result(
@@ -902,8 +902,8 @@ async def dataset_precheck_scan_job(ctx, tenant_id: str, dataset_id: str, scan_r
                     run.error_message = str(exc)[:200]
                     run.finished_at = datetime.now(UTC)
                     db.commit()
-            except SQLAlchemyError:
-                pass
+            except SQLAlchemyError as exc:
+                logger.debug("Ignoring non-critical task job rollback fallback failure: %s", exc)
             raise
 
         return await _job_result(

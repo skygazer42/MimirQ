@@ -15,6 +15,7 @@ from __future__ import annotations
 import gzip
 import hashlib
 import json
+import logging
 import math
 import time
 from collections import defaultdict
@@ -27,6 +28,7 @@ from typing import Any
 from app.core.config import settings
 
 DEFAULT_METRICS_LOG_PATH = "./logs/rag_metrics.jsonl"
+logger = logging.getLogger(__name__)
 
 
 def _percentile(values: list[float], p: float) -> float | None:
@@ -259,14 +261,14 @@ def summarize_rag_metrics(
                             search = int(dbg.get("search_k") or 0)
                             if req > 0 and search > 0:
                                 overfetch_ratios.append(search / req)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical metrics dashboard fallback failure: %s", exc)
                     enrich1 = dbg.get("enrich_pass1")
                     if isinstance(enrich1, dict):
                         try:
                             filtered_acl_total += int(enrich1.get("filtered_acl") or 0)
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("Ignoring non-critical metrics dashboard fallback failure: %s", exc)
 
                     channels = dbg.get("channels")
                     if isinstance(channels, dict):
@@ -307,16 +309,16 @@ def summarize_rag_metrics(
                                 retrieval_elapsed.append(fv)
                                 if minute_ms:
                                     bucket[minute_ms]["retrieval_elapsed_sum"] += fv
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("Ignoring non-critical metrics dashboard fallback failure: %s", exc)
                     rr_sec = c.get("rerank_elapsed_sec")
                     if rr_sec is not None:
                         try:
                             fv = float(rr_sec)
                             if fv >= 0:
                                 rerank_elapsed.append(fv)
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("Ignoring non-critical metrics dashboard fallback failure: %s", exc)
 
             # Track errors (PII-safe): only keep short error strings.
             errors = retrieval.get("errors") if isinstance(retrieval, dict) else None
@@ -484,16 +486,16 @@ def summarize_rag_cost_attribution(
         if isinstance(llm, dict):
             try:
                 llm_prompt_tokens += int(llm.get("prompt_tokens") or 0)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical metrics dashboard fallback failure: %s", exc)
             try:
                 llm_completion_tokens += int(llm.get("completion_tokens") or 0)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical metrics dashboard fallback failure: %s", exc)
             try:
                 llm_total_tokens += int(llm.get("total_tokens") or 0)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical metrics dashboard fallback failure: %s", exc)
             model_used = str(llm.get("model_used") or "").strip()
             if model_used:
                 llm_model_counts[model_used[:120]] += 1
@@ -505,16 +507,16 @@ def summarize_rag_cost_attribution(
         if isinstance(emb, dict):
             try:
                 embed_query_tokens += int(emb.get("query_tokens") or 0)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical metrics dashboard fallback failure: %s", exc)
             try:
                 embed_query_chars += int(emb.get("query_chars") or 0)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical metrics dashboard fallback failure: %s", exc)
             try:
                 embed_query_count += int(emb.get("query_count") or 0)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical metrics dashboard fallback failure: %s", exc)
 
             provider = str(emb.get("provider") or "").strip()
             if provider:
@@ -531,8 +533,8 @@ def summarize_rag_cost_attribution(
                     fv = float(v)
                     if fv >= 0:
                         retrieval_elapsed.append(fv)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical metrics dashboard fallback failure: %s", exc)
 
             v = retrieval.get("rerank_elapsed_sec")
             if v is not None:
@@ -540,16 +542,16 @@ def summarize_rag_cost_attribution(
                     fv = float(v)
                     if fv >= 0:
                         rerank_elapsed.append(fv)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical metrics dashboard fallback failure: %s", exc)
 
             vector_backend = str(retrieval.get("vector_backend") or "").strip()
             if vector_backend:
                 retrieval_vector_backend_counts[vector_backend[:50]] += 1
             try:
                 retrieval_query_count += int(retrieval.get("query_count") or 0)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical metrics dashboard fallback failure: %s", exc)
 
     return RagCostAttributionSummary(
         enabled=enabled,

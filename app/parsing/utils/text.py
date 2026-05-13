@@ -12,12 +12,15 @@ small decoder that:
 """
 
 
+import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
 from app.core.optional_deps import optional_import
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -174,15 +177,15 @@ def read_text_file(path: Path, *, default_encoding: str = "utf-8") -> DecodedTex
         try:
             text = blob.decode("utf-32", errors="strict")
             return DecodedText(text=text.lstrip("\ufeff"), encoding="utf-32", confidence=1.0, had_bom=True)
-        except UnicodeDecodeError:
-            pass
+        except UnicodeDecodeError as exc:
+            logger.debug("Ignoring non-critical text decode fallback failure: %s", exc)
 
     if _has_utf16_bom(blob):
         try:
             text = blob.decode("utf-16", errors="strict")
             return DecodedText(text=text.lstrip("\ufeff"), encoding="utf-16", confidence=1.0, had_bom=True)
-        except UnicodeDecodeError:
-            pass
+        except UnicodeDecodeError as exc:
+            logger.debug("Ignoring non-critical text decode fallback failure: %s", exc)
 
     # 2) Fast path: UTF-8 (with BOM stripping).
     try:
@@ -192,8 +195,8 @@ def read_text_file(path: Path, *, default_encoding: str = "utf-8") -> DecodedTex
             confidence=1.0,
             had_bom=had_bom,
         )
-    except UnicodeDecodeError:
-        pass
+    except UnicodeDecodeError as exc:
+        logger.debug("Ignoring non-critical text decode fallback failure: %s", exc)
 
     # 3) Best-effort detection with chardet.
     detected_encoding: str | None = None

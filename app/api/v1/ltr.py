@@ -9,6 +9,7 @@ Provides a small, file-based registry for LTR reranker artifacts:
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -38,6 +39,7 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 }
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+logger = logging.getLogger(__name__)
 
 _NO_PERMISSION_TO_MANAGE_LTR_MODELS_DETAIL = "No permission to manage LTR models"
 
@@ -161,8 +163,8 @@ async def register_ltr_model(
     except Exception:
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical LTR router fallback failure: %s", exc)
 
     return LTRModelRegisterResponse(
         model=LTRModelInfo(
@@ -219,8 +221,8 @@ async def activate_ltr_model(
     except Exception:
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical LTR router fallback failure: %s", exc)
 
     return LTRModelActivateResponse(active=dict(active or {}))
 
@@ -263,7 +265,7 @@ async def rollback_ltr_model(
     except Exception:
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical LTR router fallback failure: %s", exc)
 
     return LTRModelActivateResponse(active=dict(active or {}))

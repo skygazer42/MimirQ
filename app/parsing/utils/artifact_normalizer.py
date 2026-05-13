@@ -13,6 +13,7 @@ This helper normalizes an extracted directory into a stable layout:
 
 from __future__ import annotations
 
+import logging
 import re
 import shutil
 from collections.abc import Iterable
@@ -20,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
+logger = logging.getLogger(__name__)
 
 
 def _choose_markdown_file(markdown_files: list[Path]) -> Path:
@@ -128,8 +130,8 @@ def normalize_extracted_artifacts(
         try:
             img.relative_to(image_dir)
             continue
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical artifact normalization fallback failure: %s", exc)
 
         new_name = f"image_{counter:03d}{img.suffix.lower()}"
         new_rel = f"{output_image_dir}/{new_name}"
@@ -139,12 +141,12 @@ def normalize_extracted_artifacts(
         keys: list[str] = []
         try:
             keys.append(img.relative_to(root).as_posix())
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical artifact normalization fallback failure: %s", exc)
         try:
             keys.append(img.relative_to(md_file.parent).as_posix())
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical artifact normalization fallback failure: %s", exc)
         keys.append(img.name)
 
         # Move (best-effort).
@@ -201,4 +203,3 @@ def normalize_extracted_artifacts(
 __all__ = [
     "normalize_extracted_artifacts",
 ]
-

@@ -12,14 +12,16 @@ Design constraints:
 
 from __future__ import annotations
 
+import asyncio
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
-import requests
+import httpx
 
 from app.core.config import settings
 from app.rag.core.logging import get_logger
@@ -42,6 +44,16 @@ _FENCE_RE = re.compile(r"^\s*(```+|~~~+)")
 _CAPTION_PREFIXES = ("image caption:", "caption:")
 
 _GENERIC_ALT_RE = re.compile(r"^(image|figure|photo|picture|diagram|chart|page\\s+\\d+\\s+image)\\b", re.IGNORECASE)
+
+
+def _run_coroutine_sync(factory: Any) -> Any:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(factory())
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        return executor.submit(lambda: asyncio.run(factory())).result()
 
 
 def _normalize_caption_check(line: str) -> str:
@@ -151,7 +163,13 @@ def _safe_read_local_image_bytes(*, src: str, origin_path: Path, max_bytes: int)
     return data
 
 
-def _call_caption_backend(*, api_url: str, image_bytes: bytes, filename: str, timeout_sec: float) -> tuple[str, str]:
+async def _call_caption_backend_async(
+    *,
+    api_url: str,
+    image_bytes: bytes,
+    filename: str,
+    timeout_sec: float,
+) -> tuple[str, str]:
     """
     Best-effort caption backend call.
 
@@ -161,34 +179,46 @@ def _call_caption_backend(*, api_url: str, image_bytes: bytes, filename: str, ti
       - JSON {"caption": "..."} OR {"text": "..."} OR
       - raw text body (treated as caption)
     """
-    try:
-        resp = requests.post(
-            str(api_url).strip(),
-            files={"file": (filename or "image", image_bytes, "application/octet-stream")},
-            timeout=float(timeout_sec),
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.post(
+                str(api_url).strip(),
+                files={"file": (filename or "image", image_bytes, "application/octet-stream")},
+                timeout=float(timeout_sec),
+            )
+        except Exception as exc:  # noqa: BLE001
+            return "", f"http_failed:{exc.__class__.__name__}"
+
+        if int(resp.status_code) >= 400:
+            return "", f"http_{int(resp.status_code)}"
+
+        content_type = str(resp.headers.get("content-type") or "").lower()
+        try:
+            if "application/json" in content_type:
+                data = resp.json()
+                if isinstance(data, dict):
+                    for key in ("caption", "text", "output"):
+                        val = data.get(key)
+                        if isinstance(val, str) and val.strip():
+                            return val, "ok_json"
+            txt = resp.text if isinstance(resp.text, str) else ""
+            if txt.strip():
+                return txt, "ok_text"
+        except Exception as exc:  # noqa: BLE001
+            return "", f"parse_failed:{exc.__class__.__name__}"
+
+        return "", "empty"
+
+
+def _call_caption_backend(*, api_url: str, image_bytes: bytes, filename: str, timeout_sec: float) -> tuple[str, str]:
+    return _run_coroutine_sync(
+        lambda: _call_caption_backend_async(
+            api_url=api_url,
+            image_bytes=image_bytes,
+            filename=filename,
+            timeout_sec=timeout_sec,
         )
-    except Exception as exc:  # noqa: BLE001
-        return "", f"http_failed:{exc.__class__.__name__}"
-
-    if int(resp.status_code) >= 400:
-        return "", f"http_{int(resp.status_code)}"
-
-    content_type = str(resp.headers.get("content-type") or "").lower()
-    try:
-        if "application/json" in content_type:
-            data = resp.json()
-            if isinstance(data, dict):
-                for key in ("caption", "text", "output"):
-                    val = data.get(key)
-                    if isinstance(val, str) and val.strip():
-                        return val, "ok_json"
-        txt = resp.text if isinstance(resp.text, str) else ""
-        if txt.strip():
-            return txt, "ok_text"
-    except Exception as exc:  # noqa: BLE001
-        return "", f"parse_failed:{exc.__class__.__name__}"
-
-    return "", "empty"
+    )
 
 
 @dataclass(frozen=True, slots=True)

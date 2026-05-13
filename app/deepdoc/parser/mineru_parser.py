@@ -28,9 +28,9 @@ from os import PathLike
 from pathlib import Path
 from typing import Any
 
+import httpx
 import numpy as np
 import pdfplumber
-import requests
 from PIL import Image
 
 try:
@@ -178,9 +178,10 @@ class MinerUParser(IntegratedPipelinePdfParser):
     @staticmethod
     def _is_http_endpoint_valid(url, timeout=5):
         try:
-            response = requests.head(url, timeout=timeout, allow_redirects=True)
+            with httpx.Client(follow_redirects=True, timeout=float(timeout)) as client:
+                response = client.head(url)
             return int(response.status_code) in {200, 301, 302, 307, 308}
-        except (requests.RequestException, ValueError):
+        except (httpx.HTTPError, ValueError):
             return False
 
     def check_installation(self, backend: str = "pipeline", server_url: str | None = None) -> tuple[bool, str]:
@@ -240,8 +241,6 @@ class MinerUParser(IntegratedPipelinePdfParser):
         output_path = tempfile.mkdtemp(prefix=f"{pdf_file_name}_{options.method}_", dir=str(output_dir))
         output_zip_path = os.path.join(str(output_dir), f"{Path(output_path).name}.zip")
 
-        files = {"files": (pdf_file_name + ".pdf", open(pdf_file_path, "rb"), "application/pdf")}
-
         data = {
             "output_dir": "./output",
             "lang_list": options.lang,
@@ -273,8 +272,15 @@ class MinerUParser(IntegratedPipelinePdfParser):
             self.logger.info(f"[MinerU] invoke api: {self.mineru_api}/file_parse backend={options.backend} server_url={data.get('server_url')}")
             if callback:
                 callback(0.20, f"[MinerU] invoke api: {self.mineru_api}/file_parse")
-            response = requests.post(url=f"{self.mineru_api}/file_parse", files=files, data=data, headers=headers,
-                                     timeout=1800)
+            with open(pdf_file_path, "rb") as fh:
+                files = {"files": (pdf_file_name + ".pdf", fh, "application/pdf")}
+                with httpx.Client(timeout=1800.0) as client:
+                    response = client.post(
+                        url=f"{self.mineru_api}/file_parse",
+                        files=files,
+                        data=data,
+                        headers=headers,
+                    )
 
             response.raise_for_status()
             if response.headers.get("Content-Type") == "application/zip":

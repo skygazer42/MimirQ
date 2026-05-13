@@ -708,8 +708,8 @@ class MilvusVectorStore:
                     from app.storage.vector.milvus_prometheus_metrics import observe_milvus_write_compat_fallback
 
                     observe_milvus_write_compat_fallback(dropped_fields="dataset_id_embedding_space_hash")
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical Milvus fallback failure: %s", exc)
                 for m in metadatas_norm:
                     m.pop("dataset_id", None)
                     m.pop("embedding_space_hash", None)
@@ -815,8 +815,8 @@ class MilvusVectorStore:
                     has_metadata_expr=bool(metadata_expr),
                     has_base_expr=bool(base_expr),
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical Milvus fallback failure: %s", exc)
             results = self._store.similarity_search_with_score(query, k=top_k * 2, expr=base_expr)
 
         formatted: list[dict[str, Any]] = []
@@ -866,8 +866,8 @@ class MilvusVectorStore:
             self._store.delete(expr=expr)
             try:
                 self._store.col.flush()  # type: ignore[union-attr]
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical Milvus fallback failure: %s", exc)
 
     def delete_by_document_id_and_filter(
         self,
@@ -895,8 +895,8 @@ class MilvusVectorStore:
         self._store.delete(expr=expr)
         try:
             self._store.col.flush()  # type: ignore[union-attr]
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical Milvus fallback failure: %s", exc)
 
     def get_collection_count(self) -> int:
         """Return document count in the vector collection."""

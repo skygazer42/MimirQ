@@ -1,15 +1,17 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
-import requests
+import httpx
 
 _MD_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 _HTML_IMG_TAG_RE = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
@@ -51,6 +53,16 @@ def _coerce_confidence(value: Any) -> float | None:
     if out > 1:
         return 1.0
     return out
+
+
+def _run_coroutine_sync(factory: Any) -> Any:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(factory())
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        return executor.submit(lambda: asyncio.run(factory())).result()
 
 
 def build_chart_data_v1_payload(
@@ -162,6 +174,35 @@ def _safe_read_local_image_bytes(*, src: str, origin_path: Path, max_bytes: int)
     return data, "ok"
 
 
+async def _call_chart_backend_async(
+    *,
+    api_url: str,
+    image_bytes: bytes,
+    filename: str,
+    timeout_sec: float,
+) -> tuple[dict[str, Any] | None, str]:
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.post(
+                str(api_url).strip(),
+                files={"file": (filename or "chart.png", image_bytes, "application/octet-stream")},
+                timeout=float(timeout_sec),
+            )
+        except Exception as exc:  # noqa: BLE001
+            return None, f"http_failed:{exc.__class__.__name__}"
+
+        if int(resp.status_code) >= 400:
+            return None, f"http_{int(resp.status_code)}"
+
+        try:
+            data = resp.json()
+        except Exception as exc:  # noqa: BLE001
+            return None, f"parse_failed:{exc.__class__.__name__}"
+        if isinstance(data, dict):
+            return data, "ok_json"
+        return None, "invalid_payload"
+
+
 def _call_chart_backend(
     *,
     api_url: str,
@@ -169,25 +210,14 @@ def _call_chart_backend(
     filename: str,
     timeout_sec: float,
 ) -> tuple[dict[str, Any] | None, str]:
-    try:
-        resp = requests.post(
-            str(api_url).strip(),
-            files={"file": (filename or "chart.png", image_bytes, "application/octet-stream")},
-            timeout=float(timeout_sec),
+    return _run_coroutine_sync(
+        lambda: _call_chart_backend_async(
+            api_url=api_url,
+            image_bytes=image_bytes,
+            filename=filename,
+            timeout_sec=timeout_sec,
         )
-    except Exception as exc:  # noqa: BLE001
-        return None, f"http_failed:{exc.__class__.__name__}"
-
-    if int(resp.status_code) >= 400:
-        return None, f"http_{int(resp.status_code)}"
-
-    try:
-        data = resp.json()
-    except Exception as exc:  # noqa: BLE001
-        return None, f"parse_failed:{exc.__class__.__name__}"
-    if isinstance(data, dict):
-        return data, "ok_json"
-    return None, "invalid_payload"
+    )
 
 
 @dataclass(frozen=True, slots=True)

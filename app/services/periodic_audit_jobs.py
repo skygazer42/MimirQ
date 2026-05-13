@@ -18,6 +18,7 @@ Design principles (mirrors retention/stale jobs):
 from __future__ import annotations
 
 from collections import Counter
+import logging
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -36,6 +37,7 @@ from app.services.embedding_drift_monitor import run_embedding_drift_monitor
 from app.services.evidence_drift_audit_service import audit_reference_sources_drift
 from app.services.index_audit_service import run_dataset_index_audit_internal
 
+logger = logging.getLogger(__name__)
 SYSTEM_PERIODIC_AUDIT_ACTOR_ID = "system:periodic_audit"
 
 
@@ -347,8 +349,8 @@ def run_daily_index_audit_report(
     except Exception:
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical periodic audit fallback failure: %s", exc)
         summary["ok"] = False
         summary["dry_run"] = False
         summary["audit_write_error"] = True
@@ -450,8 +452,8 @@ def run_daily_embedding_drift_report(
     except Exception:
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical periodic audit fallback failure: %s", exc)
         summary["ok"] = False
         summary["dry_run"] = False
         summary["audit_write_error"] = True
@@ -603,8 +605,8 @@ def run_daily_evidence_drift_audit_report(
     except Exception:
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical periodic audit fallback failure: %s", exc)
         summary["ok"] = False
         summary["dry_run"] = False
         summary["audit_write_error"] = True
@@ -761,8 +763,8 @@ def run_daily_access_review_summary(
     except Exception:
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical periodic audit fallback failure: %s", exc)
         summary["ok"] = False
         summary["dry_run"] = False
         summary["audit_write_error"] = True

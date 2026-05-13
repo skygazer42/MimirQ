@@ -70,9 +70,9 @@ async def _terminate_process_group(process: Any, *, grace_sec: float = 2.0) -> N
             await asyncio.to_thread(process.wait, grace_sec)
         return
     except subprocess.TimeoutExpired:
-        pass
+        logger.debug("Ignoring subprocess timeout while terminating pid=%s", pid)
     except asyncio.TimeoutError:
-        pass
+        logger.debug("Ignoring async timeout while terminating pid=%s", pid)
     except Exception:
         return
 
@@ -283,15 +283,15 @@ async def run_subprocess_worker(
         try:
             if log_file is not None:
                 log_file.close()
-        except (OSError, ValueError):
-            pass
+        except (OSError, ValueError) as exc:
+            logger.debug("Ignoring non-critical subprocess log close failure: %s", exc)
 
         # Best-effort cleanup.
         for p in (payload_path, result_path, log_path):
             try:
                 p.unlink(missing_ok=True)
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.debug("Ignoring non-critical subprocess cleanup failure: %s", exc)
 
 
 def _compute_retry_delay_sec(*, attempt: int, base_delay_sec: float, max_delay_sec: float) -> float:

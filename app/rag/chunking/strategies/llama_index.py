@@ -5,10 +5,13 @@ Provides intelligent chunking strategies based on LlamaIndex.
 """
 
 
+import logging
 from langchain_core.documents import Document
 
 from app.core.config import settings
 from app.rag.chunking.base import BaseChunker
+
+logger = logging.getLogger(__name__)
 
 
 def _estimate_tokens_from_chars(chars: int, *, min_tokens: int = 0) -> int:
@@ -137,15 +140,15 @@ class LlamaIndexHierarchicalChunker(BaseChunker):
                     parent_id = getattr(parent_rel, "node_id", None) if parent_rel else None
                     if parent_id:
                         parent_by_id[node_id_str] = str(parent_id)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical LlamaIndex chunking fallback failure: %s", exc)
 
                 try:
                     children_rel = rels.get(NodeRelationship.CHILD)
                     if children_rel:
                         child_counts[node_id_str] = len(children_rel) if hasattr(children_rel, "__len__") else 1
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical LlamaIndex chunking fallback failure: %s", exc)
 
             level_cache: dict[str, int] = {}
 
@@ -188,8 +191,8 @@ class LlamaIndexHierarchicalChunker(BaseChunker):
                     parent_rel = getattr(node, "relationships", {}).get(NodeRelationship.PARENT)
                     if parent_rel and getattr(parent_rel, "node_id", None):
                         metadata["parent_node_id"] = parent_rel.node_id
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical LlamaIndex chunking fallback failure: %s", exc)
                 
                 chunks.append(Document(page_content=node.get_content(), metadata=metadata))
         return chunks
