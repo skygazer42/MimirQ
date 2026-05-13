@@ -6,6 +6,7 @@ RAGAS evaluation service.
 """
 
 
+from app.rag.core.logging import get_logger
 import math
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -41,6 +42,7 @@ from app.rag.evaluation.regression_sample_builder import build_regression_item_m
 from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids, get_allowed_document_id_sets
 
+logger = get_logger(__name__)
 RAGAS_REGRESSION_METRICS = frozenset(
     {
         "faithfulness",
@@ -1150,8 +1152,8 @@ def run_conversation_ragas_evaluation(
                 run.error_message = str(exc)
                 run.finished_at = datetime.now(UTC).replace(tzinfo=None)
                 db.commit()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical RAGAS fallback failure: %s", exc)
     finally:
         db.close()
 
@@ -1891,7 +1893,7 @@ def run_regression_ragas_evaluation(
                 run.error_message = str(exc)
                 run.finished_at = datetime.now(UTC).replace(tzinfo=None)
                 db.commit()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical RAGAS fallback failure: %s", exc)
     finally:
         db.close()

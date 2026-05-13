@@ -7,6 +7,7 @@ pipelines.
 """
 
 import json
+from app.rag.core.logging import get_logger
 import re
 import uuid
 from typing import Any
@@ -18,6 +19,7 @@ from app.rag.core.hashing import stable_json_hash
 
 _QUERY_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]+|[\u4e00-\u9fff]{2,}")
 _SENTENCE_BOUNDARIES = {"。", "！", "？", ".", "!", "?", "\n"}
+logger = get_logger(__name__)
 
 
 def _collapse_ws(text: str) -> str:
@@ -656,8 +658,8 @@ def build_citations_from_docs(
             if tag_schema_link_score is not None:
                 try:
                     citation["tag_schema_link_score"] = round(float(tag_schema_link_score), 6)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical citation fallback failure: %s", exc)
             if tag_schema_link_strategy is not None:
                 citation["tag_schema_link_strategy"] = str(tag_schema_link_strategy)[:80]
             if tag_row_source_table is not None:
@@ -695,8 +697,8 @@ def build_citations_from_docs(
                     if conf is not None:
                         try:
                             item["confidence"] = round(float(conf), 6)
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("Ignoring non-critical citation fallback failure: %s", exc)
                     if item:
                         join_items.append(item)
                     if len(join_items) >= 10:
@@ -764,8 +766,8 @@ def build_citations_from_docs(
             try:
                 if raw.get("hops") is not None:
                     out["hops"] = int(raw.get("hops") or 0)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical citation fallback failure: %s", exc)
 
             nodes_raw = raw.get("nodes")
             if isinstance(nodes_raw, list) and nodes_raw:
@@ -932,7 +934,7 @@ def build_citations_from_docs(
                 c["chunk_content"] = snippet2
             if matched2:
                 c["matched_terms"] = matched2
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring non-critical citation fallback failure: %s", exc)
 
     return citations

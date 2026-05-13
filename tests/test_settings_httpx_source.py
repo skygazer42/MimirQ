@@ -8,4 +8,4 @@ def test_settings_status_probe_uses_httpx_not_requests() -> None:
 
     assert "import requests" not in source
     assert "requests.get(" not in source
-    assert "httpx.Client" in source
+    assert "httpx.AsyncClient" in source

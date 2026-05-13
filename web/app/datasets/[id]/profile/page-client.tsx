@@ -575,7 +575,7 @@ export default function DatasetProfilePage() {
         await documentApi.batchRetry({ document_ids: docIds, force: true, skip_if_unchanged: false })
         toast.success(`已触发重试：${docIds.length} 个文档`)
         detachPromise(refreshProfileOverview())
-      } catch (e: any) {
+      } catch (e) {
         toast.error(formatApiError(e, '触发重试失败'))
       } finally {
         if (scope === 'batch') setFindingRetrying(false)
@@ -609,7 +609,7 @@ export default function DatasetProfilePage() {
         setScanRunning(false)
         stopPolling()
         detachPromise(refreshProfileOverview())
-      } catch (e: any) {
+      } catch (e) {
         console.error('Failed to poll scan run', e)
         setScanRunning(false)
         stopPolling()
@@ -644,7 +644,7 @@ export default function DatasetProfilePage() {
         detachPromise(refreshProfileOverview())
       }
       toast.success('已启动深度扫描')
-    } catch (e: any) {
+    } catch (e) {
       console.error('Failed to start scan', e)
       toast.error(formatApiError(e, '启动扫描失败'))
       setScanRunning(false)
@@ -659,7 +659,7 @@ export default function DatasetProfilePage() {
       const safe = String(dataset?.name || 'dataset').replaceAll(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)
       downloadBlob(blob, `${safe}.profile.json`)
       toast.success('已导出 JSON 报告')
-    } catch (e: any) {
+    } catch (e) {
       console.error('Failed to export profile', e)
       toast.error(formatApiError(e, '导出失败'))
     } finally {
@@ -675,7 +675,7 @@ export default function DatasetProfilePage() {
       const safe = String(dataset?.name || 'dataset').replaceAll(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)
       downloadBlob(blob, `${safe}.profile.html`)
       toast.success('已导出 HTML 报告')
-    } catch (e: any) {
+    } catch (e) {
       console.error('Failed to export profile html', e)
       toast.error(formatApiError(e, '导出失败'))
     } finally {
@@ -721,10 +721,10 @@ export default function DatasetProfilePage() {
     const p90B = readRecordNumber(sb.length_percentiles, 'p90')
     const scannedA = readRecordNumber(sa.pdf_scan, 'scanned')
     const scannedB = readRecordNumber(sb.pdf_scan, 'scanned')
-    const piiA = Object.values(sa.pii_hits_total || {}).reduce((acc: number, v: any) => acc + Number(v || 0), 0)
-    const piiB = Object.values(sb.pii_hits_total || {}).reduce((acc: number, v: any) => acc + Number(v || 0), 0)
-    const secA = Object.values(sa.secrets_hits_total || {}).reduce((acc: number, v: any) => acc + Number(v || 0), 0)
-    const secB = Object.values(sb.secrets_hits_total || {}).reduce((acc: number, v: any) => acc + Number(v || 0), 0)
+    const piiA = Object.values(sa.pii_hits_total || {}).reduce((acc: number, v: unknown) => acc + Number(v || 0), 0)
+    const piiB = Object.values(sb.pii_hits_total || {}).reduce((acc: number, v: unknown) => acc + Number(v || 0), 0)
+    const secA = Object.values(sa.secrets_hits_total || {}).reduce((acc: number, v: unknown) => acc + Number(v || 0), 0)
+    const secB = Object.values(sb.secrets_hits_total || {}).reduce((acc: number, v: unknown) => acc + Number(v || 0), 0)
     return {
       a,
       b,

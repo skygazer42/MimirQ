@@ -2904,8 +2904,8 @@ Requirements:
                         retrieval_mode=str(mode_used or "") or None,
                         citations_count=int(len(citations or [])),
                     )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical RAG engine fallback failure: %s", exc)
                 return
 
             # Step 2: Additional KG event recall (optional).
@@ -3580,8 +3580,8 @@ Requirements:
                             and not str(scrubbed.get("answer") or "").strip()
                         ):
                             scrubbed["answer"] = _UNABLE_TO_ANSWER_MESSAGE
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical RAG engine fallback failure: %s", exc)
 
                     full_response = json.dumps(scrubbed, ensure_ascii=False, separators=(",", ":"))
 
@@ -3815,12 +3815,12 @@ Requirements:
                     continue
                 try:
                     embed_query_tokens += int(q.get("query_tokens") or 0)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical RAG engine fallback failure: %s", exc)
                 try:
                     embed_query_chars += int(q.get("query_chars") or 0)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical RAG engine fallback failure: %s", exc)
 
             rerank_elapsed_sec: float | None = None
             for c in citations or []:
@@ -3902,8 +3902,8 @@ Requirements:
                     rerank_elapsed_sec=(float(rerank_elapsed_sec) if rerank_elapsed_sec is not None else None),
                     has_error=bool(retrieval_errors),
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical RAG engine fallback failure: %s", exc)
             log_metrics(rag_trace_payload)
             # Best-effort: sampled online evaluation (async, PII-minimal outputs).
             try:
@@ -3918,8 +3918,8 @@ Requirements:
                     retrieval_mode=str(mode_used or "") or None,
                     citations_count=int(len(citations or [])),
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical RAG engine fallback failure: %s", exc)
 
             # Step 5: Send completion signal.
             generation_elapsed = time.time() - gen_start

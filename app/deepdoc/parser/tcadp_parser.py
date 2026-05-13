@@ -27,13 +27,13 @@ import traceback
 import types
 import zipfile
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from io import BytesIO
 from os import PathLike
 from pathlib import Path
 from typing import Any
 
-import requests
+import httpx
 from tencentcloud.common import credential
 from tencentcloud.common.profile.client_profile import ClientProfile
 from tencentcloud.common.profile.http_profile import HttpProfile
@@ -160,12 +160,13 @@ class TencentCloudAPIClient:
             return None
 
         try:
-            response = requests.get(download_url)
+            with httpx.Client(follow_redirects=True, timeout=60.0) as client:
+                response = client.get(download_url)
             response.raise_for_status()
 
             os.makedirs(output_dir, exist_ok=True)
 
-            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
             filename = f"tcadp_result_{timestamp}.zip"
             file_path = os.path.join(output_dir, filename)
 
@@ -175,7 +176,7 @@ class TencentCloudAPIClient:
             logging.info(f"[TCADP] Document parsing result downloaded to: {os.path.basename(file_path)}")
             return file_path
 
-        except requests.exceptions.RequestException as e:
+        except httpx.HTTPError as e:
             logging.error(f"[TCADP] Failed to download file: {e}")
             return None
 

@@ -1,6 +1,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
+import type { MutableRefObject } from 'react'
 
 import { Skeleton } from '@/components/ui/skeleton'
 
@@ -20,6 +21,12 @@ const ForceGraph2D = dynamic(() => import('react-force-graph-2d'), {
   ),
 })
 
-export default function ForceGraph2DWrapper({ graphRef, ...props }: any) {
+type ForceGraph2DWrapperProps = Readonly<
+  {
+    graphRef?: MutableRefObject<any>
+  } & Record<string, unknown>
+>
+
+export default function ForceGraph2DWrapper({ graphRef, ...props }: ForceGraph2DWrapperProps) {
   return <ForceGraph2D ref={graphRef} {...props} />
 }

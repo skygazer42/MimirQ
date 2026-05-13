@@ -89,8 +89,8 @@ def _extract_body(msg: Message) -> tuple[str, dict[str, Any]]:
         try:
             if part.is_multipart():
                 continue
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical email parser fallback failure: %s", exc)
 
         ctype = ""
         try:
@@ -195,8 +195,8 @@ class EmailParser:
             finally:
                 try:
                     msg.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical email parser fallback failure: %s", exc)
 
         if not body.strip():
             logger.info("[email] parsed %s but body is empty", file_path.name)

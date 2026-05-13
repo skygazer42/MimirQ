@@ -7,6 +7,7 @@ Currently provides minimal loop capability:
 
 from __future__ import annotations
 
+from app.rag.core.logging import get_logger
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -46,6 +47,7 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 }
 
 router = APIRouter(tags=["Feedback"], responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+logger = get_logger(__name__)
 
 
 class FeedbackToRegressionCaseRequest(BaseModel):
@@ -482,8 +484,8 @@ async def create_regression_case_from_feedback(
     db.add(row)
     try:
         db.flush()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring non-critical feedback fallback failure: %s", exc)
 
     # Best-effort audit log (commit in the same transaction).
     audit_log_event(
@@ -644,8 +646,8 @@ async def create_evidence_item_from_feedback(
                 dataset_id=dataset_id,
                 reference_sources=reference_sources,
             )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring non-critical feedback fallback failure: %s", exc)
 
     retrieval_snapshot: dict[str, Any] = trace_payload if isinstance(trace_payload, dict) else {}
     rag_config_snapshot: dict[str, Any] = {}
@@ -678,8 +680,8 @@ async def create_evidence_item_from_feedback(
     db.add(row)
     try:
         db.flush()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring non-critical feedback fallback failure: %s", exc)
 
     audit_log_event(
         db,

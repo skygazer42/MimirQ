@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic'
 import { Component, useRef, useEffect, useState, forwardRef, useImperativeHandle, useCallback, useMemo } from 'react'
 import { useTheme } from 'next-themes'
+import type { GraphEndpointRef, GraphLinkLike, GraphNodeLike } from '@/app/graph/graph-page-utils'
 import { useResizeObserver } from '@/hooks/use-resize-observer'
 import { getCssHslColor, getCssHslaColor } from '@/lib/css-vars'
 import { decorateLinksForDisplay } from '@/lib/graph-edge-display'
@@ -31,17 +32,51 @@ function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value))
 }
 
-function getLinkKind(link: any): string {
+type GraphNodeDatum = GraphNodeLike & {
+  id: string
+  label: string
+  color?: string
+  group?: number
+  x?: number
+  y?: number
+  z?: number
+  fx?: number | null
+  fy?: number | null
+  fz?: number | null
+}
+
+type GraphLinkDatum = GraphLinkLike & {
+  source: GraphEndpointRef | GraphNodeDatum
+  target: GraphEndpointRef | GraphNodeDatum
+  color?: string
+  curvature?: number
+  curveRotation?: number
+  isSelfLoop?: boolean
+}
+
+type GraphRenderData = Readonly<{
+  nodes: GraphNodeDatum[]
+  links: GraphLinkDatum[]
+}>
+
+type GraphEndpointObject = {
+  id?: string | number | null
+  x?: number
+  y?: number
+  z?: number
+}
+
+function getLinkKind(link: GraphLinkDatum): string {
   return String(link?.meta?.kind ?? link?.kind ?? '').trim()
 }
 
-function getLinkConfidence(link: any): number | null {
+function getLinkConfidence(link: GraphLinkDatum): number | null {
   const raw = link?.meta?.confidence ?? link?.confidence ?? link?.weight
   const num = Number(raw)
   return Number.isFinite(num) ? num : null
 }
 
-function getStableLinkId(link: any, index?: number): string {
+function getStableLinkId(link: GraphLinkDatum | null | undefined, index?: number): string {
   if (typeof link?.id === 'string' && link.id.trim()) return link.id
   if (typeof link?.id === 'number') return String(link.id)
   if (typeof link?.index === 'number' && Number.isFinite(link.index)) return `link-${link.index}`
@@ -206,14 +241,11 @@ export interface GraphViewerRef {
 export type LayoutMode = 'force' | 'tree' | 'radial'
 
 interface GraphViewerProps {
-  readonly data: {
-    nodes: any[]
-    links: any[]
-  }
-  readonly onNodeClick?: (node: any) => void
-  readonly onNodeRightClick?: (node: any, event: MouseEvent) => void
-  readonly onLinkClick?: (link: any) => void
-  readonly onLinkRightClick?: (link: any, event: MouseEvent) => void
+  readonly data: GraphRenderData
+  readonly onNodeClick?: (node: GraphNodeDatum) => void
+  readonly onNodeRightClick?: (node: GraphNodeDatum, event: MouseEvent) => void
+  readonly onLinkClick?: (link: GraphLinkDatum) => void
+  readonly onLinkRightClick?: (link: GraphLinkDatum, event: MouseEvent) => void
   readonly onBackgroundClick?: () => void
   readonly onBackgroundRightClick?: (event: MouseEvent) => void
   readonly highlightedNodeIds?: Set<string>
@@ -634,7 +666,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
     updateViewportLod()
   }, [mounted, updateViewportLod])
 
-  const handleNodeClick = useCallback((node: any) => {
+  const handleNodeClick = useCallback((node: GraphNodeDatum) => {
     if (fgRef.current) {
       fgRef.current.centerAt(node.x, node.y, 400)
       fgRef.current.zoom(2.5, 400)
@@ -644,7 +676,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
     }
   }, [onNodeClick])
 
-  const getNodeColor = useCallback((node: any) => {
+  const getNodeColor = useCallback((node: GraphNodeDatum) => {
     const hasHighlights = highlightedNodeIds.size > 0
     if (hasHighlights && !highlightedNodeIds.has(node.id)) {
       return canvasColors.nodeDim
@@ -665,14 +697,14 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
     return NODE_COLOR_PALETTE[hashTypeToIndex(node.id || '')]
   }, [highlightedNodeIds, typeColorMap, canvasColors.nodeDim])
 
-  const isNodeVisibleForViewport = useCallback((node: any) => {
+  const isNodeVisibleForViewport = useCallback((node: GraphNodeDatum) => {
     if (!isLargeGraph || !viewportLod) return true
     const nodeId = String(node?.id ?? '')
     if (!nodeId) return false
     return viewportLod.visibleNodeIds.has(nodeId) || viewportPinnedNodeIds.has(nodeId)
   }, [isLargeGraph, viewportLod, viewportPinnedNodeIds])
 
-  const isLinkVisibleForViewport = useCallback((link: any) => {
+  const isLinkVisibleForViewport = useCallback((link: GraphLinkDatum) => {
     if (!isLargeGraph || !viewportLod) return true
     const linkId = getStableLinkId(link)
     if (linkId && highlightedLinkIds.has(linkId)) return true
@@ -720,15 +752,15 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
               dagLevelDistance={50}
               
               // Link styling
-              linkCurvature={(link: any) => {
+              linkCurvature={(link: GraphLinkDatum) => {
                 const v = link?.curvature
                 return typeof v === 'number' && Number.isFinite(v) ? v : 0
               }}
-              linkCurveRotation={(link: any) => {
+              linkCurveRotation={(link: GraphLinkDatum) => {
                 const v = link?.curveRotation
                 return typeof v === 'number' && Number.isFinite(v) ? v : 0
               }}
-              linkColor={(link: any) => {
+              linkColor={(link: GraphLinkDatum) => {
                  const linkId = getStableLinkId(link)
                  const linkKind = getLinkKind(link)
                  const baseColor = EDGE_KIND_COLORS[linkKind] || canvasColors.nodeDim
@@ -741,16 +773,16 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
                      return '#38bdf8'
                   }
                   if (highlightedNodeIds.size > 0) {
-                    const sourceId = typeof link.source === 'object' ? link.source.id : link.source
-                    const targetId = typeof link.target === 'object' ? link.target.id : link.target
+                    const sourceId = String(typeof link.source === 'object' ? link.source?.id ?? '' : link.source ?? '')
+                    const targetId = String(typeof link.target === 'object' ? link.target?.id ?? '' : link.target ?? '')
                     if (highlightedNodeIds.has(sourceId) && highlightedNodeIds.has(targetId)) {
                       return activeLineColor
                     }
                     return canvasColors.linkDim
                   }
                   if (selectedNodeId && !isLargeGraph) {
-                    const sourceId = typeof link.source === 'object' ? link.source.id : link.source
-                    const targetId = typeof link.target === 'object' ? link.target.id : link.target
+                    const sourceId = String(typeof link.source === 'object' ? link.source?.id ?? '' : link.source ?? '')
+                    const targetId = String(typeof link.target === 'object' ? link.target?.id ?? '' : link.target ?? '')
                     if (sourceId === selectedNodeId || targetId === selectedNodeId) {
                       return activeLineColor
                     }
@@ -759,7 +791,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
 
                   return baseLineColor
                }}
-              linkWidth={(link: any) => {
+              linkWidth={(link: GraphLinkDatum) => {
                   const linkId = getStableLinkId(link)
                  const confidence = getLinkConfidence(link)
                  const baseWidth = confidenceToWidth(confidence, { isLargeGraph })
@@ -771,49 +803,49 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
                   }
                   if (highlightedNodeIds.size > 0) return 1
                   if (selectedNodeId && !isLargeGraph) {
-                    const sourceId = typeof link.source === 'object' ? link.source.id : link.source
-                    const targetId = typeof link.target === 'object' ? link.target.id : link.target
+                    const sourceId = typeof link.source === 'object' ? link.source?.id : link.source
+                    const targetId = typeof link.target === 'object' ? link.target?.id : link.target
                     if (sourceId === selectedNodeId || targetId === selectedNodeId) return Math.max(2.5, baseWidth + 0.6)
                     return 0.5
                   }
                   return Math.min(3.2, Math.max(isLargeGraph ? 0.45 : 0.8, baseWidth * 0.82))
                }}
-              linkDirectionalArrowLength={(link: any) => (link?.isSelfLoop ? 0 : arrowLength)}
+              linkDirectionalArrowLength={(link: GraphLinkDatum) => (link?.isSelfLoop ? 0 : arrowLength)}
               linkDirectionalArrowRelPos={1}
-              linkLabel={(link: any) => buildGraphLinkProvenanceTooltipHtml(link)}
+              linkLabel={(link: GraphLinkDatum) => buildGraphLinkProvenanceTooltipHtml(link)}
               linkVisibility={isLinkVisibleForViewport}
               cooldownTicks={cooldownTicks}
               cooldownTime={cooldownTime}
               onZoomEnd={updateViewportLod}
               onEngineStop={updateViewportLod}
               onNodeClick={handleNodeClick}
-              onNodeRightClick={(node: any, event: MouseEvent) => {
+              onNodeRightClick={(node: GraphNodeDatum, event: MouseEvent) => {
                 onNodeRightClick?.(node, event)
               }}
-              onLinkClick={(link: any) => { onLinkClick?.(link) }}
-              onLinkRightClick={(link: any, event: MouseEvent) => {
+              onLinkClick={(link: GraphLinkDatum) => { onLinkClick?.(link) }}
+              onLinkRightClick={(link: GraphLinkDatum, event: MouseEvent) => {
                 onLinkRightClick?.(link, event)
               }}
               onBackgroundClick={onBackgroundClick}
               onBackgroundRightClick={(event: MouseEvent) => {
                 onBackgroundRightClick?.(event)
               }}
-              onNodeHover={(node: any) => {
+              onNodeHover={(node: GraphNodeDatum | null) => {
                 if (isLargeGraph) return
                 const id = node?.id ?? null
                 setHoveredNodeId((prev) => (prev === id ? prev : id))
               }}
-              onLinkHover={(link: any) => {
+              onLinkHover={(link: GraphLinkDatum | null) => {
                 const linkId = getStableLinkId(link)
                 setHoveredLinkId((prev) => (prev === linkId ? prev : linkId))
               }}
-              onNodeDragEnd={(node: any) => {
+              onNodeDragEnd={(node: GraphNodeDatum) => {
                 node.fx = node.x;
                 node.fy = node.y;
               }}
               
               // Custom Node Painting
-              nodeCanvasObject={(node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
+              nodeCanvasObject={(node: GraphNodeDatum, ctx: CanvasRenderingContext2D, globalScale: number) => {
                 const isHighlighted = highlightedNodeIds.size > 0 && highlightedNodeIds.has(node.id)
                 const isPathNode = highlightedLinkIds.size > 0 && highlightedNodeIds.has(node.id)
                 const isSelected = selectedNodeId === node.id
@@ -967,11 +999,14 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
 
               // Custom Link Label Painting
               linkCanvasObjectMode={() => 'after'}
-              linkCanvasObject={(link: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
+              linkCanvasObject={(link: GraphLinkDatum, ctx: CanvasRenderingContext2D, globalScale: number) => {
                 const start = link.source
                 const end = link.target
 
-                if (typeof start !== 'object' || typeof end !== 'object') return
+                if (typeof start !== 'object' || start == null || typeof end !== 'object' || end == null) return
+
+                const startNode = start as GraphEndpointObject
+                const endNode = end as GraphEndpointObject
 
                 const linkId = getStableLinkId(link)
                 const isPathLink = highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)
@@ -981,13 +1016,13 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
                 if (!allowEdgeLabels && !isAccent) return
                 if (globalScale < edgeLabelScale && !isAccent) return
 
-                const label = link.label
+                const label = String(link.label ?? '')
                 if (!label) return
 
-                const x1 = start.x || 0
-                const y1 = start.y || 0
-                const x2 = end.x || 0
-                const y2 = end.y || 0
+                const x1 = startNode.x || 0
+                const y1 = startNode.y || 0
+                const x2 = endNode.x || 0
+                const y2 = endNode.y || 0
 
                 const textPos = { x: x1 + (x2 - x1) / 2, y: y1 + (y2 - y1) / 2 }
 

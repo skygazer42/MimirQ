@@ -13,14 +13,16 @@ Design constraints:
 
 from __future__ import annotations
 
+import asyncio
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
-import requests
+import httpx
 
 from app.rag.core.logging import get_logger
 
@@ -34,6 +36,16 @@ _FENCE_RE = re.compile(r"^\s*(```+|~~~+)")
 
 _FORMULA_HINT_RE = re.compile(r"\b(formula|equation|latex|math|eqn)\b", re.IGNORECASE)
 _MINIO_URL_HINT = "/api/v1/documents/image-url/"
+
+
+def _run_coroutine_sync(factory: Any) -> Any:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(factory())
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        return executor.submit(lambda: asyncio.run(factory())).result()
 
 
 def _clean_latex(raw: str, *, max_chars: int) -> str:
@@ -145,7 +157,7 @@ def _safe_read_local_image_bytes(*, src: str, origin_path: Path, max_bytes: int)
     return data, "ok"
 
 
-def _call_formula_backend(
+async def _call_formula_backend_async(
     *,
     api_url: str,
     image_bytes: bytes,
@@ -161,34 +173,52 @@ def _call_formula_backend(
       - JSON {"latex": "..."} OR {"text": "..."} OR {"output": "..."} OR {"result": "..."}
       - text/*: latex directly
     """
-    try:
-        resp = requests.post(
-            str(api_url).strip(),
-            files={"file": (filename or "formula.png", image_bytes, "application/octet-stream")},
-            timeout=float(timeout_sec),
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.post(
+                str(api_url).strip(),
+                files={"file": (filename or "formula.png", image_bytes, "application/octet-stream")},
+                timeout=float(timeout_sec),
+            )
+        except Exception as exc:  # noqa: BLE001
+            return "", f"http_failed:{exc.__class__.__name__}"
+
+        if int(resp.status_code) >= 400:
+            return "", f"http_{int(resp.status_code)}"
+
+        content_type = str(resp.headers.get("content-type") or "").lower()
+        try:
+            if "application/json" in content_type:
+                data = resp.json()
+                if isinstance(data, dict):
+                    for key in ("latex", "text", "output", "result"):
+                        val = data.get(key)
+                        if isinstance(val, str) and val.strip():
+                            return val, "ok_json"
+            txt = resp.text if isinstance(resp.text, str) else ""
+            if txt.strip():
+                return txt, "ok_text"
+        except Exception as exc:  # noqa: BLE001
+            return "", f"parse_failed:{exc.__class__.__name__}"
+
+        return "", "empty"
+
+
+def _call_formula_backend(
+    *,
+    api_url: str,
+    image_bytes: bytes,
+    filename: str,
+    timeout_sec: float,
+) -> tuple[str, str]:
+    return _run_coroutine_sync(
+        lambda: _call_formula_backend_async(
+            api_url=api_url,
+            image_bytes=image_bytes,
+            filename=filename,
+            timeout_sec=timeout_sec,
         )
-    except Exception as exc:  # noqa: BLE001
-        return "", f"http_failed:{exc.__class__.__name__}"
-
-    if int(resp.status_code) >= 400:
-        return "", f"http_{int(resp.status_code)}"
-
-    content_type = str(resp.headers.get("content-type") or "").lower()
-    try:
-        if "application/json" in content_type:
-            data = resp.json()
-            if isinstance(data, dict):
-                for key in ("latex", "text", "output", "result"):
-                    val = data.get(key)
-                    if isinstance(val, str) and val.strip():
-                        return val, "ok_json"
-        txt = resp.text if isinstance(resp.text, str) else ""
-        if txt.strip():
-            return txt, "ok_text"
-    except Exception as exc:  # noqa: BLE001
-        return "", f"parse_failed:{exc.__class__.__name__}"
-
-    return "", "empty"
+    )
 
 
 @dataclass(frozen=True, slots=True)

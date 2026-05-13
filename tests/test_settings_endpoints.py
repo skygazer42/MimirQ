@@ -220,15 +220,10 @@ def test_settings_status_probes_paddlevl_health(monkeypatch):  # noqa: ANN001
     monkeypatch.setattr(pymilvus.connections, "connect", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(pymilvus.connections, "disconnect", lambda *_args, **_kwargs: None, raising=True)
 
-    # Mock the external /health probe.
-    class _Resp:
-        status_code = 200
+    async def _async_probe(*_args, **_kwargs):  # noqa: ANN001
+        return ({"ok": True, "pipeline_version": "v1.5", "mode": "doc_parser"}, None)
 
-        @staticmethod
-        def json():  # noqa: ANN001
-            return {"ok": True, "pipeline_version": "v1.5", "mode": "doc_parser"}
-
-    monkeypatch.setattr(settings_module, "_probe_http_json", lambda *_args, **_kwargs: (_Resp.json(), None), raising=False)
+    monkeypatch.setattr(settings_module, "_probe_http_json", _async_probe, raising=False)
 
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_get_db
@@ -263,3 +258,33 @@ def test_llm_api_base_defaults_follow_runtime_settings(monkeypatch):  # noqa: AN
 
     assert llm_cfg.api_base == "https://llm.example.test/v1"
     assert llm_test_req.api_base == "https://llm.example.test/v1"
+
+
+def test_settings_status_awaits_async_health_probe(monkeypatch):  # noqa: ANN001
+    import app.api.v1.settings as settings_module
+    from app.api.v1.settings import get_system_status
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings_module, "_ensure_settings_readable", lambda *_args, **_kwargs: None, raising=True)
+
+    monkeypatch.setattr(settings, "PADDLE_VL_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "PADDLE_VL_API_URL", "http://paddlevl.local/convert", raising=False)
+
+    async def _async_probe(*_args, **_kwargs):  # noqa: ANN001
+        return ({"ok": True, "pipeline_version": "v1.6", "mode": "doc_parser"}, None)
+
+    monkeypatch.setattr(settings_module, "_probe_http_json", _async_probe, raising=False)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
+    app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
+    app.get("/api/v1/settings/status")(get_system_status)
+    client = TestClient(app)
+
+    res = client.get("/api/v1/settings/status")
+    assert res.status_code == 200, res.text
+    body = res.json()
+
+    paddle = (body.get("parsers") or {}).get("paddle_vl") or {}
+    assert paddle.get("message") == "configured (v1.6, doc_parser)"

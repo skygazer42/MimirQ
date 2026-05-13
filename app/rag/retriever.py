@@ -448,8 +448,8 @@ class HybridRetriever(BaseRetriever):
         finally:
             try:
                 db.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
 
     def _get_bm25_build_lock(self, tenant_key: str) -> threading.Lock:
         lock = self._bm25_build_locks.get(tenant_key)
@@ -495,8 +495,8 @@ class HybridRetriever(BaseRetriever):
         finally:
             try:
                 db.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
 
     def _build_sparse_index(
         self,
@@ -893,8 +893,8 @@ class HybridRetriever(BaseRetriever):
                     doc_ids=doc_ids,
                     vectors=vecs,
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
 
     def _upsert_colbert_index_incremental(
         self,
@@ -1021,8 +1021,8 @@ class HybridRetriever(BaseRetriever):
                     doc_ids=doc_ids,
                     vectors=vectors,
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
 
     def _sparse_corpus_fingerprint(self, docs: list[Document]) -> str:
         """
@@ -1177,8 +1177,8 @@ class HybridRetriever(BaseRetriever):
                 if callable(fn):
                     try:
                         return fn(batch_size)
-                    except TypeError:
-                        pass
+                    except TypeError as exc:
+                        logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
                 all_fn = getattr(q, "all", None)
                 if callable(all_fn):
                     return all_fn()
@@ -1406,8 +1406,8 @@ class HybridRetriever(BaseRetriever):
             finally:
                 try:
                     db.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
 
     @staticmethod
     def _bm25_tokenize(text: str) -> list[str]:
@@ -1802,8 +1802,8 @@ class HybridRetriever(BaseRetriever):
                                 for cid in removed_ids:
                                     vecs.pop(cid, None)
                                 self._sparse_doc_vectors[scope_key] = vecs
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
 
                 # Best-effort: update ColBERT ANN index by removing deleted chunk vectors.
                 if bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)):
@@ -1833,10 +1833,10 @@ class HybridRetriever(BaseRetriever):
                                                 corpus_fingerprint=fp,
                                                 provider_config=dict(getattr(idx, "provider_config", {}) or {}),
                                             )
-                                    except Exception:
-                                        pass
-                    except Exception:
-                        pass
+                                    except Exception as exc:
+                                        logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
 
             logger.info("BM25 index removed %s docs by metadata_filter for scope %s", removed, scope_key)
             total_removed += removed
@@ -2080,8 +2080,8 @@ class HybridRetriever(BaseRetriever):
                     box = {}
                     self._last_channel_metrics["colbert_ann"] = box
                 box["readiness"] = dict(readiness or {})
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
 
         if str(readiness.get("reason") or "") == "too_many_docs":
             try:
@@ -2093,13 +2093,13 @@ class HybridRetriever(BaseRetriever):
                     box["skipped_reason"] = "too_many_docs"
                     box["docs_n"] = int(len(docs or []))
                     box["max_docs"] = int(max_docs)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
             # Free any cached index for this scope to keep memory bounded.
             try:
                 self._colbert_index_cache.pop(cache_key, None)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
             return []
 
         provider = str(readiness.get("effective_provider") or "deterministic").strip().lower() or "deterministic"
@@ -2111,8 +2111,8 @@ class HybridRetriever(BaseRetriever):
                         box = {}
                         self._last_channel_metrics["colbert_ann"] = box
                     box["skipped_reason"] = "provider_unready"
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
             return []
 
         provider_config = build_colbert_provider_config(
@@ -2730,8 +2730,8 @@ class HybridRetriever(BaseRetriever):
         finally:
             try:
                 db.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
 
     def _hybrid_search(
         self,
@@ -3023,8 +3023,8 @@ class HybridRetriever(BaseRetriever):
                     self._last_channel_metrics.setdefault("cache", {})  # type: ignore[call-arg]
                     self._last_channel_metrics["cache"]["hit"] = True
                     self._last_channel_metrics["cache"].pop("skip_reason", None)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
             return cached[:top_k]
 
         # Semantic cache (best-effort): lookup only after exact cache miss.
@@ -3057,8 +3057,8 @@ class HybridRetriever(BaseRetriever):
                     self._last_channel_metrics.setdefault("cache", {})  # type: ignore[call-arg]
                     self._last_channel_metrics["cache"]["semantic"]["hit"] = True
                     self._last_channel_metrics["cache"]["semantic"].pop("skip_reason", None)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
             return semantic_cached[:top_k]
 
         emit_stream_event("event", {"message": "正在召回候选…"}, dedupe_key="retrieval.recall")
@@ -3446,8 +3446,8 @@ class HybridRetriever(BaseRetriever):
                     counts["bm25_candidates"] = int(len(bm25_results or []))
                     counts["lexical_candidates"] = int(len(lexical_results or []))
                     counts["sparse_candidates"] = int(len(sparse_results or []))
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
 
         # 3) Score normalization + linear merge
         t_fusion0 = time.perf_counter()
@@ -3466,22 +3466,22 @@ class HybridRetriever(BaseRetriever):
         try:
             if isinstance(self._last_channel_metrics, dict):
                 self._last_channel_metrics["merged_pre_dedup"] = len(merged_results or [])
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
 
         merged_results = self._deduplicate_results(merged_results)
 
         try:
             if isinstance(self._last_channel_metrics, dict):
                 self._last_channel_metrics["merged_post_dedup"] = len(merged_results or [])
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
         try:
             timing = channel_metrics.get("timing")
             if isinstance(timing, dict):
                 timing["fusion_ms"] = round(float((time.perf_counter() - t_fusion0) * 1000), 2)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
 
         # 4) Reranking strategy
         if merged_results:
@@ -3540,8 +3540,8 @@ class HybridRetriever(BaseRetriever):
                     try:
                         if isinstance(self._last_channel_metrics, dict):
                             self._last_channel_metrics["rerank"] = rerank_meta
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
                     if isinstance(self._last_channel_metrics, dict):
                         self._last_channel_metrics["merged_post_rerank"] = len(merged_results or [])
                 else:
@@ -3622,8 +3622,8 @@ class HybridRetriever(BaseRetriever):
             try:
                 if isinstance(self._last_channel_metrics, dict):
                     self._last_channel_metrics["rerank"] = rerank_meta
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
 
         # Channel attribution (best-effort): count how many final candidates are supported by each channel.
         try:
@@ -3644,8 +3644,8 @@ class HybridRetriever(BaseRetriever):
                     if n > 1:
                         attribution["multi"] += 1
                 self._last_channel_metrics["attribution"] = attribution
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
 
         before_diversity = len(merged_results or [])
         div_caps: dict[str, Any] = {}
@@ -3660,8 +3660,8 @@ class HybridRetriever(BaseRetriever):
                     "dropped": int(max(0, before_diversity - after_diversity)),
                 }
                 self._last_channel_metrics["returned_top_k"] = int(min(int(top_k or 0), after_diversity))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
         out = merged_results[:top_k]
 
         if cache_eligible and (not cache_hit) and cache_key and out:
@@ -3670,8 +3670,8 @@ class HybridRetriever(BaseRetriever):
                 if isinstance(self._last_channel_metrics, dict):
                     self._last_channel_metrics.setdefault("cache", {})  # type: ignore[call-arg]
                     self._last_channel_metrics["cache"]["store_ok"] = stored
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
         if semantic_cache_eligible and (not semantic_cache_hit) and corpus_cache_token and out:
             try:
                 from app.services.semantic_cache import set_cached_semantic_payload
@@ -3695,8 +3695,8 @@ class HybridRetriever(BaseRetriever):
                     self._last_channel_metrics.setdefault("cache", {})  # type: ignore[call-arg]
                     self._last_channel_metrics["cache"].setdefault("semantic", {})  # type: ignore[call-arg]
                     self._last_channel_metrics["cache"]["semantic"]["store_ok"] = stored
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
 
         return out
 
@@ -3833,8 +3833,8 @@ class HybridRetriever(BaseRetriever):
                                 if pq_score > 1.0:
                                     pq_score = 1.0
                                 doc_parse_quality_by_id[str(doc_id)] = float(pq_score)
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
                         if ds_id is not None:
                             doc_dataset_by_id[str(doc_id)] = str(ds_id)
 
@@ -3971,8 +3971,8 @@ class HybridRetriever(BaseRetriever):
                         db_content = ck.content or ""
                         if isinstance(db_content, str) and db_content and r.get("content") != db_content:
                             r["content"] = db_content
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
 
                     # Merge DB metadata (only fill empty fields, avoid overwriting vector-side score etc.)
                     stored_meta = dict(ck.doc_metadata or {})
@@ -3998,8 +3998,8 @@ class HybridRetriever(BaseRetriever):
                     if meta.get("chunk_index") is None:
                         try:
                             meta["chunk_index"] = int(getattr(ck, "chunk_index", None))
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
                     if stored_meta.get("parser_backend") and not meta.get("parser_backend"):
                         meta["parser_backend"] = stored_meta.get("parser_backend")
                     if stored_meta.get("doc_type_kwd") and not meta.get("doc_type_kwd"):
@@ -4083,8 +4083,8 @@ class HybridRetriever(BaseRetriever):
                         stats0["metadata_filter_matched"] = int(matched)
                         if summary:
                             stats0["metadata_filter"] = summary
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
 
             if stats0 is not None:
                 stats0["output_results"] = len(resolved)
@@ -4096,8 +4096,8 @@ class HybridRetriever(BaseRetriever):
         finally:
             try:
                 db.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
 
     def _expand_results_with_neighbors(self, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Optionally attach adjacent chunks around top hits for better continuity."""
@@ -4217,8 +4217,8 @@ class HybridRetriever(BaseRetriever):
         finally:
             try:
                 db.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
 
         original_results_by_chunk_id: dict[str, dict[str, Any]] = {}
         for r in results:
@@ -4457,8 +4457,8 @@ class HybridRetriever(BaseRetriever):
                 finally:
                     try:
                         db.close()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
 
         # Helper: materialize a parent result dict.
         def _parent_result_for(key: tuple[str, str], *, best_child_score: float) -> dict[str, Any] | None:
@@ -4748,8 +4748,8 @@ class HybridRetriever(BaseRetriever):
             div = dict(self._last_diversity_caps or {})
             if div:
                 debug["diversity"] = div
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
         enrich1: dict[str, Any] = {}
         try:
             results = self._enrich_results_with_db_metadata(
@@ -4804,8 +4804,8 @@ class HybridRetriever(BaseRetriever):
         if stitch_enabled and prefix:
             try:
                 prefix = self._stitch_results_for_continuity(prefix)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
 
         docs: list[Document] = []
         for r in prefix:
@@ -4997,8 +4997,8 @@ class HybridRetriever(BaseRetriever):
         finally:
             try:
                 db.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
 
         out = list(results)
 
@@ -5311,8 +5311,8 @@ class HybridRetriever(BaseRetriever):
                 if sh_hex:
                     try:
                         kept_simhashes.append(int(sh_hex, 16) & ((1 << 64) - 1))
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
 
         # Best-effort: expose dedup controls/impact in retriever_debug.channels for diagnostics.
         # Important: emit near-dedup fields even when disabled to avoid "hidden filtering" ambiguity.
@@ -5327,8 +5327,8 @@ class HybridRetriever(BaseRetriever):
                 dedup_meta["near_dedup_hamming_threshold"] = int(near_thr)
                 dedup_meta["near_dedup_max_compare"] = int(near_max_compare)
                 dedup_meta["content_hash_dropped"] = int(dropped_content_hash)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
 
         return kept
 
@@ -5674,8 +5674,8 @@ class HybridRetriever(BaseRetriever):
                     "boosted_candidates": int(chunk_boosted),
                     "signals": dict(sorted((str(k), int(v)) for k, v in chunk_type_counts.items())),
                 }
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
 
         fusion = (fusion_strategy or "linear").lower().strip()
         if fusion in ("rrf", "reciprocal_rank_fusion"):
@@ -6005,8 +6005,8 @@ class HybridRetriever(BaseRetriever):
                     picked += 1
                     try:
                         picked_by_channel[channel] = int(picked_by_channel.get(channel, 0) or 0) + 1
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
 
             _select_from_channel("vector", v_sorted, v_rank)
             _select_from_channel("bm25", b_sorted, b_rank)
@@ -6026,8 +6026,8 @@ class HybridRetriever(BaseRetriever):
                     selected_keys.append(key)
                     try:
                         picked_by_channel["fill"] = int(picked_by_channel.get("fill", 0) or 0) + 1
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
 
             selected_set = set(selected_keys)
             prefix = [item for item in all_sorted if self._result_key(item) in selected_set]
@@ -6055,8 +6055,8 @@ class HybridRetriever(BaseRetriever):
                         "selected_prefix": int(len(selected_keys)),
                         "picked_by_channel": picked_out,
                     }
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
             return prefix + rest
 
         if fusion in ("weighted", "weighted_linear", "weighted_sum"):
@@ -6148,8 +6148,8 @@ class HybridRetriever(BaseRetriever):
                             "weights": weights_out,
                             "weights_hash": stable_hash(sig, length=16) if sig else None,
                         }
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
 
                 def _sort_key(item: dict[str, Any]) -> tuple[float, float, float, float, float, str]:
                     return (

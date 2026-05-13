@@ -25,6 +25,7 @@ from docx import Document
 from docx.image.exceptions import InvalidImageStreamError, UnexpectedEndOfFileError, UnrecognizedImageError
 from docx.opc.oxml import parse_xml
 from docx.opc.pkgreader import _SerializedRelationship, _SerializedRelationships
+import httpx
 from markdown import markdown
 from PIL import Image
 
@@ -573,10 +574,9 @@ class Markdown(MarkdownParser):
     def load_images_from_urls(self, urls, cache=None):
         from pathlib import Path
 
-        import requests
-
         cache = cache or {}
         images = []
+        http_client = httpx.Client(follow_redirects=True, timeout=30.0)
         for url in urls:
             if url in cache:
                 if cache[url]:
@@ -585,7 +585,7 @@ class Markdown(MarkdownParser):
             img_obj = None
             try:
                 if url.startswith(('http://', 'https://')):
-                    response = requests.get(url, stream=True, timeout=30)
+                    response = http_client.get(url)
                     if response.status_code == 200 and response.headers.get('Content-Type', '').startswith('image/'):
                         img_obj = Image.open(BytesIO(response.content)).convert('RGB')
                 else:
@@ -599,6 +599,7 @@ class Markdown(MarkdownParser):
             cache[url] = img_obj
             if img_obj:
                 images.append(img_obj)
+        http_client.close()
         return images, cache
 
     def __call__(self, filename, binary=None, separate_tables=True, delimiter=None, return_section_images=False):

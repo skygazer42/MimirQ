@@ -12,6 +12,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+from app.rag.core.logging import get_logger
 import re
 import sqlite3
 import time
@@ -31,6 +32,8 @@ from app.services.table_store import (
     sql_table_name_for_sheet,
     table_store_path,
 )
+
+logger = get_logger(__name__)
 
 _SQL_SELECT_PREFIX_RE = re.compile(r"^\s*(with\b|select\b)", re.IGNORECASE)
 _WS_RE = re.compile(r"\s+")
@@ -94,8 +97,8 @@ def _jsonify_value(v: Any) -> Any:
     try:
         if hasattr(v, "item"):
             return v.item()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring non-critical table-store fallback failure: %s", exc)
     return str(v)
 
 
@@ -196,8 +199,8 @@ def _connect_rw(path: Path) -> sqlite3.Connection:
     # Ensure parent directory exists; storage path itself is deterministic (not user-controlled).
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring non-critical table-store fallback failure: %s", exc)
     timeout = _sqlite_timeout_sec()
     conn = sqlite3.connect(str(path), timeout=timeout)
     conn.execute(f"PRAGMA busy_timeout={int(timeout * 1000)};")
@@ -261,8 +264,8 @@ def import_table_document(
                 conn.commit()
             finally:
                 conn.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical table-store fallback failure: %s", exc)
 
     if ext == ".csv":
         df, truncated = _read_csv(file_path, max_rows=max_rows, max_cols=max_cols)
@@ -453,8 +456,8 @@ def _write_single_sheet(
     finally:
         try:
             conn.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical table-store fallback failure: %s", exc)
 
     rows = int(getattr(df, "shape", (0, 0))[0])
     cols = int(getattr(df, "shape", (0, 0))[1])
@@ -517,8 +520,8 @@ def import_docx_tables(
                 conn.commit()
             finally:
                 conn.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical table-store fallback failure: %s", exc)
 
     from docx import Document as DocxDocument  # type: ignore
 
@@ -755,8 +758,8 @@ def import_markdown_tables(
                 conn.commit()
             finally:
                 conn.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical table-store fallback failure: %s", exc)
 
     max_rows_i = max(0, int(max_rows or 0))
     max_cols_i = max(0, int(max_cols or 0))
@@ -855,8 +858,8 @@ def import_db_row_snapshots(
                 conn.commit()
             finally:
                 conn.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical table-store fallback failure: %s", exc)
 
     max_tables_i = max(0, int(max_tables or 0))
     max_rows_i = max(0, int(max_rows_per_table or 0))
@@ -1147,8 +1150,8 @@ def run_table_query(
 
             try:
                 conn.set_progress_handler(_progress, int(progress_ops))
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical table-store fallback failure: %s", exc)
 
         _apply_sqlite_readonly_authorizer(conn, allowed_tables=allowed_tables)
         try:
@@ -1196,8 +1199,8 @@ def run_table_query(
     finally:
         try:
             conn.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical table-store fallback failure: %s", exc)
 
 
 def _apply_sqlite_readonly_authorizer(conn: sqlite3.Connection, *, allowed_tables: set[str]) -> None:

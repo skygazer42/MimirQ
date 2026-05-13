@@ -19,10 +19,10 @@ import contextlib
 import math
 import re
 from collections.abc import Iterator
-from datetime import datetime
-from datetime import timezone as dt_timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from app.core.config import settings
 from app.rag.core.logging import get_logger
@@ -783,6 +783,15 @@ def _safe_eval_math(expression: str, allowed_names: dict[str, Any]) -> Any:
     return _eval(tree)
 
 
+def _resolve_timezone(name: str | None):
+    raw = str(name or "").strip()
+    if not raw:
+        return UTC
+    with contextlib.suppress(Exception):
+        return ZoneInfo(raw)
+    return UTC
+
+
 def get_current_time(
     format: str = "%Y-%m-%d %H:%M:%S",
     timezone: str | None = None,
@@ -797,7 +806,7 @@ def get_current_time(
     Returns:
         Formatted time information
     """
-    now = datetime.now(dt_timezone.utc)
+    now = datetime.now(_resolve_timezone(timezone))
 
     weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     weekdays_cn = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]

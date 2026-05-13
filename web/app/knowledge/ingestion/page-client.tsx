@@ -1454,9 +1454,9 @@ function LoadingWireframe() {
           <div className="space-y-4 rounded-[1.6rem] border border-dashed border-border/60 bg-background/90 p-4">
             <div className="h-12 rounded-[1rem] border border-border/50" />
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              {Array.from({ length: 4 }).map((_, index) => (
+              {Array.from({ length: 4 }, (_, cardIndex) => cardIndex).map((cardIndex) => (
                 <div
-                  key={`ingestion-placeholder-card-${index}`}
+                  key={`ingestion-placeholder-card-${cardIndex}`}
                   className="h-24 rounded-[1.25rem] border border-dashed border-border/60 bg-muted/20"
                 />
               ))}

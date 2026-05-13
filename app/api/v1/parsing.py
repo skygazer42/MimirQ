@@ -476,8 +476,8 @@ def _build_pdf_fallback_candidates() -> list[str]:
             cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
             if resolve_cli_command(cli):
                 candidates.append("magicpdf")
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring non-critical parsing router fallback failure: %s", exc)
 
     if bool(getattr(settings, "MARKITDOWN_ENABLED", False)):
         candidates.append("markitdown")
@@ -1074,8 +1074,8 @@ async def parse_workspace_document(
                 if isinstance(best.get("matrix_score"), (int, float)):
                     evidence["matrix_score"] = float(best.get("matrix_score"))
                 gate = ParsingQualityGate(grade=gate.grade, reasons=list(gate.reasons or []), evidence=evidence)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical parsing router fallback failure: %s", exc)
 
             for it in fallback_attempts:
                 try:
@@ -1120,8 +1120,8 @@ async def parse_workspace_document(
                     ],
                 }
                 gate = ParsingQualityGate(grade=gate.grade, reasons=list(gate.reasons or []), evidence=evidence)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical parsing router fallback failure: %s", exc)
 
         # Opt4: parse-then-correct (workspace preview; best-effort; off by default).
         vlm_audit = None
@@ -1319,8 +1319,8 @@ async def parse_workspace_document(
             if diagnostics:
                 next_meta["parse_diagnostics"] = diagnostics
             doc.doc_metadata = next_meta
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical parsing router fallback failure: %s", exc)
         db.commit()
         status_code = 400 if err_type == "ValueError" else 500
         prefix = "Invalid input" if status_code == 400 else "Failed to parse document"
@@ -1359,8 +1359,8 @@ async def parse_workspace_document(
             if diagnostics:
                 next_meta["parse_diagnostics"] = diagnostics
             doc.doc_metadata = next_meta
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical parsing router fallback failure: %s", exc)
         db.commit()
         detail_msg = "Failed to parse document" if is_production_env() else f"Failed to parse document: {msg}"
         raise HTTPException(

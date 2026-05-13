@@ -17,7 +17,7 @@ Usage:
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -102,7 +102,7 @@ class TimeContextProvider(BaseContextProvider):
         if not INJECT_TIME_CONTEXT:
             return []
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         time_info = now.strftime("%Y-%m-%d %H:%M:%S")
         weekday = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][now.weekday()]
 
