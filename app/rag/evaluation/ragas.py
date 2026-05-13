@@ -5,8 +5,6 @@ RAGAS evaluation service.
 - Runs in FastAPI BackgroundTasks (sync function).
 """
 
-
-from app.rag.core.logging import get_logger
 import math
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -32,6 +30,7 @@ from app.models.evaluation import (
     RagasRegressionItem,
     RagasRegressionRun,
 )
+from app.rag.core.logging import get_logger
 from app.rag.core.text import parse_json_from_text
 from app.rag.embedding import create_langchain_embeddings_from_config
 from app.rag.evaluation.multimodal_slices import (
@@ -1517,7 +1516,7 @@ def run_regression_ragas_evaluation(
                 top_k=int(rag_params.get("top_k", 5)),
                 score_threshold=float(rag_params.get("score_threshold", 0.7)),
                 retrieval_mode=str(rag_params.get("retrieval_mode", "hybrid")),
-                alpha=float(rag_params.get("alpha", 0.6)),
+                alpha=float(rag_params.get("alpha", settings.RETRIEVAL_DEFAULT_ALPHA)),
                 fusion_strategy=rag_params.get("fusion_strategy"),
                 fusion_budgets=rag_params.get("fusion_budgets"),
                 fusion_min_scores=rag_params.get("fusion_min_scores"),

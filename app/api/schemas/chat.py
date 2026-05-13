@@ -192,7 +192,8 @@ class ChatRAGConfig(BaseModel):
     max_tokens: int = Field(default=2000, ge=1, le=200_000)
 
     retrieval_mode: str = Field(default="hybrid")  # hybrid | vector | keyword | mmr | auto
-    alpha: float = Field(default=0.6, ge=0.0, le=1.0)  # hybrid merge weight: vector vs keyword
+    alpha: float = Field(default_factory=lambda: settings.RETRIEVAL_DEFAULT_ALPHA, ge=0.0, le=1.0)
+    # hybrid merge weight: vector vs keyword
     # Retrieval channel fusion strategy override. When None, uses settings.RETRIEVAL_FUSION_STRATEGY.
     # Supported:
     # - linear: min-max normalize each channel then alpha-blend

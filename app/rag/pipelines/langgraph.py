@@ -217,7 +217,7 @@ def _retrieve_cache_key(state: dict[str, Any]) -> str:
         "query_rewrite_strategy": state.get("query_rewrite_strategy"),
         "query_rewrite_temperature": state.get("query_rewrite_temperature"),
         "query_rewrite_max_chars": state.get("query_rewrite_max_chars"),
-        "alpha": float(0.6 if state.get("alpha") is None else state.get("alpha")),
+        "alpha": float(settings.RETRIEVAL_DEFAULT_ALPHA if state.get("alpha") is None else state.get("alpha")),
         "enable_weight_rerank": bool(True if state.get("enable_weight_rerank") is None else state.get("enable_weight_rerank")),
         "vector_weight": float(0.6 if state.get("vector_weight") is None else state.get("vector_weight")),
         "keyword_weight": float(0.4 if state.get("keyword_weight") is None else state.get("keyword_weight")),
@@ -1335,7 +1335,7 @@ class RagStateBuildOptions:
     query_rewrite_max_chars: int | None = None
     sparse_retrieval_enabled: bool | None = None
     sparse_retrieval_provider: str | None = None
-    alpha: float = 0.6
+    alpha: float = settings.RETRIEVAL_DEFAULT_ALPHA
     fusion_strategy: str | None = None
     fusion_budgets: dict[str, int] | None = None
     fusion_min_scores: dict[str, float] | None = None
