@@ -28,7 +28,7 @@ export function AnswerLineageAction({ requestId }: AnswerLineageActionProps) {
   const [open, setOpen] = useState(false)
   const lineageQuery = useQuery({
     queryKey: queryKeys.lineage.answer(requestId),
-    enabled: Boolean(requestId),
+    enabled: open && Boolean(requestId),
     queryFn: () => lineageApi.getAnswerLineageIfAvailable(requestId),
   })
   const isUnavailable = lineageQuery.data === null
@@ -51,12 +51,12 @@ export function AnswerLineageAction({ requestId }: AnswerLineageActionProps) {
           'h-7 gap-1.5 rounded-lg px-2 text-[11px] text-muted-foreground hover:text-foreground',
           isUnavailable && 'cursor-not-allowed opacity-60 hover:text-muted-foreground'
         )}
-        disabled={isUnavailable || lineageQuery.isLoading}
+        disabled={lineageQuery.isFetching}
         onClick={() => setOpen(true)}
         title={isUnavailable ? '后端未返回该回答的血缘数据' : undefined}
       >
         {lineageQuery.isFetching ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <GitBranch className="h-3.5 w-3.5" />}
-        {lineageQuery.isLoading ? '检查血缘' : isUnavailable ? '暂无血缘' : '答案血缘'}
+        {lineageQuery.isFetching ? '加载血缘' : isUnavailable ? '暂无血缘' : '答案血缘'}
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
