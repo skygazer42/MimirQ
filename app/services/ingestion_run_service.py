@@ -8,6 +8,7 @@ Design goals:
 
 from __future__ import annotations
 
+from app.rag.core.logging import get_logger
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -15,6 +16,8 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.models.ingestion_run import IngestionRun, IngestionRunDocument
+
+logger = get_logger(__name__)
 
 
 def _now_utc() -> datetime:
@@ -107,8 +110,8 @@ class IngestionRunService:
             from app.services.ingestion_prometheus_metrics import observe_ingestion_run_created
 
             observe_ingestion_run_created(kind=run.kind)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical ingestion-run fallback failure: %s", exc)
         return run
 
     @staticmethod
@@ -221,8 +224,8 @@ class IngestionRunService:
 
                 kind, status, dur = finished_meta
                 observe_ingestion_run_finished(kind=kind, status=status, duration_sec=dur)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical ingestion-run fallback failure: %s", exc)
 
     @staticmethod
     def on_document_status_update(
@@ -371,8 +374,8 @@ class IngestionRunService:
                             )
                             if ds is not None:
                                 ds.updated_at = now
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical ingestion-run fallback failure: %s", exc)
 
             run.stats = stats
         try:
@@ -385,8 +388,8 @@ class IngestionRunService:
 
                 for kind, status, dur in finished_runs:
                     observe_ingestion_run_finished(kind=kind, status=status, duration_sec=dur)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical ingestion-run fallback failure: %s", exc)
 
     @staticmethod
     def compare_runs(*, run_a: IngestionRun, run_b: IngestionRun) -> dict[str, Any]:

@@ -125,8 +125,8 @@ def _materialize_images_for_ingest(
             try:
                 if getattr(img, "mode", None) != "RGB":
                     img = img.convert("RGB")
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical subprocess worker image conversion failure: %s", exc)
             img.save(out_path, format="JPEG", quality=85, optimize=True)
         except Exception:
             # Keep metadata.image_path for downstream best-effort, but do not crash.
@@ -135,8 +135,8 @@ def _materialize_images_for_ingest(
             try:
                 if raw is not None and not isinstance(raw, (bytes, bytearray)) and hasattr(raw, "close"):
                     raw.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical subprocess worker image close failure: %s", exc)
 
     return documents
 
@@ -304,8 +304,8 @@ def main() -> int:
         }
         try:
             _write_result(result_path, ok=False, error=err)
-        except Exception:
-            pass
+        except Exception as write_exc:
+            logger.debug("Ignoring non-critical subprocess worker result write failure: %s", write_exc)
         logger.exception("Subprocess worker failed: %s", str(exc)[:200])
         return 1
 

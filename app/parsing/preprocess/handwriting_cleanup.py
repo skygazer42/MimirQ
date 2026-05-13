@@ -8,14 +8,60 @@ This stage is feature-flagged and best-effort:
 
 from __future__ import annotations
 
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
-import requests
+import httpx
 
 from app.parsing.preprocess.model_loader import get_preprocess_model_loader
 
 _RASTER_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff"}
+
+
+def _run_coroutine_sync(factory: Any) -> Any:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(factory())
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        return executor.submit(lambda: asyncio.run(factory())).result()
+
+
+async def _cleanup_handwriting_via_http_async(
+    *,
+    input_path: Path,
+    output_path: Path,
+    target_url: str,
+    timeout_sec: float,
+    info: dict[str, Any],
+) -> tuple[bool, str, dict[str, Any]]:
+    try:
+        file_bytes = input_path.read_bytes()
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                target_url,
+                files={"file": (input_path.name, file_bytes, "application/octet-stream")},
+                timeout=float(timeout_sec),
+            )
+    except Exception as exc:  # noqa: BLE001
+        return False, f"http_failed:{exc.__class__.__name__}", info
+
+    if int(response.status_code) >= 400:
+        return False, f"http_{int(response.status_code)}", info
+    if not response.content:
+        return False, "empty_response", info
+
+    try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_bytes(response.content)
+    except Exception as exc:  # noqa: BLE001
+        return False, f"write_failed:{exc.__class__.__name__}", info
+
+    changed = response.content != file_bytes
+    return changed, "cleanup_ok" if changed else "cleanup_no_change", info
 
 
 def _positive_int(value: Any) -> int | None:
@@ -207,29 +253,15 @@ def cleanup_handwriting_document(
     if not target_url:
         return False, "missing_api_url", info
 
-    try:
-        file_bytes = input_path.read_bytes()
-        response = requests.post(
-            target_url,
-            files={"file": (input_path.name, file_bytes, "application/octet-stream")},
-            timeout=float(timeout_sec),
+    return _run_coroutine_sync(
+        lambda: _cleanup_handwriting_via_http_async(
+            input_path=input_path,
+            output_path=output_path,
+            target_url=target_url,
+            timeout_sec=timeout_sec,
+            info=info,
         )
-    except Exception as exc:  # noqa: BLE001
-        return False, f"http_failed:{exc.__class__.__name__}", info
-
-    if int(response.status_code) >= 400:
-        return False, f"http_{int(response.status_code)}", info
-    if not response.content:
-        return False, "empty_response", info
-
-    try:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_bytes(response.content)
-    except Exception as exc:  # noqa: BLE001
-        return False, f"write_failed:{exc.__class__.__name__}", info
-
-    changed = response.content != file_bytes
-    return changed, "cleanup_ok" if changed else "cleanup_no_change", info
+    )
 
 
 __all__ = ["cleanup_handwriting_document"]

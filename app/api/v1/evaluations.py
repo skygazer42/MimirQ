@@ -230,8 +230,8 @@ def _enrich_reference_source_payload(
     if chunk_index is not None and payload.get("chunk_index") is None:
         try:
             payload["chunk_index"] = int(chunk_index)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical evaluations router fallback failure: %s", exc)
 
     meta = chunk_meta if isinstance(chunk_meta, dict) else {}
     if not str(payload.get("doc_pipeline_key") or "").strip():
@@ -394,8 +394,8 @@ def _normalize_evidence_chain(raw: Any) -> list[dict[str, Any]]:
         if item.get("chunk_index") is not None:
             try:
                 payload["chunk_index"] = int(item.get("chunk_index"))
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical evaluations router fallback failure: %s", exc)
         if item.get("label") is not None:
             payload["label"] = str(item.get("label"))[:100]
         out.append(payload)
@@ -1429,8 +1429,8 @@ def purge_ragas_regression_runs(
     except Exception:
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical evaluations router fallback failure: %s", exc)
 
     return {
         "dry_run": bool(dry_run),
@@ -1714,8 +1714,8 @@ async def generate_test_cases_from_documents(
                             dataset_id=ds_id,
                             chunk_id=chunk0,
                         )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical evaluations router fallback failure: %s", exc)
 
                 case = RagasRegressionCase(
                     tenant_id=tenant_id,
@@ -1895,8 +1895,8 @@ async def run_kg_search_diagnostics(
             logger.warning("Failed to persist KG diagnostics run snapshot: %s", str(exc)[:200])
             try:
                 db.rollback()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical evaluations router fallback failure: %s", exc)
 
     return resp
 

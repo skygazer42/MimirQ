@@ -82,8 +82,8 @@ class JsonReportProcessor:
             html = ""
             try:
                 html = tab.export_to_html(doc=doc)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical docling parser fallback failure: %s", exc)
             rows.append(((img, html), positions if positions else ""))
         return rows
 
@@ -108,8 +108,8 @@ class JsonReportProcessor:
             captions = ""
             try:
                 captions = pic.caption_text(doc=doc)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical docling parser fallback failure: %s", exc)
             rows.append(((img, [captions]), positions if positions else ""))
         return rows
 
@@ -460,8 +460,8 @@ class DoclingParser(IntegratedPipelinePdfParser):
         if binary is not None and delete_output:
             try:
                 Path(src_path).unlink(missing_ok=True)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical docling parser fallback failure: %s", exc)
 
         if callback:
             callback(1.0, "[Docling] Done.")

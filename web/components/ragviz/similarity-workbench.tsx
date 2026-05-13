@@ -2262,14 +2262,14 @@ function SimilarityEmptyState() {
         <div className="absolute left-1/2 top-0 h-48 w-48 -translate-x-1/2 rounded-full border border-blue-200/35" />
         <div className="absolute left-[88px] top-[48px] h-24 w-32 rotate-[-9deg] rounded-[22px] border border-blue-200/80 bg-[linear-gradient(145deg,#ffffff,#eef4ff)] shadow-[0_24px_60px_-34px_rgba(37,99,235,0.55)]">
           <div className="grid grid-cols-5 gap-1 p-5">
-            {Array.from({ length: 20 }).map((_, index) => (
+            {Array.from({ length: 20 }, (_, barIndex) => barIndex).map((barIndex) => (
               <span
-                key={`empty-matrix-swatch-${index}`}
+                key={`empty-matrix-swatch-${barIndex}`}
                 className={cn(
                   'h-4 rounded-[4px]',
-                  index % 4 === 0
+                  barIndex % 4 === 0
                     ? 'bg-blue-500/80'
-                    : index % 3 === 0
+                    : barIndex % 3 === 0
                       ? 'bg-blue-400/55'
                       : 'bg-blue-200/80'
                 )}
@@ -2315,25 +2315,25 @@ function SimilarityEmptyState() {
       <div className="mt-7 w-full max-w-[520px] rounded-2xl border border-sidebar-border/70 bg-background/80 px-8 py-5">
         <div className="grid grid-cols-[56px_1fr] gap-3">
           <div className="space-y-2 pt-5">
-            {Array.from({ length: 5 }).map((_, index) => (
-              <div key={`empty-matrix-row-${index}`} className="h-2 rounded-full bg-muted" />
+            {Array.from({ length: 5 }, (_, rowIndex) => rowIndex).map((rowIndex) => (
+              <div key={`empty-matrix-row-${rowIndex}`} className="h-2 rounded-full bg-muted" />
             ))}
           </div>
           <div className="space-y-1.5">
             <div className="grid grid-cols-8 gap-1.5">
-              {Array.from({ length: 8 }).map((_, index) => (
-                <div key={`empty-matrix-column-${index}`} className="h-2 rounded-full bg-muted" />
+              {Array.from({ length: 8 }, (_, colIndex) => colIndex).map((colIndex) => (
+                <div key={`empty-matrix-column-${colIndex}`} className="h-2 rounded-full bg-muted" />
               ))}
             </div>
             <div className="grid grid-cols-8 gap-1.5">
-              {Array.from({ length: 56 }).map((_, index) => (
+              {Array.from({ length: 56 }, (_, cellIndex) => cellIndex).map((cellIndex) => (
                 <span
-                  key={`empty-matrix-cell-${index}`}
+                  key={`empty-matrix-cell-${cellIndex}`}
                   className={cn(
                     'h-4 rounded-[3px]',
-                    index % 9 === 0
+                    cellIndex % 9 === 0
                       ? 'bg-blue-500/70'
-                      : index % 5 === 0
+                      : cellIndex % 5 === 0
                         ? 'bg-blue-300/75'
                         : 'bg-blue-100'
                   )}

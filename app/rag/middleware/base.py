@@ -233,8 +233,8 @@ def dynamic_prompt(
     Usage:
         @dynamic_prompt
         def inject_time(state):
-            from datetime import datetime, timezone
-            time_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+            from datetime import UTC, datetime
+            time_str = datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
             system = f"Current time: {time_str}\n\n"
             state["system_prompt"] = system + state.get("system_prompt", "")
             return state

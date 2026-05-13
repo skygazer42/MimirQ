@@ -374,8 +374,8 @@ def _deterministic_hardcase_candidates(
                 b_s = _collapse_ws(canonical_surface)
                 if a_s and b_s and a_s.casefold() != b_s.casefold():
                     alias_pairs.append((a_s, b_s))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical KG diagnostics fallback failure: %s", exc)
 
     # 3) Tags/categories for the skills (Skill -> belong_to -> Tag/Category).
     tags: list[str] = []
@@ -562,8 +562,8 @@ async def run_kg_search_diagnostics(
                 # committed KG rows from the extraction engine's separate session.
                 try:
                     db.rollback()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical KG diagnostics fallback failure: %s", exc)
 
         preflight["elapsed_sec"] = round(float(time.perf_counter() - t0), 3)
 
@@ -724,8 +724,8 @@ async def run_kg_search_diagnostics(
                 if expand_max_hops is not None:
                     try:
                         cfg2.expand.max_hops = max(1, min(int(expand_max_hops), 5))
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical KG diagnostics fallback failure: %s", exc)
                 cfg2.rerank.max_results = int(diag_max_results)
                 raw2 = await searcher.search(cfg2)
                 ev2 = list((raw2 or {}).get("events") or [])
@@ -782,8 +782,8 @@ async def run_kg_search_diagnostics(
                 }
                 if bool(out_alt.get("hit_at_k")):
                     ablation_override = "rerank_cutoff"
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical KG diagnostics fallback failure: %s", exc)
 
             # 2) Relation expansion toggle.
             try:
@@ -798,8 +798,8 @@ async def run_kg_search_diagnostics(
                 }
                 if ablation_override is None and bool(out_rel.get("hit_at_k")):
                     ablation_override = "relation"
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical KG diagnostics fallback failure: %s", exc)
 
             # 3) Path search (multi-hop expand) off.
             try:
@@ -814,8 +814,8 @@ async def run_kg_search_diagnostics(
                 }
                 if ablation_override is None and bool(out_expand.get("hit_at_k")):
                     ablation_override = "path"
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical KG diagnostics fallback failure: %s", exc)
 
             # 4) Skill nodes off.
             try:
@@ -827,8 +827,8 @@ async def run_kg_search_diagnostics(
                 }
                 if ablation_override is None and bool(out_skill_off.get("hit_at_k")):
                     ablation_override = "skill"
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical KG diagnostics fallback failure: %s", exc)
 
         primary_cause = _pick_primary_cause(
             gt_event_count=int(len(gt_event_ids)),

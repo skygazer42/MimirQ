@@ -12,6 +12,7 @@ import contextlib
 import contextvars
 import hashlib
 import json
+from app.rag.core.logging import get_logger
 import os
 import queue
 import socket
@@ -29,6 +30,7 @@ from app.core.pii_redaction import redact_obj
 
 _METRICS_SCHEMA_VERSION = 1
 _HOSTNAME = socket.gethostname()
+logger = get_logger(__name__)
 
 _ctx_request_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("metrics.request_id", default=None)
 _ctx_tenant_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("metrics.tenant_id", default=None)
@@ -142,8 +144,8 @@ def metrics_context(
         for var, token in reversed(tokens):
             try:
                 var.reset(token)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical service fallback failure: %s", exc)
 
 
 def _json_default(value: Any) -> Any:
@@ -167,15 +169,15 @@ def _json_default(value: Any) -> Any:
     if callable(model_dump):
         try:
             return model_dump()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical service fallback failure: %s", exc)
 
     to_dict = getattr(value, "dict", None)
     if callable(to_dict):
         try:
             return to_dict()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical service fallback failure: %s", exc)
 
     return str(value)
 
@@ -247,8 +249,8 @@ def _safe_kg_path_provenance(raw: Any) -> dict[str, Any] | None:
     try:
         if raw.get("hops") is not None:
             out["hops"] = int(raw.get("hops") or 0)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring non-critical service fallback failure: %s", exc)
 
     nodes_raw = raw.get("nodes")
     if isinstance(nodes_raw, list) and nodes_raw:
@@ -411,8 +413,8 @@ class _MetricsWriter:
         self._stop.set()
         try:
             self._queue.put_nowait(None)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical service fallback failure: %s", exc)
         if self._thread.is_alive():
             self._thread.join(timeout=2.0)
 

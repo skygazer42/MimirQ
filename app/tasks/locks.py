@@ -57,8 +57,8 @@ async def tenant_acquire(  # noqa: ANN201
             try:
                 if isinstance(exc, retry_cls):
                     raise
-            except TypeError:
-                pass
+            except TypeError as exc:
+                logger.debug("Ignoring non-critical task lock fallback failure: %s", exc)
         logger.warning("Tenant semaphore acquire failed (skip limit): %s", str(exc)[:200])
         return None
 
@@ -105,8 +105,8 @@ async def dataset_acquire(  # noqa: ANN201
             try:
                 if isinstance(exc, retry_cls):
                     raise
-            except TypeError:
-                pass
+            except TypeError as exc:
+                logger.debug("Ignoring non-critical task lock fallback failure: %s", exc)
         logger.warning("Dataset semaphore acquire failed (skip limit): %s", str(exc)[:200])
         return None
 

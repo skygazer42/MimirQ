@@ -13,9 +13,11 @@ import dynamic from "next/dynamic"
 import { useTheme } from "next-themes"
 import {
   Group,
+  type Object3D,
 } from "three"
 import SpriteText from "three-spritetext"
 
+import type { GraphEndpointRef, GraphLinkLike, GraphNodeLike } from "@/app/graph/graph-page-utils"
 import { getCssHslColor } from "@/lib/css-vars"
 import { buildGraphLinkProvenanceTooltipHtml } from "@/lib/graph-provenance"
 import { GraphLoadingIndicator } from "./graph-loading-indicator"
@@ -41,11 +43,42 @@ function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value))
 }
 
-function getLinkKind(link: any): string {
+type GraphNodeDatum = GraphNodeLike & {
+  id: string
+  label: string
+  color?: string
+  group?: number
+  x?: number
+  y?: number
+  z?: number
+  fx?: number | null
+  fy?: number | null
+  fz?: number | null
+}
+
+type GraphLinkDatum = GraphLinkLike & {
+  source: GraphEndpointRef | GraphNodeDatum
+  target: GraphEndpointRef | GraphNodeDatum
+  color?: string
+  curvature?: number
+  curveRotation?: number
+  isSelfLoop?: boolean
+}
+
+type GraphRenderData = Readonly<{
+  nodes: GraphNodeDatum[]
+  links: GraphLinkDatum[]
+}>
+
+type GraphSpriteLike = Object3D & {
+  position: { set: (x: number, y: number, z: number) => void }
+}
+
+function getLinkKind(link: GraphLinkDatum): string {
   return String(link?.meta?.kind ?? link?.kind ?? "").trim()
 }
 
-function getLinkConfidence(link: any): number | null {
+function getLinkConfidence(link: GraphLinkDatum): number | null {
   const raw = link?.meta?.confidence ?? link?.confidence ?? link?.weight
   const num = Number(raw)
   return Number.isFinite(num) ? num : null
@@ -83,7 +116,7 @@ const ForceGraph3D = dynamic(() => import("react-force-graph-3d"), {
       />
     </div>
   ),
-})
+}) as any
 
 export interface KnowledgeGraph3DRef {
   zoomIn: () => void
@@ -95,14 +128,11 @@ export interface KnowledgeGraph3DRef {
 }
 
 interface ForceGraph3DProps {
-  readonly data: {
-    nodes: any[]
-    links: any[]
-  }
-  readonly onNodeClick?: (node: any) => void
-  readonly onNodeRightClick?: (node: any, event: MouseEvent) => void
-  readonly onLinkClick?: (link: any) => void
-  readonly onLinkRightClick?: (link: any, event: MouseEvent) => void
+  readonly data: GraphRenderData
+  readonly onNodeClick?: (node: GraphNodeDatum) => void
+  readonly onNodeRightClick?: (node: GraphNodeDatum, event: MouseEvent) => void
+  readonly onLinkClick?: (link: GraphLinkDatum) => void
+  readonly onLinkRightClick?: (link: GraphLinkDatum, event: MouseEvent) => void
   readonly onBackgroundClick?: () => void
   readonly onBackgroundRightClick?: (event: MouseEvent) => void
   readonly highlightedNodeIds?: Set<string>
@@ -236,7 +266,7 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
     }, [graphCursor, height, mounted, width, data.links.length, data.nodes.length])
 
     const getNodeColor = useCallback(
-      (node: any) => {
+      (node: GraphNodeDatum) => {
         const id = String(node?.id ?? "").trim()
         const hasHighlights = highlightedNodeIds.size > 0
         const isHighlighted = hasHighlights && highlightedNodeIds.has(id)
@@ -274,7 +304,7 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
 
     const focusNode = useCallback(
       (nodeId: string) => {
-        const node = (data.nodes || []).find((n: any) => String(n?.id ?? "") === String(nodeId))
+        const node = (data.nodes || []).find((n) => String(n?.id ?? "") === String(nodeId))
         if (!node || !fgRef.current) return
 
         const distance = 40
@@ -355,7 +385,7 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
     )
 
     const handleNodeClick = useCallback(
-      (node: any) => {
+      (node: GraphNodeDatum) => {
         focusNode(String(node?.id ?? ""))
         onNodeClick?.(node)
       },
@@ -363,7 +393,7 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
     )
 
     const getNodeDecorationState = useCallback(
-      (node: any) => {
+      (node: GraphNodeDatum) => {
         const id = String(node?.id ?? "").trim()
         const isHighlighted = highlightedNodeIds.size > 0 && highlightedNodeIds.has(id)
         const isSelected = selectedNodeId != null && String(selectedNodeId) === id
@@ -407,7 +437,7 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
 
         // Node styling
         nodeLabel="label"
-        nodeColor={(node: any) => {
+        nodeColor={(node: GraphNodeDatum) => {
           const color = getNodeColor(node)
           return mixHexColors(color, isDark ? "#dbeafe" : "#fffef9", isDark ? 0.04 : 0.18)
         }}
@@ -417,8 +447,8 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
         nodeResolution={nodeResolution}
 
         // Link styling
-        linkColor={(link: any) => {
-          const linkId = link?.id || (link?.index === undefined ? null : `link-${link.index}`)
+        linkColor={(link: GraphLinkDatum) => {
+          const linkId = String(link?.id || (link?.index === undefined ? '' : `link-${link.index}`) || '')
           const kind = getLinkKind(link)
           const base = String(link?.color || '').trim() || EDGE_KIND_COLORS[kind] || linkColorBase
           const baseLineColor = withAlpha(base, isDark ? 0.3 : 0.24)
@@ -426,27 +456,27 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
           if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) return "#f59e0b"
           if (hoveredLinkId && linkId && hoveredLinkId === linkId) return hoverLinkColor
           if (highlightedNodeIds.size > 0) {
-            const sourceId = typeof link.source === "object" ? link.source.id : link.source
-            const targetId = typeof link.target === "object" ? link.target.id : link.target
+            const sourceId = String(typeof link.source === "object" ? link.source?.id ?? "" : link.source ?? "")
+            const targetId = String(typeof link.target === "object" ? link.target?.id ?? "" : link.target ?? "")
             if (highlightedNodeIds.has(String(sourceId)) && highlightedNodeIds.has(String(targetId))) return activeLineColor
             return dimLinkColor
           }
           if (selectedNodeId && neighborSet) {
-            const sourceId = typeof link.source === "object" ? link.source.id : link.source
-            const targetId = typeof link.target === "object" ? link.target.id : link.target
+            const sourceId = String(typeof link.source === "object" ? link.source?.id ?? "" : link.source ?? "")
+            const targetId = String(typeof link.target === "object" ? link.target?.id ?? "" : link.target ?? "")
             if (neighborSet.has(String(sourceId)) && neighborSet.has(String(targetId))) return activeLineColor
             return dimLinkColor
           }
           return baseLineColor
         }}
-        linkWidth={(link: any) => {
-          const linkId = link?.id || (link?.index === undefined ? null : `link-${link.index}`)
+        linkWidth={(link: GraphLinkDatum) => {
+          const linkId = String(link?.id || (link?.index === undefined ? '' : `link-${link.index}`) || '')
           const base = confidenceToWidth(getLinkConfidence(link))
           if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) return 4
           if (hoveredLinkId && linkId && hoveredLinkId === linkId) return 3
           if (selectedNodeId && neighborSet) {
-            const sourceId = typeof link.source === "object" ? link.source.id : link.source
-            const targetId = typeof link.target === "object" ? link.target.id : link.target
+            const sourceId = String(typeof link.source === "object" ? link.source?.id ?? "" : link.source ?? "")
+            const targetId = String(typeof link.target === "object" ? link.target?.id ?? "" : link.target ?? "")
             if (neighborSet.has(String(sourceId)) && neighborSet.has(String(targetId))) {
               return Math.max(1.8, base + 0.6)
             }
@@ -454,29 +484,29 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
           }
           return Math.min(3.2, Math.max(0.85, base * 0.88))
         }}
-        linkDirectionalParticles={(link: any) => {
-          const linkId = link?.id || (link?.index === undefined ? null : `link-${link.index}`)
+        linkDirectionalParticles={(link: GraphLinkDatum) => {
+          const linkId = String(link?.id || (link?.index === undefined ? '' : `link-${link.index}`) || '')
           if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) return 3
           if (hoveredLinkId && linkId && hoveredLinkId === linkId) return 2
           if (selectedNodeId && neighborSet) {
-            const sourceId = typeof link.source === "object" ? link.source.id : link.source
-            const targetId = typeof link.target === "object" ? link.target.id : link.target
+            const sourceId = String(typeof link.source === "object" ? link.source?.id ?? "" : link.source ?? "")
+            const targetId = String(typeof link.target === "object" ? link.target?.id ?? "" : link.target ?? "")
             return neighborSet.has(String(sourceId)) && neighborSet.has(String(targetId)) ? 1 : 0
           }
           return 0
         }}
-        linkDirectionalParticleWidth={(link: any) => {
-          const linkId = link?.id || (link?.index === undefined ? null : `link-${link.index}`)
+        linkDirectionalParticleWidth={(link: GraphLinkDatum) => {
+          const linkId = String(link?.id || (link?.index === undefined ? '' : `link-${link.index}`) || '')
           if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) return 3.8
           if (hoveredLinkId && linkId && hoveredLinkId === linkId) return 3.2
           return 2.2
         }}
         linkDirectionalParticleSpeed={0.0036}
-        linkLabel={(link: any) => buildGraphLinkProvenanceTooltipHtml(link)}
+        linkLabel={(link: GraphLinkDatum) => buildGraphLinkProvenanceTooltipHtml(link)}
         linkThreeObjectExtend={allowLinkLabelSprites}
         linkThreeObject={
           allowLinkLabelSprites
-            ? (link: any) => {
+            ? (link: GraphLinkDatum) => {
                 const label = String(link?.label ?? link?.predicate ?? link?.type ?? '').trim()
                 if (!label) return new Group()
 
@@ -500,10 +530,10 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
         }
         linkPositionUpdate={
           allowLinkLabelSprites
-            ? (sprite: any, { start, end }: { start: any; end: any }) => {
-                const x = start.x + (end.x - start.x) * 0.5
-                const y = start.y + (end.y - start.y) * 0.5
-                const z = start.z + (end.z - start.z) * 0.5
+            ? (sprite: GraphSpriteLike, { start, end }: { start: { x?: number; y?: number; z?: number }; end: { x?: number; y?: number; z?: number } }) => {
+                const x = (start.x ?? 0) + ((end.x ?? 0) - (start.x ?? 0)) * 0.5
+                const y = (start.y ?? 0) + ((end.y ?? 0) - (start.y ?? 0)) * 0.5
+                const z = (start.z ?? 0) + ((end.z ?? 0) - (start.z ?? 0)) * 0.5
                 sprite.position.set(x, y, z)
                 return true
               }
@@ -512,17 +542,17 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
 
         // Interaction
         onNodeClick={handleNodeClick}
-        onNodeRightClick={(node: any, event: MouseEvent) => onNodeRightClick?.(node, event)}
-        onLinkClick={(link: any) => onLinkClick?.(link)}
-        onLinkRightClick={(link: any, event: MouseEvent) => onLinkRightClick?.(link, event)}
+        onNodeRightClick={(node: GraphNodeDatum, event: MouseEvent) => onNodeRightClick?.(node, event)}
+        onLinkClick={(link: GraphLinkDatum) => onLinkClick?.(link)}
+        onLinkRightClick={(link: GraphLinkDatum, event: MouseEvent) => onLinkRightClick?.(link, event)}
         onBackgroundClick={() => onBackgroundClick?.()}
         onBackgroundRightClick={(event: MouseEvent) => onBackgroundRightClick?.(event)}
-        onNodeHover={(node: any) => {
+        onNodeHover={(node: GraphNodeDatum | null) => {
           const nodeId = node?.id ? String(node.id) : null
           setHoveredNodeId((prev) => (prev === nodeId ? prev : nodeId))
         }}
-        onLinkHover={(link: any) => {
-          const linkId = link?.id || (link?.index === undefined ? null : `link-${link.index}`)
+        onLinkHover={(link: GraphLinkDatum | null) => {
+          const linkId = String(link?.id || (link?.index === undefined ? '' : `link-${link.index}`) || '')
           setHoveredLinkId((prev) => (prev === linkId ? prev : linkId))
         }}
 
@@ -530,7 +560,7 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
         enableNavigationControls={true}
 
         // Text sprites
-        nodeThreeObject={useCustomNodeObjects ? (node: any) => {
+        nodeThreeObject={useCustomNodeObjects ? (node: GraphNodeDatum) => {
           const { id, isDimmed, isHighlighted, isHovered, isSelected } = getNodeDecorationState(node)
           const emphasis = isSelected || isHighlighted || isHovered
           const color = getNodeColor(node)

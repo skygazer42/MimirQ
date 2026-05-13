@@ -127,8 +127,8 @@ class TimeTravel:
                 if state.metadata and "created_at" in state.metadata:
                     try:
                         created_at = datetime.fromisoformat(state.metadata["created_at"])
-                    except (ValueError, TypeError):
-                        pass
+                    except (ValueError, TypeError) as exc:
+                        logger.debug("Ignoring non-critical time-travel fallback failure: %s", exc)
 
                 info = CheckpointInfo(
                     checkpoint_id=checkpoint_id or "",
@@ -179,8 +179,8 @@ class TimeTravel:
             if state.metadata and "created_at" in state.metadata:
                 try:
                     created_at = datetime.fromisoformat(state.metadata["created_at"])
-                except (ValueError, TypeError):
-                    pass
+                except (ValueError, TypeError) as exc:
+                    logger.debug("Ignoring non-critical time-travel fallback failure: %s", exc)
 
             return CheckpointInfo(
                 checkpoint_id=checkpoint_id,

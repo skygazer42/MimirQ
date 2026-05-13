@@ -191,8 +191,8 @@ class Etl4LlmParser:
             for img in page_cache.values():
                 try:
                     img.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical ETL4LLM parser fallback failure: %s", exc)
             pdf.close()
 
         return written, mapping
@@ -251,8 +251,8 @@ class Etl4LlmParser:
 
             try:
                 meta["bboxes"].extend([list(map(int, b)) for b in bboxes if isinstance(b, (list, tuple)) and len(b) == 4])
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical ETL4LLM parser fallback failure: %s", exc)
             if isinstance(pages, list):
                 meta["pages"].extend(pages)
             if isinstance(types, list):
@@ -267,8 +267,8 @@ class Etl4LlmParser:
                     s, e = int(item[0]), int(item[1])
                     shifted.append([s + prev_length, e + prev_length])
                 meta["indexes"].extend(shifted)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical ETL4LLM parser fallback failure: %s", exc)
 
             prev_length += len(parts[-1])
             last_label = label
@@ -368,8 +368,8 @@ class Etl4LlmParser:
                 finally:
                     try:
                         pdf.close()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical ETL4LLM parser fallback failure: %s", exc)
 
                 if page_refs:
                     gallery = "\n\n".join(page_refs).strip()

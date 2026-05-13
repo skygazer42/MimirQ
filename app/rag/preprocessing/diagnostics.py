@@ -12,6 +12,7 @@ It must be safe and fast:
 
 from __future__ import annotations
 
+from app.rag.core.logging import get_logger
 import re
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -28,6 +29,7 @@ _URL_RE = re.compile(r"(?i)\bhttps?://[^\s)>\"]+")
 _MD_IMAGE_RE = re.compile(r"!\[[^\]]*]\([^)]+\)")
 
 _ALNUM_CJK_RE = re.compile(r"[A-Za-z0-9\u4e00-\u9fff]")
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -240,8 +242,8 @@ def analyze_governance(
                     suggested_pipeline_patch={"governance_drop_outline_only": True},
                 )
             )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring non-critical governance diagnostics fallback failure: %s", exc)
 
     try:
         low_density_decision = drop_if_low_density(raw_before, threshold=float(opts.get("drop_low_density_threshold", 0.12) or 0.12))
@@ -257,8 +259,8 @@ def analyze_governance(
                     suggested_pipeline_patch={"governance_drop_low_density": True},
                 )
             )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring non-critical governance diagnostics fallback failure: %s", exc)
 
     # If after-clean still has very low density, surface it.
     if raw_after and _density(raw_after) < 0.08:

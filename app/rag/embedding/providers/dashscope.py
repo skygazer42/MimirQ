@@ -3,13 +3,24 @@ DashScope (Alibaba Cloud) embedding model implementation.
 
 Provides Alibaba Cloud DashScope embedding API support.
 """
+import asyncio
 import json
+from concurrent.futures import ThreadPoolExecutor
 
 import httpx
-import requests
 
 from app.rag.embedding.base import BaseEmbeddingModel
 from app.rag.embedding.utils import logger
+
+
+def _run_coroutine_sync(factory):
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(factory())
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        return executor.submit(lambda: asyncio.run(factory())).result()
 
 
 class DashScopeEmbedding(BaseEmbeddingModel):
@@ -60,27 +71,7 @@ class DashScopeEmbedding(BaseEmbeddingModel):
 
     def encode(self, message: str | list[str]) -> list[list[float]]:
         """Synchronously encode text(s) to embeddings."""
-        payload = self._build_payload(message)
-        try:
-            response = requests.post(
-                self.base_url, json=payload, headers=self.headers, timeout=60
-            )
-            response.raise_for_status()
-            result = response.json()
-
-            if result.get("code") != "Success":
-                raise ValueError(
-                    f"DashScope API error: {result.get('message', 'Unknown error')}"
-                )
-
-            embeddings = [
-                item["embedding"] for item in result["output"]["embeddings"]
-            ]
-            return self._normalize_embeddings(embeddings)
-
-        except (requests.RequestException, json.JSONDecodeError, KeyError) as e:
-            logger.error(f"DashScope Embedding request failed: {e}, payload: {payload}")
-            raise ValueError(f"DashScope Embedding request failed: {e}") from e
+        return _run_coroutine_sync(lambda: self.aencode(message))
 
     async def aencode(self, message: str | list[str]) -> list[list[float]]:
         """Asynchronously encode text(s) to embeddings."""

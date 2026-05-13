@@ -6,6 +6,7 @@ import contextlib
 import gzip as gzip_lib
 import io
 import json
+from app.rag.core.logging import get_logger
 import re
 import uuid
 import zipfile
@@ -106,6 +107,7 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 _DATASET_SAFE_NAME_RE = re.compile(r"[^a-zA-Z0-9_.-]+")
 _APPLICATION_JSON_MEDIA_TYPE = "application/json"
+logger = get_logger(__name__)
 
 def _dataset_pipeline_out(ds: Dataset) -> DocumentPipelineOptions | None:
     meta = getattr(ds, "dataset_metadata", None)
@@ -572,8 +574,8 @@ def create_dataset(
     )
     try:
         db.commit()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring non-critical dataset router fallback failure: %s", exc)
 
     return DatasetOut(
         id=dataset.id,
@@ -981,8 +983,8 @@ def update_dataset(
     )
     try:
         db.commit()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring non-critical dataset router fallback failure: %s", exc)
 
     return DatasetOut(
         id=updated.id,
@@ -1439,8 +1441,8 @@ def delete_dataset(
         safe_dir = resolve_under_base(ds_dir, base=root)
         if safe_dir is not None and safe_dir.exists():
             shutil.rmtree(safe_dir, ignore_errors=True)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring non-critical dataset router fallback failure: %s", exc)
 
     # Best-effort: cleanup precheck artifacts under uploads/{tenant}/precheck/{run_id}/
     try:
@@ -1459,8 +1461,8 @@ def delete_dataset(
                     shutil.rmtree(safe, ignore_errors=True)
             except Exception:
                 continue
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring non-critical dataset router fallback failure: %s", exc)
     return None
 
 
@@ -1902,8 +1904,8 @@ def _run_deep_scan_background(
                 row.status = "failed"
                 row.error_message = str(exc)[:200]
                 db.commit()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical dataset router fallback failure: %s", exc)
     finally:
         db.close()
 
@@ -2230,8 +2232,8 @@ def _iter_gzip_chunks(chunks: Iterator[bytes], *, flush_bytes: int = 64 * 1024) 
     finally:
         try:
             gz.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical dataset router fallback failure: %s", exc)
 
 
 def _summarize_document_metadata(meta: Any, *, max_keys_sample: int = 20) -> dict[str, Any] | None:
@@ -2440,8 +2442,8 @@ def export_dataset_documents_ndjson(
     except Exception:
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical dataset router fallback failure: %s", exc)
 
     safe = _DATASET_SAFE_NAME_RE.sub("_", str(getattr(ds, "name", "") or "dataset"))[:64]
     headers = {"Cache-Control": "no-store"}
@@ -2558,8 +2560,8 @@ def export_dataset_bundle_zip(
     except Exception:
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical dataset router fallback failure: %s", exc)
 
     dataset_payload: dict[str, Any] = {
         "schema": "mimirq.dataset_export.v1",

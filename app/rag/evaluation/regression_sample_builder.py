@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.rag.core.logging import get_logger
 import math
 import re
 from typing import Any
@@ -8,6 +9,8 @@ from app.rag.core.hashing import stable_hash
 from app.rag.core.text import is_claim_supported, split_into_claims
 from app.rag.evaluation.chunk_diagnostics import compute_chunk_diagnostics
 from app.rag.evaluation.multihop import score_multihop_citation_chain
+
+logger = get_logger(__name__)
 
 
 def _get(obj: Any, key: str, default: Any = None) -> Any:
@@ -524,8 +527,8 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
 
         if explanations:
             meta["explanations"] = explanations
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring non-critical regression sample fallback failure: %s", exc)
 
     # Per-item refusal correctness (only when expected_refusal is labeled).
     try:
@@ -533,8 +536,8 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
         exp = meta.get("expected_refusal")
         if isinstance(exp, bool) and abst is not None:
             meta["refusal_correct"] = bool(bool(exp) == bool(abst))
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring non-critical regression sample fallback failure: %s", exc)
 
     sample_kwargs = {
         "user_input": question,

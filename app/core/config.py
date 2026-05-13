@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.core.constants import DEFAULT_OPENAI_API_BASE
 from app.core.env import is_production_env
 
 _DEFAULT_RAG_EVAL_SUMMARY_PATH = "tests/rag/evaluation/fixtures/rag_eval_summary.sample.json"
@@ -246,7 +247,7 @@ class Settings(BaseSettings):
     VECTOR_WRITE_RETRY_BACKOFF_SEC: float = 0.5
 
     LLM_API_KEY: str = Field(default="", validation_alias=AliasChoices("LLM_API_KEY", "OPENAI_API_KEY"))
-    LLM_API_BASE: str = Field(default="https://api.openai.com/v1", validation_alias=AliasChoices("LLM_API_BASE", "OPENAI_BASE_URL"))
+    LLM_API_BASE: str = Field(default=DEFAULT_OPENAI_API_BASE, validation_alias=AliasChoices("LLM_API_BASE", "OPENAI_BASE_URL"))
     LLM_MODEL: str = Field(default="gpt-4-turbo-preview", validation_alias=AliasChoices("LLM_MODEL", "OPENAI_MODEL"))
     LLM_MODEL_FAST: str | None = Field(default=None, validation_alias=AliasChoices("LLM_MODEL_FAST", "LLM_MODEL_LIGHT"))
     LLM_MODEL_HEAVY: str | None = Field(default=None, validation_alias=AliasChoices("LLM_MODEL_HEAVY", "LLM_MODEL_COMPLEX"))

@@ -13,6 +13,7 @@ Design principles (similar to retention jobs):
 
 from __future__ import annotations
 
+import contextlib
 from collections import Counter
 from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
@@ -24,7 +25,10 @@ from sqlalchemy.orm import Session
 from app.models.audit_log import AuditLog
 from app.models.connector import ConnectorRun, ConnectorRunDocument
 from app.models.document import Document as DBDocument
+from app.rag.core.logging import get_logger
 from app.services.audit_log_service import audit_log_event
+
+logger = get_logger(__name__)
 
 
 def _dt_to_json(v: datetime | None) -> str | None:
@@ -50,8 +54,8 @@ def _parse_datetime_best_effort(raw: object) -> datetime | None:
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=UTC)
         return dt.astimezone(UTC)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring invalid HTTP-date timestamp: %s", exc)
 
     # ISO timestamps (e.g. connector metadata) are also common.
     try:
@@ -318,10 +322,8 @@ def run_daily_stale_report(
         summary["dry_run"] = False
         return summary
     except Exception:
-        try:
+        with contextlib.suppress(Exception):
             db.rollback()
-        except Exception:
-            pass
         summary["ok"] = False
         summary["error"] = "failed_to_write_audit"
         summary["dry_run"] = False

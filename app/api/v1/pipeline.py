@@ -4,6 +4,7 @@ Lightweight parsing and hierarchical chunk preview APIs:
 - /pipeline/chunk-preview: hierarchical Markdown chunking (paragraph/sentence) with highlight offsets
 """
 import asyncio
+from app.rag.core.logging import get_logger
 import json
 import re
 import shutil
@@ -126,6 +127,7 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 }
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+logger = get_logger(__name__)
 
 _BUILTIN_GOVERNANCE_PROFILES = get_builtin_governance_profiles()
 _BUILTIN_GOVERNANCE_BY_KEY = {p.key: p for p in _BUILTIN_GOVERNANCE_PROFILES}
@@ -2373,24 +2375,24 @@ async def clean_preview(
             )
             text = para.text
             paragraphs_dropped = int(getattr(para, "paragraphs_dropped", 0) or 0)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical pipeline fallback failure: %s", exc)
 
     if body.trim_references:
         try:
             ref = trim_references_section(text)
             text = ref.text
             references_removed_lines = int(getattr(ref, "removed_lines", 0) or 0)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical pipeline fallback failure: %s", exc)
 
     if body.normalize_urls:
         try:
             url = normalize_urls(text, strip_tracking=bool(body.normalize_urls_strip_tracking))
             text = url.text
             urls_changed = int(getattr(url, "urls_changed", 0) or 0)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical pipeline fallback failure: %s", exc)
 
     if body.drop_outline_only:
         decision = drop_if_outline_only(
@@ -3112,5 +3114,5 @@ async def upload_zip_with_images(
         try:
             if temp_zip_path.exists():
                 temp_zip_path.unlink()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical pipeline fallback failure: %s", exc)

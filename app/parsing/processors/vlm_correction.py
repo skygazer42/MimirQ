@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import fitz  # PyMuPDF
 import httpx
-import requests
 from langchain_core.documents import Document
 
 from app.rag.core.logging import get_logger
@@ -65,6 +65,16 @@ async def _correct_markdown_with_vision_async(*, markdown: str, image_bytes: byt
 
 def _correct_markdown_with_vision(*, markdown: str, image_bytes: bytes) -> str:
     return asyncio.run(_correct_markdown_with_vision_async(markdown=markdown, image_bytes=image_bytes))
+
+
+def _run_coroutine_sync(factory) -> Any:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(factory())
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        return executor.submit(lambda: asyncio.run(factory())).result()
 
 
 async def apply_vlm_correction_async(
@@ -193,7 +203,7 @@ def _should_correct_pdf(*, pdf_quality: dict[str, Any] | None, min_table_quality
     return tq < float(min_table_quality)
 
 
-def _call_vlm_backend(
+async def _call_vlm_backend_async(
     *,
     api_url: str,
     markdown: str,
@@ -210,30 +220,48 @@ def _call_vlm_backend(
       - raw text body (treated as markdown)
     """
     payload = {"markdown": str(markdown or ""), "meta": dict(meta or {})}
-    try:
-        resp = requests.post(
-            str(api_url).strip(),
-            json=payload,
-            timeout=float(timeout_sec),
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.post(
+                str(api_url).strip(),
+                json=payload,
+                timeout=float(timeout_sec),
+            )
+        except Exception as exc:  # noqa: BLE001
+            return markdown, False, f"http_failed:{exc.__class__.__name__}"
+
+        if int(resp.status_code) >= 400:
+            return markdown, False, f"http_{resp.status_code}"
+
+        content_type = str(resp.headers.get("content-type") or "").lower()
+        try:
+            if "application/json" in content_type:
+                data = resp.json()
+                if isinstance(data, dict) and isinstance(data.get("markdown"), str):
+                    out = str(data.get("markdown") or "")
+                    return out, bool(out.strip() and out.strip() != str(markdown or "").strip()), "ok_json"
+            # Fallback: treat response body as markdown text.
+            out = resp.text if isinstance(resp.text, str) else str(resp.content or b"", "utf-8", errors="ignore")
+            return out, bool(out.strip() and out.strip() != str(markdown or "").strip()), "ok_text"
+        except Exception as exc:  # noqa: BLE001
+            return markdown, False, f"parse_failed:{exc.__class__.__name__}"
+
+
+def _call_vlm_backend(
+    *,
+    api_url: str,
+    markdown: str,
+    meta: dict[str, Any] | None,
+    timeout_sec: float,
+) -> tuple[str, bool, str]:
+    return _run_coroutine_sync(
+        lambda: _call_vlm_backend_async(
+            api_url=api_url,
+            markdown=markdown,
+            meta=meta,
+            timeout_sec=timeout_sec,
         )
-    except Exception as exc:  # noqa: BLE001
-        return markdown, False, f"http_failed:{exc.__class__.__name__}"
-
-    if int(resp.status_code) >= 400:
-        return markdown, False, f"http_{resp.status_code}"
-
-    content_type = str(resp.headers.get("content-type") or "").lower()
-    try:
-        if "application/json" in content_type:
-            data = resp.json()
-            if isinstance(data, dict) and isinstance(data.get("markdown"), str):
-                out = str(data.get("markdown") or "")
-                return out, bool(out.strip() and out.strip() != str(markdown or "").strip()), "ok_json"
-        # Fallback: treat response body as markdown text.
-        out = resp.text if isinstance(resp.text, str) else str(resp.content or b"", "utf-8", errors="ignore")
-        return out, bool(out.strip() and out.strip() != str(markdown or "").strip()), "ok_text"
-    except Exception as exc:  # noqa: BLE001
-        return markdown, False, f"parse_failed:{exc.__class__.__name__}"
+    )
 
 
 def maybe_correct_markdown_pages(

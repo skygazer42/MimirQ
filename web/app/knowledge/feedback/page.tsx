@@ -415,11 +415,11 @@ function FeedbackTrendCard({
           className="h-[164px] w-full"
           aria-hidden="true"
         >
-          {Array.from({ length: 5 }).map((_, index) => {
-            const y = 18 + index * 34
+          {Array.from({ length: 5 }, (_, gridLineIndex) => gridLineIndex).map((gridLineIndex) => {
+            const y = 18 + gridLineIndex * 34
             return (
               <line
-                key={`feedback-trend-grid-line-${index}`}
+                key={`feedback-trend-grid-line-${gridLineIndex}`}
                 x1="0"
                 y1={y}
                 x2={width}
@@ -1337,13 +1337,13 @@ export default function FeedbackTriagePage() {
                                     ·
                                   </span>
                                   <div className="flex items-center gap-0.5 text-warning">
-                                    {Array.from({ length: 5 }).map(
-                                      (_, index) => (
+                                    {Array.from({ length: 5 }, (_, starIndex) => starIndex).map(
+                                      (starIndex) => (
                                         <Star
-                                          key={`feedback-rating-star-${index + 1}`}
+                                          key={`feedback-rating-star-${starIndex}`}
                                           className={cn(
                                             'size-2.5',
-                                            index < ratingValue
+                                            starIndex < ratingValue
                                               ? 'fill-current'
                                               : 'stroke-current opacity-35'
                                           )}
