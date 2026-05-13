@@ -80,11 +80,20 @@ function isReviewed(doc: Document): boolean {
 
 function getDropReasons(doc: Document): string[] {
   const reasons = doc.governance?.drop_reasons || {}
-  if (!reasons || typeof reasons !== 'object') return []
-  return Object.entries(reasons)
-    .filter(([, v]) => typeof v === 'number' && v > 0)
-    .map(([k]) => k)
-    .sort((a, b) => a.localeCompare(b))
+  const governanceReasons =
+    !reasons || typeof reasons !== 'object'
+      ? []
+      : Object.entries(reasons)
+          .filter(([, v]) => typeof v === 'number' && v > 0)
+          .map(([k]) => k)
+          .sort((a, b) => a.localeCompare(b))
+  if (governanceReasons.length) return governanceReasons
+
+  const errorCode = String((doc as any).error_code || '').trim()
+  if (errorCode) return [errorCode]
+
+  const failedStage = String((doc as any).failed_stage || '').trim()
+  return failedStage ? [`${failedStage}_failed`] : []
 }
 
 function extractTuningOverrides(doc: Document): DocumentPipelineOptions {
@@ -353,6 +362,12 @@ function buildDemoQuarantineDocuments(): Document[] {
 type QuarantineSeverity = '高' | '中' | '低'
 
 function getQuarantineSource(doc: Document): string {
+  const failedStage = String((doc as any).failed_stage || '').toLowerCase()
+  if (['parsing', 'parse', 'governance', 'chunking', 'embedding', 'vector_write', 'index'].includes(failedStage)) {
+    return failedStage === 'embedding' || failedStage === 'vector_write' || failedStage === 'index'
+      ? '索引入库'
+      : '文档解析'
+  }
   const kind = getDocumentKind(doc.filename)
   if (
     kind === 'pdf' ||
@@ -1225,7 +1240,7 @@ export default function QuarantineQueuePage() {
   const [tunePatch, setTunePatch] = useState<DocumentPipelineOptions>({})
 
   const { data, isFetching, refetch } = useQuery({
-    queryKey: ['quarantine-documents'],
+    queryKey: ['quarantine-documents', 'quarantined'],
     queryFn: ({ signal }) =>
       documentApi.list(
         {
@@ -1239,10 +1254,36 @@ export default function QuarantineQueuePage() {
     refetchInterval: autoRefresh ? 5_000 : false,
   })
 
+  const {
+    data: failedData,
+    isFetching: isFetchingFailed,
+    refetch: refetchFailed,
+  } = useQuery({
+    queryKey: ['quarantine-documents', 'failed'],
+    queryFn: ({ signal }) =>
+      documentApi.list(
+        {
+          limit: 200,
+          status: 'failed',
+        },
+        { signal }
+      ),
+    staleTime: 3_000,
+    enabled: !demoMode,
+    refetchInterval: autoRefresh ? 5_000 : false,
+  })
+
   const documents = useMemo(
-    () => (demoMode ? buildDemoQuarantineDocuments() : data?.items || []),
-    [data, demoMode]
+    () =>
+      demoMode
+        ? buildDemoQuarantineDocuments()
+        : [...(data?.items || []), ...(failedData?.items || [])],
+    [data, demoMode, failedData]
   )
+  const queueFetching = isFetching || isFetchingFailed
+  const refreshQueue = useCallback(async () => {
+    await Promise.all([refetch(), refetchFailed()])
+  }, [refetch, refetchFailed])
 
   const reasonCounts = useMemo(() => {
     const counts: Record<string, number> = {}
@@ -1545,14 +1586,14 @@ export default function QuarantineQueuePage() {
         await documentApi.retry(doc.id)
         await markReviewed(doc.id, { quarantine_action: 'retry' })
         toast.success('已触发重新入库')
-        await refetch()
+        await refreshQueue()
       } catch (err: any) {
         toast.error(formatApiError(err, '重试失败'))
       } finally {
         setActing(null)
       }
     },
-    [demoMode, markReviewed, refetch]
+    [demoMode, markReviewed, refreshQueue]
   )
 
   const handleRelease = useCallback(
@@ -1573,14 +1614,14 @@ export default function QuarantineQueuePage() {
           quarantine_reason: getDropReasons(doc).join(','),
         })
         toast.success('已放行并重试')
-        await refetch()
+        await refreshQueue()
       } catch (err: any) {
         toast.error(formatApiError(err, '放行失败'))
       } finally {
         setActing(null)
       }
     },
-    [buildRecommendedPatch, demoMode, markReviewed, refetch]
+    [buildRecommendedPatch, demoMode, markReviewed, refreshQueue]
   )
 
   const handleDelete = useCallback(
@@ -1597,14 +1638,14 @@ export default function QuarantineQueuePage() {
           setSelectedId(null)
           setReviewDrawerOpen(false)
         }
-        await refetch()
+        await refreshQueue()
       } catch (err: any) {
         toast.error(formatApiError(err, '删除失败'))
       } finally {
         setActing(null)
       }
     },
-    [demoMode, refetch, selectedId]
+    [demoMode, refreshQueue, selectedId]
   )
 
   const handleMarkReviewedOnly = useCallback(
@@ -1617,14 +1658,14 @@ export default function QuarantineQueuePage() {
       try {
         await markReviewed(doc.id, { quarantine_action: 'reviewed' })
         toast.success('已标记为已处理')
-        await refetch()
+        await refreshQueue()
       } catch (err: any) {
         toast.error(formatApiError(err, '标记失败'))
       } finally {
         setActing(null)
       }
     },
-    [demoMode, markReviewed, refetch]
+    [demoMode, markReviewed, refreshQueue]
   )
 
   const openTuneDialog = useCallback(
@@ -1661,14 +1702,14 @@ export default function QuarantineQueuePage() {
           toast.success('已保存配置')
         }
         setTuneOpen(false)
-        await refetch()
+        await refreshQueue()
       } catch (err: any) {
         toast.error(formatApiError(err, '保存失败'))
       } finally {
         setActing(null)
       }
     },
-    [demoMode, markReviewed, refetch, tunePatch, tuneTarget]
+    [demoMode, markReviewed, refreshQueue, tunePatch, tuneTarget]
   )
 
   const handleExportFiltered = useCallback(() => {
@@ -1771,13 +1812,13 @@ export default function QuarantineQueuePage() {
                       toast.success('Demo 数据已刷新')
                       return
                     }
-                    void refetch()
+                    void refreshQueue()
                   }}
                 >
                   <RefreshCw
                     className={cn(
                       'h-4 w-4',
-                      isFetching
+                      queueFetching
                         ? 'animate-spin motion-reduce:animate-none'
                         : ''
                     )}
@@ -2078,12 +2119,12 @@ export default function QuarantineQueuePage() {
                     variant="outline"
                     size="sm"
                     className="h-9 rounded-xl border-border/60 bg-background px-3.5 text-[11px] font-medium"
-                    onClick={() => refetch()}
+                    onClick={() => void refreshQueue()}
                   >
                     <RefreshCw
                       className={cn(
                         'size-3.5',
-                        isFetching
+                        queueFetching
                           ? 'animate-spin motion-reduce:animate-none'
                           : ''
                       )}
@@ -2135,9 +2176,9 @@ export default function QuarantineQueuePage() {
                         <QuarantineEmptyState
                           hasActiveFilters={hasActiveFilters}
                           autoRefresh={autoRefresh}
-                          isFetching={isFetching}
+                          isFetching={queueFetching}
                           onResetFilters={resetFilters}
-                          onRefresh={() => refetch()}
+                          onRefresh={() => void refreshQueue()}
                         />
                       </td>
                     </tr>

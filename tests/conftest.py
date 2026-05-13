@@ -170,6 +170,7 @@ def pg_session():
     import app.models.dataset  # noqa: F401
     import app.models.dataset_profile_scan  # noqa: F401
     import app.models.document  # noqa: F401
+    import app.models.ingest_dead_letter  # noqa: F401
     import app.models.tenant  # noqa: F401
     from app.core.database import Base, SessionLocal, engine  # noqa: WPS433
 
@@ -190,6 +191,7 @@ def pg_session():
     try:
         with engine.begin() as conn:
             conn.execute(text("TRUNCATE TABLE dataset_profile_scan_runs RESTART IDENTITY CASCADE;"))
+            conn.execute(text("TRUNCATE TABLE ingest_dead_letters RESTART IDENTITY CASCADE;"))
             conn.execute(text("TRUNCATE TABLE document_parsed_contents RESTART IDENTITY CASCADE;"))
             conn.execute(text("TRUNCATE TABLE document_chunks RESTART IDENTITY CASCADE;"))
             conn.execute(text("TRUNCATE TABLE document_permissions RESTART IDENTITY CASCADE;"))

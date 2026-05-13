@@ -76,7 +76,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Register User */
+        /**
+         * Register User
+         * @description Register a user and return an access token.
+         */
         post: operations["register_user_api_v1_auth_register_post"];
         delete?: never;
         options?: never;
@@ -93,7 +96,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Login User */
+        /**
+         * Login User
+         * @description Authenticate a user and issue an access token.
+         */
         post: operations["login_user_api_v1_auth_login_post"];
         delete?: never;
         options?: never;
@@ -108,7 +114,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Me */
+        /**
+         * Get Me
+         * @description Return the authenticated user's public profile.
+         */
         get: operations["get_me_api_v1_auth_me_get"];
         put?: never;
         post?: never;
@@ -127,7 +136,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Saml Exchange */
+        /**
+         * Saml Exchange
+         * @description Exchange a SAML response for an application session.
+         */
         post: operations["saml_exchange_api_v1_auth_saml_exchange_post"];
         delete?: never;
         options?: never;
@@ -142,7 +154,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Saml Metadata */
+        /**
+         * Saml Metadata
+         * @description Return SAML service-provider metadata XML.
+         */
         get: operations["saml_metadata_api_v1_auth_saml_metadata_get"];
         put?: never;
         post?: never;
@@ -614,6 +629,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/dead-letters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Ingest Dead Letters */
+        get: operations["list_ingest_dead_letters_api_v1_documents_dead_letters_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/dead-letters/{dead_letter_id}/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Replay Ingest Dead Letter */
+        post: operations["replay_ingest_dead_letter_api_v1_documents_dead_letters__dead_letter_id__replay_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{document_id}": {
         parameters: {
             query?: never;
@@ -979,40 +1028,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/documents/upload": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Upload Document */
-        post: operations["upload_document_api_v1_documents_upload_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/upload-batch": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Upload Documents Batch */
-        post: operations["upload_documents_batch_api_v1_documents_upload_batch_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/documents/{document_id}/versions": {
         parameters: {
             query?: never;
@@ -1110,6 +1125,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload Document */
+        post: operations["upload_document_api_v1_documents_upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/upload-url": {
         parameters: {
             query?: never;
@@ -1128,6 +1160,23 @@ export interface paths {
          *     - SSRF guard: blocks private/loopback/link-local hosts by default.
          */
         post: operations["upload_document_from_url_api_v1_documents_upload_url_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/upload-batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload Documents Batch */
+        post: operations["upload_documents_batch_api_v1_documents_upload_batch_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2052,7 +2101,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Tenant Dataset Analysis Dashboard */
+        /**
+         * Get Tenant Dataset Analysis Dashboard
+         * @description Return the tenant-level dataset analysis dashboard.
+         */
         get: operations["get_tenant_dataset_analysis_dashboard_api_v1_datasets_analysis_dashboard_get"];
         put?: never;
         post?: never;
@@ -2069,7 +2121,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Dataset Analysis Summary */
+        /**
+         * Get Dataset Analysis Summary
+         * @description Return an analysis summary for one dataset.
+         */
         get: operations["get_dataset_analysis_summary_api_v1_datasets__dataset_id__analysis_summary_get"];
         put?: never;
         post?: never;
@@ -2086,7 +2141,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Dataset Analysis Examples */
+        /**
+         * Get Dataset Analysis Examples
+         * @description Return representative analysis examples for one dataset.
+         */
         get: operations["get_dataset_analysis_examples_api_v1_datasets__dataset_id__analysis_examples_get"];
         put?: never;
         post?: never;
@@ -2103,7 +2161,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Dataset Analysis Rule Suggestions */
+        /**
+         * Get Dataset Analysis Rule Suggestions
+         * @description Return glossary and rule suggestions for dataset analysis.
+         */
         get: operations["get_dataset_analysis_rule_suggestions_api_v1_datasets__dataset_id__analysis_rule_suggestions_get"];
         put?: never;
         post?: never;
@@ -2120,7 +2181,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Export Dataset Analysis Json Endpoint */
+        /**
+         * Export Dataset Analysis Json Endpoint
+         * @description Export dataset analysis as JSON.
+         */
         get: operations["export_dataset_analysis_json_endpoint_api_v1_datasets__dataset_id__analysis_export_json_get"];
         put?: never;
         post?: never;
@@ -2137,7 +2201,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Export Dataset Analysis Jsonl Endpoint */
+        /**
+         * Export Dataset Analysis Jsonl Endpoint
+         * @description Export dataset analysis as newline-delimited JSON.
+         */
         get: operations["export_dataset_analysis_jsonl_endpoint_api_v1_datasets__dataset_id__analysis_export_jsonl_get"];
         put?: never;
         post?: never;
@@ -2154,7 +2221,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Export Dataset Analysis Html Endpoint */
+        /**
+         * Export Dataset Analysis Html Endpoint
+         * @description Export dataset analysis as an HTML report.
+         */
         get: operations["export_dataset_analysis_html_endpoint_api_v1_datasets__dataset_id__analysis_report_html_get"];
         put?: never;
         post?: never;
@@ -2173,7 +2243,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Writeback Dataset Analysis Glossary Endpoint */
+        /**
+         * Writeback Dataset Analysis Glossary Endpoint
+         * @description Write suggested glossary entries back to a ruleset.
+         */
         post: operations["writeback_dataset_analysis_glossary_endpoint_api_v1_datasets__dataset_id__analysis_glossary_writeback_post"];
         delete?: never;
         options?: never;
@@ -2190,7 +2263,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create Dataset Analysis Png Task Endpoint */
+        /**
+         * Create Dataset Analysis Png Task Endpoint
+         * @description Create an asynchronous PNG export task for dataset analysis.
+         */
         post: operations["create_dataset_analysis_png_task_endpoint_api_v1_datasets__dataset_id__analysis_export_png_post"];
         delete?: never;
         options?: never;
@@ -2205,7 +2281,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Dataset Analysis Png Task Endpoint */
+        /**
+         * Get Dataset Analysis Png Task Endpoint
+         * @description Return the status of a dataset analysis PNG export task.
+         */
         get: operations["get_dataset_analysis_png_task_endpoint_api_v1_datasets__dataset_id__analysis_export_tasks__task_id__get"];
         put?: never;
         post?: never;
@@ -2222,7 +2301,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Dataset Analysis Png Task Result Endpoint */
+        /**
+         * Get Dataset Analysis Png Task Result Endpoint
+         * @description Return the PNG result for a completed dataset analysis export task.
+         */
         get: operations["get_dataset_analysis_png_task_result_endpoint_api_v1_datasets__dataset_id__analysis_export_tasks__task_id__result_png_get"];
         put?: never;
         post?: never;
@@ -2653,10 +2735,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Dataset Categories */
+        /**
+         * List Dataset Categories
+         * @description List the tenant dataset category tree.
+         */
         get: operations["list_dataset_categories_api_v1_dataset_categories__get"];
         put?: never;
-        /** Create Dataset Category */
+        /**
+         * Create Dataset Category
+         * @description Create a dataset category.
+         */
         post: operations["create_dataset_category_api_v1_dataset_categories__post"];
         delete?: never;
         options?: never;
@@ -2674,11 +2762,17 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Delete Dataset Category */
+        /**
+         * Delete Dataset Category
+         * @description Delete a dataset category.
+         */
         delete: operations["delete_dataset_category_api_v1_dataset_categories__category_id__delete"];
         options?: never;
         head?: never;
-        /** Update Dataset Category */
+        /**
+         * Update Dataset Category
+         * @description Update a dataset category.
+         */
         patch: operations["update_dataset_category_api_v1_dataset_categories__category_id__patch"];
         trace?: never;
     };
@@ -2691,7 +2785,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Move Dataset Category */
+        /**
+         * Move Dataset Category
+         * @description Move a dataset category within the tree.
+         */
         post: operations["move_dataset_category_api_v1_dataset_categories__category_id__move_post"];
         delete?: never;
         options?: never;
@@ -7245,7 +7342,10 @@ export interface components {
         };
         /** Body_import_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_import_post */
         Body_import_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_import_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /**
              * Replace
@@ -7255,12 +7355,18 @@ export interface components {
         };
         /** Body_import_evidence_items_api_v1_evidence_suites__suite_id__items_import_post */
         Body_import_evidence_items_api_v1_evidence_suites__suite_id__items_import_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
         };
         /** Body_import_governance_profiles_api_v1_pipeline_governance_profiles_import_post */
         Body_import_governance_profiles_api_v1_pipeline_governance_profiles_import_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /**
              * Overwrite
@@ -7270,7 +7376,10 @@ export interface components {
         };
         /** Body_ingestion_preview_api_v1_pipeline_ingestion_preview_post */
         Body_ingestion_preview_api_v1_pipeline_ingestion_preview_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /**
              * Dataset Id
@@ -7289,14 +7398,20 @@ export interface components {
         };
         /** Body_parse_preview_api_v1_pipeline_parse_preview_post */
         Body_parse_preview_api_v1_pipeline_parse_preview_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /** Parser Backend */
             parser_backend?: string | null;
         };
         /** Body_preview_chunking_api_v1_documents_chunk_preview_post */
         Body_preview_chunking_api_v1_documents_chunk_preview_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /**
              * Parser Backend
@@ -7404,7 +7519,10 @@ export interface components {
         };
         /** Body_preview_document_api_v1_documents_preview_post */
         Body_preview_document_api_v1_documents_preview_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /**
              * Parser Backend
@@ -7445,18 +7563,23 @@ export interface components {
         Body_register_ltr_model_api_v1_ltr_models_register_post: {
             /**
              * Model File
+             * Format: binary
              * @description XGBoost model bytes (JSON)
              */
             model_file: string;
             /**
              * Manifest File
+             * Format: binary
              * @description LTR manifest JSON (validated)
              */
             manifest_file: string;
         };
         /** Body_upload_document_api_v1_documents_upload_post */
         Body_upload_document_api_v1_documents_upload_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /**
              * Parser Backend
@@ -7576,7 +7699,10 @@ export interface components {
         };
         /** Body_upload_parsing_document_api_v1_parsing_documents_post */
         Body_upload_parsing_document_api_v1_parsing_documents_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /**
              * Parser Backend
@@ -7586,7 +7712,10 @@ export interface components {
         };
         /** Body_upload_zip_with_images_api_v1_pipeline_upload_zip_with_images_post */
         Body_upload_zip_with_images_api_v1_pipeline_upload_zip_with_images_post: {
-            /** File */
+            /**
+             * File
+             * Format: binary
+             */
             file: string;
             /** Dataset Id */
             dataset_id: string;
@@ -12546,6 +12675,17 @@ export interface components {
             processing_progress: number;
             /** Current Stage */
             current_stage?: string | null;
+            /** Failed Stage */
+            failed_stage?: string | null;
+            /** Error Code */
+            error_code?: string | null;
+            /**
+             * Processing Attempts
+             * @default 0
+             */
+            processing_attempts: number;
+            /** Next Retry At */
+            next_retry_at?: string | null;
             /** Chunk Count */
             chunk_count: number;
             /** Total Characters */
@@ -13520,6 +13660,17 @@ export interface components {
             processing_progress: number;
             /** Current Stage */
             current_stage?: string | null;
+            /** Failed Stage */
+            failed_stage?: string | null;
+            /** Error Code */
+            error_code?: string | null;
+            /**
+             * Processing Attempts
+             * @default 0
+             */
+            processing_attempts: number;
+            /** Next Retry At */
+            next_retry_at?: string | null;
             /** Error Message */
             error_message?: string | null;
         };
@@ -15627,6 +15778,89 @@ export interface components {
              * @default
              */
             resolution_note: string;
+        };
+        /**
+         * IngestDeadLetterItem
+         * @description Persistent ingest dead-letter item.
+         */
+        IngestDeadLetterItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Document Id */
+            document_id?: string | null;
+            /** Dataset Id */
+            dataset_id?: string | null;
+            /** Status */
+            status: string;
+            /** Failed Stage */
+            failed_stage: string;
+            /** Error Code */
+            error_code: string;
+            /** Error Message */
+            error_message?: string | null;
+            /** Source Ref */
+            source_ref?: string | null;
+            /** Original Payload */
+            original_payload?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Retry Count
+             * @default 0
+             */
+            retry_count: number;
+            /** Producer Service */
+            producer_service: string;
+            /** Schema Version */
+            schema_version: string;
+            /**
+             * First Failed At
+             * Format: date-time
+             */
+            first_failed_at: string;
+            /**
+             * Last Attempt At
+             * Format: date-time
+             */
+            last_attempt_at: string;
+            /** Replayed At */
+            replayed_at?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /**
+         * IngestDeadLetterList
+         * @description Paged ingest dead-letter list.
+         */
+        IngestDeadLetterList: {
+            /** Total */
+            total: number;
+            /** Items */
+            items?: components["schemas"]["IngestDeadLetterItem"][];
+        };
+        /**
+         * IngestDeadLetterReplayResponse
+         * @description Dead-letter replay result.
+         */
+        IngestDeadLetterReplayResponse: {
+            /**
+             * Dead Letter Id
+             * Format: uuid
+             */
+            dead_letter_id: string;
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /** Dead Letter Status */
+            dead_letter_status: string;
+            document_status: components["schemas"]["DocumentStatus"];
         };
         /** IngestionDashboardSummaryResponse */
         IngestionDashboardSummaryResponse: {
@@ -21714,12 +21948,6 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
-            /** Input */
-            input?: unknown;
-            /** Context */
-            ctx?: {
-                [key: string]: unknown;
-            };
         };
         /** VectorStatus */
         VectorStatus: {
@@ -24058,6 +24286,152 @@ export interface operations {
             };
         };
     };
+    list_ingest_dead_letters_api_v1_documents_dead_letters_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                dataset_id?: string | null;
+                document_id?: string | null;
+                error_code?: string | null;
+                failed_stage?: string | null;
+                skip?: number;
+                limit?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestDeadLetterList"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replay_ingest_dead_letter_api_v1_documents_dead_letters__dead_letter_id__replay_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dead_letter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestDeadLetterReplayResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_document_api_v1_documents__document_id__get: {
         parameters: {
             query?: {
@@ -25374,150 +25748,6 @@ export interface operations {
             };
         };
     };
-    upload_document_api_v1_documents_upload_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_upload_document_api_v1_documents_upload_post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentDetail"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    upload_documents_batch_api_v1_documents_upload_batch_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_upload_documents_batch_api_v1_documents_upload_batch_post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentBatchUploadResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_document_versions_api_v1_documents__document_id__versions_get: {
         parameters: {
             query?: never;
@@ -25805,6 +26035,78 @@ export interface operations {
             };
         };
     };
+    upload_document_api_v1_documents_upload_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_document_api_v1_documents_upload_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     upload_document_from_url_api_v1_documents_upload_url_post: {
         parameters: {
             query?: never;
@@ -25829,6 +26131,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_documents_batch_api_v1_documents_upload_batch_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_documents_batch_api_v1_documents_upload_batch_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentBatchUploadResponse"];
                 };
             };
             /** @description Bad Request */

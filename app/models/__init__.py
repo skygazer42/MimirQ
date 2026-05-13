@@ -11,6 +11,7 @@ from app.models.evidence import EvidenceItem, EvidenceSuite
 from app.models.governance_profile import GovernanceProfile
 from app.models.group_permissions import DatasetGroupPermission, DocumentGroupPermission
 from app.models.index_drift_item import IndexDriftItem
+from app.models.ingest_dead_letter import IngestDeadLetter
 from app.models.prompt_template import PromptTemplate
 from app.models.tenant import Tenant, TenantMember
 from app.models.tenant_group import TenantGroup, TenantGroupMember
@@ -44,6 +45,7 @@ __all__ = [
     "RagasEvaluationItem",
     "GovernanceProfile",
     "IndexDriftItem",
+    "IngestDeadLetter",
     "PromptTemplate",
     "User",
 ]

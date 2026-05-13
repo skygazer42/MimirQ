@@ -74,6 +74,10 @@ class Document(Base):
     status = Column(String(20), nullable=False, default='pending')  # pending | processing | completed | failed
     processing_progress = Column(Integer, default=0)  # 0-100
     current_stage = Column(String(50), nullable=True)  # parsing | chunking | embedding | vector_write | completed
+    failed_stage = Column(String(50), nullable=True)
+    error_code = Column(String(100), nullable=True)
+    processing_attempts = Column(Integer, nullable=False, default=0)
+    next_retry_at = Column(DateTime(timezone=True), nullable=True)
     error_message = Column(Text, nullable=True)
 
     # Stats
