@@ -16,18 +16,18 @@ Usage:
 
 
 import json
-import logging
 from enum import Enum
 from typing import Any, Union
 
 from pydantic import BaseModel, Field
 
+from app.rag.core.logging import get_logger
 from app.rag.llm.structured_output import (
     build_structured_output_instructions,
     parse_and_repair_structured_output,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger("rag.output")
 
 _DESC_OUTPUT_MODE_IDENTIFIER = "Output mode identifier"
 _DESC_SOURCE_REFERENCES = "Source references"

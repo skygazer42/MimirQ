@@ -419,7 +419,7 @@ function FeedbackTrendCard({
             const y = 18 + index * 34
             return (
               <line
-                key={index}
+                key={`feedback-trend-grid-line-${index}`}
                 x1="0"
                 y1={y}
                 x2={width}
@@ -1340,7 +1340,7 @@ export default function FeedbackTriagePage() {
                                     {Array.from({ length: 5 }).map(
                                       (_, index) => (
                                         <Star
-                                          key={index}
+                                          key={`feedback-rating-star-${index + 1}`}
                                           className={cn(
                                             'size-2.5',
                                             index < ratingValue

@@ -2264,7 +2264,7 @@ function SimilarityEmptyState() {
           <div className="grid grid-cols-5 gap-1 p-5">
             {Array.from({ length: 20 }).map((_, index) => (
               <span
-                key={index}
+                key={`empty-matrix-swatch-${index}`}
                 className={cn(
                   'h-4 rounded-[4px]',
                   index % 4 === 0
@@ -2316,19 +2316,19 @@ function SimilarityEmptyState() {
         <div className="grid grid-cols-[56px_1fr] gap-3">
           <div className="space-y-2 pt-5">
             {Array.from({ length: 5 }).map((_, index) => (
-              <div key={index} className="h-2 rounded-full bg-muted" />
+              <div key={`empty-matrix-row-${index}`} className="h-2 rounded-full bg-muted" />
             ))}
           </div>
           <div className="space-y-1.5">
             <div className="grid grid-cols-8 gap-1.5">
               {Array.from({ length: 8 }).map((_, index) => (
-                <div key={index} className="h-2 rounded-full bg-muted" />
+                <div key={`empty-matrix-column-${index}`} className="h-2 rounded-full bg-muted" />
               ))}
             </div>
             <div className="grid grid-cols-8 gap-1.5">
               {Array.from({ length: 56 }).map((_, index) => (
                 <span
-                  key={index}
+                  key={`empty-matrix-cell-${index}`}
                   className={cn(
                     'h-4 rounded-[3px]',
                     index % 9 === 0

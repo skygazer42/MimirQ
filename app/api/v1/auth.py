@@ -35,6 +35,7 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 @router.post("/register", status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def register_user(payload: RegisterRequest, db: Annotated[Session, Depends(get_db)]) -> AuthResponse:
+    """Register a user and return an access token."""
     user = UserService.create_user(
         db,
         email=payload.email,
@@ -54,6 +55,7 @@ def register_user(payload: RegisterRequest, db: Annotated[Session, Depends(get_d
 
 @router.post("/login", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def login_user(payload: LoginRequest, db: Annotated[Session, Depends(get_db)]) -> AuthResponse:
+    """Authenticate a user and issue an access token."""
     user = UserService.authenticate(db, payload.identifier, payload.password)
     UserService.mark_login(db, user)
     tenant_id = None
@@ -73,6 +75,7 @@ def get_me(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> UserPublic:
+    """Return the authenticated user's public profile."""
     user = UserService.get_by_id(db, account_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -81,6 +84,7 @@ def get_me(
 
 @router.post("/saml/exchange", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def saml_exchange(payload: SamlExchangeRequest, db: Annotated[Session, Depends(get_db)]) -> SamlExchangeResponse:
+    """Exchange a SAML response for an application session."""
     return exchange_saml_response(
         db=db,
         provider_id=payload.provider_id,
@@ -92,6 +96,7 @@ def saml_exchange(payload: SamlExchangeRequest, db: Annotated[Session, Depends(g
 
 @router.get("/saml/metadata", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def saml_metadata(provider_id: str | None = None) -> Response:
+    """Return SAML service-provider metadata XML."""
     xml = build_saml_sp_metadata_xml(provider_id=provider_id)
     resp = Response(content=xml, media_type="application/samlmetadata+xml; charset=utf-8")
     resp.headers["Cache-Control"] = "no-store"

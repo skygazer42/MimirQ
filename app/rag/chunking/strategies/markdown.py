@@ -6,7 +6,6 @@ header context in chunk metadata.
 """
 
 
-import logging
 import re
 from typing import Any
 
@@ -19,8 +18,9 @@ from langchain_text_splitters import (
 )
 
 from app.rag.chunking.base import BaseChunker
+from app.rag.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("rag.chunking.strategies.markdown")
 
 
 class MarkdownHeaderChunker(BaseChunker):

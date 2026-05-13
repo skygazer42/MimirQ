@@ -9,18 +9,18 @@ Pattern: Generate -> Evaluate -> (Score < threshold) -> Optimize -> Evaluate -> 
 
 
 import asyncio
-import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from app.core.config import settings
+from app.rag.core.logging import get_logger
 from app.rag.workflows.base import (
     BaseWorkflow,
     WorkflowMode,
     WorkflowResult,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger("rag.workflows.evaluator_optimizer")
 
 # Configuration
 EVALUATOR_MAX_ITERATIONS = getattr(settings, "EVALUATOR_MAX_ITERATIONS", 3)

@@ -38,6 +38,7 @@ def list_dataset_categories(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
+    """List the tenant dataset category tree."""
     nodes = DatasetCategoryService.list_tree(db, tenant_id=tenant_id, account_id=account_id)
     # total categories (not just root nodes)
     total = 0
@@ -58,6 +59,7 @@ def create_dataset_category(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
+    """Create a dataset category."""
     row = DatasetCategoryService.create(
         db,
         tenant_id=tenant_id,
@@ -78,6 +80,7 @@ def update_dataset_category(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
+    """Update a dataset category."""
     row = DatasetCategoryService.update(
         db,
         tenant_id=tenant_id,
@@ -98,6 +101,7 @@ def move_dataset_category(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
+    """Move a dataset category within the tree."""
     row = DatasetCategoryService.move(
         db,
         tenant_id=tenant_id,
@@ -117,5 +121,6 @@ def delete_dataset_category(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
+    """Delete a dataset category."""
     DatasetCategoryService.delete(db, tenant_id=tenant_id, account_id=account_id, category_id=category_id)
     return Response(status_code=204)

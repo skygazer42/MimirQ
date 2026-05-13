@@ -27,7 +27,7 @@ import traceback
 import types
 import zipfile
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
 from os import PathLike
 from pathlib import Path
@@ -165,7 +165,7 @@ class TencentCloudAPIClient:
 
             os.makedirs(output_dir, exist_ok=True)
 
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
             filename = f"tcadp_result_{timestamp}.zip"
             file_path = os.path.join(output_dir, filename)
 

@@ -9,17 +9,17 @@ Pattern: Plan -> [Worker1, Worker2, ...] -> Synthesize -> Result
 
 
 import asyncio
-import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from app.rag.core.logging import get_logger
 from app.rag.workflows.base import (
     BaseWorkflow,
     WorkflowMode,
     WorkflowResult,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger("rag.workflows.planner_worker")
 
 
 class SubTask:

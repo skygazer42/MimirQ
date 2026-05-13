@@ -9,7 +9,7 @@ Provides dynamic prompt injection capabilities:
 """
 
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import wraps
 from typing import Any
 
@@ -148,7 +148,7 @@ class TimeInjector:
 
     def get_time_context(self) -> str:
         """Get the current time context string."""
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         time_str = now.strftime(self.format_string)
 
         parts = [f"Current date and time: {time_str}"]

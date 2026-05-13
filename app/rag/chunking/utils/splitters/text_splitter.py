@@ -4,7 +4,6 @@ Integrated from an upstream splitter implementation (vendored for stability).
 """
 
 import copy
-import logging
 import re
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Collection, Iterable, Sequence, Set
@@ -17,8 +16,9 @@ from typing import (
 )
 
 from app.models.chunk import BaseDocumentTransformer, Document
+from app.rag.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("rag.chunking.text_splitter")
 
 TS = TypeVar("TS", bound="TextSplitter")
 

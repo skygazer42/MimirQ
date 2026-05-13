@@ -40,6 +40,8 @@ import argparse
 import numpy as np
 import trio
 
+from app.rag.core.logging import get_logger
+
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0,2' #2 gpus, uncontinuous
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'  # 1 gpu
 
@@ -50,7 +52,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'  # 1 gpu
 def main(args):
     import torch.cuda
 
-    logger = logging.getLogger(__name__)
+    logger = get_logger("deepdoc.vision.t_ocr")
     cuda_devices = torch.cuda.device_count()
     limiter = [trio.CapacityLimiter(1) for _ in range(cuda_devices)] if cuda_devices > 1 else None
     ocr = OCR()

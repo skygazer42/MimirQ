@@ -46,6 +46,7 @@ def get_tenant_dataset_analysis_dashboard(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
+    """Return the tenant-level dataset analysis dashboard."""
     DatasetService.ensure_member(db, tenant_id, account_id)
     return build_tenant_dataset_analysis_dashboard(
         db=db,
@@ -70,6 +71,7 @@ def get_dataset_analysis_summary(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
+    """Return an analysis summary for one dataset."""
     DatasetService.ensure_member(db, tenant_id, account_id)
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     return build_dataset_analysis_summary(
@@ -97,6 +99,7 @@ def get_dataset_analysis_examples(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
+    """Return representative analysis examples for one dataset."""
     DatasetService.ensure_member(db, tenant_id, account_id)
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     return build_dataset_analysis_examples(
@@ -125,6 +128,7 @@ def get_dataset_analysis_rule_suggestions(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
+    """Return glossary and rule suggestions for dataset analysis."""
     DatasetService.ensure_member(db, tenant_id, account_id)
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     return build_dataset_analysis_rule_suggestions(
@@ -152,6 +156,7 @@ def export_dataset_analysis_json_endpoint(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
+    """Export dataset analysis as JSON."""
     DatasetService.ensure_member(db, tenant_id, account_id)
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     return export_dataset_analysis_json(
@@ -178,6 +183,7 @@ def export_dataset_analysis_jsonl_endpoint(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
+    """Export dataset analysis as newline-delimited JSON."""
     DatasetService.ensure_member(db, tenant_id, account_id)
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     payload = export_dataset_analysis_jsonl(
@@ -205,6 +211,7 @@ def export_dataset_analysis_html_endpoint(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
+    """Export dataset analysis as an HTML report."""
     DatasetService.ensure_member(db, tenant_id, account_id)
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     payload = export_dataset_analysis_html(
@@ -223,7 +230,7 @@ def export_dataset_analysis_html_endpoint(
 @router.post("/{dataset_id}/analysis/glossary-writeback", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def writeback_dataset_analysis_glossary_endpoint(
     dataset_id: UUID,
-    ruleset: Annotated[str, Query(min_length=1)] ,
+    ruleset: Annotated[str, Query(min_length=1)],
     from_ts: Annotated[str | None, Query()] = None,
     to_ts: Annotated[str | None, Query()] = None,
     feedback_polarity: Annotated[str | None, Query()] = None,
@@ -234,6 +241,7 @@ def writeback_dataset_analysis_glossary_endpoint(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
+    """Write suggested glossary entries back to a ruleset."""
     DatasetService.ensure_member(db, tenant_id, account_id)
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     return writeback_dataset_analysis_glossary_candidates(
@@ -263,6 +271,7 @@ def create_dataset_analysis_png_task_endpoint(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
+    """Create an asynchronous PNG export task for dataset analysis."""
     DatasetService.ensure_member(db, tenant_id, account_id)
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     return create_dataset_analysis_png_task(
@@ -287,6 +296,7 @@ def get_dataset_analysis_png_task_endpoint(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
+    """Return the status of a dataset analysis PNG export task."""
     DatasetService.ensure_member(db, tenant_id, account_id)
     DatasetService.get_dataset(db, tenant_id, dataset_id)
     return get_dataset_analysis_png_task_status(task_id=task_id)
@@ -301,6 +311,7 @@ def get_dataset_analysis_png_task_result_endpoint(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
+    """Return the PNG result for a completed dataset analysis export task."""
     DatasetService.ensure_member(db, tenant_id, account_id)
     DatasetService.get_dataset(db, tenant_id, dataset_id)
     status = get_dataset_analysis_png_task_status(task_id=task_id)
