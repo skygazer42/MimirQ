@@ -45,9 +45,18 @@ describe('chunk preview real backend data contract', () => {
 
   it('keeps backend chunk-preview schemas and handlers returning p95', () => {
     const schema = fs.readFileSync(path.resolve(repoRoot, 'app/api/schemas/document.py'), 'utf8')
-    const handler = fs.readFileSync(path.resolve(repoRoot, 'app/api/v1/documents.py'), 'utf8')
+    const handler = fs.readFileSync(path.resolve(repoRoot, 'app/api/v1/document_chunk_preview.py'), 'utf8')
 
     expect(schema).toContain('p95: int = 0')
     expect(handler.match(/p95=_pct\(95\)/g)?.length ?? 0).toBeGreaterThanOrEqual(2)
+  })
+
+  it('does not flood the backend by loading every saved document body on page entry', () => {
+    const context = read('components/chunk-preview/context.tsx')
+
+    expect(context).toContain('const CHUNK_PREVIEW_SCOPE_DOCUMENT_LIMIT = 12')
+    expect(context).toContain('for (const doc of docs)')
+    expect(context).not.toContain('limit: 100')
+    expect(context).not.toContain('Promise.all(')
   })
 })
