@@ -54,7 +54,9 @@ describe('chunk preview real backend data contract', () => {
   it('does not flood the backend by loading every saved document body on page entry', () => {
     const context = read('components/chunk-preview/context.tsx')
 
-    expect(context).toContain('const CHUNK_PREVIEW_SCOPE_DOCUMENT_LIMIT = 12')
+    expect(context).toContain('const CHUNK_PREVIEW_SCOPE_DOCUMENT_LIMIT = 8')
+    expect(context).toContain('const scopedChunkFilesInFlight = new Map<string, Promise<ChunkPreviewFileItem[]>>()')
+    expect(context).toContain('async function loadScopedChunkFiles(datasetId: string): Promise<ChunkPreviewFileItem[]>')
     expect(context).toContain('for (const doc of docs)')
     expect(context).not.toContain('limit: 100')
     expect(context).not.toContain('Promise.all(')
