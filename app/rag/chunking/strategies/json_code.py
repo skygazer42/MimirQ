@@ -6,7 +6,6 @@ Provides specialized splitters for JSON data and programming code.
 
 
 import json
-import logging
 import re
 from typing import Any
 
@@ -14,8 +13,9 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
+from app.rag.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("rag.chunking.strategies.json_code")
 
 SEP_CLASS = "\nclass "
 SEP_CONST = "\nconst "

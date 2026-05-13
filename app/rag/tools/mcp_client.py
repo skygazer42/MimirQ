@@ -14,7 +14,6 @@ Usage:
 
 
 import asyncio
-import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
@@ -24,8 +23,9 @@ from urllib.parse import urljoin
 import httpx
 
 from app.core.config import settings
+from app.rag.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("rag.tools.mcp_client")
 
 
 # Configuration

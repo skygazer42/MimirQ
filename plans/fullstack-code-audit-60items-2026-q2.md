@@ -2,7 +2,7 @@
 
 > **本次更新**:对照原 plan 60 条逐项实测代码,多条问题已完成或降级移出主清单,**2 条确认倒退**,另有多处旧判断已被 `2026-05-12` 二次复核修正,其余按进度更新或保留,并按严重度重新排序。
 >
-> **审查时间**:2026-05-12 — 与 plan 原始撰写时(2026-Q2 初)间隔 ~1 个月。
+> **审查时间**:2026-05-12 — 与 plan 原始撰写时(2026-Q2 初)间隔 ~1 个月；2026-05-13 追加闭环 H11 / M3 / H4 / M11 / C10,并复核降级 monaco public。
 > **审查方法**:`grep`/`wc -l`/`git ls-files`/`find` 实测。
 
 ---
@@ -34,36 +34,36 @@
 | 后端 sa.Index | 0 | **16** | 🟠 增 |
 | alembic `op.create_index` | 0 | **0** | ℹ️ 迁移仍以 `CREATE INDEX` SQL 为主 |
 | 后端 print() | 28 | **0** | ✅ |
-| 后端 endpoints | 367 | ~ | — |
+| 后端 endpoints | 367 | **369** | 🟠 |
 | 后端 v1/ documents.py | 11770 | **2235**(拆出 23 子文件 + preview utils, 主文件 `0` route) | 🟢 大幅下降 |
 | 后端 v1/ connectors.py | 10697 | **523**(拆出 20 子文件/模块) | 🟢 继续下降 |
 | 后端 v1/ chat.py | 3653 | **494** | 🟢 继续下降 |
-| 后端 requests vs httpx | 20 / 22 | **20 / 22** | ❌ |
+| 后端 requests vs httpx | 20 / 22 | **29 app files / settings.py 已迁 httpx** | ❌ 分批迁移 |
 | 后端 f-string SQL | 31 | **20** | 🟠 |
 | 后端 Pydantic v1 残留 | 35 | **11** | 🟠 |
-| 后端 datetime.now() 无 tz | 5 | **5** | ❌ |
-| 后端 docstring 覆盖 | ~257 | **~257** | ❌ |
-| 后端 logger 两套(`logging.getLogger(__name__)` / `get_logger(...)`)| 不详 | **19 / 98** | 🟢 持续收敛 |
+| 后端 datetime.now() 无 tz | 5 | **0** | ✅ 已加 source guard |
+| 后端 endpoint docstring 缺失 | 未实测 | **160 / 369** | 🟠 批次推进 |
+| 后端 logger 两套(`logging.getLogger(__name__)` / `get_logger(...)`)| 不详 | **0 / 121** | ✅ 已统一入口 |
 | 前端 useMutation | 7 | **50** | 🟢 |
 | 前端 useQuery | 不详 | **244** | 🟢 |
 | 前端 useMemo/useCallback | 1149 | **1565** | 🔴 继续膨胀 |
 | 前端 memoized 组件(`memo`/`React.memo`) | 4 | **4** | ~ |
 | 前端 `: any`(graph-viewer / force-graph-3d / scim.ts) | 28/27/13 | **27/26/5** | 🟠 部分降 |
 | 前端 `.then()` 无 `.catch()` | 42 | **34** | 🟠 |
-| 前端 `key={index}` | 14 | **14** | ❌ |
+| 前端 `key={index}` | 14 | **0** | ✅ 已加 source guard |
 | 前端 Playwright e2e/spec | 7 | **6** | 🟠 基本恢复,但覆盖面仍偏薄 |
 | `stream_chat` 函数行数 | 1305 | **81** | 🟢 路由壳已显著收口 |
 | 前端 similarity-workbench.tsx | 2744 | **3425** | 🔴 倒退 |
 | 前端 quarantine/page.tsx | 2115 | **2720** | 🔴 倒退 |
 | 前端 i18n zh-CN.ts | 3667 | **31** | ✅ 已拆 namespace |
 | 前端 types/index.ts | 3008 | **30** | ✅ 已收敛 openapi |
-| 前端 monaco public | 16M | **16M** | ❌ |
-| 前端 ts target | ES2017 | **ES2017** | ❌ |
+| 前端 monaco public | 16M | **0 tracked / 16M ignored generated** | ✅ 降级为本地生成物 |
+| 前端 ts target | ES2017 | **ES2022** | ✅ 已加 source guard |
 | 前端 alert() | 1 | **0** | ✅ |
 | .env.example | 53KB | **3.3KB / 104 行** | 🟠 大幅瘦身,并已拆出模块模板 |
 | 仓库根 PNG | 10+ | **0** | ✅ 已清零 |
 | ONNX git 追踪 | >600MB | **18 个仍在；未引用 qieci 重复目录已删** | 🟠 |
-| CI workflows | 10 | **10**(仍无 lint-fast.yml) | ~ |
+| CI workflows | 10 | **11**(已补 lint-fast.yml) | ✅ |
 | CI `on: pull_request` gate | 仅 dispatch | **已加 pull_request + push:main** | ✅ |
 
 ---
@@ -76,12 +76,17 @@
 | 7 | CI 主流水线仅 `workflow_dispatch` | 已加 `pull_request` + `push: branches: main` ✅ |
 | 10 | .gitignore 缺 `.beads/` `logs/` `runs/` `.playwright-mcp/` | 全部补齐 ✅ |
 | 15 | `documents.py:11690` example code 写死 localhost | grep 无命中 ✅ |
-| 16(部分) | `logging.getLogger(__name__)` vs `get_logger` | 仍存(47/69)❌ — 见 #16 保留 |
+| 16 | `logging.getLogger(__name__)` vs `get_logger` | `logging.getLogger(__name__)` 已清零,新增 `tests/test_logging_get_logger_source.py` ✅ |
 | 26 | 28 处 `print()` 残留 | **0 处** ✅ |
 | 35 | `zh-CN.ts` 3667 行单文件 i18n | 已拆为 31 行 entry + namespace 子文件 ✅ |
 | 36 | `web/types/index.ts` 3008 行手写类型 | 已收敛到 30 行 re-export + openapi.ts 单源 ✅ |
 | 39(部分) | tsparticles + lottie 重复依赖 | tsparticles 已不在 package.json ✅ |
 | 44 | 前端 `alert()` 浏览器原生 | **0 处** ✅ |
+| 29 | `datetime.now()` 裸调用无 tzinfo | `app/**/*.py` 已清零,新增 `tests/test_datetime_now_utc_source.py` ✅ |
+| 42 | 前端 TS target 仍为 `ES2017` | 已升 `ES2022`,新增 `web/tsconfig.source.test.ts` ✅ |
+| 21 | 前端 `key={index}` | 实测 8 处已清零,新增 `web/react-keys.source.test.ts` ✅ |
+| 54 | CI workflows 无 `lint-fast.yml` | 已新增 PR/push/main 必跑的轻量 lint/typecheck workflow ✅ |
+| 40/41(降级) | `web/public/monaco` 16M | 0 个 git-tracked 文件,`.gitignore` 已忽略,由 `predev/prebuild` 生成 ✅ |
 | 2(降级) | 205 处 `except + logger.warning` 无 raise | **6 处** — 降级到 Medium |
 
 ---
@@ -136,12 +141,15 @@
 
 ### E. 代码质量
 
-#### C9(原 #14)— 后端 docstring 仍 ~5%(257/4838 def lines)
-- **修复**:ruff `D` 规则启用;367 endpoints 强制 `D102`;每月清 50 个
+#### C9(原 #14)— endpoint docstring 缺失已从 **181 → 160 / 369**
+- **进展**:2026-05-13 用 AST 精确改为只统计 FastAPI endpoint,不再沿用旧的“257/4838 def lines”粗口径。
+- **本批完成**:`auth.py`、`dataset_analysis.py`、`dataset_categories.py` 共 21 个 endpoint 已补 docstring。
+- **守卫**:新增 `tests/test_endpoint_docstrings_source.py`,先锁住上述 3 个模块的 endpoint docstring 不回退。
+- **剩余**:还有 160 个 endpoint 缺 docstring,应继续按模块批次推进,下一批优先 `dataset_precheck.py` / `evidence.py` / `observability.py`。
 
-#### C10(原 #16)— logger 两套:`logging.getLogger(__name__)` **19 处** + `get_logger("...")` **98 处**
-- **进展**:`app/api/**` 已无 `logging.getLogger(__name__)`;此前已清掉 `app/rag/middleware/*`、`app/storage/vector/{milvus,factory}.py`、`app/services/jwt_group_sync_service.py`、`app/core/{jwt_verify,pii_redaction}.py`、`app/rag/pipelines/langgraph.py`、`app/rag/llm/langchain_chat.py`、`app/rag/core/{interrupt,stream_writer}.py` 和 `app/rag/retrievers/multi_vector.py`，本轮又清掉了 `app/core/exceptions.py`、`app/rag/checkpointer/{factory,memory,time_travel}.py`、`app/rag/store/factory.py` 以及 `app/rag/memory/{long_term,short_term}.py`
-- **修复**:继续从 `rag/agents`、`rag/tools`、`rag/workflows`、`rag/tracing` 和 `deepdoc/vision` 等层做 codemod 统一到 `get_logger`
+#### C10(原 #16)— logger 两套已统一:`logging.getLogger(__name__)` **0 处** + `get_logger("...")` **121 处**
+- **进展**:`rag/agents`、`rag/tools`、`rag/workflows`、`rag/tracing`、`rag/output`、`rag/chunking`、`rag/evaluation` 和 `deepdoc/vision/t_ocr.py` 的剩余 19 处已统一到 `app.rag.core.logging.get_logger`。
+- **验证**:`pytest tests/test_logging_get_logger_source.py -q`;`rg -n "logging\.getLogger\(__name__\)" app --glob '*.py'` 无命中。
 
 ### F. 配置
 
@@ -174,8 +182,10 @@
 #### H3(原 #20)— `.then()` 无 `.catch()` 从 42 → **34 处**
 - **修复**:加 ESLint `@typescript-eslint/no-floating-promises`
 
-#### H4(原 #21)— `key={index}` 仍 14 处(无变化)
-- **修复**:用业务 ID
+#### H4(原 #21)— `key={index}` 已清零
+- **现状**:2026-05-13 实测精确命中为 8 处,已全部替换为语义稳定 key。
+- **范围**:`knowledge/feedback`、`knowledge/ingestion`、`graph-canvas`、`similarity-workbench` 的固定装饰/占位数组。
+- **验证**:`pnpm -C web exec vitest run react-keys.source.test.ts`；`rg -n "key=\{\s*index\s*\}" web --glob '*.tsx' --glob '*.ts'` 无命中。
 
 #### H5(原 #22)— memoized 组件仍只有 **4 处**,而 useMemo/useCallback 已到 **1565 处**
 - **影响**:缓存型 hooks 继续增长,但真正切断子树重渲染的 memoized 组件数量没有同步提升,优化结构失衡
@@ -194,14 +204,18 @@
 - **剩余位置**:`app/connectors/db/catalog_runner.py`、`core/migrations.py`、`rag/checkpointer/sqlite.py`、`services/table_tag_service.py`
 - **修复**:bandit B608 规则 + SQLAlchemy `text()` + `bindparam`
 
-#### H9(原 #27)— `requests` 20 文件 vs `httpx` 22 文件(无变化)
-- **修复**:迁 httpx async;ruff `S113` 禁 requests
+#### H9(原 #27)— `requests` 仍分布在 **29 个 app 文件**,已开始按风险分批迁移
+- **进展**:`app/api/v1/settings.py::_probe_http_json` 已从局部 `requests.get()` 改为同步 `httpx.Client`,并新增 `tests/test_settings_httpx_source.py` 防回归。
+- **现状**:剩余 requests 主要集中在 MinerU 服务、OCR/parser 上传链路、parsing enrich/preprocess 以及第三方 integrated pipeline;这些路径包含文件上传、长超时下载和兼容第三方 Response 类型,不宜一轮硬迁。
+- **验证**:`pytest tests/test_settings_httpx_source.py tests/test_settings_endpoints.py -q`;`rg -n "import requests|requests\.get\(" app/api/v1/settings.py` 无命中。
+- **修复**:继续按模块拆批迁移到 `httpx.Client` / `httpx.AsyncClient`,并为每个解析器补兼容测试后再启用 ruff `S113`。
 
 #### H10(原 #28)— Pydantic v1 残留从 35 → **11 处**
 - **修复**:codemod 替换 `.model_dump()` / `.model_dump_json()`
 
-#### H11(原 #29)— `datetime.now()` 无 tzinfo 仍 5 处
-- **修复**:`datetime.now(timezone.utc)`
+#### H11(原 #29)— `datetime.now()` 无 tzinfo 已清零
+- **现状**:`app/**/*.py` 裸 `datetime.now()` 已由 source guard 约束为 0；运行时代码改用兼容 Python 3.10 的 `datetime.now(timezone.utc)`。
+- **验证**:`pytest tests/test_datetime_now_utc_source.py -q`；`rg -n "datetime\.now\(\)" app --glob '*.py'` 无命中。
 
 #### H12(原 #31)— 5 个 utils.py 散落
 - **修复**:按职能命名(`text_utils.py` / `geom_utils.py`)或并入 `core/`
@@ -248,12 +262,14 @@
 #### M1(原 #2 降级)— `except + logger.warning` 无 raise 从 205 → **6 处** 🟡
 - **修复**:剩余 6 处补 `error_code` 写到响应
 
-#### M2(原 #40 + #41)— 重型库懒加载 + monaco 16MB
-- monaco 仅 1 处使用 + plotly / three / lottie 等
-- **修复**:`next/dynamic` 懒加载
+#### M2(原 #40 + #41)— 重型库懒加载 + monaco 16MB 已重新定级
+- **现状**:`web/public/monaco` 本地仍约 16M,但 `git ls-files 'web/public/**' | rg "monaco|vs/"` 无命中,且 `.gitignore` 已覆盖 `web/public/monaco/`。
+- **说明**:Monaco runtime 仍由 `predev/prebuild` 的 `scripts/sync-monaco-assets.mjs` 生成到 public path,以匹配 `loader.config({ paths: { vs: '/monaco/vs' } })`;当前仓库治理风险已关闭,剩余只是本地生成物体积。
+- **验证**:`git check-ignore -v web/public/monaco/vs/loader.js`;`git ls-files 'web/public/**' | rg "monaco|vs/"` 无命中。
 
-#### M3(原 #42)— TS target 仍 `ES2017`(Next 16 / React 19 时代偏老)
-- **修复**:升 `ES2022` 或 `ESNext` + browserslist 控制
+#### M3(原 #42)— TS target 已升 `ES2022`
+- **现状**:`web/tsconfig.json` 的 `compilerOptions.target` 已从 `ES2017` 升到 `ES2022`。
+- **验证**:`pnpm -C web exec vitest run tsconfig.source.test.ts`；`pnpm -C web exec tsc --noEmit`。
 
 #### M4(原 #43)— zustand store 3 个仍散在 `web/store/`
 - **修复**:写 ADR 明确 zustand vs Context vs TanStack Query 分工
@@ -281,8 +297,10 @@
 - **进展**:`requirements-dev.txt` 已存在
 - **剩余**:未拆 `requirements-runtime.txt` + `constraints.txt`
 
-#### M11(原 #54)— CI workflows 10 个仍无 `lint-fast.yml`(< 3 min PR 必跑)
-- **修复**:拆 `lint-fast.yml`(PR 必跑)vs `ci.yml`(slow)
+#### M11(原 #54)— CI fast lane 已补 `lint-fast.yml`
+- **现状**:新增 `.github/workflows/lint-fast.yml`,覆盖 `pull_request` / `push: main` / `workflow_dispatch`,与慢速 `ci.yml` 分离。
+- **范围**:只安装 `ruff` 和 web 依赖,运行 Python lint、web lint、web typecheck,不跑后端全量依赖和 Playwright。
+- **验证**:`pytest tests/test_lint_fast_workflow.py -q`。
 
 ---
 
@@ -303,15 +321,15 @@
 
 | 周次 | 任务 | 收益 | 工作量 |
 |---|---|---|---|
-| **W1** | **C5 剩余 ONNX 迁 LFS + C10 logger 二选一 codemod + C4 chat.py 继续拆流式主链路** | 仓库瘦身 + 观测一致性 + 主链路止血 | 4 天 |
+| **W1** | **C5 剩余 ONNX 迁 LFS + C4 chat.py 继续拆流式主链路** | 仓库瘦身 + 主链路止血 | 4 天 |
 | **W2** | **C2 documents.py 继续拆 + C3 connectors.py 继续拆 + C1 用真实 DB 验证索引落库** | API 层失控继续止血 | 5 天 |
 | **W3** | **H15 e2e 重建 4 flow(倒退最严重)+ H13 similarity-workbench / quarantine page 拆分(倒退)** | 倒退止血 | 5 天 |
 | **W4** | **C4 chat.py + stream_chat 大函数拆分** | 倒退 + 长函数同步治理 | 5 天 |
 | **W5** | **C2 documents.py 继续拆(chunk preview / upload pipeline / version mgmt)+ C3 connectors.py 继续拆** | API 层失控完成 | 5 天 |
 | **W6** | **H1 hot path useMutation 迁移(目标 28→80)+ H5 React.memo 重建(0→20)+ H2 graph-viewer/force-graph-3d 类型** | 前端治理 | 5 天 |
 | **W7** | **C9 endpoint docstring 补 100 个(ruff D102)+ H10 Pydantic v2 codemod(11→0)+ H8 f-string SQL bandit(20→0)** | 代码质量 | 5 天 |
-| **W8** | **H17 三个零测试 service 补 happy path + M11 lint-fast.yml + M10 requirements 完成拆分** | 测试 + CI | 5 天 |
-| 后续 | H7/H14/M3 等持续治理 | 每月 1-2 项 |
+| **W8** | **H17 三个零测试 service 补 happy path + M10 requirements 完成拆分** | 测试 + CI | 5 天 |
+| 后续 | H7/H14 等持续治理 | 每月 1-2 项 |
 
 ---
 
@@ -369,7 +387,7 @@ grep -rPzo "(?s)def [^:]+:\s*\n\s*\"\"\"" app/ --include="*.py" | wc -l
 - 🎉 ESLint v9 flat config + Sentry + OTel 已就绪
 - 🎉 `app/core/sentry.py` `app/core/otel.py` 已存在
 - 🎉 ci/ 20 个 .v1.json 评测/性能基线
-- 🎉 **本轮新增确认**:`except: pass` 全清(418→0)/ print() 全清(28→0)/ CI gate 已加 / i18n 拆分完成 / openapi 单源收敛 / `.env.example` 大幅瘦身
+- 🎉 **本轮新增确认**:`except: pass` 全清(418→0)/ print() 全清(28→0)/ logger 入口统一 / CI gate 已加 / i18n 拆分完成 / openapi 单源收敛 / `.env.example` 大幅瘦身 / `datetime.now()` 裸调用清零 / `key={index}` 清零 / TS target 升 `ES2022` / `lint-fast.yml` 已补 / monaco public 入仓风险关闭
 
 **仍需注意的倒退**(本轮新增):
 - 🔴 `similarity-workbench.tsx` 2744 → 3425(+25%)
@@ -414,13 +432,14 @@ app/services/{documents,connectors,chat}/  # 目标目录
 
 # CI/CD
 ✅ ci.yml 已加 pull_request + push:main
-❌ .github/workflows/lint-fast.yml  # 待新建
+✅ .github/workflows/lint-fast.yml  # PR/push/main fast lane 已补
 
 # 安全
 ✅ web/next.config.mjs              # 已补 headers() 基础安全头
 ✅ app/api/v1/settings.py           # api_base 默认值已统一走 settings.LLM_API_BASE
 
 # 配置
+✅ web/tsconfig.json                # target 已从 ES2017 升 ES2022
 🟡 .env.example                     # 53KB → 3.3KB,未拆 .{db,llm,milvus,...}
 🟡 requirements-dev.txt             # 已有,缺 requirements-runtime.txt
 

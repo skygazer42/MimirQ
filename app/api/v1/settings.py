@@ -120,12 +120,10 @@ def _probe_http_json(url: str, *, timeout_sec: float = 0.6) -> tuple[dict[str, A
         return None, "empty url"
 
     try:
-        import requests
-    except Exception as exc:  # noqa: BLE001
-        return None, f"requests_missing: {str(exc)[:120]}"
+        import httpx
 
-    try:
-        resp = requests.get(url, timeout=float(timeout_sec or 0.6))
+        with httpx.Client(timeout=float(timeout_sec or 0.6)) as client:
+            resp = client.get(url)
     except Exception as exc:  # noqa: BLE001
         return None, f"request_failed: {str(exc)[:160]}"
 

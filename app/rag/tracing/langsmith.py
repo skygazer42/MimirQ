@@ -21,7 +21,6 @@ Usage:
 
 
 import functools
-import logging
 import os
 import time
 from collections.abc import Callable
@@ -32,8 +31,9 @@ from typing import Any, TypeVar
 from uuid import uuid4
 
 from app.core.config import settings
+from app.rag.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("rag.tracing.langsmith")
 
 
 # Configuration

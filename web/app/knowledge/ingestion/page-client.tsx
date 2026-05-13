@@ -1456,7 +1456,7 @@ function LoadingWireframe() {
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               {Array.from({ length: 4 }).map((_, index) => (
                 <div
-                  key={index}
+                  key={`ingestion-placeholder-card-${index}`}
                   className="h-24 rounded-[1.25rem] border border-dashed border-border/60 bg-muted/20"
                 />
               ))}

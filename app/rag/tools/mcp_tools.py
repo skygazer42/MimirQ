@@ -13,26 +13,26 @@ Usage:
     )
 """
 
-
 import ast
 import asyncio
 import contextlib
-import logging
 import math
 import re
 from collections.abc import Iterator
 from datetime import datetime
+from datetime import timezone as dt_timezone
 from typing import Any
 from uuid import UUID
 
 from app.core.config import settings
+from app.rag.core.logging import get_logger
 from app.rag.tools.mcp_client import (
     MCPToolRegistry,
     ToolParameter,
     get_mcp_registry,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger("rag.tools.mcp_tools")
 
 _NO_DOCUMENT_ACCESS_ERROR = "No document access"
 _NUMBER_TOO_LARGE_ERROR = "Number too large"
@@ -797,7 +797,7 @@ def get_current_time(
     Returns:
         Formatted time information
     """
-    now = datetime.now()
+    now = datetime.now(dt_timezone.utc)
 
     weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     weekdays_cn = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]

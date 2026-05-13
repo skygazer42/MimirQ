@@ -1,0 +1,58 @@
+name: Lint Fast
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: lint-fast-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-fast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python linter
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ruff==0.15.9
+
+      - name: Python lint
+        run: python -m ruff check app tests scripts main.py
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: "10.26.0"
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install web deps
+        working-directory: web
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Web lint
+        working-directory: web
+        run: pnpm run lint
+
+      - name: Web typecheck
+        working-directory: web
+        run: pnpm run typecheck

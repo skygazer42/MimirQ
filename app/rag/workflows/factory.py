@@ -5,10 +5,10 @@ Provides factory functions and configuration-based workflow selection.
 """
 
 
-import logging
 from typing import Any
 
 from app.core.config import settings
+from app.rag.core.logging import get_logger
 from app.rag.workflows.base import BaseWorkflow, WorkflowMode
 from app.rag.workflows.chain import ChainWorkflow
 from app.rag.workflows.evaluator_optimizer import EvaluatorOptimizerWorkflow
@@ -17,7 +17,7 @@ from app.rag.workflows.planner_worker import PlannerWorkerWorkflow
 from app.rag.workflows.react import ReActWorkflow
 from app.rag.workflows.routing import RoutingWorkflow
 
-logger = logging.getLogger(__name__)
+logger = get_logger("rag.workflows.factory")
 
 # Configuration
 WORKFLOW_MODE = getattr(settings, "WORKFLOW_MODE", "chain")

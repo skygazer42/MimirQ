@@ -9,18 +9,18 @@ Pattern: Split -> [Task1, Task2, ...] (parallel) -> Aggregate -> Result
 
 
 import asyncio
-import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from app.rag.core.hashing import stable_hash
+from app.rag.core.logging import get_logger
 from app.rag.workflows.base import (
     BaseWorkflow,
     WorkflowMode,
     WorkflowResult,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger("rag.workflows.parallelization")
 
 
 class ParallelTask:

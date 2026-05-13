@@ -3,7 +3,6 @@ Prebuilt Agent Integration for LangGraph.
 
 """
 
-import logging
 from collections.abc import Callable, Sequence
 from typing import Any
 
@@ -16,8 +15,9 @@ from langgraph.prebuilt.tool_node import tools_condition
 
 from app.core.config import settings
 from app.rag.checkpointer.factory import get_checkpointer
+from app.rag.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("rag.agents.prebuilt")
 
 # Configuration
 AGENT_MAX_ITERATIONS = getattr(settings, "AGENT_MAX_ITERATIONS", 10)

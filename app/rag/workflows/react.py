@@ -10,10 +10,10 @@ Pattern: Think -> Act -> Observe -> Think -> ... -> Answer
 
 import asyncio
 import json
-import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from app.rag.core.logging import get_logger
 from app.rag.middleware import ToolMiddlewareChain
 from app.rag.tools.hierarchical_retrieval_tools import chunk_read, keyword_search, semantic_search
 from app.rag.tools.retrieval_config_tool import configure_retrieval
@@ -24,7 +24,7 @@ from app.rag.workflows.base import (
     WorkflowResult,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger("rag.workflows.react")
 
 
 class Tool:

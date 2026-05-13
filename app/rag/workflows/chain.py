@@ -8,10 +8,10 @@ Pattern: Step1 -> Step2 -> Step3 -> ... -> Result
 """
 
 
-import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from app.rag.core.logging import get_logger
 from app.rag.workflows.base import (
     BaseWorkflow,
     WorkflowMode,
@@ -19,7 +19,7 @@ from app.rag.workflows.base import (
     WorkflowStep,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger("rag.workflows.chain")
 
 
 class ChainWorkflow(BaseWorkflow):

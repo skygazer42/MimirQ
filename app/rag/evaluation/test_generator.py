@@ -3,7 +3,6 @@ Test question generator.
 
 Generates test questions from documents or conversation history for RAGAS regression.
 """
-import logging
 import re
 from collections import Counter
 from typing import Any
@@ -23,9 +22,10 @@ from app.core.utils import get_proxy_url
 from app.models.chat import Conversation, Message
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
+from app.rag.core.logging import get_logger
 from app.services.document_access import filter_allowed_document_ids
 
-logger = logging.getLogger(__name__)
+logger = get_logger("rag.evaluation.test_generator")
 
 
 class GeneratedQuestion(BaseModel):
