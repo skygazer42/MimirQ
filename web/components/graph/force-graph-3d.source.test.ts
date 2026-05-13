@@ -11,9 +11,9 @@ describe('force graph 3d source', () => {
     expect(src).toContain('showEdgeLabels = false')
     expect(src).toContain('allowLinkLabelSprites')
     expect(src).toContain('linkThreeObject={')
-    expect(src).toContain('? (link: any) => {')
     expect(src).toContain('new SpriteText(label)')
     expect(src).toContain('nodeVal="val"')
+    expect(src).not.toContain(': any')
   })
 
   it('downgrades heavy 3D affordances for large graphs and during drag', () => {

@@ -218,13 +218,13 @@ Feedback: [specific feedback for improvement]"""
                 elif key == "overall":
                     try:
                         overall = float(value)
-                    except ValueError:
-                        pass
+                    except ValueError as exc:
+                        logger.debug("Ignoring non-critical evaluator optimizer parse fallback: %s", exc)
                 else:
                     try:
                         criteria_scores[key] = float(value)
-                    except ValueError:
-                        pass
+                    except ValueError as exc:
+                        logger.debug("Ignoring non-critical evaluator optimizer parse fallback: %s", exc)
 
         return EvaluationResult(overall, feedback, criteria_scores)
 

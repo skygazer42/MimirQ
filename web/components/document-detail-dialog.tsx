@@ -365,7 +365,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       const updated = await documentApi.patchUserMetadata(initialDocument.id, buildTagsPatch(nextTags))
       setDetail(updated)
       toast.success(t("toasts.tagsUpdated"))
-    } catch (err: any) {
+    } catch (err) {
       console.error('Update document tags failed:', err)
       const msg = formatApiError(err, t('errors.saveTagsFailed'))
       setTagsError(msg)
@@ -468,7 +468,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       setAccessInfo(acl)
       setLifecycleWritable(lifecyclePerm.writable)
       if (lifecyclePerm.error) setLifecyclePermError(lifecyclePerm.error)
-    } catch (err: any) {
+    } catch (err) {
       console.error('Load document detail error:', err)
       setDocError(formatApiError(err, t('errors.loadDetailFailed')))
     } finally {
@@ -557,7 +557,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       toast.success(t('toasts.lifecycleUpdated'))
       cancelEditLifecycle()
       await loadDetail()
-    } catch (err: any) {
+    } catch (err) {
       console.error('Update document lifecycle metadata failed:', err)
       const msg = formatApiError(err, t('errors.saveLifecycleFailed'))
       setLifecycleError(msg)
@@ -575,7 +575,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
     try {
       const data = await documentApi.listVersions(initialDocument.id)
       setVersions(data)
-    } catch (err: any) {
+    } catch (err) {
       console.error('Load document versions error:', err)
       setVersionsError(formatApiError(err, t('errors.loadVersionsFailed')))
     } finally {
@@ -589,7 +589,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
     try {
       const data = await documentApi.getTimeline(initialDocument.id, { limit: 200 })
       setTimeline(data)
-    } catch (err: any) {
+    } catch (err) {
       console.error('Load document timeline error:', err)
       setTimelineError(formatApiError(err, t('errors.loadTimelineFailed')))
     } finally {
@@ -621,7 +621,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       const res = await fetchChunksPage(0)
       setChunks(res.items || [])
       setChunksTotal(Number(res.total || 0))
-    } catch (err: any) {
+    } catch (err) {
       console.error('Load document chunks error:', err)
       setChunkError(formatApiError(err, t('errors.loadChunksFailed')))
     } finally {
@@ -638,7 +638,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       const res = await fetchChunksPage(chunks.length)
       setChunks((prev) => [...prev, ...(res.items || [])])
       setChunksTotal(Number(res.total || 0))
-    } catch (err: any) {
+    } catch (err) {
       console.error('Load more chunks error:', err)
       setChunkError(formatApiError(err, t('errors.loadMoreChunksFailed')))
     } finally {
@@ -784,7 +784,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
         setViewPipelineHash(ACTIVE_PIPELINE_VALUE)
         await Promise.all([loadDetail(), loadVersions()])
         await reloadChunks()
-      } catch (err: any) {
+      } catch (err) {
         console.error('Activate document version failed:', err)
         toast.error(formatApiError(err, t('errors.activateVersionFailed')))
       } finally {
@@ -810,7 +810,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
         await loadVersions()
         await loadDetail()
         await reloadChunks()
-      } catch (err: any) {
+      } catch (err) {
         console.error('Delete document version failed:', err)
         toast.error(formatApiError(err, t('errors.deleteVersionFailed')))
       } finally {
@@ -826,9 +826,9 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
     try {
       await kgApi.extract(displayDoc.id, { async: true, replace_existing: true, prune_orphan_entities: true })
       toast.success(t('toasts.kgExtractStarted'))
-    } catch (err: any) {
+    } catch (err) {
       console.error('KG extract failed:', err)
-      toast.error(err?.message || t('errors.kgExtractFailed'))
+      toast.error(formatApiError(err, t('errors.kgExtractFailed')))
     } finally {
       setIsKgWorking(false)
     }
@@ -840,9 +840,9 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
     try {
       const res = await kgApi.deleteDocumentKG(displayDoc.id, { prune_orphan_entities: true })
       toast.success(t('toasts.kgDeleted', { events: res.events_deleted, entities: res.entities_pruned }))
-    } catch (err: any) {
+    } catch (err) {
       console.error('KG delete failed:', err)
-      toast.error(err?.message || t('errors.kgDeleteFailed'))
+      toast.error(formatApiError(err, t('errors.kgDeleteFailed')))
     } finally {
       setIsKgWorking(false)
     }
@@ -855,7 +855,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       const blob = await documentApi.cleanDocx(displayDoc.id)
       downloadBlob(blob, `${safeFilename(displayDoc.filename, displayDoc.id)}.clean.docx`)
       toast.success('已下载清洗 DOCX')
-    } catch (err: any) {
+    } catch (err) {
       console.error('Download clean DOCX failed:', err)
       toast.error(formatApiError(err, '下载清洗 DOCX 失败'))
     } finally {
@@ -909,7 +909,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       )
       toast.success(t('toasts.accessUpdated'))
       setAccessDialogOpen(false)
-    } catch (err: any) {
+    } catch (err) {
       console.error('Update document access failed:', err)
       toast.error(formatApiError(err, t('errors.updateAccessFailed')))
     }

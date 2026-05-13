@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import requests
-
 from app.core.config import settings
 from app.parsing.preprocess.image_preprocess import preprocess_image_document
 from app.parsing.preprocess.model_loader import LoadedModel
@@ -100,10 +98,14 @@ def test_image_preprocess_applies_handwriting_cleanup_via_http_backend(tmp_path:
     img = tmp_path / "handwritten-note.png"
     img.write_bytes(b"before")
 
-    def _fake_post(*_args, **_kwargs):  # noqa: ANN001, ANN002, ANN003
-        return _FakeResponse(content=b"after")
+    async def _fake_http_cleanup_async(**_kwargs):  # noqa: ANN001
+        info = dict(_kwargs.get("info") or {})
+        _kwargs["output_path"].write_bytes(b"after")
+        return True, "cleanup_ok", info
 
-    monkeypatch.setattr(requests, "post", _fake_post)
+    import app.parsing.preprocess.handwriting_cleanup as cleanup_mod
+
+    monkeypatch.setattr(cleanup_mod, "_cleanup_handwriting_via_http_async", _fake_http_cleanup_async, raising=True)
     monkeypatch.setattr(settings, "IMAGE_PREPROCESS_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "ORIENTATION_ENABLED", False, raising=False)
     monkeypatch.setattr(settings, "DESKEW_ENABLED", False, raising=False)

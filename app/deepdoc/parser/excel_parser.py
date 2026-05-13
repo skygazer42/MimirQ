@@ -49,13 +49,13 @@ def find_codec(blob):
         try:
             blob[:1024].decode(c)
             return c
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.debug("Ignoring non-critical Excel parser codec fallback failure: %s", exc)
         try:
             blob.decode(c)
             return c
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.debug("Ignoring non-critical Excel parser codec fallback failure: %s", exc)
 
     return "utf-8"
 

@@ -2,6 +2,7 @@
 Markdown governance processor shared by parsing and indexing pipelines.
 """
 
+import logging
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any
@@ -38,6 +39,8 @@ from app.rag.preprocessing.rules import DEFAULT_MARKDOWN_RULES
 from app.rag.preprocessing.secrets import redact_secrets
 from app.rag.preprocessing.tables import normalize_markdown_tables
 from app.rag.preprocessing.urls import normalize_urls as normalize_urls_fn
+
+logger = logging.getLogger(__name__)
 
 GOVERNANCE_RULESET_VERSION = "1"
 
@@ -395,8 +398,8 @@ class GovernanceProcessor:
                     text = para.text
                     paragraphs_dropped = int(getattr(para, "paragraphs_dropped", 0) or 0)
                     changed_any = changed_any or bool(getattr(para, "changed", False))
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical markdown governance fallback failure: %s", exc)
 
             if trim_references:
                 try:
@@ -404,8 +407,8 @@ class GovernanceProcessor:
                     text = ref.text
                     references_removed_lines = int(getattr(ref, "removed_lines", 0) or 0)
                     changed_any = changed_any or bool(getattr(ref, "changed", False))
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical markdown governance fallback failure: %s", exc)
 
             if normalize_urls:
                 try:
@@ -413,8 +416,8 @@ class GovernanceProcessor:
                     text = url.text
                     urls_changed = int(getattr(url, "urls_changed", 0) or 0)
                     changed_any = changed_any or bool(getattr(url, "changed", False))
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical markdown governance fallback failure: %s", exc)
 
             paragraphs_dropped_total += int(paragraphs_dropped or 0)
             references_removed_total += int(references_removed_lines or 0)

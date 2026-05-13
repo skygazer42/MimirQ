@@ -336,8 +336,8 @@ async def _auto_update_summary_background(*, tenant_id: UUID, conversation_id: U
         finally:
             try:
                 db2.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical chat router fallback failure: %s", exc)
     except Exception:
         return
 
@@ -415,8 +415,8 @@ async def _persist_chat_stream_turn_background(
                             max_entities=int(getattr(settings, "STRUCTURED_MEMORY_MAX_ENTITIES", 20) or 20),
                             max_facts=int(getattr(settings, "STRUCTURED_MEMORY_MAX_FACTS", 8) or 8),
                         )
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical chat router fallback failure: %s", exc)
 
                 assistant_message = Message(
                     id=assistant_message_id,
@@ -461,8 +461,8 @@ async def _persist_chat_stream_turn_background(
             finally:
                 try:
                     db2.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical chat router fallback failure: %s", exc)
 
             return True
         except Exception:
@@ -1373,8 +1373,8 @@ async def chat(
                     retrieval_mode=str(metrics_data.get("retrieval_mode") or effective_rag_config.retrieval_mode or "") or None,
                     citations_count=int(len(citations_data or [])),
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical chat router fallback failure: %s", exc)
 
         # 3) Persist assistant response.
         # Persist dataset-level default metadata into the stored message for later analytics/debugging.
@@ -2060,8 +2060,8 @@ async def stream_chat(
                         max_entities=int(getattr(settings, "STRUCTURED_MEMORY_MAX_ENTITIES", 20) or 20),
                         max_facts=int(getattr(settings, "STRUCTURED_MEMORY_MAX_FACTS", 8) or 8),
                     )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical chat router fallback failure: %s", exc)
 
             assistant_message = Message(
                 id=assistant_message_id,
@@ -2389,8 +2389,8 @@ async def stream_chat(
                             max_entities=int(getattr(settings, "STRUCTURED_MEMORY_MAX_ENTITIES", 20) or 20),
                             max_facts=int(getattr(settings, "STRUCTURED_MEMORY_MAX_FACTS", 8) or 8),
                         )
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical chat router fallback failure: %s", exc)
 
                 assistant_message = Message(
                     id=assistant_message_id,
@@ -2535,8 +2535,8 @@ async def stream_chat(
                             disconnected = True
                             producer_task.cancel()
                             break
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical chat router fallback failure: %s", exc)
 
                 try:
                     ev = await asyncio.wait_for(q.get(), timeout=heartbeat_sec) if heartbeat_sec > 0 else await q.get()
@@ -2584,8 +2584,8 @@ async def stream_chat(
                                 metrics_data.setdefault("dataset_id", str(dataset_id_used))
                             if isinstance(event.get("data"), dict) and isinstance(event["data"].get("metrics"), dict):
                                 event["data"]["metrics"].setdefault("dataset_id", str(dataset_id_used))
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("Ignoring non-critical chat router fallback failure: %s", exc)
 
                     if tenant_qps_meta.get("enabled"):
                         try:
@@ -2593,8 +2593,8 @@ async def stream_chat(
                                 metrics_data.setdefault("tenant_qps_quota", tenant_qps_meta)
                             if isinstance(event.get("data"), dict) and isinstance(event["data"].get("metrics"), dict):
                                 event["data"]["metrics"].setdefault("tenant_qps_quota", tenant_qps_meta)
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("Ignoring non-critical chat router fallback failure: %s", exc)
 
                     if quota_meta.get("enabled"):
                         try:
@@ -2602,8 +2602,8 @@ async def stream_chat(
                                 metrics_data.setdefault("quota", quota_meta)
                             if isinstance(event.get("data"), dict) and isinstance(event["data"].get("metrics"), dict):
                                 event["data"]["metrics"].setdefault("quota", quota_meta)
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("Ignoring non-critical chat router fallback failure: %s", exc)
 
                     if dataset_rag_defaults_applied_fields:
                         try:
@@ -2615,8 +2615,8 @@ async def stream_chat(
                                 event["data"]["metrics"].setdefault(
                                     "dataset_rag_defaults_fields", dataset_rag_defaults_applied_fields
                                 )
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("Ignoring non-critical chat router fallback failure: %s", exc)
 
                     if dataset_rag_config_template_defaults_applied_fields:
                         try:
@@ -2632,8 +2632,8 @@ async def stream_chat(
                                     "dataset_rag_config_template_defaults_fields",
                                     dataset_rag_config_template_defaults_applied_fields,
                                 )
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("Ignoring non-critical chat router fallback failure: %s", exc)
 
                     if rag_config_template_meta:
                         try:
@@ -2641,8 +2641,8 @@ async def stream_chat(
                                 metrics_data.setdefault("rag_config_template", rag_config_template_meta)
                             if isinstance(event.get("data"), dict) and isinstance(event["data"].get("metrics"), dict):
                                 event["data"]["metrics"].setdefault("rag_config_template", rag_config_template_meta)
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("Ignoring non-critical chat router fallback failure: %s", exc)
 
                     if dataset_prompt_defaults_applied_fields:
                         try:
@@ -2656,8 +2656,8 @@ async def stream_chat(
                                 event["data"]["metrics"].setdefault(
                                     "dataset_prompt_defaults_fields", dataset_prompt_defaults_applied_fields
                                 )
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("Ignoring non-critical chat router fallback failure: %s", exc)
 
                 # Accumulate full response.
                 if event.get("type") == "token":
@@ -2756,8 +2756,8 @@ async def stream_chat(
                         max_entities=int(getattr(settings, "STRUCTURED_MEMORY_MAX_ENTITIES", 20) or 20),
                         max_facts=int(getattr(settings, "STRUCTURED_MEMORY_MAX_FACTS", 8) or 8),
                     )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical chat router fallback failure: %s", exc)
 
             assistant_message = Message(
                 id=assistant_message_id,

@@ -7,32 +7,38 @@ heavy ML dependencies in-process.
 
 from __future__ import annotations
 
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-import requests
+import httpx
 
 
-def deskew_via_http(
+def _run_coroutine_sync(factory):
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(factory())
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        return executor.submit(lambda: asyncio.run(factory())).result()
+
+
+async def _deskew_via_http_async(
     *,
     input_path: Path,
     output_path: Path,
     url: str,
     timeout_sec: float,
 ) -> tuple[bool, str]:
-    """
-    Generic deskew via an external service.
-
-    Contract (best-effort):
-    - POST multipart form with file field "file"
-    - Response body is treated as the processed file bytes (PDF or image).
-    """
     try:
         file_bytes = input_path.read_bytes()
-        resp = requests.post(
-            str(url).strip(),
-            files={"file": (input_path.name, file_bytes, "application/octet-stream")},
-            timeout=float(timeout_sec),
-        )
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                str(url).strip(),
+                files={"file": (input_path.name, file_bytes, "application/octet-stream")},
+                timeout=float(timeout_sec),
+            )
     except Exception as exc:  # noqa: BLE001
         return False, f"deskew_http_failed:{exc.__class__.__name__}"
 
@@ -49,5 +55,28 @@ def deskew_via_http(
         return False, f"deskew_write_failed:{exc.__class__.__name__}"
 
 
-__all__ = ["deskew_via_http"]
+def deskew_via_http(
+    *,
+    input_path: Path,
+    output_path: Path,
+    url: str,
+    timeout_sec: float,
+) -> tuple[bool, str]:
+    """
+    Generic deskew via an external service.
 
+    Contract (best-effort):
+    - POST multipart form with file field "file"
+    - Response body is treated as the processed file bytes (PDF or image).
+    """
+    return _run_coroutine_sync(
+        lambda: _deskew_via_http_async(
+            input_path=input_path,
+            output_path=output_path,
+            url=url,
+            timeout_sec=timeout_sec,
+        )
+    )
+
+
+__all__ = ["deskew_via_http"]

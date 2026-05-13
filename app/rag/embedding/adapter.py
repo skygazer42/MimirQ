@@ -170,8 +170,8 @@ class LangChainEmbeddingsAdapter:
                         "corrupt": int(cache_corrupt),
                     }
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical embedding adapter fallback failure: %s", exc)
 
         if self._normalize:
             embeddings = self._normalize_vectors(embeddings)
@@ -236,8 +236,8 @@ class LangChainEmbeddingsAdapter:
                     "misses": int(cache_misses),
                 }
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical embedding adapter fallback failure: %s", exc)
 
         if self._normalize:
             embeddings = self._normalize_vectors(embeddings)

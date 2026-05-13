@@ -226,12 +226,12 @@ def _preprocess_pdf_pages_via_raster(
     finally:
         try:
             src.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical image preprocess fallback failure: %s", exc)
         try:
             out.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical image preprocess fallback failure: %s", exc)
 
 
 @dataclass(frozen=True, slots=True)

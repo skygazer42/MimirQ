@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import logging
 import re
 from io import BytesIO
 from pathlib import Path
@@ -12,6 +13,7 @@ from app.core.config import settings
 
 _GENERIC_IMAGE_TEXT_RE = re.compile(r"^(image|figure|photo|picture|diagram|chart)\b", re.IGNORECASE)
 _PAGE_ONLY_RE = re.compile(r"^page\s+\d+\s*$", re.IGNORECASE)
+logger = logging.getLogger(__name__)
 
 
 def _clean_single_line(s: str, *, max_chars: int) -> str:
@@ -316,8 +318,8 @@ def decode_image_codes(image: PILImage.Image) -> dict[str, Any]:
                 visual_kind = "qr"
             elif raw_type and not visual_kind:
                 visual_kind = "barcode"
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring non-critical image understanding fallback failure: %s", exc)
 
     if not values:
         try:
@@ -333,8 +335,8 @@ def decode_image_codes(image: PILImage.Image) -> dict[str, Any]:
                     values.append(text)
                     visual_kind = "qr"
                     break
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical image understanding fallback failure: %s", exc)
 
     if not values:
         text = _decode_clean_ean13_from_pixels(image)

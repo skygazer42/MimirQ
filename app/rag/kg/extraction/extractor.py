@@ -1747,8 +1747,8 @@ class EventExtractor:
                 except Exception as exc:  # noqa: BLE001
                     try:
                         session.rollback()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical KG extractor fallback failure: %s", exc)
                     logger.warning("KG relation pass failed; continuing without relations: %s", str(exc)[:200])
 
             # Optional pass: extract Skill/SOP entities and link them to the new events.
@@ -2140,8 +2140,8 @@ class EventExtractor:
                                         if subj_id is None or obj_id is None:
                                             continue
                                         seen_skill_rel_keys.add((subj_id, str(pred or "").strip(), obj_id))
-                                except Exception:
-                                    pass
+                                except Exception as exc:
+                                    logger.debug("Ignoring non-critical KG extractor fallback failure: %s", exc)
 
                                 skill_ids_in_chunk: list[tuple[object, float, dict]] = []
                                 for item in items:
@@ -2384,8 +2384,8 @@ class EventExtractor:
                 except Exception as exc:  # noqa: BLE001
                     try:
                         session.rollback()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical KG extractor fallback failure: %s", exc)
                     logger.warning("KG skill pass failed; continuing without skills: %s", str(exc)[:200])
 
             if replace_existing and cleanup_chunk_ids:
@@ -2551,6 +2551,6 @@ class EventExtractor:
         except Exception as exc:  # noqa: BLE001
             try:
                 session.rollback()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical KG extractor fallback failure: %s", exc)
             logger.warning("Failed to write back kg metrics to document metadata: %s", str(exc)[:200])

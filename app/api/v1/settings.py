@@ -15,12 +15,14 @@ from typing import Annotated, Any
 from urllib.parse import urlparse, urlunparse
 from uuid import UUID
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
+from app.core.constants import DEFAULT_OPENAI_API_BASE
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.jwt_inspect import format_unix_ts_utc, try_get_jwt_exp
@@ -109,7 +111,7 @@ def _convert_service_url_to_health_url(api_url: str) -> str:
     return urlunparse(parsed._replace(path=path, params="", query="", fragment=""))
 
 
-def _probe_http_json(url: str, *, timeout_sec: float = 0.6) -> tuple[dict[str, Any] | None, str | None]:
+async def _probe_http_json(url: str, *, timeout_sec: float = 0.6) -> tuple[dict[str, Any] | None, str | None]:
     """
     Best-effort GET+JSON probe with short timeout.
 
@@ -120,12 +122,8 @@ def _probe_http_json(url: str, *, timeout_sec: float = 0.6) -> tuple[dict[str, A
         return None, "empty url"
 
     try:
-        import requests
-    except Exception as exc:  # noqa: BLE001
-        return None, f"requests_missing: {str(exc)[:120]}"
-
-    try:
-        resp = requests.get(url, timeout=float(timeout_sec or 0.6))
+        async with httpx.AsyncClient(timeout=float(timeout_sec or 0.6)) as client:
+            resp = await client.get(url)
     except Exception as exc:  # noqa: BLE001
         return None, f"request_failed: {str(exc)[:160]}"
 
@@ -216,7 +214,7 @@ class KGConfig(BaseModel):
 class LLMConfig(BaseModel):
     """LLM config."""
     api_key: str = ""
-    api_base: str = "https://api.openai.com/v1"
+    api_base: str = DEFAULT_OPENAI_API_BASE
     model: str = "gpt-4o-mini"
     temperature: float = 0.7
     timeout: int = 60
@@ -1438,7 +1436,7 @@ async def get_system_status(
     }
     if qianfan_enabled and qianfan_url_ok:
         health_url = _convert_service_url_to_health_url(qianfan_api_url)
-        data, err = _probe_http_json(health_url, timeout_sec=0.6)
+        data, err = await _probe_http_json(health_url, timeout_sec=0.6)
         if data is not None:
             qianfan_entry["health"] = data
             model_name = data.get("model")
@@ -1477,7 +1475,7 @@ async def get_system_status(
     }
     if paddlevl_enabled and paddlevl_url:
         health_url = _convert_service_url_to_health_url(paddlevl_api_url)
-        data, err = _probe_http_json(health_url, timeout_sec=0.6)
+        data, err = await _probe_http_json(health_url, timeout_sec=0.6)
         if data is not None:
             paddlevl_entry["health"] = data
             pv = data.get("pipeline_version") or data.get("version")
@@ -1522,7 +1520,7 @@ async def get_system_status(
     }
     if olmocr_enabled and olmocr_url_ok:
         health_url = _convert_service_url_to_health_url(olmocr_api_url)
-        data, err = _probe_http_json(health_url, timeout_sec=0.6)
+        data, err = await _probe_http_json(health_url, timeout_sec=0.6)
         if data is not None:
             olmocr_entry["health"] = data
         else:
@@ -1602,7 +1600,7 @@ async def get_system_status(
 
 class TestLLMRequest(BaseModel):
     api_key: str
-    api_base: str = "https://api.openai.com/v1"
+    api_base: str = DEFAULT_OPENAI_API_BASE
     model: str
     temperature: float = 0.0
     timeout: int = 20

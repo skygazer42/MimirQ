@@ -32,16 +32,17 @@ def test_add_chart_data_blocks_inserts_structured_payload_when_backend_succeeds(
 
     monkeypatch.setattr(settings, "CHART_TO_DATA_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "CHART_TO_DATA_API_URL", "http://chart.local/extract", raising=False)
-    monkeypatch.setattr(
-        "app.parsing.enrich.chart_to_data._call_chart_backend",
-        lambda **_kwargs: (
+
+    async def _fake_backend_async(**_kwargs):  # noqa: ANN001
+        return (
             {
                 "title": "Q1 Revenue",
                 "series": [{"name": "Revenue", "points": [["Jan", 10], ["Feb", 12], ["Mar", 15]]}],
             },
             "ok_json",
-        ),
-    )
+        )
+
+    monkeypatch.setattr("app.parsing.enrich.chart_to_data._call_chart_backend_async", _fake_backend_async)
 
     image_path = tmp_path / "chart.png"
     image_path.write_bytes(b"\x89PNG\r\n\x1a\nchart")

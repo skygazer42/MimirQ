@@ -21,10 +21,10 @@ def test_vlm_image_caption_uses_descriptive_alt_without_http_call(tmp_path: Path
 
     (tmp_path / "cat.png").write_bytes(b"not-an-image-but-ok")
 
-    def _boom(*args, **kwargs):  # noqa: ANN001, D401
-        raise AssertionError("requests.post should not be called for descriptive alt text")
+    async def _boom_async(**_kwargs):  # noqa: ANN001
+        raise AssertionError("caption backend should not be called for descriptive alt text")
 
-    monkeypatch.setattr(vlm_image_caption.requests, "post", _boom)
+    monkeypatch.setattr(vlm_image_caption, "_call_caption_backend_async", _boom_async)
 
     md = "![A cute kitten](cat.png)\n"
     out, added, audit = vlm_image_caption.add_vlm_image_captions(
@@ -46,21 +46,10 @@ def test_vlm_image_caption_calls_backend_for_generic_alt(tmp_path: Path, monkeyp
 
     (tmp_path / "cat.png").write_bytes(b"fake-bytes")
 
-    class _Resp:
-        status_code = 200
-        headers = {"content-type": "application/json"}
+    async def _caption_backend_async(**_kwargs):  # noqa: ANN001
+        return ("A simple chart of revenue growth", "ok_json")
 
-        def json(self):  # noqa: D401
-            return {"caption": "A simple chart of revenue growth"}
-
-        @property
-        def text(self):  # noqa: D401
-            return ""
-
-    def _post(*args, **kwargs):  # noqa: ANN001, D401
-        return _Resp()
-
-    monkeypatch.setattr(vlm_image_caption.requests, "post", _post)
+    monkeypatch.setattr(vlm_image_caption, "_call_caption_backend_async", _caption_backend_async)
 
     md = "![](cat.png)\n"
     out, added, audit = vlm_image_caption.add_vlm_image_captions(
@@ -80,10 +69,10 @@ def test_vlm_image_caption_calls_backend_for_generic_alt(tmp_path: Path, monkeyp
 def test_vlm_image_caption_blocks_path_traversal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     from app.parsing.enrich import vlm_image_caption
 
-    def _boom(*args, **kwargs):  # noqa: ANN001, D401
-        raise AssertionError("requests.post should not be called when the image path is outside origin")
+    async def _boom_async(**_kwargs):  # noqa: ANN001
+        raise AssertionError("caption backend should not be called when the image path is outside origin")
 
-    monkeypatch.setattr(vlm_image_caption.requests, "post", _boom)
+    monkeypatch.setattr(vlm_image_caption, "_call_caption_backend_async", _boom_async)
 
     md = "![](../secret.png)\n"
     out, added, audit = vlm_image_caption.add_vlm_image_captions(
@@ -97,4 +86,3 @@ def test_vlm_image_caption_blocks_path_traversal(tmp_path: Path, monkeypatch: py
     assert added == 1
     assert audit.images_attempted == 0
     assert audit.captions_added == 1
-

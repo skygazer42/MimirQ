@@ -95,8 +95,8 @@ def score_pdf_quality(
     finally:
         try:
             preprocess_info.update(_detect_preprocess_info(file_path, sample_pages=sample_pages))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical parsing quality fallback failure: %s", exc)
 
     # Weighted sum: text 40% + format 25% + table 20% + reading order 15%.
     final_score = (
@@ -185,8 +185,8 @@ def _detect_preprocess_info(file_path: Path, *, sample_pages: int) -> dict[str, 
         try:
             if doc is not None:
                 doc.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical parsing quality fallback failure: %s", exc)
 
 
 def _score_text_quality(
@@ -282,8 +282,8 @@ def _score_format_consistency(pages: list) -> float:
             # Paragraph count (split by blank lines).
             text = page.extract_text() or ""
             paragraph_count += len(re.findall(r"\n\n+", text)) + 1
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical parsing quality fallback failure: %s", exc)
 
     if not font_sizes:
         # No font info => default to mid score.
@@ -337,8 +337,8 @@ def _score_table_quality(pages: list) -> float:
                 # Consider "complete": at least 2x2 and reasonable cell count.
                 if rows >= 2 and len(cells) >= 4:
                     well_formed_tables += 1
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical parsing quality fallback failure: %s", exc)
 
     if total_tables == 0:
         # No tables => full score.

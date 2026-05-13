@@ -3,6 +3,14 @@ from __future__ import annotations
 import pytest
 
 
+def test_settings_uses_shared_openai_base_constant() -> None:
+    from app.core.constants import DEFAULT_OPENAI_API_BASE
+    from app.core.config import Settings
+
+    cfg = Settings()
+    assert cfg.LLM_API_BASE == DEFAULT_OPENAI_API_BASE
+
+
 def test_settings_rejects_non_positive_retrieval_top_k(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.core.config import Settings
 

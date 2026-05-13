@@ -9,6 +9,7 @@ from __future__ import annotations
 import gzip as gzip_lib
 import io
 import json
+import logging
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
@@ -42,6 +43,7 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 }
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+logger = logging.getLogger(__name__)
 
 _SENSITIVE_DETAIL_KEYS = {
     "sql",
@@ -360,8 +362,8 @@ def purge_audit_logs(
     except Exception:
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical audit router fallback failure: %s", exc)
 
     return AuditLogPurgeResponse(
         dry_run=bool(dry_run),
@@ -654,8 +656,8 @@ def export_access_graph_ndjson(
     except Exception:
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical audit router fallback failure: %s", exc)
 
     headers: dict[str, str] = {
         "Cache-Control": "no-store",
@@ -812,7 +814,7 @@ def access_graph_summary(
     except Exception:
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring non-critical audit router fallback failure: %s", exc)
 
     return payload

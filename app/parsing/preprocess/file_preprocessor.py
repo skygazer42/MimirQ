@@ -13,6 +13,7 @@ Security:
 
 from __future__ import annotations
 
+import logging
 import hashlib
 import os
 import re
@@ -25,6 +26,8 @@ from pathlib import Path
 from typing import Any
 
 from app.core.optional_deps import optional_import
+
+logger = logging.getLogger(__name__)
 
 TEXT_LIKE_EXTS = {
     ".txt",
@@ -174,8 +177,8 @@ def _detect_encoding(raw: bytes) -> tuple[str, float]:
                 best = from_bytes(raw).best()
                 if best is not None and getattr(best, "encoding", None):
                     return str(best.encoding), float(getattr(best, "confidence", 0.0) or 0.0)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical file preprocessor fallback failure: %s", exc)
 
     # Fallback to chardet (available in many envs).
     chardet = _get_chardet()
@@ -188,8 +191,8 @@ def _detect_encoding(raw: bytes) -> tuple[str, float]:
                 conf = float((res or {}).get("confidence") or 0.0)
                 if enc:
                     return enc, conf
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical file preprocessor fallback failure: %s", exc)
 
     return "utf-8", 0.0
 

@@ -12,6 +12,8 @@ import tempfile
 import time
 import uuid
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -159,8 +161,25 @@ class MinerUService:
             # Ensure response is closed to release connection back to pool.
             try:
                 await resp.aclose()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical MinerU fallback failure: %s", exc)
+
+    @staticmethod
+    def _run_coroutine_sync(factory: Callable[[], Any]) -> Any:
+        """
+        Execute an async MinerU helper from synchronous call sites.
+
+        When called from a plain sync context, reuse `asyncio.run`.
+        When a loop is already running in the current thread, offload the
+        coroutine to a short-lived worker thread so sync wrappers still work.
+        """
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(factory())
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            return executor.submit(lambda: asyncio.run(factory())).result()
 
     async def aapply_upload_url(self, filename: str, data_id: str) -> dict[str, Any]:
         """Request a single file upload URL (async)."""
@@ -191,31 +210,7 @@ class MinerUService:
                 "data_id": "xxx"
             }
         """
-        self._ensure_online_enabled()
-        import requests  # local import to avoid blocking deps in async paths
-
-        url = f"{self.api_base}/file-urls/batch"
-        data = {"files": [{"name": filename, "data_id": data_id}], "model_version": self.model_version}
-
-        try:
-            response = requests.post(url, headers=self._get_headers(), json=data, timeout=30)
-            response.raise_for_status()
-            result = response.json()
-        except requests.exceptions.HTTPError as e:
-            status = int(getattr(getattr(e, "response", None), "status_code", 0) or 0)
-            if status in {401, 403}:
-                raise RuntimeError(self._format_auth_error(status)) from e
-            raise RuntimeError(
-                f"MinerU API request failed (HTTP {status}) when applying upload URL: {str(e)[:200]}"
-            ) from e
-        except requests.exceptions.RequestException as e:
-            raise RuntimeError(f"Network error when applying upload URL: {str(e)}") from e
-
-        if result.get("code") == 0:
-            batch_id = result["data"]["batch_id"]
-            upload_url = result["data"]["file_urls"][0]
-            return {"batch_id": batch_id, "upload_url": upload_url, "data_id": data_id}
-        raise RuntimeError(f"Apply upload URL failed: {result.get('msg', 'Unknown error')}")
+        return self._run_coroutine_sync(lambda: self.aapply_upload_url(filename, data_id))
 
     async def aapply_batch_upload_urls(self, files: list[dict[str, str]]) -> dict[str, Any]:
         """Request batch upload URLs (async)."""
@@ -249,33 +244,7 @@ class MinerUService:
                 "files": [{"name": "...", "data_id": "..."}, ...]
             }
         """
-        import requests  # local import to avoid blocking deps in async paths
-
-        self._ensure_online_enabled()
-
-        if len(files) > 200:
-            raise ValueError("Maximum 200 files per batch")
-
-        url = f"{self.api_base}/file-urls/batch"
-        data = {"files": files, "model_version": self.model_version}
-
-        try:
-            response = requests.post(url, headers=self._get_headers(), json=data, timeout=30)
-            response.raise_for_status()
-            result = response.json()
-        except requests.exceptions.HTTPError as e:
-            status = int(getattr(getattr(e, "response", None), "status_code", 0) or 0)
-            if status in {401, 403}:
-                raise RuntimeError(self._format_auth_error(status)) from e
-            raise RuntimeError(
-                f"MinerU API request failed (HTTP {status}) when applying batch upload URLs: {str(e)[:200]}"
-            ) from e
-        except requests.exceptions.RequestException as e:
-            raise RuntimeError(f"Network error when applying batch upload URLs: {str(e)}") from e
-
-        if result.get("code") == 0:
-            return {"batch_id": result["data"]["batch_id"], "file_urls": result["data"]["file_urls"], "files": files}
-        raise RuntimeError(f"Apply batch upload URLs failed: {result.get('msg', 'Unknown error')}")
+        return self._run_coroutine_sync(lambda: self.aapply_batch_upload_urls(files))
 
     async def aupload_file(self, file_path: Path, upload_url: str) -> bool:
         """
@@ -311,24 +280,15 @@ class MinerUService:
             ok = int(getattr(resp, "status_code", 0) or 0) == 200
             try:
                 await resp.aclose()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical MinerU fallback failure: %s", exc)
             return ok
         except Exception as exc:  # noqa: BLE001
             logger.error("Upload file failed: %s", str(exc)[:200])
             return False
 
     def upload_file(self, file_path: Path, upload_url: str) -> bool:
-        import requests  # local import to avoid blocking deps in async paths
-
-        try:
-            with open(file_path, "rb") as f:
-                response = requests.put(upload_url, data=f, timeout=300)
-                response.raise_for_status()
-                return response.status_code == 200
-        except Exception as e:  # noqa: BLE001
-            logger.error("Upload file failed: %s", str(e)[:200])
-            return False
+        return bool(self._run_coroutine_sync(lambda: self.aupload_file(file_path, upload_url)))
 
     async def aget_task_status(self, batch_id: str) -> dict[str, Any]:
         """
@@ -356,30 +316,7 @@ class MinerUService:
         Returns:
             Task status info.
         """
-        import requests  # local import to avoid blocking deps in async paths
-
-        self._ensure_online_enabled()
-
-        url = f"{self.api_base}/extract-results/batch/{batch_id}"
-
-        try:
-            response = requests.get(url, headers=self._get_headers(), timeout=30)
-            response.raise_for_status()
-            result = response.json()
-        except requests.exceptions.HTTPError as e:
-            status = int(getattr(getattr(e, "response", None), "status_code", 0) or 0)
-            if status in {401, 403}:
-                raise RuntimeError(self._format_auth_error(status)) from e
-            raise RuntimeError(
-                f"MinerU API request failed (HTTP {status}) when getting task status: {str(e)[:200]}"
-            ) from e
-        except requests.exceptions.RequestException as e:
-            raise RuntimeError(f"Network error when getting task status: {str(e)}") from e
-
-        if result.get("code") == 0:
-            data = result.get("data") or {}
-            return self._normalize_batch_status(data)
-        self._raise_batch_results_error(result.get("msg", "Unknown error"))
+        return self._run_coroutine_sync(lambda: self.aget_task_status(batch_id))
 
     @staticmethod
     def _normalize_batch_status(batch_data: dict[str, Any]) -> dict[str, Any]:
@@ -482,27 +419,7 @@ class MinerUService:
 
     def get_batch_results(self, batch_id: str) -> dict[str, Any]:
         """Fetch raw MinerU batch results (sync)."""
-        import requests  # local import to avoid blocking deps in async paths
-
-        self._ensure_online_enabled()
-        url = f"{self.api_base}/extract-results/batch/{batch_id}"
-        try:
-            response = requests.get(url, headers=self._get_headers(), timeout=30)
-            response.raise_for_status()
-            result = response.json()
-        except requests.exceptions.HTTPError as e:
-            status = int(getattr(getattr(e, "response", None), "status_code", 0) or 0)
-            if status in {401, 403}:
-                raise RuntimeError(self._format_auth_error(status)) from e
-            raise RuntimeError(
-                f"MinerU API request failed (HTTP {status}) when getting batch results: {str(e)[:200]}"
-            ) from e
-        except requests.exceptions.RequestException as e:
-            raise RuntimeError(f"Network error when getting batch results: {str(e)}") from e
-
-        if result.get("code") == 0:
-            return result.get("data") or {}
-        self._raise_batch_results_error(result.get("msg", "Unknown error"))
+        return self._run_coroutine_sync(lambda: self.aget_batch_results(batch_id))
 
     async def await_for_completion(
         self,
@@ -569,29 +486,14 @@ class MinerUService:
         timeout: int = 600,
         poll_interval: int = 5,
     ) -> dict[str, Any]:
-        start_time = time.time()
-
-        while True:
-            if time.time() - start_time > timeout:
-                raise TimeoutError(f"Task {batch_id} timeout after {timeout} seconds")
-
-            batch = self.get_batch_results(batch_id)
-            extract_result = batch.get("extract_result") or []
-            if not isinstance(extract_result, list):
-                extract_result = []
-
-            item = self._pick_extract_item(extract_result, data_id=data_id, filename=filename)
-            state = str((item or {}).get("state") or "").lower()
-
-            logger.info("Task %s state=%s (data_id=%s)", batch_id, state or "unknown", data_id or "")
-
-            if state == "done":
-                return item or {}
-            if state == "failed":
-                err = (item or {}).get("err_msg") or "Unknown error"
-                raise RuntimeError(f"Task {batch_id} failed: {err}")
-
-            time.sleep(poll_interval)
+        return self._run_coroutine_sync(
+            lambda: self.await_for_completion(
+                batch_id,
+                data_id=data_id,
+                filename=filename,
+                poll_interval=poll_interval,
+            )
+        )
 
     async def adownload_result(self, result_url: str) -> str:
         """Download parse result (Markdown, async)."""
@@ -602,8 +504,8 @@ class MinerUService:
         finally:
             try:
                 await resp.aclose()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical MinerU fallback failure: %s", exc)
 
     def download_result(self, result_url: str) -> str:
         """
@@ -615,14 +517,7 @@ class MinerUService:
         Returns:
             Markdown content.
         """
-        import requests  # local import to avoid blocking deps in async paths
-
-        try:
-            response = requests.get(result_url, timeout=60)
-            response.raise_for_status()
-            return response.text
-        except requests.exceptions.RequestException as e:
-            raise RuntimeError(f"Download result failed: {str(e)}") from e
+        return str(self._run_coroutine_sync(lambda: self.adownload_result(result_url)))
 
     async def adownload_result_zip(self, zip_url: str) -> bytes:
         """Download parse result ZIP bytes (async)."""
@@ -633,19 +528,12 @@ class MinerUService:
         finally:
             try:
                 await resp.aclose()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical MinerU fallback failure: %s", exc)
 
     def download_result_zip(self, zip_url: str) -> bytes:
         """Download parse result ZIP bytes (sync)."""
-        import requests  # local import to avoid blocking deps in async paths
-
-        try:
-            response = requests.get(zip_url, timeout=300)
-            response.raise_for_status()
-            return bytes(response.content)
-        except requests.exceptions.RequestException as e:
-            raise RuntimeError(f"Download result ZIP failed: {str(e)}") from e
+        return bytes(self._run_coroutine_sync(lambda: self.adownload_result_zip(zip_url)))
 
     @staticmethod
     def _extract_markdown_from_zip_bytes(zip_bytes: bytes) -> str:
@@ -845,8 +733,8 @@ class MinerUService:
         finally:
             try:
                 zf.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring non-critical MinerU fallback failure: %s", exc)
 
     def _documents_from_zip_bytes(
         self,
@@ -880,8 +768,8 @@ class MinerUService:
                 if tmp_zip_path and tmp_zip_path.exists():
                     try:
                         tmp_zip_path.unlink()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical MinerU fallback failure: %s", exc)
         else:
             markdown_content = self._extract_markdown_from_zip_bytes(zip_bytes)
             if tenant_id:
@@ -972,8 +860,8 @@ class MinerUService:
                 if tmp_zip_path and tmp_zip_path.exists():
                     try:
                         tmp_zip_path.unlink()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical MinerU fallback failure: %s", exc)
         else:
             markdown_content = self._extract_markdown_from_zip_bytes(zip_bytes)
             if tenant_id:
@@ -1064,8 +952,8 @@ class MinerUService:
             finally:
                 try:
                     await resp.aclose()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical MinerU fallback failure: %s", exc)
 
             if ("zip" not in content_type.lower()) and (OCTET_STREAM not in content_type.lower()):
                 raise RuntimeError(f"MinerU returned unexpected content type: {content_type}")
@@ -1102,92 +990,15 @@ class MinerUService:
         Returns:
             Parsed LangChain Document list.
         """
-        self._ensure_online_enabled()
-
-        # 1. Request upload URL.
-        data_id = data_id or str(file_path.stem)
-        logger.info("Applying upload URL for %s...", file_path.name)
-        upload_info = self.apply_upload_url(file_path.name, data_id)
-
-        batch_id = upload_info["batch_id"]
-        upload_url = upload_info["upload_url"]
-
-        # 2. Upload file.
-        logger.info("Uploading %s...", file_path.name)
-        success = self.upload_file(file_path, upload_url)
-        if not success:
-            raise RuntimeError(f"Failed to upload {file_path.name}")
-
-        logger.info("Upload complete. Batch ID: %s", batch_id)
-
-        # 3. Wait for parsing completion.
-        logger.info("Waiting for parsing completion...")
-        item = self.wait_for_completion(
-            batch_id,
-            data_id=data_id,
-            filename=file_path.name,
-            timeout=600,
-            poll_interval=5,
+        return self._run_coroutine_sync(
+            lambda: self.aparse_file(
+                file_path=file_path,
+                data_id=data_id,
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                document_id=document_id,
+            )
         )
-
-        # 4. Download parse result.
-        zip_url = (item or {}).get("full_zip_url") or (item or {}).get("zip_url")
-        if not zip_url:
-            raise RuntimeError("No result ZIP URL in response")
-
-        logger.info("Downloading result ZIP...")
-        zip_bytes = self.download_result_zip(str(zip_url))
-
-        images_meta: list[dict] = []
-        if dataset_id and document_id and settings.MINIO_ENABLED:
-            tmp_zip_path: Path | None = None
-            try:
-                with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
-                    tmp_zip.write(zip_bytes)
-                    tmp_zip_path = Path(tmp_zip.name)
-
-                result = zip_image_processor.process_zip_with_images(
-                    zip_path=tmp_zip_path,
-                    tenant_id=str(tenant_id) if tenant_id else None,
-                    dataset_id=str(dataset_id),
-                    document_id=str(document_id),
-                )
-                markdown_content = extract_markdown_response_text(result)
-                images_meta = result.get("images") or []
-            finally:
-                if tmp_zip_path and tmp_zip_path.exists():
-                    try:
-                        tmp_zip_path.unlink()
-                    except Exception:
-                        pass
-        else:
-            markdown_content = self._extract_markdown_from_zip_bytes(zip_bytes)
-            if tenant_id:
-                markdown_content, _preview_images = self._extract_preview_images_from_zip_bytes(
-                    zip_bytes=zip_bytes,
-                    markdown=markdown_content,
-                    tenant_id=str(tenant_id),
-                )
-        position_tagged_markdown = extract_position_tagged_markdown_from_zip_bytes(zip_bytes)
-
-        # 5. Convert to LangChain Document.
-        metadata = {
-            "source": file_path.name,
-            "file_type": "pdf",
-            "parser": "mineru",
-            "batch_id": batch_id,
-            "data_id": data_id,
-            "model_version": self.model_version,
-        }
-        if position_tagged_markdown:
-            metadata["position_tagged_markdown"] = position_tagged_markdown
-        if images_meta:
-            metadata["images"] = images_meta
-            metadata["image_count"] = len(images_meta)
-
-        logger.info("Parse complete. Content length: %s chars", len(markdown_content))
-
-        return [Document(page_content=markdown_content, metadata=metadata)]
 
     def parse_file_local(
         self,
@@ -1209,69 +1020,15 @@ class MinerUService:
         Returns:
             Parsed LangChain Documents (images uploaded to MinIO).
         """
-        self._refresh_config()
-        if not self.local_server_url:
-            raise RuntimeError(
-                "MinerU local service not configured. Please set MINERU_LOCAL_SERVER_URL, "
-                "e.g., http://localhost:30001"
-            )
-        
-        parse_endpoint = f"{self.local_server_url}/file_parse"
-        params = params or {}
-        
-        # Build request parameters.
-        data = {
-            "lang_list": params.get("lang_list", ["ch"]),
-            # Use a backend that works with a single MinerU API service by default.
-            "backend": params.get("backend", "pipeline"),
-            "parse_method": params.get("parse_method", "auto"),
-            "return_md": True,
-            "response_format_zip": True,
-            "return_images": True,
-        }
-        
-        # vlm-http-client backend requires server_url.
-        if data["backend"] == "vlm-http-client":
-            mineru_vl_server = getattr(settings, 'MINERU_VL_SERVER', None)
-            if mineru_vl_server:
-                data["server_url"] = mineru_vl_server
-        
-        logger.info("MinerU local parsing started: %s", file_path.name)
-        
-        try:
-            # Send file.
-            with open(file_path, "rb") as f:
-                files = {"files": (file_path.name, f, OCTET_STREAM)}
-                # NOTE: Local ZIP parsing path is currently sync-only; for async,
-                # wrap with asyncio.to_thread or add an async version to avoid blocking.
-                import requests  # local import to avoid global dependency in async paths
-
-                response = requests.post(parse_endpoint, files=files, data=data, timeout=300)
-            
-            response.raise_for_status()
-            
-            # Check response is ZIP.
-            content_type = response.headers.get('Content-Type', '')
-            if 'zip' not in content_type.lower() and OCTET_STREAM not in content_type.lower():
-                # Try parsing JSON error.
-                try:
-                    error_data = response.json()
-                    raise RuntimeError(f"MinerU parsing failed: {error_data}")
-                except (ValueError, TypeError) as json_err:
-                    raise RuntimeError(f"MinerU returned unexpected content type: {content_type}") from json_err
-            
-            return self._documents_from_zip_bytes(
-                zip_bytes=response.content,
+        return self._run_coroutine_sync(
+            lambda: self.aparse_file_local(
                 file_path=file_path,
-                tenant_id=str(tenant_id) if tenant_id else None,
-                dataset_id=str(dataset_id) if dataset_id else None,
-                document_id=str(document_id) if document_id else None,
-                parser_name="mineru_local",
+                dataset_id=dataset_id,
+                document_id=document_id,
+                tenant_id=tenant_id,
+                params=params,
             )
-        
-        except Exception as e:
-            logger.error("MinerU local parsing failed: %s", e)
-            raise RuntimeError(f"MinerU local parsing failed: {str(e)}") from e
+        )
 
 
 # Global instance

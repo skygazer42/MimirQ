@@ -12,6 +12,7 @@ import asyncio
 import contextlib
 import hashlib
 import html
+import logging
 import json
 import re
 from datetime import UTC, datetime
@@ -96,6 +97,7 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 router.routes.extend(connectors_catalog.router.routes)
 router.routes.extend(connectors_validation.router.routes)
+logger = logging.getLogger(__name__)
 _DB_CONNECTOR_IDS = {"mysql_catalog", "sqlserver_catalog"}
 URL_SHA256_PREFIX = "url_sha256:"
 CONNECTOR_CONFIG_NOT_FOUND_DETAIL = "Connector config not found"
@@ -2917,8 +2919,8 @@ def _delta_sync_confluence_documents_acl_by_page_id(
                     meta0 = dict(getattr(doc, "doc_metadata", None) or {})
                     meta0["acl_provenance"] = dict(acl_provenance)
                     doc.doc_metadata = meta0
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical connector fallback failure: %s", exc)
             updated += 1
     except Exception:
         # Best-effort fallback: scan a bounded recent window and filter in Python.
@@ -2961,8 +2963,8 @@ def _delta_sync_confluence_documents_acl_by_page_id(
                     meta0 = dict(meta or {})
                     meta0["acl_provenance"] = dict(acl_provenance)
                     doc.doc_metadata = meta0
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical connector fallback failure: %s", exc)
             updated += 1
 
     return int(updated)
@@ -3026,8 +3028,8 @@ def _delta_sync_jira_documents_acl_by_issue_url(
                     meta0 = dict(getattr(doc, "doc_metadata", None) or {})
                     meta0["acl_provenance"] = dict(acl_provenance)
                     doc.doc_metadata = meta0
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical connector fallback failure: %s", exc)
             updated += 1
     except Exception:
         max_docs_scan = max(0, int(max_docs_scan or 0))
@@ -3069,8 +3071,8 @@ def _delta_sync_jira_documents_acl_by_issue_url(
                     meta0 = dict(meta or {})
                     meta0["acl_provenance"] = dict(acl_provenance)
                     doc.doc_metadata = meta0
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring non-critical connector fallback failure: %s", exc)
             updated += 1
 
     return int(updated)
@@ -5981,8 +5983,8 @@ def _patch_confluence_page_document_metadata(
             source_id=(page_id or page_url),
         )
         db.commit()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring non-critical connector fallback failure: %s", exc)
 
 
 async def _ingest_confluence_page(
@@ -6141,8 +6143,8 @@ def _patch_confluence_attachment_document_metadata(
             source_ref=(attachment_id or download_url),
             source_id=(attachment_id or download_url),
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring non-critical connector fallback failure: %s", exc)
 
 
 async def _ingest_single_confluence_attachment(
