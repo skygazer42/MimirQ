@@ -31,6 +31,7 @@ const STORAGE_SEPARATOR_SETTINGS_KEY = 'mimirq_chunk_preview_separator_settings'
 const STORAGE_FOCUS_FILE_ID_KEY = 'mimirq_chunk_preview_focus_file_id'
 const STORAGE_PERF_SETTINGS_KEY = 'mimirq_chunk_preview_perf_settings'
 const STORAGE_PARENT_CHILD_SETTINGS_KEY = 'mimirq_chunk_preview_parent_child_settings'
+const CHUNK_PREVIEW_SCOPE_DOCUMENT_LIMIT = 12
 
 function normalizeBackendString(value: unknown): string {
   return typeof value === 'string' && value.trim() ? value.trim() : ''
@@ -107,17 +108,18 @@ function isParsingWorkspaceDocument(doc: Awaited<ReturnType<typeof documentApi.l
 }
 
 async function loadKnowledgeChunkFiles(datasetId: string): Promise<ChunkPreviewFileItem[]> {
-  const response = await documentApi.list({ skip: 0, limit: 100, dataset_id: datasetId })
+  const response = await documentApi.list({ skip: 0, limit: CHUNK_PREVIEW_SCOPE_DOCUMENT_LIMIT, dataset_id: datasetId })
   const docs = (response.items || []).filter((doc) => !isParsingWorkspaceDocument(doc))
-  const items = await Promise.all(
-    docs.map(async (doc): Promise<ChunkPreviewFileItem | null> => {
-      const id = String(doc.id || '').trim()
-      if (!id) return null
-      try {
-        const content = await documentApi.getParsedContent(id, { max_chars: 2_000_000 })
-        const markdown = (content.markdown_content || content.original_markdown_content || '').trim()
-        if (!markdown) return null
-        return makeMarkdownChunkFileItem({
+  const items: ChunkPreviewFileItem[] = []
+  for (const doc of docs) {
+    const id = String(doc.id || '').trim()
+    if (!id) continue
+    try {
+      const content = await documentApi.getParsedContent(id, { max_chars: 2_000_000 })
+      const markdown = (content.markdown_content || content.original_markdown_content || '').trim()
+      if (!markdown) continue
+      items.push(
+        makeMarkdownChunkFileItem({
           id,
           markdown,
           filename: doc.filename || 'document',
@@ -128,27 +130,30 @@ async function loadKnowledgeChunkFiles(datasetId: string): Promise<ChunkPreviewF
           datasetId: doc.dataset_id || datasetId,
           documentId: id,
         })
-      } catch {
-        return null
-      }
-    })
-  )
+      )
+    } catch {
+      continue
+    }
+  }
 
-  return items.filter((item): item is ChunkPreviewFileItem => Boolean(item))
+  return items
 }
 
 async function loadParsingWorkspaceChunkFiles(): Promise<ChunkPreviewFileItem[]> {
-  const response = await parsingApi.listDocuments({ skip: 0, limit: 100 })
-  const items = await Promise.all(
-    (response.items || []).map(async (doc): Promise<ChunkPreviewFileItem | null> => {
-      const id = String(doc.id || '').trim()
-      if (!id) return null
-      try {
-        const content = await parsingApi.getContent(id)
-        const markdown = (content.markdown_content || content.original_markdown_content || '').trim()
-        if (!markdown) return null
-        const meta = doc.metadata as Record<string, unknown> | undefined
-        return makeMarkdownChunkFileItem({
+  const response = await parsingApi.listDocuments({ skip: 0, limit: CHUNK_PREVIEW_SCOPE_DOCUMENT_LIMIT })
+  const docs = response.items || []
+
+  const items: ChunkPreviewFileItem[] = []
+  for (const doc of docs) {
+    const id = String(doc.id || '').trim()
+    if (!id) continue
+    try {
+      const content = await parsingApi.getContent(id)
+      const markdown = (content.markdown_content || content.original_markdown_content || '').trim()
+      if (!markdown) continue
+      const meta = doc.metadata as Record<string, unknown> | undefined
+      items.push(
+        makeMarkdownChunkFileItem({
           id,
           markdown,
           filename: doc.filename || 'document',
@@ -160,13 +165,13 @@ async function loadParsingWorkspaceChunkFiles(): Promise<ChunkPreviewFileItem[]>
           datasetName: normalizeBackendString(meta?.dataset_name) || null,
           documentId: id,
         })
-      } catch {
-        return null
-      }
-    })
-  )
+      )
+    } catch {
+      continue
+    }
+  }
 
-  return items.filter((item): item is ChunkPreviewFileItem => Boolean(item))
+  return items
 }
 
 function mergeScopedFiles(
