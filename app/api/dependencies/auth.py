@@ -4,7 +4,6 @@ Authentication dependency.
 Parses user identity from request headers.
 """
 
-import logging
 from uuid import UUID
 
 from fastapi import Header, HTTPException, Request
@@ -13,8 +12,9 @@ from jose import ExpiredSignatureError, JWTError
 from app.core.config import settings
 from app.core.jwt_verify import decode_access_token
 from app.core.logging_config import set_request_tenant_id, set_request_user_id
+from app.rag.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("api.auth")
 INVALID_TOKEN_DETAIL = "Invalid token"
 
 def _coerce_uuid(raw: object) -> str | None:

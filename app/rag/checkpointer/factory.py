@@ -4,19 +4,18 @@ Checkpoint saver factory module.
 Provides configuration-based checkpoint saver selection.
 """
 
-import logging
-
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from app.core.config import settings
 from app.rag.checkpointer.sqlite import SqliteSaver
+from app.rag.core.logging import get_logger
 
 try:  # LangGraph 1.0.x compatibility
     from langgraph.checkpoint.memory import InMemorySaver  # type: ignore
 except Exception:  # pragma: no cover
     from langgraph.checkpoint.memory import MemorySaver as InMemorySaver  # type: ignore
 
-logger = logging.getLogger(__name__)
+logger = get_logger("rag.checkpointer.factory")
 
 # Configuration
 CHECKPOINT_BACKEND = getattr(settings, "CHECKPOINT_BACKEND", "memory")

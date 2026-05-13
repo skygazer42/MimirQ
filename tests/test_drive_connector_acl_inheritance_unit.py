@@ -10,6 +10,7 @@ from tests.helpers.async_utils import yield_control
 @pytest.mark.asyncio
 async def test_drive_connector_applies_sharing_permissions_as_doc_acl(monkeypatch):  # noqa: ANN001
     import app.api.v1.connectors as connectors
+    import app.api.v1.connectors_drive_files as connectors_drive_files
     from app.models.connector import ConnectorRun
     from app.rag.core.hashing import stable_hash
 
@@ -17,6 +18,8 @@ async def test_drive_connector_applies_sharing_permissions_as_doc_acl(monkeypatc
     dataset_id = uuid.uuid4()
     run_id = uuid.uuid4()
     requested_by = "test-account"
+
+    connectors_drive_files._leader_module = connectors
 
     run = type(
         "_Run",

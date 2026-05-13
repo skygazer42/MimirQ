@@ -21,6 +21,12 @@ class MessageFeedbackCreateRequest(BaseModel):
     extra: dict[str, Any] = Field(default_factory=dict, description="Extension fields (optional)")
 
 
+class MessageFeedbackPatchRequest(BaseModel):
+    """Patch mutable feedback triage fields."""
+
+    archived: bool | None = Field(default=None, description="Archive/unarchive the feedback item")
+
+
 class MessageFeedbackOut(OrmModel):
     id: UUID
     tenant_id: UUID

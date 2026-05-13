@@ -11,7 +11,6 @@ Security/PII notes:
 from __future__ import annotations
 
 import contextlib
-import logging
 import threading
 import time
 from typing import Any
@@ -20,8 +19,9 @@ from uuid import UUID
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.tenant_group import TenantGroup, TenantGroupMember
+from app.rag.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("services.jwt_group_sync")
 
 # In-process TTL throttle cache (best-effort; per worker process).
 _sync_lock = threading.Lock()

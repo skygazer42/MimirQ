@@ -213,10 +213,14 @@ class KGConfig(BaseModel):
     extract_prune_orphan_entities: bool = True
 
 
+def _default_llm_api_base() -> str:
+    return settings.LLM_API_BASE
+
+
 class LLMConfig(BaseModel):
     """LLM config."""
     api_key: str = ""
-    api_base: str = "https://api.openai.com/v1"
+    api_base: str = Field(default_factory=_default_llm_api_base)
     model: str = "gpt-4o-mini"
     temperature: float = 0.7
     timeout: int = 60
@@ -1602,7 +1606,7 @@ async def get_system_status(
 
 class TestLLMRequest(BaseModel):
     api_key: str
-    api_base: str = "https://api.openai.com/v1"
+    api_base: str = Field(default_factory=_default_llm_api_base)
     model: str
     temperature: float = 0.0
     timeout: int = 20

@@ -221,6 +221,11 @@ function buildLoopCandidateMetrics(
   }
 }
 
+function isArchivedFeedback(item: MessageFeedbackEnriched): boolean {
+  const extra = item.extra as Record<string, unknown> | undefined
+  return Boolean(extra?.archived)
+}
+
 function FeedbackSummaryCard({
   label,
   value,
@@ -615,7 +620,8 @@ export default function FeedbackTriagePage() {
   const searchParams = useSearchParams()
   const pathname = usePathname()
   const router = useRouter()
-  const demoMode = searchParams.get('demo') === '1'
+  const demoMode =
+    /(^|\/)demo(\/|$)/.test(pathname) && searchParams.get('demo') === '1'
   const [ratingFilter, setRatingFilter] = useState<RatingFilter>('all')
   const [filterType, setFilterType] = useState<FeedbackTypeFilter>('all')
   const [boardTab, setBoardTab] = useState<FeedbackBoardTab>('all')
@@ -625,7 +631,7 @@ export default function FeedbackTriagePage() {
   const [detail, setDetail] = useState<MessageFeedbackEnriched | null>(null)
   const [creatingCase, setCreatingCase] = useState(false)
   const [createdCaseId, setCreatedCaseId] = useState<string | null>(null)
-  const [archivedIds, setArchivedIds] = useState<string[]>([])
+  const [archivingId, setArchivingId] = useState<string | null>(null)
   const [page, setPage] = useState(1)
 
   const params = useMemo(() => {
@@ -791,13 +797,13 @@ export default function FeedbackTriagePage() {
     }
 
     if (boardTab === 'pending') {
-      res = res.filter((item) => !archivedIds.includes(item.id))
+      res = res.filter((item) => !isArchivedFeedback(item))
     }
     if (boardTab === 'high-priority') {
       res = res.filter((item) => isHighPriority(item))
     }
     if (boardTab === 'archived') {
-      res = res.filter((item) => archivedIds.includes(item.id))
+      res = res.filter((item) => isArchivedFeedback(item))
     }
 
     if (q) {
@@ -818,7 +824,6 @@ export default function FeedbackTriagePage() {
     }
     return res
   }, [
-    archivedIds,
     boardTab,
     items,
     searchTerm,
@@ -836,14 +841,26 @@ export default function FeedbackTriagePage() {
     }
   }
 
-  const toggleArchived = useCallback((feedbackId: string) => {
-    setArchivedIds((previous) =>
-      previous.includes(feedbackId)
-        ? previous.filter((item) => item !== feedbackId)
-        : [...previous, feedbackId]
-    )
-    toast.success('已更新处理状态')
-  }, [])
+  const toggleArchived = useCallback(
+    async (item: MessageFeedbackEnriched) => {
+      if (demoMode) {
+        toast.success('Demo 模式仅用于预览反馈分析布局，不写入真实处理状态')
+        return
+      }
+      const nextArchived = !isArchivedFeedback(item)
+      setArchivingId(item.id)
+      try {
+        await feedbackApi.update(item.id, { archived: nextArchived })
+        toast.success(nextArchived ? '已归档反馈' : '已取消归档')
+        await refetch()
+      } catch (err: any) {
+        toast.error(formatApiError(err, nextArchived ? '归档失败' : '取消归档失败'))
+      } finally {
+        setArchivingId(null)
+      }
+    },
+    [demoMode, refetch]
+  )
 
   const createRegressionCase = useCallback(
     async (item: MessageFeedbackEnriched) => {
@@ -1248,7 +1265,7 @@ export default function FeedbackTriagePage() {
                     const issue = getFeedbackIssueLabel(item)
                     const source = getFeedbackSource(item)
                     const ratingValue = Number(item.rating) || 0
-                    const archived = archivedIds.includes(item.id)
+                    const archived = isArchivedFeedback(item)
                     const title =
                       item.reason ||
                       item.conversation_title ||
@@ -1414,10 +1431,15 @@ export default function FeedbackTriagePage() {
                             <Button
                               variant="outline"
                               className="h-6 rounded-xl px-2.5 text-[10px]"
-                              onClick={() => toggleArchived(item.id)}
+                              onClick={() => void toggleArchived(item)}
+                              disabled={archivingId === item.id}
                             >
-                              <CheckCheck className="mr-1.5 size-2.5 text-success" />
-                              标记已处理
+                              {archivingId === item.id ? (
+                                <Loader2 className="mr-1.5 size-2.5 animate-spin motion-reduce:animate-none" />
+                              ) : (
+                                <CheckCheck className="mr-1.5 size-2.5 text-success" />
+                              )}
+                              {archived ? '取消归档' : '标记已处理'}
                             </Button>
                             <Button
                               variant="ghost"

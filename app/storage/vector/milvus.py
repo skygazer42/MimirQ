@@ -6,7 +6,6 @@ Provides two usage modes:
 2. Multi-instance mode - Used for KG entities/events (customizable collection)
 """
 
-import logging
 import re
 import threading
 from typing import Any, Optional
@@ -15,8 +14,9 @@ from uuid import UUID
 from app.core.config import settings
 from app.core.constants import EmbeddingProviders, MilvusConfig
 from app.rag.core.filters import match_metadata_filter as _match_metadata_filter
+from app.rag.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("storage.vector.milvus")
 
 _MILVUS_MAX_VARCHAR_BYTES = 65_535
 _MILVUS_EXPR_MAX_CHARS = 8000

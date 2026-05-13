@@ -5,12 +5,10 @@ This is a scaffold for future LangGraph-based long-term memory. When disabled,
 the graph runs without a store (default).
 """
 
-
-import logging
-
 from app.core.config import settings
+from app.rag.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("rag.store.factory")
 
 _store = None
 

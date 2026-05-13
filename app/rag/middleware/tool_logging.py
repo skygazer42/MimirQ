@@ -9,7 +9,6 @@ Provides a reference implementation of `@wrap_tool_call`:
 
 
 import asyncio
-import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -17,10 +16,11 @@ from typing import Any
 
 from app.core.config import settings
 from app.core.pii_redaction import pii_redaction_enabled, redact_text
+from app.rag.core.logging import get_logger
 from app.rag.middleware.base import wrap_tool_call
 from app.services.metrics_logger import log_metrics
 
-logger = logging.getLogger(__name__)
+logger = get_logger("rag.middleware.tool_logging")
 
 
 def _truncate_text(value: Any, max_chars: int) -> str:

@@ -13,6 +13,7 @@ import type {
   GovernanceProfileListResponse,
   GovernanceProfileOut,
   GovernanceProfileResolvedResponse,
+  GovernanceProcessingScript,
   GovernanceProfileUpdate,
   IngestionPreviewResponse,
   KeywordExtractRequest,
@@ -39,6 +40,15 @@ function normalizeRegexRuleForApi(rule: { pattern: string; repl?: string; flags?
     pattern: rule.pattern,
     repl: typeof rule.repl === 'string' ? rule.repl : '',
     flags: typeof rule.flags === 'number' ? rule.flags : 0,
+  }
+}
+
+function normalizeProcessingScriptForApi(
+  script: GovernanceProcessingScript
+): GovernanceProcessingScript & { enabled: boolean } {
+  return {
+    ...script,
+    enabled: script.enabled ?? false,
   }
 }
 
@@ -160,7 +170,7 @@ export const pipelineApi = {
         input_formats: payload.payload.input_formats ?? ['markdown'],
         pipeline_patch: payload.payload.pipeline_patch ?? {},
         regex_rules: (payload.payload.regex_rules ?? []).map(normalizeRegexRuleForApi),
-        processing_scripts: payload.payload.processing_scripts ?? [],
+        processing_scripts: (payload.payload.processing_scripts ?? []).map(normalizeProcessingScriptForApi),
       },
     }
     const data = await openapiRequest({
@@ -180,7 +190,7 @@ export const pipelineApi = {
             input_formats: payload.payload.input_formats ?? ['markdown'],
             pipeline_patch: payload.payload.pipeline_patch ?? {},
             regex_rules: (payload.payload.regex_rules ?? []).map(normalizeRegexRuleForApi),
-            processing_scripts: payload.payload.processing_scripts ?? [],
+            processing_scripts: (payload.payload.processing_scripts ?? []).map(normalizeProcessingScriptForApi),
           },
         }
       : payload

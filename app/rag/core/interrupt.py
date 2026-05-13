@@ -23,7 +23,6 @@ Usage:
 
 
 import asyncio
-import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import Enum
@@ -32,8 +31,9 @@ from uuid import uuid4
 
 from app.core.config import settings
 from app.rag.core.command import Command, Interrupt, interrupt
+from app.rag.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("rag.core.interrupt")
 
 # Configuration
 HUMAN_REVIEW_ENABLED = getattr(settings, "HUMAN_REVIEW_ENABLED", False)

@@ -492,6 +492,9 @@ export interface DatasetPrecheckFileOut {
   file_sha256?: string | null
   findings: string[]
   error_message?: string | null
+  review_disposition?: 'approved' | 'manual' | null
+  reviewed_at?: string | null
+  reviewed_by?: string | null
 }
 
 export interface DatasetPrecheckFindingListResponse {
@@ -564,6 +567,18 @@ export interface DatasetPrecheckSamplesResponse {
   needs_review: Record<string, DatasetPrecheckFileOut[]>
   top_large_files: DatasetPrecheckFileOut[]
   top_long_text: DatasetPrecheckFileOut[]
+}
+
+export interface DatasetPrecheckSampleReviewPatchRequest {
+  file_name: string
+  disposition: 'approved' | 'manual'
+}
+
+export interface DatasetPrecheckSampleReviewOut {
+  file_name: string
+  review_disposition: 'approved' | 'manual'
+  reviewed_at: string
+  reviewed_by?: string | null
 }
 
 export interface DatasetPrecheckNearDupCluster {

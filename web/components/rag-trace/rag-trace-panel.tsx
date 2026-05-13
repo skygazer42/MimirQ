@@ -1,5 +1,6 @@
 'use client'
 
+import { useQuery } from '@tanstack/react-query'
 import * as React from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Loader2, Route, Quote, Timer, Database, ExternalLink, Download, GitCompare } from 'lucide-react'
@@ -10,6 +11,7 @@ import { chatApi, healthApi, metaApi, observabilityApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { getDocumentPreviewAnchorFromCitation } from '@/lib/document-preview-anchor'
 import { prefetchDocumentView } from '@/lib/document-view-prefetch'
+import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise } from '@/lib/utils'
 import { useDocumentView } from '@/store/document-view'
 import { Badge } from '@/components/ui/badge'
@@ -1431,24 +1433,38 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
 	    setDiffResult(null)
 	    setDiffError(null)
 	  }, [requestId])
+  const tracesQuery = useQuery({
+    queryKey: queryKeys.chat.ragTraces(conversationId, {
+      limit: 40,
+      window_minutes: 24 * 60,
+    }),
+    enabled: Boolean(conversationId),
+    queryFn: () =>
+      chatApi.getRagTraces(conversationId, {
+        limit: 40,
+        window_minutes: 24 * 60,
+      }),
+  })
 
-	  const load = React.useCallback(async () => {
-	    setLoading(true)
+  React.useEffect(() => {
+    if (!tracesQuery.error) return
+    toast.error(formatApiError(tracesQuery.error, t("panel.errors.traceLoadFailed")))
+  }, [tracesQuery.error, t])
+
+  React.useEffect(() => {
+    if (!tracesQuery.data) return
+    setData(tracesQuery.data)
+    setSelectedIndex(0)
+  }, [tracesQuery.data])
+
+  const load = React.useCallback(async () => {
+    setLoading(true)
     try {
-	      const res = await chatApi.getRagTraces(conversationId, { limit: 40, window_minutes: 24 * 60 })
-      setData(res)
-      setSelectedIndex(0)
-    } catch (err) {
-      setData(null)
-      toast.error(formatApiError(err, t("panel.errors.traceLoadFailed")))
+      await tracesQuery.refetch()
     } finally {
       setLoading(false)
     }
-  }, [conversationId, t])
-
-  React.useEffect(() => {
-    detachPromise(load())
-  }, [load])
+  }, [tracesQuery])
 
   if (loading && !data) {
     return (

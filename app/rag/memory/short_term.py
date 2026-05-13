@@ -11,7 +11,6 @@ Features:
 """
 
 
-import logging
 from collections.abc import Callable
 from functools import wraps
 from typing import Any, Union
@@ -28,8 +27,9 @@ from langchain_core.messages import (
 
 from app.core.config import settings
 from app.rag.core.hashing import stable_hash
+from app.rag.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("rag.memory.short_term")
 
 
 # Configuration defaults

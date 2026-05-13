@@ -152,250 +152,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/documents/upload": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Upload Document
-         * @description Upload a document.
-         *
-         *     Flow:
-         *     1. Validate file type and size
-         *     2. Save file locally
-         *     3. Create database record
-         *     4. Process document asynchronously (parse, chunk, embed)
-         */
-        post: operations["upload_document_api_v1_documents_upload_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/upload-url": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Upload Document From Url
-         * @description Fetch a remote URL and ingest it as a document.
-         *
-         *     Notes:
-         *     - Disabled by default: set URL_INGEST_ENABLED=true to enable.
-         *     - SSRF guard: blocks private/loopback/link-local hosts by default.
-         */
-        post: operations["upload_document_from_url_api_v1_documents_upload_url_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/upload-batch": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Upload Documents Batch
-         * @description Batch upload documents (concurrency-optimized).
-         *
-         *     Supports uploading multiple documents concurrently to improve performance.
-         *
-         *     Args:
-         *         files: Document file list.
-         *         max_concurrent: Max concurrent processing, default 5.
-         *         Other params match the single-file upload endpoint.
-         *
-         *     Returns:
-         *         {
-         *             "total": total files,
-         *             "successful": list of successful documents,
-         *             "failed": list of failed files (with errors)
-         *         }
-         */
-        post: operations["upload_documents_batch_api_v1_documents_upload_batch_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Documents
-         * @description List documents.
-         */
-        get: operations["list_documents_api_v1_documents__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/folders": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Document Folders
-         * @description Build a folder tree derived from `document.metadata.source_path`.
-         *
-         *     Notes:
-         *     - `source_path` is only present when the client uploads with directory-preserving keys (e.g. folder/sub/file.pdf).
-         *     - The tree is dataset-scoped for performance and permission clarity.
-         */
-        get: operations["list_document_folders_api_v1_documents_folders_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/stats": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Document Stats
-         * @description Document stats for knowledge-base dashboards.
-         *
-         *     Notes:
-         *     - Enforces the same dataset permission semantics as `list_documents`.
-         *     - Supports lightweight filename search via `q`.
-         */
-        get: operations["get_document_stats_api_v1_documents_stats_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/duplicates": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Document Duplicates
-         * @description Find duplicate documents by `documents.metadata.file_sha256` within a dataset.
-         *
-         *     Notes:
-         *     - Requires dataset read permission.
-         *     - Applies document-level ACL filtering for non-owners ("security trimming").
-         *     - Uses Postgres grouping when available to avoid loading all documents into memory.
-         *     - Best-effort and bounded by `max_groups`/`max_docs_per_group`.
-         */
-        get: operations["list_document_duplicates_api_v1_documents_duplicates_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/{document_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Document
-         * @description Get document detail.
-         */
-        get: operations["get_document_api_v1_documents__document_id__get"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete Document
-         * @description Delete document.
-         */
-        delete: operations["delete_document_api_v1_documents__document_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/{document_id}/health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Document Health Card
-         * @description Consolidated document health card (Gap10).
-         *
-         *     PII-safe: returns aggregate signals only (no raw chunk text).
-         */
-        get: operations["get_document_health_card_api_v1_documents__document_id__health_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/{document_id}/timeline": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Document Timeline
-         * @description User-facing document timeline (audit logs + synthetic document state events).
-         */
-        get: operations["get_document_timeline_api_v1_documents__document_id__timeline_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/documents/{document_id}/access": {
         parameters: {
             query?: never;
@@ -414,404 +170,6 @@ export interface paths {
          */
         put: operations["put_document_access_api_v1_documents__document_id__access_put"];
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/{document_id}/parsed-content": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Document Parsed Content
-         * @description Get persisted parsed markdown content (raw+clean) for a document.
-         *
-         *     Availability:
-         *     - Only present when the ingestion pipeline enables `persist_parsed_content`.
-         *     - When unavailable, returns `available=false` with empty strings.
-         */
-        get: operations["get_document_parsed_content_api_v1_documents__document_id__parsed_content_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/{document_id}/clean-docx": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Download Document Clean Docx */
-        get: operations["download_document_clean_docx_api_v1_documents__document_id__clean_docx_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/{document_id}/versions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Document Versions
-         * @description List document pipeline versions (keyed by pipeline_hash).
-         *
-         *     Notes:
-         *     - Versions are inferred from persisted chunks (doc_metadata.doc_pipeline_key).
-         *     - This is best-effort and primarily intended for ops/debug/rollback.
-         */
-        get: operations["list_document_versions_api_v1_documents__document_id__versions_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/{document_id}/versions/diff": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Diff Document Versions
-         * @description Diff two document pipeline versions by chunk `content_hash` (multiset semantics).
-         *
-         *     Notes:
-         *     - This endpoint never returns chunk text; it is safe for ops/UI debugging.
-         *     - For legacy chunks without `content_hash`, we fall back to chunk id as a unique signature
-         *       (so counts remain accurate, but "unchanged" may be underestimated).
-         */
-        get: operations["diff_document_versions_api_v1_documents__document_id__versions_diff_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/{document_id}/versions/{pipeline_hash}/activate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Activate Document Version
-         * @description Activate (rollback to) a specific pipeline_hash version for retrieval/citations.
-         *
-         *     This does not re-run parsing/indexing; it only switches the active version *if* chunks exist.
-         */
-        post: operations["activate_document_version_api_v1_documents__document_id__versions__pipeline_hash__activate_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/{document_id}/versions/{pipeline_hash}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Delete Document Version
-         * @description Delete a non-active document pipeline version (best-effort cleanup).
-         *
-         *     Notes:
-         *     - This deletes DB chunks for the requested pipeline_hash and best-effort removes
-         *       vectors/BM25 index entries for that version.
-         *     - The currently-active version cannot be deleted (use activate to switch first).
-         *     - This endpoint is intended for ops/debug cleanup; it does not re-run processing.
-         */
-        delete: operations["delete_document_version_api_v1_documents__document_id__versions__pipeline_hash__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/{document_id}/chunks": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Document Chunks
-         * @description List document chunks (paged).
-         *
-         *     This is preferred over `include_chunks=true` for large documents to avoid huge payloads.
-         */
-        get: operations["list_document_chunks_api_v1_documents__document_id__chunks_get"];
-        put?: never;
-        /**
-         * Create Document Chunk
-         * @description Create a new chunk for a document (appends to the active pipeline version).
-         *
-         *     This is intended for post-ingest manual chunk editing. It does not re-parse the source file.
-         */
-        post: operations["create_document_chunk_api_v1_documents__document_id__chunks_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/{document_id}/chunks/matches": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Document Chunk Matches
-         * @description List chunk matches for a document (lightweight payload).
-         *
-         *     This is optimized for "find in document" UX where the frontend only needs:
-         *     - chunk id (for navigation / deep link)
-         *     - chunk_index/page_number (for display)
-         *
-         *     Notes:
-         *     - Enforces the same dataset permission semantics as `list_document_chunks`.
-         *     - Returns at most `limit` matches; `truncated=true` indicates there are more.
-         */
-        get: operations["list_document_chunk_matches_api_v1_documents__document_id__chunks_matches_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/{document_id}/chunks/{chunk_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Document Chunk
-         * @description Get a single chunk for a document.
-         */
-        get: operations["get_document_chunk_api_v1_documents__document_id__chunks__chunk_id__get"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete Document Chunk
-         * @description Delete a chunk and update its indexes (vector + BM25) best-effort.
-         */
-        delete: operations["delete_document_chunk_api_v1_documents__document_id__chunks__chunk_id__delete"];
-        options?: never;
-        head?: never;
-        /**
-         * Patch Document Chunk
-         * @description Patch a chunk and update its indexes (vector + BM25) best-effort.
-         */
-        patch: operations["patch_document_chunk_api_v1_documents__document_id__chunks__chunk_id__patch"];
-        trace?: never;
-    };
-    "/api/v1/documents/{document_id}/chunks/{chunk_id}/disable": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Disable Document Chunk
-         * @description Disable a chunk (exclude it from retrieval/indexing).
-         */
-        post: operations["disable_document_chunk_api_v1_documents__document_id__chunks__chunk_id__disable_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/{document_id}/chunks/{chunk_id}/enable": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Enable Document Chunk
-         * @description Enable a previously-disabled chunk (requires re-embed to restore vector index).
-         */
-        post: operations["enable_document_chunk_api_v1_documents__document_id__chunks__chunk_id__enable_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/{document_id}/chunks/reembed": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Reembed Document Chunks
-         * @description Re-embed selected chunks (vector + BM25) best-effort.
-         */
-        post: operations["reembed_document_chunks_api_v1_documents__document_id__chunks_reembed_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/{document_id}/qa/generate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Generate Document Qa
-         * @description Generate (or extract) FAQ-style Q&A pairs for a document and index them as extra chunks.
-         *
-         *     Generated chunks are tagged with `file_type=qa` in chunk metadata.
-         */
-        post: operations["generate_document_qa_api_v1_documents__document_id__qa_generate_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/{document_id}/pipeline": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /**
-         * Patch Document Pipeline
-         * @description Patch `documents.metadata.pipeline` for document-level pipeline overrides.
-         */
-        patch: operations["patch_document_pipeline_api_v1_documents__document_id__pipeline_patch"];
-        trace?: never;
-    };
-    "/api/v1/documents/{document_id}/metadata": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /**
-         * Patch Document User Metadata
-         * @description Patch `documents.metadata.user` for user-editable document metadata.
-         */
-        patch: operations["patch_document_user_metadata_api_v1_documents__document_id__metadata_patch"];
-        trace?: never;
-    };
-    "/api/v1/documents/{document_id}/lifecycle-metadata": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Document Lifecycle Metadata
-         * @description Get document lifecycle governance metadata.
-         *
-         *     RBAC: dataset editor/admin (dataset writable) when the document belongs to a dataset.
-         */
-        get: operations["get_document_lifecycle_metadata_api_v1_documents__document_id__lifecycle_metadata_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /**
-         * Patch Document Lifecycle Metadata
-         * @description Patch document lifecycle governance metadata (owner/review_due/authority/supersedes).
-         *
-         *     Notes:
-         *     - This does not mutate `documents.metadata.*`; it updates first-class columns.
-         *     - Audit log is best-effort and PII-minimal by construction.
-         *
-         *     RBAC: dataset editor/admin (dataset writable) when the document belongs to a dataset.
-         */
-        patch: operations["patch_document_lifecycle_metadata_api_v1_documents__document_id__lifecycle_metadata_patch"];
-        trace?: never;
-    };
-    "/api/v1/documents/batch/metadata": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Batch Patch Document User Metadata
-         * @description Batch patch `documents.metadata.user`.
-         *
-         *     For any documents the caller cannot write, they will be returned in `denied`.
-         */
-        post: operations["batch_patch_document_user_metadata_api_v1_documents_batch_metadata_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -841,7 +199,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/documents/{document_id}/status": {
+    "/api/v1/documents/image/{image_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -849,10 +207,11 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get Document Status
-         * @description Get document processing status (for polling).
+         * Get Image
+         * @description Return stored image by image_id.
+         *     Standard path: {UPLOAD_DIR}/{tenant_id}/images/{image_id}(.png|.jpg|.jpeg|.webp|.gif|.bmp)
          */
-        get: operations["get_document_status_api_v1_documents__document_id__status_get"];
+        get: operations["get_image_api_v1_documents_image__image_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -861,31 +220,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/documents/{document_id}/cancel": {
+    "/api/v1/documents/image-url/{img_id}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
-        put?: never;
         /**
-         * Cancel Document Processing
-         * @description Cancel an in-progress document processing task.
-         *
-         *     Notes:
-         *     - When TASK_QUEUE_ENABLED=true, this will best-effort abort the arq job.
-         *     - When queue is disabled, the in-process/background worker cooperatively checks the cancelled status.
+         * Get Image Url
+         * @description Get MinIO image bytes by img_id.
          */
-        post: operations["cancel_document_processing_api_v1_documents__document_id__cancel_post"];
+        get: operations["get_image_url_api_v1_documents_image_url__img_id__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/documents/{document_id}/retry": {
+    "/api/v1/documents/batch/metadata": {
         parameters: {
             query?: never;
             header?: never;
@@ -895,14 +250,101 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Retry Document Processing
-         * @description Retry a failed/cancelled document processing task.
+         * Batch Patch Document User Metadata
+         * @description Batch patch `documents.metadata.user`.
+         *
+         *     For any documents the caller cannot write, they will be returned in `denied`.
+         */
+        post: operations["batch_patch_document_user_metadata_api_v1_documents_batch_metadata_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/batch/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batch Retry Documents
+         * @description Batch retry/reprocess documents (best-effort per id).
+         */
+        post: operations["batch_retry_documents_api_v1_documents_batch_retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/batch/reingest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batch Reingest Documents
+         * @description Batch re-ingest documents by (optionally) patching pipeline overrides and forcing a retry.
          *
          *     Notes:
-         *     - This will delete existing chunks (DB) and indexes (vector/BM25/KG) before reprocessing.
-         *     - Use `force=true` to allow retrying completed documents.
+         *     - This is best-effort per id: failures are returned in `not_found/denied/conflicts`.
+         *     - Intended for generating new pipeline_hash versions and/or rebuilding indexes.
          */
-        post: operations["retry_document_processing_api_v1_documents__document_id__retry_post"];
+        post: operations["batch_reingest_documents_api_v1_documents_batch_reingest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/batch/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batch Update Document Access
+         * @description Batch update document ACL (best-effort per id).
+         */
+        post: operations["batch_update_document_access_api_v1_documents_batch_access_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/batch/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batch Move Documents
+         * @description Batch move documents between datasets (best-effort).
+         *
+         *     Notes:
+         *     - Disallows moving MinIO-backed documents or documents with MinIO image assets (`metadata.img_ids`)
+         *       because dataset_id is part of the object/key namespace.
+         *     - Disallows moving documents that are pending/processing.
+         */
+        post: operations["batch_move_documents_api_v1_documents_batch_move_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1009,7 +451,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/documents/batch/retry": {
+    "/api/v1/documents/batch-upload/apply-urls": {
         parameters: {
             query?: never;
             header?: never;
@@ -1019,86 +461,19 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Batch Retry Documents
-         * @description Batch retry/reprocess documents (best-effort per id).
-         */
-        post: operations["batch_retry_documents_api_v1_documents_batch_retry_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/batch/reingest": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Batch Reingest Documents
-         * @description Batch re-ingest documents by (optionally) patching pipeline overrides and forcing a retry.
+         * Apply Batch Upload Urls
+         * @description Batch request file upload URLs (MinerU online parsing).
          *
-         *     Notes:
-         *     - This is best-effort per id: failures are returned in `not_found/denied/conflicts`.
-         *     - Intended for generating new pipeline_hash versions and/or rebuilding indexes.
+         *     Use case: batch upload local files for parsing.
          */
-        post: operations["batch_reingest_documents_api_v1_documents_batch_reingest_post"];
+        post: operations["apply_batch_upload_urls_api_v1_documents_batch_upload_apply_urls_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/documents/batch/access": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Batch Update Document Access
-         * @description Batch update document ACL (best-effort per id).
-         */
-        post: operations["batch_update_document_access_api_v1_documents_batch_access_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/batch/move": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Batch Move Documents
-         * @description Batch move documents between datasets (best-effort).
-         *
-         *     Notes:
-         *     - Disallows moving MinIO-backed documents or documents with MinIO image assets (`metadata.img_ids`)
-         *       because dataset_id is part of the object/key namespace.
-         *     - Disallows moving documents that are pending/processing.
-         */
-        post: operations["batch_move_documents_api_v1_documents_batch_move_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/image/{image_id}": {
+    "/api/v1/documents/batch-upload/status/{batch_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1106,11 +481,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get Image
-         * @description Return stored image by image_id.
-         *     Standard path: {UPLOAD_DIR}/{tenant_id}/images/{image_id}(.png|.jpg|.jpeg|.webp|.gif|.bmp)
+         * Get Batch Task Status
+         * @description Query batch parsing task status.
          */
-        get: operations["get_image_api_v1_documents_image__image_id__get"];
+        get: operations["get_batch_task_status_api_v1_documents_batch_upload_status__batch_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1119,7 +493,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/documents/image-url/{img_id}": {
+    "/api/v1/documents/{document_id}/chunks": {
         parameters: {
             query?: never;
             header?: never;
@@ -1127,19 +501,347 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get Image Url
-         * @description Get MinIO presigned URL by img_id ({tenant_id}:{dataset_id}:{document_id}:{chunk_index}).
-         *     Bandwidth-aware serving (Wave19-T069):
-         *     - Serve bytes directly (StreamingResponse) so clients can use Range requests.
-         *     - Avoid leaking presigned URLs to the browser/network logs.
+         * List Document Chunks
+         * @description List document chunks (paged).
+         *
+         *     This is preferred over `include_chunks=true` for large documents to avoid huge payloads.
          */
-        get: operations["get_image_url_api_v1_documents_image_url__img_id__get"];
+        get: operations["list_document_chunks_api_v1_documents__document_id__chunks_get"];
+        put?: never;
+        /**
+         * Create Document Chunk
+         * @description Create a new chunk for a document (appends to the active pipeline version).
+         *
+         *     This is intended for post-ingest manual chunk editing. It does not re-parse the source file.
+         */
+        post: operations["create_document_chunk_api_v1_documents__document_id__chunks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/chunks/matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Document Chunk Matches
+         * @description List chunk matches for a document (lightweight payload).
+         *
+         *     This is optimized for "find in document" UX where the frontend only needs:
+         *     - chunk id (for navigation / deep link)
+         *     - chunk_index/page_number (for display)
+         */
+        get: operations["list_document_chunk_matches_api_v1_documents__document_id__chunks_matches_get"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/chunks/{chunk_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Document Chunk
+         * @description Get a single chunk for a document.
+         */
+        get: operations["get_document_chunk_api_v1_documents__document_id__chunks__chunk_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Document Chunk
+         * @description Delete a chunk and update its indexes (vector + BM25) best-effort.
+         */
+        delete: operations["delete_document_chunk_api_v1_documents__document_id__chunks__chunk_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch Document Chunk
+         * @description Patch a chunk and update its indexes (vector + BM25) best-effort.
+         */
+        patch: operations["patch_document_chunk_api_v1_documents__document_id__chunks__chunk_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/parsed-content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Document Parsed Content
+         * @description Get persisted parsed markdown content (raw+clean) for a document.
+         *
+         *     Availability:
+         *     - Only present when the ingestion pipeline enables `persist_parsed_content`.
+         *     - When unavailable, returns `available=false` with empty strings.
+         */
+        get: operations["get_document_parsed_content_api_v1_documents__document_id__parsed_content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/clean-docx": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Document Clean Docx */
+        get: operations["download_document_clean_docx_api_v1_documents__document_id__clean_docx_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Document
+         * @description Get document detail.
+         */
+        get: operations["get_document_api_v1_documents__document_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Document
+         * @description Delete document.
+         */
+        delete: operations["delete_document_api_v1_documents__document_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/duplicates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Document Duplicates
+         * @description Find duplicate documents by `documents.metadata.file_sha256` within a dataset.
+         *
+         *     Notes:
+         *     - Requires dataset read permission.
+         *     - Applies document-level ACL filtering for non-owners ("security trimming").
+         *     - Uses Postgres grouping when available to avoid loading all documents into memory.
+         *     - Best-effort and bounded by `max_groups`/`max_docs_per_group`.
+         */
+        get: operations["list_document_duplicates_api_v1_documents_duplicates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Document Folders
+         * @description Build a folder tree derived from `document.metadata.source_path`.
+         *
+         *     Notes:
+         *     - `source_path` is only present when the client uploads with directory-preserving keys.
+         *     - The tree is dataset-scoped for performance and permission clarity.
+         */
+        get: operations["list_document_folders_api_v1_documents_folders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Document Health Card
+         * @description Consolidated document health card (Gap10).
+         *
+         *     PII-safe: returns aggregate signals only (no raw chunk text).
+         */
+        get: operations["get_document_health_card_api_v1_documents__document_id__health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/lifecycle-metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Document Lifecycle Metadata
+         * @description Get document lifecycle governance metadata.
+         *
+         *     RBAC: dataset editor/admin (dataset writable) when the document belongs to a dataset.
+         */
+        get: operations["get_document_lifecycle_metadata_api_v1_documents__document_id__lifecycle_metadata_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Document Lifecycle Metadata
+         * @description Patch document lifecycle governance metadata (owner/review_due/authority/supersedes).
+         *
+         *     Notes:
+         *     - This does not mutate `documents.metadata.*`; it updates first-class columns.
+         *     - Audit log is best-effort and PII-minimal by construction.
+         *
+         *     RBAC: dataset editor/admin (dataset writable) when the document belongs to a dataset.
+         */
+        patch: operations["patch_document_lifecycle_metadata_api_v1_documents__document_id__lifecycle_metadata_patch"];
+        trace?: never;
+    };
+    "/api/v1/documents/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Documents
+         * @description List documents.
+         */
+        get: operations["list_documents_api_v1_documents__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/manual": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Document With Manual Chunks
+         * @description Create a document from frontend custom chunks.
+         */
+        post: operations["create_document_with_manual_chunks_api_v1_documents_manual_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/qa/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Document Qa
+         * @description Generate (or extract) FAQ-style Q&A pairs for a document and index them as extra chunks.
+         *
+         *     Generated chunks are tagged with `file_type=qa` in chunk metadata.
+         */
+        post: operations["generate_document_qa_api_v1_documents__document_id__qa_generate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/pipeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Document Pipeline
+         * @description Patch `documents.metadata.pipeline` for document-level pipeline overrides.
+         */
+        patch: operations["patch_document_pipeline_api_v1_documents__document_id__pipeline_patch"];
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Document User Metadata
+         * @description Patch `documents.metadata.user` for user-editable document metadata.
+         */
+        patch: operations["patch_document_user_metadata_api_v1_documents__document_id__metadata_patch"];
         trace?: never;
     };
     "/api/v1/documents/preview": {
@@ -1165,7 +867,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/documents/manual": {
+    "/api/v1/documents/{document_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Document Status
+         * @description Get document processing status (for polling).
+         */
+        get: operations["get_document_status_api_v1_documents__document_id__status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/cancel": {
         parameters: {
             query?: never;
             header?: never;
@@ -1175,17 +897,297 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Create Document With Manual Chunks
-         * @description Create a document from frontend custom chunks.
+         * Cancel Document Processing
+         * @description Cancel an in-progress document processing task.
          *
-         *     Flow:
-         *     1. Create document record (status=processing)
-         *     2. Generate embeddings from chunks and store in Milvus
-         *     3. Write chunks to PostgreSQL
-         *     4. Rebuild BM25 index
-         *     5. Update document status to completed
+         *     Notes:
+         *     - When TASK_QUEUE_ENABLED=true, this will best-effort abort the arq job.
+         *     - When queue is disabled, the in-process/background worker cooperatively checks the cancelled status.
          */
-        post: operations["create_document_with_manual_chunks_api_v1_documents_manual_post"];
+        post: operations["cancel_document_processing_api_v1_documents__document_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Document Processing
+         * @description Retry a failed/cancelled document processing task.
+         *
+         *     Notes:
+         *     - This will delete existing chunks (DB) and indexes (vector/BM25/KG) before reprocessing.
+         *     - Use `force=true` to allow retrying completed documents.
+         */
+        post: operations["retry_document_processing_api_v1_documents__document_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Document Stats
+         * @description Document stats for knowledge-base dashboards.
+         *
+         *     Notes:
+         *     - Enforces the same dataset permission semantics as `list_documents`.
+         *     - Supports lightweight filename search via `q`.
+         */
+        get: operations["get_document_stats_api_v1_documents_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Document Timeline
+         * @description User-facing document timeline (audit logs + synthetic document state events).
+         */
+        get: operations["get_document_timeline_api_v1_documents__document_id__timeline_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload Document */
+        post: operations["upload_document_api_v1_documents_upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/upload-batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload Documents Batch */
+        post: operations["upload_documents_batch_api_v1_documents_upload_batch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Document Versions
+         * @description List document pipeline versions (keyed by pipeline_hash).
+         *
+         *     Notes:
+         *     - Versions are inferred from persisted chunks (doc_metadata.doc_pipeline_key).
+         *     - This is best-effort and primarily intended for ops/debug/rollback.
+         */
+        get: operations["list_document_versions_api_v1_documents__document_id__versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/versions/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Diff Document Versions
+         * @description Diff two document pipeline versions by chunk `content_hash` (multiset semantics).
+         *
+         *     Notes:
+         *     - This endpoint never returns chunk text; it is safe for ops/UI debugging.
+         *     - For legacy chunks without `content_hash`, we fall back to chunk id as a unique signature
+         *       (so counts remain accurate, but "unchanged" may be underestimated).
+         */
+        get: operations["diff_document_versions_api_v1_documents__document_id__versions_diff_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/versions/{pipeline_hash}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Activate Document Version
+         * @description Activate (rollback to) a specific pipeline_hash version for retrieval/citations.
+         *
+         *     This does not re-run parsing/indexing; it only switches the active version *if* chunks exist.
+         */
+        post: operations["activate_document_version_api_v1_documents__document_id__versions__pipeline_hash__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/versions/{pipeline_hash}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Document Version
+         * @description Delete a non-active document pipeline version (best-effort cleanup).
+         *
+         *     Notes:
+         *     - This deletes DB chunks for the requested pipeline_hash and best-effort removes
+         *       vectors/BM25 index entries for that version.
+         *     - The currently-active version cannot be deleted (use activate to switch first).
+         *     - This endpoint is intended for ops/debug cleanup; it does not re-run processing.
+         */
+        delete: operations["delete_document_version_api_v1_documents__document_id__versions__pipeline_hash__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/upload-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Document From Url
+         * @description Fetch a remote URL and ingest it as a document.
+         *
+         *     Notes:
+         *     - Disabled by default: set URL_INGEST_ENABLED=true to enable.
+         *     - SSRF guard: blocks private/loopback/link-local hosts by default.
+         */
+        post: operations["upload_document_from_url_api_v1_documents_upload_url_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/chunks/{chunk_id}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Disable Document Chunk
+         * @description Disable a chunk (exclude it from retrieval/indexing).
+         */
+        post: operations["disable_document_chunk_api_v1_documents__document_id__chunks__chunk_id__disable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/chunks/{chunk_id}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enable Document Chunk
+         * @description Enable a previously-disabled chunk (requires re-embed to restore vector index).
+         */
+        post: operations["enable_document_chunk_api_v1_documents__document_id__chunks__chunk_id__enable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{document_id}/chunks/reembed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reembed Document Chunks
+         * @description Re-embed selected chunks (vector + BM25) best-effort.
+         */
+        post: operations["reembed_document_chunks_api_v1_documents__document_id__chunks_reembed_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1207,14 +1209,6 @@ export interface paths {
          *
          *     Upload a file and preview chunking with the given parameters (no DB writes).
          *     Returns chunk results with positions for frontend highlighting.
-         *
-         *     Args:
-         *         file: Uploaded file.
-         *         chunk_size: Chunk size (100-4000).
-         *         chunk_overlap: Overlap size (0-1000).
-         *
-         *     Returns:
-         *         Chunk preview result including content and position info.
          */
         post: operations["preview_chunking_api_v1_documents_chunk_preview_post"];
         delete?: never;
@@ -1232,97 +1226,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Preview Chunking By Sha
-         * @description Chunk preview endpoint (reuse parse cache; no file upload).
-         *
-         *     Intended for fast A/B tuning after a file has been previewed once and the server-side
-         *     parse cache is warm. If cache is missing/expired, client should fall back to uploading.
-         */
+        /** Preview Chunking By Sha */
         post: operations["preview_chunking_by_sha_api_v1_documents_chunk_preview_by_sha_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/batch-upload/apply-urls": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Apply Batch Upload Urls
-         * @description Batch request file upload URLs (MinerU online parsing).
-         *
-         *     Use case: batch upload local files for parsing.
-         *
-         *     Flow:
-         *     1. Call this endpoint to request upload URLs (up to 200 files)
-         *     2. Upload files to returned URLs (PUT; no Content-Type needed)
-         *     3. After upload, the system submits parsing tasks automatically
-         *     4. Query status using batch_id
-         *
-         *     Notes:
-         *     - Upload links are valid for 24 hours
-         *     - No Content-Type header required for uploads
-         *     - No manual submit needed; the system scans and processes automatically
-         *
-         *     Example:
-         *         # Step 1: request upload URLs
-         *         response = requests.post("http://localhost:8000/api/v1/documents/batch-upload/apply-urls", headers={
-         *             "X-User-ID": "demo",
-         *         }, json={
-         *             "files": [
-         *                 {"name": "file1.pdf", "data_id": "doc1"},
-         *                 {"name": "file2.pdf", "data_id": "doc2"}
-         *             ]
-         *         })
-         *
-         *         # Step 2: upload files
-         *         batch_id = response.json()["batch_id"]
-         *         urls = response.json()["file_urls"]
-         *
-         *         for i, url in enumerate(urls):
-         *             with open(f"file{i+1}.pdf", "rb") as f:
-         *                 requests.put(url, data=f)
-         *
-         *         # Step 3: query status
-         *         requests.get(f"http://localhost:8000/api/v1/documents/batch-upload/status/{batch_id}", headers={
-         *             "X-User-ID": "demo",
-         *         })
-         */
-        post: operations["apply_batch_upload_urls_api_v1_documents_batch_upload_apply_urls_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/batch-upload/status/{batch_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Batch Task Status
-         * @description Query batch parsing task status.
-         *
-         *     Args:
-         *         batch_id: Batch ID (from apply upload URLs).
-         *
-         *     Returns:
-         *         Task status info, including progress and completion counts.
-         */
-        get: operations["get_batch_task_status_api_v1_documents_batch_upload_status__batch_id__get"];
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1461,7 +1366,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/chat": {
+    "/api/v1/chat/conversations/{conversation_id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Conversation Summary Endpoint */
+        get: operations["get_conversation_summary_endpoint_api_v1_chat_conversations__conversation_id__summary_get"];
+        put?: never;
+        post?: never;
+        /** Delete Conversation Summary Endpoint */
+        delete: operations["delete_conversation_summary_endpoint_api_v1_chat_conversations__conversation_id__summary_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/conversations/{conversation_id}/summary/update": {
         parameters: {
             query?: never;
             header?: never;
@@ -1470,34 +1393,73 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Chat
-         * @description Non-streaming chat endpoint.
-         *
-         *     It mirrors the `/chat/stream` behavior, but returns a single JSON payload
-         *     after the answer is ready.
-         */
-        post: operations["chat_api_v1_chat_post"];
+        /** Update Conversation Summary Endpoint */
+        post: operations["update_conversation_summary_endpoint_api_v1_chat_conversations__conversation_id__summary_update_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/chat/stream": {
+    "/api/v1/chat/conversations/{conversation_id}/rag-traces": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
-        put?: never;
         /**
-         * Stream Chat
-         * @description Streaming chat endpoint (core flow).
+         * Get Conversation Rag Traces
+         * @description List recent RAG traces for a conversation (PII-safe) so the UI can visualize
+         *     retrieve/rerank/citations steps.
          */
-        post: operations["stream_chat_api_v1_chat_stream_post"];
+        get: operations["get_conversation_rag_traces_api_v1_chat_conversations__conversation_id__rag_traces_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/conversations/{conversation_id}/checkpoints": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Conversation Checkpoints
+         * @description List LangGraph checkpoints for this conversation (time-travel/debug).
+         */
+        get: operations["list_conversation_checkpoints_api_v1_chat_conversations__conversation_id__checkpoints_get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Conversation Checkpoints
+         * @description Clear checkpoints for this conversation (does not delete messages or the conversation).
+         */
+        delete: operations["delete_conversation_checkpoints_api_v1_chat_conversations__conversation_id__checkpoints_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/conversations/{conversation_id}/checkpoints/{checkpoint_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Conversation Checkpoint
+         * @description Get a checkpoint snapshot (docs are excluded by default).
+         */
+        get: operations["get_conversation_checkpoint_api_v1_chat_conversations__conversation_id__checkpoints__checkpoint_id__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1595,46 +1557,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/chat/conversations/{conversation_id}/rag-traces": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Conversation Rag Traces
-         * @description List recent RAG traces for a conversation (PII-safe) so the UI can visualize
-         *     retrieve/rerank/citations steps.
-         */
-        get: operations["get_conversation_rag_traces_api_v1_chat_conversations__conversation_id__rag_traces_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/chat/conversations/{conversation_id}/summary": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Conversation Summary Endpoint */
-        get: operations["get_conversation_summary_endpoint_api_v1_chat_conversations__conversation_id__summary_get"];
-        put?: never;
-        post?: never;
-        /** Delete Conversation Summary Endpoint */
-        delete: operations["delete_conversation_summary_endpoint_api_v1_chat_conversations__conversation_id__summary_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/chat/conversations/{conversation_id}/summary/update": {
+    "/api/v1/chat": {
         parameters: {
             query?: never;
             header?: never;
@@ -1643,52 +1566,34 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Update Conversation Summary Endpoint */
-        post: operations["update_conversation_summary_endpoint_api_v1_chat_conversations__conversation_id__summary_update_post"];
+        /**
+         * Chat
+         * @description Non-streaming chat endpoint.
+         *
+         *     It mirrors the `/chat/stream` behavior, but returns a single JSON payload
+         *     after the answer is ready.
+         */
+        post: operations["chat_api_v1_chat_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/chat/conversations/{conversation_id}/checkpoints": {
+    "/api/v1/chat/stream": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /**
-         * List Conversation Checkpoints
-         * @description List LangGraph checkpoints for this conversation (time-travel/debug).
-         */
-        get: operations["list_conversation_checkpoints_api_v1_chat_conversations__conversation_id__checkpoints_get"];
+        get?: never;
         put?: never;
-        post?: never;
         /**
-         * Delete Conversation Checkpoints
-         * @description Clear checkpoints for this conversation (does not delete messages or the conversation).
+         * Stream Chat
+         * @description Streaming chat endpoint (core flow).
          */
-        delete: operations["delete_conversation_checkpoints_api_v1_chat_conversations__conversation_id__checkpoints_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/chat/conversations/{conversation_id}/checkpoints/{checkpoint_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Conversation Checkpoint
-         * @description Get a checkpoint snapshot (docs are excluded by default).
-         */
-        get: operations["get_conversation_checkpoint_api_v1_chat_conversations__conversation_id__checkpoints__checkpoint_id__get"];
-        put?: never;
-        post?: never;
+        post: operations["stream_chat_api_v1_chat_stream_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2467,6 +2372,23 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/samples/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Dataset Precheck Sample Review */
+        patch: operations["patch_dataset_precheck_sample_review_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__samples_review_patch"];
         trace?: never;
     };
     "/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/near-dups": {
@@ -4097,6 +4019,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/evaluations/ragas/regression/ablation/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Ragas Regression Ablation Batch
+         * @description Create a bounded cartesian batch of regression runs for ablation analysis.
+         */
+        post: operations["create_ragas_regression_ablation_batch_api_v1_evaluations_ragas_regression_ablation_batch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/evaluations/ragas/regression/runs/leaderboard": {
         parameters: {
             query?: never;
@@ -4614,6 +4556,74 @@ export interface paths {
         get: operations["list_message_feedback_enriched_api_v1_feedback_messages_enriched_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/feedback/messages/{feedback_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Message Feedback
+         * @description Patch mutable feedback triage fields.
+         */
+        patch: operations["patch_message_feedback_api_v1_feedback_messages__feedback_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/feedback/loop/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview Feedback Loop Candidates
+         * @description Preview feedback-loop candidates from real negative feedback.
+         *
+         *     Read-only by design: this endpoint does not write hard negatives, rules, or
+         *     models. Review/promote flows should use the returned candidates explicitly.
+         */
+        get: operations["preview_feedback_loop_candidates_api_v1_feedback_loop_candidates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/feedback/loop/hard-negatives/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export Feedback Loop Hard Negatives
+         * @description Batch-export feedback-derived hard negatives.
+         *
+         *     Safe defaults:
+         *     - `dry_run=true` previews counts without writing JSONL.
+         *     - No realtime insert listener is registered.
+         *     - Exported JSONL is PII-safe and contains lineage ids for audit/review.
+         */
+        post: operations["export_feedback_loop_hard_negatives_api_v1_feedback_loop_hard_negatives_export_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5605,6 +5615,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/rag/document-structure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Document Structure Preview
+         * @description Return document structure derived from existing chunk hierarchy metadata.
+         */
+        post: operations["document_structure_preview_api_v1_rag_document_structure_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/rag/retrieve-preview": {
         parameters: {
             query?: never;
@@ -5619,6 +5649,29 @@ export interface paths {
          * @description Execute retrieval only (no answer generation); for parameter tuning and retrieval quality debugging.
          */
         post: operations["retrieve_preview_api_v1_rag_retrieve_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/rag/tree-search-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Tree Search Preview
+         * @description Experimental structure-first preview.
+         *
+         *     It reuses normal retrieval to find candidate evidence, then overlays
+         *     document section structure for PageIndex-style explainability.
+         */
+        post: operations["tree_search_preview_api_v1_rag_tree_search_preview_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5865,6 +5918,23 @@ export interface paths {
         put?: never;
         /** Remove Group Members */
         post: operations["remove_group_members_api_v1_groups__group_id__members_remove_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/rbac/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Current Tenant Access */
+        get: operations["get_current_tenant_access_api_v1_rbac_me_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -10475,6 +10545,12 @@ export interface components {
             findings?: string[];
             /** Error Message */
             error_message?: string | null;
+            /** Review Disposition */
+            review_disposition?: ("approved" | "manual") | null;
+            /** Reviewed At */
+            reviewed_at?: string | null;
+            /** Reviewed By */
+            reviewed_by?: string | null;
         };
         /** DatasetPrecheckFileTypeStat */
         DatasetPrecheckFileTypeStat: {
@@ -10756,6 +10832,33 @@ export interface components {
              * @default 0
              */
             p99: number;
+        };
+        /** DatasetPrecheckSampleReviewOut */
+        DatasetPrecheckSampleReviewOut: {
+            /** File Name */
+            file_name: string;
+            /**
+             * Review Disposition
+             * @enum {string}
+             */
+            review_disposition: "approved" | "manual";
+            /**
+             * Reviewed At
+             * Format: date-time
+             */
+            reviewed_at: string;
+            /** Reviewed By */
+            reviewed_by?: string | null;
+        };
+        /** DatasetPrecheckSampleReviewPatchRequest */
+        DatasetPrecheckSampleReviewPatchRequest: {
+            /** File Name */
+            file_name: string;
+            /**
+             * Disposition
+             * @enum {string}
+             */
+            disposition: "approved" | "manual";
         };
         /**
          * DatasetPrecheckSamplesResponse
@@ -13426,6 +13529,24 @@ export interface components {
          * @enum {string}
          */
         DocumentStatusEnum: "pending" | "processing" | "completed" | "failed" | "quarantined" | "cancelled";
+        /** DocumentStructureRequest */
+        DocumentStructureRequest: {
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /**
+             * Max Nodes
+             * @default 200
+             */
+            max_nodes: number;
+        };
         /** DocumentTimelineItem */
         DocumentTimelineItem: {
             /** Id */
@@ -15071,6 +15192,40 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /**
+         * GovernanceProcessingScript
+         * @description Non-executable processing script attachment.
+         *
+         *     Scripts are persisted with the profile for review/versioning only. The
+         *     ingestion pipeline must not execute them unless a separate sandboxed runtime
+         *     explicitly supports that in the future.
+         */
+        GovernanceProcessingScript: {
+            /** Name */
+            name: string;
+            /**
+             * Language
+             * @enum {string}
+             */
+            language: "javascript" | "typescript" | "python" | "rust";
+            /**
+             * Stage
+             * @default post_governance
+             * @enum {string}
+             */
+            stage: "post_parse" | "post_governance";
+            /** Content */
+            content: string;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /** Description */
+            description?: string | null;
+            /** Created At */
+            created_at?: string | null;
+        };
         /** GovernanceProfileCreate */
         GovernanceProfileCreate: {
             /** Name */
@@ -15133,6 +15288,7 @@ export interface components {
          *
          *     - pipeline_patch: a partial DocumentPipelineOptions object to be merged by the caller.
          *     - regex_rules: additional cleanup rules (applied after default rules by default).
+         *     - processing_scripts: non-executable script attachments for review/audit.
          */
         GovernanceProfilePayload: {
             /**
@@ -15157,6 +15313,8 @@ export interface components {
             };
             /** Regex Rules */
             regex_rules?: components["schemas"]["RegexRuleModel"][];
+            /** Processing Scripts */
+            processing_scripts?: components["schemas"]["GovernanceProcessingScript"][];
         };
         /**
          * GovernanceProfileResolvedResponse
@@ -16561,12 +16719,26 @@ export interface components {
              * @default 0
              */
             baseline_recall: number;
+            /**
+             * Baseline Ndcg
+             * @default 0
+             */
+            baseline_ndcg: number;
+            /**
+             * Baseline Map
+             * @default 0
+             */
+            baseline_map: number;
             /** Hardcase Hit Rate */
             hardcase_hit_rate?: number | null;
             /** Hardcase Mrr */
             hardcase_mrr?: number | null;
             /** Hardcase Recall */
             hardcase_recall?: number | null;
+            /** Hardcase Ndcg */
+            hardcase_ndcg?: number | null;
+            /** Hardcase Map */
+            hardcase_map?: number | null;
             /** Failure Breakdown */
             failure_breakdown?: {
                 [key: string]: number;
@@ -16671,6 +16843,16 @@ export interface components {
              * @default 0
              */
             recall: number;
+            /**
+             * Ndcg
+             * @default 0
+             */
+            ndcg: number;
+            /**
+             * Map
+             * @default 0
+             */
+            map: number;
             /**
              * Matched Evidence Chunks
              * @default 0
@@ -16806,11 +16988,8 @@ export interface components {
              * @default
              */
             api_key: string;
-            /**
-             * Api Base
-             * @default https://api.openai.com/v1
-             */
-            api_base: string;
+            /** Api Base */
+            api_base?: string;
             /**
              * Model
              * @default gpt-4o-mini
@@ -17170,6 +17349,17 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /**
+         * MessageFeedbackPatchRequest
+         * @description Patch mutable feedback triage fields.
+         */
+        MessageFeedbackPatchRequest: {
+            /**
+             * Archived
+             * @description Archive/unarchive the feedback item
+             */
+            archived?: boolean | null;
         };
         /**
          * MessageSchema
@@ -19157,6 +19347,245 @@ export interface components {
              */
             created_at: string;
         };
+        /** RagasRegressionAblationBatchRequest */
+        RagasRegressionAblationBatchRequest: {
+            /**
+             * Case Ids
+             * @description Case IDs to run (if empty, select by filter criteria)
+             */
+            case_ids?: string[];
+            /**
+             * Dataset Id
+             * Format: uuid
+             * @description Run cases under this dataset (required)
+             */
+            dataset_id: string;
+            /**
+             * Metrics
+             * @description RAGAS metrics list
+             */
+            metrics?: string[];
+            /**
+             * Use Llm Judge
+             * @description Enable LLM-as-judge (per-case {score, reason, evidence_quotes}; adds evaluation cost)
+             * @default false
+             */
+            use_llm_judge: boolean;
+            /**
+             * Skip Empty Contexts
+             * @description Skip cases without contexts (default: true)
+             * @default true
+             */
+            skip_empty_contexts: boolean;
+            /**
+             * Max Cases
+             * @description Max cases to run (default: 50)
+             * @default 50
+             */
+            max_cases: number;
+            /**
+             * Retrieval Profile
+             * @description Optional retrieval preset: recall20 | recall50 | coverage80 | hybrid_ce
+             */
+            retrieval_profile?: string | null;
+            /**
+             * Enable Query Alias Expansion
+             * @description Enable bounded alias expansion when dataset/query aliases exist
+             */
+            enable_query_alias_expansion?: boolean | null;
+            /** Query Alias Max Queries */
+            query_alias_max_queries?: number | null;
+            /**
+             * Enable Multi Query
+             * @description Enable bounded LLM multi-query expansion
+             */
+            enable_multi_query?: boolean | null;
+            /** Multi Query Count */
+            multi_query_count?: number | null;
+            /** Multi Query Temperature */
+            multi_query_temperature?: number | null;
+            /** Multi Query Max Chars */
+            multi_query_max_chars?: number | null;
+            /**
+             * Enable Hyde
+             * @description Enable HyDE hypothetical-document query expansion
+             */
+            enable_hyde?: boolean | null;
+            /**
+             * Enable Hierarchy Recall
+             * @description Enable hierarchy-aware recall overlay
+             */
+            enable_hierarchy_recall?: boolean | null;
+            /**
+             * Hierarchy Family Collapse
+             * @description Collapse same-family hits after recall
+             */
+            hierarchy_family_collapse?: boolean | null;
+            /**
+             * Hierarchy Family Aggregation
+             * @description Cross-query family aggregation strategy
+             */
+            hierarchy_family_aggregation?: ("frequency" | "score" | "combined") | null;
+            /**
+             * Hierarchy Tree Dedup
+             * @description Enable ancestor/child tree-style dedup
+             */
+            hierarchy_tree_dedup?: boolean | null;
+            /**
+             * Hierarchy Parent Depth
+             * @description Max parent expansion depth
+             */
+            hierarchy_parent_depth?: number | null;
+            /**
+             * Hierarchy Sibling Window
+             * @description Max sibling expansion window
+             */
+            hierarchy_sibling_window?: number | null;
+            /**
+             * Hierarchy Overfetch Factor
+             * @description Overfetch multiplier before collapse
+             */
+            hierarchy_overfetch_factor?: number | null;
+            /**
+             * Enable Query Rewrite
+             * @description Enable bounded query rewrite before retrieval
+             */
+            enable_query_rewrite?: boolean | null;
+            /**
+             * Query Rewrite Strategy
+             * @description Override query rewrite strategy id
+             */
+            query_rewrite_strategy?: string | null;
+            /** Query Rewrite Temperature */
+            query_rewrite_temperature?: number | null;
+            /** Query Rewrite Max Chars */
+            query_rewrite_max_chars?: number | null;
+            /**
+             * Sparse Retrieval Enabled
+             * @description Enable sparse retrieval channel
+             */
+            sparse_retrieval_enabled?: boolean | null;
+            /**
+             * Sparse Retrieval Provider
+             * @description Sparse provider: deterministic | splade
+             */
+            sparse_retrieval_provider?: string | null;
+            /**
+             * Top K
+             * @default 20
+             */
+            top_k: number;
+            /**
+             * Score Threshold
+             * @default 0
+             */
+            score_threshold: number;
+            /**
+             * Retrieval Mode
+             * @description hybrid | vector | keyword | mmr
+             * @default hybrid
+             */
+            retrieval_mode: string;
+            /**
+             * Alpha
+             * @default 0.6
+             */
+            alpha: number;
+            /**
+             * Fusion Strategy
+             * @description linear | rrf | budgeted_rrf | weighted
+             */
+            fusion_strategy?: string | null;
+            /** Fusion Budgets */
+            fusion_budgets?: {
+                [key: string]: number;
+            } | null;
+            /** Fusion Min Scores */
+            fusion_min_scores?: {
+                [key: string]: number;
+            } | null;
+            /** Fusion Weights */
+            fusion_weights?: {
+                [key: string]: number;
+            } | null;
+            /**
+             * Enable Weight Rerank
+             * @default true
+             */
+            enable_weight_rerank: boolean;
+            /**
+             * Vector Weight
+             * @default 0.6
+             */
+            vector_weight: number;
+            /**
+             * Keyword Weight
+             * @default 0.4
+             */
+            keyword_weight: number;
+            /**
+             * Mmr Lambda
+             * @default 0.7
+             */
+            mmr_lambda: number;
+            /**
+             * Enable Reranker
+             * @description Enable reranker for re-ranking
+             */
+            enable_reranker?: boolean;
+            /**
+             * Reranker Provider
+             * @description Reranker provider: llm | pc | ltr | colbert | cross_encoder | none
+             */
+            reranker_provider?: string;
+            /**
+             * Reranker Top N
+             * @description Rerank candidate count (higher is slower)
+             */
+            reranker_top_n?: number;
+            /** Prompt Template Id */
+            prompt_template_id?: string | null;
+            /** Prompt Template Key */
+            prompt_template_key?: string | null;
+            /** Prompt Ab Experiment Key */
+            prompt_ab_experiment_key?: string | null;
+            /**
+             * Grid
+             * @description Ablation parameter grid; values are cartesian-expanded into regression runs
+             */
+            grid: {
+                [key: string]: unknown[];
+            };
+            /**
+             * Max Combinations
+             * @description Safety cap for expanded variants
+             * @default 50
+             */
+            max_combinations: number;
+            /** Ablation Label Prefix */
+            ablation_label_prefix?: string | null;
+        };
+        /** RagasRegressionAblationBatchResponse */
+        RagasRegressionAblationBatchResponse: {
+            /**
+             * Ablation Id
+             * Format: uuid
+             */
+            ablation_id: string;
+            /** Total */
+            total: number;
+            /** Run Ids */
+            run_ids?: string[];
+            /** Variants */
+            variants?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Status
+             * @default queued
+             */
+            status: string;
+        };
         /**
          * RagasRegressionCaseBundleItem
          * @description Portable regression case payload (no internal ids).
@@ -19610,6 +20039,14 @@ export interface components {
             slice_diffs?: {
                 [key: string]: components["schemas"]["RegressionRunSliceDiff"];
             };
+            /** Significance */
+            significance?: components["schemas"]["RegressionRunMetricSignificance"][];
+            /** Case Diffs */
+            case_diffs?: components["schemas"]["RegressionRunCaseDiff"][];
+            /** Significance Summary */
+            significance_summary?: {
+                [key: string]: unknown;
+            };
         };
         /** RagasRegressionRunLeaderboardItem */
         RagasRegressionRunLeaderboardItem: {
@@ -19889,6 +20326,25 @@ export interface components {
             /** Password */
             password: string;
         };
+        /** RegressionRunCaseDiff */
+        RegressionRunCaseDiff: {
+            /** Case Id */
+            case_id: string;
+            /**
+             * Question
+             * @default
+             */
+            question: string;
+            /** Metric Diffs */
+            metric_diffs?: components["schemas"]["RegressionRunMetricDiff"][];
+            /** Mean Delta */
+            mean_delta?: number | null;
+            /**
+             * Label
+             * @default 无分数
+             */
+            label: string;
+        };
         /**
          * RegressionRunDiffScore
          * @description Compact score payload for CI / dashboards.
@@ -19934,6 +20390,43 @@ export interface components {
             after?: unknown;
             /** Delta */
             delta?: number | null;
+        };
+        /** RegressionRunMetricSignificance */
+        RegressionRunMetricSignificance: {
+            /** Key */
+            key: string;
+            /**
+             * Compared
+             * @default 0
+             */
+            compared: number;
+            /** Base Mean */
+            base_mean?: number | null;
+            /** Target Mean */
+            target_mean?: number | null;
+            /** Delta Mean */
+            delta_mean?: number | null;
+            /** Bootstrap Ci Low */
+            bootstrap_ci_low?: number | null;
+            /** Bootstrap Ci High */
+            bootstrap_ci_high?: number | null;
+            /** P Value */
+            p_value?: number | null;
+            /** P Value Method */
+            p_value_method?: string | null;
+            /** P Value Bh */
+            p_value_bh?: number | null;
+            /** Wilcoxon P Value */
+            wilcoxon_p_value?: number | null;
+            /** Mcnemar P Value */
+            mcnemar_p_value?: number | null;
+            /** Cohen D */
+            cohen_d?: number | null;
+            /**
+             * Significant
+             * @default false
+             */
+            significant: boolean;
         };
         /** RegressionRunSliceBucketDiff */
         RegressionRunSliceBucketDiff: {
@@ -20615,6 +21108,34 @@ export interface components {
             /** Error */
             error?: string | null;
         };
+        /** TenantAccessOut */
+        TenantAccessOut: {
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /** Account Id */
+            account_id: string;
+            /**
+             * Role
+             * @description owner|admin|auditor|editor|dataset_operator|viewer
+             * @default viewer
+             */
+            role: string;
+            /** Permissions */
+            permissions?: string[];
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+            /**
+             * Is Current
+             * @default false
+             */
+            is_current: boolean;
+        };
         /** TenantDocumentQuotaStatus */
         TenantDocumentQuotaStatus: {
             /** Enabled */
@@ -20905,11 +21426,8 @@ export interface components {
         TestLLMRequest: {
             /** Api Key */
             api_key: string;
-            /**
-             * Api Base
-             * @default https://api.openai.com/v1
-             */
-            api_base: string;
+            /** Api Base */
+            api_base?: string;
             /** Model */
             model: string;
             /**
@@ -21027,6 +21545,54 @@ export interface components {
              * @enum {string}
              */
             source: "provider" | "mock" | "estimate";
+        };
+        /** TreeSearchPreviewRequest */
+        TreeSearchPreviewRequest: {
+            /** Query */
+            query: string;
+            /** Dataset Id */
+            dataset_id?: string | null;
+            /** Document Ids */
+            document_ids?: string[];
+            rag_config?: components["schemas"]["ChatRAGConfig"];
+            /**
+             * Max Structure Docs
+             * @default 5
+             */
+            max_structure_docs: number;
+            /**
+             * Max Nodes Per Doc
+             * @default 120
+             */
+            max_nodes_per_doc: number;
+        };
+        /** TreeSearchPreviewResponse */
+        TreeSearchPreviewResponse: {
+            /**
+             * Schema
+             * @default mimirq.tree_search_preview.v1
+             */
+            schema: string;
+            /** Query */
+            query: string;
+            /** Query For Retrieval */
+            query_for_retrieval: string;
+            /** Citations */
+            citations: {
+                [key: string]: unknown;
+            }[];
+            /** Document Structures */
+            document_structures?: {
+                [key: string]: unknown;
+            }[];
+            /** Selected Sections */
+            selected_sections?: {
+                [key: string]: unknown;
+            }[];
+            /** Metrics */
+            metrics?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * UpdateSettingsRequest
@@ -21698,815 +22264,6 @@ export interface operations {
             };
         };
     };
-    upload_document_api_v1_documents_upload_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_upload_document_api_v1_documents_upload_post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentDetail"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    upload_document_from_url_api_v1_documents_upload_url_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UrlUploadRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentDetail"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    upload_documents_batch_api_v1_documents_upload_batch_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_upload_documents_batch_api_v1_documents_upload_batch_post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentBatchUploadResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_documents_api_v1_documents__get: {
-        parameters: {
-            query?: {
-                skip?: number;
-                limit?: number;
-                status?: string | null;
-                lifecycle?: "active" | "archived" | "disabled" | "all";
-                dataset_id?: string | null;
-                file_type?: string | null;
-                owner_id?: string | null;
-                q?: string | null;
-                source_path_prefix?: string | null;
-                order_by?: "created_at" | "filename" | "file_size";
-                order_dir?: "asc" | "desc";
-            };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentList"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_document_folders_api_v1_documents_folders_get: {
-        parameters: {
-            query: {
-                dataset_id: string;
-                lifecycle?: "active" | "archived" | "disabled" | "all";
-                max_depth?: number;
-            };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentFolderTreeResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_document_stats_api_v1_documents_stats_get: {
-        parameters: {
-            query?: {
-                dataset_id?: string | null;
-                lifecycle?: "active" | "archived" | "disabled" | "all";
-                file_type?: string | null;
-                owner_id?: string | null;
-                q?: string | null;
-            };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentStats"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_document_duplicates_api_v1_documents_duplicates_get: {
-        parameters: {
-            query: {
-                /** @description Dataset scope for duplicate detection */
-                dataset_id: string;
-                min_count?: number;
-                max_groups?: number;
-                max_docs_per_group?: number;
-            };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentDuplicateList"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_document_api_v1_documents__document_id__get: {
-        parameters: {
-            query?: {
-                include_chunks?: boolean;
-                /** @description Optional: filter chunks by a specific pipeline_hash version (when include_chunks=true) */
-                pipeline_hash?: string | null;
-                /** @description If true, include chunks across all pipeline versions (debug; when include_chunks=true) */
-                all_versions?: boolean;
-            };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path: {
-                document_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentDetail"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_document_api_v1_documents__document_id__delete: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path: {
-                document_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_document_health_card_api_v1_documents__document_id__health_get: {
-        parameters: {
-            query?: {
-                /** @description Metrics lookback window (minutes) */
-                window_minutes?: number;
-                /** @description Max bytes to read from metrics JSONL tail */
-                max_bytes?: number;
-                /** @description Max chunks to score for semantic quality */
-                max_chunks_scored?: number;
-            };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path: {
-                document_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentHealthCard"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_document_timeline_api_v1_documents__document_id__timeline_get: {
-        parameters: {
-            query?: {
-                limit?: number;
-            };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path: {
-                document_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentTimelineResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     get_document_access_api_v1_documents__document_id__access_get: {
         parameters: {
             query?: never;
@@ -22651,86 +22408,12 @@ export interface operations {
             };
         };
     };
-    get_document_parsed_content_api_v1_documents__document_id__parsed_content_get: {
+    download_document_api_v1_documents__document_id__download_get: {
         parameters: {
             query?: {
-                max_chars?: number;
+                inline?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path: {
-                document_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentParsedContentResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    download_document_clean_docx_api_v1_documents__document_id__clean_docx_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -22793,16 +22476,12 @@ export interface operations {
             };
         };
     };
-    list_document_versions_api_v1_documents__document_id__versions_get: {
+    get_image_api_v1_documents_image__image_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
-                document_id: string;
+                image_id: string;
             };
             cookie?: never;
         };
@@ -22814,7 +22493,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DocumentVersionList"];
+                    "application/json": unknown;
                 };
             };
             /** @description Bad Request */
@@ -22863,23 +22542,12 @@ export interface operations {
             };
         };
     };
-    diff_document_versions_api_v1_documents__document_id__versions_diff_get: {
+    get_image_url_api_v1_documents_image_url__img_id__get: {
         parameters: {
-            query: {
-                /** @description Source pipeline_hash version (from) */
-                from: string;
-                /** @description Target pipeline_hash version (to) */
-                to: string;
-                /** @description Max hash samples included in added_hashes/removed_hashes */
-                sample_limit?: number;
-            };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            query?: never;
+            header?: never;
             path: {
-                document_id: string;
+                img_id: string;
             };
             cookie?: never;
         };
@@ -22891,7 +22559,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DocumentVersionDiff"];
+                    "application/json": unknown;
                 };
             };
             /** @description Bad Request */
@@ -22940,7 +22608,7 @@ export interface operations {
             };
         };
     };
-    activate_document_version_api_v1_documents__document_id__versions__pipeline_hash__activate_post: {
+    batch_patch_document_user_metadata_api_v1_documents_batch_metadata_post: {
         parameters: {
             query?: never;
             header?: {
@@ -22948,13 +22616,14 @@ export interface operations {
                 authorization?: string | null;
                 "x-user-id"?: string | null;
             };
-            path: {
-                document_id: string;
-                pipeline_hash: string;
-            };
+            path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentBatchUserMetadataPatchRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -22962,7 +22631,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DocumentDetail"];
+                    "application/json": components["schemas"]["DocumentBatchUserMetadataPatchResponse"];
                 };
             };
             /** @description Bad Request */
@@ -23011,7 +22680,727 @@ export interface operations {
             };
         };
     };
-    delete_document_version_api_v1_documents__document_id__versions__pipeline_hash__delete: {
+    batch_retry_documents_api_v1_documents_batch_retry_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentBatchRetryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentBatchRetryResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_reingest_documents_api_v1_documents_batch_reingest_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentBatchReingestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentBatchRetryResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_update_document_access_api_v1_documents_batch_access_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentBatchAccessUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentBatchAccessUpdateResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_move_documents_api_v1_documents_batch_move_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentBatchMoveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentBatchMoveResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_disable_documents_api_v1_documents_batch_disable_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentBatchLifecycleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentBatchLifecycleResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_enable_documents_api_v1_documents_batch_enable_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentBatchLifecycleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentBatchLifecycleResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_archive_documents_api_v1_documents_batch_archive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentBatchLifecycleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentBatchLifecycleResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_unarchive_documents_api_v1_documents_batch_unarchive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentBatchLifecycleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentBatchLifecycleResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_delete_documents_api_v1_documents_batch_delete_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentBatchDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentBatchDeleteResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_batch_upload_urls_api_v1_documents_batch_upload_apply_urls_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchUploadResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_batch_task_status_api_v1_documents_batch_upload_status__batch_id__get: {
         parameters: {
             query?: never;
             header?: {
@@ -23020,19 +23409,20 @@ export interface operations {
                 "x-user-id"?: string | null;
             };
             path: {
-                document_id: string;
-                pipeline_hash: string;
+                batch_id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            204: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["BatchTaskStatus"];
+                };
             };
             /** @description Bad Request */
             400: {
@@ -23526,9 +23916,11 @@ export interface operations {
             };
         };
     };
-    disable_document_chunk_api_v1_documents__document_id__chunks__chunk_id__disable_post: {
+    get_document_parsed_content_api_v1_documents__document_id__parsed_content_get: {
         parameters: {
-            query?: never;
+            query?: {
+                max_chars?: number;
+            };
             header?: {
                 "x-tenant-id"?: string | null;
                 authorization?: string | null;
@@ -23536,7 +23928,6 @@ export interface operations {
             };
             path: {
                 document_id: string;
-                chunk_id: string;
             };
             cookie?: never;
         };
@@ -23548,7 +23939,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DocumentChunkSchema"];
+                    "application/json": components["schemas"]["DocumentParsedContentResponse"];
                 };
             };
             /** @description Bad Request */
@@ -23597,7 +23988,7 @@ export interface operations {
             };
         };
     };
-    enable_document_chunk_api_v1_documents__document_id__chunks__chunk_id__enable_post: {
+    download_document_clean_docx_api_v1_documents__document_id__clean_docx_get: {
         parameters: {
             query?: never;
             header?: {
@@ -23607,7 +23998,6 @@ export interface operations {
             };
             path: {
                 document_id: string;
-                chunk_id: string;
             };
             cookie?: never;
         };
@@ -23619,7 +24009,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DocumentChunkSchema"];
+                    "application/json": unknown;
                 };
             };
             /** @description Bad Request */
@@ -23668,7 +24058,444 @@ export interface operations {
             };
         };
     };
-    reembed_document_chunks_api_v1_documents__document_id__chunks_reembed_post: {
+    get_document_api_v1_documents__document_id__get: {
+        parameters: {
+            query?: {
+                include_chunks?: boolean;
+                /** @description Optional: filter chunks by a specific pipeline_hash version (when include_chunks=true) */
+                pipeline_hash?: string | null;
+                /** @description If true, include chunks across all pipeline versions (debug; when include_chunks=true) */
+                all_versions?: boolean;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_document_api_v1_documents__document_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_document_duplicates_api_v1_documents_duplicates_get: {
+        parameters: {
+            query: {
+                /** @description Dataset scope for duplicate detection */
+                dataset_id: string;
+                min_count?: number;
+                max_groups?: number;
+                max_docs_per_group?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDuplicateList"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_document_folders_api_v1_documents_folders_get: {
+        parameters: {
+            query: {
+                dataset_id: string;
+                lifecycle?: "active" | "archived" | "disabled" | "all";
+                max_depth?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentFolderTreeResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_health_card_api_v1_documents__document_id__health_get: {
+        parameters: {
+            query?: {
+                /** @description Metrics lookback window (minutes) */
+                window_minutes?: number;
+                /** @description Max bytes to read from metrics JSONL tail */
+                max_bytes?: number;
+                /** @description Max chunks to score for semantic quality */
+                max_chunks_scored?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentHealthCard"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_lifecycle_metadata_api_v1_documents__document_id__lifecycle_metadata_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentLifecycleMetadata"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_document_lifecycle_metadata_api_v1_documents__document_id__lifecycle_metadata_patch: {
         parameters: {
             query?: never;
             header?: {
@@ -23683,7 +24510,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["DocumentChunkReembedRequest"];
+                "application/json": components["schemas"]["DocumentLifecycleMetadataUpdateRequest"];
             };
         };
         responses: {
@@ -23693,7 +24520,159 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DocumentChunkReembedResponse"];
+                    "application/json": components["schemas"]["DocumentLifecycleMetadata"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_documents_api_v1_documents__get: {
+        parameters: {
+            query?: {
+                skip?: number;
+                limit?: number;
+                status?: string | null;
+                lifecycle?: "active" | "archived" | "disabled" | "all";
+                dataset_id?: string | null;
+                file_type?: string | null;
+                owner_id?: string | null;
+                q?: string | null;
+                source_path_prefix?: string | null;
+                order_by?: "created_at" | "filename" | "file_size";
+                order_dir?: "asc" | "desc";
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentList"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_document_with_manual_chunks_api_v1_documents_manual_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualDocumentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
                 };
             };
             /** @description Bad Request */
@@ -23964,151 +24943,7 @@ export interface operations {
             };
         };
     };
-    get_document_lifecycle_metadata_api_v1_documents__document_id__lifecycle_metadata_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path: {
-                document_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentLifecycleMetadata"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    patch_document_lifecycle_metadata_api_v1_documents__document_id__lifecycle_metadata_patch: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path: {
-                document_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DocumentLifecycleMetadataUpdateRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentLifecycleMetadata"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    batch_patch_document_user_metadata_api_v1_documents_batch_metadata_post: {
+    preview_document_api_v1_documents_preview_post: {
         parameters: {
             query?: never;
             header?: {
@@ -24121,7 +24956,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["DocumentBatchUserMetadataPatchRequest"];
+                "multipart/form-data": components["schemas"]["Body_preview_document_api_v1_documents_preview_post"];
             };
         };
         responses: {
@@ -24131,75 +24966,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DocumentBatchUserMetadataPatchResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    download_document_api_v1_documents__document_id__download_get: {
-        parameters: {
-            query?: {
-                inline?: boolean;
-            };
-            header?: never;
-            path: {
-                document_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["DocumentParsePreview"];
                 };
             };
             /** @description Bad Request */
@@ -24461,9 +25228,15 @@ export interface operations {
             };
         };
     };
-    batch_disable_documents_api_v1_documents_batch_disable_post: {
+    get_document_stats_api_v1_documents_stats_get: {
         parameters: {
-            query?: never;
+            query?: {
+                dataset_id?: string | null;
+                lifecycle?: "active" | "archived" | "disabled" | "all";
+                file_type?: string | null;
+                owner_id?: string | null;
+                q?: string | null;
+            };
             header?: {
                 "x-tenant-id"?: string | null;
                 authorization?: string | null;
@@ -24472,11 +25245,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DocumentBatchLifecycleRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -24484,7 +25253,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DocumentBatchLifecycleResponse"];
+                    "application/json": components["schemas"]["DocumentStats"];
                 };
             };
             /** @description Bad Request */
@@ -24533,588 +25302,18 @@ export interface operations {
             };
         };
     };
-    batch_enable_documents_api_v1_documents_batch_enable_post: {
+    get_document_timeline_api_v1_documents__document_id__timeline_get: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+            };
             header?: {
                 "x-tenant-id"?: string | null;
                 authorization?: string | null;
                 "x-user-id"?: string | null;
             };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DocumentBatchLifecycleRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentBatchLifecycleResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    batch_archive_documents_api_v1_documents_batch_archive_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DocumentBatchLifecycleRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentBatchLifecycleResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    batch_unarchive_documents_api_v1_documents_batch_unarchive_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DocumentBatchLifecycleRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentBatchLifecycleResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    batch_delete_documents_api_v1_documents_batch_delete_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DocumentBatchDeleteRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentBatchDeleteResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    batch_retry_documents_api_v1_documents_batch_retry_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DocumentBatchRetryRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentBatchRetryResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    batch_reingest_documents_api_v1_documents_batch_reingest_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DocumentBatchReingestRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentBatchRetryResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    batch_update_document_access_api_v1_documents_batch_access_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DocumentBatchAccessUpdateRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentBatchAccessUpdateResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    batch_move_documents_api_v1_documents_batch_move_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DocumentBatchMoveRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentBatchMoveResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_image_api_v1_documents_image__image_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
             path: {
-                image_id: string;
+                document_id: string;
             };
             cookie?: never;
         };
@@ -25126,7 +25325,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["DocumentTimelineResponse"];
                 };
             };
             /** @description Bad Request */
@@ -25175,73 +25374,7 @@ export interface operations {
             };
         };
     };
-    get_image_url_api_v1_documents_image_url__img_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                img_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    preview_document_api_v1_documents_preview_post: {
+    upload_document_api_v1_documents_upload_post: {
         parameters: {
             query?: never;
             header?: {
@@ -25254,79 +25387,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_preview_document_api_v1_documents_preview_post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentParsePreview"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_document_with_manual_chunks_api_v1_documents_manual_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ManualDocumentCreate"];
+                "multipart/form-data": components["schemas"]["Body_upload_document_api_v1_documents_upload_post"];
             };
         };
         responses: {
@@ -25337,6 +25398,653 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_documents_batch_api_v1_documents_upload_batch_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_documents_batch_api_v1_documents_upload_batch_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentBatchUploadResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_document_versions_api_v1_documents__document_id__versions_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentVersionList"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    diff_document_versions_api_v1_documents__document_id__versions_diff_get: {
+        parameters: {
+            query: {
+                /** @description Source pipeline_hash version (from) */
+                from: string;
+                /** @description Target pipeline_hash version (to) */
+                to: string;
+                /** @description Max hash samples included in added_hashes/removed_hashes */
+                sample_limit?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentVersionDiff"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_document_version_api_v1_documents__document_id__versions__pipeline_hash__activate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+                pipeline_hash: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_document_version_api_v1_documents__document_id__versions__pipeline_hash__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+                pipeline_hash: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_document_from_url_api_v1_documents_upload_url_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UrlUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    disable_document_chunk_api_v1_documents__document_id__chunks__chunk_id__disable_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+                chunk_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentChunkSchema"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enable_document_chunk_api_v1_documents__document_id__chunks__chunk_id__enable_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+                chunk_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentChunkSchema"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reembed_document_chunks_api_v1_documents__document_id__chunks_reembed_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentChunkReembedRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentChunkReembedResponse"];
                 };
             };
             /** @description Bad Request */
@@ -25499,148 +26207,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChunkPreviewResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    apply_batch_upload_urls_api_v1_documents_batch_upload_apply_urls_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["BatchUploadRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BatchUploadResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_batch_task_status_api_v1_documents_batch_upload_status__batch_id__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path: {
-                batch_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BatchTaskStatus"];
                 };
             };
             /** @description Bad Request */
@@ -26479,7 +27045,7 @@ export interface operations {
             };
         };
     };
-    chat_api_v1_chat_post: {
+    get_conversation_summary_endpoint_api_v1_chat_conversations__conversation_id__summary_get: {
         parameters: {
             query?: never;
             header?: {
@@ -26487,14 +27053,12 @@ export interface operations {
                 authorization?: string | null;
                 "x-user-id"?: string | null;
             };
-            path?: never;
+            path: {
+                conversation_id: string;
+            };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ChatRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -26502,7 +27066,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ChatResponse"];
+                    "application/json": components["schemas"]["ConversationSummaryResponse"];
                 };
             };
             /** @description Bad Request */
@@ -26551,7 +27115,7 @@ export interface operations {
             };
         };
     };
-    stream_chat_api_v1_chat_stream_post: {
+    delete_conversation_summary_endpoint_api_v1_chat_conversations__conversation_id__summary_delete: {
         parameters: {
             query?: never;
             header?: {
@@ -26559,14 +27123,80 @@ export interface operations {
                 authorization?: string | null;
                 "x-user-id"?: string | null;
             };
-            path?: never;
+            path: {
+                conversation_id: string;
+            };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ChatRequest"];
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
+    };
+    update_conversation_summary_endpoint_api_v1_chat_conversations__conversation_id__summary_update_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -26574,7 +27204,296 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ConversationSummaryUpdateResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_conversation_rag_traces_api_v1_chat_conversations__conversation_id__rag_traces_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                window_minutes?: number;
+                max_bytes?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RagTraceListResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_conversation_checkpoints_api_v1_chat_conversations__conversation_id__checkpoints_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                before?: string | null;
+                include_values?: boolean;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckpointListResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_conversation_checkpoints_api_v1_chat_conversations__conversation_id__checkpoints_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_conversation_checkpoint_api_v1_chat_conversations__conversation_id__checkpoints__checkpoint_id__get: {
+        parameters: {
+            query?: {
+                include_values?: boolean;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+                checkpoint_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckpointDetailResponse"];
                 };
             };
             /** @description Bad Request */
@@ -27054,81 +27973,7 @@ export interface operations {
             };
         };
     };
-    get_conversation_rag_traces_api_v1_chat_conversations__conversation_id__rag_traces_get: {
-        parameters: {
-            query?: {
-                limit?: number;
-                window_minutes?: number;
-                max_bytes?: number;
-            };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path: {
-                conversation_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RagTraceListResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_conversation_summary_endpoint_api_v1_chat_conversations__conversation_id__summary_get: {
+    chat_api_v1_chat_post: {
         parameters: {
             query?: never;
             header?: {
@@ -27136,12 +27981,14 @@ export interface operations {
                 authorization?: string | null;
                 "x-user-id"?: string | null;
             };
-            path: {
-                conversation_id: string;
-            };
+            path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -27149,7 +27996,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ConversationSummaryResponse"];
+                    "application/json": components["schemas"]["ChatResponse"];
                 };
             };
             /** @description Bad Request */
@@ -27198,7 +28045,7 @@ export interface operations {
             };
         };
     };
-    delete_conversation_summary_endpoint_api_v1_chat_conversations__conversation_id__summary_delete: {
+    stream_chat_api_v1_chat_stream_post: {
         parameters: {
             query?: never;
             header?: {
@@ -27206,80 +28053,14 @@ export interface operations {
                 authorization?: string | null;
                 "x-user-id"?: string | null;
             };
-            path: {
-                conversation_id: string;
-            };
+            path?: never;
             cookie?: never;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatRequest"];
             };
         };
-    };
-    update_conversation_summary_endpoint_api_v1_chat_conversations__conversation_id__summary_update_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path: {
-                conversation_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -27287,222 +28068,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ConversationSummaryUpdateResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_conversation_checkpoints_api_v1_chat_conversations__conversation_id__checkpoints_get: {
-        parameters: {
-            query?: {
-                limit?: number;
-                before?: string | null;
-                include_values?: boolean;
-            };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path: {
-                conversation_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CheckpointListResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_conversation_checkpoints_api_v1_chat_conversations__conversation_id__checkpoints_delete: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path: {
-                conversation_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_conversation_checkpoint_api_v1_chat_conversations__conversation_id__checkpoints__checkpoint_id__get: {
-        parameters: {
-            query?: {
-                include_values?: boolean;
-            };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path: {
-                conversation_id: string;
-                checkpoint_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CheckpointDetailResponse"];
+                    "application/json": unknown;
                 };
             };
             /** @description Bad Request */
@@ -31133,6 +31699,81 @@ export interface operations {
             };
         };
     };
+    patch_dataset_precheck_sample_review_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__samples_review_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+                scan_run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DatasetPrecheckSampleReviewPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetPrecheckSampleReviewOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_dataset_precheck_near_dups_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__near_dups_get: {
         parameters: {
             query?: never;
@@ -32612,6 +33253,8 @@ export interface operations {
         parameters: {
             query?: {
                 document_ids?: string[] | null;
+                /** @description Optional dataset scope resolved server-side to accessible documents */
+                dataset_id?: string | null;
                 /** @description Optional pipeline version filter (defaults to active pipeline per document) */
                 pipeline_hash?: string | null;
                 max_events?: number;
@@ -32695,6 +33338,8 @@ export interface operations {
                 /** @description Center node id (KgSourceEvent.id or KgEntity.id) */
                 node_id: string;
                 document_ids?: string[] | null;
+                /** @description Optional dataset scope resolved server-side to accessible documents */
+                dataset_id?: string | null;
                 /** @description Optional pipeline version filter (defaults to active pipeline per document) */
                 pipeline_hash?: string | null;
                 max_events?: number;
@@ -32781,6 +33426,8 @@ export interface operations {
                 kind?: string;
                 limit?: number;
                 document_ids?: string[] | null;
+                /** @description Optional dataset scope resolved server-side to accessible documents */
+                dataset_id?: string | null;
                 /** @description Optional pipeline version filter (defaults to active pipeline per document) */
                 pipeline_hash?: string | null;
             };
@@ -32853,6 +33500,8 @@ export interface operations {
         parameters: {
             query?: {
                 document_ids?: string[] | null;
+                /** @description Optional dataset scope resolved server-side to accessible documents */
+                dataset_id?: string | null;
                 /** @description Optional pipeline version filter (defaults to active pipeline per document) */
                 pipeline_hash?: string | null;
             };
@@ -32926,6 +33575,12 @@ export interface operations {
             query: {
                 pipeline_hash: string;
                 document_ids?: string[] | null;
+                /** @description Optional dataset scope resolved server-side to accessible documents */
+                dataset_id?: string | null;
+                /** @description Include bounded node/edge details for exact diff */
+                include_details?: boolean;
+                /** @description Max nodes/edges per detail group */
+                detail_limit?: number;
             };
             header?: {
                 "x-tenant-id"?: string | null;
@@ -33066,6 +33721,8 @@ export interface operations {
                 pipeline_hash_a: string;
                 pipeline_hash_b: string;
                 document_ids?: string[] | null;
+                /** @description Optional dataset scope resolved server-side to accessible documents */
+                dataset_id?: string | null;
             };
             header?: {
                 "x-tenant-id"?: string | null;
@@ -33136,6 +33793,8 @@ export interface operations {
         parameters: {
             query?: {
                 document_ids?: string[] | null;
+                /** @description Optional dataset scope resolved server-side to accessible documents */
+                dataset_id?: string | null;
                 /** @description Optional pipeline version filter (defaults to active pipeline per document) */
                 pipeline_hash?: string | null;
                 max_events?: number;
@@ -33220,6 +33879,8 @@ export interface operations {
         parameters: {
             query?: {
                 document_ids?: string[] | null;
+                /** @description Optional dataset scope resolved server-side to accessible documents */
+                dataset_id?: string | null;
                 /** @description Optional pipeline version filter (defaults to active pipeline per document) */
                 pipeline_hash?: string | null;
             };
@@ -33294,6 +33955,8 @@ export interface operations {
         parameters: {
             query?: {
                 document_ids?: string[] | null;
+                /** @description Optional dataset scope resolved server-side to accessible documents */
+                dataset_id?: string | null;
                 /** @description Optional pipeline version filter (defaults to active pipeline per document) */
                 pipeline_hash?: string | null;
                 max_events?: number;
@@ -37991,6 +38654,8 @@ export interface operations {
             query?: {
                 skip?: number;
                 limit?: number;
+                /** @description Optional dataset scope */
+                dataset_id?: string | null;
             };
             header?: {
                 "x-tenant-id"?: string | null;
@@ -38081,6 +38746,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RagasRegressionRunSchema"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_ragas_regression_ablation_batch_api_v1_evaluations_ragas_regression_ablation_batch_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RagasRegressionAblationBatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RagasRegressionAblationBatchResponse"];
                 };
             };
             /** @description Bad Request */
@@ -38445,6 +39182,12 @@ export interface operations {
             query: {
                 /** @description Base run id to compare against */
                 base_run_id: string;
+                /** @description Compute per-case paired significance statistics when items are available */
+                include_significance?: boolean;
+                /** @description Include bounded per-case metric diffs */
+                include_per_case?: boolean;
+                /** @description Max case diffs to include */
+                max_case_diffs?: number;
             };
             header?: {
                 "x-tenant-id"?: string | null;
@@ -40063,6 +40806,226 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MessageFeedbackEnrichedList"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_message_feedback_api_v1_feedback_messages__feedback_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                feedback_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MessageFeedbackPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageFeedbackOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_feedback_loop_candidates_api_v1_feedback_loop_candidates_get: {
+        parameters: {
+            query?: {
+                max_rating?: number;
+                limit?: number;
+                ruleset?: string | null;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_feedback_loop_hard_negatives_api_v1_feedback_loop_hard_negatives_export_post: {
+        parameters: {
+            query?: {
+                max_rating?: number;
+                limit?: number;
+                dry_run?: boolean;
+                append?: boolean;
+                ruleset?: string | null;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Bad Request */
@@ -42326,41 +43289,6 @@ export interface operations {
                     "application/json": components["schemas"]["ConnectorInfo"][];
                 };
             };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
         };
     };
     validate_connector_config_api_v1_connectors_validate_post: {
@@ -43784,6 +44712,80 @@ export interface operations {
             };
         };
     };
+    document_structure_preview_api_v1_rag_document_structure_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentStructureRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     retrieve_preview_api_v1_rag_retrieve_preview_post: {
         parameters: {
             query?: never;
@@ -43808,6 +44810,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RetrievePreviewResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    tree_search_preview_api_v1_rag_tree_search_preview_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TreeSearchPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TreeSearchPreviewResponse"];
                 };
             };
             /** @description Bad Request */
@@ -45013,6 +46087,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TenantGroupMembersUpdateResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_current_tenant_access_api_v1_rbac_me_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantAccessOut"];
                 };
             };
             /** @description Bad Request */

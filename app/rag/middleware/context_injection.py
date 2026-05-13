@@ -15,8 +15,6 @@ Usage:
     state = await middleware.before_model(state)
 """
 
-
-import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -24,8 +22,9 @@ from pathlib import Path
 from typing import Any
 
 from app.core.config import settings
+from app.rag.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("rag.middleware.context_injection")
 
 
 # ============================================================================

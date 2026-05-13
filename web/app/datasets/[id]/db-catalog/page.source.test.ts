@@ -21,4 +21,16 @@ describe('dataset DB catalog page source', () => {
     expectSourceNotToContain(src, 'setIsLoading')
     expectSourceNotToContain(src, 'loadList')
   })
+
+  it('uses TanStack Query for latest connector run and selected table detail/profile', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'page.tsx'), 'utf8')
+
+    expectSourceToContain(src, 'latestRunQueryKey = queryKeys.connectors.runs')
+    expectSourceToContain(src, 'queryKey: queryKeys.datasets.dbCatalogTableDetail')
+    expectSourceToContain(src, 'queryKey: queryKeys.datasets.dbCatalogProfiles')
+    expectSourceNotToContain(src, 'const loadLatestRun = useCallback(async () => {')
+    expectSourceNotToContain(src, 'const loadDetail = useCallback(')
+    expectSourceNotToContain(src, 'detachPromise(loadLatestRun())')
+    expectSourceNotToContain(src, 'loadDetail(selectedId)')
+  })
 })

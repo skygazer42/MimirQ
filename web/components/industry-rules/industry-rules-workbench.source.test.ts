@@ -45,4 +45,16 @@ describe('industry rules workbench source', () => {
     expectSourceNotToContain(src, 'setLoadingMeta')
     expectSourceNotToContain(src, 'detachPromise(loadMeta())')
   })
+
+  it('loads ruleset detail and glossary suggestions through TanStack Query', () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, 'industry-rules-workbench.tsx'),
+      'utf8'
+    )
+
+    expectSourceToContain(src, 'queryKey: queryKeys.industryRules.ruleset(selectedRuleset)')
+    expectSourceToContain(src, 'queryKey: queryKeys.industryRules.glossarySuggestions(')
+    expectSourceNotToContain(src, 'const loadRulesetDetail = async')
+    expectSourceNotToContain(src, 'const loadGlossarySuggestions = async')
+  })
 })

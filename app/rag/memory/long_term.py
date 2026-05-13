@@ -13,7 +13,6 @@ Features:
 
 
 import json
-import logging
 import sqlite3
 import threading
 from abc import ABC, abstractmethod
@@ -23,8 +22,9 @@ from typing import Any
 from uuid import uuid4
 
 from app.core.config import settings
+from app.rag.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("rag.memory.long_term")
 
 
 # Configuration

@@ -1,7 +1,6 @@
 """
 MimirQ API unified exception handling module
 """
-import logging
 import traceback
 from typing import Any
 
@@ -18,6 +17,8 @@ from starlette.status import (
     HTTP_503_SERVICE_UNAVAILABLE,
 )
 
+from app.rag.core.logging import get_logger
+
 # Starlette exposes `HTTP_422_UNPROCESSABLE_ENTITY` (422). Some codebases refer to
 # a non-standard `HTTP_422_UNPROCESSABLE_CONTENT` name; keep a compatibility alias.
 try:
@@ -31,7 +32,7 @@ try:
 except ImportError:  # pragma: no cover
     from starlette.status import HTTP_413_REQUEST_ENTITY_TOO_LARGE as HTTP_413_CONTENT_TOO_LARGE
 
-logger = logging.getLogger(__name__)
+logger = get_logger("core.exceptions")
 
 _HINT_BY_KEY: dict[str, str] = {
     "timeout": "Parsing timed out. Try a smaller file, choose a faster parser backend, or increase TASK_JOB_TIMEOUT_SEC.",

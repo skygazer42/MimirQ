@@ -6,16 +6,15 @@ Provides the following capabilities:
 - Replay execution from a specific checkpoint
 - Fork execution with modified state
 """
-
-
-import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Union
 
 from langgraph.graph.state import CompiledStateGraph
 
-logger = logging.getLogger(__name__)
+from app.rag.core.logging import get_logger
+
+logger = get_logger("rag.checkpointer.time_travel")
 
 
 @dataclass

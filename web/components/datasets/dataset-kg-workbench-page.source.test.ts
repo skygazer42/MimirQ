@@ -37,4 +37,16 @@ describe('Dataset KG workbench perceived-performance wiring', () => {
     expect(src).toContain('degree=')
     expect(src).toContain('cluster=')
   })
+
+  it('loads the scoped document range through TanStack Query instead of a local loadDocs helper', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'dataset-kg-workbench-page.tsx'), 'utf8')
+
+    expect(src).toContain("import { useQuery } from '@tanstack/react-query'")
+    expect(src).toContain('queryKey: datasetId')
+    expect(src).toContain('queryKeys.datasets.detail(datasetId)')
+    expect(src).toContain('queryKeys.documents.list({')
+    expect(src).not.toContain('const loadDocs = useCallback(async (query?: string) => {')
+    expect(src).not.toContain('setDocs(Array.isArray(list.items) ? list.items : [])')
+    expect(src).not.toContain('setDocsTotal(Number(list.total || 0))')
+  })
 })

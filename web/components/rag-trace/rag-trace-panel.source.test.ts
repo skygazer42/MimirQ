@@ -142,4 +142,13 @@ describe('rag trace panel source', () => {
     expect(src).toContain('t("panel.inspector.citationsSummary")')
     expect(src).toContain('t("panel.inspector.defaultSummary")')
   })
+
+  it('loads rag trace history through TanStack Query instead of a handwritten load callback', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'rag-trace-panel.tsx'), 'utf8')
+
+    expect(src).toContain("import { useQuery } from '@tanstack/react-query'")
+    expect(src).toContain('queryKey: queryKeys.chat.ragTraces(conversationId, {')
+    expect(src).toContain('await tracesQuery.refetch()')
+    expect(src).not.toContain("const res = await chatApi.getRagTraces(conversationId, { limit: 40, window_minutes: 24 * 60 })")
+  })
 })

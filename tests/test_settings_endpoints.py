@@ -250,3 +250,16 @@ def test_settings_status_probes_paddlevl_health(monkeypatch):  # noqa: ANN001
     qianfan = parsers.get("qianfan_ocr") or {}
     assert qianfan.get("enabled") is True
     assert qianfan.get("available") is True
+
+
+def test_llm_api_base_defaults_follow_runtime_settings(monkeypatch):  # noqa: ANN001
+    from app.api.v1.settings import LLMConfig, TestLLMRequest
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "LLM_API_BASE", "https://llm.example.test/v1", raising=False)
+
+    llm_cfg = LLMConfig()
+    llm_test_req = TestLLMRequest(api_key="k", model="m")
+
+    assert llm_cfg.api_base == "https://llm.example.test/v1"
+    assert llm_test_req.api_base == "https://llm.example.test/v1"

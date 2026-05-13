@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { ArrowLeft, Database, Play, RefreshCw, Settings2 } from 'lucide-react'
 
@@ -23,7 +23,14 @@ import { connectorApi, datasetApi } from '@/lib/api'
 import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise } from '@/lib/utils'
 
-import type { ConnectorRunOut, Dataset, DbCatalogTableDetail, DbCatalogTableSummary, DbProfileSnapshot } from '@/types'
+import type {
+  ConnectorRunListResponse,
+  ConnectorRunOut,
+  Dataset,
+  DbCatalogTableDetail,
+  DbCatalogTableSummary,
+  DbProfileSnapshot,
+} from '@/types'
 
 const ENGINE_OPTIONS: ReadonlyArray<'all' | 'mysql' | 'sqlserver'> = ['all', 'mysql', 'sqlserver']
 const DB_CATALOG_LIST_LIMIT = 200
@@ -59,6 +66,7 @@ function parseNameList(raw: string, limit = 200): string[] {
 }
 
 export default function DatasetDbCatalogPage() {
+  const queryClient = useQueryClient()
   const router = useRouter()
   const params = useParams()
   const datasetId = asDatasetId((params as any)?.id)
@@ -67,9 +75,6 @@ export default function DatasetDbCatalogPage() {
   const [query, setQuery] = useState('')
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [selected, setSelected] = useState<DbCatalogTableDetail | null>(null)
-  const [detailLoading, setDetailLoading] = useState(false)
-  const [latestProfile, setLatestProfile] = useState<DbProfileSnapshot | null>(null)
 
   const [syncOpen, setSyncOpen] = useState(false)
   const [syncConnectorId, setSyncConnectorId] = useState<'sqlserver_catalog' | 'mysql_catalog'>('sqlserver_catalog')
@@ -84,25 +89,6 @@ export default function DatasetDbCatalogPage() {
   const [syncProfileEnabled, setSyncProfileEnabled] = useState(true)
   const [syncSubmitting, setSyncSubmitting] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
-
-  const [latestRun, setLatestRun] = useState<ConnectorRunOut | null>(null)
-  const [latestRunLoading, setLatestRunLoading] = useState(false)
-
-  const loadLatestRun = useCallback(async () => {
-    if (!datasetId) return
-    setLatestRunLoading(true)
-    try {
-      const res = await connectorApi.listRuns({ dataset_id: datasetId, limit: 10 })
-      const items = res.items || []
-      const catalog = items.filter((r) => ['mysql_catalog', 'sqlserver_catalog'].includes(String(r.connector_id || '').toLowerCase()))
-      setLatestRun(catalog[0] || null)
-    } catch {
-      // Likely permission-gated (requires dataset write). Fail closed.
-      setLatestRun(null)
-    } finally {
-      setLatestRunLoading(false)
-    }
-  }, [datasetId])
 
   const catalogListParams = useMemo(
     () => ({
@@ -132,11 +118,33 @@ export default function DatasetDbCatalogPage() {
     },
     enabled: Boolean(datasetId),
   })
+  const latestRunQueryKey = queryKeys.connectors.runs({
+    dataset_id: datasetId || '',
+    limit: 10,
+  })
+  const latestRunQuery = useQuery({
+    queryKey: latestRunQueryKey,
+    queryFn: () => {
+      if (!datasetId) throw new Error('缺少数据集 ID')
+      return connectorApi.listRuns({ dataset_id: datasetId, limit: 10 })
+    },
+    enabled: Boolean(datasetId),
+  })
   const dataset = (datasetQuery.data ?? null) as Dataset | null
   const items: DbCatalogTableSummary[] = useMemo(
     () => catalogTablesQuery.data?.items || [],
     [catalogTablesQuery.data?.items]
   )
+  const latestRun = useMemo<ConnectorRunOut | null>(() => {
+    const runs = latestRunQuery.data?.items || []
+    const catalogRuns = runs.filter((run) =>
+      ['mysql_catalog', 'sqlserver_catalog'].includes(
+        String(run.connector_id || '').toLowerCase()
+      )
+    )
+    return catalogRuns[0] || null
+  }, [latestRunQuery.data?.items])
+  const latestRunLoading = latestRunQuery.isFetching
   const isLoading = datasetQuery.isFetching || catalogTablesQuery.isFetching
   const loadError = datasetQuery.error ?? catalogTablesQuery.error
   const loadErrorUpdatedAt = Math.max(
@@ -145,56 +153,51 @@ export default function DatasetDbCatalogPage() {
   )
   const { refetch: refetchDataset } = datasetQuery
   const { refetch: refetchCatalogTables } = catalogTablesQuery
+  const { refetch: refetchLatestRun } = latestRunQuery
   const refreshCatalogList = useCallback(() => {
     void refetchDataset()
     void refetchCatalogTables()
   }, [refetchCatalogTables, refetchDataset])
-
-  const loadDetail = useCallback(
-    async (tableId: string) => {
-      if (!datasetId) return
-      setDetailLoading(true)
-      setLatestProfile(null)
-      try {
-        const entitlementHash =
-          typeof (latestRun as any)?.stats?.result?.entitlement_hash === 'string'
-            ? ((latestRun as any).stats.result.entitlement_hash as string)
-            : undefined
-
-        const [detailRes, profileRes] = await Promise.allSettled([
-          datasetApi.getDbCatalogTable(datasetId, tableId),
-          datasetApi.listDbCatalogProfiles(datasetId, {
-            table_id: tableId,
-            entitlement_hash: entitlementHash,
-            skip: 0,
-            limit: 1,
-          }),
-        ])
-
-        if (detailRes.status === 'fulfilled') {
-          setSelected(detailRes.value)
-        } else {
-          setSelected(null)
-          toast.error(formatApiError(detailRes.reason, '加载表结构失败'))
-          return
-        }
-
-        if (profileRes.status === 'fulfilled') {
-          setLatestProfile((profileRes.value.items || [])[0] || null)
-        } else {
-          setLatestProfile(null)
-        }
-      } catch (e: any) {
-        console.error('Failed to load DB catalog table detail', e)
-        setSelected(null)
-        setLatestProfile(null)
-        toast.error(formatApiError(e, '加载表结构失败'))
-      } finally {
-        setDetailLoading(false)
-      }
+  const entitlementHash = useMemo(() => {
+    const maybeHash = (latestRun?.stats as { result?: { entitlement_hash?: unknown } } | null | undefined)
+      ?.result?.entitlement_hash
+    return typeof maybeHash === 'string' ? maybeHash : undefined
+  }, [latestRun])
+  const detailQuery = useQuery({
+    queryKey: queryKeys.datasets.dbCatalogTableDetail(
+      datasetId || '',
+      selectedId || ''
+    ),
+    queryFn: () => {
+      if (!datasetId || !selectedId) throw new Error('缺少表 ID')
+      return datasetApi.getDbCatalogTable(datasetId, selectedId)
     },
-    [datasetId, latestRun]
-  )
+    enabled: Boolean(datasetId && selectedId),
+  })
+  const latestProfileQuery = useQuery({
+    queryKey: queryKeys.datasets.dbCatalogProfiles(datasetId || '', {
+      table_id: selectedId || '',
+      entitlement_hash: entitlementHash,
+      skip: 0,
+      limit: 1,
+    }),
+    queryFn: () => {
+      if (!datasetId || !selectedId) throw new Error('缺少表 ID')
+      return datasetApi.listDbCatalogProfiles(datasetId, {
+        table_id: selectedId,
+        entitlement_hash: entitlementHash,
+        skip: 0,
+        limit: 1,
+      })
+    },
+    enabled: Boolean(datasetId && selectedId),
+  })
+  const selected = selectedId ? detailQuery.data ?? null : null
+  const latestProfile: DbProfileSnapshot | null =
+    selectedId ? latestProfileQuery.data?.items?.[0] || null : null
+  const detailLoading =
+    Boolean(selectedId) &&
+    (detailQuery.isFetching || latestProfileQuery.isFetching)
 
   useEffect(() => {
     setSyncPort(syncConnectorId === 'sqlserver_catalog' ? 1433 : 3306)
@@ -243,14 +246,25 @@ export default function DatasetDbCatalogPage() {
         dataset_id: datasetId,
         config: cfg,
       })
+      queryClient.setQueryData<ConnectorRunListResponse | undefined>(
+        latestRunQueryKey,
+        (current) => {
+          const items = current?.items || []
+          const nextItems = [run, ...items.filter((item) => item.id !== run.id)]
+            .slice(0, 10)
+          return {
+            total: Math.max(current?.total || 0, nextItems.length),
+            items: nextItems,
+          }
+        }
+      )
       toast.success(`已创建同步任务：${run.id.slice(0, 8)}`)
-      setLatestRun(run)
       setSyncOpen(false)
       setSyncPassword('')
       // Best-effort: refresh after a short delay (sync runs async).
       globalThis.window.setTimeout(() => {
         refreshCatalogList()
-        detachPromise(loadLatestRun())
+        void refetchLatestRun()
       }, 1500)
     } catch (e: any) {
       console.error('Failed to create DB catalog run', e)
@@ -260,7 +274,6 @@ export default function DatasetDbCatalogPage() {
     }
   }, [
     datasetId,
-    loadLatestRun,
     refreshCatalogList,
     syncConnectorId,
     syncDatabase,
@@ -272,6 +285,9 @@ export default function DatasetDbCatalogPage() {
     syncPort,
     syncProfileEnabled,
     syncUsername,
+    latestRunQueryKey,
+    queryClient,
+    refetchLatestRun,
   ])
 
   useEffect(() => {
@@ -280,23 +296,17 @@ export default function DatasetDbCatalogPage() {
   }, [loadError, loadErrorUpdatedAt])
 
   useEffect(() => {
+    if (!detailQuery.error) return
+    console.error('Failed to load DB catalog table detail', detailQuery.error)
+    toast.error(formatApiError(detailQuery.error, '加载表结构失败'))
+  }, [detailQuery.error, detailQuery.errorUpdatedAt])
+
+  useEffect(() => {
     setSelectedId((prev) => {
       if (prev && items.some((t) => t.id === prev)) return prev
       return items[0]?.id || null
     })
   }, [items])
-
-  useEffect(() => {
-    detachPromise(loadLatestRun())
-  }, [loadLatestRun])
-
-  useEffect(() => {
-    if (!selectedId) {
-      setSelected(null)
-      return
-    }
-    loadDetail(selectedId)
-  }, [selectedId, loadDetail])
 
   const selectedSummary = useMemo(() => {
     if (!selected) return null
@@ -399,7 +409,7 @@ export default function DatasetDbCatalogPage() {
                     variant="outline"
                     size="sm"
                     className="gap-2"
-                    onClick={() => detachPromise(loadLatestRun())}
+                    onClick={() => void refetchLatestRun()}
                     disabled={latestRunLoading}
                   >
                     <RefreshCw className={cn('h-3.5 w-3.5', latestRunLoading && 'animate-spin motion-reduce:animate-none')} />

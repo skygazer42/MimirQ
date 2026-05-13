@@ -6,6 +6,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, Suspense, useCallback, useDeferredValue, useMemo } from 'react'
 import { useLocale, useTranslations } from 'next-intl'
 import { useSearchParams } from 'next/navigation'
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   MessageSquare,
@@ -18,7 +19,6 @@ import {
   Plus,
   Route,
   Search,
-  Star,
   PanelLeftClose,
   PanelLeftOpen,
   Bot
@@ -37,6 +37,7 @@ import { PageLoading } from '@/components/ui/page-loading'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Link, useRouter } from '@/i18n/navigation'
 import { chatApi } from '@/lib/api'
+import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
 import { toast } from 'sonner'
@@ -59,6 +60,9 @@ type HistoryPageContentProps = {
   initialHasMoreMessages: boolean
   initialConversationsLoaded: boolean
 }
+
+const EMPTY_CONVERSATIONS: Conversation[] = []
+const EMPTY_MESSAGES: Message[] = []
 
 export default function HistoryPageClient({
   initialConversationId = null,
@@ -105,37 +109,78 @@ function HistoryPageContent({
 }: Readonly<HistoryPageContentProps>) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const queryClient = useQueryClient()
   const locale = useLocale()
   const t = useTranslations('History')
   const conversationId = searchParams.get('id') || initialConversationId || null
 
-  const [conversations, setConversations] = useState<Conversation[]>(initialConversations)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isWideHistoryViewport, setIsWideHistoryViewport] = useState(false)
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(initialSelectedConversation)
-  const [messages, setMessages] = useState<Message[]>(initialMessages)
-  const [isLoadingList, setIsLoadingList] = useState(!initialConversationsLoaded)
-  const [isLoadingMessages, setIsLoadingMessages] = useState(false)
-  const [hasMoreMessages, setHasMoreMessages] = useState(initialHasMoreMessages)
-  const [isLoadingOlder, setIsLoadingOlder] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
-  const [historyView, setHistoryView] = useState<'all' | 'recent' | 'starred'>('all')
-  const [starredConversationIds, setStarredConversationIds] = useState<string[]>([])
+  const [historyView, setHistoryView] = useState<'all' | 'recent'>('all')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
   const [isTraceOpen, setIsTraceOpen] = useState(false)
 
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const pendingPrependScrollRef = useRef<{ top: number; height: number } | null>(null)
-  const selectionRequestSeqRef = useRef(0)
-  const selectedConversationIdRef = useRef<string | null>(initialSelectedConversation?.id ?? null)
-  const messagesLengthRef = useRef(initialMessages.length)
+  const shouldScrollToEndRef = useRef(false)
   const deferredSearchQuery = useDeferredValue(searchQuery)
-
-  useEffect(() => {
-    selectedConversationIdRef.current = selectedConversation?.id ?? null
-    messagesLengthRef.current = messages.length
-  }, [selectedConversation?.id, messages.length])
+  const conversationsQuery = useQuery({
+    queryKey: queryKeys.chat.conversations({ limit: 100 }),
+    queryFn: () => chatApi.listConversations({ limit: 100 }),
+    initialData: initialConversationsLoaded
+      ? {
+          items: initialConversations,
+          total: initialConversations.length,
+        }
+      : undefined,
+  })
+  const conversations = conversationsQuery.data?.items ?? EMPTY_CONVERSATIONS
+  const isLoadingList = conversationsQuery.isLoading
+  const selectedConversationId = selectedConversation?.id || null
+  const messagesQuery = useInfiniteQuery({
+    queryKey: queryKeys.chat.messages(selectedConversationId || ''),
+    enabled: Boolean(selectedConversationId),
+    initialPageParam: undefined as string | undefined,
+    queryFn: async ({ pageParam }) => {
+      const result = await chatApi.getMessages(selectedConversationId || '', {
+        limit: pageParam ? LOAD_MORE_STEP : DEFAULT_VISIBLE_MESSAGES,
+        before: pageParam,
+      })
+      return {
+        conversation_id: result.conversation_id,
+        messages: result.messages || [],
+        returned: Number(result.returned ?? result.messages?.length ?? 0),
+        has_more: Boolean(result.has_more),
+      }
+    },
+    getPreviousPageParam: (firstPage) =>
+      firstPage.has_more ? firstPage.messages?.[0]?.id || undefined : undefined,
+    getNextPageParam: () => undefined,
+    initialData:
+      initialSelectedConversation?.id && initialSelectedConversation.id === selectedConversationId
+        ? {
+            pages: [
+              {
+                conversation_id: initialSelectedConversation.id,
+                messages: initialMessages,
+                returned: initialMessages.length,
+                has_more: initialHasMoreMessages,
+              },
+            ],
+            pageParams: [undefined],
+          }
+        : undefined,
+  })
+  const messages = useMemo(
+    () => messagesQuery.data?.pages.flatMap((page) => page.messages || []) ?? EMPTY_MESSAGES,
+    [messagesQuery.data]
+  )
+  const hasMoreMessages = messagesQuery.hasPreviousPage
+  const isLoadingOlder = messagesQuery.isFetchingPreviousPage
+  const isLoadingMessages = Boolean(selectedConversationId) && messagesQuery.isLoading
 
   useEffect(() => {
     const media = window.matchMedia('(min-width: 1280px)')
@@ -146,85 +191,47 @@ function HistoryPageContent({
     return () => media.removeEventListener('change', updateViewportWidth)
   }, [])
 
-  // define handlers first to avoid ReferenceError
-  const loadConversations = useCallback(async () => {
-    try {
-      setIsLoadingList(true)
-      const result = await chatApi.listConversations({ limit: 100 })
-      setConversations(result.items || [])
-    } catch (error) {
-      console.error('Failed to load conversations:', error)
-      toast.error(formatApiError(error, t('loadConversationListFailed')))
-    } finally {
-      setIsLoadingList(false)
-    }
-  }, [t])
-
   const handleSelectConversation = useCallback(async (conversation: Conversation) => {
-    if (selectedConversationIdRef.current === conversation.id && messagesLengthRef.current > 0) return
+    if (selectedConversation?.id === conversation.id) return
 
-    const requestSeq = selectionRequestSeqRef.current + 1
-    selectionRequestSeqRef.current = requestSeq
-    selectedConversationIdRef.current = conversation.id
-    messagesLengthRef.current = 0
+    shouldScrollToEndRef.current = true
     setSelectedConversation(conversation)
-    setMessages([])
-    setHasMoreMessages(false)
-    setIsLoadingMessages(true)
 
     // 更新 URL
     router.push(`/history?id=${conversation.id}`, { scroll: false })
+  }, [router, selectedConversation?.id])
 
-    try {
-      const result = await chatApi.getMessages(conversation.id, { limit: DEFAULT_VISIBLE_MESSAGES })
-      if (requestSeq !== selectionRequestSeqRef.current) return
-      const newMessages = result.messages || []
-      messagesLengthRef.current = newMessages.length
-      setMessages(newMessages)
-      setHasMoreMessages(Boolean(result.has_more))
-
-      // 实时同步元数据：如果返回的消息中有最新的，更新选中对话的状态
-      if (newMessages.length > 0) {
-        const lastMsg = newMessages[newMessages.length - 1]
-        setSelectedConversation({
-          ...conversation,
-          message_count: conversation.message_count,
-          updated_at: lastMsg.created_at || conversation.updated_at,
-          last_message: buildConversationPreview(lastMsg.content) || conversation.last_message,
-        })
-      }
-
-      globalThis.window.requestAnimationFrame(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' })
-      })
-    } catch (error) {
-      if (requestSeq !== selectionRequestSeqRef.current) return
-      messagesLengthRef.current = 0
-      console.error('Failed to load messages:', error)
-      toast.error(formatApiError(error, t('loadConversationMessagesFailed')))
-      setMessages([])
-      setHasMoreMessages(false)
-    } finally {
-      if (requestSeq !== selectionRequestSeqRef.current) return
-      setIsLoadingMessages(false)
-    }
-  }, [router, t])
-
-  // 加载对话列表
   useEffect(() => {
-    if (initialConversationsLoaded) return
-    loadConversations()
-  }, [initialConversationsLoaded, loadConversations])
+    if (!conversationsQuery.error) return
+    console.error('Failed to load conversations:', conversationsQuery.error)
+    toast.error(formatApiError(conversationsQuery.error, t('loadConversationListFailed')))
+  }, [conversationsQuery.error, t])
 
   // 当 URL 中有 id 参数时，自动选中对话
   useEffect(() => {
     if (conversationId && conversations.length > 0) {
       const conv = conversations.find((c) => c.id === conversationId)
-      if (conv && selectedConversationIdRef.current !== conv.id) {
-        handleSelectConversation(conv)
+      if (conv && selectedConversation?.id !== conv.id) {
+        shouldScrollToEndRef.current = true
+        setSelectedConversation(conv)
       }
     }
-  }, [conversationId, conversations, handleSelectConversation])
+  }, [conversationId, conversations, selectedConversation?.id])
+
+  useEffect(() => {
+    if (!selectedConversationId) return
+    if (messagesQuery.error) {
+      console.error('Failed to load messages:', messagesQuery.error)
+      toast.error(formatApiError(messagesQuery.error, t('loadConversationMessagesFailed')))
+      return
+    }
+    if (!messagesQuery.isSuccess) return
+    if (!shouldScrollToEndRef.current) return
+    shouldScrollToEndRef.current = false
+    globalThis.window.requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' })
+    })
+  }, [messagesQuery.error, messagesQuery.isSuccess, selectedConversationId, t])
 
   // Preserve scroll position when prepending older messages.
   useLayoutEffect(() => {
@@ -243,10 +250,19 @@ function HistoryPageContent({
   const handleDeleteConversation = async (conversationId: string) => {
     try {
       await chatApi.deleteConversation(conversationId)
-      setConversations((prev) => prev.filter((c) => c.id !== conversationId))
+      queryClient.setQueryData(
+        queryKeys.chat.conversations({ limit: 100 }),
+        (current: { items?: Conversation[]; total?: number } | undefined) =>
+          current
+            ? {
+                ...current,
+                items: (current.items || []).filter((conversation) => conversation.id !== conversationId),
+                total: Math.max(0, Number(current.total || 0) - 1),
+              }
+            : current
+      )
       if (selectedConversation?.id === conversationId) {
         setSelectedConversation(null)
-        setMessages([])
         router.push('/history', { scroll: false })
       }
     } catch (error) {
@@ -279,10 +295,6 @@ function HistoryPageContent({
         return Number.isFinite(ts) && now - ts <= 7 * 24 * 60 * 60 * 1000
       })
     }
-    if (historyView === 'starred') {
-      const starredSet = new Set(starredConversationIds)
-      base = base.filter((c) => starredSet.has(c.id))
-    }
     const term = deferredSearchQuery.trim().toLowerCase()
     if (!term) return base
     return base.filter(
@@ -290,13 +302,7 @@ function HistoryPageContent({
         (c.title || '').toLowerCase().includes(term) ||
         (c.last_message || '').toLowerCase().includes(term)
     )
-  }, [conversations, deferredSearchQuery, historyView, starredConversationIds])
-
-  const toggleStarConversation = useCallback((conversationId: string) => {
-    setStarredConversationIds((prev) =>
-      prev.includes(conversationId) ? prev.filter((id) => id !== conversationId) : [...prev, conversationId]
-    )
-  }, [])
+  }, [conversations, deferredSearchQuery, historyView])
 
   const groupLabels = useMemo(
     () => ({
@@ -341,23 +347,13 @@ function HistoryPageContent({
       pendingPrependScrollRef.current = { top: el.scrollTop, height: el.scrollHeight }
     }
 
-    setIsLoadingOlder(true)
     try {
-      const result = await chatApi.getMessages(selectedConversation.id, { limit: LOAD_MORE_STEP, before: oldestMessageId })
-      const older = result.messages || []
-      setMessages((prev) => {
-        const seen = new Set(prev.map((m) => m.id))
-        const prefix = older.filter((m) => !seen.has(m.id))
-        return prefix.length ? [...prefix, ...prev] : prev
-      })
-      setHasMoreMessages(Boolean(result.has_more))
+      await messagesQuery.fetchPreviousPage()
     } catch (error) {
       console.error('Failed to load older messages:', error)
       toast.error(formatApiError(error, t('loadOlderMessagesFailed')))
-    } finally {
-      setIsLoadingOlder(false)
     }
-  }, [selectedConversation, hasMoreMessages, isLoadingMessages, isLoadingOlder, oldestMessageId, t])
+  }, [selectedConversation, hasMoreMessages, isLoadingMessages, isLoadingOlder, oldestMessageId, messagesQuery, t])
   const sidebarExpandedWidth = isWideHistoryViewport ? '20.75rem' : '19.5rem'
 
   return (
@@ -427,7 +423,6 @@ function HistoryPageContent({
                   {([
                     ['all', '全部'],
                     ['recent', '最近'],
-                    ['starred', '收藏'],
                   ] as const).map(([value, label]) => (
                     <button
                       key={value}
@@ -481,7 +476,7 @@ function HistoryPageContent({
                             </div>
                           </div>
                           <div className="space-y-0 px-0 pb-0">
-                            {convs.map((conversation) => (<ConversationItem key={conversation.id} conversation={conversation} isSelected={selectedConversation?.id === conversation.id} isStarred={starredConversationIds.includes(conversation.id)} onToggleStar={() => toggleStarConversation(conversation.id)} onSelect={() => handleSelectConversation(conversation)} onDelete={() => setShowDeleteConfirm(conversation.id)} showDeleteConfirm={showDeleteConfirm === conversation.id} onConfirmDelete={() => handleDeleteConversation(conversation.id)} onCancelDelete={() => setShowDeleteConfirm(null)}/>))}
+                            {convs.map((conversation) => (<ConversationItem key={conversation.id} conversation={conversation} isSelected={selectedConversation?.id === conversation.id} onSelect={() => handleSelectConversation(conversation)} onDelete={() => setShowDeleteConfirm(conversation.id)} showDeleteConfirm={showDeleteConfirm === conversation.id} onConfirmDelete={() => handleDeleteConversation(conversation.id)} onCancelDelete={() => setShowDeleteConfirm(null)}/>))}
                           </div>
                         </div>);
             }));
@@ -726,8 +721,6 @@ function HistoryPageContent({
 function ConversationItem({
   conversation,
   isSelected,
-  isStarred,
-  onToggleStar,
   onSelect,
   onDelete,
   showDeleteConfirm,
@@ -736,8 +729,6 @@ function ConversationItem({
 }: Readonly<{
   conversation: Conversation
   isSelected: boolean
-  isStarred: boolean
-  onToggleStar: () => void
   onSelect: () => void
   onDelete: () => void
   showDeleteConfirm: boolean
@@ -814,19 +805,6 @@ function ConversationItem({
           </div>
         ) : (
           <div className="flex items-center gap-1">
-            <IconButton
-              label={isStarred ? '取消收藏' : '收藏对话'}
-              variant="ghost"
-              className={cn(
-                'size-8 rounded-full transition-all',
-                isStarred
-                  ? 'text-primary hover:bg-primary/10'
-                  : 'text-muted-foreground/30 hover:text-primary hover:bg-primary/8'
-              )}
-              onClick={(e) => { e.stopPropagation(); onToggleStar() }}
-            >
-              <Star className={cn('size-4', isStarred && 'fill-current')} />
-            </IconButton>
             <IconButton
               label={t('deleteConversation')}
               variant="ghost"

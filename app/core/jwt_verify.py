@@ -14,7 +14,6 @@ This module is intentionally best-effort:
 from __future__ import annotations
 
 import asyncio
-import logging
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -25,8 +24,9 @@ from jose import ExpiredSignatureError, JWTError, jwt
 
 from app.core.config import settings
 from app.core.utils import parse_csv
+from app.rag.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("core.jwt_verify")
 
 
 def jwt_secret_key_candidates() -> list[str]:

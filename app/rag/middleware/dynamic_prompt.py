@@ -8,16 +8,15 @@ Provides dynamic prompt injection capabilities:
 - User preference injection
 """
 
-
-import logging
 from collections.abc import Callable
 from datetime import datetime
 from functools import wraps
 from typing import Any
 
 from app.core.config import settings
+from app.rag.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("rag.middleware.dynamic_prompt")
 
 
 class ContextInjector:

@@ -104,6 +104,95 @@ def test_precheck_samples_endpoint(monkeypatch):  # noqa: ANN001
     assert out.strata_count == 1
 
 
+def test_precheck_samples_endpoint_merges_review_metadata(monkeypatch):  # noqa: ANN001
+    from app.api.v1.dataset_precheck import get_dataset_precheck_samples
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    run_id = uuid.uuid4()
+
+    run = SimpleNamespace(id=run_id, tenant_id=tenant_id, dataset_id=dataset_id, status="completed", config={}, artifacts={})
+
+    monkeypatch.setattr("app.api.v1.dataset_precheck.get_dataset_for_precheck", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(
+        "app.api.v1.dataset_precheck.load_precheck_samples_from_row",
+        lambda *_a, **_k: {
+            "requested": 1,
+            "strata_count": 1,
+            "representative": [{"name": "报价单.pdf", "file_type": "pdf", "file_size": 12}],
+            "needs_review": {},
+            "top_large_files": [],
+            "top_long_text": [],
+        },
+        raising=True,
+    )
+    monkeypatch.setattr(
+        "app.api.v1.dataset_precheck.load_precheck_sample_reviews_from_row",
+        lambda *_a, **_k: {
+            "报价单.pdf": {
+                "review_disposition": "approved",
+                "reviewed_at": "2026-05-13T00:00:00Z",
+                "reviewed_by": "u",
+            }
+        },
+        raising=True,
+    )
+
+    db = _DummyDB([run])
+    out = get_dataset_precheck_samples(dataset_id=dataset_id, scan_run_id=run_id, size=1, prefer_artifact=True, tenant_id=tenant_id, account_id="u", db=db)
+    assert out.representative[0].review_disposition == "approved"
+    assert str(out.representative[0].reviewed_by) == "u"
+
+
+def test_precheck_patch_sample_review_endpoint(monkeypatch):  # noqa: ANN001
+    from app.api.schemas.dataset_precheck import DatasetPrecheckSampleReviewPatchRequest
+    from app.api.v1.dataset_precheck import patch_dataset_precheck_sample_review
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    run_id = uuid.uuid4()
+
+    run = SimpleNamespace(id=run_id, tenant_id=tenant_id, dataset_id=dataset_id, status="completed", config={}, artifacts={})
+
+    monkeypatch.setattr("app.api.v1.dataset_precheck.get_dataset_for_precheck", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(
+        "app.api.v1.dataset_precheck.load_precheck_samples_from_row",
+        lambda *_a, **_k: {
+            "requested": 1,
+            "strata_count": 1,
+            "representative": [{"name": "报价单.pdf", "file_type": "pdf", "file_size": 12}],
+            "needs_review": {},
+            "top_large_files": [],
+            "top_long_text": [],
+        },
+        raising=True,
+    )
+    monkeypatch.setattr(
+        "app.api.v1.dataset_precheck.upsert_precheck_sample_review_for_row",
+        lambda *_a, **_k: {
+            "review_disposition": "manual",
+            "reviewed_at": "2026-05-13T00:00:00Z",
+            "reviewed_by": "u",
+        },
+        raising=True,
+    )
+
+    db = _DummyDB([run])
+    out = patch_dataset_precheck_sample_review(
+        dataset_id=dataset_id,
+        scan_run_id=run_id,
+        body=DatasetPrecheckSampleReviewPatchRequest(
+            file_name="报价单.pdf",
+            disposition="manual",
+        ),
+        tenant_id=tenant_id,
+        account_id="u",
+        db=db,
+    )
+    assert out.file_name == "报价单.pdf"
+    assert out.review_disposition == "manual"
+
+
 def test_precheck_suggest_and_apply_ingestion_policy_endpoints(monkeypatch):  # noqa: ANN001
     from app.api.v1.dataset_precheck import (
         apply_dataset_precheck_ingestion_policy_suggestion,
@@ -219,4 +308,3 @@ def test_precheck_diff_endpoint_missing_summary_404(monkeypatch):  # noqa: ANN00
             db=db,
         )
     assert exc.value.status_code == 404
-

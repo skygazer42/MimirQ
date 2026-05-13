@@ -4,7 +4,6 @@ Milvus is implemented today; other backends are placeholders for extension.
 Switch via VECTOR_BACKEND to keep the retrieval path centralized.
 """
 import json
-import logging
 import math
 import os
 from collections.abc import Mapping
@@ -14,12 +13,13 @@ from uuid import UUID
 from app.core.config import settings
 from app.core.constants import EmbeddingProviders
 from app.rag.core.filters import match_metadata_filter
+from app.rag.core.logging import get_logger
 from app.rag.embedding import create_langchain_embeddings_from_config
 from app.storage.vector.milvus import milvus_store
 from app.storage.vector.pgvector import PGVectorStore
 from app.storage.vector.qdrant import QdrantVectorStore
 
-logger = logging.getLogger(__name__)
+logger = get_logger("storage.vector.factory")
 
 if TYPE_CHECKING:
     pass

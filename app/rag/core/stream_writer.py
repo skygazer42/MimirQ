@@ -18,7 +18,6 @@ Usage:
 
 import asyncio
 import json
-import logging
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
@@ -26,8 +25,9 @@ from datetime import datetime
 from typing import Any
 
 from app.core.config import settings
+from app.rag.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("rag.core.stream_writer")
 
 # Configuration
 STREAM_WRITER_ENABLED = getattr(settings, "STREAM_WRITER_ENABLED", True)

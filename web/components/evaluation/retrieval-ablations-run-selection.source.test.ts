@@ -15,9 +15,10 @@ describe('retrieval ablations run selection', () => {
       'utf8'
     )
 
+    expectSourceToContain(src, "import { useQuery } from '@tanstack/react-query'")
     expectSourceToContain(
       src,
-      'evaluationApi.listRegressionRuns({ limit: 80, dataset_id: ds || undefined })'
+      "queryKey: queryKeys.evaluations.list({ limit: 80, dataset_id: datasetId.trim() || undefined })"
     )
     expectSourceToContain(src, 'function AblationInfoTooltip')
     expectSourceToContain(src, 'label="查看 Diff Run 选择说明"')

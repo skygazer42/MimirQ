@@ -414,4 +414,14 @@ describe('query convergence source', () => {
     expect(src).not.toContain('setLoading(')
     expect(src).not.toContain('setSummary(')
   })
+
+  it('uses useQuery for knowledge settings panel loading', () => {
+    const src = read('../components/knowledge/knowledge-settings-panel.tsx')
+
+    expect(src).toContain("from '@tanstack/react-query'")
+    expect(src).toMatch(/useQuery(?:<[\s\S]+?>)?\(\{/)
+    expect(src).toContain('queryKey: queryKeys.settings.snapshot')
+    expect(src).not.toContain('const loadSettings = useCallback(async () =>')
+    expect(src).not.toContain('detachPromise(loadSettings())')
+  })
 })

@@ -25,6 +25,8 @@ from app.api.schemas.dataset_precheck import (
     DatasetPrecheckFindingListResponse,
     DatasetPrecheckIngestionSuggestionResponse,
     DatasetPrecheckNearDupResponse,
+    DatasetPrecheckSampleReviewOut,
+    DatasetPrecheckSampleReviewPatchRequest,
     DatasetPrecheckSamplesResponse,
     DatasetPrecheckScanRunCreateRequest,
     DatasetPrecheckScanRunListResponse,
@@ -42,12 +44,15 @@ from app.services.dataset_precheck_ingestion_suggestion import (
 from app.services.dataset_precheck_scan_runner import run_dataset_precheck_scan
 from app.services.dataset_precheck_service import (
     _scan_run_out_from_row,
+    apply_precheck_sample_reviews,
     get_dataset_for_precheck,
     list_precheck_files_by_dir_prefix,
     list_precheck_finding_files,
     load_precheck_near_dups_from_row,
+    load_precheck_sample_reviews_from_row,
     load_precheck_samples_from_row,
     load_precheck_summary_from_row,
+    upsert_precheck_sample_review_for_row,
 )
 from app.services.ingestion_policy import parse_ingestion_policy_from_metadata
 from app.services.report_html import render_precheck_html
@@ -64,6 +69,29 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 _SCAN_RUN_NOT_FOUND_DETAIL = "Scan run not found"
+
+
+def _collect_precheck_sample_names(raw: dict[str, object]) -> set[str]:
+    names: set[str] = set()
+
+    def _pull(items: object) -> None:
+        if not isinstance(items, list):
+            return
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or "").strip()
+            if name:
+                names.add(name)
+
+    _pull(raw.get("representative"))
+    _pull(raw.get("top_large_files"))
+    _pull(raw.get("top_long_text"))
+    needs_review = raw.get("needs_review")
+    if isinstance(needs_review, dict):
+        for items in needs_review.values():
+            _pull(items)
+    return names
 
 
 def _run_precheck_scan_background(
@@ -422,10 +450,75 @@ def get_dataset_precheck_samples(
         raise HTTPException(status_code=404, detail=_SCAN_RUN_NOT_FOUND_DETAIL)
 
     raw = load_precheck_samples_from_row(row, tenant_id=tenant_id, size=int(size or 0), prefer_artifact=bool(prefer_artifact))
+    raw = apply_precheck_sample_reviews(
+        raw,
+        load_precheck_sample_reviews_from_row(row, tenant_id=tenant_id),
+    )
     try:
         return DatasetPrecheckSamplesResponse(**raw)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Invalid samples payload: {str(exc)[:200]}") from exc
+
+
+@router.patch(
+    "/{dataset_id}/precheck/scan-runs/{scan_run_id}/samples/review",
+    response_model=DatasetPrecheckSampleReviewOut,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
+def patch_dataset_precheck_sample_review(
+    dataset_id: UUID,
+    scan_run_id: UUID,
+    body: DatasetPrecheckSampleReviewPatchRequest,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    get_dataset_for_precheck(
+        db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        account_id=account_id,
+        require_write=True,
+    )
+    row = (
+        db.query(DBDatasetPrecheckScanRun)
+        .filter(
+            DBDatasetPrecheckScanRun.id == scan_run_id,
+            DBDatasetPrecheckScanRun.tenant_id == tenant_id,
+            DBDatasetPrecheckScanRun.dataset_id == dataset_id,
+        )
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail=_SCAN_RUN_NOT_FOUND_DETAIL)
+
+    sample_names = _collect_precheck_sample_names(
+        load_precheck_samples_from_row(
+            row,
+            tenant_id=tenant_id,
+            size=2000,
+            prefer_artifact=True,
+        )
+    )
+    if body.file_name not in sample_names:
+        raise HTTPException(status_code=404, detail="Sample file not found in this precheck run")
+
+    review = upsert_precheck_sample_review_for_row(
+        row,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        file_name=body.file_name,
+        disposition=body.disposition,
+    )
+    db.commit()
+    db.refresh(row)
+    return DatasetPrecheckSampleReviewOut(
+        file_name=body.file_name,
+        review_disposition=str(review["review_disposition"]),
+        reviewed_at=review["reviewed_at"],
+        reviewed_by=review.get("reviewed_by"),
+    )
 
 
 @router.get(

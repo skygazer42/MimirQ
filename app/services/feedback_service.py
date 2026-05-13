@@ -384,6 +384,45 @@ class FeedbackService:
         return {"total": int(base["total"]), "items": items}
 
     @staticmethod
+    def patch_message_feedback(
+        *,
+        db: Session,
+        tenant_id: UUID,
+        account_id: str,
+        feedback_id: UUID,
+        archived: bool | None,
+        ensure_member_fn: Callable[[Session, UUID, str], Any] | None = None,
+    ) -> MessageFeedback:
+        FeedbackService._ensure_member(
+            db=db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            ensure_member_fn=ensure_member_fn,
+        )
+        row = (
+            db.query(MessageFeedback)
+            .filter(MessageFeedback.tenant_id == tenant_id, MessageFeedback.id == feedback_id)
+            .first()
+        )
+        if row is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Feedback not found")
+
+        payload = dict(getattr(row, "extra", {}) or {})
+        if archived is not None:
+            payload["archived"] = bool(archived)
+            if archived:
+                payload["archived_at"] = datetime.now(UTC).isoformat()
+                payload["archived_by"] = str(account_id or "")
+            else:
+                payload.pop("archived_at", None)
+                payload.pop("archived_by", None)
+
+        row.extra = payload
+        db.commit()
+        db.refresh(row)
+        return row
+
+    @staticmethod
     def build_feedback_loop_candidates(
         *,
         db: Session,

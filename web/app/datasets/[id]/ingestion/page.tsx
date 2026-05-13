@@ -30,7 +30,6 @@ import { useRouter } from '@/i18n/navigation'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 import type {
   IngestionPolicy,
-  IngestionPolicyVersionListResponse,
   IngestionRule,
   IngestionPreviewResponse,
 } from '@/types'
@@ -598,8 +597,6 @@ export default function DatasetIngestionPolicyPage() {
   const [editorOpen, setEditorOpen] = useState(false)
   const [templatesOpen, setTemplatesOpen] = useState(false)
   const [versionsOpen, setVersionsOpen] = useState(false)
-  const [versionsLoading, setVersionsLoading] = useState(false)
-  const [versions, setVersions] = useState<IngestionPolicyVersionListResponse | null>(null)
   const [rollbackingVersionId, setRollbackingVersionId] = useState<string | null>(null)
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
   const [draft, setDraft] = useState<RuleDraft>({
@@ -662,8 +659,19 @@ export default function DatasetIngestionPolicyPage() {
     enabled: Boolean(datasetId),
   })
 
+  const versionsQuery = useQuery({
+    queryKey: queryKeys.datasets.ingestionPolicyVersions(datasetId),
+    queryFn: () => {
+      if (!datasetId) throw new Error('缺少数据集 ID')
+      return datasetApi.listIngestionPolicyVersions(datasetId)
+    },
+    enabled: false,
+  })
+
   const dataset = datasetQuery.data ?? null
   const ingestionStats = ingestionStatsQuery.data ?? null
+  const versions = versionsQuery.data ?? null
+  const versionsLoading = versionsQuery.isFetching
   const loading = Boolean(datasetId) && (
     datasetQuery.isPending ||
     policyQuery.isPending ||
@@ -695,6 +703,7 @@ export default function DatasetIngestionPolicyPage() {
   const { refetch: refetchDataset } = datasetQuery
   const { refetch: refetchPolicy } = policyQuery
   const { refetch: refetchIngestionStats } = ingestionStatsQuery
+  const { refetch: refetchVersions } = versionsQuery
 
   const refreshIngestionPolicy = useCallback(async () => {
     await Promise.all([
@@ -704,25 +713,19 @@ export default function DatasetIngestionPolicyPage() {
     ])
   }, [refetchDataset, refetchIngestionStats, refetchPolicy])
 
-  const loadVersions = useCallback(async () => {
+  const refreshVersions = useCallback(async () => {
     if (!datasetId) return
-    setVersionsLoading(true)
-    try {
-      const res = await datasetApi.listIngestionPolicyVersions(datasetId)
-      setVersions(res)
-    } catch (e: any) {
-      console.error('Failed to load ingestion policy versions', e)
-      toast.error(formatApiError(e, '加载版本历史失败'))
-      setVersions(null)
-    } finally {
-      setVersionsLoading(false)
+    const result = await refetchVersions()
+    if (result.error) {
+      console.error('Failed to load ingestion policy versions', result.error)
+      toast.error(formatApiError(result.error, '加载版本历史失败'))
     }
-  }, [datasetId])
+  }, [datasetId, refetchVersions])
 
   const openVersions = useCallback(async () => {
     setVersionsOpen(true)
-    await loadVersions()
-  }, [loadVersions])
+    await refreshVersions()
+  }, [refreshVersions])
 
   const rollbackPolicy = useCallback(
     async (versionId: string) => {
@@ -733,7 +736,7 @@ export default function DatasetIngestionPolicyPage() {
       try {
         await datasetApi.rollbackIngestionPolicy(datasetId, { version_id: id })
         toast.success('已回滚入库策略')
-        await Promise.all([refreshIngestionPolicy(), loadVersions()])
+        await Promise.all([refreshIngestionPolicy(), refreshVersions()])
       } catch (e: any) {
         console.error('Failed to rollback ingestion policy', e)
         toast.error(formatApiError(e, '回滚失败'))
@@ -741,7 +744,7 @@ export default function DatasetIngestionPolicyPage() {
         setRollbackingVersionId(null)
       }
     },
-    [datasetId, loadVersions, refreshIngestionPolicy]
+    [datasetId, refreshIngestionPolicy, refreshVersions]
   )
 
   const rules = useMemo(() => policy?.rules || [], [policy])
@@ -1383,7 +1386,7 @@ export default function DatasetIngestionPolicyPage() {
                   size="sm"
                   variant="outline"
                   className="h-8 px-3 text-[11px] gap-2"
-                  onClick={() => detachPromise(loadVersions())}
+                  onClick={() => detachPromise(refreshVersions())}
                   disabled={versionsLoading}
                 >
                   <RefreshCw className={cn('w-4 h-4', versionsLoading && 'animate-spin motion-reduce:animate-none')} />

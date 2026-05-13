@@ -7,15 +7,15 @@ ensure PII_REDACTION_ENABLED cannot be silently bypassed by internal try-imports
 
 from __future__ import annotations
 
-import logging
 import re
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
 
 from app.core.config import settings
+from app.rag.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("core.pii_redaction")
 DEFAULT_MASK = "[REDACTED]"
 
 _EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")

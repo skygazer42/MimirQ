@@ -9,13 +9,13 @@
 
 import {
   Suspense,
-  useCallback,
   useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { useQuery } from '@tanstack/react-query'
 import { AppFrame } from '@/components/app-frame'
 import { PageLoading } from '@/components/ui/page-loading'
 import { Button } from '@/components/ui/button'
@@ -63,6 +63,7 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { queryKeys } from '@/lib/query-keys'
 import { RegressionTestTab } from '@/components/evaluation/regression-tab'
 import { QuerysetHealthTab } from '@/components/evaluation/queryset-health-tab'
 import {
@@ -71,6 +72,9 @@ import {
 } from '@/components/evaluation/ragas-metric-selector'
 
 type TabType = 'conversation' | 'regression' | 'queryset_health'
+
+const EMPTY_CONVERSATIONS: Conversation[] = []
+const EMPTY_RUNS: RagasRun[] = []
 
 const TAB_META: Array<{
   id: TabType
@@ -735,13 +739,10 @@ function EvaluationsPageContent() {
     () => parseEvaluationTab(searchParams.get('tab')) || 'conversation'
   )
   const isActiveTab = (tab: TabType) => activeTab === tab
-  const [conversations, setConversations] = useState<Conversation[]>([])
   const [selectedConversationId, setSelectedConversationId] =
     useState<string>('')
 
-  const [runs, setRuns] = useState<RagasRun[]>([])
   const [selectedRunId, setSelectedRunId] = useState<string>('')
-  const [runDetail, setRunDetail] = useState<RagasRunDetail | null>(null)
 
   const [metricKeys, setMetricKeys] = useState<string[]>([
     'faithfulness',
@@ -752,8 +753,41 @@ function EvaluationsPageContent() {
   const [onlyFailureItems, setOnlyFailureItems] = useState(false)
   const [isRunRecordsCollapsed, setIsRunRecordsCollapsed] = useState(false)
 
-  const [isLoading, setIsLoading] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const [isStarting, setIsStarting] = useState(false)
+
+  const conversationsQuery = useQuery({
+    queryKey: queryKeys.chat.conversations({ limit: 100 }),
+    queryFn: () => chatApi.listConversations({ limit: 100 }),
+  })
+  const runsQuery = useQuery({
+    queryKey: queryKeys.evaluations.ragasRuns({ limit: 50 }),
+    queryFn: () =>
+      evaluationApi.listRagasRuns({
+        limit: 50,
+      }),
+  })
+  const runDetailQuery = useQuery({
+    queryKey: queryKeys.evaluations.ragasRunDetail(selectedRunId, {
+      include_items: true,
+      include_contexts: false,
+    }),
+    enabled: Boolean(selectedRunId),
+    queryFn: () =>
+      evaluationApi.getRagasRun(selectedRunId, {
+        include_items: true,
+        include_contexts: false,
+      }),
+    refetchInterval: (query) => {
+      const detail = query.state.data as RagasRunDetail | undefined
+      const status = detail?.run?.status
+      return status === 'pending' || status === 'running' ? 2000 : false
+    },
+  })
+  const conversations = conversationsQuery.data?.items ?? EMPTY_CONVERSATIONS
+  const runs = runsQuery.data?.items ?? EMPTY_RUNS
+  const runDetail = runDetailQuery.data || null
+  const isLoading = conversationsQuery.isLoading || runsQuery.isLoading || isRefreshing
 
   // Support deep-linking: /evaluations?conversation_id=...
   useEffect(() => {
@@ -767,76 +801,15 @@ function EvaluationsPageContent() {
     if (tab) setActiveTab(tab)
   }, [searchParams])
 
-  const loadConversations = useCallback(async () => {
-    try {
-      const res = await chatApi.listConversations({ limit: 100 })
-      setConversations(res.items || [])
-      setSelectedConversationId((prev) => prev || res.items?.[0]?.id || '')
-    } catch (e) {
-      console.error('Failed to load conversations', e)
-    }
-  }, [])
-
-  const loadRuns = useCallback(async (conversationId?: string) => {
-    try {
-      const res = await evaluationApi.listRagasRuns({
-        limit: 50,
-        conversation_id: conversationId || undefined,
-      })
-      setRuns(res.items || [])
-    } catch (e) {
-      console.error('Failed to load runs', e)
-    }
-  }, [])
-
-  // Initial data
   useEffect(() => {
-    setIsLoading(true)
-    Promise.all([loadConversations(), loadRuns()]).finally(() =>
-      setIsLoading(false)
-    )
-  }, [loadConversations, loadRuns])
+    setSelectedConversationId((prev) => prev || conversationsQuery.data?.items?.[0]?.id || '')
+  }, [conversationsQuery.data])
 
   // When switching conversation, reset the detail area but keep the right rail on real recent runs.
   useEffect(() => {
     if (!selectedConversationId) return
     setSelectedRunId('')
-    setRunDetail(null)
   }, [selectedConversationId])
-
-  // Poll run detail
-  useEffect(() => {
-    if (!selectedRunId) {
-      setRunDetail(null)
-      return
-    }
-
-    let cancelled = false
-    let timer: ReturnType<typeof setTimeout> | null = null
-
-    const fetchDetail = async () => {
-      try {
-        const detail = await evaluationApi.getRagasRun(selectedRunId, {
-          include_items: true,
-          include_contexts: false,
-        })
-        if (cancelled) return
-        setRunDetail(detail)
-        const status = detail?.run?.status
-        if (status === 'pending' || status === 'running') {
-          timer = setTimeout(fetchDetail, 2000)
-        }
-      } catch (e) {
-        if (!cancelled) console.error('Failed to load run detail', e)
-      }
-    }
-
-    fetchDetail()
-    return () => {
-      cancelled = true
-      if (timer) clearTimeout(timer)
-    }
-  }, [selectedRunId])
 
   const handleStart = async () => {
     if (!selectedConversationId) return
@@ -849,7 +822,7 @@ function EvaluationsPageContent() {
         skip_empty_contexts: skipEmptyContexts,
         include_contexts_in_response: false,
       })
-      await loadRuns()
+      await runsQuery.refetch()
       setSelectedRunId(run.id)
     } catch (e) {
       console.error('Failed to start evaluation', e)
@@ -953,7 +926,15 @@ function EvaluationsPageContent() {
   const handleConversationChange = (conversationId: string) => {
     setSelectedConversationId(conversationId)
     setSelectedRunId('')
-    setRunDetail(null)
+  }
+
+  const refreshEvaluationWorkspace = async () => {
+    setIsRefreshing(true)
+    try {
+      await Promise.all([conversationsQuery.refetch(), runsQuery.refetch()])
+    } finally {
+      setIsRefreshing(false)
+    }
   }
 
   const handleExportItems = () => {
@@ -1253,12 +1234,7 @@ function EvaluationsPageContent() {
                   <Button
                     variant="outline"
                     className="mt-2 h-8 w-full rounded-lg border-slate-200 bg-card text-[12px]"
-                    onClick={() => {
-                      setIsLoading(true)
-                      Promise.all([loadConversations(), loadRuns()]).finally(
-                        () => setIsLoading(false)
-                      )
-                    }}
+                    onClick={() => void refreshEvaluationWorkspace()}
                   >
                     <RefreshCw
                       className={cn(
@@ -1408,7 +1384,7 @@ function EvaluationsPageContent() {
                   <Button
                     variant="ghost"
                     className="h-7 shrink-0 px-2 text-[12px] text-blue-700"
-                    onClick={() => loadRuns()}
+                    onClick={() => void runsQuery.refetch()}
                   >
                     刷新
                   </Button>

@@ -191,6 +191,9 @@ class DatasetPrecheckFileOut(BaseModel):
     processing_paths: list[str] = Field(default_factory=list)
     findings: list[str] = Field(default_factory=list)
     error_message: str | None = None
+    review_disposition: Literal["approved", "manual"] | None = None
+    reviewed_at: datetime | None = None
+    reviewed_by: str | None = None
 
 
 class DatasetPrecheckFindingListResponse(BaseModel):
@@ -287,6 +290,18 @@ class DatasetPrecheckSamplesResponse(BaseModel):
     needs_review: dict[str, list[DatasetPrecheckFileOut]] = Field(default_factory=dict)
     top_large_files: list[DatasetPrecheckFileOut] = Field(default_factory=list)
     top_long_text: list[DatasetPrecheckFileOut] = Field(default_factory=list)
+
+
+class DatasetPrecheckSampleReviewPatchRequest(BaseModel):
+    file_name: str = Field(min_length=1, max_length=4096)
+    disposition: Literal["approved", "manual"]
+
+
+class DatasetPrecheckSampleReviewOut(BaseModel):
+    file_name: str
+    review_disposition: Literal["approved", "manual"]
+    reviewed_at: datetime
+    reviewed_by: str | None = None
 
 
 class DatasetPrecheckNearDupCluster(BaseModel):

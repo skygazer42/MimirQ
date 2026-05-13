@@ -242,6 +242,87 @@ def test_documents_router_still_exposes_content_routes() -> None:
     assert ("/{document_id}/clean-docx", ("GET",)) in routes
 
 
+def test_document_preview_route_is_split_from_documents_router() -> None:
+    documents_source = _source("app/api/v1/documents.py")
+    split_source = _source("app/api/v1/document_preview.py")
+
+    assert "document_preview" in documents_source
+    assert "router.include_router(document_preview.router)" in documents_source
+    assert '@router.post("/preview"' not in documents_source
+    assert '@router.post("/preview"' in split_source
+
+
+def test_documents_router_still_exposes_preview_route() -> None:
+    from app.api.v1.documents import router
+
+    routes = {
+        (getattr(route, "path", ""), tuple(sorted(getattr(route, "methods", ()) or ())))
+        for route in router.routes
+    }
+
+    assert ("/preview", ("POST",)) in routes
+
+
+def test_document_chunk_preview_routes_are_split_from_documents_router() -> None:
+    documents_source = _source("app/api/v1/documents.py")
+    split_source = _source("app/api/v1/document_chunk_preview.py")
+
+    assert "document_chunk_preview" in documents_source
+    assert "router.include_router(document_chunk_preview.router)" in documents_source
+
+    split_route_decorators = (
+        '@router.post("/chunk-preview"',
+        '@router.post("/chunk-preview/by-sha"',
+    )
+    for decorator in split_route_decorators:
+        assert decorator not in documents_source
+        assert decorator in split_source
+
+
+def test_documents_router_still_exposes_chunk_preview_routes() -> None:
+    from app.api.v1.documents import router
+
+    routes = {
+        (getattr(route, "path", ""), tuple(sorted(getattr(route, "methods", ()) or ())))
+        for route in router.routes
+    }
+
+    assert ("/chunk-preview", ("POST",)) in routes
+    assert ("/chunk-preview/by-sha", ("POST",)) in routes
+
+
+def test_document_upload_route_delegates_to_split_module() -> None:
+    documents_source = _source("app/api/v1/documents.py")
+    split_source = _source("app/api/v1/document_upload.py")
+
+    assert "document_upload" in documents_source
+    assert "router.include_router(document_upload.router)" in documents_source
+    assert '@router.post("/upload"' not in documents_source
+    assert '@router.post("/upload"' in split_source
+
+
+def test_document_upload_url_route_is_split_from_documents_router() -> None:
+    documents_source = _source("app/api/v1/documents.py")
+    split_source = _source("app/api/v1/document_upload.py")
+
+    assert "document_upload" in documents_source
+    assert "router.include_router(document_upload.router)" in documents_source
+    assert '@router.post("/upload-url"' not in documents_source
+    assert '@router.post("/upload-url"' in split_source
+
+
+def test_documents_router_still_exposes_upload_routes() -> None:
+    from app.api.v1.documents import router
+
+    routes = {
+        (getattr(route, "path", ""), tuple(sorted(getattr(route, "methods", ()) or ())))
+        for route in router.routes
+    }
+
+    assert ("/upload", ("POST",)) in routes
+    assert ("/upload-url", ("POST",)) in routes
+
+
 def test_document_detail_route_is_split_from_documents_router() -> None:
     documents_source = _source("app/api/v1/documents.py")
     split_source = _source("app/api/v1/document_detail.py")
