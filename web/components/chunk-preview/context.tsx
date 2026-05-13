@@ -31,7 +31,8 @@ const STORAGE_SEPARATOR_SETTINGS_KEY = 'mimirq_chunk_preview_separator_settings'
 const STORAGE_FOCUS_FILE_ID_KEY = 'mimirq_chunk_preview_focus_file_id'
 const STORAGE_PERF_SETTINGS_KEY = 'mimirq_chunk_preview_perf_settings'
 const STORAGE_PARENT_CHILD_SETTINGS_KEY = 'mimirq_chunk_preview_parent_child_settings'
-const CHUNK_PREVIEW_SCOPE_DOCUMENT_LIMIT = 12
+const CHUNK_PREVIEW_SCOPE_DOCUMENT_LIMIT = 8
+const scopedChunkFilesInFlight = new Map<string, Promise<ChunkPreviewFileItem[]>>()
 
 function normalizeBackendString(value: unknown): string {
   return typeof value === 'string' && value.trim() ? value.trim() : ''
@@ -172,6 +173,26 @@ async function loadParsingWorkspaceChunkFiles(): Promise<ChunkPreviewFileItem[]>
   }
 
   return items
+}
+
+async function loadScopedChunkFiles(datasetId: string): Promise<ChunkPreviewFileItem[]> {
+  const scopedDatasetId = (datasetId || '').trim()
+  const scopeKey = scopedDatasetId ? `knowledge:${scopedDatasetId}` : 'parsing'
+  const existing = scopedChunkFilesInFlight.get(scopeKey)
+  if (existing) return existing
+
+  const promise = scopedDatasetId
+    ? loadKnowledgeChunkFiles(scopedDatasetId)
+    : loadParsingWorkspaceChunkFiles()
+  scopedChunkFilesInFlight.set(scopeKey, promise)
+
+  try {
+    return await promise
+  } finally {
+    if (scopedChunkFilesInFlight.get(scopeKey) === promise) {
+      scopedChunkFilesInFlight.delete(scopeKey)
+    }
+  }
 }
 
 function mergeScopedFiles(
@@ -566,9 +587,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
       setFileList((prev) => retainScopeCompatibleFiles(prev, datasetId))
 
       try {
-        const scopedFiles = datasetId
-          ? await loadKnowledgeChunkFiles(datasetId)
-          : await loadParsingWorkspaceChunkFiles()
+        const scopedFiles = await loadScopedChunkFiles(datasetId)
 
         if (cancelled) return
         setFileList((prev) => mergeScopedFiles(prev, scopedFiles, datasetId))
