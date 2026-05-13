@@ -40,6 +40,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PageHeader } from '@/components/ui/page-header'
 import {
   Select,
   SelectContent,
@@ -1024,26 +1025,16 @@ export function RetrievalAblationsPage() {
   return (
     <AppFrame showBackground={false} className="bg-slate-50">
       <div className="flex h-[111.111%] w-[111.111%] origin-top-left scale-[0.9] flex-col bg-slate-50">
-        <header className="shrink-0 border-b border-slate-200/80 bg-card/95">
-          <div className="px-6 py-3.5">
-            <div className="flex items-center justify-between gap-4">
-              <div className="min-w-0">
-                <div className="flex items-start gap-3">
-                  <div className="mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-full border border-blue-200 bg-blue-50 text-blue-700 shadow-sm">
-                    <BarChart3 className="h-[18px] w-[18px] text-sky-600" />
-                  </div>
-                  <div className="min-w-0">
-                    <h1 className="text-[22px] font-semibold tracking-[-0.01em] text-slate-950">
-                      检索消融实验
-                    </h1>
-                    <p className="mt-0.5 text-[13px] leading-6 text-muted-foreground">
-                      围绕同一数据集调召回参数、查看排行榜，并对 baseline 与
-                      candidate 做结构化 diff。
-                    </p>
-                  </div>
-                </div>
-              </div>
-
+        <header className="shrink-0 border-b border-slate-200/80 bg-card/95 px-6 py-3.5">
+          <PageHeader
+            title="检索消融实验"
+            description="围绕同一数据集调召回参数、查看排行榜，并对 baseline 与 candidate 做结构化 diff。"
+            icon={BarChart3}
+            iconColor="text-info"
+            badge="Ablation"
+            compact
+            className="p-0"
+          >
               <div className="mr-14 flex shrink-0 items-center gap-2">
                 <Button
                   variant="outline"
@@ -1067,8 +1058,7 @@ export function RetrievalAblationsPage() {
                   <Bell className="h-4 w-4" />
                 </Button>
               </div>
-            </div>
-          </div>
+          </PageHeader>
         </header>
 
         <div className="min-h-0 flex-1 overflow-auto p-4">

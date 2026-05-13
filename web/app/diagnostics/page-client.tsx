@@ -32,6 +32,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { AppFrame } from '@/components/app-frame'
+import { PageHeader } from '@/components/ui/page-header'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import {
   Select,
@@ -895,20 +896,14 @@ export default function DiagnosticsPage() {
         bodyClassName="bg-slate-50/50 pt-3 pb-6"
       >
         <div className="flex flex-col gap-3">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="flex size-11 shrink-0 items-center justify-center rounded-full border border-blue-100 bg-blue-50 text-blue-600 shadow-sm">
-                <Activity className="size-5" />
-              </div>
-              <div className="min-w-0">
-                <h1 className="text-[24px] font-semibold leading-tight tracking-[-0.02em] text-slate-950">
-                  诊断中心
-                </h1>
-                <p className="mt-1 text-[13px] font-medium leading-relaxed text-slate-500">
-                  全面诊断系统健康状态、服务依赖与 RAG 质量，保障稳定可靠运行
-                </p>
-              </div>
-            </div>
+          <PageHeader
+            title="诊断中心"
+            description="全面诊断系统健康状态、服务依赖与 RAG 质量，保障稳定可靠运行"
+            icon={Activity}
+            iconColor="text-info"
+            compact
+            className="p-0"
+          >
             <div className="flex shrink-0 items-center gap-3">
               <Button
                 variant="outline"
@@ -934,7 +929,7 @@ export default function DiagnosticsPage() {
                 <RefreshCcw className="size-4" />
               </Button>
             </div>
-          </div>
+          </PageHeader>
 
           {/* Top HUD Cards Row */}
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-6">

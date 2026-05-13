@@ -15,6 +15,8 @@ describe('quarantine queue page layout', () => {
     expectSourceNotToContain(src, 'toolbar={')
     expectSourceNotToContain(src, 'xl:grid-cols-[1.2fr_0.8fr]')
     expectSourceToContain(src, 'showHeader={false}')
+    expectSourceToContain(src, '<PageHeader')
+    expectSourceToContain(src, 'description="聚合命中规则，抽样预览原文，一键调参回放。这里集中处理被隔离的异常样本，帮助你快速完成复核和回放。"')
     expectSourceToContain(
       src,
       "const [selectedDataset, setSelectedDataset] = useState('all')"

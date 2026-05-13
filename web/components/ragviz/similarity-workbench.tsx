@@ -12,6 +12,7 @@ import type {
   RagvizSimilarityRequest,
 } from '@/types'
 import { Button } from '@/components/ui/button'
+import { PageHeader } from '@/components/ui/page-header'
 import { PageLoading } from '@/components/ui/page-loading'
 import { cn, detachPromise } from '@/lib/utils'
 import { queryKeys } from '@/lib/query-keys'
@@ -1518,20 +1519,23 @@ export function RagvizSimilarityWorkbench() {
       <div className="h-full flex-1 overflow-hidden bg-background">
         <div className="h-full w-full flex flex-col">
           <div className="bg-background px-8 pb-3 pt-6">
-            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-              <div>
-                <div className="text-[24px] font-semibold text-foreground">
-                  {mainView === 'diagnostics'
-                    ? '向量诊断'
-                    : '跨集合相似度热力图'}
-                </div>
-                <p className="mt-1.5 text-[13px] leading-5 text-muted-foreground">
-                  {mainView === 'diagnostics'
-                    ? '基于当前相似度矩阵重建局部向量邻域，帮助识别高分但支撑不足的干扰项。'
-                    : '使用当前主图矩阵和筛选器观察不同集合之间的相似度分布。'}
-                </p>
-              </div>
-
+            <PageHeader
+              title={
+                mainView === 'diagnostics'
+                  ? '向量诊断'
+                  : '跨集合相似度热力图'
+              }
+              description={
+                mainView === 'diagnostics'
+                  ? '基于当前相似度矩阵重建局部向量邻域，帮助识别高分但支撑不足的干扰项。'
+                  : '使用当前主图矩阵和筛选器观察不同集合之间的相似度分布。'
+              }
+              icon={Grid3X3}
+              iconColor="text-info"
+              badge="RAG"
+              compact
+              className="p-0"
+            >
               <div className="flex flex-wrap items-center gap-3">
                 <div className="inline-flex items-center rounded-2xl border border-border/70 bg-card p-1 shadow-subtle">
                   <Button
@@ -1598,7 +1602,7 @@ export function RagvizSimilarityWorkbench() {
                   </div>
                 )}
               </div>
-            </div>
+            </PageHeader>
 
             {heatmapSummaryMetrics.length > 0 ? (
               <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

@@ -64,6 +64,7 @@ import { KgExtractPromptSettings } from '@/components/kg-extract-prompt-settings
 import { KgPredicateOntologySettings } from '@/components/kg-predicate-ontology-settings'
 import { AppFrame } from '@/components/app-frame'
 import { AnalysisPageShell } from '@/components/ui/analysis-page-shell'
+import { PageHeader } from '@/components/ui/page-header'
 import { cn } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
 import { queryKeys } from '@/lib/query-keys'
@@ -367,21 +368,15 @@ export default function PromptsPage() {
         bodyContainerClassName="max-w-none"
       >
         <div className="min-h-0 space-y-4 bg-[#f8fafc] px-5 py-4">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-            <div className="min-w-0 pt-0.5">
-              <div className="flex items-center gap-2 text-[12px] font-medium text-slate-400">
-                <span>提示词</span>
-                <ChevronRight className="size-3.5" />
-                <span className="text-slate-600">模板管理</span>
-              </div>
-              <h1 className="mt-4 text-[24px] font-semibold tracking-[-0.025em] text-slate-950">
-                提示词模板
-              </h1>
-              <p className="mt-2 max-w-[78ch] text-[13px] leading-5 text-slate-500">
-                维护对话与 KG
-                系统使用的模板资产；模板为系统提供稳定输出，避免干扰模板的实时编辑。
-              </p>
-            </div>
+          <PageHeader
+            title="提示词模板"
+            description="维护对话与 KG 系统使用的模板资产；模板为系统提供稳定输出，避免干扰模板的实时编辑。"
+            icon={Wand2}
+            iconColor="text-info"
+            badge="模板管理"
+            compact
+            className="p-0"
+          >
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:min-w-[560px]">
               {[
                 { label: '总数', value: templates.length, tone: 'slate' },
@@ -416,7 +411,7 @@ export default function PromptsPage() {
                 </div>
               ))}
             </div>
-          </div>
+          </PageHeader>
 
           <section className="rounded-xl border border-slate-200/80 bg-card shadow-[0_1px_0_rgba(15,23,42,0.03)]">
             <div className="flex flex-col gap-3 border-b border-slate-200/75 p-4 xl:flex-row xl:items-center">

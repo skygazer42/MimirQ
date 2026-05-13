@@ -64,6 +64,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PageHeader } from '@/components/ui/page-header'
 import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -2617,14 +2618,15 @@ export function KGSnapshotsPage() {
       <div className="flex h-full min-h-0 flex-col bg-[radial-gradient(1200px_460px_at_12%_-18%,rgba(37,99,235,0.08),transparent_58%),radial-gradient(960px_420px_at_88%_-24%,rgba(14,165,233,0.06),transparent_56%)] bg-background">
         <header className="shrink-0 border-b border-border/70 bg-background/80 backdrop-blur">
           <div className="px-4 py-3 md:px-6">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <SectionHeading
-                eyebrow="Graph"
-                title="KG Snapshots"
-                description="对比流水线哈希生成的轻量 KG 快照，并在 Audit 面板快速判断波动强度。"
-                icon={<GitCompare className="h-5 w-5" aria-hidden="true" />}
-              />
-
+            <PageHeader
+              title="KG Snapshots"
+              description="对比流水线哈希生成的轻量 KG 快照，并在 Audit 面板快速判断波动强度。"
+              icon={GitCompare}
+              iconColor="text-info"
+              badge="Graph"
+              compact
+              className="p-0"
+            >
               <div className="flex shrink-0 items-center gap-2">
                 <Button
                   variant="outline"
@@ -2685,7 +2687,7 @@ export function KGSnapshotsPage() {
                   )}
                 </Button>
               </div>
-            </div>
+            </PageHeader>
           </div>
         </header>
 

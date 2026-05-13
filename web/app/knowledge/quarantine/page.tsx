@@ -28,6 +28,7 @@ import { toast } from 'sonner'
 
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
+import { PageHeader } from '@/components/ui/page-header'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { getDocumentKind } from '@/components/ingestion/monitor-utils'
@@ -1776,21 +1777,14 @@ export default function QuarantineQueuePage() {
         topClassName="mx-auto w-full max-w-[1520px] bg-[radial-gradient(circle_at_top,rgba(37,99,235,0.10),transparent_34rem)] px-4 pt-3 pb-2 md:px-5 xl:px-6"
         top={
           <div className="space-y-2.5">
-            <div className="flex flex-col gap-2.5 xl:flex-row xl:items-start xl:justify-between">
-              <div className="flex items-start gap-3">
-                <div className="flex size-12 shrink-0 items-center justify-center rounded-[1.05rem] border border-blue-500/15 bg-blue-500/8 text-blue-600 shadow-[0_18px_32px_-26px_rgba(37,99,235,0.42)]">
-                  <ShieldCheck className="size-6" />
-                </div>
-                <div className="space-y-1 pt-0.5">
-                  <div className="text-[1.5rem] font-semibold text-foreground">
-                    隔离审核中心
-                  </div>
-                  <p className="max-w-4xl text-[12px] leading-5 text-muted-foreground">
-                    聚合命中规则，抽样预览原文，一键调参回放。这里集中处理被隔离的异常样本，帮助你快速完成复核和回放。
-                  </p>
-                </div>
-              </div>
-
+            <PageHeader
+              title="隔离审核中心"
+              description="聚合命中规则，抽样预览原文，一键调参回放。这里集中处理被隔离的异常样本，帮助你快速完成复核和回放。"
+              icon={ShieldCheck}
+              iconColor="text-info"
+              compact
+              className="p-0"
+            >
               <div className="flex flex-wrap items-center gap-2">
                 {demoMode ? (
                   <Button
@@ -1837,7 +1831,7 @@ export default function QuarantineQueuePage() {
                   />
                 </div>
               </div>
-            </div>
+            </PageHeader>
 
             <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
               <SummaryStatCard

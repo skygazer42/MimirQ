@@ -79,10 +79,13 @@ describe('ParsingPage workbench scaffold', () => {
     expectSourceToContain(shellSrc, 'ParsingSidebarPane')
     expectSourceToContain(shellSrc, 'ParsingMobileQueueContent')
     expectSourceToContain(shellSrc, 'ParsingMobileInspectorContent')
-    expectSourceToContain(shellSrc, 'IngestionWorkflowStepper')
-    expectSourceToContain(shellSrc, 'ParsingWorkbenchMark')
+    expectSourceToContain(shellSrc, 'PipelineRail')
+    expectSourceToContain(shellSrc, '<PipelineRail />')
+    expectSourceToContain(shellSrc, 'ParsingInspectorPanel')
     expectSourceToContain(shellSrc, 'header={')
-    expectSourceNotToContain(shellSrc, '<PipelineRail />')
+    expectSourceToContain(shellSrc, 'data-testid="parsing-workbench-title"')
+    expectSourceToContain(shellSrc, 'bg-[linear-gradient(135deg,hsl(var(--card)/0.98),hsl(var(--muted)/0.36))]')
+    expectSourceToContain(shellSrc, 'bg-clip-text text-transparent')
     expectSourceToContain(shellSrc, 'sidebarFileItems')
   })
 
@@ -140,6 +143,39 @@ describe('ParsingPage workbench scaffold', () => {
       sidebarSrc,
       'onDatasetScopeChange(value === DATASET_ALL_VALUE ? null : value)'
     )
+  })
+
+  it('keeps the selected document inspector compact with collapsible details', () => {
+    const shellSrc = fs.readFileSync(
+      path.resolve(__dirname, 'parsing-workbench-shell.tsx'),
+      'utf8'
+    )
+
+    expectSourceToContain(shellSrc, 'function ParsingInspectorDisclosure')
+    expectSourceToContain(shellSrc, '<ParsingInspectorDisclosure title="解析详情" icon={Info}>')
+    expectSourceToContain(shellSrc, '<ParsingInspectorDisclosure title="内容概览" icon={Clock3}>')
+    expectSourceToContain(
+      shellSrc,
+      '<ParsingInspectorDisclosure title="快捷操作" icon={Gauge} defaultOpen={isPending || isError}>'
+    )
+    expectSourceToContain(shellSrc, '<span className="group-open:hidden">展开</span>')
+    expectSourceToContain(shellSrc, '<span className="hidden group-open:inline">收起</span>')
+  })
+
+  it('floats the desktop inspector so collapsing it does not resize the document preview', () => {
+    const shellSrc = fs.readFileSync(
+      path.resolve(__dirname, 'parsing-workbench-shell.tsx'),
+      'utf8'
+    )
+
+    expectSourceToContain(shellSrc, 'function ParsingInspectorDock')
+    expectSourceToContain(shellSrc, 'data-testid="parsing-inspector-dock"')
+    expectSourceToContain(shellSrc, "open ? 'translate-x-0' : 'translate-x-[360px]'")
+    expectSourceToContain(shellSrc, "left-0 top-3 flex h-[124px] w-9")
+    expectSourceToContain(shellSrc, "left-[-80px] top-0 flex h-8 w-[112px]")
+    expectSourceToContain(shellSrc, 'const [desktopInspectorOpen, setDesktopInspectorOpen] = useState(true)')
+    expectSourceToContain(shellSrc, '<ParsingInspectorDock')
+    expectSourceNotToContain(shellSrc, 'rightPanel={')
   })
 
   it('moves page-local state and lifecycle wiring into the dedicated hook', () => {

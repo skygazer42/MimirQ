@@ -27,6 +27,7 @@ import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PageHeader } from '@/components/ui/page-header'
 import {
   Select,
   SelectContent,
@@ -1304,23 +1305,15 @@ export function KGDiagnosticsPage() {
       <div className="h-full bg-[linear-gradient(180deg,#f8fbff_0%,#ffffff_32%)] p-2">
         <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[18px] border border-border/70 bg-background/95 shadow-sm">
           <header className="shrink-0 border-b border-border/70 px-6 py-5">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-              <div className="min-w-0">
-                <div className="flex items-center gap-3.5">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[linear-gradient(180deg,#2D8CFF_0%,#1768FF_100%)] text-info-foreground shadow-[0_10px_20px_rgba(23,104,255,0.18)]">
-                    <ClipboardList className="h-5 w-5" aria-hidden="true" />
-                  </div>
-                  <div className="min-w-0">
-                    <h1 className="truncate text-[23px] font-semibold leading-tight text-foreground">
-                      {t('page.title')}
-                    </h1>
-                    <p className="mt-0.5 text-[12px] leading-5 text-muted-foreground">
-                      {t('page.description')}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
+            <PageHeader
+              title={t('page.title')}
+              description={t('page.description')}
+              icon={ClipboardList}
+              iconColor="text-info"
+              badge="KG"
+              compact
+              className="p-0"
+            >
               <div className="flex flex-wrap items-center gap-2.5">
                 <DiagnosticsHeaderPill
                   label={t('runConfig.datasetId')}
@@ -1381,7 +1374,7 @@ export function KGDiagnosticsPage() {
                   {t('runs.title')}
                 </Button>
               </div>
-            </div>
+            </PageHeader>
           </header>
 
           <div className="min-h-0 flex-1 overflow-hidden px-5 pb-4 pt-4">
