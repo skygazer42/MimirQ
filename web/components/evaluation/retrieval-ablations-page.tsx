@@ -1,7 +1,7 @@
 'use client'
 
+import { useQuery } from '@tanstack/react-query'
 import {
-  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -60,6 +60,7 @@ import { formatApiError } from '@/lib/api-errors'
 import { datasetApi } from '@/lib/api/datasets'
 import { evaluationApi } from '@/lib/api/evaluation'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
+import { queryKeys } from '@/lib/query-keys'
 import { sanitizeFilename } from '@/lib/sanitize'
 import type {
   Dataset,
@@ -69,6 +70,10 @@ import type {
   RagasRegressionRunDiffResponse,
 } from '@/types'
 import { cn, detachPromise } from '@/lib/utils'
+
+const RETRIEVAL_ABLATION_DATASET_PARAMS = { limit: 200 } as const
+const EMPTY_DATASETS: Dataset[] = []
+const EMPTY_RUNS: RegressionRun[] = []
 
 type RegressionLeaderboardRow = {
   run_id: string
@@ -638,12 +643,8 @@ function JsonCodeViewer({ code }: Readonly<{ code: string }>) {
 }
 
 export function RetrievalAblationsPage() {
-  const [datasetsLoading, setDatasetsLoading] = useState(false)
-  const [datasets, setDatasets] = useState<Dataset[]>([])
   const [datasetId, setDatasetId] = useState('')
 
-  const [runsLoading, setRunsLoading] = useState(false)
-  const [runs, setRuns] = useState<RegressionRun[]>([])
   const [selectedBaseRunId, setSelectedBaseRunId] = useState('')
   const [selectedTargetRunId, setSelectedTargetRunId] = useState('')
   const [leaderboardAssignRole, setLeaderboardAssignRole] = useState<
@@ -654,12 +655,6 @@ export function RetrievalAblationsPage() {
 
   const [leaderboardMetricKey, setLeaderboardMetricKey] =
     useState<string>('retrieval_mrr')
-  const [leaderboardLoading, setLeaderboardLoading] = useState(false)
-  const [leaderboard, setLeaderboard] =
-    useState<RegressionRunLeaderboard | null>(null)
-
-  const [diffLoading, setDiffLoading] = useState(false)
-  const [diff, setDiff] = useState<RagasRegressionRunDiffResponse | null>(null)
 
   // Run config (ablation knobs)
   const [retrievalOnly, setRetrievalOnly] = useState(true)
@@ -682,6 +677,51 @@ export function RetrievalAblationsPage() {
   const [rerankerProvider, setRerankerProvider] = useState('llm')
   const [rerankerTopN, setRerankerTopN] = useState(20)
 
+  const datasetsQuery = useQuery({
+    queryKey: queryKeys.datasets.list(RETRIEVAL_ABLATION_DATASET_PARAMS),
+    queryFn: () => datasetApi.list(RETRIEVAL_ABLATION_DATASET_PARAMS),
+  })
+  const runsQuery = useQuery({
+    queryKey: queryKeys.evaluations.list({ limit: 80, dataset_id: datasetId.trim() || undefined }),
+    queryFn: () =>
+      evaluationApi.listRegressionRuns({
+        limit: 80,
+        dataset_id: datasetId.trim() || undefined,
+      }),
+  })
+  const leaderboardQuery = useQuery({
+    queryKey: queryKeys.evaluations.regressionLeaderboard({
+      dataset_id: datasetId.trim() || undefined,
+      metric_key: leaderboardMetricKey,
+      limit: 50,
+      include_incomplete: false,
+    }),
+    enabled: Boolean(datasetId.trim()),
+    queryFn: () =>
+      evaluationApi.getRegressionRunLeaderboard({
+        dataset_id: datasetId.trim(),
+        metric_key: leaderboardMetricKey,
+        limit: 50,
+        include_incomplete: false,
+      }),
+  })
+  const diffQuery = useQuery({
+    queryKey: queryKeys.evaluations.regressionRunDiff(selectedTargetRunId, {
+      base_run_id: selectedBaseRunId,
+      include_significance: true,
+      include_per_case: true,
+      max_case_diffs: 500,
+    }),
+    enabled: false,
+    queryFn: () =>
+      evaluationApi.diffRegressionRuns(selectedTargetRunId, {
+        base_run_id: selectedBaseRunId,
+        include_significance: true,
+        include_per_case: true,
+        max_case_diffs: 500,
+      }),
+  })
+  const diff = diffQuery.data ?? null
   const diffJson = useMemo(
     () => prettyJson(diff ?? { hint: '选择 base/target runs 并生成 diff' }),
     [diff]
@@ -702,6 +742,20 @@ export function RetrievalAblationsPage() {
     }
   }, [diffScore])
 
+  const datasets = useMemo(
+    () => (Array.isArray(datasetsQuery.data?.items) ? datasetsQuery.data?.items : EMPTY_DATASETS),
+    [datasetsQuery.data?.items]
+  )
+  const runs = useMemo(
+    () => (Array.isArray(runsQuery.data?.items) ? runsQuery.data?.items : EMPTY_RUNS),
+    [runsQuery.data?.items]
+  )
+  const datasetsLoading = datasetsQuery.isLoading || datasetsQuery.isFetching
+  const runsLoading = runsQuery.isLoading || runsQuery.isFetching
+  const leaderboardLoading =
+    leaderboardQuery.isLoading || leaderboardQuery.isFetching
+  const diffLoading = diffQuery.isLoading || diffQuery.isFetching
+
   const runsByDataset = useMemo(() => {
     const ds = datasetId.trim()
     if (!ds) return runs
@@ -720,58 +774,29 @@ export function RetrievalAblationsPage() {
       setSelectedTargetRunId(pair.targetRunId)
   }, [runsByDataset, selectedBaseRunId, selectedTargetRunId])
 
-  const loadDatasets = useCallback(async (): Promise<void> => {
-    setDatasetsLoading(true)
-    try {
-      const res = await datasetApi.list({ limit: 200 })
-      const items = Array.isArray(res.items) ? res.items : []
-      setDatasets(items)
-      setDatasetId((prev) => prev || items?.[0]?.id || '')
-    } catch (err) {
-      toast.error(formatApiError(err, '加载数据集失败'))
-    } finally {
-      setDatasetsLoading(false)
-    }
-  }, [])
+  useEffect(() => {
+    if (!datasetsQuery.error) return
+    toast.error(formatApiError(datasetsQuery.error, '加载数据集失败'))
+  }, [datasetsQuery.error])
 
-  const refreshRuns = useCallback(async (): Promise<void> => {
-    setRunsLoading(true)
-    try {
-      const ds = datasetId.trim()
-      const res = await evaluationApi.listRegressionRuns({
-        limit: 80,
-        dataset_id: ds || undefined,
-      })
-      const items = Array.isArray(res.items) ? res.items : []
-      setRuns(items)
-    } catch (err) {
-      toast.error(formatApiError(err, '拉取 runs 失败'))
-    } finally {
-      setRunsLoading(false)
-    }
-  }, [datasetId])
+  useEffect(() => {
+    if (!runsQuery.error) return
+    toast.error(formatApiError(runsQuery.error, '拉取 runs 失败'))
+  }, [runsQuery.error])
 
-  async function refreshLeaderboard(): Promise<void> {
-    const ds = datasetId.trim()
-    if (!ds) {
-      toast.error('请选择 dataset')
-      return
-    }
-    setLeaderboardLoading(true)
-    try {
-      const res = await evaluationApi.getRegressionRunLeaderboard({
-        dataset_id: ds,
-        metric_key: leaderboardMetricKey,
-        limit: 50,
-        include_incomplete: false,
-      })
-      setLeaderboard(res)
-    } catch (err) {
-      toast.error(formatApiError(err, '拉取 leaderboard 失败'))
-    } finally {
-      setLeaderboardLoading(false)
-    }
-  }
+  useEffect(() => {
+    if (!leaderboardQuery.error) return
+    toast.error(formatApiError(leaderboardQuery.error, '拉取 leaderboard 失败'))
+  }, [leaderboardQuery.error])
+
+  useEffect(() => {
+    if (!diffQuery.error) return
+    toast.error(formatApiError(diffQuery.error, '生成 diff 失败'))
+  }, [diffQuery.error])
+
+  useEffect(() => {
+    setDatasetId((prev) => prev || datasets?.[0]?.id || '')
+  }, [datasets])
 
   function buildRegressionRunPayload(
     variant: Partial<RegressionRunCreate> = {}
@@ -814,7 +839,7 @@ export function RetrievalAblationsPage() {
     try {
       const run = await evaluationApi.createRegressionRun(payload)
       toast.success('已创建 regression run')
-      await refreshRuns()
+      await runsQuery.refetch()
       setSelectedTargetRunId(run.id)
     } catch (err) {
       toast.error(formatApiError(err, '创建 regression run 失败'))
@@ -839,7 +864,7 @@ export function RetrievalAblationsPage() {
       if (batch.run_ids[0]) {
         setSelectedTargetRunId(batch.run_ids[0])
       }
-      await refreshRuns()
+      await runsQuery.refetch()
       toast.success(`已提交 ${batch.total} 个 ablation runs`)
     } catch (err) {
       const message = formatApiError(err, '批量创建 ablation runs 失败')
@@ -859,21 +884,11 @@ export function RetrievalAblationsPage() {
       toast.error('Base 与 Target 不能相同')
       return
     }
-    setDiffLoading(true)
     try {
-      const res = await evaluationApi.diffRegressionRuns(targetId, {
-        base_run_id: baseId,
-        include_significance: true,
-        include_per_case: true,
-        max_case_diffs: 500,
-      })
-      setDiff(res)
+      const res = await diffQuery.refetch()
+      if (res.error) return
       toast.success('已生成 diff')
-    } catch (err) {
-      toast.error(formatApiError(err, '生成 diff 失败'))
-    } finally {
-      setDiffLoading(false)
-    }
+    } catch {}
   }
 
   async function exportDiffHtml(): Promise<void> {
@@ -924,15 +939,7 @@ export function RetrievalAblationsPage() {
     }
   }
 
-  useEffect(() => {
-    detachPromise(loadDatasets())
-  }, [loadDatasets])
-
-  useEffect(() => {
-    detachPromise(refreshRuns())
-  }, [refreshRuns])
-
-  const leaderboardItems = leaderboard?.items
+  const leaderboardItems = leaderboardQuery.data?.items
   const leaderboardRows: RegressionLeaderboardRow[] = Array.isArray(
     leaderboardItems
   )
@@ -1045,8 +1052,8 @@ export function RetrievalAblationsPage() {
                   className="h-9 w-9 rounded-xl border-slate-200 bg-card text-blue-700 hover:bg-blue-50"
                   disabled={datasetsLoading || runsLoading}
                   onClick={() => {
-                    detachPromise(loadDatasets())
-                    detachPromise(refreshRuns())
+                    void datasetsQuery.refetch()
+                    void runsQuery.refetch()
                   }}
                 >
                   <RefreshCcw className="h-4 w-4" />
@@ -1496,7 +1503,7 @@ export function RetrievalAblationsPage() {
                             variant="outline"
                             className="h-9 gap-1.5 rounded-xl border-slate-200 bg-card px-3 text-[13px] text-slate-900 hover:bg-slate-50"
                             disabled={leaderboardLoading}
-                            onClick={() => detachPromise(refreshLeaderboard())}
+                            onClick={() => void leaderboardQuery.refetch()}
                           >
                             <RefreshCcw className="h-3.5 w-3.5" />
                             刷新
@@ -1993,8 +2000,8 @@ export function RetrievalAblationsPage() {
                           disabled={!datasetId.trim()}
                           onRunGrid={runGridBatch}
                           onBatchComplete={async () => {
-                            await refreshRuns()
-                            await refreshLeaderboard()
+                            await runsQuery.refetch()
+                            await leaderboardQuery.refetch()
                           }}
                         />
                         <AblationStatisticsPanel diff={diff} />

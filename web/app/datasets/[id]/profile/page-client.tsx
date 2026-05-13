@@ -1,5 +1,6 @@
 'use client'
 
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useParams } from 'next/navigation'
 import { toast } from 'sonner'
@@ -46,6 +47,7 @@ import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart'
 
 import { datasetApi, documentApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { queryKeys } from '@/lib/query-keys'
 import { cn, formatFileSize, formatDate, detachPromise } from '@/lib/utils'
 import { useRouter } from '@/i18n/navigation'
 import { Breadcrumb, usePathBreadcrumbs } from '@/components/ui/breadcrumb'
@@ -53,8 +55,6 @@ import { Breadcrumb, usePathBreadcrumbs } from '@/components/ui/breadcrumb'
 import type {
   Dataset,
   Document,
-  DatasetProfileDocumentListResponse,
-  DatasetProfileFindingListResponse,
   DatasetProfileFindingSummary,
   DatasetProfileScanRunCreateRequest,
   DatasetProfileScanRunOut,
@@ -71,6 +71,9 @@ const PIE_COLORS = [
   'hsl(var(--chart-5))',
   'hsl(var(--chart-8))',
 ]
+const EMPTY_SCAN_RUNS: DatasetProfileScanRunOut[] = []
+const PROFILE_DOCUMENT_PAGE_SIZE = 50
+const PROFILE_BUCKET_PREVIEW_MAX_CHARS = 360
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -198,9 +201,6 @@ export default function DatasetProfilePage() {
   const datasetId = asDatasetId(params?.id)
   const breadcrumbs = usePathBreadcrumbs()
 
-  const [dataset, setDataset] = useState<Dataset | null>(null)
-  const [summary, setSummary] = useState<DatasetProfileSummary | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
   const [isExportingJson, setIsExportingJson] = useState(false)
   const [isExportingHtml, setIsExportingHtml] = useState(false)
 
@@ -214,22 +214,17 @@ export default function DatasetProfilePage() {
   const [scanRun, setScanRun] = useState<DatasetProfileScanRunOut | null>(null)
   const [scanRunning, setScanRunning] = useState(false)
   const pollTimerRef = useRef<number | null>(null)
-  const [scanRuns, setScanRuns] = useState<DatasetProfileScanRunOut[]>([])
   const [compareA, setCompareA] = useState<string>('')
   const [compareB, setCompareB] = useState<string>('')
 
   const [findingOpen, setFindingOpen] = useState(false)
   const [selectedFinding, setSelectedFinding] = useState<DatasetProfileFindingSummary | null>(null)
-  const [findingLoading, setFindingLoading] = useState(false)
-  const [findingRes, setFindingRes] = useState<DatasetProfileFindingListResponse | null>(null)
   const [findingRetrying, setFindingRetrying] = useState(false)
   const [findingRetryingIds, setFindingRetryingIds] = useState<Record<string, boolean>>({})
 
   const [bucketOpen, setBucketOpen] = useState(false)
   const [bucketDim, setBucketDim] = useState<'file_type' | 'language' | 'directory' | 'quality_bucket' | null>(null)
   const [bucketKey, setBucketKey] = useState<string>('')
-  const [bucketLoading, setBucketLoading] = useState(false)
-  const [bucketRes, setBucketRes] = useState<DatasetProfileDocumentListResponse | null>(null)
 
   const stopPolling = useCallback(() => {
     const t = pollTimerRef.current
@@ -237,33 +232,141 @@ export default function DatasetProfilePage() {
     pollTimerRef.current = null
   }, [])
 
-  const load = useCallback(async () => {
-    if (!datasetId) return
-    setIsLoading(true)
-    try {
-      const [ds, prof, runList] = await Promise.all([
-        datasetApi.get(datasetId),
-        datasetApi.getProfileSummary(datasetId),
-        datasetApi.listProfileScanRuns(datasetId, { skip: 0, limit: 20 }).catch(() => ({ total: 0, items: [] })),
-      ])
-      setDataset(ds)
-      setSummary(prof)
-      setScanRuns(runList.items || [])
-      const completed = (runList.items || []).filter((r) => String(r.status || '').toLowerCase() === 'completed')
-      setCompareA((prev) => prev || completed[0]?.id || '')
-      setCompareB((prev) => prev || completed[1]?.id || '')
-    } catch (e: any) {
-      console.error('Failed to load dataset profile', e)
-      toast.error(formatApiError(e, '加载数据画像失败'))
-    } finally {
-      setIsLoading(false)
+  const datasetQuery = useQuery({
+    queryKey: datasetId ? queryKeys.datasets.detail(datasetId) : queryKeys.datasets.detail(''),
+    enabled: Boolean(datasetId),
+    queryFn: () => datasetApi.get(datasetId!),
+  })
+  const summaryQuery = useQuery({
+    queryKey: datasetId ? queryKeys.datasets.profileSummary(datasetId) : queryKeys.datasets.profileSummary(''),
+    enabled: Boolean(datasetId),
+    queryFn: () => datasetApi.getProfileSummary(datasetId!),
+  })
+  const scanRunsQuery = useQuery({
+    queryKey: datasetId
+      ? queryKeys.datasets.profileScanRuns(datasetId, { skip: 0, limit: 20 })
+      : queryKeys.datasets.profileScanRuns('', { skip: 0, limit: 20 }),
+    enabled: Boolean(datasetId),
+    queryFn: async () => {
+      try {
+        return await datasetApi.listProfileScanRuns(datasetId!, { skip: 0, limit: 20 })
+      } catch {
+        return { total: 0, items: [] }
+      }
+    },
+  })
+
+  const dataset = datasetQuery.data ?? null
+  const summary = summaryQuery.data ?? null
+  const scanRuns = scanRunsQuery.data?.items ?? EMPTY_SCAN_RUNS
+  const isLoading = datasetQuery.isLoading || summaryQuery.isLoading || scanRunsQuery.isLoading
+  const selectedFindingKey = selectedFinding?.key || ''
+
+  const findingDocumentsQuery = useInfiniteQuery({
+    queryKey: queryKeys.datasets.profileFindingDocuments(datasetId || '', selectedFindingKey, {
+      limit: PROFILE_DOCUMENT_PAGE_SIZE,
+    }),
+    enabled: Boolean(datasetId && selectedFindingKey && findingOpen),
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) => {
+      if (!datasetId || !selectedFindingKey) throw new Error('缺少画像清单 ID')
+      return datasetApi.listProfileFinding(datasetId, selectedFindingKey, {
+        skip: Number(pageParam) || 0,
+        limit: PROFILE_DOCUMENT_PAGE_SIZE,
+      })
+    },
+    getNextPageParam: (lastPage, allPages) => {
+      const loaded = allPages.reduce((acc, page) => acc + (page.items?.length || 0), 0)
+      return loaded < (lastPage.total || 0) ? loaded : undefined
+    },
+  })
+  const bucketDocumentsQuery = useInfiniteQuery({
+    queryKey: queryKeys.datasets.profileBucketDocuments(datasetId || '', {
+      dimension: bucketDim || '',
+      bucket: bucketKey,
+      include_preview: true,
+      limit: PROFILE_DOCUMENT_PAGE_SIZE,
+      preview_max_chars: PROFILE_BUCKET_PREVIEW_MAX_CHARS,
+    }),
+    enabled: Boolean(datasetId && bucketDim && bucketKey && bucketOpen),
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) => {
+      if (!datasetId || !bucketDim || !bucketKey) throw new Error('缺少画像分桶 ID')
+      return datasetApi.listProfileBucketDocuments(datasetId, {
+        dimension: bucketDim,
+        bucket: bucketKey,
+        skip: Number(pageParam) || 0,
+        limit: PROFILE_DOCUMENT_PAGE_SIZE,
+        include_preview: true,
+        preview_max_chars: PROFILE_BUCKET_PREVIEW_MAX_CHARS,
+      })
+    },
+    getNextPageParam: (lastPage, allPages) => {
+      const loaded = allPages.reduce((acc, page) => acc + (page.items?.length || 0), 0)
+      return loaded < (lastPage.total || 0) ? loaded : undefined
+    },
+  })
+  const findingLoading = findingDocumentsQuery.isFetching
+  const findingRes = useMemo(() => {
+    const pages = findingDocumentsQuery.data?.pages || []
+    if (!pages.length) return null
+    const items = pages.flatMap((page) => page.items || [])
+    return {
+      total: pages[pages.length - 1]?.total || 0,
+      items,
     }
-  }, [datasetId])
+  }, [findingDocumentsQuery.data])
+  const bucketLoading = bucketDocumentsQuery.isFetching
+  const bucketRes = useMemo(() => {
+    const pages = bucketDocumentsQuery.data?.pages || []
+    if (!pages.length) return null
+    const items = pages.flatMap((page) => page.items || [])
+    return {
+      total: pages[pages.length - 1]?.total || 0,
+      items,
+    }
+  }, [bucketDocumentsQuery.data])
+  const { fetchNextPage: fetchNextFindingPage, hasNextPage: hasNextFindingPage } = findingDocumentsQuery
+  const { fetchNextPage: fetchNextBucketPage, hasNextPage: hasNextBucketPage } = bucketDocumentsQuery
+
+  const refreshProfileOverview = useCallback(async () => {
+    await Promise.all([
+      datasetQuery.refetch(),
+      summaryQuery.refetch(),
+      scanRunsQuery.refetch(),
+    ])
+  }, [datasetQuery, summaryQuery, scanRunsQuery])
 
   useEffect(() => {
-    detachPromise(load())
     return () => stopPolling()
-  }, [load, stopPolling])
+  }, [stopPolling])
+
+  useEffect(() => {
+    const completed = scanRuns.filter((r) => String(r.status || '').toLowerCase() === 'completed')
+    setCompareA((prev) => prev || completed[0]?.id || '')
+    setCompareB((prev) => prev || completed[1]?.id || '')
+  }, [scanRuns])
+
+  useEffect(() => {
+    const firstError = datasetQuery.error || summaryQuery.error
+    if (!firstError) return
+    console.error('Failed to load dataset profile', firstError)
+    toast.error(formatApiError(firstError, '加载数据画像失败'))
+  }, [datasetQuery.error, summaryQuery.error])
+
+  useEffect(() => {
+    const error = findingDocumentsQuery.error
+    if (!error) return
+    console.error('Failed to load finding documents', error)
+    toast.error(formatApiError(error, '加载清单失败'))
+  }, [findingDocumentsQuery.error, findingDocumentsQuery.errorUpdatedAt])
+
+  useEffect(() => {
+    const error = bucketDocumentsQuery.error
+    if (!error) return
+    console.error('Failed to load bucket documents', error)
+    toast.error(formatApiError(error, '加载清单失败'))
+  }, [bucketDocumentsQuery.error, bucketDocumentsQuery.errorUpdatedAt])
 
   const fileTypeChartData = useMemo(() => {
     const m = summary?.by_file_type || {}
@@ -437,70 +540,29 @@ export default function DatasetProfilePage() {
   }, [summary])
 
   const openFinding = useCallback(
-    async (finding: DatasetProfileFindingSummary) => {
+    (finding: DatasetProfileFindingSummary) => {
       if (!datasetId) return
       setSelectedFinding(finding)
       setFindingOpen(true)
-      setFindingLoading(true)
-      try {
-        const res = await datasetApi.listProfileFinding(datasetId, finding.key, { skip: 0, limit: 50 })
-        setFindingRes(res)
-      } catch (e: any) {
-        console.error('Failed to load finding documents', e)
-        toast.error(formatApiError(e, '加载清单失败'))
-        setFindingRes(null)
-      } finally {
-        setFindingLoading(false)
-      }
     },
     [datasetId]
   )
 
   const openBucket = useCallback(
-    async (dim: 'file_type' | 'language' | 'directory' | 'quality_bucket', key: string) => {
+    (dim: 'file_type' | 'language' | 'directory' | 'quality_bucket', key: string) => {
       if (!datasetId) return
       if (!key || key === '__other__') return
       setBucketDim(dim)
       setBucketKey(key)
       setBucketOpen(true)
-      setBucketLoading(true)
-      try {
-        const res = await datasetApi.listProfileBucketDocuments(datasetId, {
-          dimension: dim,
-          bucket: key,
-          skip: 0,
-          limit: 50,
-          include_preview: true,
-          preview_max_chars: 360,
-        })
-        setBucketRes(res)
-      } catch (e: any) {
-        console.error('Failed to load bucket documents', e)
-        toast.error(formatApiError(e, '加载清单失败'))
-        setBucketRes(null)
-      } finally {
-        setBucketLoading(false)
-      }
     },
     [datasetId]
   )
 
-  const loadMoreFinding = useCallback(async () => {
-    if (!datasetId || !selectedFinding || !findingRes) return
-    if (findingRes.items.length >= findingRes.total) return
-
-    const nextSkip = findingRes.items.length
-    setFindingLoading(true)
-    try {
-      const res = await datasetApi.listProfileFinding(datasetId, selectedFinding.key, { skip: nextSkip, limit: 50 })
-      setFindingRes({ total: res.total, items: [...findingRes.items, ...(res.items || [])] })
-    } catch (e: any) {
-      console.error('Failed to load more finding documents', e)
-      toast.error(formatApiError(e, '加载更多失败'))
-    } finally {
-      setFindingLoading(false)
-    }
-  }, [datasetId, selectedFinding, findingRes])
+  const loadMoreFindingPage = useCallback(async () => {
+    if (!hasNextFindingPage) return
+    await fetchNextFindingPage()
+  }, [fetchNextFindingPage, hasNextFindingPage])
 
   const retryDocuments = useCallback(
     async (docIds: string[], scope: 'batch' | 'single') => {
@@ -512,7 +574,7 @@ export default function DatasetProfilePage() {
         }
         await documentApi.batchRetry({ document_ids: docIds, force: true, skip_if_unchanged: false })
         toast.success(`已触发重试：${docIds.length} 个文档`)
-        detachPromise(load())
+        detachPromise(refreshProfileOverview())
       } catch (e: any) {
         toast.error(formatApiError(e, '触发重试失败'))
       } finally {
@@ -526,30 +588,13 @@ export default function DatasetProfilePage() {
         }
       }
     },
-    [load]
+    [refreshProfileOverview]
   )
 
-  const loadMoreBucket = useCallback(async () => {
-    if (!datasetId || !bucketDim || !bucketKey || !bucketRes) return
-    if (bucketRes.items.length >= bucketRes.total) return
-    setBucketLoading(true)
-    try {
-      const res = await datasetApi.listProfileBucketDocuments(datasetId, {
-        dimension: bucketDim,
-        bucket: bucketKey,
-        skip: bucketRes.items.length,
-        limit: 50,
-        include_preview: true,
-        preview_max_chars: 360,
-      })
-      setBucketRes({ total: res.total, items: [...bucketRes.items, ...(res.items || [])] })
-    } catch (e: any) {
-      console.error('Failed to load more bucket documents', e)
-      toast.error(formatApiError(e, '加载更多失败'))
-    } finally {
-      setBucketLoading(false)
-    }
-  }, [datasetId, bucketDim, bucketKey, bucketRes])
+  const loadMoreBucketPage = useCallback(async () => {
+    if (!hasNextBucketPage) return
+    await fetchNextBucketPage()
+  }, [fetchNextBucketPage, hasNextBucketPage])
 
   const pollScanRun = useCallback(
     async (datasetIdValue: string, runId: string) => {
@@ -563,14 +608,14 @@ export default function DatasetProfilePage() {
         }
         setScanRunning(false)
         stopPolling()
-        detachPromise(load())
+        detachPromise(refreshProfileOverview())
       } catch (e: any) {
         console.error('Failed to poll scan run', e)
         setScanRunning(false)
         stopPolling()
       }
     },
-    [load, stopPolling]
+    [refreshProfileOverview, stopPolling]
   )
 
   // If a scan run is already running (e.g., user refreshed the page), resume polling.
@@ -596,7 +641,7 @@ export default function DatasetProfilePage() {
         pollTimerRef.current = globalThis.window.setTimeout(() => detachPromise(pollScanRun(datasetId, run.id)), 1200)
       } else {
         setScanRunning(false)
-        detachPromise(load())
+        detachPromise(refreshProfileOverview())
       }
       toast.success('已启动深度扫描')
     } catch (e: any) {
@@ -604,7 +649,7 @@ export default function DatasetProfilePage() {
       toast.error(formatApiError(e, '启动扫描失败'))
       setScanRunning(false)
     }
-  }, [datasetId, scanConfig, pollScanRun, load])
+  }, [datasetId, scanConfig, pollScanRun, refreshProfileOverview])
 
   const exportJson = useCallback(async () => {
     if (!datasetId) return
@@ -732,7 +777,7 @@ export default function DatasetProfilePage() {
             <Button
               variant="outline"
               className="gap-2"
-              onClick={() => detachPromise(load())}
+              onClick={() => detachPromise(refreshProfileOverview())}
               disabled={isLoading}
             >
               <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin motion-reduce:animate-none')} />
@@ -1357,7 +1402,7 @@ export default function DatasetProfilePage() {
                   深度扫描会把“缺失指标”补齐，并保存一次 summary 快照；可用于回溯与对比。
                 </div>
               </div>
-              <Button variant="outline" className="gap-2" onClick={() => detachPromise(load())} disabled={isLoading}>
+              <Button variant="outline" className="gap-2" onClick={() => detachPromise(refreshProfileOverview())} disabled={isLoading}>
                 <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin motion-reduce:animate-none')} />
                 刷新
               </Button>
@@ -1496,12 +1541,11 @@ export default function DatasetProfilePage() {
         </div>
 
         <Dialog open={findingOpen} onOpenChange={(open) => {
-          setFindingOpen(open)
-          if (!open) {
-            setSelectedFinding(null)
-            setFindingRes(null)
-          }
-        }}>
+           setFindingOpen(open)
+           if (!open) {
+             setSelectedFinding(null)
+           }
+         }}>
           <DialogContent className="max-w-4xl border-border bg-background/95 shadow-strong sm:rounded-2xl">
             <DialogHeader>
               <DialogTitle className="text-xl font-bold text-foreground flex items-center justify-between gap-3">
@@ -1616,7 +1660,7 @@ export default function DatasetProfilePage() {
                     <div className="text-xs text-muted-foreground">
                       {findingRes.items.length >= findingRes.total ? '已加载全部' : ''}
                     </div>
-                    <Button variant="outline" className="gap-2" onClick={() => detachPromise(loadMoreFinding())} disabled={findingLoading || findingRes.items.length >= findingRes.total}>
+                    <Button variant="outline" className="gap-2" onClick={() => detachPromise(loadMoreFindingPage())} disabled={findingLoading || !hasNextFindingPage}>
                       {findingLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none"/> : null}
                       加载更多
                     </Button>
@@ -1635,12 +1679,11 @@ export default function DatasetProfilePage() {
 
         <Dialog open={bucketOpen} onOpenChange={(open) => {
           setBucketOpen(open)
-          if (!open) {
-            setBucketDim(null)
-            setBucketKey('')
-            setBucketRes(null)
-          }
-        }}>
+           if (!open) {
+             setBucketDim(null)
+             setBucketKey('')
+           }
+         }}>
           <DialogContent className="max-w-5xl border-border bg-background/95 shadow-strong sm:rounded-2xl">
             <DialogHeader>
               <DialogTitle className="text-xl font-bold text-foreground flex items-center gap-2">
@@ -1745,7 +1788,7 @@ export default function DatasetProfilePage() {
                     <div className="text-xs text-muted-foreground">
                       {bucketRes.items.length >= bucketRes.total ? '已加载全部' : ''}
                     </div>
-                    <Button variant="outline" className="gap-2" onClick={() => detachPromise(loadMoreBucket())} disabled={bucketLoading || bucketRes.items.length >= bucketRes.total}>
+                    <Button variant="outline" className="gap-2" onClick={() => detachPromise(loadMoreBucketPage())} disabled={bucketLoading || !hasNextBucketPage}>
                       {bucketLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none"/> : null}
                       加载更多
                     </Button>

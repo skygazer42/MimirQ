@@ -128,6 +128,59 @@ function safeNumber(value: unknown): number {
   return Number.isFinite(numeric) ? numeric : 0
 }
 
+function getDocumentUserMeta(document: Document): Record<string, unknown> | null {
+  const meta = document.metadata
+  if (!meta || typeof meta !== 'object') return null
+  const user = (meta as Record<string, unknown>).user
+  return user && typeof user === 'object'
+    ? (user as Record<string, unknown>)
+    : null
+}
+
+function getPersistedSampleDisposition(
+  document: Document
+): SampleDisposition | null {
+  const disposition = getDocumentUserMeta(document)?.precheck_disposition
+  return disposition === 'approved' || disposition === 'manual'
+    ? disposition
+    : null
+}
+
+function getPersistedSalesAuditDisposition(
+  file: DatasetPrecheckFileOut
+): SampleDisposition | null {
+  const disposition = file.review_disposition
+  const reviewedAt =
+    typeof file.reviewed_at === 'string' ? file.reviewed_at : null
+  if (!reviewedAt) return null
+  return disposition === 'approved' || disposition === 'manual'
+    ? disposition
+    : null
+}
+
+function collectSalesAuditSampleFiles(
+  samples: DatasetPrecheckSamplesResponse | null
+): DatasetPrecheckFileOut[] {
+  if (!samples) return []
+
+  const representative = samples.representative ?? []
+  const needsReview = Object.values(samples.needs_review ?? {}).flat()
+  const topLargeFiles = samples.top_large_files ?? []
+  const topLongText = samples.top_long_text ?? []
+  const unique = new Map<string, DatasetPrecheckFileOut>()
+
+  for (const file of [
+    ...needsReview,
+    ...topLargeFiles,
+    ...topLongText,
+    ...representative,
+  ]) {
+    unique.set(String(file.name), file)
+  }
+
+  return Array.from(unique.values())
+}
+
 function formatClockLabel(value: number): string {
   const date = new Date(value)
   const hours = `${date.getHours()}`.padStart(2, '0')
@@ -1496,7 +1549,8 @@ export default function KnowledgeIngestionPageClient() {
   const reduceMotion = useReducedMotion()
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const dropZoneRef = useRef<DropZoneHandle>(null)
-  const demoMode = searchParams.get('demo') === '1'
+  const demoMode =
+    /(^|\/)demo(\/|$)/.test(pathname) && searchParams.get('demo') === '1'
   const mode: IngestionMode =
     searchParams.get('mode') === 'execution-monitor'
       ? 'execution-monitor'
@@ -1791,13 +1845,41 @@ export default function KnowledgeIngestionPageClient() {
     () => buildPdfDispositionBreakdown(documents),
     [documents]
   )
+  const salesAuditPersistedDispositions = useMemo(() => {
+    const persisted = Object.fromEntries(
+      collectSalesAuditSampleFiles(salesAuditSamples)
+        .map((file) => [
+          String(file.name),
+          getPersistedSalesAuditDisposition(file),
+        ] as const)
+        .filter((entry): entry is [string, SampleDisposition] => Boolean(entry[1]))
+    )
+
+    return persisted
+  }, [salesAuditSamples])
+  const resolvedSampleDispositions = useMemo(() => {
+    const executionPersisted = Object.fromEntries(
+      documents
+        .map((document) => [
+          document.id,
+          getPersistedSampleDisposition(document),
+        ] as const)
+        .filter((entry): entry is [string, SampleDisposition] => Boolean(entry[1]))
+    )
+
+    return {
+      ...executionPersisted,
+      ...salesAuditPersistedDispositions,
+      ...sampleDispositions,
+    }
+  }, [documents, salesAuditPersistedDispositions, sampleDispositions])
 
   const reviewQueue = statusCounts.failed + statusCounts.quarantined
   const pendingQueue = statusCounts.processing + statusCounts.pending
-  const approvedCount = Object.values(sampleDispositions).filter(
+  const approvedCount = Object.values(resolvedSampleDispositions).filter(
     (value) => value === 'approved'
   ).length
-  const manualCount = Object.values(sampleDispositions).filter(
+  const manualCount = Object.values(resolvedSampleDispositions).filter(
     (value) => value === 'manual'
   ).length
   const readyRate = documents.length
@@ -1826,13 +1908,13 @@ export default function KnowledgeIngestionPageClient() {
 
   const auditRailCounts = useMemo(() => {
     const pending = reasonFilteredAuditSamples.filter(
-      (document) => !sampleDispositions[document.id]
+      (document) => !resolvedSampleDispositions[document.id]
     ).length
     const approved = reasonFilteredAuditSamples.filter(
-      (document) => sampleDispositions[document.id] === 'approved'
+      (document) => resolvedSampleDispositions[document.id] === 'approved'
     ).length
     const manual = reasonFilteredAuditSamples.filter(
-      (document) => sampleDispositions[document.id] === 'manual'
+      (document) => resolvedSampleDispositions[document.id] === 'manual'
     ).length
 
     return {
@@ -1841,17 +1923,21 @@ export default function KnowledgeIngestionPageClient() {
       approved,
       manual,
     }
-  }, [reasonFilteredAuditSamples, sampleDispositions])
+  }, [reasonFilteredAuditSamples, resolvedSampleDispositions])
 
   const visibleAuditSamples = useMemo(() => {
     if (auditDispositionFilter === 'all') return reasonFilteredAuditSamples
 
     return reasonFilteredAuditSamples.filter((document) => {
-      const disposition = sampleDispositions[document.id]
+      const disposition = resolvedSampleDispositions[document.id]
       if (auditDispositionFilter === 'pending') return !disposition
       return disposition === auditDispositionFilter
     })
-  }, [auditDispositionFilter, reasonFilteredAuditSamples, sampleDispositions])
+  }, [
+    auditDispositionFilter,
+    reasonFilteredAuditSamples,
+    resolvedSampleDispositions,
+  ])
 
   const selectedAuditDocuments = useMemo(
     () =>
@@ -2463,19 +2549,7 @@ export default function KnowledgeIngestionPageClient() {
   )
 
   const salesEvidenceItems = useMemo(() => {
-    if (!salesAuditSamples) return []
-    const representative = salesAuditSamples.representative ?? []
-    const needsReview = Object.values(
-      salesAuditSamples.needs_review ?? {}
-    ).flat()
-    const topLargeFiles = salesAuditSamples.top_large_files ?? []
-    const unique = new Map<string, DatasetPrecheckFileOut>()
-
-    for (const file of [...needsReview, ...topLargeFiles, ...representative]) {
-      unique.set(String(file.name), file)
-    }
-
-    return Array.from(unique.values()).slice(0, 12)
+    return collectSalesAuditSampleFiles(salesAuditSamples).slice(0, 12)
   }, [salesAuditSamples])
 
   const selectedSalesEvidence = useMemo(
@@ -2936,20 +3010,108 @@ export default function KnowledgeIngestionPageClient() {
     })
   }, [])
 
+  const persistExecutionMonitorDisposition = useCallback(
+    async (documentId: string, disposition: SampleDisposition) => {
+      const previousDisposition = resolvedSampleDispositions[documentId]
+      const reviewedAt = new Date().toISOString()
+
+      try {
+        await documentApi.patchUserMetadata(documentId, {
+          patch: {
+            precheck_disposition: disposition,
+            precheck_reviewed_at: reviewedAt,
+          },
+          replace: false,
+        })
+        await documentsQuery.refetch()
+        if (disposition === 'approved') setSuccessPulseVisible(true)
+        toast.success('已同步预检处置结论')
+      } catch {
+        setSampleDispositions((previous) => {
+          const next = { ...previous }
+          if (previousDisposition) next[documentId] = previousDisposition
+          else delete next[documentId]
+          return next
+        })
+        toast.error('同步预检处置失败，请稍后重试')
+      }
+    },
+    [documentsQuery, resolvedSampleDispositions]
+  )
+
+  const persistSalesAuditDisposition = useCallback(
+    async (fileName: string, disposition: SampleDisposition) => {
+      const previousDisposition = resolvedSampleDispositions[fileName]
+
+      if (!selectedDatasetId || !latestPrecheckRun?.id) {
+        setSampleDispositions((previous) => {
+          const next = { ...previous }
+          if (previousDisposition) next[fileName] = previousDisposition
+          else delete next[fileName]
+          return next
+        })
+        toast.error('当前预检运行不存在，无法同步售前处置')
+        return
+      }
+
+      try {
+        await datasetApi.patchPrecheckSampleReview(
+          selectedDatasetId,
+          latestPrecheckRun.id,
+          {
+            file_name: fileName,
+            disposition,
+          }
+        )
+        await precheckSamplesQuery.refetch()
+        if (disposition === 'approved') setSuccessPulseVisible(true)
+        toast.success('已同步售前处置结论')
+      } catch {
+        setSampleDispositions((previous) => {
+          const next = { ...previous }
+          if (previousDisposition) next[fileName] = previousDisposition
+          else delete next[fileName]
+          return next
+        })
+        toast.error('同步售前处置失败，请稍后重试')
+      }
+    },
+    [
+      latestPrecheckRun?.id,
+      precheckSamplesQuery,
+      resolvedSampleDispositions,
+      selectedDatasetId,
+    ]
+  )
+
   const handleSampleDisposition = useCallback(
     (documentId: string, disposition: SampleDisposition) => {
       setSampleDispositions((previous) => ({
         ...previous,
         [documentId]: disposition,
       }))
-      if (disposition === 'approved') {
-        setSuccessPulseVisible(true)
-        toast.success('样本已标记为可入库')
+
+      if (mode === 'execution-monitor' && !demoMode) {
+        void persistExecutionMonitorDisposition(documentId, disposition)
         return
       }
-      toast.success('样本已移入人工处理清单')
+
+      if (mode === 'sales-audit' && !demoMode) {
+        void persistSalesAuditDisposition(documentId, disposition)
+        return
+      }
+
+      if (disposition === 'approved') setSuccessPulseVisible(true)
+      toast.success(
+        disposition === 'approved' ? '样本标记已更新' : '人工处理标记已更新'
+      )
     },
-    []
+    [
+      demoMode,
+      mode,
+      persistExecutionMonitorDisposition,
+      persistSalesAuditDisposition,
+    ]
   )
 
   const handleSelectAudit = useCallback((documentId: string) => {
@@ -3084,7 +3246,7 @@ export default function KnowledgeIngestionPageClient() {
       filename: document.filename,
       status: document.status,
       stage: document.current_stage,
-      disposition: sampleDispositions[document.id] || 'pending',
+      disposition: resolvedSampleDispositions[document.id] || 'pending',
       clue: document.error_message,
     }))
 
@@ -3094,7 +3256,7 @@ export default function KnowledgeIngestionPageClient() {
       'application/json;charset=utf-8'
     )
     toast.success('已导出当前预检抽样清单')
-  }, [sampleDispositions, selectedAuditDocuments])
+  }, [resolvedSampleDispositions, selectedAuditDocuments])
 
   const handleRefreshExecutionMonitor = useCallback(async () => {
     const results = await Promise.allSettled([
@@ -3299,7 +3461,8 @@ export default function KnowledgeIngestionPageClient() {
                   {mode === 'sales-audit'
                     ? visibleSalesEvidenceItems.map((file) => {
                         const selectionKey = String(file.name)
-                        const disposition = sampleDispositions[selectionKey]
+                        const disposition =
+                          resolvedSampleDispositions[selectionKey]
                         const tags = buildEvidenceSlotTags(file)
                         const reason = buildEvidenceSlotReason(file)
                         return (
@@ -3413,7 +3576,8 @@ export default function KnowledgeIngestionPageClient() {
                       })
                     : visibleAuditSamples.map((document) => {
                         const kind = getDocumentKind(document.filename)
-                        const disposition = sampleDispositions[document.id]
+                        const disposition =
+                          resolvedSampleDispositions[document.id]
                         return (
                           <motion.article
                             key={document.id}

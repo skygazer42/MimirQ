@@ -5,7 +5,6 @@ Provides evaluation endpoints for the RAG system, including task creation,
 querying, and results.
 """
 
-import logging
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 from uuid import UUID, uuid4
@@ -63,6 +62,7 @@ from app.models.evaluation import (
     RagasRegressionItem,
     RagasRegressionRun,
 )
+from app.rag.core.logging import get_logger
 from app.rag.evaluation.ragas import run_conversation_ragas_evaluation, run_regression_ragas_evaluation
 from app.rag.evaluation.test_generator import (
     generate_questions_from_conversations,
@@ -97,7 +97,7 @@ _DETAIL_RUN_NOT_FOUND = "Run not found"
 _DETAIL_KG_DISABLED = "KG is disabled (KG_ENABLED=false)"
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-logger = logging.getLogger(__name__)
+logger = get_logger("api.evaluations")
 
 _REGRESSION_RUN_CONTROL_FIELDS = {
     "case_ids",

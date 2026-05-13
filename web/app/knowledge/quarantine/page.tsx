@@ -1199,7 +1199,8 @@ export default function QuarantineQueuePage() {
   const searchParams = useSearchParams()
   const pathname = usePathname()
   const router = useRouter()
-  const demoMode = searchParams.get('demo') === '1'
+  const demoMode =
+    /(^|\/)demo(\/|$)/.test(pathname) && searchParams.get('demo') === '1'
   const { openDocument } = useDocumentView()
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [search, setSearch] = useState('')

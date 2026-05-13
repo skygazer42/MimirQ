@@ -211,8 +211,6 @@ export function IndustryRulesWorkbench() {
   const [searchValue, setSearchValue] = useState('')
   const [previewQuery, setPreviewQuery] = useState('授权报错怎么办')
 
-  const [loadingRuleset, setLoadingRuleset] = useState(false)
-  const [loadingSuggestions, setLoadingSuggestions] = useState(false)
   const [previewing, setPreviewing] = useState(false)
   const [savingGlossary, setSavingGlossary] = useState(false)
   const [savingPatterns, setSavingPatterns] = useState(false)
@@ -241,6 +239,24 @@ export function IndustryRulesWorkbench() {
     queryKey: queryKeys.datasets.list(INDUSTRY_RULES_DATASET_PARAMS),
     queryFn: () => datasetApi.list(INDUSTRY_RULES_DATASET_PARAMS),
   })
+  const rulesetDetailQuery = useQuery({
+    queryKey: queryKeys.industryRules.ruleset(selectedRuleset),
+    enabled: Boolean(selectedRuleset.trim()),
+    queryFn: () => industryRulesApi.getRuleset(selectedRuleset.trim()),
+  })
+  const glossarySuggestionsQuery = useQuery({
+    queryKey: queryKeys.industryRules.glossarySuggestions(
+      selectedDatasetId,
+      selectedRuleset,
+      { limit: 20 }
+    ),
+    enabled: Boolean(selectedDatasetId.trim() && selectedRuleset.trim()),
+    queryFn: () =>
+      datasetApi.getAnalysisRuleSuggestions(selectedDatasetId.trim(), {
+        ruleset: selectedRuleset.trim(),
+        limit: 20,
+      }),
+  })
 
   const rulesets = useMemo(
     () => rulesetsQuery.data?.rulesets || [],
@@ -252,53 +268,12 @@ export function IndustryRulesWorkbench() {
   )
   const loadingMeta = rulesetsQuery.isFetching || datasetsQuery.isFetching
   const metaError = rulesetsQuery.error || datasetsQuery.error
+  const loadingRuleset = rulesetDetailQuery.isFetching
+  const loadingSuggestions = glossarySuggestionsQuery.isFetching
 
   const refreshMeta = () => {
     void rulesetsQuery.refetch()
     void datasetsQuery.refetch()
-  }
-
-  const loadRulesetDetail = async (rulesetName: string) => {
-    const name = rulesetName.trim()
-    if (!name) return
-    setLoadingRuleset(true)
-    try {
-      const payload = await industryRulesApi.getRuleset(name)
-      setGlossaryEntries(glossaryEntriesFromDetail(payload.ruleset))
-      setPatternEntries(patternEntriesFromDetail(payload.ruleset))
-      setIntentEntries(intentEntriesFromDetail(payload.ruleset))
-      setResult({
-        title: '已加载规则集',
-        detail: `${payload.ruleset.name} · 术语 ${payload.ruleset.glossary_count} / 模式 ${payload.ruleset.pattern_count} / 意图 ${payload.ruleset.intent_count}`,
-      })
-    } catch (error) {
-      toast.error(formatApiError(error, '加载规则详情失败'))
-    } finally {
-      setLoadingRuleset(false)
-    }
-  }
-
-  const loadGlossarySuggestions = async (
-    datasetId: string,
-    rulesetName: string
-  ) => {
-    const ds = datasetId.trim()
-    const ruleset = rulesetName.trim()
-    if (!ds || !ruleset) return
-    setLoadingSuggestions(true)
-    try {
-      const payload = await datasetApi.getAnalysisRuleSuggestions(ds, {
-        ruleset,
-        limit: 20,
-      })
-      setGlossarySuggestions(suggestionRowsFromPayload(payload))
-      setSelectedSuggestionTokens({})
-      setDismissedSuggestionTokens({})
-    } catch (error) {
-      toast.error(formatApiError(error, '加载规则候选失败'))
-    } finally {
-      setLoadingSuggestions(false)
-    }
   }
 
   const runPreview = async (query: string, rulesetName: string) => {
@@ -333,6 +308,16 @@ export function IndustryRulesWorkbench() {
   }, [metaError])
 
   useEffect(() => {
+    if (!rulesetDetailQuery.error) return
+    toast.error(formatApiError(rulesetDetailQuery.error, '加载规则详情失败'))
+  }, [rulesetDetailQuery.error])
+
+  useEffect(() => {
+    if (!glossarySuggestionsQuery.error) return
+    toast.error(formatApiError(glossarySuggestionsQuery.error, '加载规则候选失败'))
+  }, [glossarySuggestionsQuery.error])
+
+  useEffect(() => {
     if (!selectedRuleset && rulesets[0]?.name)
       setSelectedRuleset(rulesets[0].name)
   }, [rulesets, selectedRuleset])
@@ -343,14 +328,18 @@ export function IndustryRulesWorkbench() {
   }, [datasets, selectedDatasetId])
 
   useEffect(() => {
-    if (!selectedRuleset.trim()) return
-    detachPromise(loadRulesetDetail(selectedRuleset))
-  }, [selectedRuleset])
+    if (!rulesetDetailQuery.data?.ruleset) return
+    setGlossaryEntries(glossaryEntriesFromDetail(rulesetDetailQuery.data.ruleset))
+    setPatternEntries(patternEntriesFromDetail(rulesetDetailQuery.data.ruleset))
+    setIntentEntries(intentEntriesFromDetail(rulesetDetailQuery.data.ruleset))
+  }, [rulesetDetailQuery.data])
 
   useEffect(() => {
-    if (!selectedRuleset.trim() || !selectedDatasetId.trim()) return
-    detachPromise(loadGlossarySuggestions(selectedDatasetId, selectedRuleset))
-  }, [selectedDatasetId, selectedRuleset])
+    if (!glossarySuggestionsQuery.data) return
+    setGlossarySuggestions(suggestionRowsFromPayload(glossarySuggestionsQuery.data))
+    setSelectedSuggestionTokens({})
+    setDismissedSuggestionTokens({})
+  }, [glossarySuggestionsQuery.data])
 
   useEffect(() => {
     if (!selectedRuleset.trim() || !previewQuery.trim()) {
@@ -445,7 +434,7 @@ export function IndustryRulesWorkbench() {
         detail: `${ruleset} · 更新 ${String(payload.updated_count || glossaryEntries.length)} 条术语`,
       })
       toast.success('术语已保存')
-      await loadRulesetDetail(ruleset)
+      await rulesetDetailQuery.refetch()
     } catch (error) {
       toast.error(formatApiError(error, '保存术语失败'))
     } finally {
@@ -466,7 +455,7 @@ export function IndustryRulesWorkbench() {
         detail: `${ruleset} · 更新 ${String(payload.updated_count || patternEntries.length)} 条模式`,
       })
       toast.success('问题模式已保存')
-      await loadRulesetDetail(ruleset)
+      await rulesetDetailQuery.refetch()
     } catch (error) {
       toast.error(formatApiError(error, '保存问题模式失败'))
     } finally {
@@ -487,7 +476,7 @@ export function IndustryRulesWorkbench() {
         detail: `${ruleset} · 更新 ${String(payload.updated_count || intentEntries.length)} 条意图`,
       })
       toast.success('意图分类已保存')
-      await loadRulesetDetail(ruleset)
+      await rulesetDetailQuery.refetch()
     } catch (error) {
       toast.error(formatApiError(error, '保存意图分类失败'))
     } finally {
@@ -1067,7 +1056,7 @@ export function IndustryRulesWorkbench() {
                 }
                 onClick={() =>
                   detachPromise(
-                    loadGlossarySuggestions(selectedDatasetId, selectedRuleset)
+                    glossarySuggestionsQuery.refetch()
                   )
                 }
               >

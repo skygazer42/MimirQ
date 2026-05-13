@@ -6,7 +6,6 @@ Provides error handling, retry, and fallback mechanisms for LLM calls.
 
 
 import asyncio
-import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -14,8 +13,9 @@ from functools import wraps
 from typing import Any
 
 from app.core.config import settings
+from app.rag.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("rag.middleware.error_handler")
 
 
 @dataclass

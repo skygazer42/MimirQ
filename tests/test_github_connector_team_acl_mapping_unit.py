@@ -10,6 +10,7 @@ from tests.helpers.async_utils import yield_control
 @pytest.mark.asyncio
 async def test_github_repo_connector_applies_team_acl_via_external_id(monkeypatch):  # noqa: ANN001
     import app.api.v1.connectors as connectors
+    import app.api.v1.connectors_github_repo as connectors_github_repo
     from app.models.connector import ConnectorRun
     from app.rag.core.hashing import stable_hash
 
@@ -17,6 +18,8 @@ async def test_github_repo_connector_applies_team_acl_via_external_id(monkeypatc
     dataset_id = uuid.uuid4()
     run_id = uuid.uuid4()
     requested_by = "test-account"
+
+    connectors_github_repo._leader_module = connectors
 
     # Fake run in DB.
     run = type(

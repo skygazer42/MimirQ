@@ -6,14 +6,15 @@ Data is lost after application restart.
 """
 
 import builtins
-import logging
 import threading
 from collections import defaultdict
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-logger = logging.getLogger(__name__)
+from app.rag.core.logging import get_logger
+
+logger = get_logger("rag.checkpointer.memory")
 
 
 class MemorySaver:

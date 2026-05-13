@@ -7,7 +7,6 @@ Token bucket algorithm based FastAPI request rate limiting:
 - Thread-safe implementation
 """
 import asyncio
-import logging
 import math
 import time
 from collections.abc import Callable
@@ -19,7 +18,9 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.status import HTTP_429_TOO_MANY_REQUESTS
 
-logger = logging.getLogger(__name__)
+from app.rag.core.logging import get_logger
+
+logger = get_logger("api.rate_limit")
 
 
 @dataclass

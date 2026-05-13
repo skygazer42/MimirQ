@@ -10,7 +10,6 @@
 'use client'
 
 import {
-  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -38,7 +37,7 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { cn, detachPromise } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { formatApiError } from '@/lib/api-errors'
 import {
@@ -527,11 +526,36 @@ export function RegressionTestTab({
   const [useLlmJudge, setUseLlmJudge] = useState(false)
 
   // 运行历史
-  const [runs, setRuns] = useState<RegressionRun[]>([])
   const [selectedRunId, setSelectedRunId] = useState<string>('')
-  const [runDetail, setRunDetail] = useState<RegressionRunDetail | null>(null)
-  const [isLoadingRuns, setIsLoadingRuns] = useState(false)
   const [isConfigPanelCollapsed, setIsConfigPanelCollapsed] = useState(false)
+
+  const runsQuery = useQuery({
+    queryKey: queryKeys.evaluations.regressionRuns({ limit: 50 }),
+    queryFn: () => evaluationApi.listRegressionRuns({ limit: 50 }),
+  })
+  const runDetailQuery = useQuery({
+    queryKey: queryKeys.evaluations.regressionRunDetail(selectedRunId, {
+      include_items: true,
+      include_contexts: false,
+    }),
+    enabled: Boolean(selectedRunId),
+    queryFn: () =>
+      evaluationApi.getRegressionRun(selectedRunId, {
+        include_items: true,
+        include_contexts: false,
+      }),
+    refetchInterval: (query) => {
+      const detail = query.state.data as RegressionRunDetail | undefined
+      const status = detail?.run?.status
+      return status === 'pending' || status === 'running' ? 2000 : false
+    },
+  })
+  const runs = useMemo<RegressionRun[]>(() => {
+    const items = runsQuery.data?.items
+    return Array.isArray(items) ? items : []
+  }, [runsQuery.data])
+  const runDetail = runDetailQuery.data || null
+  const isLoadingRuns = runsQuery.isLoading || runsQuery.isFetching
 
   const visibleRuns = useMemo(() => {
     if (!selectedDatasetId) return runs
@@ -554,59 +578,17 @@ export function RegressionTestTab({
     setSelectedDatasetId((prev) => prev || firstId)
   }, [datasets])
 
-  // 加载运行历史
-  const loadRuns = useCallback(async () => {
-    try {
-      setIsLoadingRuns(true)
-      const result = await evaluationApi.listRegressionRuns({ limit: 50 })
-      setRuns(result.items || [])
-      const firstRunId = result.items?.[0]?.id
-      if (firstRunId) setSelectedRunId((prev) => prev || firstRunId)
-    } catch (error) {
-      console.error('加载运行历史失败:', error)
-      toast.error(formatApiError(error, '加载运行历史失败'))
-    } finally {
-      setIsLoadingRuns(false)
-    }
-  }, [])
+  useEffect(() => {
+    const firstRunId = runs[0]?.id
+    if (!firstRunId) return
+    setSelectedRunId((prev) => prev || firstRunId)
+  }, [runs])
 
   useEffect(() => {
-    detachPromise(loadRuns())
-  }, [loadRuns])
-
-  // 加载运行详情
-  useEffect(() => {
-    if (!selectedRunId) {
-      setRunDetail(null)
-      return
-    }
-
-    let cancelled = false
-    let timer: ReturnType<typeof setTimeout> | null = null
-
-    const fetchDetail = async () => {
-      try {
-        const detail = await evaluationApi.getRegressionRun(selectedRunId, {
-          include_items: true,
-          include_contexts: false,
-        })
-        if (cancelled) return
-        setRunDetail(detail)
-        const status = detail?.run?.status
-        if (status === 'pending' || status === 'running') {
-          timer = setTimeout(fetchDetail, 2000)
-        }
-      } catch (e) {
-        if (!cancelled) console.error('加载运行详情失败', e)
-      }
-    }
-
-    fetchDetail()
-    return () => {
-      cancelled = true
-      if (timer) clearTimeout(timer)
-    }
-  }, [selectedRunId])
+    if (!runsQuery.error) return
+    console.error('加载运行历史失败:', runsQuery.error)
+    toast.error(formatApiError(runsQuery.error, '加载运行历史失败'))
+  }, [runsQuery.error])
 
   // 运行选中的测试
   const handleRunTests = async (caseIds: string[]) => {
@@ -631,7 +613,7 @@ export function RegressionTestTab({
 
       const run = await evaluationApi.createRegressionRun(params)
       toast.success('开始运行 Golden 评测')
-      await loadRuns()
+      await runsQuery.refetch()
       setSelectedRunId(run.id)
     } catch (error) {
       console.error('运行 Golden 评测失败:', error)

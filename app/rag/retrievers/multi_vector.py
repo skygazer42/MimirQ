@@ -25,7 +25,6 @@ Usage:
 """
 
 
-import logging
 import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Callable
@@ -37,7 +36,9 @@ from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 
-logger = logging.getLogger(__name__)
+from app.rag.core.logging import get_logger
+
+logger = get_logger("rag.retrievers.multi_vector")
 
 
 class RepresentationType(str, Enum):

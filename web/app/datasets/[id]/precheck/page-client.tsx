@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
-import { useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { ArrowLeft, Download, FileSearch, Loader2, RefreshCw, Settings2, Sparkles, StopCircle, Table2, Wand2 } from 'lucide-react'
 import {
@@ -40,9 +40,7 @@ import { useRouter } from '@/i18n/navigation'
 import type {
   DatasetPrecheckDiffResponse,
   DatasetPrecheckFileOut,
-  DatasetPrecheckFindingListResponse,
   DatasetPrecheckFindingSummary,
-  DatasetPrecheckIngestionSuggestionResponse,
   DatasetPrecheckNearDupResponse,
   DatasetPrecheckSamplesResponse,
   DatasetPrecheckScanRunCreateRequest,
@@ -63,6 +61,8 @@ const PIE_COLORS = [
 ]
 
 const PRECHECK_RUNS_PARAMS = { skip: 0, limit: 20 } as const
+const PRECHECK_POLICY_SUGGESTION_PARAMS = { max_names_per_bucket: 50 } as const
+const PRECHECK_FINDING_PAGE_SIZE = 50
 
 function asDatasetId(raw: unknown): string | null {
   if (typeof raw === 'string' && raw.trim()) return raw
@@ -101,14 +101,7 @@ export default function DatasetPrecheckPage() {
   const [isExporting, setIsExporting] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
 
-  const [samplesLoading, setSamplesLoading] = useState(false)
-  const [samplesRes, setSamplesRes] = useState<DatasetPrecheckSamplesResponse | null>(null)
-  const [nearDupLoading, setNearDupLoading] = useState(false)
-  const [nearDupRes, setNearDupRes] = useState<DatasetPrecheckNearDupResponse | null>(null)
-
   const [policyOpen, setPolicyOpen] = useState(false)
-  const [policyLoading, setPolicyLoading] = useState(false)
-  const [policyRes, setPolicyRes] = useState<DatasetPrecheckIngestionSuggestionResponse | null>(null)
   const [policyApplying, setPolicyApplying] = useState(false)
   const [policyApplyReplace, setPolicyApplyReplace] = useState(false)
 
@@ -143,15 +136,11 @@ export default function DatasetPrecheckPage() {
 
   const [findingOpen, setFindingOpen] = useState(false)
   const [selectedFinding, setSelectedFinding] = useState<DatasetPrecheckFindingSummary | null>(null)
-  const [findingLoading, setFindingLoading] = useState(false)
-  const [findingRes, setFindingRes] = useState<DatasetPrecheckFindingListResponse | null>(null)
 
   const [fileDetailOpen, setFileDetailOpen] = useState(false)
   const [fileDetail, setFileDetail] = useState<DatasetPrecheckFileOut | null>(null)
 
   const [diffBaseRunId, setDiffBaseRunId] = useState<string>('')
-  const [diffLoading, setDiffLoading] = useState(false)
-  const [diffRes, setDiffRes] = useState<DatasetPrecheckDiffResponse | null>(null)
 
   const stopPolling = useCallback(() => {
     const t = pollTimerRef.current
@@ -181,6 +170,94 @@ export default function DatasetPrecheckPage() {
   const runs = useMemo(() => runsQuery.data?.items || [], [runsQuery.data?.items])
   const loading = Boolean(datasetId) && (datasetQuery.isPending || runsQuery.isPending)
   const refreshing = Boolean(datasetId) && (datasetQuery.isFetching || runsQuery.isFetching)
+  const selectedRunId = selectedRun?.id || ''
+  const selectedFindingKey = selectedFinding?.key || ''
+  const sampleSize = scanConfig.sample_size ?? undefined
+
+  const samplesQuery = useQuery({
+    queryKey: queryKeys.datasets.precheckSamples(datasetId || '', selectedRunId, {
+      size: sampleSize,
+      prefer_artifact: true,
+    }),
+    enabled: false,
+    queryFn: () =>
+      datasetApi.getPrecheckSamples(datasetId as string, selectedRunId, {
+        size: sampleSize,
+        prefer_artifact: true,
+      }),
+  })
+  const nearDupQuery = useQuery({
+    queryKey: queryKeys.datasets.precheckNearDups(datasetId || '', selectedRunId),
+    enabled: false,
+    queryFn: () => datasetApi.getPrecheckNearDups(datasetId as string, selectedRunId),
+  })
+  const diffQuery = useQuery({
+    queryKey: queryKeys.datasets.precheckDiff(datasetId || '', selectedRunId, {
+      base_scan_run_id: diffBaseRunId,
+    }),
+    enabled: false,
+    queryFn: () =>
+      datasetApi.diffPrecheckScanRuns(datasetId as string, selectedRunId, {
+        base_scan_run_id: diffBaseRunId,
+      }),
+  })
+  const policySuggestionQuery = useQuery({
+    queryKey: queryKeys.datasets.precheckIngestionPolicySuggestion(
+      datasetId || '',
+      selectedRunId,
+      PRECHECK_POLICY_SUGGESTION_PARAMS
+    ),
+    enabled: false,
+    queryFn: () => {
+      if (!datasetId || !selectedRunId) throw new Error('缺少预检扫描 ID')
+      return datasetApi.suggestPrecheckIngestionPolicy(
+        datasetId,
+        selectedRunId,
+        PRECHECK_POLICY_SUGGESTION_PARAMS
+      )
+    },
+  })
+  const findingItemsQuery = useInfiniteQuery({
+    queryKey: queryKeys.datasets.precheckFindingFiles(
+      datasetId || '',
+      selectedRunId,
+      selectedFindingKey,
+      { limit: PRECHECK_FINDING_PAGE_SIZE }
+    ),
+    enabled: Boolean(datasetId && selectedRunId && selectedFindingKey && findingOpen),
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) => {
+      if (!datasetId || !selectedRunId || !selectedFindingKey) throw new Error('缺少预检清单 ID')
+      return datasetApi.listPrecheckFinding(
+        datasetId,
+        selectedRunId,
+        selectedFindingKey,
+        { skip: Number(pageParam) || 0, limit: PRECHECK_FINDING_PAGE_SIZE }
+      )
+    },
+    getNextPageParam: (lastPage, allPages) => {
+      const loaded = allPages.reduce((acc, page) => acc + (page.items?.length || 0), 0)
+      return loaded < (lastPage.total || 0) ? loaded : undefined
+    },
+  })
+  const samplesLoading = samplesQuery.isFetching
+  const samplesRes = samplesQuery.data ?? null
+  const nearDupLoading = nearDupQuery.isFetching
+  const nearDupRes = nearDupQuery.data ?? null
+  const diffLoading = diffQuery.isFetching
+  const diffRes = diffQuery.data ?? null
+  const policyLoading = policySuggestionQuery.isFetching
+  const policyRes = policySuggestionQuery.data ?? null
+  const findingLoading = findingItemsQuery.isFetching
+  const findingRes = useMemo(() => {
+    const pages = findingItemsQuery.data?.pages || []
+    if (!pages.length) return null
+    const items = pages.flatMap((page) => page.items || [])
+    return {
+      total: pages[pages.length - 1]?.total || 0,
+      items,
+    }
+  }, [findingItemsQuery.data])
 
   useEffect(() => {
     const error = datasetQuery.error || runsQuery.error
@@ -189,8 +266,17 @@ export default function DatasetPrecheckPage() {
     toast.error(formatApiError(error, '加载预检页面失败'))
   }, [datasetQuery.error, datasetQuery.errorUpdatedAt, runsQuery.error, runsQuery.errorUpdatedAt])
 
+  useEffect(() => {
+    const error = findingItemsQuery.error
+    if (!error) return
+    console.error('Failed to load precheck finding', error)
+    toast.error(formatApiError(error, '加载清单失败'))
+  }, [findingItemsQuery.error, findingItemsQuery.errorUpdatedAt])
+
   const { refetch: refetchDataset } = datasetQuery
   const { refetch: refetchRunsQuery } = runsQuery
+  const { refetch: refetchPolicySuggestion } = policySuggestionQuery
+  const { fetchNextPage: fetchNextFindingPage } = findingItemsQuery
 
   const refreshPrecheckRuns = useCallback(async () => {
     await refetchRunsQuery()
@@ -199,6 +285,20 @@ export default function DatasetPrecheckPage() {
   const refreshPrecheckPage = useCallback(async () => {
     await Promise.all([refetchDataset(), refetchRunsQuery()])
   }, [refetchDataset, refetchRunsQuery])
+
+  const refetchPrecheckQuery = useCallback(
+    async (
+      action: () => Promise<{ error: unknown }>,
+      errorMessage: string,
+      logLabel: string
+    ) => {
+      const { error } = await action()
+      if (!error) return
+      console.error(logLabel, error)
+      toast.error(formatApiError(error, errorMessage))
+    },
+    []
+  )
 
   useEffect(() => {
     if (!selectedRun && runs.length) {
@@ -349,52 +449,15 @@ export default function DatasetPrecheckPage() {
     }
   }, [datasetId, selectedRun?.id])
 
-  const loadSamples = useCallback(async () => {
-    if (!datasetId || !selectedRun?.id) return
-    setSamplesLoading(true)
-    try {
-      const size = scanConfig.sample_size ?? undefined
-      const res = await datasetApi.getPrecheckSamples(datasetId, selectedRun.id, { size: size ?? undefined, prefer_artifact: true })
-      setSamplesRes(res)
-    } catch (e: any) {
-      console.error('Failed to load precheck samples', e)
-      toast.error(formatApiError(e, '加载样本失败'))
-      setSamplesRes(null)
-    } finally {
-      setSamplesLoading(false)
-    }
-  }, [datasetId, scanConfig.sample_size, selectedRun?.id])
-
-  const loadNearDups = useCallback(async () => {
-    if (!datasetId || !selectedRun?.id) return
-    setNearDupLoading(true)
-    try {
-      const res = await datasetApi.getPrecheckNearDups(datasetId, selectedRun.id)
-      setNearDupRes(res)
-    } catch (e: any) {
-      console.error('Failed to load precheck near-dups', e)
-      toast.error(formatApiError(e, '加载近重复失败（可能未开启）'))
-      setNearDupRes(null)
-    } finally {
-      setNearDupLoading(false)
-    }
-  }, [datasetId, selectedRun?.id])
-
   const openPolicy = useCallback(async () => {
-    if (!datasetId || !selectedRun?.id) return
+    if (!datasetId || !selectedRunId) return
     setPolicyOpen(true)
-    setPolicyLoading(true)
-    try {
-      const res = await datasetApi.suggestPrecheckIngestionPolicy(datasetId, selectedRun.id, { max_names_per_bucket: 50 })
-      setPolicyRes(res)
-    } catch (e: any) {
-      console.error('Failed to suggest ingestion policy', e)
-      toast.error(formatApiError(e, '生成入库策略失败'))
-      setPolicyRes(null)
-    } finally {
-      setPolicyLoading(false)
+    const { error } = await refetchPolicySuggestion()
+    if (error) {
+      console.error('Failed to suggest ingestion policy', error)
+      toast.error(formatApiError(error, '生成入库策略失败'))
     }
-  }, [datasetId, selectedRun?.id])
+  }, [datasetId, refetchPolicySuggestion, selectedRunId])
 
   const applyPolicy = useCallback(async () => {
     if (!datasetId || !selectedRun?.id) return
@@ -503,57 +566,20 @@ export default function DatasetPrecheckPage() {
   }, [summary])
 
   const openFinding = useCallback(
-    async (finding: DatasetPrecheckFindingSummary) => {
-      if (!datasetId || !selectedRun?.id) return
+    (finding: DatasetPrecheckFindingSummary) => {
+      if (!datasetId || !selectedRunId) return
       setSelectedFinding(finding)
       setFindingOpen(true)
-      setFindingLoading(true)
       setFileDetailOpen(false)
       setFileDetail(null)
-      try {
-        const res = await datasetApi.listPrecheckFinding(datasetId, selectedRun.id, finding.key, { skip: 0, limit: 50 })
-        setFindingRes(res)
-      } catch (e: any) {
-        console.error('Failed to load precheck finding', e)
-        toast.error(formatApiError(e, '加载清单失败'))
-        setFindingRes(null)
-      } finally {
-        setFindingLoading(false)
-      }
     },
-    [datasetId, selectedRun?.id]
+    [datasetId, selectedRunId]
   )
 
-  const loadDiff = useCallback(async () => {
-    if (!datasetId || !selectedRun?.id || !diffBaseRunId) return
-    setDiffLoading(true)
-    try {
-      const res = await datasetApi.diffPrecheckScanRuns(datasetId, selectedRun.id, { base_scan_run_id: diffBaseRunId })
-      setDiffRes(res)
-    } catch (e: any) {
-      console.error('Failed to diff precheck runs', e)
-      toast.error(formatApiError(e, '对比失败'))
-      setDiffRes(null)
-    } finally {
-      setDiffLoading(false)
-    }
-  }, [datasetId, diffBaseRunId, selectedRun?.id])
-
-  const loadMoreFinding = useCallback(async () => {
-    if (!datasetId || !selectedRun?.id || !selectedFinding || !findingRes) return
-    if (findingRes.items.length >= findingRes.total) return
-    const nextSkip = findingRes.items.length
-    setFindingLoading(true)
-    try {
-      const res = await datasetApi.listPrecheckFinding(datasetId, selectedRun.id, selectedFinding.key, { skip: nextSkip, limit: 50 })
-      setFindingRes({ total: res.total, items: [...findingRes.items, ...(res.items || [])] })
-    } catch (e: any) {
-      console.error('Failed to load more precheck finding', e)
-      toast.error(formatApiError(e, '加载更多失败'))
-    } finally {
-      setFindingLoading(false)
-    }
-  }, [datasetId, findingRes, selectedFinding, selectedRun?.id])
+  const loadMoreFindingPage = useCallback(async () => {
+    if (!findingItemsQuery.hasNextPage) return
+    await fetchNextFindingPage()
+  }, [fetchNextFindingPage, findingItemsQuery.hasNextPage])
 
   const latestRunStatus = selectedRun?.status
   const latestRunProgress = selectedRun?.progress ?? 0
@@ -771,7 +797,20 @@ export default function DatasetPrecheckPage() {
                       ))}
                   </SelectContent>
                 </Select>
-                <Button variant="outline" className="gap-2" onClick={() => detachPromise(loadDiff())} disabled={!diffBaseRunId || diffLoading || !selectedRun?.id}>
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() =>
+                    detachPromise(
+                      refetchPrecheckQuery(
+                        () => diffQuery.refetch(),
+                        '对比失败',
+                        'Failed to diff precheck runs'
+                      )
+                    )
+                  }
+                  disabled={!diffBaseRunId || diffLoading || !selectedRun?.id}
+                >
                   {diffLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : null}
                   计算
                 </Button>
@@ -972,7 +1011,20 @@ export default function DatasetPrecheckPage() {
                 <div className="text-sm text-muted-foreground mt-1">用于售前/交付对齐范围：分层代表性 + 问题分桶样本（不会做删留决策）</div>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="outline" className="gap-2" onClick={() => detachPromise(loadSamples())} disabled={!selectedRun?.id || samplesLoading}>
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() =>
+                    detachPromise(
+                      refetchPrecheckQuery(
+                        () => samplesQuery.refetch(),
+                        '加载样本失败',
+                        'Failed to load precheck samples'
+                      )
+                    )
+                  }
+                  disabled={!selectedRun?.id || samplesLoading}
+                >
                   {samplesLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <FileSearch className="w-4 h-4" />}
                   加载
                 </Button>
@@ -1048,7 +1100,20 @@ export default function DatasetPrecheckPage() {
                 <div className="text-sm text-muted-foreground mt-1">基于抽样文本 SimHash；只输出待确认列表（不做删留决策）</div>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="outline" className="gap-2" onClick={() => detachPromise(loadNearDups())} disabled={!selectedRun?.id || nearDupLoading}>
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() =>
+                    detachPromise(
+                      refetchPrecheckQuery(
+                        () => nearDupQuery.refetch(),
+                        '加载近重复失败（可能未开启）',
+                        'Failed to load precheck near-dups'
+                      )
+                    )
+                  }
+                  disabled={!selectedRun?.id || nearDupLoading}
+                >
                   {nearDupLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <FileSearch className="w-4 h-4" />}
                   加载
                 </Button>
@@ -1109,7 +1174,6 @@ export default function DatasetPrecheckPage() {
             setFindingOpen(open)
             if (!open) {
               setSelectedFinding(null)
-              setFindingRes(null)
             }
           }}
         >
@@ -1189,7 +1253,7 @@ export default function DatasetPrecheckPage() {
                     <div className="text-xs text-muted-foreground">
                       {findingRes.items.length >= findingRes.total ? '已加载全部' : ''}
                     </div>
-                    <Button variant="outline" className="gap-2" onClick={() => detachPromise(loadMoreFinding())} disabled={findingLoading || findingRes.items.length >= findingRes.total}>
+                    <Button variant="outline" className="gap-2" onClick={() => detachPromise(loadMoreFindingPage())} disabled={findingLoading || !findingItemsQuery.hasNextPage}>
                       {findingLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none"/> : null}
                       加载更多
                     </Button>
@@ -1350,13 +1414,12 @@ export default function DatasetPrecheckPage() {
 
         <Dialog
           open={policyOpen}
-          onOpenChange={(open) => {
-            setPolicyOpen(open)
-            if (!open) {
-              setPolicyRes(null)
-              setPolicyApplyReplace(false)
-            }
-          }}
+           onOpenChange={(open) => {
+             setPolicyOpen(open)
+             if (!open) {
+               setPolicyApplyReplace(false)
+             }
+           }}
         >
           <DialogContent className="max-w-4xl border-border bg-background/95 shadow-strong sm:rounded-2xl">
             <DialogHeader>

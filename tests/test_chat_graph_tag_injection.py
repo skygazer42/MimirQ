@@ -48,9 +48,14 @@ def test_chat_graph_injects_tag_docs_into_state(monkeypatch):  # noqa: ANN001
     doc_id = uuid.uuid4()
 
     # Avoid real document ACL lookup.
-    import app.api.v1.chat as chat_mod
+    import app.services.chat_scope as chat_scope_mod
 
-    monkeypatch.setattr(chat_mod, "filter_allowed_document_ids", lambda _db, _tenant_id, _account_id, doc_ids: doc_ids, raising=True)
+    monkeypatch.setattr(
+        chat_scope_mod,
+        "filter_allowed_document_ids",
+        lambda _db, _tenant_id, _account_id, doc_ids: doc_ids,
+        raising=True,
+    )
 
     # Stub TAG builder to inject a deterministic context doc.
     import app.services.chat_tag_service as tag_mod
@@ -125,10 +130,10 @@ def test_chat_graph_passes_hierarchy_recall_fields_into_state(monkeypatch):  # n
     tenant_id = uuid.uuid4()
     doc_id = uuid.uuid4()
 
-    import app.api.v1.chat as chat_mod
+    import app.services.chat_scope as chat_scope_mod
 
     monkeypatch.setattr(
-        chat_mod,
+        chat_scope_mod,
         "filter_allowed_document_ids",
         lambda _db, _tenant_id, _account_id, doc_ids: doc_ids,
         raising=True,

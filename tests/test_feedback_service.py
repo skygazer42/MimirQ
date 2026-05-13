@@ -363,3 +363,49 @@ def test_build_feedback_loop_candidates_uses_negative_feedback_context() -> None
     assert out["hard_negative_records"][0]["hard_negatives"][0]["chunk_id"] == "chunk-hard"
     assert out["training_triples"][0]["positive_chunk_ids"] == ["chunk-positive"]
     assert {item["token"] for item in out["rules_suggestions"]["glossary_suggestions"]} >= {"MCU"}
+
+
+def test_patch_message_feedback_archive_state_persists_in_extra() -> None:
+    tenant_id = uuid.uuid4()
+    conversation_id = uuid.uuid4()
+    now = datetime.now(UTC)
+
+    feedback_row = MessageFeedback(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        message_id=uuid.uuid4(),
+        account_id="owner",
+        rating=2,
+        reason="bad",
+        tags=["negative"],
+        expected_answer=None,
+        extra={"from": "test"},
+        created_at=now,
+        updated_at=now,
+    )
+    db = _FakeDB(feedback_rows=[feedback_row], messages=[], conversations=[])
+
+    archived = FeedbackService.patch_message_feedback(
+        db=db,
+        tenant_id=tenant_id,
+        account_id="reviewer",
+        feedback_id=feedback_row.id,
+        archived=True,
+        ensure_member_fn=lambda *_args, **_kwargs: None,
+    )
+    assert archived.extra["archived"] is True
+    assert archived.extra["archived_by"] == "reviewer"
+    assert isinstance(archived.extra["archived_at"], str)
+
+    unarchived = FeedbackService.patch_message_feedback(
+        db=db,
+        tenant_id=tenant_id,
+        account_id="reviewer",
+        feedback_id=feedback_row.id,
+        archived=False,
+        ensure_member_fn=lambda *_args, **_kwargs: None,
+    )
+    assert unarchived.extra["archived"] is False
+    assert "archived_at" not in unarchived.extra
+    assert "archived_by" not in unarchived.extra

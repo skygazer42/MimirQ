@@ -1,5 +1,6 @@
 'use client'
 
+import { useQuery } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Remote } from 'comlink'
 import { useParams } from 'next/navigation'
@@ -34,6 +35,7 @@ import { formatApiError } from '@/lib/api-errors'
 import { applyClusterPalette } from '@/lib/graph-cluster-palette'
 import type { GraphClusterResult } from '@/lib/graph-clustering'
 import type { GraphData } from '@/lib/graph-parser'
+import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise } from '@/lib/utils'
 import { GraphService } from '@/lib/graph-service'
 import type { GraphClusteringWorkerApi } from '@/workers/graph-clustering.worker'
@@ -77,6 +79,13 @@ async function runWithConcurrency<T>(
 const DOCS_LOADING_SKELETON_KEYS = ['docs-loading-1', 'docs-loading-2', 'docs-loading-3', 'docs-loading-4']
 const SEARCH_RESULTS_SKELETON_KEYS = ['search-loading-1', 'search-loading-2', 'search-loading-3']
 const GRAPH_STATS_SKELETON_KEYS = ['graph-stat-loading-1', 'graph-stat-loading-2', 'graph-stat-loading-3', 'graph-stat-loading-4']
+const KG_WORKBENCH_DOCUMENT_PARAMS = {
+  skip: 0,
+  limit: 100,
+  order_by: 'created_at' as const,
+  order_dir: 'desc' as const,
+}
+const EMPTY_DOCS: Document[] = []
 
 function DocsLoadingSkeleton() {
   return (
@@ -160,10 +169,7 @@ export default function DatasetKGWorkbenchPage() {
   const graphClusteringApiRef = useRef<Remote<GraphClusteringWorkerApi> | null>(null)
   const graphClusteringDisabledRef = useRef(false)
 
-  const [dataset, setDataset] = useState<Dataset | null>(null)
-  const [docs, setDocs] = useState<Document[]>([])
-  const [docsTotal, setDocsTotal] = useState<number>(0)
-  const [docsLoading, setDocsLoading] = useState(false)
+  const [activeDocQuery, setActiveDocQuery] = useState('')
   const [docQuery, setDocQuery] = useState('')
 
   const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(() => new Set())
@@ -195,6 +201,33 @@ export default function DatasetKGWorkbenchPage() {
   const [searchKind, setSearchKind] = useState<'all' | 'entity' | 'event'>('entity')
   const [searchLoading, setSearchLoading] = useState(false)
   const [searchResults, setSearchResults] = useState<KGGraphNode[]>([])
+
+  const datasetQuery = useQuery({
+    queryKey: datasetId ? queryKeys.datasets.detail(datasetId) : queryKeys.datasets.detail(''),
+    enabled: Boolean(datasetId),
+    queryFn: () => datasetApi.get(datasetId as string),
+  })
+  const docsQuery = useQuery({
+    queryKey: datasetId
+      ? queryKeys.documents.list({
+          ...KG_WORKBENCH_DOCUMENT_PARAMS,
+          dataset_id: datasetId,
+          q: activeDocQuery || null,
+        })
+      : queryKeys.documents.list(KG_WORKBENCH_DOCUMENT_PARAMS),
+    enabled: Boolean(datasetId),
+    queryFn: () =>
+      documentApi.list({
+        ...KG_WORKBENCH_DOCUMENT_PARAMS,
+        dataset_id: datasetId as string,
+        q: activeDocQuery || null,
+      }),
+  })
+
+  const dataset = datasetQuery.data ?? null
+  const docs = docsQuery.data?.items ?? EMPTY_DOCS
+  const docsTotal = Number(docsQuery.data?.total || 0)
+  const docsLoading = docsQuery.isLoading || docsQuery.isFetching
 
   const scopedDocIds = useMemo(() => Array.from(selectedDocIds), [selectedDocIds])
   const effectivePipelineHash = useMemo(() => pipelineHash.trim() || undefined, [pipelineHash])
@@ -262,38 +295,12 @@ export default function DatasetKGWorkbenchPage() {
     return 3
   }, [graphData, scopedDocIds.length, searchQuery])
 
-  const loadDocs = useCallback(async (query?: string) => {
-    if (!datasetId) return
-    setDocsLoading(true)
-    try {
-	      const q = (query ?? '').trim()
-	      const [ds, list] = await Promise.all([
-	        datasetApi.get(datasetId),
-	        documentApi.list({
-	          skip: 0,
-	          limit: 100,
-	          dataset_id: datasetId,
-	          q: q || null,
-	          order_by: 'created_at',
-	          order_dir: 'desc',
-	        }),
-	      ])
-      setDataset(ds)
-      setDocs(Array.isArray(list.items) ? list.items : [])
-      setDocsTotal(Number(list.total || 0))
-    } catch (e: any) {
-      console.error('Failed to load dataset kg workbench', e)
-      toast.error(formatApiError(e, '加载数据失败'))
-      setDocs([])
-      setDocsTotal(0)
-    } finally {
-      setDocsLoading(false)
-    }
-  }, [datasetId])
-
   useEffect(() => {
-    detachPromise(loadDocs(''))
-  }, [loadDocs])
+    const error = datasetQuery.error || docsQuery.error
+    if (!error) return
+    console.error('Failed to load dataset kg workbench', error)
+    toast.error(formatApiError(error, '加载数据失败'))
+  }, [datasetQuery.error, docsQuery.error])
 
   useEffect(() => {
     const seq = ++graphClusteringSeqRef.current
@@ -618,7 +625,12 @@ export default function DatasetKGWorkbenchPage() {
               <Network className="w-4 h-4" />
               打开全图
             </Button>
-            <Button variant="outline" className="gap-2" onClick={() => detachPromise(loadDocs(docQuery))} disabled={docsLoading}>
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => setActiveDocQuery(docQuery.trim())}
+              disabled={docsLoading}
+            >
               <RefreshCw className={cn('w-4 h-4', docsLoading && 'animate-spin motion-reduce:animate-none')} />
               刷新
             </Button>
@@ -679,7 +691,7 @@ export default function DatasetKGWorkbenchPage() {
                     <Button
                       variant="outline"
                       className="gap-2"
-                      onClick={() => detachPromise(loadDocs(docQuery))}
+                      onClick={() => setActiveDocQuery(docQuery.trim())}
                       disabled={docsLoading}
                     >
                       {docsLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Search className="w-4 h-4" />}

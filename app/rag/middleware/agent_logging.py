@@ -9,17 +9,16 @@ Reference implementation of `@before_agent` / `@after_agent`:
 This middleware is disabled by default (settings.AGENT_LOG_ENABLED).
 """
 
-
-import logging
 import time
 from dataclasses import dataclass
 from typing import Any
 
 from app.core.config import settings
+from app.rag.core.logging import get_logger
 from app.rag.middleware.base import after_agent, before_agent
 from app.services.metrics_logger import log_metrics
 
-logger = logging.getLogger(__name__)
+logger = get_logger("rag.middleware.agent_logging")
 
 
 def _now_ts() -> float:
@@ -111,4 +110,3 @@ def _agent_logging_after(state: dict[str, Any]) -> dict[str, Any]:
         max_preview_chars=int(getattr(settings, "AGENT_LOG_MAX_PREVIEW_CHARS", 500) or 500),
     )
     return mw.after(state)
-

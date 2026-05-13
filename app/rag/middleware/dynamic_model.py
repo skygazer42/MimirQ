@@ -5,8 +5,6 @@ Provides intelligent model routing based on query complexity,
 token count, and other factors.
 """
 
-
-import logging
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -14,8 +12,9 @@ from functools import wraps
 from typing import Any
 
 from app.core.config import settings
+from app.rag.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("rag.middleware.dynamic_model")
 
 
 @dataclass

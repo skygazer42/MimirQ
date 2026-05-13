@@ -9,7 +9,6 @@ Refactored to use LangGraph 1.0+ Functional API with @entrypoint and @task decor
 import concurrent.futures
 import hashlib
 import json
-import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, replace
@@ -37,6 +36,7 @@ from app.rag.core.confidence import compute_confidence_score
 from app.rag.core.context_cliff import compute_context_cliff_metrics
 from app.rag.core.conversation import format_history_text
 from app.rag.core.faithfulness import compute_faithfulness_score
+from app.rag.core.logging import get_logger
 from app.rag.core.retrieval_profiles import apply_retrieval_profile_overrides
 from app.rag.core.sentence_citations import (
     render_sentence_citations_inline,
@@ -60,7 +60,7 @@ from app.rag.llm.structured_output import (
 from app.rag.store.factory import get_langgraph_store
 from app.services.prompt_resolver import resolve_prompt_template
 
-logger = logging.getLogger(__name__)
+logger = get_logger("rag.pipelines.langgraph")
 
 _UNABLE_TO_ANSWER_MESSAGE = "Unable to answer this question based on the available materials."
 

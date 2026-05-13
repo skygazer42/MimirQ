@@ -22,6 +22,7 @@ from app.api.schemas.feedback import (
     MessageFeedbackEnrichedList,
     MessageFeedbackList,
     MessageFeedbackOut,
+    MessageFeedbackPatchRequest,
 )
 from app.api.schemas.regression import RagasRegressionCaseOut
 from app.core.database import get_db
@@ -258,6 +259,26 @@ async def list_message_feedback_enriched(
         max_rating=max_rating,
         skip=skip,
         limit=limit,
+        ensure_member_fn=DatasetService.ensure_member,
+    )
+
+
+@router.patch("/messages/{feedback_id}", response_model=MessageFeedbackOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+async def patch_message_feedback(
+    feedback_id: UUID,
+    request: MessageFeedbackPatchRequest,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Patch mutable feedback triage fields."""
+    return FeedbackService.patch_message_feedback(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        feedback_id=feedback_id,
+        archived=request.archived,
         ensure_member_fn=DatasetService.ensure_member,
     )
 

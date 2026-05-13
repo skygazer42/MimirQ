@@ -10,8 +10,10 @@
 
 'use client'
 
+import { useQuery } from '@tanstack/react-query'
 import { useState, useEffect } from 'react'
 import { evaluationApi, documentApi, chatApi, datasetApi } from '@/lib/api'
+import { queryKeys } from '@/lib/query-keys'
 import type {
   GeneratedQuestion,
   TestGenFromDocsRequest,
@@ -40,6 +42,14 @@ interface TestGenerationDialogProps {
 type SourceType = 'documents' | 'conversations'
 type Step = 'select_source' | 'configure' | 'preview'
 
+const TEST_GEN_DOCUMENT_PARAMS = { limit: 100, status: 'completed' as const }
+const TEST_GEN_DATASET_PARAMS = { limit: 50 }
+const TEST_GEN_CONVERSATION_PARAMS = { limit: 100 }
+
+const EMPTY_DOCUMENTS: Document[] = []
+const EMPTY_CONVERSATIONS: Conversation[] = []
+const EMPTY_DATASETS: Dataset[] = []
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
@@ -62,12 +72,6 @@ export function TestGenerationDialog({
   const [step, setStep] = useState<Step>('select_source')
   const [sourceType, setSourceType] = useState<SourceType>('documents')
 
-  // 数据加载状态
-  const [documents, setDocuments] = useState<Document[]>([])
-  const [conversations, setConversations] = useState<Conversation[]>([])
-  const [datasets, setDatasets] = useState<Dataset[]>([])
-  const [isLoadingData, setIsLoadingData] = useState(false)
-
   // 选择状态
   const [selectedDatasetId, setSelectedDatasetId] = useState<string>('')
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<Set<string>>(new Set())
@@ -85,7 +89,29 @@ export function TestGenerationDialog({
   const [savedCaseIds, setSavedCaseIds] = useState<string[]>([])
   const [error, setError] = useState<string>('')
 
-  // 加载数据
+  const documentsQuery = useQuery({
+    queryKey: queryKeys.documents.list(TEST_GEN_DOCUMENT_PARAMS),
+    enabled: open && sourceType === 'documents',
+    queryFn: () => documentApi.list(TEST_GEN_DOCUMENT_PARAMS),
+  })
+  const datasetsQuery = useQuery({
+    queryKey: queryKeys.datasets.list(TEST_GEN_DATASET_PARAMS),
+    enabled: open && sourceType === 'documents',
+    queryFn: () => datasetApi.list(TEST_GEN_DATASET_PARAMS),
+  })
+  const conversationsQuery = useQuery({
+    queryKey: queryKeys.chat.conversations(TEST_GEN_CONVERSATION_PARAMS),
+    enabled: open && sourceType === 'conversations',
+    queryFn: () => chatApi.listConversations(TEST_GEN_CONVERSATION_PARAMS),
+  })
+
+  const documents = documentsQuery.data?.items ?? EMPTY_DOCUMENTS
+  const datasets = datasetsQuery.data?.items ?? EMPTY_DATASETS
+  const conversations = conversationsQuery.data?.items ?? EMPTY_CONVERSATIONS
+  const isLoadingData =
+    (sourceType === 'documents' && (documentsQuery.isLoading || datasetsQuery.isLoading)) ||
+    (sourceType === 'conversations' && conversationsQuery.isLoading)
+
   useEffect(() => {
     if (!open) return
 
@@ -102,31 +128,22 @@ export function TestGenerationDialog({
     } else if (initialSourceType) {
       setSourceType(initialSourceType)
     }
-
-    const loadData = async () => {
-      setIsLoadingData(true)
-      try {
-        if (effectiveSourceType === 'documents') {
-          const [docsResult, datasetsResult] = await Promise.all([
-            documentApi.list({ limit: 100, status: 'completed' }),
-            datasetApi.list({ limit: 50 }),
-          ])
-          setDocuments(docsResult.items)
-          setDatasets(datasetsResult.items)
-        } else {
-          const convsResult = await chatApi.listConversations({ limit: 100 })
-          setConversations(convsResult.items || [])
-        }
-      } catch (error) {
-        console.error('加载数据失败:', error)
-        toast.error(formatApiError(error, '加载数据失败'))
-      } finally {
-        setIsLoadingData(false)
-      }
-    }
-
-    loadData()
   }, [open, sourceType, initialSourceType, initialDatasetId, initialDocumentIds])
+
+  useEffect(() => {
+    const error =
+      sourceType === 'documents'
+        ? (documentsQuery.error || datasetsQuery.error)
+        : conversationsQuery.error
+    if (!error) return
+    console.error('加载数据失败:', error)
+    toast.error(formatApiError(error, '加载数据失败'))
+  }, [
+    conversationsQuery.error,
+    datasetsQuery.error,
+    documentsQuery.error,
+    sourceType,
+  ])
 
   const resetState = () => {
     setStep('select_source')

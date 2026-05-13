@@ -18,6 +18,8 @@ import type {
   DatasetPrecheckFindingListResponse,
   DatasetPrecheckIngestionSuggestionResponse,
   DatasetPrecheckNearDupResponse,
+  DatasetPrecheckSampleReviewOut,
+  DatasetPrecheckSampleReviewPatchRequest,
   DatasetPrecheckSamplesResponse,
   DatasetPrecheckScanRunCreateRequest,
   DatasetPrecheckScanRunListResponse,
@@ -472,6 +474,18 @@ export const datasetApi = {
     params?: { size?: number; prefer_artifact?: boolean }
   ): Promise<DatasetPrecheckSamplesResponse> {
     const { data } = await apiClient.get(`/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/samples`, { params })
+    return data
+  },
+
+  async patchPrecheckSampleReview(
+    datasetId: string,
+    scanRunId: string,
+    payload: DatasetPrecheckSampleReviewPatchRequest
+  ): Promise<DatasetPrecheckSampleReviewOut> {
+    const { data } = await apiClient.patch(
+      `/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/samples/review`,
+      payload
+    )
     return data
   },
 

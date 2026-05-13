@@ -74,6 +74,7 @@ describe('non-demo real backend contract', () => {
     for (const rel of DEMO_GATED_FILES) {
       const src = fs.readFileSync(path.join(WEB_ROOT, rel), 'utf8')
 
+      expect(src, rel).toMatch(/demoMode\s*=\s*[\s\S]*pathname[\s\S]*demo/)
       expect(src, rel).toContain("searchParams.get('demo') === '1'")
       expect(src, rel).toMatch(/enabled:[^\n]+!demoMode/)
       expect(src, rel).not.toContain('打开 Demo')

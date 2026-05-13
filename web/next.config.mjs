@@ -5,6 +5,19 @@ const sentryEnabled = Boolean(
   process.env.NEXT_PUBLIC_SENTRY_DSN || process.env.SENTRY_DSN || process.env.SENTRY_AUTH_TOKEN
 )
 const withNextIntl = createNextIntlPlugin('./i18n/request.ts')
+const sharedSecurityHeaders = [
+  { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+  { key: 'X-Content-Type-Options', value: 'nosniff' },
+  { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+  { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+]
+
+if (process.env.NODE_ENV === 'production') {
+  sharedSecurityHeaders.push({
+    key: 'Strict-Transport-Security',
+    value: 'max-age=63072000; includeSubDomains; preload',
+  })
+}
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -46,6 +59,14 @@ const nextConfig = {
       { protocol: 'http', hostname: '127.0.0.1', port: '8000', pathname: '/**' },
       { protocol: 'http', hostname: 'backend', port: '8000', pathname: '/**' },
     ],
+  },
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: sharedSecurityHeaders,
+      },
+    ]
   },
 }
 

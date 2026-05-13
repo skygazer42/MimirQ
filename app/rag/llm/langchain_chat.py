@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import contextvars
-import logging
 from collections.abc import AsyncIterator, Iterator
 from typing import Any
 
@@ -15,6 +14,7 @@ from pydantic import ConfigDict, Field, PrivateAttr
 from app.core.config import settings
 from app.core.openai_compat import normalize_openai_compatible_base_url
 from app.rag.core.http import httpx_trust_env
+from app.rag.core.logging import get_logger
 from app.rag.llm.factory import _resolve_fallback_specs
 from app.rag.llm.fallback import AllProvidersFailedError, is_retryable_provider_error
 from app.rag.llm.prompt_cache import (
@@ -22,7 +22,7 @@ from app.rag.llm.prompt_cache import (
     detect_anthropic_compatible,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger("rag.llm.langchain_chat")
 
 
 def _model_name_of(model: Any) -> str | None:

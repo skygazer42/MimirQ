@@ -69,6 +69,14 @@ export const feedbackApi = {
     return data
   },
 
+  async update(
+    feedbackId: string,
+    body: { archived?: boolean }
+  ): Promise<MessageFeedback> {
+    const { data } = await apiClient.patch(`/feedback/messages/${feedbackId}`, body)
+    return data
+  },
+
   async toEvidenceItem(
     feedbackId: string,
     body: { suite_id: string; tags?: string[]; extra?: Record<string, any> }

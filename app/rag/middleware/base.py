@@ -14,7 +14,6 @@ Additional optional phases:
 
 
 import asyncio
-import logging
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -22,7 +21,9 @@ from enum import Enum
 from functools import wraps
 from typing import Any, Optional
 
-logger = logging.getLogger(__name__)
+from app.rag.core.logging import get_logger
+
+logger = get_logger("rag.middleware.base")
 
 # Type aliases
 StateDict = dict[str, Any]

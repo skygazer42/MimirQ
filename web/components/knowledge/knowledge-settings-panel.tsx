@@ -4,6 +4,7 @@
  * KnowledgeSettingsPanel & KnowledgeConnectorRunsPanel
  * 优化版：任务中心极致高密度、UI Pro Max 视觉增强
  */
+import { useQuery } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Activity,
@@ -65,6 +66,7 @@ import {
   type SystemSettings,
 } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise, formatDate } from '@/lib/utils'
 import type { ConnectorInfo, ConnectorRunOut, Dataset } from '@/types'
 
@@ -172,7 +174,6 @@ export function KnowledgeSettingsPanel({
     useState<KnowledgeSettingsConfig | null>(null)
   const [savedConfig, setSavedConfig] =
     useState<KnowledgeSettingsConfig | null>(null)
-  const [settingsLoading, setSettingsLoading] = useState(true)
   const [isSavingSettings, setIsSavingSettings] = useState(false)
   const [confirmEmbeddingSaveOpen, setConfirmEmbeddingSaveOpen] =
     useState(false)
@@ -181,23 +182,26 @@ export function KnowledgeSettingsPanel({
   >('embedding')
   const [retrievalModeView, setRetrievalModeView] = useState('vector')
 
-  const loadSettings = useCallback(async () => {
-    setSettingsLoading(true)
-    try {
-      const settings = await settingsApi.get()
-      const cfg = { embedding: settings.embedding, rag: settings.rag }
-      setSavedConfig(cfg)
-      setDraftConfig(JSON.parse(JSON.stringify(cfg)))
-    } catch (err) {
-      toast.error(formatApiError(err, t('toasts.loadFailed')))
-    } finally {
-      setSettingsLoading(false)
-    }
-  }, [t])
+  const settingsQuery = useQuery({
+    queryKey: queryKeys.settings.snapshot,
+    queryFn: () => settingsApi.get(),
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  })
+  const settingsLoading = settingsQuery.isLoading
 
   useEffect(() => {
-    detachPromise(loadSettings())
-  }, [loadSettings])
+    if (!settingsQuery.data) return
+    const settings = settingsQuery.data
+    const cfg = { embedding: settings.embedding, rag: settings.rag }
+    setSavedConfig(cfg)
+    setDraftConfig(JSON.parse(JSON.stringify(cfg)))
+  }, [settingsQuery.data])
+
+  useEffect(() => {
+    if (!settingsQuery.error) return
+    toast.error(formatApiError(settingsQuery.error, t('toasts.loadFailed')))
+  }, [settingsQuery.error, t])
 
   const isDirty = useMemo(
     () => JSON.stringify(savedConfig) !== JSON.stringify(draftConfig),

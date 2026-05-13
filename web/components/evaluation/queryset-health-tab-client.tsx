@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts'
 import {
@@ -28,7 +29,8 @@ import {
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { observabilityApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
-import { cn, detachPromise } from '@/lib/utils'
+import { queryKeys } from '@/lib/query-keys'
+import { cn } from '@/lib/utils'
 import type {
   QuerysetHealthDiffResponse,
   QuerysetHealthRunsResponse,
@@ -112,66 +114,54 @@ function QuerysetChartEmptyState() {
 export function QuerysetHealthTab({
   embedded = false,
 }: Readonly<{ embedded?: boolean }>) {
-  const [runs, setRuns] = useState<QuerysetHealthRunsResponse | null>(null)
-  const [diff, setDiff] = useState<QuerysetHealthDiffResponse | null>(null)
-  const [loadingRuns, setLoadingRuns] = useState(false)
-  const [loadingDiff, setLoadingDiff] = useState(false)
-
   const [baselineTs, setBaselineTs] = useState<string>('')
   const [currentTs, setCurrentTs] = useState<string>('')
+  const runsQuery = useQuery({
+    queryKey: queryKeys.evaluations.querysetHealthRuns({ limit: 90 }),
+    queryFn: () => observabilityApi.getQuerysetHealthRuns({ limit: 90 }),
+  })
+  const diffQuery = useQuery({
+    queryKey: queryKeys.evaluations.querysetHealthDiff({
+      baseline_generated_at: baselineTs,
+      current_generated_at: currentTs,
+      max_hard_case_ids: 20,
+    }),
+    enabled: Boolean(baselineTs && currentTs && baselineTs !== currentTs),
+    queryFn: () =>
+      observabilityApi.getQuerysetHealthDiff({
+        baseline_generated_at: baselineTs,
+        current_generated_at: currentTs,
+        max_hard_case_ids: 20,
+      }),
+  })
 
-  const loadRuns = useCallback(async () => {
-    setLoadingRuns(true)
-    try {
-      const res = await observabilityApi.getQuerysetHealthRuns({ limit: 90 })
-      setRuns(res)
-      const items = res.items || []
-      const latest = String(items?.[0]?.generated_at || '')
-      const prev = String(items?.[1]?.generated_at || '')
-      setCurrentTs((p) => p || latest)
-      setBaselineTs((p) => p || prev || latest)
-    } catch (err) {
-      setRuns(null)
-      toast.error(
-        formatApiError(err, '加载检索集健康度历史失败（需要 owner/admin 权限）')
+  const runs = runsQuery.data ?? null
+  const diff = diffQuery.data ?? null
+  const loadingRuns = runsQuery.isLoading || runsQuery.isFetching
+  const loadingDiff = diffQuery.isLoading || diffQuery.isFetching
+
+  useEffect(() => {
+    if (!runsQuery.error) return
+    toast.error(
+      formatApiError(
+        runsQuery.error,
+        '加载检索集健康度历史失败（需要 owner/admin 权限）'
       )
-    } finally {
-      setLoadingRuns(false)
-    }
-  }, [])
-
-  const loadDiff = useCallback(
-    async (params: { baseline: string; current: string }) => {
-      const a = String(params.baseline || '').trim()
-      const b = String(params.current || '').trim()
-      if (!a || !b) return
-      setLoadingDiff(true)
-      try {
-        const res = await observabilityApi.getQuerysetHealthDiff({
-          baseline_generated_at: a,
-          current_generated_at: b,
-          max_hard_case_ids: 20,
-        })
-        setDiff(res)
-      } catch (err) {
-        setDiff(null)
-        toast.error(formatApiError(err, '加载检索集健康度差异失败'))
-      } finally {
-        setLoadingDiff(false)
-      }
-    },
-    []
-  )
+    )
+  }, [runsQuery.error])
 
   useEffect(() => {
-    detachPromise(loadRuns())
-  }, [loadRuns])
+    if (!diffQuery.error) return
+    toast.error(formatApiError(diffQuery.error, '加载检索集健康度差异失败'))
+  }, [diffQuery.error])
 
   useEffect(() => {
-    if (!baselineTs || !currentTs) return
-    if (baselineTs === currentTs) return
-    detachPromise(loadDiff({ baseline: baselineTs, current: currentTs }))
-  }, [baselineTs, currentTs, loadDiff])
+    const items = runsQuery.data?.items || []
+    const latest = String(items?.[0]?.generated_at || '')
+    const prev = String(items?.[1]?.generated_at || '')
+    if (latest) setCurrentTs((p) => p || latest)
+    if (latest || prev) setBaselineTs((p) => p || prev || latest)
+  }, [runsQuery.data])
 
   const latest = runs?.items?.[0] as Record<string, any> | undefined
   const latestMetrics = (latest?.metrics as Record<string, any>) || {}
@@ -241,7 +231,7 @@ export function QuerysetHealthTab({
             variant="outline"
             size="sm"
             className="gap-2"
-            onClick={() => loadRuns()}
+            onClick={() => void runsQuery.refetch()}
             disabled={loadingRuns}
           >
             <RefreshCw
@@ -267,7 +257,7 @@ export function QuerysetHealthTab({
             variant="outline"
             size="sm"
             className="gap-2"
-            onClick={() => loadRuns()}
+            onClick={() => void runsQuery.refetch()}
             disabled={loadingRuns}
           >
             <RefreshCw
