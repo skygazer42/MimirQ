@@ -220,7 +220,7 @@ class RagasRegressionRunCreateRequest(BaseModel):
     # can enforce Hit@20/Recall@20 without requiring callers to pass rag_params.
     score_threshold: float = Field(default=0.0, ge=0.0, le=1.0)
     retrieval_mode: str = Field(default="hybrid", description="hybrid | vector | keyword | mmr")
-    alpha: float = Field(default=0.6, ge=0.0, le=1.0)
+    alpha: float = Field(default_factory=lambda: settings.RETRIEVAL_DEFAULT_ALPHA, ge=0.0, le=1.0)
     fusion_strategy: str | None = Field(default=None, description="linear | rrf | budgeted_rrf | weighted")
     fusion_budgets: dict[str, int] | None = Field(default=None)
     fusion_min_scores: dict[str, float] | None = Field(default=None)

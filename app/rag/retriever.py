@@ -64,7 +64,7 @@ class HybridSearchOptions:
     score_threshold: float = 0.7
     document_ids: list[UUID] | None = None
     tenant_id: UUID | None = None
-    alpha: float = 0.5
+    alpha: float = settings.RETRIEVAL_DEFAULT_ALPHA
     enable_weight_rerank: bool = True
     vector_weight: float = 0.6
     keyword_weight: float = 0.4
@@ -97,7 +97,7 @@ class HybridRetriever(BaseRetriever):
 
     k: int = 5
     score_threshold: float = settings.SIMILARITY_THRESHOLD
-    alpha: float = 0.6
+    alpha: float = settings.RETRIEVAL_DEFAULT_ALPHA
     retrieval_mode: str = "hybrid"  # hybrid | vector | keyword | mmr
     enable_weight_rerank: bool = True
     vector_weight: float = 0.6

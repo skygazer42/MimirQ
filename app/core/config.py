@@ -851,6 +851,8 @@ class Settings(BaseSettings):
     # - rrf: reciprocal-rank fusion (normalized for UI)
     # - budgeted_rrf: RRF scoring but enforce per-channel quotas in the visible top-k prefix
     RETRIEVAL_FUSION_STRATEGY: str = "linear"  # linear | rrf | budgeted_rrf
+    # Single source for dense-vs-keyword blend defaults across request schemas and retrievers.
+    RETRIEVAL_DEFAULT_ALPHA: float = 0.6
     RETRIEVAL_RRF_K: int = 60
     # Post-retrieval guards (dedup/diversity)
     RETRIEVAL_DEDUP_ENABLED: bool = True
@@ -2232,6 +2234,10 @@ class Settings(BaseSettings):
         if self.RETRIEVAL_MMR_LAMBDA < 0 or self.RETRIEVAL_MMR_LAMBDA > 1:
             raise ValueError(
                 f"RETRIEVAL_MMR_LAMBDA ({self.RETRIEVAL_MMR_LAMBDA}) must be between 0 and 1"
+            )
+        if self.RETRIEVAL_DEFAULT_ALPHA < 0 or self.RETRIEVAL_DEFAULT_ALPHA > 1:
+            raise ValueError(
+                f"RETRIEVAL_DEFAULT_ALPHA ({self.RETRIEVAL_DEFAULT_ALPHA}) must be between 0 and 1"
             )
         if int(getattr(self, "RETRIEVAL_RRF_K", 0) or 0) < 1:
             raise ValueError(f"RETRIEVAL_RRF_K ({getattr(self, 'RETRIEVAL_RRF_K', None)}) must be >= 1")
