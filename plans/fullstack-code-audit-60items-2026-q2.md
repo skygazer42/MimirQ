@@ -62,7 +62,7 @@
 | 前端 alert() | 1 | **0** | ✅ |
 | .env.example | 53KB | **3.3KB / 104 行** | 🟠 大幅瘦身,并已拆出模块模板 |
 | 仓库根 PNG | 10+ | **0** | ✅ 已清零 |
-| ONNX git 追踪 | >600MB | **18 个仍在；未引用 qieci 重复目录已删** | 🟠 |
+| ONNX git 追踪 | >600MB | **12 个 / 217M；未引用 layout 重复变体已删** | 🟠 |
 | CI workflows | 10 | **11**(已补 lint-fast.yml) | ✅ |
 | CI `on: pull_request` gate | 仅 dispatch | **已加 pull_request + push:main** | ✅ |
 
@@ -118,11 +118,12 @@
 
 ### C. 仓库治理
 
-#### C5(原 #8)— ONNX 仍在 git 追踪,但重复目录已在当前工作区收敛
-- **现状**:`git ls-files '*.onnx'` 当前为 **18** 个;`.gitattributes` 已补 `*.onnx filter=lfs diff=lfs merge=lfs -text`
-- **进展**:未被任何代码/测试引用的 `app/resources/data_parser/qieci/` 已移除,保留实际被 `deepdoc` 路径使用的 `app/deepdoc/resources/**`
-- **剩余**:现有已跟踪 ONNX 还没有真正迁入 LFS,仓库体积压力仍在
-- **修复**:① 把剩余 18 个 ONNX 迁入 Git LFS 或改为运行时下载 ② 继续核对 `app/deepdoc/resources/models/**` 是否还能再瘦身
+#### C5(原 #8)— ONNX 仍在 git 追踪,但重复 layout 变体已收敛
+- **现状**:`git ls-files '*.onnx'` 当前为 **12** 个,`du -ch` 合计 **217M**;`.gitattributes` 已补 `*.onnx filter=lfs diff=lfs merge=lfs -text`
+- **进展**:未被任何代码/测试引用的 `app/resources/data_parser/qieci/` 已移除;本轮继续删除 `app/deepdoc/resources/models/layout/layout.{laws,manual,paper}.onnx` 以及 qieci 对应 symlink,仅保留代码加载链路需要的 `layout.onnx`
+- **守卫**:新增 `tests/test_deepdoc_onnx_resource_dedup.py`,锁定 DeepDoc runtime ONNX 白名单、必需 symlink 目标和“真实 ONNX payload 不重复”
+- **剩余**:现有 12 个已跟踪 ONNX 还没有真正迁入 LFS,仓库体积压力仍在
+- **修复**:① 把剩余 12 个 ONNX 迁入 Git LFS 或改为运行时下载 ② 如果新增模型入口,先同步代码加载路径和 ONNX 白名单测试
 
 #### C6(原 #9)— 仓库根 PNG 与 `.playwright-mcp` 追踪图已在当前工作区清理
 - **现状**:仓库根 `*.png` 仍为 **0**;`.gitignore` 已覆盖 `chunk-preview-*.png` / `graph-snapshots-*.png` / `.playwright-mcp/`
@@ -363,7 +364,7 @@ cd web && grep -rn "useMutation" --include="*.ts" --include="*.tsx" | wc -l  # �
 
 # 仓库瘦身
 git ls-files | xargs -I{} ls -la {} 2>/dev/null | awk '$5 > 5242880 {print $9}' | wc -l  # 应 = 0
-git ls-files | grep "\.onnx$" | wc -l  # 应 = 0(走 lfs 或运行时)
+git ls-files | grep "\.onnx$" | wc -l  # 当前应 = 12;长期目标 = 0(走 lfs 或运行时)
 ls *.png 2>/dev/null | wc -l  # 应 = 0(仓库根)
 
 # e2e tests
@@ -425,7 +426,8 @@ app/services/{documents,connectors,chat}/  # 目标目录
 🟡 先做实例级索引落库校验;当前 model-index 名称与 Alembic 文件差集为 0
 
 # 仓库治理(未完成)
-🟡 .gitattributes                   # 已加 *.onnx filter=lfs,待实际迁移现存二进制
+🟡 .gitattributes                   # 已加 *.onnx filter=lfs,12 个现存二进制待实际迁移
+✅ tests/test_deepdoc_onnx_resource_dedup.py # 锁定 ONNX 运行入口白名单和真实 payload 去重
 ✅ app/resources/data_parser/qieci/ # 未引用重复目录已删
 ✅ web/.playwright-mcp/*.png        # 已取消 git 跟踪
 ✅ 根目录 chunk-preview-*.png / graph-snapshots-*.png  # 已清理
