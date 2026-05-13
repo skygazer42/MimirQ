@@ -3741,7 +3741,7 @@ export default function KnowledgeIngestionPageClient() {
           <div className="min-w-0 flex-1">
             <div className="sticky top-3 z-30">
               <motion.div
-                className="overflow-hidden rounded-[1.35rem] border border-border/60 bg-background/84 shadow-[0_20px_56px_-34px_rgba(15,23,42,0.2)] backdrop-blur-xl"
+                className="relative overflow-hidden rounded-[1.35rem] border border-border/60 bg-[linear-gradient(135deg,hsl(var(--background)/0.92),hsl(var(--muted)/0.36))] shadow-[0_20px_56px_-34px_rgba(15,23,42,0.28)] backdrop-blur-xl"
                 animate={
                   reduceMotion || mode !== 'sales-audit'
                     ? undefined
@@ -3752,7 +3752,15 @@ export default function KnowledgeIngestionPageClient() {
                 }
                 transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
               >
-                <div className="px-2.5 md:px-3">
+                <div
+                  className="pointer-events-none absolute inset-y-3 left-0 w-1 rounded-r-full bg-[linear-gradient(180deg,hsl(var(--info)),hsl(var(--primary)))]"
+                  aria-hidden="true"
+                />
+                <div
+                  className="pointer-events-none absolute -right-9 -top-12 size-28 rounded-full bg-info/10 blur-2xl"
+                  aria-hidden="true"
+                />
+                <div className="relative px-2.5 md:px-3">
                   <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-1.5">
@@ -3797,28 +3805,41 @@ export default function KnowledgeIngestionPageClient() {
                               : 'mt-1.5 max-h-28 opacity-100'
                         )}
                       >
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h1 className="text-[clamp(0.96rem,1.18vw,1.26rem)] font-semibold text-foreground">
-                            {mode === 'sales-audit'
-                              ? '售前报价证据台'
-                              : '执行监控工作台'}
-                          </h1>
-                          {mode === 'execution-monitor' ? (
-                            <span
-                              className={cn(
-                                'inline-flex items-center rounded-full border px-2 py-0.5 text-[8px] font-medium',
-                                taskQueueStatusTone
-                              )}
-                            >
-                              {taskQueueStatusLabel}
-                            </span>
-                          ) : null}
+                        <div className="flex min-w-0 items-start gap-2">
+                          <div className="flex size-8 shrink-0 items-center justify-center rounded-[14px] border border-info/18 bg-background/78 text-info shadow-[inset_0_1px_0_hsl(var(--background)),0_12px_24px_-22px_hsl(var(--info)/0.7)]">
+                            {mode === 'sales-audit' ? (
+                              <ShieldCheck className="size-3.5" />
+                            ) : (
+                              <Radar className="size-3.5" />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h1 className="text-[clamp(0.96rem,1.18vw,1.26rem)] font-semibold tracking-[-0.015em] text-foreground">
+                                <span className="bg-[linear-gradient(90deg,hsl(var(--foreground)),hsl(var(--info))_92%)] bg-clip-text text-transparent">
+                                  {mode === 'sales-audit'
+                                    ? '售前报价证据台'
+                                    : '执行监控工作台'}
+                                </span>
+                              </h1>
+                              {mode === 'execution-monitor' ? (
+                                <span
+                                  className={cn(
+                                    'inline-flex items-center rounded-full border px-2 py-0.5 text-[8px] font-medium',
+                                    taskQueueStatusTone
+                                  )}
+                                >
+                                  {taskQueueStatusLabel}
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="mt-1 max-w-[52rem] text-[9px] leading-[1.42] text-muted-foreground">
+                              {mode === 'sales-audit'
+                                ? '先回答怎么报价、是否需要先做付费 POC，再下钻到复杂度细节与证据样本。默认展示脱敏后的客观事实，不做主观评分。'
+                                : '聚焦处理队列、吞吐、失败重试与运行态列表，供交付阶段持续观察执行状态。'}
+                            </p>
+                          </div>
                         </div>
-                        <p className="mt-1 max-w-[52rem] text-[9px] leading-[1.42] text-muted-foreground">
-                          {mode === 'sales-audit'
-                            ? '先回答怎么报价、是否需要先做付费 POC，再下钻到复杂度细节与证据样本。默认展示脱敏后的客观事实，不做主观评分。'
-                            : '聚焦处理队列、吞吐、失败重试与运行态列表，供交付阶段持续观察执行状态。'}
-                        </p>
                       </div>
                     </div>
 

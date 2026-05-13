@@ -36,6 +36,7 @@ import {
 
 import { AppFrame } from '@/components/app-frame'
 import { AnalysisPageShell } from '@/components/ui/analysis-page-shell'
+import { PageHeader } from '@/components/ui/page-header'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -934,15 +935,16 @@ export default function ReportsCenterPage() {
         bodyContainerClassName="max-w-none"
       >
         <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_22%)] shadow-[0_1px_0_rgba(15,23,42,0.04)]">
-          <div className="flex flex-col gap-4 border-b border-slate-200/80 bg-[linear-gradient(180deg,#f8fbff_0%,#ffffff_100%)] px-5 py-4 xl:flex-row xl:items-center xl:justify-between">
-            <div className="min-w-0">
-              <h1 className="text-[22px] font-semibold tracking-[-0.03em] text-slate-950">
-                数据报告导出与审计概览
-              </h1>
-              <p className="mt-2 text-[13px] leading-5 text-slate-500">
-                一键导出数据报告与审计结果，所有指标均来自后端报告接口与数据集接口。
-              </p>
-            </div>
+          <div className="border-b border-slate-200/80 bg-[linear-gradient(180deg,#f8fbff_0%,#ffffff_100%)] px-5 py-4">
+            <PageHeader
+              title="数据报告导出与审计概览"
+              description="一键导出数据报告与审计结果，所有指标均来自后端报告接口与数据集接口。"
+              icon={FileText}
+              iconColor="text-info"
+              badge="报告"
+              compact
+              className="p-0"
+            >
             <div className="flex flex-wrap overflow-hidden rounded-2xl border border-slate-200/80 bg-card/90 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
               <DataPill
                 icon={Database}
@@ -975,6 +977,7 @@ export default function ReportsCenterPage() {
                 tone="slate"
               />
             </div>
+            </PageHeader>
           </div>
           <div className="space-y-3 p-3">
             <section className="space-y-4 rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.95)]">

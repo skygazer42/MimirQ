@@ -140,10 +140,21 @@ export function GraphPageHeader({
   onFileUpload,
 }: GraphPageHeaderProps) {
   return (
-    <header className="absolute top-0 left-0 right-0 z-20 flex h-16 items-center justify-between border-b border-border/50 bg-card px-6 pointer-events-none">
+    <header className="absolute top-0 left-0 right-0 z-20 flex h-16 items-center justify-between border-b border-border/60 bg-[linear-gradient(135deg,hsl(var(--card)/0.98),hsl(var(--muted)/0.34))] px-6 shadow-[0_18px_46px_-40px_rgba(15,23,42,0.46)] pointer-events-none">
+      <div
+        className="pointer-events-none absolute inset-y-3 left-0 w-1 rounded-r-full bg-[linear-gradient(180deg,hsl(var(--info)),hsl(var(--primary)))]"
+        aria-hidden="true"
+      />
       <div className="flex items-center gap-3 pointer-events-auto">
-        <div className="flex items-center gap-2">
-          <h1 className="text-3xl font-bold text-foreground">知识图谱</h1>
+        <div className="flex items-center gap-3">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-[15px] border border-info/18 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.10))] text-info shadow-[inset_0_1px_0_hsl(var(--background)),0_14px_30px_-24px_hsl(var(--info)/0.75)]">
+            <Network className="size-[18px]" aria-hidden="true" />
+          </div>
+          <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-foreground">
+            <span className="bg-[linear-gradient(90deg,hsl(var(--foreground)),hsl(var(--info))_92%)] bg-clip-text text-transparent">
+              知识图谱
+            </span>
+          </h1>
           <span className="rounded-full border border-blue-500/25 bg-blue-500/10 px-2.5 py-1 text-[11px] font-semibold text-blue-600 shadow-sm dark:text-blue-300">
             {viewMode === '3d' ? '3D 图谱' : '2D 图谱'}
           </span>

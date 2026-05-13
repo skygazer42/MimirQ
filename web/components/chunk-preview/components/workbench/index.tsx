@@ -12,6 +12,7 @@ import { Sidebar } from './sidebar'
 import { OriginalPreview } from './preview/original-preview'
 import { ChunkList } from './preview/chunk-list'
 import { useChunkPreview } from '@/components/chunk-preview/context'
+import { PageHeader } from '@/components/ui/page-header'
 import {
   PipelineRail,
   WorkbenchPane,
@@ -119,26 +120,20 @@ function ChunkPreviewWorkbenchHeader() {
     : t('workbench.header.backendMode')
 
   return (
-    <header className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-      <div className="flex min-w-0 items-start gap-3">
-        <div className="mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-2xl border border-primary/15 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--primary)/0.08))] shadow-[inset_0_1px_0_hsl(var(--background)),0_10px_24px_-18px_hsl(var(--primary)/0.7)]">
-          <Layers className="size-5 text-primary" />
-        </div>
+    <header className="space-y-2.5">
+      <PageHeader
+        title={t('workbench.title')}
+        description={t('workbench.description')}
+        icon={Layers}
+        iconColor="text-primary"
+        badge={String(t('workbench.header.eyebrow'))}
+        compact
+        className="p-0"
+      />
 
-        <div className="min-w-0 pt-0.5">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-primary/70">
-            {t('workbench.header.eyebrow')}
-          </div>
-          <div className="mt-0.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <h1 className="text-[18px] font-semibold leading-6 text-foreground md:text-[21px]">
-              {t('workbench.title')}
-            </h1>
-            <p className="max-w-[62ch] text-[12px] leading-[1.55] text-muted-foreground/76 md:text-[13px]">
-              {t('workbench.description')}
-            </p>
-          </div>
-
-          <div className="mt-2 flex max-w-full flex-wrap items-center gap-1.5">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex max-w-full flex-wrap items-center gap-1.5">
             <ChunkPreviewHeaderChip
               label={t('workbench.header.scope')}
               value={scopeLabel}
@@ -170,19 +165,19 @@ function ChunkPreviewWorkbenchHeader() {
             />
           </div>
         </div>
-      </div>
 
-      <div className="grid grid-cols-2 gap-2 lg:min-w-[250px] xl:min-w-[280px]">
-        <ChunkPreviewHeaderStat
-          label={t('workbench.header.duration')}
-          value={durationLabel}
-          emphasis={Boolean(previewData)}
-        />
-        <ChunkPreviewHeaderStat
-          label={t('workbench.header.source')}
-          value={sourceLabel}
-          emphasis={Boolean(previewData)}
-        />
+        <div className="grid grid-cols-2 gap-2 lg:min-w-[250px] xl:min-w-[280px]">
+          <ChunkPreviewHeaderStat
+            label={t('workbench.header.duration')}
+            value={durationLabel}
+            emphasis={Boolean(previewData)}
+          />
+          <ChunkPreviewHeaderStat
+            label={t('workbench.header.source')}
+            value={sourceLabel}
+            emphasis={Boolean(previewData)}
+          />
+        </div>
       </div>
     </header>
   )

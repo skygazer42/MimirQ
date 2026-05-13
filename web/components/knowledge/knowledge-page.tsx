@@ -65,6 +65,14 @@ import { formatApiError } from '@/lib/api-errors'
 import { cn, detachPromise, formatFileSize } from '@/lib/utils'
 
 const DATASET_ALL = '__all__'
+const KNOWLEDGE_BACKGROUND_CLASS =
+  'bg-[radial-gradient(circle_at_20%_0%,rgba(37,99,235,0.08),transparent_28%),radial-gradient(circle_at_80%_10%,rgba(14,165,233,0.06),transparent_30%),linear-gradient(180deg,#f7faff_0%,#f5f7fb_45%,#f8fafc_100%)] dark:bg-[radial-gradient(circle_at_20%_0%,rgba(59,130,246,0.13),transparent_30%),radial-gradient(circle_at_80%_8%,rgba(14,165,233,0.10),transparent_32%),linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--muted)/0.18)_48%,hsl(var(--background))_100%)]'
+const KNOWLEDGE_GRID_OVERLAY_CLASS =
+  'pointer-events-none absolute inset-0 opacity-[0.42] [background-image:linear-gradient(rgba(37,99,235,0.028)_1px,transparent_1px),linear-gradient(90deg,rgba(37,99,235,0.024)_1px,transparent_1px)] [background-size:32px_32px] [mask-image:linear-gradient(180deg,rgba(0,0,0,0.78),rgba(0,0,0,0.22)_55%,transparent_100%)] dark:opacity-[0.18]'
+const KNOWLEDGE_GLASS_CARD_CLASS =
+  'border-slate-200/[0.42] bg-white/[0.86] shadow-[0_8px_24px_rgba(15,23,42,0.04)] backdrop-blur-xl dark:border-border/45 dark:bg-card/72'
+const KNOWLEDGE_WORKBENCH_SURFACE_CLASS =
+  'border-slate-200/[0.38] bg-white/[0.78] shadow-[0_10px_30px_rgba(15,23,42,0.035)] backdrop-blur-xl dark:border-border/45 dark:bg-card/62'
 type TabKey = 'documents' | 'retrieval' | 'settings'
 
 export default function KnowledgePage() {
@@ -600,16 +608,31 @@ export default function KnowledgePage() {
 
   return (
     <AppFrame>
+      <div
+        data-knowledge-page-root="true"
+        className={cn(
+          'relative h-full overflow-hidden',
+          KNOWLEDGE_BACKGROUND_CLASS
+        )}
+      >
+        <div className={KNOWLEDGE_GRID_OVERLAY_CLASS} aria-hidden="true" />
       <WorkbenchScaffold
+        className="relative z-10 bg-transparent"
         title={
           <div className="flex min-w-0 items-center gap-3">
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-info/20 bg-info/[0.08] text-info">
+            <div className="relative flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-[18px] border border-info/18 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.10))] text-info shadow-[inset_0_1px_0_hsl(var(--background)),0_14px_30px_-24px_hsl(var(--info)/0.75)]">
+              <span
+                className="absolute inset-x-2 top-1 h-px bg-white/70"
+                aria-hidden="true"
+              />
               <Database className="size-4" />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                <h1 className="text-[20px] font-semibold text-foreground">
-                  {t('header.title')}
+                <h1 className="text-[20px] font-semibold tracking-[-0.01em] text-foreground">
+                  <span className="bg-[linear-gradient(90deg,hsl(var(--foreground)),hsl(var(--info))_92%)] bg-clip-text text-transparent">
+                    {t('header.title')}
+                  </span>
                 </h1>
                 <p className="text-[12.5px] leading-5 text-muted-foreground/85">
                   {t('header.description')}
@@ -651,7 +674,8 @@ export default function KnowledgePage() {
                 <div
                   key={card.label}
                   className={cn(
-                    'group relative overflow-hidden rounded-2xl border border-border/60 bg-card transition-colors duration-150 hover:border-border',
+                    'group relative overflow-hidden rounded-2xl border transition-colors duration-150 hover:border-info/20',
+                    KNOWLEDGE_GLASS_CARD_CLASS,
                     activeTab === 'settings'
                       ? 'min-h-[68px] px-3 py-2.5'
                       : 'min-h-[88px] px-4 py-3.5'
@@ -713,7 +737,8 @@ export default function KnowledgePage() {
         toolbar={
           <div
             className={cn(
-              'flex flex-col rounded-2xl border border-border/60 bg-card xl:flex-row xl:items-center xl:justify-between',
+              'flex flex-col rounded-2xl border xl:flex-row xl:items-center xl:justify-between',
+              KNOWLEDGE_GLASS_CARD_CLASS,
               activeTab === 'settings' ? 'gap-2 px-2.5 py-2' : 'gap-3 px-4 py-3'
             )}
           >
@@ -1042,7 +1067,7 @@ export default function KnowledgePage() {
             </div>
           </div>
         }
-        bodyClassName="pt-3"
+        bodyClassName="bg-[#F8FAFF]/55 pt-3 dark:bg-background/20"
         mainPaneBodyClassName={
           activeTab === 'settings' ? 'overflow-hidden p-0' : undefined
         }
@@ -1051,7 +1076,12 @@ export default function KnowledgePage() {
         // rightPanel={(activeTab === 'retrieval' || peekingDocId || showTaskCenter) ? (
         leftPanel={
           !desktopScopeCollapsed && activeTab !== 'settings' ? (
-            <aside className="flex h-full flex-col overflow-hidden rounded-2xl border border-border/60 bg-card shadow-soft">
+            <aside
+              className={cn(
+                'flex h-full flex-col overflow-hidden rounded-2xl border',
+                KNOWLEDGE_WORKBENCH_SURFACE_CLASS
+              )}
+            >
               <KnowledgeScopePanel
                 mode={scopeMode}
                 surface="embedded"
@@ -1080,7 +1110,12 @@ export default function KnowledgePage() {
           activeTab === 'retrieval' ||
           peekingDocId ||
           showConnectorRunsPanel ? (
-            <aside className="flex h-full flex-col overflow-hidden rounded-2xl border border-border/60 bg-card shadow-soft">
+            <aside
+              className={cn(
+                'flex h-full flex-col overflow-hidden rounded-2xl border',
+                KNOWLEDGE_WORKBENCH_SURFACE_CLASS
+              )}
+            >
               {activeTab === 'retrieval' ? (
                 <KnowledgeRetrievalPanel
                   selectedDatasetId={selectedDatasetId}
@@ -1263,7 +1298,10 @@ export default function KnowledgePage() {
           <motion.div
             initial={{ opacity: 0, y: reduceMotion ? 0 : 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex min-h-0 flex-1 flex-col rounded-2xl border border-border/60 bg-card shadow-soft"
+            className={cn(
+              'flex min-h-0 flex-1 flex-col rounded-2xl border',
+              KNOWLEDGE_WORKBENCH_SURFACE_CLASS
+            )}
           >
             {/* <KnowledgeSettingsPanel selectedDatasetId={selectedDatasetId} /> */}
             <KnowledgeSettingsPanel
@@ -1273,6 +1311,7 @@ export default function KnowledgePage() {
           </motion.div>
         )}
       </WorkbenchScaffold>
+      </div>
     </AppFrame>
   )
 }

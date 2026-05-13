@@ -24,12 +24,27 @@ export function PageHeader({
 }: Readonly<PageHeaderProps>) {
   return (
     <header className={cn("flex-shrink-0 relative z-10", className)}>
-      <div className={cn("flex items-start justify-between", compact ? "gap-3" : "gap-4")}>
-        <div className={cn("flex items-center min-w-0", compact ? "gap-2.5" : "gap-4")}>
+      <div
+        data-testid="page-title-shell"
+        className={cn(
+          "relative overflow-hidden rounded-[24px] border border-border/70 bg-[linear-gradient(135deg,hsl(var(--card)/0.98),hsl(var(--muted)/0.34))] shadow-[0_18px_46px_-40px_rgba(15,23,42,0.46)]",
+          "flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between",
+          compact ? "px-4 py-3" : "px-5 py-5 md:px-6"
+        )}
+      >
+        <div
+          className="pointer-events-none absolute inset-y-3 left-0 w-1 rounded-r-full bg-[linear-gradient(180deg,hsl(var(--info)),hsl(var(--primary)))]"
+          aria-hidden="true"
+        />
+        <div
+          className="pointer-events-none absolute -right-10 -top-12 size-32 rounded-full bg-info/10 blur-2xl"
+          aria-hidden="true"
+        />
+        <div className={cn("relative flex items-center min-w-0", compact ? "gap-3" : "gap-4")}>
           {Icon ? (
             <div className={cn(
-              "shrink-0 flex items-center justify-center bg-primary/10 border border-primary/15 shadow-subtle",
-              compact ? "size-9 rounded-xl" : "size-14 rounded-2xl"
+              "shrink-0 flex items-center justify-center border border-info/18 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.10))] shadow-[inset_0_1px_0_hsl(var(--background)),0_14px_30px_-24px_hsl(var(--info)/0.75)]",
+              compact ? "size-11 rounded-[18px]" : "size-14 rounded-[22px]"
             )}>
               <Icon className={cn(compact ? "size-[18px]" : "size-6", iconColor)} />
             </div>
@@ -44,13 +59,15 @@ export function PageHeader({
                     ? "text-lg md:text-xl leading-snug tracking-[-0.01em]"
                     : "text-4xl md:text-5xl leading-[1.02] tracking-[-0.03em]"
                 )}>
-                  {title}
+                  <span className="bg-[linear-gradient(90deg,hsl(var(--foreground)),hsl(var(--info))_92%)] bg-clip-text text-transparent">
+                    {title}
+                  </span>
                 </h1>
               ) : (
                 <div className="w-full">{title}</div>
               )}
               {badge ? (
-                <span className="inline-flex items-center rounded-full border border-sidebar-border/70 bg-sidebar/80 px-2.5 py-1 text-[11px] font-mono uppercase tracking-[0.14em] text-muted-foreground tabular-nums backdrop-blur-xl">
+                <span className="inline-flex items-center rounded-full border border-info/18 bg-info/[0.08] px-2.5 py-1 text-[11px] font-mono uppercase tracking-[0.14em] text-info tabular-nums backdrop-blur-xl">
                   {badge}
                 </span>
               ) : null}
@@ -58,18 +75,19 @@ export function PageHeader({
 
             {description ? (
               <div className={cn(
-                "max-w-[72ch] text-pretty text-muted-foreground",
+                "flex max-w-[72ch] items-start gap-2 text-pretty text-muted-foreground",
                 compact
                   ? "mt-0.5 text-[13px] leading-relaxed md:text-sm"
                   : "mt-2 text-sm leading-[1.75] md:text-[15px]"
               )}>
-                {description}
+                <span className="mt-[0.7em] size-1.5 shrink-0 rounded-full bg-info/55 shadow-[0_0_0_4px_hsl(var(--info)/0.08)]" />
+                <span>{description}</span>
               </div>
             ) : null}
           </div>
         </div>
 
-        {children ? <div className={cn("flex items-center gap-2", compact ? "pt-0" : "pt-1")}>{children}</div> : null}
+        {children ? <div className={cn("relative flex items-center gap-2", compact ? "pt-0" : "pt-1")}>{children}</div> : null}
       </div>
     </header>
   )

@@ -23,6 +23,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { AnalysisPageShell } from '@/components/ui/analysis-page-shell'
+import { PageHeader } from '@/components/ui/page-header'
 import {
   Select,
   SelectContent,
@@ -964,18 +965,15 @@ function EvaluationsPageContent() {
         bodyContainerClassName="max-w-none"
       >
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto px-5 py-2">
-          <header className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-            <div className="min-w-0">
-              <div className="text-[12px] font-medium text-slate-500">
-                评测中心 · 统一工作台
-              </div>
-              <h1 className="mt-1 text-[22px] font-semibold text-slate-950">
-                {activeTabMeta.title}
-              </h1>
-              <p className="mt-1 text-[13px] leading-5 text-slate-500">
-                选择评测指标及参数，在同一工作区完成参数配置、运行快捷与结果评估。
-              </p>
-            </div>
+          <PageHeader
+            title={activeTabMeta.title}
+            description="选择评测指标及参数，在同一工作区完成参数配置、运行快捷与结果评估。"
+            icon={ActiveTabIcon}
+            iconColor="text-info"
+            badge="评测中心"
+            compact
+            className="p-0"
+          >
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex h-8 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-[12px] font-semibold text-blue-700">
                 <ActiveTabIcon className="h-3.5 w-3.5" aria-hidden="true" />
@@ -995,7 +993,7 @@ function EvaluationsPageContent() {
                 value={runStatusCounts.failed}
               />
             </div>
-          </header>
+          </PageHeader>
 
           <nav className="flex items-center gap-6 border-b border-slate-200">
             {TAB_META.map((tab) => (
