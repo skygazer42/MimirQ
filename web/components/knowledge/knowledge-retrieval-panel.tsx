@@ -4,7 +4,7 @@
  * KnowledgeRetrievalPanel - Index Audit Module
  * 优化版：极致高密度诊断台、UI Pro Max 物理质感、极客化数据展示
  */
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import {
   Activity,
   Check,
@@ -76,6 +76,7 @@ export function KnowledgeRetrievalPanel({
   // t("empty.description")
   const { indexAudit, indexAuditError, indexAuditLoading, runIndexAudit } =
     useIndexAudit({ selectedDatasetId })
+  const [detailsExpanded, setDetailsExpanded] = useState(false)
   const hasAggregateOverview =
     !selectedDatasetId && (aggregateDocuments > 0 || aggregateChunks > 0)
   const overviewDatasetLabel = selectedDatasetId || '全部数据集'
@@ -230,6 +231,47 @@ export function KnowledgeRetrievalPanel({
       { label: '权限校验', state: 'ok' },
     ] as const
   }, [hasAggregateOverview, indexAudit])
+
+  const hasIndexDetails = Boolean(indexAudit || hasAggregateOverview)
+  const indexDetailRows = useMemo(() => {
+    if (indexAudit) {
+      return [
+        ['向量后端', indexAudit.vector_backend || '—'],
+        ['已检查向量', indexAudit.vector_ids_checked.toLocaleString()],
+        ['入库文档', indexAudit.active_documents.toLocaleString()],
+        ['检索分片', indexAudit.active_chunks.toLocaleString()],
+        ['DB 缺失 vector_id', String(indexAudit.vector_id_missing ?? 0)],
+        [
+          '后端缺失向量',
+          String(indexAudit.vector_ids_missing_in_backend ?? 0),
+        ],
+        [
+          '孤儿向量样本',
+          String(indexAudit.milvus_orphan_ids_sample?.length ?? 0),
+        ],
+        [
+          '估算索引大小',
+          formatBytesCompact(
+            estimateIndexSizeBytes(indexAudit.vector_ids_checked)
+          ),
+        ],
+      ]
+    }
+
+    if (hasAggregateOverview) {
+      return [
+        ['审计范围', '全部数据集聚合'],
+        ['文档总数', aggregateDocuments.toLocaleString()],
+        ['分片总数', aggregateChunks.toLocaleString()],
+        [
+          '估算索引大小',
+          formatBytesCompact(estimateIndexSizeBytes(aggregateChunks)),
+        ],
+      ]
+    }
+
+    return []
+  }, [aggregateChunks, aggregateDocuments, hasAggregateOverview, indexAudit])
 
   const statusToneClassName = {
     success: 'bg-success/10 text-success border-success/20',
@@ -522,11 +564,85 @@ export function KnowledgeRetrievalPanel({
             <Button
               type="button"
               variant="outline"
+              aria-expanded={detailsExpanded}
+              aria-controls="knowledge-index-detail-panel"
+              onClick={() => {
+                if (!hasIndexDetails) {
+                  if (selectedDatasetId && !indexAuditLoading) {
+                    detachPromise(runIndexAudit())
+                  }
+                  return
+                }
+                setDetailsExpanded((expanded) => !expanded)
+              }}
+              disabled={!hasIndexDetails && (!selectedDatasetId || indexAuditLoading)}
               className="h-11 w-full rounded-[16px] border-border/70 bg-background text-[13px] font-medium"
             >
-              查看索引详情
-              <ChevronRight className="ml-2 size-4" />
+              {!hasIndexDetails && indexAuditLoading ? (
+                <Loader2 className="mr-2 size-4 animate-spin" />
+              ) : null}
+              {hasIndexDetails
+                ? detailsExpanded
+                  ? '收起索引详情'
+                  : '查看索引详情'
+                : selectedDatasetId
+                  ? indexAuditLoading
+                    ? '审计运行中'
+                    : '运行审计查看详情'
+                  : '选择数据集后查看详情'}
+              {hasIndexDetails ? (
+                <ChevronRight
+                  className={cn(
+                    'ml-2 size-4 transition-transform',
+                    detailsExpanded && 'rotate-90'
+                  )}
+                />
+              ) : null}
             </Button>
+            {detailsExpanded && hasIndexDetails ? (
+              <div
+                id="knowledge-index-detail-panel"
+                className="space-y-3 rounded-[18px] border border-border/70 bg-background/76 p-4 text-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[13px] font-medium text-foreground">
+                      索引明细
+                    </div>
+                    <div className="mt-1 text-[11px] text-muted-foreground/66">
+                      审计范围：{overviewDatasetLabel}
+                    </div>
+                  </div>
+                  <span className={cn('rounded-full border px-2.5 py-1 text-[10px] font-medium', statusToneClassName)}>
+                    {auditStatus.label}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {indexDetailRows.map(([label, value]) => (
+                    <div
+                      key={label}
+                      className="rounded-[13px] border border-border/60 bg-background px-3 py-2"
+                    >
+                      <div className="text-[10px] text-muted-foreground/62">
+                        {label}
+                      </div>
+                      <div className="mt-1 truncate font-mono text-[12px] font-medium text-foreground">
+                        {value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {indexAudit ? (
+                  <div className="rounded-[13px] border border-info/15 bg-info/[0.04] px-3 py-2 text-[11px] leading-5 text-muted-foreground/76">
+                    当前明细来自后端索引一致性审计；如果发现缺失或孤儿向量，优先重新入库受影响文档。
+                  </div>
+                ) : (
+                  <div className="rounded-[13px] border border-info/15 bg-info/[0.04] px-3 py-2 text-[11px] leading-5 text-muted-foreground/76">
+                    当前为全局聚合估算；选择单个数据集并运行审计后，可查看缺失向量、孤儿向量和后端一致性明细。
+                  </div>
+                )}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

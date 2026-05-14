@@ -4,6 +4,7 @@ import type { Dataset, Document } from '@/types'
 
 import {
   Activity,
+  ChevronDown,
   Database,
   Eye,
   Filter,
@@ -361,8 +362,11 @@ export function KnowledgeDocumentsPanel({
   const visibleDocumentsCount = filteredDocuments.length
   const isDatasetEmpty = documents.length === 0
   const showEmptyState = filteredDocuments.length === 0
+  const compactEmptyInventory = embedded && showEmptyState
   const iconShellClassName =
     'relative overflow-hidden shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_10px_20px_-18px_rgba(15,23,42,0.24)] backdrop-blur-[6px]'
+  const inventoryStatCardClassName =
+    'group relative overflow-hidden rounded-[16px] border border-sky-100/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(239,248,255,0.82))] px-3 py-2 shadow-[0_12px_24px_-24px_rgba(37,99,235,0.34)] transition-[border-color,box-shadow,transform] hover:border-sky-200/90 hover:shadow-[0_16px_28px_-24px_rgba(37,99,235,0.32)] dark:border-border/70 dark:bg-background/60'
 
   return (
     <div
@@ -629,18 +633,21 @@ export function KnowledgeDocumentsPanel({
 
       <div
         className={cn(
-          'flex min-h-0 flex-col overflow-hidden rounded-[28px] border border-border/70 bg-background/92 shadow-[0_18px_38px_-34px_rgba(15,23,42,0.28)]',
-          embedded && 'h-full flex-1',
-          embedded ? 'h-full' : 'min-h-[560px]'
+          'flex min-h-0 flex-col overflow-hidden rounded-[24px] border border-transparent bg-white/66 shadow-[0_18px_44px_-40px_rgba(37,99,235,0.30)] ring-1 ring-white/75 dark:bg-card/55 dark:ring-border/50',
+          embedded && !compactEmptyInventory && 'h-full flex-1',
+          compactEmptyInventory && 'flex-none',
+          embedded ? (!compactEmptyInventory && 'h-full') : 'min-h-[560px]'
         )}
       >
-        <div className="border-b border-border/70 px-4 py-4">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div className="relative overflow-hidden border-b border-sky-100/45 bg-[radial-gradient(circle_at_14%_0%,rgba(37,99,235,0.08),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.88),rgba(243,248,255,0.62))] px-4 pb-2 pt-3.5 dark:border-border/60 dark:bg-background/60">
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(14,165,233,0.42),transparent)]" />
+          <div className="pointer-events-none absolute right-8 top-4 h-20 w-40 rounded-full bg-info/10 blur-3xl" />
+          <div className="relative z-10 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div className="min-w-0 space-y-1.5">
-              <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.22em] text-muted-foreground/70">
+              <div className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground/72">
                 <div
                   className={cn(
-                    'flex size-6 items-center justify-center rounded-lg border border-border/70 bg-muted/35 text-primary/80',
+                    'flex size-6 items-center justify-center rounded-lg border border-sky-100/70 bg-white/72 text-primary/80 dark:border-border/70 dark:bg-muted/35',
                     iconShellClassName
                   )}
                 >
@@ -662,8 +669,9 @@ export function KnowledgeDocumentsPanel({
                 whileHover={{ y: -1, scale: 1.003 }}
                 whileTap={{ scale: 0.992 }}
                 transition={{ type: 'spring', stiffness: 340, damping: 24 }}
-                className="group rounded-[14px] border border-border/70 bg-background px-2 py-1.5 shadow-[0_8px_16px_-18px_rgba(15,23,42,0.22)] transition-shadow hover:shadow-[0_12px_20px_-18px_rgba(37,99,235,0.18)]"
+                className={inventoryStatCardClassName}
               >
+                <span className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-[linear-gradient(90deg,rgba(37,99,235,0.16),rgba(14,165,233,0.46),rgba(37,99,235,0.10))]" />
                 <div className="text-[8px] font-medium uppercase tracking-[0.12em] text-muted-foreground/68">
                   当前可见
                 </div>
@@ -678,8 +686,9 @@ export function KnowledgeDocumentsPanel({
                 whileHover={{ y: -1, scale: 1.003 }}
                 whileTap={{ scale: 0.992 }}
                 transition={{ type: 'spring', stiffness: 340, damping: 24 }}
-                className="group rounded-[14px] border border-border/70 bg-background px-2 py-1.5 shadow-[0_8px_16px_-18px_rgba(15,23,42,0.22)] transition-shadow hover:shadow-[0_12px_20px_-18px_rgba(37,99,235,0.18)]"
+                className={inventoryStatCardClassName}
               >
+                <span className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-[linear-gradient(90deg,rgba(37,99,235,0.10),rgba(56,189,248,0.42),rgba(37,99,235,0.12))]" />
                 <div className="text-[8px] font-medium uppercase tracking-[0.12em] text-muted-foreground/68">
                   已选择
                 </div>
@@ -694,8 +703,9 @@ export function KnowledgeDocumentsPanel({
                 whileHover={{ y: -1, scale: 1.003 }}
                 whileTap={{ scale: 0.992 }}
                 transition={{ type: 'spring', stiffness: 340, damping: 24 }}
-                className="group rounded-[14px] border border-border/70 bg-background px-2 py-1.5 shadow-[0_8px_16px_-18px_rgba(15,23,42,0.22)] transition-shadow hover:shadow-[0_12px_20px_-18px_rgba(37,99,235,0.18)]"
+                className={inventoryStatCardClassName}
               >
+                <span className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-[linear-gradient(90deg,rgba(37,99,235,0.10),rgba(34,197,94,0.34),rgba(14,165,233,0.18))]" />
                 <div className="text-[8px] font-medium uppercase tracking-[0.12em] text-muted-foreground/68">
                   展示模式
                 </div>
@@ -709,70 +719,74 @@ export function KnowledgeDocumentsPanel({
             </div>
           </div>
 
-          {scopeSummary ? <div className="mt-3">{scopeSummary}</div> : null}
+          {scopeSummary ? <div className="mt-2.5">{scopeSummary}</div> : null}
 
-          <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-            <SearchInput
-              value={docFilter}
-              onValueChange={setDocFilter}
-              containerClassName="min-w-0 w-full xl:max-w-[460px]"
-              inputClassName="h-9 rounded-[12px] border-border/70 bg-background pr-4 text-[12px]"
-              placeholder={
-                showDatasetColumn
-                  ? '搜索文件名 / 文档 ID / 数据集'
-                  : '搜索文件名 / 文档 ID'
-              }
-            />
+          <div className="mt-2.5 rounded-[14px] border border-sky-100/65 bg-white/58 p-1.5 shadow-[0_12px_28px_-30px_rgba(37,99,235,0.24)] backdrop-blur-xl dark:border-border/60 dark:bg-background/35">
+            <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+              <SearchInput
+                value={docFilter}
+                onValueChange={setDocFilter}
+                containerClassName="min-w-0 w-full xl:max-w-[460px]"
+                inputClassName="h-9 rounded-[10px] border-sky-100/75 bg-white/90 pr-4 text-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-border/70 dark:bg-background/70"
+                placeholder={
+                  showDatasetColumn
+                    ? '搜索文件名 / 文档 ID / 数据集'
+                    : '搜索文件名 / 文档 ID'
+                }
+              />
 
-            <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap lg:justify-end">
-              <Select
-                value={sortKey}
-                onValueChange={(value) => setSortKey(value as DocSortKey)}
-              >
-                <SelectTrigger className="h-9 min-w-[144px] rounded-[12px] border-border/70 bg-background text-[11px] font-medium">
-                  <SelectValue placeholder={t('table.columns.name')} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="created_at">按上传时间</SelectItem>
-                  <SelectItem value="filename">按文件名</SelectItem>
-                  <SelectItem value="file_size">按文件大小</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap lg:justify-end">
+                <Select
+                  value={sortKey}
+                  onValueChange={(value) => setSortKey(value as DocSortKey)}
+                >
+                  <SelectTrigger className="h-9 min-w-[144px] rounded-[10px] border-sky-100/75 bg-white/90 text-[11px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-border/70 dark:bg-background/70">
+                    <SelectValue placeholder={t('table.columns.name')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="created_at">按上传时间</SelectItem>
+                    <SelectItem value="filename">按文件名</SelectItem>
+                    <SelectItem value="file_size">按文件大小</SelectItem>
+                  </SelectContent>
+                </Select>
 
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-9 min-w-[80px] justify-center rounded-[12px] border-border/70 bg-background px-3 text-[11px] font-medium"
-                onClick={() => setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}
-              >
-                {sortDir === 'asc' ? '升序' : '降序'}
-              </Button>
-
-              {hasActiveFilters ? (
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
-                  className="h-9 min-w-[96px] justify-center rounded-[12px] border border-border/70 bg-background px-3 text-[11px] font-medium"
-                  onClick={onClearFilters}
+                  className="h-9 min-w-[80px] justify-center rounded-[10px] border-sky-100/75 bg-white/90 px-3 text-[11px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] hover:border-sky-200/90 dark:border-border/70 dark:bg-background/70"
+                  onClick={() =>
+                    setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
+                  }
                 >
-                  <RotateCcw className="mr-2 size-3.5" />
-                  清空筛选
+                  {sortDir === 'asc' ? '升序' : '降序'}
                 </Button>
-              ) : null}
 
-              <Button
-                type="button"
-                variant={opsOpen ? 'default' : 'outline'}
-                size="sm"
-                className="h-9 min-w-[96px] justify-center rounded-[12px] px-3 text-[11px] font-medium"
-                aria-expanded={opsOpen}
-                onClick={() => setOpsOpen((open) => !open)}
-              >
-                <Activity className="mr-2 size-3.5" />
-                运维工具
-              </Button>
+                {hasActiveFilters ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-9 min-w-[96px] justify-center rounded-[10px] border border-sky-100/75 bg-white/80 px-3 text-[11px] font-medium hover:bg-white dark:border-border/70 dark:bg-background/60"
+                    onClick={onClearFilters}
+                  >
+                    <RotateCcw className="mr-2 size-3.5" />
+                    清空筛选
+                  </Button>
+                ) : null}
+
+                <Button
+                  type="button"
+                  variant={opsOpen ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-9 min-w-[96px] justify-center rounded-[10px] px-3 text-[11px] font-medium"
+                  aria-expanded={opsOpen}
+                  onClick={() => setOpsOpen((open) => !open)}
+                >
+                  <Activity className="mr-2 size-3.5" />
+                  运维工具
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -811,71 +825,100 @@ export function KnowledgeDocumentsPanel({
                 : '当前筛选条件没有命中文档，可以放宽范围、清空搜索，或切回全部数据集重新查看。'
 
               return (
-                <div className="px-5 py-5">
+                <div className="px-2 py-1.5">
                   <div
                     data-knowledge-empty-shelf="true"
-                    className="relative min-h-[390px] overflow-hidden rounded-[26px] border border-dashed border-info/20 bg-[radial-gradient(circle_at_50%_0%,rgba(59,130,246,0.16),transparent_46%)]"
+                    className="relative min-h-[272px] overflow-hidden rounded-[20px] border border-dashed border-info/18 bg-[radial-gradient(circle_at_50%_0%,rgba(59,130,246,0.12),transparent_44%)]"
                   >
                     <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(59,130,246,0.055)_1px,transparent_1px),linear-gradient(90deg,rgba(59,130,246,0.055)_1px,transparent_1px)] bg-[size:34px_34px]" />
                     <div className="pointer-events-none absolute -left-12 top-16 size-44 rounded-full bg-info/10 blur-3xl" />
                     <div className="pointer-events-none absolute -right-10 bottom-8 size-52 rounded-full bg-info/10 blur-3xl" />
-                    <div className="relative mx-auto flex max-w-5xl flex-col items-center px-5 py-9 text-center">
-                      <div className="relative mb-5 flex h-24 w-32 items-end justify-center">
-                        <div className="absolute bottom-0 h-16 w-28 rounded-[24px] border border-info/20 bg-background/80 shadow-[0_22px_48px_-34px_rgba(37,99,235,0.7)]" />
-                        <div className="absolute bottom-5 h-14 w-20 rounded-[18px] border border-info/20 bg-info/10" />
-                        <div className="absolute bottom-8 flex size-14 items-center justify-center rounded-[20px] border border-info/20 bg-background text-info shadow-[0_16px_28px_-20px_rgba(37,99,235,0.6)]">
+                    <div className="absolute right-4 top-4 z-10">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-9 rounded-full border-info/15 bg-background/82 px-3 text-[11px] font-medium text-foreground/82 shadow-[0_12px_28px_-22px_rgba(37,99,235,0.55)] backdrop-blur-md hover:border-info/25 hover:bg-background"
+                            aria-label="查看入库指引"
+                          >
+                            入库指引
+                            <ChevronDown className="ml-1.5 size-3.5 text-muted-foreground/65" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                          align="end"
+                          sideOffset={10}
+                          className="w-[330px] rounded-[18px] border-sky-100/80 bg-white/95 p-2 shadow-[0_24px_64px_-34px_rgba(15,23,42,0.35)] backdrop-blur-xl dark:border-border/70 dark:bg-background/95"
+                        >
+                          <div className="rounded-[14px] border border-sky-100/70 bg-sky-50/55 px-3 py-2.5 dark:border-border/70 dark:bg-muted/20">
+                            <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-info/70">
+                              Empty Shelf Guide
+                            </div>
+                            <div className="mt-1 text-[12px] font-medium text-foreground">
+                              空数据集下一步
+                            </div>
+                          </div>
+                          <div className="mt-2 space-y-1.5">
+                            <div className="rounded-[14px] px-3 py-2.5 text-left transition-colors hover:bg-sky-50/70 dark:hover:bg-muted/30">
+                              <div className="flex items-center gap-2 text-[12px] font-medium text-foreground">
+                                <Database className="size-4 text-info" />
+                                导入路径
+                              </div>
+                              <p className="mt-1.5 text-[11px] leading-5 text-muted-foreground/74">
+                                从右上角「导入/新增」上传文件、批量 URL
+                                或连接器任务，文档会自动绑定当前数据集。
+                              </p>
+                            </div>
+                            <div className="rounded-[14px] px-3 py-2.5 text-left transition-colors hover:bg-sky-50/70 dark:hover:bg-muted/30">
+                              <div className="flex items-center gap-2 text-[12px] font-medium text-foreground">
+                                <Filter className="size-4 text-info" />
+                                筛选路径
+                              </div>
+                              <p className="mt-1.5 text-[11px] leading-5 text-muted-foreground/74">
+                                当前左侧范围会影响列表结果；如果误选生命周期或状态，可以先清空筛选。
+                              </p>
+                            </div>
+                            <div className="rounded-[14px] px-3 py-2.5 text-left transition-colors hover:bg-sky-50/70 dark:hover:bg-muted/30">
+                              <div className="flex items-center gap-2 text-[12px] font-medium text-foreground">
+                                <Layers className="size-4 text-info" />
+                                质量路径
+                              </div>
+                              <p className="mt-1.5 text-[11px] leading-5 text-muted-foreground/74">
+                                文档入库后可在这里查看分块数量、解析状态、健康卡和后续检索测试入口。
+                              </p>
+                            </div>
+                          </div>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                    <div className="relative mx-auto flex max-w-5xl flex-col items-center px-4 py-5 text-center">
+                      <div className="relative mb-3 flex h-[72px] w-24 items-end justify-center">
+                        <div className="absolute bottom-0 h-12 w-20 rounded-[20px] border border-info/20 bg-background/80 shadow-[0_20px_44px_-34px_rgba(37,99,235,0.7)]" />
+                        <div className="absolute bottom-3.5 h-10 w-[68px] rounded-[15px] border border-info/20 bg-info/10" />
+                        <div className="absolute bottom-5 flex size-11 items-center justify-center rounded-[17px] border border-info/20 bg-background text-info shadow-[0_15px_26px_-20px_rgba(37,99,235,0.6)]">
                           {isDatasetEmpty ? (
-                            <Database className="size-7" />
+                            <Database className="size-5" />
                           ) : (
-                            <Filter className="size-7" />
+                            <Filter className="size-5" />
                           )}
                         </div>
-                        <span className="absolute left-5 top-2 size-2 rounded-full bg-info/50" />
-                        <span className="absolute right-4 top-8 size-1.5 rounded-full bg-info/50" />
+                        <span className="absolute left-4 top-2 size-1.5 rounded-full bg-info/50" />
+                        <span className="absolute right-3 top-7 size-1.5 rounded-full bg-info/50" />
                       </div>
 
                       <div className="inline-flex items-center rounded-full border border-info/15 bg-background/78 px-3 py-1 text-[10px] font-medium uppercase tracking-[0.22em] text-info/70 dark:text-info/78">
                         Asset Shelf
                       </div>
-                      <h3 className="mt-3 text-[22px] font-semibold text-foreground">
+                      <h3 className="mt-2.5 text-[21px] font-semibold text-foreground">
                         {emptyTitle}
                       </h3>
-                      <p className="mt-2 max-w-2xl text-[13px] leading-6 text-muted-foreground/78">
+                      <p className="mt-1.5 max-w-2xl text-[13px] leading-5 text-muted-foreground/78">
                         {emptyDescription}
                       </p>
 
-                      <div className="mt-7 grid w-full gap-3 md:grid-cols-3">
-                        <div className="rounded-[18px] border border-border/70 bg-background/82 p-4 text-left shadow-[0_14px_28px_-26px_rgba(15,23,42,0.35)]">
-                          <div className="flex items-center gap-2 text-[12px] font-medium text-foreground">
-                            <Database className="size-4 text-info" />
-                            导入路径
-                          </div>
-                          <p className="mt-2 text-[11px] leading-5 text-muted-foreground/74">
-                            从右上角「导入/新增」上传文件、批量 URL
-                            或连接器任务，文档会自动绑定当前数据集。
-                          </p>
-                        </div>
-                        <div className="rounded-[18px] border border-border/70 bg-background/82 p-4 text-left shadow-[0_14px_28px_-26px_rgba(15,23,42,0.35)]">
-                          <div className="flex items-center gap-2 text-[12px] font-medium text-foreground">
-                            <Filter className="size-4 text-info" />
-                            筛选路径
-                          </div>
-                          <p className="mt-2 text-[11px] leading-5 text-muted-foreground/74">
-                            当前左侧范围会影响列表结果；如果误选生命周期或状态，可以先清空筛选。
-                          </p>
-                        </div>
-                        <div className="rounded-[18px] border border-border/70 bg-background/82 p-4 text-left shadow-[0_14px_28px_-26px_rgba(15,23,42,0.35)]">
-                          <div className="flex items-center gap-2 text-[12px] font-medium text-foreground">
-                            <Layers className="size-4 text-info" />
-                            质量路径
-                          </div>
-                          <p className="mt-2 text-[11px] leading-5 text-muted-foreground/74">
-                            文档入库后可在这里查看分块数量、解析状态、健康卡和后续检索测试入口。
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+                      <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
                         {!isDatasetEmpty ? (
                           <Button
                             type="button"
@@ -973,14 +1016,14 @@ export function KnowledgeDocumentsPanel({
               <div
                 className={cn(
                   embedded
-                    ? 'flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background/10 px-5 py-5'
+                    ? 'flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[#F6FAFF]/60 px-5 py-5 dark:bg-background/15'
                     : 'rounded-xl overflow-hidden'
                 )}
               >
                 {/* className="group hover:bg-muted/20 transition-colors" */}
                 <div
                   className={cn(
-                    'overflow-hidden rounded-[22px] border border-border/70 bg-background',
+                    'overflow-hidden rounded-[22px] border border-sky-100/70 bg-white/92 dark:border-border/70 dark:bg-background/70',
                     embedded && 'flex h-full min-h-0 flex-1 flex-col'
                   )}
                 >
@@ -1002,11 +1045,11 @@ export function KnowledgeDocumentsPanel({
                         <col className="w-[6.5rem]" />
                         <col className="w-[8.5rem]" />
                       </colgroup>
-                      <thead className="border-b border-border/60 bg-muted/[0.16] text-[11px] uppercase text-muted-foreground/78">
+                      <thead className="border-b border-sky-100/70 bg-sky-50/35 text-[11px] uppercase text-muted-foreground/78 dark:border-border/60 dark:bg-muted/[0.16]">
                         <tr>
                           <th
                             colSpan={tableColumnCount}
-                            className="sticky top-0 z-10 bg-background/95 px-3 py-2 font-medium"
+                            className="sticky top-0 z-10 bg-white/95 px-3 py-2 font-medium dark:bg-background/90"
                           >
                             <div
                               className="grid items-center gap-3"
@@ -1096,7 +1139,7 @@ export function KnowledgeDocumentsPanel({
                                 colSpan={tableColumnCount}
                                 className="px-3 py-1.5"
                               >
-                                <div className="rounded-[18px] border border-border/70 bg-background shadow-[0_14px_30px_-28px_rgba(15,23,42,0.32)] transition-[border-color,box-shadow,transform] duration-150 group-hover/row:-translate-y-px group-hover/row:border-primary/20 group-hover/row:shadow-[0_20px_34px_-28px_rgba(37,99,235,0.32)]">
+                                <div className="rounded-[18px] border border-sky-100/70 bg-white/95 shadow-[0_14px_30px_-28px_rgba(37,99,235,0.24)] transition-[border-color,box-shadow,transform] duration-150 group-hover/row:-translate-y-px group-hover/row:border-primary/20 group-hover/row:shadow-[0_20px_34px_-28px_rgba(37,99,235,0.32)] dark:border-border/70 dark:bg-background/78">
                                   <div
                                     className="grid min-h-[64px] items-center gap-3 px-3 py-3"
                                     style={{

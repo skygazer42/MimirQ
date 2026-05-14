@@ -18,15 +18,21 @@ from app.core.config import settings
 from app.core.constants import EmbeddingProviders
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
+from app.models.dataset import Dataset as DBDataset
 from app.rag.chunking.utils.hierarchical import apply_sequence_hierarchy_metadata
 from app.rag.core.metadata import ensure_hierarchy_overlay_metadata, normalize_image_metadata
 from app.rag.embedding import create_langchain_embeddings_from_config
-from app.rag.embedding.utils import current_embedding_space_hash, embedding_space_hash_for_config
+from app.rag.embedding.utils import embedding_space_hash_for_config
 from app.rag.kg.models import KgEntity, KgEventEntity, KgRelation, KgSourceEvent
 from app.rag.kg.provenance import build_event_entity_provenance
 from app.rag.preprocessing.normalization import normalize_text
 from app.rag.retriever import hybrid_retriever
 from app.services.metrics_logger import log_metrics
+from app.services.dataset_embedding_config import (
+    DatasetEmbeddingRuntimeConfig,
+    create_embeddings_for_runtime,
+    resolve_dataset_embedding_runtime,
+)
 from app.storage.vector.factory import get_vector_store
 from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name
 from app.types.indexing import (
@@ -506,6 +512,101 @@ class Indexer:
             return bool(options.entity_vector_enabled)
         return bool(getattr(settings, "ENTITY_VECTOR_ENABLED", True))
 
+    def _load_dataset_metadata(self, *, tenant_id: UUID, dataset_id: UUID | None) -> dict[str, Any]:
+        if dataset_id is None:
+            return {}
+        try:
+            row = (
+                self._db.query(DBDataset.dataset_metadata)
+                .filter(DBDataset.tenant_id == tenant_id, DBDataset.id == dataset_id)
+                .first()
+            )
+            meta = row[0] if row else None
+            return dict(meta or {}) if isinstance(meta, dict) else {}
+        except Exception:
+            return {}
+
+    def _embedding_runtime_for_document(
+        self,
+        *,
+        tenant_id: UUID,
+        document_id: UUID,
+    ) -> DatasetEmbeddingRuntimeConfig:
+        try:
+            row = (
+                self._db.query(DBDocument.dataset_id)
+                .filter(DBDocument.tenant_id == tenant_id, DBDocument.id == document_id)
+                .first()
+            )
+            dataset_id = row[0] if row else None
+            return resolve_dataset_embedding_runtime(
+                self._load_dataset_metadata(tenant_id=tenant_id, dataset_id=dataset_id)
+            )
+        except Exception:
+            return resolve_dataset_embedding_runtime(None)
+
+    def _delete_dataset_scoped_chunk_vectors(
+        self,
+        *,
+        tenant_id: UUID,
+        document_id: UUID,
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> None:
+        runtime = self._embedding_runtime_for_document(tenant_id=tenant_id, document_id=document_id)
+        if not runtime.dataset_scoped:
+            return
+        if str(getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").strip().lower() != "milvus":
+            return
+        adapter = get_milvus_adapter(resolve_collection_name(runtime.collection_name))
+        if metadata_filter:
+            adapter.delete_by_document_id_and_filter(
+                document_id=document_id,
+                tenant_id=tenant_id,
+                metadata_filter=metadata_filter,
+            )
+        else:
+            adapter.delete_by_document_id(document_id, tenant_id=tenant_id)
+
+    def _document_vector_item(
+        self,
+        *,
+        doc: dict[str, Any],
+        document_id: UUID,
+        tenant_id: UUID,
+        index: int,
+    ) -> dict[str, Any]:
+        meta = dict(doc.get("metadata") or {})
+        chunk_id = meta.get("chunk_id")
+        pipeline_hash = str(meta.get("pipeline_hash") or "")[:64]
+        doc_pipeline_key = str(
+            meta.get("doc_pipeline_key")
+            or (f"{document_id}:{pipeline_hash}" if pipeline_hash else str(document_id))
+        )[:256]
+        img_id = meta.get("img_id") or meta.get("image_id") or ""
+        image_id = meta.get("image_id") or meta.get("img_id") or ""
+        image_url = meta.get("image_url") or meta.get("img_url") or ""
+        item_id = str(chunk_id) if chunk_id else f"{document_id}_{index}"
+        return {
+            "id": item_id,
+            "content": str(doc.get("content") or ""),
+            "metadata": {
+                "tenant_id": str(tenant_id),
+                "dataset_id": str(meta.get("dataset_id") or ""),
+                "embedding_space_hash": str(meta.get("embedding_space_hash") or ""),
+                "document_id": str(document_id),
+                "chunk_index": int(meta.get("chunk_index", index) or 0),
+                "chunk_id": str(chunk_id) if chunk_id else "",
+                "pipeline_hash": pipeline_hash,
+                "doc_pipeline_key": doc_pipeline_key,
+                "page_number": int(meta.get("page") or meta.get("page_number") or 0),
+                "source": str(meta.get("source", "unknown"))[:500],
+                "file_type": str(meta.get("file_type", "unknown"))[:20],
+                "img_id": str(img_id)[:500],
+                "image_id": str(image_id)[:500],
+                "image_url": str(image_url)[:2000],
+            },
+        }
+
     def index(self, kind: IndexKind, **kwargs):
         if kind == IndexKind.CHUNK:
             return self.index_chunks(**kwargs)
@@ -626,9 +727,11 @@ class Indexer:
         options: IndexingOptions | None = None,
     ) -> PersistChunksResult:
         dataset_id_str: str | None = None
+        dataset_uuid: UUID | None = None
         file_type_str: str | None = None
         document_title: str | None = None
-        embedding_space = current_embedding_space_hash()
+        embedding_runtime = resolve_dataset_embedding_runtime(None)
+        embedding_space = embedding_runtime.embedding_space_hash
         try:
             row = (
                 self._db.query(DBDocument.dataset_id, DBDocument.file_type, DBDocument.filename, DBDocument.doc_metadata)
@@ -638,14 +741,20 @@ class Indexer:
             if row:
                 ds_id, ft, fn, doc_meta = row
                 if ds_id is not None:
+                    dataset_uuid = ds_id
                     dataset_id_str = str(ds_id)
                 if ft is not None:
                     file_type_str = str(ft)
                 document_title = _derive_document_title(fn, doc_meta)
+                dataset_meta = self._load_dataset_metadata(tenant_id=tenant_id, dataset_id=dataset_uuid)
+                embedding_runtime = resolve_dataset_embedding_runtime(dataset_meta)
+                embedding_space = embedding_runtime.embedding_space_hash
         except Exception:
             dataset_id_str = None
             file_type_str = None
             document_title = None
+            embedding_runtime = resolve_dataset_embedding_runtime(None)
+            embedding_space = embedding_runtime.embedding_space_hash
 
         source = str(default_source or "").strip() or "unknown"
         total_characters = sum(len(c.content or "") for c in chunks)
@@ -780,6 +889,7 @@ class Indexer:
             document_id=document_id,
             tenant_id=tenant_id,
             enable_vectors=self._resolve_chunk_vector_enabled(options),
+            embedding_runtime=embedding_runtime,
         )
         if extra_vector_docs and self._resolve_chunk_vector_enabled(options):
             # Best-effort: do not fail ingest if extra vectors can't be written (legacy collections,
@@ -790,6 +900,7 @@ class Indexer:
                     document_id=document_id,
                     tenant_id=tenant_id,
                     enable_vectors=True,
+                    embedding_runtime=embedding_runtime,
                 )
             except Exception as exc:
                 logger.debug("Ignoring non-critical indexer fallback failure: %s", exc)
@@ -1044,6 +1155,11 @@ class Indexer:
 
     def delete_chunk_indexes(self, *, tenant_id: UUID, document_id: UUID) -> None:
         try:
+            self._delete_dataset_scoped_chunk_vectors(tenant_id=tenant_id, document_id=document_id)
+        except Exception as exc:
+            logger.warning("Failed to delete dataset-scoped vectors: %s", exc)
+
+        try:
             get_vector_store().delete_by_document_id(document_id, tenant_id=tenant_id)
         except Exception as exc:
             logger.warning("Failed to delete vectors: %s", exc)
@@ -1067,6 +1183,15 @@ class Indexer:
         is cancelled/failed mid-ingest.
         """
         filter_spec = {"doc_pipeline_key": {"$eq": str(doc_pipeline_key or "")}}
+        try:
+            self._delete_dataset_scoped_chunk_vectors(
+                tenant_id=tenant_id,
+                document_id=document_id,
+                metadata_filter=filter_spec,
+            )
+        except Exception as exc:
+            logger.warning("Failed to delete dataset-scoped vectors (scoped): %s", str(exc)[:200])
+
         try:
             get_vector_store().delete_by_document_id_and_filter(
                 document_id=document_id,
@@ -1333,12 +1458,39 @@ class Indexer:
         document_id: UUID,
         tenant_id: UUID,
         enable_vectors: bool,
+        embedding_runtime: DatasetEmbeddingRuntimeConfig | None = None,
     ) -> list[str | None]:
         if not docs:
             return []
 
         if not enable_vectors:
             return [None] * len(docs)
+
+        runtime = embedding_runtime or resolve_dataset_embedding_runtime(None)
+        if runtime.dataset_scoped and str(getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").strip().lower() == "milvus":
+            try:
+                embeddings = create_embeddings_for_runtime(runtime)
+                vectors = embeddings.embed_documents([str(doc.get("content") or "") for doc in docs])
+                adapter = get_milvus_adapter(resolve_collection_name(runtime.collection_name))
+                batch_size = int(getattr(settings, "VECTOR_WRITE_BATCH_SIZE", 256) or 256)
+                items = [
+                    self._document_vector_item(
+                        doc=doc,
+                        document_id=document_id,
+                        tenant_id=tenant_id,
+                        index=index,
+                    )
+                    for index, doc in enumerate(docs)
+                ]
+                return adapter.add_vectors(items, embeddings=vectors, batch_size=batch_size, upsert=True)
+            except Exception as exc:
+                logger.warning(
+                    "Dataset-scoped vector write failed collection=%s space=%s: %s",
+                    runtime.collection_name,
+                    runtime.embedding_space_hash,
+                    str(exc)[:200],
+                )
+                raise
 
         vector_store = get_vector_store()
         try:

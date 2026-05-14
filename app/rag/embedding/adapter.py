@@ -40,10 +40,10 @@ def _invalidate_redis_client() -> None:
     _redis_client = None
 
 
-def _embed_cache_key(text: str) -> str:
+def _embed_cache_key(text: str, *, space: str | None = None) -> str:
     # Bind to the current embedding "space" (provider/model/base_url) to avoid serving
     # incompatible vectors after a model/endpoint change.
-    space = current_embedding_space_hash()
+    space = space or current_embedding_space_hash()
     digest = hashlib.sha256(text.encode("utf-8", "ignore")).hexdigest()
     prefix = getattr(settings, "EMBEDDING_CACHE_PREFIX", "emb")
     return f"{prefix}:{space}:{digest}"
@@ -68,7 +68,7 @@ class LangChainEmbeddingsAdapter:
         vectorstore = Milvus(embedding_function=embeddings, ...)
     """
 
-    def __init__(self, model: BaseEmbeddingModel, normalize: bool = True):
+    def __init__(self, model: BaseEmbeddingModel, normalize: bool = True, cache_space_hash: str | None = None):
         """Initialize the adapter.
 
         Args:
@@ -78,6 +78,12 @@ class LangChainEmbeddingsAdapter:
         self._model = model
         self._normalize = normalize
         self._dimension = model.dimension
+        self._cache_space_hash = str(cache_space_hash or "").strip() or None
+
+    def _cache_key(self, text: str) -> str:
+        if self._cache_space_hash:
+            return _embed_cache_key(text, space=self._cache_space_hash)
+        return _embed_cache_key(text)
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         """Embed a list of text documents.
@@ -101,7 +107,7 @@ class LangChainEmbeddingsAdapter:
         if client is None:
             embeddings = self._model.encode(texts)
         else:
-            keys = [_embed_cache_key(t) for t in texts]
+            keys = [self._cache_key(t) for t in texts]
             try:
                 cached_raw = client.mget(keys)
             except Exception as exc:  # noqa: BLE001
@@ -198,7 +204,7 @@ class LangChainEmbeddingsAdapter:
         if client is None:
             embeddings = self._model.encode([text])
         else:
-            key = _embed_cache_key(text)
+            key = self._cache_key(text)
             try:
                 raw = client.get(key)
             except Exception as exc:  # noqa: BLE001
@@ -286,7 +292,12 @@ def create_langchain_embeddings(
 
 
 def create_langchain_embeddings_from_config(
-    provider: str, model: str, api_key: str = "", base_url: str = "", dimension: int = None
+    provider: str,
+    model: str,
+    api_key: str = "",
+    base_url: str = "",
+    dimension: int = None,
+    cache_space_hash: str | None = None,
 ) -> LangChainEmbeddingsAdapter:
     """Create LangChain embeddings from config (for compatibility with milvus.py).
 
@@ -334,4 +345,4 @@ def create_langchain_embeddings_from_config(
             model=model, dimension=dimension, base_url=base_url, api_key=api_key
         )
 
-    return LangChainEmbeddingsAdapter(embedding_model, normalize=True)
+    return LangChainEmbeddingsAdapter(embedding_model, normalize=True, cache_space_hash=cache_space_hash)

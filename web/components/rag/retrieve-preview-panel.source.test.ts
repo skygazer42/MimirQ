@@ -56,4 +56,50 @@ describe('retrieve preview panel source', () => {
     expect(src).not.toContain('amber-500')
     expect(src).not.toContain('text-amber-')
   })
+
+  it('wires retrieval workbench utility buttons to real inline actions', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'retrieve-preview-panel.tsx'), 'utf8')
+
+    expect(src).toContain('const [advancedParamsOpen, setAdvancedParamsOpen] = useState(false)')
+    expect(src).toContain('const [fullHistoryOpen, setFullHistoryOpen] = useState(false)')
+    expect(src).toContain('aria-controls={RETRIEVAL_ADVANCED_PANEL_ID}')
+    expect(src).toContain('onClick={() => setAdvancedParamsOpen((open) => !open)}')
+    expect(src).toContain('aria-controls={RETRIEVAL_HISTORY_PANEL_ID}')
+    expect(src).toContain('onClick={() => setFullHistoryOpen((open) => !open)}')
+    expect(src).toContain('onClick={handleClearRecentQueries}')
+    expect(src).toContain('当前会话历史')
+  })
+
+  it('uses blue tokenized range controls instead of native black sliders', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'retrieve-preview-panel.tsx'), 'utf8')
+
+    expect(src).toContain('const RETRIEVAL_RANGE_INPUT_CLASS =')
+    expect(src).toContain('[&::-webkit-slider-thumb]:border-sky-300')
+    expect(src).toContain('bg-info/80')
+    expect(src).toContain('style={{ width: `${scoreThresholdPercent}%` }}')
+    expect(src).toContain('style={{ width: `${alphaPercent}%` }}')
+    expect(src).not.toContain('accent-primary')
+  })
+
+  it('uses a light blue-white workbench surface instead of a gray retrieval background', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'retrieve-preview-panel.tsx'), 'utf8')
+
+    expect(src).toContain('const RETRIEVAL_PANEL_SURFACE_CLASS =')
+    expect(src).toContain('const RETRIEVAL_CONTROL_SURFACE_CLASS =')
+    expect(src).toContain("bg-[#F8FBFF]/75")
+    expect(src).toContain('border-sky-100/75 bg-white/[0.94]')
+    expect(src).not.toContain('bg-background/40')
+    expect(src).not.toContain('bg-background/92')
+  })
+
+  it('uses a custom semantic retrieval mark instead of the generic sparkles icon', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'retrieve-preview-panel.tsx'), 'utf8')
+
+    expect(src).toContain('function SemanticRetrievalMark()')
+    expect(src).toContain('aria-label="语义检索图标"')
+    expect(src).toContain('<SemanticRetrievalMark />')
+    expect(src).toContain('data-semantic-node="query"')
+    expect(src).toContain('data-semantic-node="evidence"')
+    expect(src).not.toContain('Sparkles')
+  })
 })
