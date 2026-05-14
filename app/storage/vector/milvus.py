@@ -513,6 +513,46 @@ class MilvusAdapter:
         assert self._store is not None
         self._store.delete(ids)
 
+    def delete_by_document_id(self, document_id: UUID, tenant_id: UUID | None = None) -> None:
+        """Delete all vectors for a document from this collection."""
+        self._ensure_store()
+        assert self._store is not None
+        parts = []
+        if tenant_id:
+            parts.append(f'tenant_id == "{_escape_milvus_string(str(tenant_id))}"')
+        parts.append(f'document_id == "{_escape_milvus_string(str(document_id))}"')
+        expr = " and ".join(parts)
+        self._store.delete(expr=expr)
+        try:
+            self._store.col.flush()  # type: ignore[union-attr]
+        except Exception as exc:
+            logger.debug("Ignoring non-critical Milvus fallback failure: %s", exc)
+
+    def delete_by_document_id_and_filter(
+        self,
+        *,
+        document_id: UUID,
+        tenant_id: UUID | None = None,
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> None:
+        """Delete vectors for a document with an additional safe metadata filter."""
+        metadata_expr = _build_milvus_metadata_expr(metadata_filter)
+        if not metadata_expr:
+            return
+        self._ensure_store()
+        assert self._store is not None
+        parts = []
+        if tenant_id:
+            parts.append(f'tenant_id == "{_escape_milvus_string(str(tenant_id))}"')
+        parts.append(f'document_id == "{_escape_milvus_string(str(document_id))}"')
+        base_expr = " and ".join(parts)
+        expr = f"({base_expr}) and ({metadata_expr})"
+        self._store.delete(expr=expr)
+        try:
+            self._store.col.flush()  # type: ignore[union-attr]
+        except Exception as exc:
+            logger.debug("Ignoring non-critical Milvus fallback failure: %s", exc)
+
     def search(
         self,
         query_vector: list[float],

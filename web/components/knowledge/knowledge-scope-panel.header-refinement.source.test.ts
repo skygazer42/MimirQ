@@ -15,7 +15,7 @@ describe('KnowledgeScopePanel header refinement', () => {
     )
     expect(src).toContain('text-[10px] font-medium uppercase tracking-[0.16em]')
     expect(src).toContain('mt-0.5 text-[13px] font-medium')
-    expect(src).toContain('h-px w-full bg-border/70')
+    expect(src).toContain('h-px w-full bg-sky-100/80 dark:bg-border/70')
     expect(src).toContain("t('header.subtitle')")
     expect(src).toContain("t('header.title')")
   })

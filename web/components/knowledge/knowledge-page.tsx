@@ -66,13 +66,13 @@ import { cn, detachPromise, formatFileSize } from '@/lib/utils'
 
 const DATASET_ALL = '__all__'
 const KNOWLEDGE_BACKGROUND_CLASS =
-  'bg-[radial-gradient(circle_at_20%_0%,rgba(37,99,235,0.08),transparent_28%),radial-gradient(circle_at_80%_10%,rgba(14,165,233,0.06),transparent_30%),linear-gradient(180deg,#f7faff_0%,#f5f7fb_45%,#f8fafc_100%)] dark:bg-[radial-gradient(circle_at_20%_0%,rgba(59,130,246,0.13),transparent_30%),radial-gradient(circle_at_80%_8%,rgba(14,165,233,0.10),transparent_32%),linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--muted)/0.18)_48%,hsl(var(--background))_100%)]'
+  'bg-[radial-gradient(circle_at_18%_0%,rgba(37,99,235,0.10),transparent_30%),radial-gradient(circle_at_82%_8%,rgba(14,165,233,0.08),transparent_32%),linear-gradient(180deg,#fbfdff_0%,#f2f7ff_46%,#fbfdff_100%)] dark:bg-[radial-gradient(circle_at_20%_0%,rgba(59,130,246,0.13),transparent_30%),radial-gradient(circle_at_80%_8%,rgba(14,165,233,0.10),transparent_32%),linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--muted)/0.18)_48%,hsl(var(--background))_100%)]'
 const KNOWLEDGE_GRID_OVERLAY_CLASS =
-  'pointer-events-none absolute inset-0 opacity-[0.42] [background-image:linear-gradient(rgba(37,99,235,0.028)_1px,transparent_1px),linear-gradient(90deg,rgba(37,99,235,0.024)_1px,transparent_1px)] [background-size:32px_32px] [mask-image:linear-gradient(180deg,rgba(0,0,0,0.78),rgba(0,0,0,0.22)_55%,transparent_100%)] dark:opacity-[0.18]'
+  'pointer-events-none absolute inset-0 opacity-[0.26] [background-image:linear-gradient(rgba(37,99,235,0.026)_1px,transparent_1px),linear-gradient(90deg,rgba(37,99,235,0.022)_1px,transparent_1px)] [background-size:32px_32px] [mask-image:linear-gradient(180deg,rgba(0,0,0,0.72),rgba(0,0,0,0.18)_55%,transparent_100%)] dark:opacity-[0.16]'
 const KNOWLEDGE_GLASS_CARD_CLASS =
-  'border-slate-200/[0.42] bg-white/[0.86] shadow-[0_8px_24px_rgba(15,23,42,0.04)] backdrop-blur-xl dark:border-border/45 dark:bg-card/72'
+  'border-sky-100/70 bg-white/[0.92] shadow-[0_8px_22px_rgba(37,99,235,0.035)] backdrop-blur-xl dark:border-border/45 dark:bg-card/72'
 const KNOWLEDGE_WORKBENCH_SURFACE_CLASS =
-  'border-slate-200/[0.38] bg-white/[0.78] shadow-[0_10px_30px_rgba(15,23,42,0.035)] backdrop-blur-xl dark:border-border/45 dark:bg-card/62'
+  'border-sky-100/70 bg-white/[0.86] shadow-[0_10px_28px_rgba(37,99,235,0.032)] backdrop-blur-xl dark:border-border/45 dark:bg-card/62'
 type TabKey = 'documents' | 'retrieval' | 'settings'
 
 export default function KnowledgePage() {
@@ -227,9 +227,16 @@ export default function KnowledgePage() {
     selectedDatasetId,
   })
 
+  const scopedDocuments = useMemo(() => {
+    if (!selectedDatasetId) return documents
+    return documents.filter(
+      (doc) => String(doc.dataset_id || '') === selectedDatasetId
+    )
+  }, [documents, selectedDatasetId])
+
   const filteredDocuments = useMemo(() => {
     const term = docFilter.trim().toLowerCase()
-    const next = documents.filter((doc) => {
+    const next = scopedDocuments.filter((doc) => {
       if (!term) return true
       return (
         doc.filename.toLowerCase().includes(term) ||
@@ -250,7 +257,9 @@ export default function KnowledgePage() {
     })
 
     return next
-  }, [docFilter, documents, sortDir, sortKey])
+  }, [docFilter, scopedDocuments, sortDir, sortKey])
+  const documentsEmptySurface =
+    documentsModeActive && !isLoading && filteredDocuments.length === 0
 
   const { sentinelRef: mainPaneSentinelRef, scrollEl: mainPaneScrollEl } =
     useKnowledgeScrollContainer()
@@ -310,12 +319,12 @@ export default function KnowledgePage() {
   )
 
   useEffect(() => {
-    const validIds = new Set(documents.map((doc) => doc.id))
+    const validIds = new Set(scopedDocuments.map((doc) => doc.id))
     setSelectedDocIds((prev) => {
       const next = prev.filter((id) => validIds.has(id))
       return next.length === prev.length ? prev : next
     })
-  }, [documents])
+  }, [scopedDocuments])
 
   useEffect(() => {
     if (activeTab !== 'documents') {
@@ -335,35 +344,35 @@ export default function KnowledgePage() {
     [connectorRuns]
   )
 
-  const totalDocs = documents.length
-  const completedDocsValue = documents.filter(
+  const totalDocs = scopedDocuments.length
+  const completedDocsValue = scopedDocuments.filter(
     (doc) => doc.status === 'completed'
   ).length
-  const processingDocsValue = documents.filter(
+  const processingDocsValue = scopedDocuments.filter(
     (doc) => doc.status === 'processing' || doc.status === 'pending'
   ).length
-  const failedDocsValue = documents.filter(
+  const failedDocsValue = scopedDocuments.filter(
     (doc) => doc.status === 'failed'
   ).length
-  const quarantinedDocsValue = documents.filter(
+  const quarantinedDocsValue = scopedDocuments.filter(
     (doc) => doc.status === 'quarantined'
   ).length
-  const totalChunksValue = documents.reduce(
+  const totalChunksValue = scopedDocuments.reduce(
     (sum, doc) => sum + (doc.chunk_count || 0),
     0
   )
   const totalSizeValue = formatFileSize(
-    documents.reduce((sum, doc) => sum + doc.file_size, 0)
+    scopedDocuments.reduce((sum, doc) => sum + doc.file_size, 0)
   )
   const readyRate =
     totalDocs > 0 ? Math.round((completedDocsValue / totalDocs) * 100) : 0
 
-  const selectedDatasetLabel = useMemo(
-    () =>
-      datasets.find((dataset) => dataset.id === selectedDatasetId)?.name ||
-      selectedDatasetId,
+  const selectedDataset = useMemo(
+    () => datasets.find((dataset) => dataset.id === selectedDatasetId) || null,
     [datasets, selectedDatasetId]
   )
+
+  const selectedDatasetLabel = selectedDataset?.name || selectedDatasetId
 
   const datasetLabelById = useMemo(() => {
     const map: Record<string, string> = {}
@@ -375,20 +384,25 @@ export default function KnowledgePage() {
 
   const documentScopeSummary = useMemo(
     () => (
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/35 px-2.5 py-1 text-[11px] font-medium text-foreground/80">
+      <div className="inline-flex max-w-full flex-wrap items-center gap-2 rounded-[12px] border border-sky-100/60 bg-white/42 px-2.5 py-1.5 text-[11px] shadow-[0_10px_24px_-28px_rgba(37,99,235,0.28)] backdrop-blur-xl dark:border-border/55 dark:bg-background/30">
+        <span className="inline-flex items-center font-medium text-foreground/82">
+          <Database className="mr-1.5 size-3 text-info" />
           Dataset Scope
           <span className="ml-2 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70">
             {selectedDatasetLabel || scopeT('dataset.all')}
           </span>
         </span>
-        <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/35 px-2.5 py-1 text-[11px] font-medium text-foreground/80">
+        <span className="h-3.5 w-px bg-sky-100/80 dark:bg-border/70" />
+        <span className="inline-flex items-center font-medium text-foreground/82">
+          <Eye className="mr-1.5 size-3 text-info" />
           Visible
           <span className="ml-2 font-mono tabular-nums text-[11px] text-foreground">
             {filteredDocuments.length}
           </span>
         </span>
-        <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/35 px-2.5 py-1 text-[11px] font-medium text-foreground/80">
+        <span className="h-3.5 w-px bg-sky-100/80 dark:bg-border/70" />
+        <span className="inline-flex items-center font-medium text-foreground/82">
+          <Activity className="mr-1.5 size-3 text-success" />
           Lifecycle
           <span className="ml-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70">
             {lifecycleFilter}
@@ -583,8 +597,8 @@ export default function KnowledgePage() {
   }, [loadDocuments, selectedDocIds, t])
 
   const peekingDoc = useMemo(
-    () => documents.find((doc) => doc.id === peekingDocId) ?? null,
-    [documents, peekingDocId]
+    () => scopedDocuments.find((doc) => doc.id === peekingDocId) ?? null,
+    [peekingDocId, scopedDocuments]
   )
 
   const scopeMode =
@@ -1067,10 +1081,14 @@ export default function KnowledgePage() {
             </div>
           </div>
         }
-        bodyClassName="bg-[#F8FAFF]/55 pt-3 dark:bg-background/20"
-        mainPaneBodyClassName={
-          activeTab === 'settings' ? 'overflow-hidden p-0' : undefined
-        }
+        bodyClassName={cn(
+          'bg-[#F5FAFF]/70 pt-3 dark:bg-background/20',
+          documentsEmptySurface ? 'flex-none overflow-visible pb-2' : undefined
+        )}
+        mainPaneBodyClassName={cn(
+          activeTab === 'settings' ? 'overflow-hidden p-0' : undefined,
+          documentsEmptySurface ? 'flex-none overflow-visible pb-2' : undefined
+        )}
         // leftPanel={!desktopScopeCollapsed ? (
         // Legacy source-test anchor:
         // rightPanel={(activeTab === 'retrieval' || peekingDocId || showTaskCenter) ? (
@@ -1193,12 +1211,15 @@ export default function KnowledgePage() {
             layout={!reduceMotion}
             layoutId="knowledge-documents-surface"
             transition={layoutTransition}
-            className="flex min-h-0 flex-1 flex-col"
+            className={cn(
+              'flex min-h-0 flex-col',
+              documentsEmptySurface ? 'flex-none' : 'flex-1'
+            )}
           >
             <KnowledgeDocumentsPanel
               embedded
               isLoading={isLoading}
-              documents={documents}
+              documents={scopedDocuments}
               filteredDocuments={filteredDocuments}
               datasets={datasets}
               selectedDatasetId={selectedDatasetId}
@@ -1306,6 +1327,12 @@ export default function KnowledgePage() {
             {/* <KnowledgeSettingsPanel selectedDatasetId={selectedDatasetId} /> */}
             <KnowledgeSettingsPanel
               selectedDatasetId={selectedDatasetId}
+              selectedDataset={selectedDataset}
+              datasets={datasets}
+              datasetsLoading={datasetsLoading}
+              datasetAllValue={DATASET_ALL}
+              onDatasetScopeChange={handleDatasetScopeChange}
+              settingsSidebarCollapsed={desktopScopeCollapsed}
               onGoToRetrievalTest={() => setActiveTab('retrieval')}
             />
           </motion.div>

@@ -220,6 +220,29 @@ class DatasetRAGDefaults(BaseModel):
         return self
 
 
+class DatasetEmbeddingDefaults(BaseModel):
+    """
+    Dataset-level embedding defaults.
+
+    Stored in datasets.metadata.embedding_defaults. API keys intentionally stay
+    in system settings; dataset metadata only chooses the embedding space.
+    """
+
+    provider: str | None = Field(default=None, max_length=80)
+    model: str | None = Field(default=None, max_length=200)
+    api_base: str | None = Field(default=None, max_length=1000)
+
+    model_config = ConfigDict(extra="ignore")
+
+    @field_validator("provider", "model", "api_base", mode="before")
+    @classmethod
+    def _strip_empty_string(cls, v):  # noqa: ANN001
+        if v is None:
+            return None
+        value = str(v).strip()
+        return value or None
+
+
 class DatasetRetentionPolicy(BaseModel):
     """
     Dataset-level retention policy (Gap9).
@@ -252,6 +275,8 @@ class DatasetBase(BaseModel):
     default_chunk_strategy: str | None = None
     # Dataset-level default RAG settings (applied when chat doesn't specify).
     rag_defaults: DatasetRAGDefaults | None = None
+    # Dataset-level embedding defaults (applied to this dataset's embedding space).
+    embedding_defaults: DatasetEmbeddingDefaults | None = None
     # Dataset-level default RAG config template selectors (optional; used for safe rollout/rollback).
     default_rag_config_template_id: UUID | None = None
     default_rag_config_template_key: str | None = None
@@ -280,6 +305,7 @@ class DatasetUpdate(BaseModel):
     default_parser_backend: str | None = None
     default_chunk_strategy: str | None = None
     rag_defaults: DatasetRAGDefaults | None = None
+    embedding_defaults: DatasetEmbeddingDefaults | None = None
     default_rag_config_template_id: UUID | None = None
     default_rag_config_template_key: str | None = None
     default_rag_config_ab_experiment_key: str | None = None
@@ -303,6 +329,7 @@ class DatasetOut(OrmModel):
     default_parser_backend: str | None = None
     default_chunk_strategy: str | None = None
     rag_defaults: DatasetRAGDefaults | None = None
+    embedding_defaults: DatasetEmbeddingDefaults | None = None
     default_rag_config_template_id: UUID | None = None
     default_rag_config_template_key: str | None = None
     default_rag_config_ab_experiment_key: str | None = None
@@ -342,6 +369,7 @@ class DatasetConfigBundle(BaseModel):
     default_parser_backend: str | None = None
     default_chunk_strategy: str | None = None
     rag_defaults: DatasetRAGDefaults | None = None
+    embedding_defaults: DatasetEmbeddingDefaults | None = None
     default_rag_config_template_id: UUID | None = None
     default_rag_config_template_key: str | None = None
     default_rag_config_ab_experiment_key: str | None = None

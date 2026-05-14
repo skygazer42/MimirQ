@@ -35,4 +35,22 @@ describe('KnowledgeRetrievalPanel module', () => {
     expectSourceNotToContain(src, 'Run audit to sync indices')
     expectSourceNotToContain(src, 'Waiting for Dataset Selection')
   })
+
+  it('wires the compact index detail trigger to an inline details panel', () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, 'knowledge-retrieval-panel.tsx'),
+      'utf8'
+    )
+
+    expectSourceToContain(src, 'const [detailsExpanded, setDetailsExpanded] = useState(false)')
+    expectSourceToContain(src, 'const hasIndexDetails = Boolean(indexAudit || hasAggregateOverview)')
+    expectSourceToContain(src, 'const indexDetailRows = useMemo(() => {')
+    expectSourceToContain(src, 'aria-controls="knowledge-index-detail-panel"')
+    expectSourceToContain(src, '运行审计查看详情')
+    expectSourceToContain(src, 'detailsExpanded')
+    expectSourceToContain(src, '收起索引详情')
+    expectSourceToContain(src, '查看索引详情')
+    expectSourceToContain(src, '索引明细')
+    expectSourceToContain(src, 'indexDetailRows.map(([label, value]) => (')
+  })
 })

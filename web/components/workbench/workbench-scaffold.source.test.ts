@@ -22,4 +22,11 @@ describe('WorkbenchScaffold', () => {
     expect(src).toContain('{header ? (')
     expect(src).toContain("<div className={cn('p-0', headerClassName)}>{header}</div>")
   })
+
+  it('allows pages to opt the main pane out of full-height stretching', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'workbench-scaffold.tsx'), 'utf8')
+
+    expect(src).toContain('mainPaneClassName?: string')
+    expect(src).toContain("className={cn('flex-1', mainPaneClassName)}")
+  })
 })

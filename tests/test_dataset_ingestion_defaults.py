@@ -121,3 +121,90 @@ def test_dataset_update_rejects_unknown_chunk_strategy(monkeypatch):  # noqa: AN
         )
     assert exc.value.status_code == 400
 
+
+def test_dataset_update_persists_embedding_defaults_as_dataset_metadata(monkeypatch):  # noqa: ANN001
+    from app.api.schemas.dataset import DatasetEmbeddingDefaults, DatasetUpdate
+    from app.api.v1.datasets import update_dataset
+    from app.services.dataset_service import DatasetService
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+
+    class _Dataset:
+        def __init__(self) -> None:
+            self.id = dataset_id
+            self.tenant_id = tenant_id
+            self.name = "Demo"
+            self.description = None
+            self.permission = "all_team_members"
+            self.owner_id = "test-account"
+            self.dataset_metadata = {}
+
+    ds = _Dataset()
+
+    monkeypatch.setattr(DatasetService, "get_dataset", lambda _db, _tid, _did: ds, raising=True)
+    monkeypatch.setattr(DatasetService, "assert_dataset_writable", lambda _db, _dataset, _account_id: None, raising=True)
+    monkeypatch.setattr(DatasetService, "update_dataset", lambda **_kwargs: ds, raising=True)
+
+    out = update_dataset(
+        dataset_id=dataset_id,
+        payload=DatasetUpdate(
+            embedding_defaults=DatasetEmbeddingDefaults(
+                provider=" openai_compatible ",
+                model=" bge-large-zh ",
+                api_base=" https://example.test/v1 ",
+            )
+        ),
+        tenant_id=tenant_id,
+        account_id="test-account",
+        db=_DummyDB(),
+    )
+
+    assert ds.dataset_metadata["embedding_defaults"] == {
+        "provider": "openai_compatible",
+        "model": "bge-large-zh",
+        "api_base": "https://example.test/v1",
+    }
+    assert out.embedding_defaults is not None
+    assert out.embedding_defaults.model == "bge-large-zh"
+
+
+def test_dataset_update_can_clear_embedding_defaults_without_reingest(monkeypatch):  # noqa: ANN001
+    from app.api.schemas.dataset import DatasetUpdate
+    from app.api.v1.datasets import update_dataset
+    from app.services.dataset_service import DatasetService
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+
+    class _Dataset:
+        def __init__(self) -> None:
+            self.id = dataset_id
+            self.tenant_id = tenant_id
+            self.name = "Demo"
+            self.description = None
+            self.permission = "all_team_members"
+            self.owner_id = "test-account"
+            self.dataset_metadata = {
+                "embedding_defaults": {
+                    "provider": "openai_compatible",
+                    "model": "bge-large-zh",
+                }
+            }
+
+    ds = _Dataset()
+
+    monkeypatch.setattr(DatasetService, "get_dataset", lambda _db, _tid, _did: ds, raising=True)
+    monkeypatch.setattr(DatasetService, "assert_dataset_writable", lambda _db, _dataset, _account_id: None, raising=True)
+    monkeypatch.setattr(DatasetService, "update_dataset", lambda **_kwargs: ds, raising=True)
+
+    out = update_dataset(
+        dataset_id=dataset_id,
+        payload=DatasetUpdate(embedding_defaults=None),
+        tenant_id=tenant_id,
+        account_id="test-account",
+        db=_DummyDB(),
+    )
+
+    assert "embedding_defaults" not in ds.dataset_metadata
+    assert out.embedding_defaults is None
