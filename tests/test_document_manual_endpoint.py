@@ -128,3 +128,93 @@ def test_manual_document_endpoint_still_creates_documents_after_router_split(mon
     assert body["chunk_count"] == 2
     assert body["metadata"]["pipeline_hash"] == "pipeline-hash-1"
     assert body["metadata"]["active_pipeline_ready"] is True
+
+
+def test_manual_document_endpoint_handles_minio_preview_refs_after_router_split(monkeypatch) -> None:
+    import app.api.v1.document_manual as manual_module
+    import app.api.v1.documents as documents_module
+    from app.api.schemas.document import DocumentDetail
+    from app.api.v1.documents import create_document_with_manual_chunks
+    from app.core.config import settings
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+
+    class _Dataset:
+        def __init__(self, dataset_id0: uuid.UUID) -> None:
+            self.id = dataset_id0
+            self.dataset_metadata = {}
+
+    monkeypatch.setattr(settings, "MINIO_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        documents_module,
+        "_resolve_writable_dataset",
+        lambda *_args, **_kwargs: _Dataset(dataset_id),
+        raising=True,
+    )
+    monkeypatch.setattr(documents_module, "_to_pipeline_options", lambda **_kwargs: None, raising=True)
+    monkeypatch.setattr(
+        documents_module,
+        "resolve_pipeline_effective",
+        lambda **_kwargs: SimpleNamespace(kg_enabled=False),
+        raising=True,
+    )
+    monkeypatch.setattr(documents_module, "build_indexing_options", lambda *_args, **_kwargs: {"bm25": True}, raising=True)
+    monkeypatch.setattr(documents_module, "upsert_pipeline_metadata", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module, "_compute_pipeline_hash", lambda *_args, **_kwargs: "pipeline-hash-1", raising=True)
+
+    captured_contents: list[str] = []
+
+    class _FakeIndexer:
+        def __init__(self, _db) -> None:  # noqa: ANN001
+            return None
+
+        def upsert(self, *, tenant_id, records, default_source, options, commit):  # noqa: ANN001
+            assert tenant_id == test_tenant_id
+            captured_contents.extend(record.content or "" for record in records)
+            return SimpleNamespace(
+                chunk_result=SimpleNamespace(
+                    chunk_ids=[uuid.uuid4()],
+                    db_chunks=[SimpleNamespace(id=uuid.uuid4())],
+                    total_characters=sum(len(record.content or "") for record in records),
+                )
+            )
+
+        def delete_chunk_indexes(self, **_kwargs) -> None:
+            return None
+
+    monkeypatch.setattr(manual_module, "Indexer", _FakeIndexer, raising=True)
+
+    test_tenant_id = tenant_id
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_tenant_id] = lambda: tenant_id
+    app.dependency_overrides[get_current_account_id] = lambda: "test-account"
+    app.post("/api/v1/documents/manual", status_code=201, response_model=DocumentDetail)(create_document_with_manual_chunks)
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/documents/manual",
+        json={
+            "dataset_id": str(dataset_id),
+            "filename": "Manual Doc",
+            "file_type": "md",
+            "file_size": 42,
+            "metadata": {"source": "manual"},
+            "chunks": [
+                {
+                    "content": "![image](/api/v1/documents/image/preview-123)",
+                    "page_number": 1,
+                    "start_char": 0,
+                    "end_char": 44,
+                    "metadata": {},
+                }
+            ],
+        },
+    )
+
+    assert res.status_code == 201, res.text
+    body = res.json()
+    assert body["status"] == "completed"
+    assert captured_contents == ["![image](/api/v1/documents/image/preview-123)"]
