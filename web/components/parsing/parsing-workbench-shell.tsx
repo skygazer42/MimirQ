@@ -749,6 +749,12 @@ export function ParsingWorkbenchShell({
 }: Readonly<ParsingWorkbenchShellProps>) {
   const t = useTranslations('ParsingWorkbench')
   const [desktopInspectorOpen, setDesktopInspectorOpen] = useState(true)
+
+  useEffect(() => {
+    if (activeFile?.status === 'pending' || activeFile?.status === 'error') {
+      setDesktopInspectorOpen(false)
+    }
+  }, [activeFile?.status])
   const bumpPdfPreviewResetToken = () =>
     setPdfPreviewResetToken((prev) => prev + 1)
   const pendingCount = visibleQueueFiles.filter(

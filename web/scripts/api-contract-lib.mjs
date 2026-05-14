@@ -123,6 +123,27 @@ function parseRouterIncludes(pyText) {
   return includes
 }
 
+function parseRouterOwnPrefix(pyText) {
+  const constants = parsePythonStringConstants(pyText)
+  const routerDeclRe = /router\s*=\s*APIRouter\(([\s\S]*?)\)/m
+  const match = routerDeclRe.exec(pyText)
+  if (!match) return ''
+
+  const args = match[1] || ''
+  const prefixMatch = args.match(/prefix\s*=\s*(?:\"([^\"]*)\"|'([^']*)')/)
+  if (prefixMatch) {
+    return prefixMatch[1] || prefixMatch[2] || ''
+  }
+
+  const constMatch = args.match(/prefix\s*=\s*([A-Za-z_][A-Za-z0-9_]*)/)
+  const constName = constMatch ? constMatch[1] : ''
+  if (constName && constants.has(constName)) {
+    return constants.get(constName) || ''
+  }
+
+  return ''
+}
+
 export function parseBackendRoutes() {
   const prefixes = parseBackendPrefixes()
   const routes = new Map() // key: METHOD PATH -> source
@@ -144,11 +165,13 @@ export function parseBackendRoutes() {
     const abs = path.join(ROOT, mod.rel)
     if (!fs.existsSync(abs)) continue
     const text = fs.readFileSync(abs, 'utf8')
+    const ownPrefix = parseRouterOwnPrefix(text)
+    const effectivePrefix = joinBackendPrefixes(mod.prefix, ownPrefix)
     let m
     while ((m = routeRe.exec(text))) {
       const method = String(m[1] || '').toUpperCase()
       const rawPath = m[2] ?? m[3] ?? ''
-      const prefix = mod.prefix || ''
+      const prefix = effectivePrefix || ''
 
       let full = ''
       if (!rawPath) {
@@ -169,7 +192,7 @@ export function parseBackendRoutes() {
     for (const child of parseRouterIncludes(text)) {
       backendModules.push({
         mod: child.mod,
-        prefix: joinBackendPrefixes(mod.prefix, child.prefix),
+        prefix: joinBackendPrefixes(effectivePrefix, child.prefix),
         rel: resolveBackendModuleRel(child.mod),
       })
     }
