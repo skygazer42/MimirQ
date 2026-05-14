@@ -199,6 +199,11 @@ export function toApiErrorInfo(err: unknown, fallbackMessage: string): ApiErrorI
 
   let message = extractBackendMessage(data) || (maybeError?.message && String(maybeError.message)) || fallbackMessage
   const requestId = extractAxiosRequestId(err)
+  const normalizedMessage = String(message || '').trim().toLowerCase()
+
+  if (!axiosResponse && (normalizedMessage === 'network error' || normalizedMessage === 'failed to fetch')) {
+    message = `${fallbackMessage}：无法连接后端 API，请确认后端服务已启动，或检查 NEXT_PUBLIC_API_URL / 反向代理配置`
+  }
 
   if (status === 429) {
     const meta = extractRateLimitDetail(data)

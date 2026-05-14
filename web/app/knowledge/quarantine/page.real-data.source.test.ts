@@ -10,7 +10,9 @@ describe('knowledge quarantine real-data mode', () => {
     expect(src).toMatch(/demoMode\s*=\s*[\s\S]*pathname[\s\S]*demo/)
     expect(src).toContain("searchParams.get('demo') === '1'")
     expect(src).toContain('enabled: !demoMode')
-    expect(src).toContain("() => (demoMode ? buildDemoQuarantineDocuments() : data?.items || [])")
+    expect(src).toMatch(
+      /const\s+documents\s*=\s*useMemo\([\s\S]*demoMode[\s\S]*buildDemoQuarantineDocuments\(\)[\s\S]*data\?\.items[\s\S]*failedData\?\.items[\s\S]*\[data,\s*demoMode,\s*failedData\]/
+    )
     expect(src).toContain("params.delete('demo')")
     expect(src).not.toContain("params.set('demo', '1')")
     expect(src).not.toContain('data?.items ?? buildDemoQuarantineDocuments')
