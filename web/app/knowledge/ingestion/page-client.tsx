@@ -56,6 +56,7 @@ import { useDatasets } from '@/hooks/use-datasets'
 import { usePathname, useRouter } from '@/i18n/navigation'
 import { Button } from '@/components/ui/button'
 import { EChart } from '@/components/ui/echart'
+import { PageTitleIcon } from '@/components/ui/page-title-icon'
 import {
   Select,
   SelectContent,
@@ -3807,11 +3808,7 @@ export default function KnowledgeIngestionPageClient() {
                       >
                         <div className="flex min-w-0 items-start gap-2">
                           <div className="flex size-8 shrink-0 items-center justify-center rounded-[14px] border border-info/18 bg-background/78 text-info shadow-[inset_0_1px_0_hsl(var(--background)),0_12px_24px_-22px_hsl(var(--info)/0.7)]">
-                            {mode === 'sales-audit' ? (
-                              <ShieldCheck className="size-3.5" />
-                            ) : (
-                              <Radar className="size-3.5" />
-                            )}
+                            <PageTitleIcon name="ingestion-monitor" className="size-6" />
                           </div>
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">

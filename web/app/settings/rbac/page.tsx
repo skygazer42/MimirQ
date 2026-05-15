@@ -278,6 +278,7 @@ function SettingsRbacPageContent() {
       <PageScaffold
         title="成员权限（RBAC）"
         description="基于角色的访问控制（RBAC）管理用户成员角色、控制和管理与系统的访问权限。"
+        iconImage="members-rbac"
         icon={ShieldCheck}
         iconColor="text-blue-600"
         size="full"

@@ -968,6 +968,7 @@ function EvaluationsPageContent() {
           <PageHeader
             title={activeTabMeta.title}
             description="选择评测指标及参数，在同一工作区完成参数配置、运行快捷与结果评估。"
+            iconImage="ragas-evaluation"
             icon={ActiveTabIcon}
             iconColor="text-info"
             badge="评测中心"

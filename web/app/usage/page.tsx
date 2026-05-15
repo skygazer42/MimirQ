@@ -292,6 +292,7 @@ function UsagePageContent() {
       <PageScaffold
         title="用量/配额"
         description="按数据集聚合的令牌、成本估算与接口配额占用（仅管理员）"
+        iconImage="usage-quota"
         icon={Coins}
         iconColor="text-blue-600"
         size="full"

@@ -574,6 +574,7 @@ export default function DatasetsPage() {
     <AppFrame>
       <PageScaffold
         title="数据集"
+        iconImage="dataset"
         icon={Layers}
         iconColor="text-primary"
         size="full"

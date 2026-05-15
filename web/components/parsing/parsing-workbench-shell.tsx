@@ -35,6 +35,7 @@ import { ParsingMobileInspectorContent } from '@/components/parsing/parsing-mobi
 import { ParsingMobileQueueContent } from '@/components/parsing/parsing-mobile-queue-content'
 import { ParsingSidebarPane } from '@/components/parsing/parsing-sidebar-pane'
 import { Button } from '@/components/ui/button'
+import { PageTitleIcon } from '@/components/ui/page-title-icon'
 import {
   PipelineRail,
   WorkbenchPanelDialog,
@@ -900,7 +901,7 @@ export function ParsingWorkbenchShell({
                 className="relative flex size-11 shrink-0 items-center justify-center rounded-[18px] border border-info/18 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.10))] text-info shadow-[inset_0_1px_0_hsl(var(--background)),0_14px_30px_-24px_hsl(var(--info)/0.75)]"
                 aria-hidden="true"
               >
-                <FileText className="size-5" />
+                <PageTitleIcon name="parsing" className="size-8" />
               </span>
               <div className="relative min-w-0">
                 <div className="flex min-w-0 items-center gap-2">

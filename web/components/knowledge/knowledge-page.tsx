@@ -54,6 +54,7 @@ import { KnowledgeWorkbenchActions } from '@/components/knowledge/knowledge-work
 import { RetrievePreviewPanel } from '@/components/rag/retrieve-preview-panel'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
+import { PageTitleIcon } from '@/components/ui/page-title-icon'
 import { WorkbenchPanelDialog, WorkbenchScaffold } from '@/components/workbench'
 
 import { useConnectorRuns } from '@/hooks/use-connector-runs'
@@ -639,7 +640,7 @@ export default function KnowledgePage() {
                 className="absolute inset-x-2 top-1 h-px bg-white/70"
                 aria-hidden="true"
               />
-              <Database className="size-4" />
+              <PageTitleIcon name="knowledge-management" className="size-8" />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">

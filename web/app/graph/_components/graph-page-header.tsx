@@ -5,6 +5,7 @@ import type { ChangeEventHandler, RefObject } from 'react'
 import { BarChart3, FileCode, FileText, Filter, Network, RefreshCw, Share2, Upload, Link as LinkIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { PageTitleIcon } from '@/components/ui/page-title-icon'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
@@ -148,7 +149,7 @@ export function GraphPageHeader({
       <div className="flex items-center gap-3 pointer-events-auto">
         <div className="flex items-center gap-3">
           <div className="flex size-9 shrink-0 items-center justify-center rounded-[15px] border border-info/18 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.10))] text-info shadow-[inset_0_1px_0_hsl(var(--background)),0_14px_30px_-24px_hsl(var(--info)/0.75)]">
-            <Network className="size-[18px]" aria-hidden="true" />
+            <PageTitleIcon name="knowledge-graph" className="size-7" />
           </div>
           <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-foreground">
             <span className="bg-[linear-gradient(90deg,hsl(var(--foreground)),hsl(var(--info))_92%)] bg-clip-text text-transparent">

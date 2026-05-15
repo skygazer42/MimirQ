@@ -288,6 +288,7 @@ function SettingsGroupsPageContent() {
       <PageScaffold
         title="组管理"
         description="管理和组织目录，用于数据库/文档访问控制与企业身份同步（开放ID连接 OIDC / 跨域身份管理 SCIM）。"
+        iconImage="group-management"
         icon={Users}
         iconColor="text-indigo-600 dark:text-indigo-400"
         size="full"

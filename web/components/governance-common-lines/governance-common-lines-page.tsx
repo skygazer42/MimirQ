@@ -428,6 +428,7 @@ export function GovernanceCommonLinesPage() {
     <PageScaffold
       title="样板行发现"
       badge="规则生成"
+      iconImage="profile-discovery"
       icon={Hash}
       iconColor="text-success"
       description="跨文档识别页眉、页脚、导航和免责声明等重复样板行，可一键写入自定义治理配置。"

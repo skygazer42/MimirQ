@@ -35,6 +35,7 @@ import { SearchInput } from '@/components/ui/search-input'
 import { EmptyState } from '@/components/ui/empty-state'
 import { PageLoading } from '@/components/ui/page-loading'
 import { PageScaffold } from '@/components/ui/page-scaffold'
+import { PageTitleIcon } from '@/components/ui/page-title-icon'
 import { Link, useRouter } from '@/i18n/navigation'
 import { chatApi } from '@/lib/api'
 import { queryKeys } from '@/lib/query-keys'
@@ -390,8 +391,8 @@ function HistoryPageContent({
               <div className="sticky top-0 z-20 border-b border-border/50 px-2 pt-2 pb-1.5 space-y-1 min-w-[19.5rem] backdrop-blur-md bg-background/80">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/10">
-                      <History className="size-4" />
+                    <div className="flex size-9 shrink-0 items-center justify-center rounded-2xl border border-sky-200/70 bg-[radial-gradient(circle_at_34%_24%,rgba(255,255,255,0.98),rgba(226,243,255,0.86)_48%,rgba(219,234,254,0.66)_100%)] text-primary shadow-[0_8px_18px_rgba(37,99,235,0.12)] ring-1 ring-white/80">
+                      <PageTitleIcon name="qa-history" className="size-7" />
                     </div>
                     <h2 className="text-sm font-medium text-foreground  uppercase">历史记录</h2>
                   </div>

@@ -5,6 +5,7 @@ import { PageBody } from "@/components/ui/page-body"
 import { PageContainer } from "@/components/ui/page-container"
 import { PageHeader } from "@/components/ui/page-header"
 import { PageHeaderBar } from "@/components/ui/page-header-bar"
+import type { PageTitleIconName } from "@/components/ui/page-title-icon"
 import { PageToolbar } from "@/components/ui/page-toolbar"
 import { cn } from "@/lib/utils"
 
@@ -12,6 +13,7 @@ type PageScaffoldProps = {
   title: string
   description?: React.ReactNode
   icon?: LucideIcon
+  iconImage?: PageTitleIconName
   iconColor?: string
   badge?: string
   actions?: React.ReactNode
@@ -35,6 +37,7 @@ export function PageScaffold({
   title,
   description,
   icon,
+  iconImage,
   iconColor,
   badge,
   actions,
@@ -73,6 +76,7 @@ export function PageScaffold({
               title={title}
               description={description}
               icon={icon}
+              iconImage={iconImage}
               iconColor={iconColor}
               badge={badge}
               compact={compact}

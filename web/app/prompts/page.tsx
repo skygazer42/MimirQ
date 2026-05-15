@@ -371,6 +371,7 @@ export default function PromptsPage() {
           <PageHeader
             title="提示词模板"
             description="维护对话与 KG 系统使用的模板资产；模板为系统提供稳定输出，避免干扰模板的实时编辑。"
+            iconImage="prompts"
             icon={Wand2}
             iconColor="text-info"
             badge="模板管理"

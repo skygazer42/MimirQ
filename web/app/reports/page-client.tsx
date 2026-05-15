@@ -939,6 +939,7 @@ export default function ReportsCenterPage() {
             <PageHeader
               title="数据报告导出与审计概览"
               description="一键导出数据报告与审计结果，所有指标均来自后端报告接口与数据集接口。"
+              iconImage="report-export"
               icon={FileText}
               iconColor="text-info"
               badge="报告"

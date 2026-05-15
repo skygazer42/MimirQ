@@ -2621,6 +2621,7 @@ export function KGSnapshotsPage() {
             <PageHeader
               title="KG Snapshots"
               description="对比流水线哈希生成的轻量 KG 快照，并在 Audit 面板快速判断波动强度。"
+              iconImage="kg-snapshot"
               icon={GitCompare}
               iconColor="text-info"
               badge="Graph"

@@ -235,6 +235,7 @@ export function GovernanceProfilesPage() {
       />
       <PageScaffold
         title="治理配置"
+        iconImage="governance-config"
         description={
           <span className="flex items-center gap-2 text-[13px] text-muted-foreground/85">
             <span className="size-1.5 rounded-full bg-info/40" aria-hidden />

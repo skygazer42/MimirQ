@@ -970,6 +970,7 @@ export default function FeedbackTriagePage() {
     <AppFrame>
       <PageScaffold
         title="反馈分析中心"
+        iconImage="feedback-quality"
         icon={MessageSquare}
         iconColor="text-indigo dark:text-indigo"
         size="full"

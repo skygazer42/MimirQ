@@ -286,6 +286,7 @@ function AccessReviewPageContent() {
       <PageScaffold
         title={t('title')}
         description={t('description')}
+        iconImage="access-review"
         icon={ShieldCheck}
         iconColor="text-blue-600"
         size="full"
