@@ -24,6 +24,19 @@ export interface UrlBatchConnectorConfig {
   access?: DocumentAccessUpdateRequest | null
 }
 
+export interface MinioBucketConnectorConfig {
+  [key: string]: unknown
+  bucket?: string | null
+  prefix?: string | null
+  include_extensions?: string[]
+  max_objects?: number
+  presign_expiry_sec?: number
+  parser_backend?: string
+  chunk_strategy?: string
+  pipeline?: DocumentPipelineOptions
+  access?: DocumentAccessUpdateRequest | null
+}
+
 export interface WebCrawlAuthConfig {
   type: 'none' | 'cookie' | 'bearer' | 'basic'
   cookie?: string | null
@@ -128,6 +141,11 @@ export type ConnectorRunCreateRequest =
       connector_id: 'web_crawl'
       dataset_id?: string | null
       config: WebCrawlConnectorConfig
+    }
+  | {
+      connector_id: 'minio_bucket'
+      dataset_id?: string | null
+      config: MinioBucketConnectorConfig
     }
   | {
       connector_id: 'jira_project'

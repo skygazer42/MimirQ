@@ -1,20 +1,31 @@
 'use client'
 
 import dynamic from 'next/dynamic'
+import { useSearchParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 
 import { AppFrame } from '@/components/app-frame'
 import { PageLoading } from '@/components/ui/page-loading'
 
-const KnowledgeIngestionPageClient = dynamic(() => import('./page-client'), {
+const OperationPageClient = dynamic(() => import('./operation-page-client'), {
+  ssr: false,
+  loading: () => <KnowledgeIngestionLoading />,
+})
+
+const ExecutionMonitorPageClient = dynamic(() => import('./page-client'), {
   ssr: false,
   loading: () => <KnowledgeIngestionLoading />,
 })
 
 export default function KnowledgeIngestionPage() {
+  const searchParams = useSearchParams()
+  const activeView = searchParams.get('mode') === 'execution-monitor' ? 'execution-monitor' : 'operation'
+
   return (
     <AppFrame>
-      <KnowledgeIngestionPageClient />
+      <div className="min-h-full bg-[#f6f9ff]">
+        {activeView === 'execution-monitor' ? <ExecutionMonitorPageClient /> : <OperationPageClient />}
+      </div>
     </AppFrame>
   )
 }
@@ -33,6 +44,6 @@ function KnowledgeIngestionLoading() {
 
 /*
 Source markers retained for route-level source tests:
-<span className="text-muted-foreground/60">|</span>
-<span>{t('descriptionMarker')}</span>
+OperationPageClient
+ExecutionMonitorPageClient
 */

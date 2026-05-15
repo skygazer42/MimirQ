@@ -117,9 +117,9 @@ CommandMenu: {
           keywords: ['analyze', '分析', '当前视图', '总结', '诊断'],
         },
         report: {
-          label: '下载审计报告',
-          description: '在入库盘点页中快速打开当前审计报告的 PDF 打印视图。',
-          keywords: ['report', 'pdf report', 'audit report', '下载报告', '审计报告', 'PDF', '盘点报告'],
+          label: '下载入库预检报告',
+          description: '在入库预检中快速打开当前样本评估报告的 PDF 打印视图。',
+          keywords: ['report', 'pdf report', 'ingestion report', '下载报告', '入库报告', 'PDF', '预检报告'],
         },
         stats: {
           label: '查看统计与诊断',
@@ -128,17 +128,17 @@ CommandMenu: {
         },
         retryFailed: {
           label: '重试失败任务',
-          description: '在入库监控页中批量重试当前失败/取消任务。',
-          keywords: ['retry failed', 'retry', 'ingestion', 'failed', '重试', '失败任务', '入库监控'],
+          description: '在执行监控中批量重试当前失败/取消任务。',
+          keywords: ['retry failed', 'retry', 'ingestion', 'failed', '重试', '失败任务', '执行监控'],
         },
         pauseActive: {
           label: '暂停活动任务',
-          description: '在入库监控页中批量取消当前运行中的任务。',
+          description: '在执行监控中批量取消当前运行中的任务。',
           keywords: ['pause active', 'cancel active', 'ingestion', '暂停', '取消运行任务', '活动任务'],
         },
         demo: {
           label: '切换虚拟数据',
-          description: '在入库监控页里切换控制室 demo 数据，用于演示交互与可视化。',
+          description: '在入库预检里切换控制室 demo 数据，用于演示交互与可视化。',
           keywords: ['demo', 'mock data', 'virtual data', 'ingestion', '虚拟数据', '演示', '模拟数据'],
         },
         precheck: {

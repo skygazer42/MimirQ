@@ -32,16 +32,17 @@ describe('navigation page title coverage', () => {
 
     expect(src).toContain('bg-[linear-gradient(135deg,hsl(var(--card)/0.98),hsl(var(--muted)/0.34))]')
     expect(src).toContain('bg-[linear-gradient(90deg,hsl(var(--foreground)),hsl(var(--info))_92%)] bg-clip-text text-transparent')
-    expect(src).toContain('<Network className="size-[18px]"')
+    expect(src).toContain('<PageTitleIcon name="knowledge-graph" className="size-7" />')
   })
 
   it('styles custom dense workbench titles that cannot use the full shared header', () => {
     const knowledgeSrc = read('components/knowledge/knowledge-page.tsx')
-    const ingestionSrc = read('app/knowledge/ingestion/page-client.tsx')
+    const ingestionSrc = read('app/knowledge/ingestion/operation-page-client.tsx')
 
     expect(knowledgeSrc).toContain('bg-[linear-gradient(90deg,hsl(var(--foreground)),hsl(var(--info))_92%)] bg-clip-text text-transparent')
-    expect(ingestionSrc).toContain('bg-[linear-gradient(135deg,hsl(var(--background)/0.92),hsl(var(--muted)/0.36))]')
-    expect(ingestionSrc).toContain('售前报价证据台')
-    expect(ingestionSrc).toContain('执行监控工作台')
+    expect(ingestionSrc).toContain('入库中心')
+    expect(ingestionSrc).toContain('<PageHeader')
+    expect(ingestionSrc).toContain('iconImage="ingestion-operation"')
+    expect(ingestionSrc).toContain('开始入库')
   })
 })

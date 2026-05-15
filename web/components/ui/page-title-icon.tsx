@@ -14,6 +14,7 @@ export const PAGE_TITLE_ICON_NAMES = [
   "governance-config",
   "group-management",
   "ingestion-monitor",
+  "ingestion-operation",
   "kg-retrieval-evaluation",
   "kg-snapshot",
   "knowledge-base",

@@ -599,7 +599,7 @@ export function buildEvidenceSlotReason(file: DatasetPrecheckFileOut): string {
   }
 
   if (findings.has('near_dup') || findings.has('exact_dup')) {
-    return '存在版本冲突候选，建议纳入 POC 样本核对'
+    return '存在版本冲突候选，建议纳入抽样确认'
   }
 
   return `正文约 ${Number(file.text_characters || 0)} chars，可作为直通样本`

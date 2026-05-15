@@ -134,6 +134,7 @@ export const documentApi = {
       parser_backend?: string
       chunk_strategy?: string
       dataset_id?: string
+      precheck_only?: boolean
       pipeline?: DocumentPipelineOptions
       max_concurrent?: number
       user_metadata_map?: Record<string, Record<string, any>>
@@ -149,6 +150,9 @@ export const documentApi = {
     formData.append('chunk_strategy', options.chunk_strategy || 'langchain_recursive')
     if (options.dataset_id) {
       formData.append('dataset_id', options.dataset_id)
+    }
+    if (options.precheck_only) {
+      formData.append('precheck_only', 'true')
     }
     if (typeof options.max_concurrent === 'number') {
       formData.append('max_concurrent', String(options.max_concurrent))
