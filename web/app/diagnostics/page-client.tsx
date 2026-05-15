@@ -899,6 +899,7 @@ export default function DiagnosticsPage() {
           <PageHeader
             title="诊断中心"
             description="全面诊断系统健康状态、服务依赖与 RAG 质量，保障稳定可靠运行"
+            iconImage="diagnostics"
             icon={Activity}
             iconColor="text-info"
             compact

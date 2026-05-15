@@ -368,6 +368,7 @@ function SettingsPageContent() {
       <PageScaffold
         title="设置与配置"
         badge="系统配置"
+        iconImage="settings"
         description="统一管理功能开关、模型接入、检索增强生成参数（RAG）与运行时控制。"
         size="full"
         compact

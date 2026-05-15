@@ -1530,6 +1530,7 @@ export function RagvizSimilarityWorkbench() {
                   ? '基于当前相似度矩阵重建局部向量邻域，帮助识别高分但支撑不足的干扰项。'
                   : '使用当前主图矩阵和筛选器观察不同集合之间的相似度分布。'
               }
+              iconImage="rag-visualization"
               icon={Grid3X3}
               iconColor="text-info"
               badge="RAG"

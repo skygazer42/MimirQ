@@ -432,6 +432,7 @@ function AuditLogsPageContent() {
       <PageScaffold
         title={t('title')}
         description={t('description')}
+        iconImage="audit-log"
         icon={ShieldCheck}
         iconColor="text-blue-600"
         size="full"

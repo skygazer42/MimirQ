@@ -1,10 +1,12 @@
 import type { LucideIcon } from "lucide-react"
+import { PageTitleIcon, type PageTitleIconName } from "@/components/ui/page-title-icon"
 import { cn } from "@/lib/utils"
 
 interface PageHeaderProps {
   title: React.ReactNode
   description?: React.ReactNode
   icon?: LucideIcon
+  iconImage?: PageTitleIconName
   iconColor?: string
   children?: React.ReactNode
   className?: string
@@ -16,6 +18,7 @@ export function PageHeader({
   title,
   description,
   icon: Icon,
+  iconImage,
   iconColor = "text-primary",
   children,
   className,
@@ -41,12 +44,16 @@ export function PageHeader({
           aria-hidden="true"
         />
         <div className={cn("relative flex items-center min-w-0", compact ? "gap-3" : "gap-4")}>
-          {Icon ? (
+          {iconImage || Icon ? (
             <div className={cn(
               "shrink-0 flex items-center justify-center border border-info/18 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.10))] shadow-[inset_0_1px_0_hsl(var(--background)),0_14px_30px_-24px_hsl(var(--info)/0.75)]",
               compact ? "size-11 rounded-[18px]" : "size-14 rounded-[22px]"
             )}>
-              <Icon className={cn(compact ? "size-[18px]" : "size-6", iconColor)} />
+              {iconImage ? (
+                <PageTitleIcon name={iconImage} compact={compact} />
+              ) : Icon ? (
+                <Icon className={cn(compact ? "size-[18px]" : "size-6", iconColor)} />
+              ) : null}
             </div>
           ) : null}
 

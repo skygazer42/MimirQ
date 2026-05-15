@@ -1780,6 +1780,7 @@ export default function QuarantineQueuePage() {
             <PageHeader
               title="隔离审核中心"
               description="聚合命中规则，抽样预览原文，一键调参回放。这里集中处理被隔离的异常样本，帮助你快速完成复核和回放。"
+              iconImage="quarantine-queue"
               icon={ShieldCheck}
               iconColor="text-info"
               compact

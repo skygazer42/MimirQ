@@ -5,12 +5,14 @@ import { cn } from '@/lib/utils'
 import { PageContainer } from '@/components/ui/page-container'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageHeaderBar } from '@/components/ui/page-header-bar'
+import type { PageTitleIconName } from '@/components/ui/page-title-icon'
 import { WorkbenchPane } from './workbench-pane'
 
 type WorkbenchScaffoldProps = {
   title: React.ReactNode
   description?: React.ReactNode
   icon?: LucideIcon
+  iconImage?: PageTitleIconName
   iconColor?: string
   badge?: string
   actions?: React.ReactNode
@@ -41,6 +43,7 @@ export function WorkbenchScaffold({
   title,
   description,
   icon,
+  iconImage,
   iconColor,
   badge,
   actions,
@@ -84,6 +87,7 @@ export function WorkbenchScaffold({
               title={title}
               description={description}
               icon={icon}
+              iconImage={iconImage}
               iconColor={iconColor}
               badge={badge}
               compact={compactHeader}

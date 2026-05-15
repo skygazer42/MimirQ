@@ -1247,6 +1247,7 @@ export function DataGovernancePanel() {
       <WorkbenchScaffold
         title={headerTitle}
         badge={t('header.emptyBadge')}
+        iconImage="data-governance"
         icon={ShieldCheck}
         iconColor="text-success"
         compactHeader
@@ -1479,6 +1480,7 @@ export function DataGovernancePanel() {
     <WorkbenchScaffold
       title={headerTitle}
       badge={t('header.mainBadge')}
+      iconImage="data-governance"
       icon={ShieldCheck}
       iconColor="text-info"
       compactHeader

@@ -11,6 +11,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useChat } from '@/hooks/use-chat'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { PageTitleIcon } from '@/components/ui/page-title-icon'
 import { cn } from '@/lib/utils'
 import { datasetApi, documentApi, promptTemplateApi, settingsApi } from '@/lib/api'
 import { ChatMessageItem } from '@/components/chat/message-item'
@@ -1170,7 +1171,7 @@ function WelcomeScreen({
       {/* Centered Brand Area */}
       <div className="flex flex-col items-center text-center space-y-6 animate-fade-in-up">
         <div className="flex size-16 items-center justify-center rounded-2xl bg-foreground text-background shadow-strong">
-          <span className="text-3xl font-bold">M</span>
+          <PageTitleIcon name="chat" className="size-12" />
         </div>
         <div className="space-y-3">
           <h2 className="text-4xl md:text-5xl font-bold leading-tight text-foreground">

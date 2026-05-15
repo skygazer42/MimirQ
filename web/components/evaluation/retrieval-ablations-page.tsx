@@ -1029,6 +1029,7 @@ export function RetrievalAblationsPage() {
           <PageHeader
             title="检索消融实验"
             description="围绕同一数据集调召回参数、查看排行榜，并对 baseline 与 candidate 做结构化 diff。"
+            iconImage="retrieval-ablation"
             icon={BarChart3}
             iconColor="text-info"
             badge="Ablation"

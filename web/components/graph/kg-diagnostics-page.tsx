@@ -1308,6 +1308,7 @@ export function KGDiagnosticsPage() {
             <PageHeader
               title={t('page.title')}
               description={t('page.description')}
+              iconImage="kg-retrieval-evaluation"
               icon={ClipboardList}
               iconColor="text-info"
               badge="KG"

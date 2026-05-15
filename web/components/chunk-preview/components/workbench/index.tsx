@@ -124,6 +124,7 @@ function ChunkPreviewWorkbenchHeader() {
       <PageHeader
         title={t('workbench.title')}
         description={t('workbench.description')}
+        iconImage="chunk-preview"
         icon={Layers}
         iconColor="text-primary"
         badge={String(t('workbench.header.eyebrow'))}
@@ -199,6 +200,7 @@ export function Workbench() {
       <WorkbenchScaffold
         title={t('workbench.title')}
         description={t('workbench.description')}
+        iconImage="chunk-preview"
         icon={Layers}
         iconColor="text-primary"
         header={<ChunkPreviewWorkbenchHeader />}
