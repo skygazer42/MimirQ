@@ -4,6 +4,7 @@ import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -31,6 +32,8 @@ class _DummyDB:
             obj.chunk_count = 0
         if getattr(obj, "total_characters", None) is None:
             obj.total_characters = 0
+        if getattr(obj, "processing_attempts", None) is None:
+            obj.processing_attempts = 0
         if getattr(obj, "created_at", None) is None:
             obj.created_at = now
         if getattr(obj, "updated_at", None) is None:
@@ -42,7 +45,8 @@ def _override_get_db():  # noqa: ANN202
     yield _DummyDB()
 
 
-def test_manual_document_endpoint_still_creates_documents_after_router_split(monkeypatch) -> None:
+@pytest.mark.parametrize("minio_enabled", [False, True])
+def test_manual_document_endpoint_still_creates_documents_after_router_split(monkeypatch, minio_enabled: bool) -> None:
     import app.api.v1.document_manual as manual_module
     import app.api.v1.documents as documents_module
     from app.api.schemas.document import DocumentDetail
@@ -57,7 +61,7 @@ def test_manual_document_endpoint_still_creates_documents_after_router_split(mon
             self.id = dataset_id0
             self.dataset_metadata = {}
 
-    monkeypatch.setattr(settings, "MINIO_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "MINIO_ENABLED", minio_enabled, raising=False)
     monkeypatch.setattr(
         documents_module,
         "_resolve_writable_dataset",

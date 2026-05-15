@@ -88,10 +88,10 @@ def test_record_ingest_dead_letter_stamps_document_and_reuses_open_letter() -> N
     assert doc.failed_stage == "embedding"
     assert doc.error_code == "timeout"
     assert doc.processing_attempts == 2
-    assert getattr(first, "status") == "open"
-    assert getattr(first, "error_code") == "timeout"
-    assert getattr(first, "retry_count") == 1
-    assert getattr(first, "original_payload")["job_id"] == "doc-job"
+    assert first.status == "open"
+    assert first.error_code == "timeout"
+    assert first.retry_count == 1
+    assert first.original_payload["job_id"] == "doc-job"
 
 
 def test_documents_router_exposes_dead_letter_routes_before_document_detail_route() -> None:

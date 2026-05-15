@@ -171,4 +171,50 @@ describe('useDocuments behavior', () => {
     hook.unmount()
     queryClient.clear()
   })
+
+  it('reacts when caller-provided list params change after mount', async () => {
+    documentApiMocks.list.mockImplementation(async (params) => ({
+      items:
+        params?.dataset_id === 'dataset-2'
+          ? [makeDocument({ id: 'doc-dataset-2', dataset_id: 'dataset-2' })]
+          : [makeDocument({ id: 'doc-dataset-1', dataset_id: 'dataset-1' })],
+      total: 1,
+    }))
+
+    let currentDatasetId = 'dataset-1'
+    const { queryClient, wrapper } = createWrapper()
+    const hook = renderHook(
+      () =>
+        useDocuments({
+          dataset_id: currentDatasetId,
+          lifecycle: 'active',
+          limit: 100,
+        }),
+      { wrapper }
+    )
+
+    await waitForAssertion(() => {
+      expect(documentApiMocks.list).toHaveBeenCalledWith({
+        dataset_id: 'dataset-1',
+        lifecycle: 'active',
+        limit: 100,
+      })
+      expect(hook.result.current.documents[0]?.dataset_id).toBe('dataset-1')
+    })
+
+    currentDatasetId = 'dataset-2'
+    hook.rerender()
+
+    await waitForAssertion(() => {
+      expect(documentApiMocks.list).toHaveBeenCalledWith({
+        dataset_id: 'dataset-2',
+        lifecycle: 'active',
+        limit: 100,
+      })
+      expect(hook.result.current.documents[0]?.dataset_id).toBe('dataset-2')
+    })
+
+    hook.unmount()
+    queryClient.clear()
+  })
 })

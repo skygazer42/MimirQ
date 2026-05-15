@@ -123,24 +123,21 @@ function parseRouterIncludes(pyText) {
   return includes
 }
 
-function parseRouterOwnPrefix(pyText) {
+function parseRouterSelfPrefix(pyText) {
   const constants = parsePythonStringConstants(pyText)
-  const routerDeclRe = /router\s*=\s*APIRouter\(([\s\S]*?)\)/m
-  const match = routerDeclRe.exec(pyText)
-  if (!match) return ''
+  const re = /router\s*=\s*APIRouter\(([\s\S]*?)\)/m
+  const match = re.exec(pyText)
+  const args = match ? match[1] || '' : ''
+  if (!args) return ''
 
-  const args = match[1] || ''
   const prefixMatch = args.match(/prefix\s*=\s*(?:\"([^\"]*)\"|'([^']*)')/)
-  if (prefixMatch) {
-    return prefixMatch[1] || prefixMatch[2] || ''
-  }
+  if (prefixMatch) return prefixMatch[1] || prefixMatch[2] || ''
 
   const constMatch = args.match(/prefix\s*=\s*([A-Za-z_][A-Za-z0-9_]*)/)
   const constName = constMatch ? constMatch[1] : ''
   if (constName && constants.has(constName)) {
     return constants.get(constName) || ''
   }
-
   return ''
 }
 
@@ -165,8 +162,7 @@ export function parseBackendRoutes() {
     const abs = path.join(ROOT, mod.rel)
     if (!fs.existsSync(abs)) continue
     const text = fs.readFileSync(abs, 'utf8')
-    const ownPrefix = parseRouterOwnPrefix(text)
-    const effectivePrefix = joinBackendPrefixes(mod.prefix, ownPrefix)
+    const effectivePrefix = joinBackendPrefixes(mod.prefix, parseRouterSelfPrefix(text))
     let m
     while ((m = routeRe.exec(text))) {
       const method = String(m[1] || '').toUpperCase()

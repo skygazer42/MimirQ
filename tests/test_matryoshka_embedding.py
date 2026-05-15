@@ -27,3 +27,34 @@ def test_apply_matryoshka_to_embeddings_handles_batches() -> None:
     )
 
     assert out == [[0.1, 0.2], [0.4, 0.5]]
+
+
+def test_shortlist_then_rescore_uses_low_dim_recall_and_full_dim_ordering() -> None:
+    from app.rag.embedding.matryoshka import shortlist_then_rescore
+
+    rows = shortlist_then_rescore(
+        query_short_embedding=[1.0, 0.0],
+        query_full_embedding=[0.0, 1.0, 0.0],
+        corpus_short_embeddings={
+            "doc-a": [1.0, 0.0],
+            "doc-b": [0.9, 0.1],
+            "doc-c": [0.0, 1.0],
+        },
+        corpus_full_embeddings={
+            "doc-a": [0.2, 0.7, 0.0],
+            "doc-b": [0.0, 1.0, 0.0],
+            "doc-c": [1.0, 0.0, 0.0],
+        },
+        shortlist_k=2,
+        top_k=1,
+    )
+
+    assert rows == [
+        {
+            "document_id": "doc-b",
+            "shortlist_rank": 2,
+            "shortlist_score": rows[0]["shortlist_score"],
+            "rescore_score": 1.0,
+        }
+    ]
+    assert rows[0]["shortlist_score"] > 0.9

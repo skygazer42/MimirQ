@@ -10,6 +10,7 @@ describe('KnowledgePage desktop scope collapse', () => {
     expect(src).toContain("const [desktopScopeCollapsed, setDesktopScopeCollapsed] = useState(false)")
     expect(src).toContain("label={desktopScopeCollapsed ? t('actions.showScope') : t('actions.hideScope')}")
     expect(src).toContain('!desktopScopeCollapsed ? (')
+    expect(src).toContain('settingsSidebarCollapsed={desktopScopeCollapsed}')
     expect(src).toContain("title={t('dialogs.scope.title')}")
   })
 })

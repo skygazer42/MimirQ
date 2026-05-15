@@ -4,11 +4,10 @@
  * KnowledgeSettingsPanel & KnowledgeConnectorRunsPanel
  * 优化版：任务中心极致高密度、UI Pro Max 视觉增强
  */
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Activity,
-  CheckCircle2,
   ChevronDown,
   ChevronRight,
   Database,
@@ -23,7 +22,6 @@ import {
   Terminal,
   Trash2,
   X,
-  Shield,
   TriangleAlert,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
@@ -83,7 +81,13 @@ type TranslateFn = (key: string, values?: Record<string, any>) => string
 
 type KnowledgeSettingsPanelProps = {
   selectedDatasetId?: string
+  selectedDataset?: Dataset | null
+  datasets?: Dataset[]
+  datasetsLoading?: boolean
+  datasetAllValue?: string
+  onDatasetScopeChange?: (value: string) => void
   onGoToRetrievalTest?: () => void
+  settingsSidebarCollapsed?: boolean
 }
 
 type KnowledgeConnectorRunsPanelProps = {
@@ -136,6 +140,7 @@ const EMBEDDING_MODEL_OPTIONS = [
   'text-embedding-3-small',
   'bge-large-zh',
 ] as const
+const SETTINGS_GUIDE_PANEL_ID = 'knowledge-settings-guide'
 const EMBEDDING_MODEL_META: Record<
   (typeof EMBEDDING_MODEL_OPTIONS)[number],
   { description: string; chips: string[] }
@@ -154,12 +159,49 @@ const EMBEDDING_MODEL_META: Record<
   },
 }
 
+function cloneSettingsConfig(
+  config: KnowledgeSettingsConfig
+): KnowledgeSettingsConfig {
+  return JSON.parse(JSON.stringify(config)) as KnowledgeSettingsConfig
+}
+
+function buildScopedSettingsConfig(
+  settings: SystemSettings,
+  selectedDataset?: Dataset | null
+): KnowledgeSettingsConfig {
+  const datasetEmbedding = selectedDataset?.embedding_defaults
+  return {
+    embedding: {
+      ...settings.embedding,
+      provider: datasetEmbedding?.provider || settings.embedding.provider,
+      model: datasetEmbedding?.model || settings.embedding.model,
+      api_base: datasetEmbedding?.api_base ?? settings.embedding.api_base,
+    },
+    rag: settings.rag,
+  }
+}
+
+function buildDatasetEmbeddingDefaults(config: KnowledgeSettingsConfig) {
+  return {
+    provider: config.embedding.provider,
+    model: config.embedding.model,
+    api_base: config.embedding.api_base || null,
+  }
+}
+
 // --- KnowledgeSettingsPanel 实现 ---
 export function KnowledgeSettingsPanel({
   selectedDatasetId,
+  selectedDataset,
+  datasets = [],
+  datasetsLoading = false,
+  datasetAllValue = '__all__',
+  onDatasetScopeChange,
   onGoToRetrievalTest,
+  settingsSidebarCollapsed = false,
 }: Readonly<KnowledgeSettingsPanelProps>) {
   const t = useTranslations('KnowledgeSettingsPanel')
+  const queryClient = useQueryClient()
   // t("connectorRuns.empty.description")
   // t("connectorRuns.zeroState.description")
   // t("dangerZone.trigger")
@@ -177,10 +219,9 @@ export function KnowledgeSettingsPanel({
   const [isSavingSettings, setIsSavingSettings] = useState(false)
   const [confirmEmbeddingSaveOpen, setConfirmEmbeddingSaveOpen] =
     useState(false)
-  const [activeSection, setActiveSection] = useState<
-    'embedding' | 'retrieval' | 'reranker' | 'hybrid' | 'advanced'
-  >('embedding')
   const [retrievalModeView, setRetrievalModeView] = useState('vector')
+  const [guideExpanded, setGuideExpanded] = useState(false)
+  const [currentConfigOpen, setCurrentConfigOpen] = useState(true)
 
   const settingsQuery = useQuery({
     queryKey: queryKeys.settings.snapshot,
@@ -192,11 +233,17 @@ export function KnowledgeSettingsPanel({
 
   useEffect(() => {
     if (!settingsQuery.data) return
-    const settings = settingsQuery.data
-    const cfg = { embedding: settings.embedding, rag: settings.rag }
+    const cfg = buildScopedSettingsConfig(settingsQuery.data, selectedDataset)
     setSavedConfig(cfg)
-    setDraftConfig(JSON.parse(JSON.stringify(cfg)))
-  }, [settingsQuery.data])
+    setDraftConfig(cloneSettingsConfig(cfg))
+  }, [
+    settingsQuery.data,
+    selectedDataset,
+    selectedDataset?.embedding_defaults?.api_base,
+    selectedDataset?.embedding_defaults?.model,
+    selectedDataset?.embedding_defaults?.provider,
+    selectedDatasetId,
+  ])
 
   useEffect(() => {
     if (!settingsQuery.error) return
@@ -208,7 +255,7 @@ export function KnowledgeSettingsPanel({
     [savedConfig, draftConfig]
   )
   const handleResetDraft = useCallback(() => {
-    setDraftConfig(savedConfig ? JSON.parse(JSON.stringify(savedConfig)) : null)
+    setDraftConfig(savedConfig ? cloneSettingsConfig(savedConfig) : null)
     setConfirmEmbeddingSaveOpen(false)
   }, [savedConfig])
 
@@ -216,9 +263,20 @@ export function KnowledgeSettingsPanel({
     if (!draftConfig || isSavingSettings) return
     setIsSavingSettings(true)
     try {
-      await settingsApi.update(draftConfig)
-      setSavedConfig(JSON.parse(JSON.stringify(draftConfig)))
-      toast.success(t('toasts.saveSuccess'))
+      if (selectedDatasetId) {
+        await datasetApi.update(selectedDatasetId, {
+          embedding_defaults: buildDatasetEmbeddingDefaults(draftConfig),
+        })
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.datasets.all,
+        })
+        setSavedConfig(cloneSettingsConfig(draftConfig))
+        toast.success('已保存到当前数据集，既有数据集不会被全局改动影响')
+      } else {
+        await settingsApi.update(draftConfig)
+        setSavedConfig(cloneSettingsConfig(draftConfig))
+        toast.success(t('toasts.saveSuccess'))
+      }
     } catch (err) {
       toast.error(formatApiError(err, t('toasts.saveFailed')))
     } finally {
@@ -257,17 +315,29 @@ export function KnowledgeSettingsPanel({
   if (settingsLoading && !draftConfig)
     return (
       <div className="p-8 space-y-4 animate-pulse">
-        <div className="h-20 bg-muted/20 rounded-2xl" />
-        <div className="h-40 bg-muted/20 rounded-2xl" />
+        <div className="h-20 rounded-2xl bg-sky-50/55" />
+        <div className="h-40 rounded-2xl bg-sky-50/45" />
       </div>
     )
 
-  const selectedEmbeddingModel =
-    draftConfig?.embedding.model ?? EMBEDDING_MODEL_OPTIONS[0]
-  const selectedEmbeddingMeta =
-    EMBEDDING_MODEL_META[
-      selectedEmbeddingModel as keyof typeof EMBEDDING_MODEL_META
-    ]
+  const isDatasetScoped = Boolean(selectedDatasetId)
+  const selectedScopeValue = selectedDatasetId || datasetAllValue
+  const scopeDatasetId = selectedDatasetId || 'global-default'
+  const selectedDatasetName =
+    selectedDataset?.name || selectedDatasetId || '系统默认'
+  const scopeLabel = isDatasetScoped ? selectedDatasetName : '系统默认'
+  const scopeDetail = isDatasetScoped
+    ? `${selectedDatasetName} · ${selectedDatasetId}`
+    : '系统默认 · 新数据集 / 未覆盖数据集'
+  const hasDatasetEmbeddingOverride = Boolean(
+    selectedDataset?.embedding_defaults?.model
+  )
+  const saveScopeDescription = isDatasetScoped
+    ? '保存到当前数据集元数据；只影响该数据集后续入库和后续迁移策略。'
+    : '写入系统默认配置；用于新数据集或未设置独立 embedding 的数据集。'
+  const embeddingChangeDescription = isDatasetScoped
+    ? '这次只更新当前数据集的 embedding 配置，不会改动其他已维护数据集。已有已解析文档不会自动重新嵌入；隔离中的文档保持隔离状态，只有人工释放或显式重新入库时才会进入向量化。'
+    : '这次只更新系统默认 embedding 配置，不会自动迁移已有数据集向量。已经设置独立 embedding 的数据集不会被覆盖；隔离中的文档也不会因为默认配置变化而重新嵌入。'
   const retrievalTopK = draftConfig?.rag.retrieval_top_k ?? 5
   const similarityThreshold = draftConfig?.rag.similarity_threshold ?? 0.7
   const estimatedRecall = Math.max(
@@ -283,17 +353,6 @@ export function KnowledgeSettingsPanel({
     retrievalTopK >= 10 ? '较高' : retrievalTopK >= 6 ? '中等' : '偏低'
   const topKTrackPercent = ((retrievalTopK - 1) / (50 - 1)) * 100
   const similarityTrackPercent = similarityThreshold * 100
-  const navItems: Array<{
-    key: typeof activeSection
-    label: string
-    icon: typeof Database
-  }> = [
-    { key: 'embedding', label: '嵌入模型配置', icon: Database },
-    { key: 'retrieval', label: '检索策略', icon: Settings },
-    { key: 'reranker', label: 'reranker 重排模型', icon: CheckCircle2 },
-    { key: 'hybrid', label: '混合检索设置', icon: Link2 },
-    { key: 'advanced', label: '高级设置', icon: Shield },
-  ]
   const comparisonMetrics: Record<
     (typeof EMBEDDING_MODEL_OPTIONS)[number],
     Array<{ label: string; value: string; dots: number; tone: string }>
@@ -319,50 +378,106 @@ export function KnowledgeSettingsPanel({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background/40">
-      <div className="flex-1 min-h-0 overflow-y-auto p-2 no-scrollbar xl:overflow-hidden">
-        <div className="grid min-h-0 gap-2 xl:h-full xl:grid-cols-[206px_minmax(0,1fr)]">
-          <div className="space-y-2 xl:sticky xl:top-0 xl:self-start">
-            <Panel
-              padding="none"
-              className="rounded-[16px] border border-border/70 bg-background/92 shadow-[0_10px_18px_-18px_rgba(15,23,42,0.1)]"
-            >
-              <div className="border-b border-border/60 px-3 py-2.5">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-[11px] font-medium text-foreground">
-                    {t('header.title')}
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#F6FAFF]/70 dark:bg-background/35">
+      <div className="flex-1 min-h-0 overflow-y-auto p-2 no-scrollbar xl:overflow-y-auto">
+        <div
+          className={cn(
+            'grid min-h-0 gap-2 xl:h-full',
+            settingsSidebarCollapsed
+              ? 'xl:grid-cols-1'
+              : 'xl:grid-cols-[206px_minmax(0,1fr)]'
+          )}
+        >
+          {!settingsSidebarCollapsed ? (
+            <div className="space-y-2 xl:sticky xl:top-0 xl:self-start">
+              <Panel
+                padding="none"
+                className="rounded-[16px] border border-sky-100/75 bg-white/88 shadow-[0_10px_18px_-18px_rgba(37,99,235,0.16)] backdrop-blur-xl dark:border-border/70 dark:bg-background/62"
+              >
+                <div className="border-b border-sky-100/75 px-3 py-3 dark:border-border/60">
+                  <div className="flex items-start gap-2.5">
+                    <div className="relative mt-0.5 flex size-6 items-center justify-center rounded-lg border border-sky-100/80 bg-white/82 text-primary/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.86),0_10px_20px_-18px_rgba(37,99,235,0.22)] dark:border-border/70 dark:bg-background/70">
+                      <span className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[linear-gradient(135deg,rgba(255,255,255,0.28),transparent_54%)] opacity-80" />
+                      <Database className="size-3" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-foreground/68">
+                        Navigation
+                      </div>
+                      <div className="mt-0.5 text-[13px] font-medium text-foreground/92">
+                        配置作用域
+                      </div>
+                      <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground/76">
+                        选择数据集后，embedding 配置只保存到该数据集。
+                      </div>
+                    </div>
                   </div>
-                  <ChevronDown className="size-3.5 text-muted-foreground/48" />
                 </div>
-              </div>
-              <div className="p-1.5">
-                <div className="space-y-1.5">
-                  {navItems.map((item) => (
-                    <button
-                      key={item.key}
-                      type="button"
-                      onClick={() => setActiveSection(item.key)}
-                      className={cn(
-                        'flex w-full items-center gap-2 rounded-[10px] px-2.5 py-1.5 text-left transition-colors',
-                        activeSection === item.key
-                          ? 'bg-primary/10 text-primary shadow-inner-soft'
-                          : 'text-foreground/78 hover:bg-muted/40'
-                      )}
+                <div className="space-y-2.5 p-3">
+                  <div className="space-y-1.5">
+                    <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/72">
+                      选择数据集
+                    </div>
+                    <Select
+                      value={selectedScopeValue}
+                      onValueChange={onDatasetScopeChange}
+                      disabled={!onDatasetScopeChange || datasetsLoading}
                     >
-                      <item.icon className="size-3 shrink-0" />
-                      <span className="text-[10px] font-medium">
-                        {item.label}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </Panel>
+                      <SelectTrigger
+                        className="h-8 rounded-[12px] border-sky-100/80 bg-white/85 pl-3 pr-2 text-[11px] shadow-none transition-colors duration-200 hover:border-sky-200/80 hover:bg-white dark:border-border/70 dark:bg-background/62 [&>span]:font-medium [&>span]:text-foreground/90 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:text-muted-foreground/65"
+                        aria-label="选择数据集配置作用域"
+                      >
+                        <SelectValue
+                          placeholder={
+                            datasetsLoading ? '加载数据集...' : '选择数据集'
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-[14px] border-border/70 bg-popover p-1 shadow-[0_18px_42px_-28px_hsl(var(--foreground)/0.36)]">
+                        <SelectItem value={datasetAllValue}>
+                          系统默认 · 新数据集
+                        </SelectItem>
+                        {datasets.map((dataset) => (
+                          <SelectItem key={dataset.id} value={dataset.id}>
+                            {dataset.name} · {dataset.id.slice(0, 8)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {datasets.length === 0 && !datasetsLoading ? (
+                      <div className="rounded-[11px] border border-dashed border-sky-100/80 bg-white/52 px-2.5 py-2 text-[10px] leading-4 text-muted-foreground/70 dark:border-border/70 dark:bg-background/45">
+                        暂无可选数据集，可先使用系统默认配置。
+                      </div>
+                    ) : null}
+                  </div>
 
-            <Panel
-              padding="none"
-              className="rounded-[16px] border border-border/70 bg-background/92 shadow-[0_10px_18px_-18px_rgba(15,23,42,0.06)]"
-            >
+                  <div className="rounded-[14px] border border-sky-100/80 bg-white/78 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.76)] dark:border-border/70 dark:bg-background/58">
+                    <div className="text-[10px] text-muted-foreground/72">
+                      作用范围
+                    </div>
+                    <div className="mt-1 truncate text-[11px] font-medium text-foreground">
+                      {scopeLabel}
+                    </div>
+                    <div className="mt-1 flex min-w-0 items-center gap-1.5 text-[9px] text-muted-foreground/64">
+                      <span className="shrink-0 uppercase tracking-[0.14em]">
+                        ID
+                      </span>
+                      <span className="truncate font-mono">{scopeDatasetId}</span>
+                    </div>
+                  </div>
+
+                  <div className="rounded-[13px] border border-info/15 bg-info/[0.04] px-2.5 py-2 text-[10px] leading-4 text-muted-foreground/76 dark:border-info/20 dark:bg-info/[0.06]">
+                    {isDatasetScoped
+                      ? '保存后只影响这个数据集的后续入库和显式重建。'
+                      : '保存后作为新数据集或未设置独立配置的数据集默认值。'}
+                  </div>
+                </div>
+              </Panel>
+
+              <Panel
+                padding="none"
+                className="rounded-[16px] border border-sky-100/75 bg-white/86 shadow-[0_10px_18px_-18px_rgba(37,99,235,0.14)] backdrop-blur-xl dark:border-border/70 dark:bg-background/62"
+              >
               <div className="p-3">
                 <div className="flex items-center gap-2 text-[11px] font-medium text-foreground">
                   <Info className="size-3 text-primary" />
@@ -373,80 +488,137 @@ export function KnowledgeSettingsPanel({
                 </p>
                 <button
                   type="button"
+                  aria-expanded={guideExpanded}
+                  aria-controls={SETTINGS_GUIDE_PANEL_ID}
+                  onClick={() => setGuideExpanded((expanded) => !expanded)}
                   className="mt-2 inline-flex items-center text-[10px] font-medium text-primary hover:text-primary/80"
                 >
-                  查看配置指南
-                  <ChevronRight className="ml-1 size-3" />
+                  {guideExpanded ? '收起配置指南' : '查看配置指南'}
+                  <ChevronRight
+                    className={cn(
+                      'ml-1 size-3 transition-transform',
+                      guideExpanded && 'rotate-90'
+                    )}
+                  />
                 </button>
+                {guideExpanded ? (
+                  <div
+                    id={SETTINGS_GUIDE_PANEL_ID}
+                    className="mt-2.5 space-y-2 rounded-[13px] border border-sky-100/75 bg-white/78 p-2.5 text-[9px] leading-4 text-muted-foreground/76 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-border/70 dark:bg-background/55"
+                  >
+                    <div>
+                      <span className="font-medium text-foreground/82">
+                        模型：
+                      </span>
+                      中文知识库优先看中文/多语言模型；数据集独立配置只影响当前范围，隔离文档不会因为配置变化自动重新嵌入。
+                    </div>
+                    <div>
+                      <span className="font-medium text-foreground/82">
+                        Top K：
+                      </span>
+                      常规问答建议 8～20；值越高召回更全，但延迟和噪声会上升。
+                    </div>
+                    <div>
+                      <span className="font-medium text-foreground/82">
+                        阈值：
+                      </span>
+                      建议 0.50～0.80；低阈值保召回，高阈值保精度。
+                    </div>
+                  </div>
+                ) : null}
               </div>
-            </Panel>
+              </Panel>
 
-            <Panel
-              padding="none"
-              className="rounded-[16px] border border-border/70 bg-background/92 shadow-[0_10px_18px_-18px_rgba(15,23,42,0.06)]"
-            >
-              <div className="border-b border-border/60 px-3 py-2.5">
+              <Panel
+                padding="none"
+                className="rounded-[16px] border border-sky-100/75 bg-white/86 shadow-[0_10px_18px_-18px_rgba(37,99,235,0.14)] backdrop-blur-xl dark:border-border/70 dark:bg-background/62"
+              >
+              <div className="border-b border-sky-100/75 px-3 py-2.5 dark:border-border/60">
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-[11px] font-medium text-foreground">
                     当前配置
                   </div>
-                  <ChevronDown className="size-3.5 text-muted-foreground/48" />
-                </div>
-              </div>
-              <div className="space-y-2.5 p-3">
-                <div className="grid gap-2.5">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-[10px] text-muted-foreground/72">
-                      配置来源
-                    </span>
-                    <span className="text-[10px] font-medium text-foreground">
-                      后端 /settings
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-[10px] text-muted-foreground/72">
-                      保存状态
-                    </span>
-                    <span
+                  <button
+                    type="button"
+                    aria-expanded={currentConfigOpen}
+                    aria-controls="knowledge-current-config-panel"
+                    onClick={() => setCurrentConfigOpen((open) => !open)}
+                    className="inline-flex size-6 items-center justify-center rounded-full border border-sky-100/80 bg-white/85 text-foreground/72 shadow-[0_5px_12px_-10px_rgba(37,99,235,0.45)] transition-colors hover:border-primary/25 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 dark:border-border/70 dark:bg-background/62"
+                  >
+                    <ChevronDown
                       className={cn(
-                        'text-[10px] font-medium',
-                        isDirty ? 'text-amber-600' : 'text-emerald-600'
+                        'size-3.5 transition-transform duration-200',
+                        !currentConfigOpen && '-rotate-90'
                       )}
-                    >
-                      {isDirty ? '有未保存更改' : '已同步'}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-[10px] text-muted-foreground/72">
-                      嵌入模型
-                    </span>
-                    <span className="max-w-[8rem] truncate text-[10px] font-medium text-foreground">
-                      {savedConfig?.embedding.model || '-'}
-                    </span>
-                  </div>
+                    />
+                  </button>
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-8 w-full rounded-[12px] border-border/70 bg-background text-[10px] font-medium"
-                  onClick={handleSaveDraft}
-                  disabled={isSavingSettings || !draftConfig || !isDirty}
-                >
-                  {isSavingSettings ? (
-                    <Loader2 className="mr-2 size-3.5 animate-spin" />
-                  ) : null}
-                  保存当前配置
-                </Button>
               </div>
-            </Panel>
-          </div>
+              {currentConfigOpen ? (
+                <div
+                  id="knowledge-current-config-panel"
+                  className="space-y-2.5 p-3"
+                >
+                  <div className="grid gap-2.5">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[10px] text-muted-foreground/72">
+                        保存状态
+                      </span>
+                      <span
+                        className={cn(
+                          'text-[10px] font-medium',
+                          isDirty ? 'text-amber-600' : 'text-emerald-600'
+                        )}
+                      >
+                        {isDirty ? '有未保存更改' : '已同步'}
+                      </span>
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-[10px] text-muted-foreground/72">
+                        作用范围
+                      </span>
+                      <span className="min-w-0 text-right">
+                        <span className="block max-w-[8rem] truncate text-[10px] font-medium text-foreground">
+                          {scopeLabel}
+                        </span>
+                        <span className="mt-0.5 block max-w-[8rem] truncate font-mono text-[9px] text-muted-foreground/62">
+                          {scopeDatasetId}
+                        </span>
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[10px] text-muted-foreground/72">
+                        嵌入模型
+                      </span>
+                      <span className="max-w-[8rem] truncate text-[10px] font-medium text-foreground">
+                        {savedConfig?.embedding.model || '-'}
+                      </span>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-8 w-full rounded-[12px] border-sky-100/80 bg-white/85 text-[10px] font-medium hover:bg-white dark:border-border/70 dark:bg-background/62"
+                    onClick={handleSaveDraft}
+                    disabled={isSavingSettings || !draftConfig || !isDirty}
+                  >
+                    {isSavingSettings ? (
+                      <Loader2 className="mr-2 size-3.5 animate-spin" />
+                    ) : null}
+                    {isDatasetScoped ? '保存数据集配置' : '保存当前配置'}
+                  </Button>
+                </div>
+              ) : null}
+              </Panel>
+            </div>
+          ) : null}
 
-          <div className="space-y-2.5 xl:min-h-0 xl:overflow-y-auto xl:pr-1 xl:no-scrollbar">
+          <div className="space-y-2.5 xl:h-full xl:max-h-full xl:min-h-0 xl:overflow-y-auto xl:pr-1 xl:no-scrollbar">
             <Panel
               padding="none"
-              className="rounded-[18px] border border-border/70 bg-background/92 shadow-[0_12px_22px_-20px_rgba(15,23,42,0.12)]"
+              className="rounded-[18px] border border-sky-100/75 bg-white/88 shadow-[0_12px_22px_-20px_rgba(37,99,235,0.16)] backdrop-blur-xl dark:border-border/70 dark:bg-background/62"
             >
-              <div className="border-b border-border/60 px-3 py-2.5">
+              <div className="border-b border-sky-100/75 px-3 py-2.5 dark:border-border/60">
                 <div className="flex items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
                     <div className="relative flex size-7 items-center justify-center rounded-[12px] border border-info/20 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.16),transparent_62%),linear-gradient(180deg,rgba(239,246,255,0.96),rgba(219,234,254,0.78))] text-info shadow-[0_12px_18px_-16px_rgba(37,99,235,0.32)]">
@@ -458,10 +630,18 @@ export function KnowledgeSettingsPanel({
                         嵌入模型配置 / Embedding
                       </h3>
                       <p className="mt-1 text-[9px] leading-4 text-muted-foreground/70">
-                        选择合适的向量模型，将文本转换为向量表示，影响检索效果与成本。
+                        配置作用域：{scopeDetail}
+                        。选择合适的向量模型，将文本转换为向量表示。
                       </p>
                     </div>
                   </div>
+                  <span className="rounded-full border border-sky-100/80 bg-sky-50/75 px-2.5 py-1 text-[9px] font-medium text-sky-700 dark:border-border/70 dark:bg-background/62 dark:text-sky-200">
+                    {isDatasetScoped
+                      ? hasDatasetEmbeddingOverride
+                        ? '数据集独立配置'
+                        : '继承后可覆盖'
+                      : '系统默认'}
+                  </span>
                 </div>
               </div>
 
@@ -487,26 +667,36 @@ export function KnowledgeSettingsPanel({
                         className={cn(
                           'relative overflow-hidden rounded-[16px] border p-3 text-left transition-all duration-300',
                           selected
-                            ? 'border-primary/40 bg-primary/[0.05] shadow-[0_18px_36px_-28px_rgba(37,99,235,0.2)] ring-1 ring-primary/20'
-                            : 'border-border/70 bg-background hover:border-primary/20 hover:bg-primary/[0.02]'
+                            ? 'border-sky-300/90 bg-[linear-gradient(180deg,rgba(239,246,255,0.98),rgba(219,234,254,0.64))] shadow-[0_18px_38px_-28px_rgba(37,99,235,0.34)] ring-1 ring-sky-200/90'
+                            : 'border-sky-100/80 bg-white/86 hover:border-sky-200/90 hover:bg-sky-50/72 hover:shadow-[0_16px_30px_-28px_rgba(37,99,235,0.24)] dark:border-border/70 dark:bg-background/58 dark:hover:bg-primary/[0.02]'
                         )}
                       >
-                        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-primary/10" />
+                        <div
+                          className={cn(
+                            'pointer-events-none absolute inset-x-0 top-0 h-px',
+                            selected ? 'bg-sky-300/80' : 'bg-primary/10'
+                          )}
+                        />
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex items-center gap-3">
                             <span
                               className={cn(
                                 'size-4 rounded-full border',
                                 selected
-                                  ? 'border-primary/40 bg-primary/10'
-                                  : 'border-border/70 bg-background'
+                                  ? 'border-sky-400/80 bg-white shadow-[0_0_0_4px_rgba(14,165,233,0.10)]'
+                                  : 'border-sky-100/80 bg-white/85 dark:border-border/70 dark:bg-background/62'
                               )}
                             >
                               {selected ? (
-                                <span className="m-[3px] block size-2 rounded-full bg-primary" />
+                                <span className="m-[3px] block size-2 rounded-full bg-sky-500" />
                               ) : null}
                             </span>
-                            <div className="text-[11px] font-medium text-foreground">
+                            <div
+                              className={cn(
+                                'text-[11px] font-medium',
+                                selected ? 'text-sky-800' : 'text-foreground'
+                              )}
+                            >
                               {model}
                             </div>
                             {model === 'text-embedding-v3' ? (
@@ -516,7 +706,7 @@ export function KnowledgeSettingsPanel({
                             ) : null}
                           </div>
                           {selected ? (
-                            <div className="size-3 rounded-full bg-primary shadow-[0_0_10px_rgba(37,99,235,0.35)]" />
+                            <div className="size-3 rounded-full bg-sky-500 shadow-[0_0_12px_rgba(14,165,233,0.45)]" />
                           ) : null}
                         </div>
 
@@ -584,12 +774,12 @@ export function KnowledgeSettingsPanel({
 
             <Panel
               padding="none"
-              className="rounded-[18px] border border-border/70 bg-background/92 shadow-[0_12px_22px_-20px_rgba(15,23,42,0.12)]"
+              className="rounded-[18px] border border-sky-100/75 bg-white/88 shadow-[0_12px_22px_-20px_rgba(37,99,235,0.16)] backdrop-blur-xl dark:border-border/70 dark:bg-background/62"
             >
-              <div className="border-b border-border/60 px-3 py-2.5">
+              <div className="border-b border-sky-100/75 px-3 py-2.5 dark:border-border/60">
                 <div className="flex items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
-                    <div className="flex size-7 items-center justify-center rounded-[12px] border border-indigo/20 bg-indigo/[0.08] text-indigo">
+                    <div className="flex size-7 items-center justify-center rounded-[12px] border border-sky-100/80 bg-white/86 text-info shadow-[0_12px_18px_-16px_rgba(37,99,235,0.28)]">
                       <Settings className="size-3" />
                     </div>
                     <div>
@@ -604,7 +794,7 @@ export function KnowledgeSettingsPanel({
                   <Button
                     type="button"
                     variant="outline"
-                    className="h-6.5 rounded-[10px] border-border/70 bg-background px-3 text-[10px] font-medium"
+                    className="h-6.5 rounded-[10px] border-sky-100/80 bg-white/85 px-3 text-[10px] font-medium hover:bg-white dark:border-border/70 dark:bg-background/62"
                     onClick={handleResetDraft}
                     disabled={!isDirty}
                   >
@@ -614,7 +804,7 @@ export function KnowledgeSettingsPanel({
               </div>
 
               <div className="grid gap-2 p-3 xl:grid-cols-[1fr_1fr_0.95fr]">
-                <div className="rounded-[15px] border border-primary/20 bg-primary/[0.05] p-3">
+                <div className="rounded-[15px] border border-sky-100/80 bg-white/90 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)] dark:border-border/70 dark:bg-background/58">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="text-[11px] font-medium text-foreground">
@@ -624,22 +814,22 @@ export function KnowledgeSettingsPanel({
                         返回最相关的 Top K 个结果
                       </div>
                     </div>
-                    <div className="rounded-[12px] border border-primary/20 bg-primary/10 px-2.5 py-1 font-mono text-[14px] font-semibold text-primary">
-                      {draftConfig?.rag.retrieval_top_k}
+                    <div className="rounded-[12px] border border-sky-200/80 bg-sky-50/75 px-2.5 py-1 font-mono text-[14px] font-semibold text-primary">
+                      {retrievalTopK}
                     </div>
                   </div>
                   <div className="mt-3">
                     <div className="relative h-5">
-                      <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1 rounded-full bg-muted/80 -translate-y-1/2 dark:bg-muted-foreground/20" />
+                      <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1 rounded-full bg-sky-100/75 -translate-y-1/2 dark:bg-muted-foreground/20" />
                       <div
-                        className="pointer-events-none absolute left-0 top-1/2 h-1 rounded-full bg-info -translate-y-1/2 dark:bg-info"
+                        className="pointer-events-none absolute left-0 top-1/2 h-1 rounded-full bg-info/80 -translate-y-1/2 dark:bg-info"
                         style={{ width: `${topKTrackPercent}%` }}
                       />
                       <input
                         type="range"
                         min="1"
                         max="50"
-                        value={draftConfig?.rag.retrieval_top_k}
+                        value={retrievalTopK}
                         onChange={(e) =>
                           setDraftConfig((prev) =>
                             prev
@@ -653,7 +843,7 @@ export function KnowledgeSettingsPanel({
                               : null
                           )
                         }
-                        className="relative z-10 h-5 w-full cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-5 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:mt-0 [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-border [&::-webkit-slider-thumb]:bg-foreground [&::-webkit-slider-thumb]:shadow-[0_6px_14px_-8px_rgba(15,23,42,0.55)] dark:[&::-webkit-slider-thumb]:border-border dark:[&::-webkit-slider-thumb]:bg-card [&::-moz-range-track]:h-5 [&::-moz-range-track]:bg-transparent [&::-moz-range-progress]:h-5 [&::-moz-range-progress]:bg-transparent [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-border [&::-moz-range-thumb]:bg-foreground"
+                        className="relative z-10 h-5 w-full cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-5 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:mt-0 [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-sky-300 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[0_6px_14px_-8px_rgba(37,99,235,0.55)] dark:[&::-webkit-slider-thumb]:border-border dark:[&::-webkit-slider-thumb]:bg-card [&::-moz-range-track]:h-5 [&::-moz-range-track]:bg-transparent [&::-moz-range-progress]:h-5 [&::-moz-range-progress]:bg-transparent [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-sky-300 [&::-moz-range-thumb]:bg-white"
                       />
                     </div>
                     <div className="mt-2 flex items-center justify-between text-[9px] text-muted-foreground/62">
@@ -663,13 +853,13 @@ export function KnowledgeSettingsPanel({
                       <span>20</span>
                       <span>50</span>
                     </div>
-                    <div className="mt-2 rounded-[12px] bg-background/70 px-2.5 py-1.5 text-[9px] text-muted-foreground/72">
+                    <div className="mt-2 rounded-[12px] border border-sky-100/70 bg-white/80 px-2.5 py-1.5 text-[9px] text-muted-foreground/72 dark:border-border/70 dark:bg-background/55">
                       建议范围：8 ～ 20
                     </div>
                   </div>
                 </div>
 
-                <div className="rounded-[15px] border border-indigo/20 bg-indigo/[0.05] p-3">
+                <div className="rounded-[15px] border border-sky-100/80 bg-white/90 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)] dark:border-border/70 dark:bg-background/58">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="text-[11px] font-medium text-foreground">
@@ -679,15 +869,15 @@ export function KnowledgeSettingsPanel({
                         过滤相似度低于阈值的结果
                       </div>
                     </div>
-                    <div className="rounded-[12px] border border-primary/20 bg-primary/10 px-2.5 py-1 font-mono text-[14px] font-semibold text-primary">
-                      {draftConfig?.rag.similarity_threshold.toFixed(2)}
+                    <div className="rounded-[12px] border border-sky-200/80 bg-sky-50/75 px-2.5 py-1 font-mono text-[14px] font-semibold text-primary">
+                      {similarityThreshold.toFixed(2)}
                     </div>
                   </div>
                   <div className="mt-3">
                     <div className="relative h-5">
-                      <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1 rounded-full bg-muted/80 -translate-y-1/2 dark:bg-muted-foreground/20" />
+                      <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1 rounded-full bg-sky-100/75 -translate-y-1/2 dark:bg-muted-foreground/20" />
                       <div
-                        className="pointer-events-none absolute left-0 top-1/2 h-1 rounded-full bg-info -translate-y-1/2 dark:bg-info"
+                        className="pointer-events-none absolute left-0 top-1/2 h-1 rounded-full bg-info/80 -translate-y-1/2 dark:bg-info"
                         style={{ width: `${similarityTrackPercent}%` }}
                       />
                       <input
@@ -695,7 +885,7 @@ export function KnowledgeSettingsPanel({
                         min="0"
                         max="1"
                         step="0.05"
-                        value={draftConfig?.rag.similarity_threshold}
+                        value={similarityThreshold}
                         onChange={(e) =>
                           setDraftConfig((prev) =>
                             prev
@@ -711,7 +901,7 @@ export function KnowledgeSettingsPanel({
                               : null
                           )
                         }
-                        className="relative z-10 h-5 w-full cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-5 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:mt-0 [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-border [&::-webkit-slider-thumb]:bg-foreground [&::-webkit-slider-thumb]:shadow-[0_6px_14px_-8px_rgba(15,23,42,0.55)] dark:[&::-webkit-slider-thumb]:border-border dark:[&::-webkit-slider-thumb]:bg-card [&::-moz-range-track]:h-5 [&::-moz-range-track]:bg-transparent [&::-moz-range-progress]:h-5 [&::-moz-range-progress]:bg-transparent [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-border [&::-moz-range-thumb]:bg-foreground"
+                        className="relative z-10 h-5 w-full cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-5 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:mt-0 [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-sky-300 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[0_6px_14px_-8px_rgba(37,99,235,0.55)] dark:[&::-webkit-slider-thumb]:border-border dark:[&::-webkit-slider-thumb]:bg-card [&::-moz-range-track]:h-5 [&::-moz-range-track]:bg-transparent [&::-moz-range-progress]:h-5 [&::-moz-range-progress]:bg-transparent [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-sky-300 [&::-moz-range-thumb]:bg-white"
                       />
                     </div>
                     <div className="mt-2 flex items-center justify-between text-[9px] text-muted-foreground/62">
@@ -721,13 +911,13 @@ export function KnowledgeSettingsPanel({
                       <span>0.75</span>
                       <span>1</span>
                     </div>
-                    <div className="mt-2 rounded-[12px] bg-background/70 px-2.5 py-1.5 text-[9px] text-muted-foreground/72">
+                    <div className="mt-2 rounded-[12px] border border-sky-100/70 bg-white/80 px-2.5 py-1.5 text-[9px] text-muted-foreground/72 dark:border-border/70 dark:bg-background/55">
                       建议范围：0.50 ～ 0.80
                     </div>
                   </div>
                 </div>
 
-                <div className="rounded-[15px] border border-border/70 bg-background p-3">
+                <div className="rounded-[15px] border border-sky-100/80 bg-white/90 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)] dark:border-border/70 dark:bg-background/58">
                   <div className="text-[11px] font-medium text-foreground">
                     召回策略（Retrieval Mode）
                   </div>
@@ -739,7 +929,7 @@ export function KnowledgeSettingsPanel({
                       value={retrievalModeView}
                       onValueChange={setRetrievalModeView}
                     >
-                      <SelectTrigger className="h-8 rounded-[12px] border-border/70 bg-background text-[10px] font-medium">
+                      <SelectTrigger className="h-8 rounded-[12px] border-sky-100/80 bg-white/92 text-[10px] font-medium dark:border-border/70 dark:bg-background/62">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -749,7 +939,7 @@ export function KnowledgeSettingsPanel({
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="mt-2 rounded-[12px] bg-muted/30 px-2.5 py-1.5 text-[9px] text-muted-foreground/72">
+                  <div className="mt-2 rounded-[12px] border border-sky-100/70 bg-white/78 px-2.5 py-1.5 text-[9px] text-muted-foreground/72 dark:border-border/70 dark:bg-muted/30">
                     默认策略，适合大多数场景
                   </div>
                 </div>
@@ -759,7 +949,7 @@ export function KnowledgeSettingsPanel({
             <div className="grid gap-2 xl:grid-cols-[1.35fr_0.85fr]">
               <Panel
                 padding="none"
-                className="rounded-[18px] border border-border/70 bg-background/92 shadow-[0_12px_22px_-20px_rgba(15,23,42,0.08)]"
+                className="rounded-[18px] border border-sky-100/75 bg-white/86 shadow-[0_12px_22px_-20px_rgba(37,99,235,0.14)] backdrop-blur-xl dark:border-border/70 dark:bg-background/62"
               >
                 <div className="p-3">
                   <div className="flex items-center gap-2">
@@ -771,7 +961,7 @@ export function KnowledgeSettingsPanel({
                     </div>
                   </div>
                   <div className="mt-2.5 grid gap-2 md:grid-cols-4">
-                    <div className="rounded-[14px] border border-border/70 bg-background px-2.5 py-2.5">
+                    <div className="rounded-[14px] border border-sky-100/80 bg-white/82 px-2.5 py-2.5 dark:border-border/70 dark:bg-background/58">
                       <div className="text-[10px] text-muted-foreground/66">
                         召回率
                       </div>
@@ -784,7 +974,7 @@ export function KnowledgeSettingsPanel({
                         ↑ {estimatedRecall - baselineRecall}%
                       </div>
                     </div>
-                    <div className="rounded-[14px] border border-border/70 bg-background px-2.5 py-2.5">
+                    <div className="rounded-[14px] border border-sky-100/80 bg-white/82 px-2.5 py-2.5 dark:border-border/70 dark:bg-background/58">
                       <div className="text-[10px] text-muted-foreground/66">
                         结果多样性
                       </div>
@@ -795,7 +985,7 @@ export function KnowledgeSettingsPanel({
                         平衡
                       </div>
                     </div>
-                    <div className="rounded-[14px] border border-border/70 bg-background px-2.5 py-2.5">
+                    <div className="rounded-[14px] border border-sky-100/80 bg-white/82 px-2.5 py-2.5 dark:border-border/70 dark:bg-background/58">
                       <div className="text-[10px] text-muted-foreground/66">
                         噪声率
                       </div>
@@ -808,7 +998,7 @@ export function KnowledgeSettingsPanel({
                         ↑ {noisePercent - baselineNoise}%
                       </div>
                     </div>
-                    <div className="rounded-[14px] border border-border/70 bg-background px-2.5 py-2.5">
+                    <div className="rounded-[14px] border border-sky-100/80 bg-white/82 px-2.5 py-2.5 dark:border-border/70 dark:bg-background/58">
                       <div className="text-[10px] text-muted-foreground/66">
                         预估延迟
                       </div>
@@ -827,7 +1017,7 @@ export function KnowledgeSettingsPanel({
 
               <Panel
                 padding="none"
-                className="rounded-[18px] border border-border/70 bg-background/92 shadow-[0_12px_22px_-20px_rgba(15,23,42,0.08)]"
+                className="rounded-[18px] border border-sky-100/75 bg-white/86 shadow-[0_12px_22px_-20px_rgba(37,99,235,0.14)] backdrop-blur-xl dark:border-border/70 dark:bg-background/62"
               >
                 <div className="p-3">
                   <div className="text-[12px] font-medium text-foreground">
@@ -851,7 +1041,7 @@ export function KnowledgeSettingsPanel({
 
             <Panel
               padding="none"
-              className="rounded-[18px] border border-border/70 bg-background/92 shadow-[0_12px_22px_-20px_rgba(15,23,42,0.06)]"
+              className="rounded-[18px] border border-sky-100/75 bg-white/86 shadow-[0_12px_22px_-20px_rgba(37,99,235,0.12)] backdrop-blur-xl dark:border-border/70 dark:bg-background/62"
             >
               <div className="grid gap-2.5 p-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
                 <div>
@@ -859,15 +1049,25 @@ export function KnowledgeSettingsPanel({
                     配置保存
                   </div>
                   <div className="mt-1 text-[10px] leading-4 text-muted-foreground/72">
-                    写入后端 /settings；保存成功后会刷新当前草稿和已保存配置。
+                    {saveScopeDescription}保存成功后会刷新当前草稿和已保存配置。
                   </div>
                 </div>
 
                 <div className="flex flex-wrap items-center justify-end gap-3">
+                  {isDirty ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-9 rounded-[12px] border-amber-200/80 bg-amber-50/70 px-4 text-[11px] font-medium text-amber-700 hover:border-amber-300 hover:bg-amber-100/75 hover:text-amber-900 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-200 dark:hover:bg-amber-400/20 dark:hover:text-amber-100"
+                      onClick={handleResetDraft}
+                    >
+                      重置更改
+                    </Button>
+                  ) : null}
                   <Button
                     type="button"
                     variant="outline"
-                    className="h-9 rounded-[12px] border-border/70 bg-background px-4 text-[11px] font-medium"
+                    className="h-9 rounded-[12px] border-sky-200/80 bg-sky-50/65 px-4 text-[11px] font-medium text-sky-700 hover:border-sky-300 hover:bg-sky-100/75 hover:text-sky-900 disabled:border-sky-100/70 disabled:bg-white/70 disabled:text-muted-foreground/60 dark:border-sky-400/25 dark:bg-sky-400/10 dark:text-sky-200 dark:hover:bg-sky-400/20 dark:hover:text-sky-100 dark:disabled:border-border/70 dark:disabled:bg-background/62 dark:disabled:text-muted-foreground/55"
                     onClick={handleSaveDraft}
                     disabled={isSavingSettings || !draftConfig || !isDirty}
                   >
@@ -893,23 +1093,6 @@ export function KnowledgeSettingsPanel({
         </div>
       </div>
 
-      {isDirty ? (
-        <div className="border-t border-border/70 bg-background/95 px-3 py-2 backdrop-blur">
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-[14px] border border-warning/20 bg-warning/10 px-3 py-2 text-[11px] text-warning-foreground">
-            <span className="font-medium">当前配置有未保存更改。</span>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 rounded-[10px] border-warning/30 bg-background/80 px-3 text-[11px]"
-              onClick={handleResetDraft}
-            >
-              重置更改
-            </Button>
-          </div>
-        </div>
-      ) : null}
-
       {/* Confirm Dialog */}
       <AlertDialog
         open={confirmEmbeddingSaveOpen}
@@ -921,8 +1104,7 @@ export function KnowledgeSettingsPanel({
               确认更改嵌入模型？
             </AlertDialogTitle>
             <AlertDialogDescription className="text-sm font-medium leading-relaxed">
-              更换模型将导致已有文档的向量失效，所有文档必须重新进入 Ingestion
-              管线进行向量化。这可能产生显著的 Token 消耗和处理耗时。
+              {embeddingChangeDescription}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -933,7 +1115,7 @@ export function KnowledgeSettingsPanel({
               onClick={handleSave}
               className="h-10 rounded-xl bg-primary text-primary-foreground shadow-md shadow-primary/20"
             >
-              确认重置并应用
+              确认保存配置
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -15,7 +15,7 @@ describe('api contract backend route parser', () => {
     expect(routes.get('DELETE /chat/conversations/{}/checkpoints')).toBe('app/api/v1/chat_conversation_memory.py')
   })
 
-  it('includes nested router prefixes declared on child APIRouters', () => {
+  it('includes prefixes declared on nested APIRouter instances', () => {
     const routes = parseBackendRoutes()
 
     expect(routes.get('GET /documents/dead-letters')).toBe('app/api/v1/document_dead_letters.py')

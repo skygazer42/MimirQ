@@ -215,6 +215,7 @@ __all__ = [
     "SessionLocal",
     "_materialize_extracted_images_for_preview",
     "_materialize_local_images_for_preview",
+    "_rewrite_preview_images_to_minio",
     "apply_ingestion_policy_suggestion",
     "build_governance_rules",
     "build_indexing_options",
@@ -246,13 +247,13 @@ router.include_router(document_stats.router)
 router.include_router(document_chunks_read.router)
 router.include_router(document_content.router)
 router.include_router(document_dead_letters.router)
+router.include_router(document_listing.router)
+router.include_router(document_manual.router)
+router.include_router(document_preview.router)
 router.include_router(document_detail.router)
 router.include_router(document_health.router)
 router.include_router(document_lifecycle.router)
-router.include_router(document_listing.router)
-router.include_router(document_manual.router)
 router.include_router(document_mutations.router)
-router.include_router(document_preview.router)
 router.include_router(document_processing.router)
 router.include_router(document_timeline.router)
 router.include_router(document_versions.router)
@@ -304,6 +305,170 @@ MANUAL_FILE_PATH_PREFIX = 'manual://'
 IMAGE_FILE_EXT_JPEG = '.jpeg'
 IMAGE_FILE_EXT_WEBP = '.webp'
 CHUNK_PATCH_OPERATION = 'chunk.patch'
+
+
+def _rewrite_preview_images_to_minio(
+    text: str,
+    *,
+    tenant_id: str,
+    dataset_id: str,
+    document_id: str,
+    images_dir: Path,
+    local_id_to_img_id: dict[str, str],
+    digest_to_img_id: dict[str, str],
+    start_index: int = 0,
+) -> tuple[str, list[str], int]:
+    """
+    Convert preview-time local image refs into persisted MinIO image-url refs.
+
+    Manual chunks share the preview image cache with the document preview
+    endpoint. When MinIO is enabled, persisted chunks must not retain local
+    `/documents/image/{uuid}` refs because those files are temporary.
+    """
+    if not settings.MINIO_ENABLED:
+        return text, [], start_index
+    if not isinstance(text, str) or not text:
+        return text, [], start_index
+
+    existing: list[str] = []
+    for match in MINIO_IMAGE_REF_RE.finditer(text):
+        value = (match.group(1) or "").strip()
+        if value and value not in existing:
+            existing.append(value)
+    if existing:
+        return text, existing, start_index
+
+    if "/api/v1/documents/image/" not in text:
+        return text, [], start_index
+
+    matches = list(PREVIEW_IMAGE_REF_RE.finditer(text))
+    if not matches:
+        return text, [], start_index
+
+    max_inline_images = max(0, int(getattr(settings, "MAX_INLINE_IMAGES", 0) or 0))
+    if max_inline_images and len(matches) > max_inline_images:
+        matches = matches[:max_inline_images]
+
+    image_exts = [".png", ".jpg", IMAGE_FILE_EXT_JPEG, IMAGE_FILE_EXT_WEBP, ".gif", ".bmp"]
+    max_bytes = int(getattr(settings, "MAX_INLINE_IMAGE_BYTES", 10_000_000) or 10_000_000)
+    max_bytes = max(1_000_000, max_bytes)
+
+    referenced_img_ids: list[str] = []
+    seen_local_ids: set[str] = set()
+
+    for match in matches:
+        raw_id = match.group(1)
+        if not raw_id:
+            continue
+        try:
+            local_id = uuid.UUID(raw_id).hex
+        except ValueError:
+            continue
+
+        if local_id in seen_local_ids:
+            continue
+        seen_local_ids.add(local_id)
+
+        img_id = local_id_to_img_id.get(local_id)
+        if not img_id:
+            img_path: Path | None = None
+            for ext in image_exts:
+                candidate = images_dir / f"{local_id}{ext}"
+                if candidate.exists() and candidate.is_file():
+                    img_path = candidate
+                    break
+            if img_path is None:
+                try:
+                    for candidate in images_dir.glob(f"{local_id}.*"):
+                        if candidate.suffix.lower() in image_exts and candidate.exists() and candidate.is_file():
+                            img_path = candidate
+                            break
+                except OSError:
+                    img_path = None
+
+            if img_path is None:
+                continue
+
+            try:
+                if img_path.stat().st_size > max_bytes:
+                    continue
+                raw = img_path.read_bytes()
+            except OSError:
+                continue
+            if not raw or len(raw) > max_bytes:
+                continue
+
+            from io import BytesIO
+
+            try:
+                from PIL import Image as PILImage  # type: ignore[import-untyped]
+            except ImportError:
+                logger.warning("Pillow not available; skipping preview image upload to MinIO")
+                continue
+
+            img = None
+            converted = None
+            try:
+                img = PILImage.open(BytesIO(raw))
+                if img.mode in ("RGBA", "P"):
+                    converted = img.convert("RGB")
+                    out_img = converted
+                else:
+                    out_img = img
+                out = BytesIO()
+                out_img.save(out, format="JPEG", quality=85, optimize=True)
+                image_bytes = out.getvalue()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Failed converting preview image %s to JPEG: %s", local_id, str(exc)[:200])
+                continue
+            finally:
+                for to_close in (converted, img):
+                    if to_close is None:
+                        continue
+                    with contextlib.suppress(Exception):
+                        to_close.close()
+
+            digest = hashlib.sha256(image_bytes).hexdigest()
+            img_id = digest_to_img_id.get(digest)
+            if not img_id:
+                chunk_key = f"asset{start_index}"
+                start_index += 1
+                try:
+                    img_id = minio_service.upload_image(
+                        image_data=image_bytes,
+                        tenant_id=tenant_id,
+                        dataset_id=dataset_id,
+                        document_id=document_id,
+                        chunk_key=chunk_key,
+                        extension="jpg",
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Preview image upload to MinIO failed; skipping image: %s", str(exc)[:200])
+                    continue
+                digest_to_img_id[digest] = img_id
+
+            local_id_to_img_id[local_id] = img_id
+
+        if img_id and img_id not in referenced_img_ids:
+            referenced_img_ids.append(img_id)
+
+    if not referenced_img_ids:
+        return text, [], start_index
+
+    def _replace_preview_ref(match: re.Match[str]) -> str:
+        raw_id = match.group(1)
+        if not raw_id:
+            return match.group(0)
+        try:
+            local_id = uuid.UUID(raw_id).hex
+        except ValueError:
+            return match.group(0)
+        img_id = local_id_to_img_id.get(local_id)
+        if not img_id:
+            return match.group(0)
+        return f"/api/v1/documents/image-url/{img_id}"
+
+    return PREVIEW_IMAGE_REF_RE.sub(_replace_preview_ref, text), referenced_img_ids, start_index
 
 
 def _asset_cache_control(*, token_in_url: bool, max_age: int) -> str:

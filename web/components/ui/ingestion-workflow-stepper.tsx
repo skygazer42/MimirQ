@@ -67,49 +67,86 @@ export function IngestionWorkflowStepper({
   const currentIndex = getCurrentStepIndex(pathname, steps)
 
   return (
-    <nav aria-label={t("ingestionWorkflow.navLabel")} className={cn('flex items-center gap-2', className)}>
+    <nav
+      aria-label={t("ingestionWorkflow.navLabel")}
+      className={cn(
+        'flex items-center',
+        compact ? 'gap-2' : 'min-w-[640px] gap-0',
+        className
+      )}
+    >
       {steps.map((step, index) => {
         const Icon = step.icon
         const isActive = index === currentIndex
         const isDone = index < currentIndex
 
         return (
-          <div key={step.key} className="flex items-center gap-2">
+          <div
+            key={step.key}
+            className={cn('flex items-center', compact ? 'gap-2' : 'flex-1 gap-0')}
+          >
             <Link
               href={step.href}
               aria-current={isActive ? 'step' : undefined}
               className={cn(
-                'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-medium transition-colors focus-ring',
-                compact ? 'h-7' : 'h-8',
-                (() => {
-    if (isActive) {
-        return 'bg-primary/10 text-primary border-primary/25';
-    }
-    else if (isDone) {
-            return 'bg-card/70 text-foreground border-border/60 hover:bg-primary/5 hover:border-primary/20';
-        }
-        else {
-            return 'bg-muted/60 text-muted-foreground border-border/60 hover:bg-muted hover:text-foreground';
-        }
-})()
+                'inline-flex items-center rounded-full border font-medium transition-colors focus-ring',
+                compact
+                  ? 'h-7 gap-1.5 px-3 py-1.5 text-[11px]'
+                  : 'h-10 min-w-[142px] justify-center gap-2 px-4 text-[13px]',
+                isActive &&
+                  (compact
+                    ? 'border-primary/25 bg-primary/10 text-primary'
+                    : 'border-info/18 bg-[linear-gradient(90deg,hsl(var(--info)/0.16),hsl(var(--info)/0.06))] text-info shadow-[0_12px_30px_-24px_hsl(var(--info)/0.75)]'),
+                isDone &&
+                  !isActive &&
+                  (compact
+                    ? 'border-border/60 bg-card/70 text-foreground hover:border-primary/20 hover:bg-primary/5'
+                    : 'border-transparent bg-transparent text-foreground/82 hover:bg-info/[0.045] hover:text-info'),
+                !isDone &&
+                  !isActive &&
+                  (compact
+                    ? 'border-border/60 bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground'
+                    : 'border-transparent bg-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground')
               )}
               title={step.label}
             >
-              <Icon className={cn('w-3.5 h-3.5', (() => {
-    if (isActive) {
-        return 'text-primary';
-    }
-    else if (isDone) {
-            return 'text-foreground/80';
-        }
-        else {
-            return 'text-muted-foreground';
-        }
-})())} />
+              {compact ? (
+                <Icon
+                  className={cn(
+                    'h-3.5 w-3.5',
+                    isActive && 'text-primary',
+                    isDone && !isActive && 'text-foreground/80',
+                    !isDone && !isActive && 'text-muted-foreground'
+                  )}
+                />
+              ) : (
+                <span
+                  className={cn(
+                    'flex size-5 items-center justify-center rounded-full border text-[11px] font-semibold tabular-nums',
+                    isActive &&
+                      'border-info bg-info text-info-foreground shadow-[0_8px_18px_-10px_hsl(var(--info)/0.85)]',
+                    isDone &&
+                      !isActive &&
+                      'border-info/20 bg-info/[0.08] text-info',
+                    !isDone &&
+                      !isActive &&
+                      'border-border bg-background text-muted-foreground'
+                  )}
+                >
+                  {index + 1}
+                </span>
+              )}
               <span className="whitespace-nowrap">{step.label}</span>
             </Link>
             {index < steps.length - 1 ? (
-              <span className="text-muted-foreground/40 text-xs select-none">→</span>
+              <span
+                className={cn(
+                  'select-none text-muted-foreground/40',
+                  compact ? 'text-xs' : 'mx-2 text-sm'
+                )}
+              >
+                →
+              </span>
             ) : null}
           </div>
         )

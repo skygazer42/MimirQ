@@ -62,6 +62,16 @@ describe('api-errors', () => {
     expect(info.message).toBe('boom')
   })
 
+  it('toApiErrorInfo makes browser network failures actionable', () => {
+    const info = toApiErrorInfo(
+      { message: 'Network Error', config: { headers: { 'X-Request-ID': 'rid-network' } } },
+      '文档解析失败'
+    )
+    expect(info.requestId).toBe('rid-network')
+    expect(info.message).toContain('无法连接后端 API')
+    expect(info.message).toContain('NEXT_PUBLIC_API_URL')
+  })
+
   it('toApiErrorInfo formats 429 with retry_after_sec + scope + limit', () => {
     const info = toApiErrorInfo(
       {

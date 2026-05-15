@@ -13,7 +13,6 @@ import {
   RotateCcw,
   Search,
   SlidersHorizontal,
-  Sparkles,
   TestTube2,
   X,
   Zap,
@@ -133,6 +132,89 @@ const seedRecentQueries: RecentQueryItem[] = [
   { query: '产品核心功能有哪些？', timestampLabel: '2 分钟前' },
   { query: '数据同步失败原因排查', timestampLabel: '15 分钟前' },
 ] as const
+const RETRIEVAL_ADVANCED_PANEL_ID = 'retrieval-advanced-params'
+const RETRIEVAL_HISTORY_PANEL_ID = 'retrieval-query-history'
+const RETRIEVAL_RANGE_INPUT_CLASS =
+  'relative z-10 h-5 w-full cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-5 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:mt-0 [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-sky-300 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[0_6px_14px_-8px_rgba(37,99,235,0.55)] dark:[&::-webkit-slider-thumb]:border-border dark:[&::-webkit-slider-thumb]:bg-card [&::-moz-range-track]:h-5 [&::-moz-range-track]:bg-transparent [&::-moz-range-progress]:h-5 [&::-moz-range-progress]:bg-transparent [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-sky-300 [&::-moz-range-thumb]:bg-white'
+const RETRIEVAL_PANEL_SURFACE_CLASS =
+  'border-sky-100/75 bg-white/[0.94] shadow-[0_14px_26px_-24px_rgba(37,99,235,0.18)] backdrop-blur-xl dark:border-border/70 dark:bg-background/62'
+const RETRIEVAL_CONTROL_SURFACE_CLASS =
+  'border-sky-100/80 bg-white/[0.92] shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-border/70 dark:bg-background/58'
+
+function SemanticRetrievalMark() {
+  return (
+    <div className="relative flex size-14 items-center justify-center rounded-[22px] border border-sky-200/75 bg-[radial-gradient(circle_at_30%_18%,rgba(255,255,255,0.92),transparent_34%),linear-gradient(145deg,#EFF6FF_0%,#DBEAFE_58%,#E0F2FE_100%)] text-blue-600 shadow-[0_18px_32px_-24px_rgba(37,99,235,0.52)]">
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-1 rounded-[18px] border border-white/70"
+      />
+      <svg
+        aria-label="语义检索图标"
+        role="img"
+        viewBox="0 0 40 40"
+        className="relative size-8"
+        fill="none"
+      >
+        <path
+          d="M11 14.5L19.5 10.5L29 16M11 14.5L18 24.5M29 16L23.5 27"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          opacity="0.42"
+        />
+        <circle
+          data-semantic-node="query"
+          cx="11"
+          cy="14.5"
+          r="4.5"
+          fill="white"
+          stroke="currentColor"
+          strokeWidth="1.7"
+        />
+        <circle
+          data-semantic-node="evidence"
+          cx="29"
+          cy="16"
+          r="4.5"
+          fill="white"
+          stroke="currentColor"
+          strokeWidth="1.7"
+        />
+        <circle
+          data-semantic-node="ranked-hit"
+          cx="18"
+          cy="24.5"
+          r="3.6"
+          fill="#DBEAFE"
+          stroke="currentColor"
+          strokeWidth="1.5"
+        />
+        <path
+          d="M22.8 26.8C24.2 24.4 27.3 23.5 29.7 24.9C32.2 26.3 33 29.4 31.6 31.8C30.2 34.2 27.1 35 24.7 33.7C22.3 32.3 21.4 29.2 22.8 26.8Z"
+          fill="white"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M31.1 31.2L35 35"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+        <path
+          d="M8.8 14.5H13.2M27 16H31M16.3 24.5H19.7"
+          stroke="currentColor"
+          strokeWidth="1.4"
+          strokeLinecap="round"
+          opacity="0.68"
+        />
+      </svg>
+    </div>
+  )
+}
 
 export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<RetrievePreviewPanelProps>) {
   const { openDocument } = useDocumentView()
@@ -145,12 +227,21 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
   const [searchError, setSearchError] = useState<string | null>(null)
   const [topK, setTopK] = useState('5')
   const [scoreThreshold, setScoreThreshold] = useState(0.7)
+  const [advancedParamsOpen, setAdvancedParamsOpen] = useState(false)
+  const [fullHistoryOpen, setFullHistoryOpen] = useState(false)
+  const [retrievalMode, setRetrievalMode] = useState('hybrid')
+  const [maxTokens, setMaxTokens] = useState('2000')
+  const [alpha, setAlpha] = useState(0.6)
+  const [enableWeightRerank, setEnableWeightRerank] = useState(true)
   const [recentQueries, setRecentQueries] = useState<RecentQueryItem[]>([...seedRecentQueries])
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const searchInputRef = useRef<HTMLTextAreaElement | null>(null)
   const prefetchedHitTargetsRef = useRef<Set<string>>(new Set())
 
   const activeResult = activeHit ?? searchResults[0] ?? null
+  const visibleRecentQueries = useMemo(() => recentQueries.slice(0, 3), [recentQueries])
+  const scoreThresholdPercent = Math.round(scoreThreshold * 100)
+  const alphaPercent = Math.round(alpha * 100)
 
   const handlePrefetchHitDocument = useCallback((hit: RetrievePreviewCitation) => {
     const documentId = String(hit.document_id || '').trim()
@@ -195,12 +286,12 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
       const ragConfig: NonNullable<EvidenceRetrieveRequest['rag_config']> = {
         top_k: Number(topK),
         score_threshold: scoreThreshold,
-        max_tokens: 2000,
-        retrieval_mode: 'hybrid',
-        alpha: 0.6,
-        enable_weight_rerank: true,
-        vector_weight: 0.6,
-        keyword_weight: 0.4,
+        max_tokens: Number(maxTokens),
+        retrieval_mode: retrievalMode,
+        alpha,
+        enable_weight_rerank: enableWeightRerank,
+        vector_weight: Number(alpha.toFixed(2)),
+        keyword_weight: Number((1 - alpha).toFixed(2)),
         use_graph: false,
         visible_evidence_only: false,
       }
@@ -218,7 +309,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
       setRecentQueries((prev) => [
         { query, timestampLabel: formatRelativeNow() },
         ...prev.filter((item) => item.query !== query),
-      ].slice(0, 4))
+      ].slice(0, 12))
     } catch (error) {
       setSearchError(formatApiError(error, '检索失败'))
       setHasSearched(true)
@@ -227,11 +318,27 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
     } finally {
       setIsSearching(false)
     }
-  }, [isSearching, scoreThreshold, searchQuery, selectedDatasetId, topK])
+  }, [
+    alpha,
+    enableWeightRerank,
+    isSearching,
+    maxTokens,
+    retrievalMode,
+    scoreThreshold,
+    searchQuery,
+    selectedDatasetId,
+    topK,
+  ])
 
   const handleApplySuggestedQuery = useCallback((query: string) => {
     setSearchQuery(query)
     searchInputRef.current?.focus()
+  }, [])
+
+  const handleClearRecentQueries = useCallback(() => {
+    setRecentQueries([])
+    setFullHistoryOpen(false)
+    toast.success('已清空当前会话检索历史')
   }, [])
 
   const handleReset = useCallback(() => {
@@ -256,16 +363,15 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
   const renderComposer = (compact = false) => (
     <div
       className={cn(
-        'rounded-[22px] border border-border/70 bg-background/92 shadow-[0_14px_26px_-24px_rgba(15,23,42,0.18)] backdrop-blur-xl',
+        'rounded-[22px] border',
+        RETRIEVAL_PANEL_SURFACE_CLASS,
         compact ? 'sticky top-0 z-20 rounded-[24px]' : ''
       )}
     >
       <div className={cn('flex flex-col gap-3.5', compact ? 'p-3.5' : 'p-4')}>
         {!compact ? (
           <div className="flex flex-col items-center text-center">
-            <div className="flex size-12 items-center justify-center rounded-full bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.16),transparent_62%),linear-gradient(180deg,rgba(220,252,231,0.95),rgba(209,250,229,0.8))] text-emerald-600 shadow-[0_12px_20px_-18px_rgba(16,185,129,0.36)]">
-              <Sparkles className="size-6" />
-            </div>
+            <SemanticRetrievalMark />
             <div className="mt-2.5 text-[24px] font-semibold tracking-[-0.045em] text-foreground">
               语义检索测试
             </div>
@@ -287,7 +393,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
               type="button"
               variant="ghost"
               size="sm"
-              className="h-8 rounded-[12px] border border-border/70 bg-background px-3 text-[12px] font-medium"
+              className="h-8 rounded-[12px] border border-sky-100/80 bg-white/90 px-3 text-[12px] font-medium hover:bg-sky-50/70 dark:border-border/70 dark:bg-background/62"
               onClick={handleReset}
             >
               <RotateCcw className="mr-2 size-3.5" />
@@ -296,7 +402,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
           </div>
         )}
 
-        <div className="rounded-[18px] border border-border/70 bg-background shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+        <div className={cn('rounded-[18px] border', RETRIEVAL_CONTROL_SURFACE_CLASS)}>
           <div className="flex gap-3 px-4 pt-4">
             <Search className="mt-1 size-[18px] shrink-0 text-muted-foreground/42" />
             <textarea
@@ -317,9 +423,9 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
             />
           </div>
 
-          <div className="mt-2 flex flex-col gap-2.5 border-t border-border/60 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="mt-2 flex flex-col gap-2.5 border-t border-sky-100/70 px-4 py-3 lg:flex-row lg:items-center lg:justify-between dark:border-border/60">
             <div className="flex flex-wrap items-center gap-3 text-[12px] text-muted-foreground/72">
-              <span className="inline-flex h-8 items-center rounded-full border border-border/70 bg-background px-3">
+              <span className="inline-flex h-8 items-center rounded-full border border-sky-100/80 bg-white/90 px-3 dark:border-border/70 dark:bg-background/62">
                 <Database className="mr-2 size-3.5 text-blue-500" />
                 {selectedDatasetId || '全部数据集'}
               </span>
@@ -347,7 +453,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
       {renderComposer(false)}
 
       <div className="grid gap-3.5 xl:grid-cols-[1.1fr_0.88fr_1fr]">
-        <Panel padding="none" className="rounded-[20px] border border-border/70 bg-background/92 shadow-[0_14px_26px_-24px_rgba(15,23,42,0.14)]">
+        <Panel padding="none" className={cn('rounded-[20px] border', RETRIEVAL_PANEL_SURFACE_CLASS)}>
           <div className="p-[18px]">
             <div className="flex items-center justify-between">
               <div className="text-[15px] font-semibold tracking-[-0.03em] text-foreground">推荐测试问题</div>
@@ -358,7 +464,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                   key={question}
                   type="button"
                   onClick={() => handleApplySuggestedQuery(question)}
-                  className="flex w-full items-center justify-between rounded-[14px] border border-border/70 bg-background px-3 py-2.5 text-left transition-colors hover:border-primary/30 hover:bg-primary/[0.03]"
+                  className="flex w-full items-center justify-between rounded-[14px] border border-sky-100/80 bg-white/86 px-3 py-2.5 text-left transition-colors hover:border-primary/30 hover:bg-sky-50/70 dark:border-border/70 dark:bg-background/58 dark:hover:bg-primary/[0.03]"
                 >
                   <span className="pr-4 text-[12px] leading-5 text-foreground/86">{question}</span>
                   <ChevronRight className="size-3.5 shrink-0 text-muted-foreground/55" />
@@ -368,7 +474,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
           </div>
         </Panel>
 
-        <Panel padding="none" className="rounded-[20px] border border-border/70 bg-background/92 shadow-[0_14px_26px_-24px_rgba(15,23,42,0.14)]">
+        <Panel padding="none" className={cn('rounded-[20px] border', RETRIEVAL_PANEL_SURFACE_CLASS)}>
           <div className="p-[18px]">
             <div className="flex items-center gap-2 text-[15px] font-semibold tracking-[-0.03em] text-foreground">
               <SlidersHorizontal className="size-3.5 text-blue-500" />
@@ -378,7 +484,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
               <div className="space-y-2">
                 <div className="text-[12px] text-muted-foreground/74">Top K（返回结果数）</div>
                 <Select value={topK} onValueChange={setTopK}>
-                  <SelectTrigger className="h-9 rounded-[14px] border-border/70 bg-background text-[12px] font-medium">
+                  <SelectTrigger className="h-9 rounded-[14px] border-sky-100/80 bg-white/90 text-[12px] font-medium dark:border-border/70 dark:bg-background/62">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -393,41 +499,131 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="text-[12px] text-muted-foreground/74">相似度阈值</div>
-                  <div className="rounded-[12px] border border-border/70 px-2 py-1 font-mono text-[12px] text-foreground">
+                  <div className="rounded-[12px] border border-sky-100/80 bg-sky-50/65 px-2 py-1 font-mono text-[12px] text-foreground dark:border-border/70 dark:bg-background/62">
                     {scoreThreshold.toFixed(2)}
                   </div>
                 </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  value={scoreThreshold}
-                  onChange={(event) => setScoreThreshold(Number(event.target.value))}
-                  className="h-2 w-full cursor-pointer accent-primary"
-                />
+                <div className="relative h-5">
+                  <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1 rounded-full bg-sky-100/75 -translate-y-1/2 dark:bg-muted-foreground/20" />
+                  <div
+                    className="pointer-events-none absolute left-0 top-1/2 h-1 rounded-full bg-info/80 -translate-y-1/2 dark:bg-info"
+                    style={{ width: `${scoreThresholdPercent}%` }}
+                  />
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={scoreThreshold}
+                    onChange={(event) => setScoreThreshold(Number(event.target.value))}
+                    className={RETRIEVAL_RANGE_INPUT_CLASS}
+                  />
+                </div>
                 <button
                   type="button"
+                  aria-expanded={advancedParamsOpen}
+                  aria-controls={RETRIEVAL_ADVANCED_PANEL_ID}
+                  onClick={() => setAdvancedParamsOpen((open) => !open)}
                   className="inline-flex items-center text-[12px] font-medium text-blue-600 transition-colors hover:text-blue-500 dark:text-blue-300 dark:hover:text-blue-200"
                 >
-                  更多高级参数
-                  <ChevronRight className="ml-1 size-3 text-blue-600/90 dark:text-blue-300/90" />
+                  {advancedParamsOpen ? '收起高级参数' : '更多高级参数'}
+                  <ChevronRight
+                    className={cn(
+                      'ml-1 size-3 text-blue-600/90 transition-transform dark:text-blue-300/90',
+                      advancedParamsOpen && 'rotate-90'
+                    )}
+                  />
                 </button>
+                {advancedParamsOpen ? (
+                  <div
+                    id={RETRIEVAL_ADVANCED_PANEL_ID}
+                    className="space-y-3 rounded-[16px] border border-sky-100/80 bg-white/86 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-border/70 dark:bg-background/55"
+                  >
+                    <div className="space-y-1.5">
+                      <div className="text-[11px] text-muted-foreground/70">检索模式</div>
+                      <Select value={retrievalMode} onValueChange={setRetrievalMode}>
+                        <SelectTrigger className="h-8 rounded-[12px] border-sky-100/80 bg-white/90 text-[12px] font-medium dark:border-border/70 dark:bg-background/62">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="hybrid">Hybrid 混合检索</SelectItem>
+                          <SelectItem value="vector">Vector 向量直达</SelectItem>
+                          <SelectItem value="keyword">Keyword 关键词</SelectItem>
+                          <SelectItem value="mmr">MMR 多样性</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-[11px] text-muted-foreground/70">
+                        <span>向量权重 Alpha</span>
+                        <span className="font-mono text-foreground">{alpha.toFixed(2)}</span>
+                      </div>
+                      <div className="relative h-5">
+                        <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1 rounded-full bg-sky-100/75 -translate-y-1/2 dark:bg-muted-foreground/20" />
+                        <div
+                          className="pointer-events-none absolute left-0 top-1/2 h-1 rounded-full bg-info/80 -translate-y-1/2 dark:bg-info"
+                          style={{ width: `${alphaPercent}%` }}
+                        />
+                        <input
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.05"
+                          value={alpha}
+                          onChange={(event) => setAlpha(Number(event.target.value))}
+                          className={RETRIEVAL_RANGE_INPUT_CLASS}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1.5">
+                        <div className="text-[11px] text-muted-foreground/70">上下文预算</div>
+                        <Select value={maxTokens} onValueChange={setMaxTokens}>
+                          <SelectTrigger className="h-8 rounded-[12px] border-sky-100/80 bg-white/90 text-[12px] font-medium dark:border-border/70 dark:bg-background/62">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1000">1000 tokens</SelectItem>
+                            <SelectItem value="2000">2000 tokens</SelectItem>
+                            <SelectItem value="4000">4000 tokens</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setEnableWeightRerank((enabled) => !enabled)}
+                        className={cn(
+                          'mt-5 h-8 rounded-[12px] border px-3 text-[11px] font-medium transition-colors',
+                          enableWeightRerank
+                            ? 'border-success/25 bg-success/10 text-success'
+                            : 'border-sky-100/80 bg-white/88 text-muted-foreground dark:border-border/70 dark:bg-background/58'
+                        )}
+                      >
+                        权重重排 {enableWeightRerank ? '开启' : '关闭'}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>
         </Panel>
 
-        <Panel padding="none" className="rounded-[20px] border border-border/70 bg-background/92 shadow-[0_14px_26px_-24px_rgba(15,23,42,0.14)]">
+        <Panel padding="none" className={cn('rounded-[20px] border', RETRIEVAL_PANEL_SURFACE_CLASS)}>
           <div className="p-[18px]">
             <div className="flex items-center justify-between">
               <div className="text-[15px] font-semibold tracking-[-0.03em] text-foreground">最近检索</div>
-              <button type="button" className="text-[12px] text-muted-foreground/66 hover:text-foreground">
+              <button
+                type="button"
+                className="text-[12px] text-muted-foreground/66 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35"
+                onClick={handleClearRecentQueries}
+                disabled={recentQueries.length === 0}
+              >
                 清空
               </button>
             </div>
             <div className="mt-3.5 space-y-2.5">
-              {recentQueries.map((item) => (
+              {visibleRecentQueries.map((item) => (
                 <button
                   key={`${item.query}-${item.timestampLabel}`}
                   type="button"
@@ -441,16 +637,56 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                   <ArrowRight className="mt-0.5 size-3.5 shrink-0 text-muted-foreground/45" />
                 </button>
               ))}
+              {visibleRecentQueries.length === 0 ? (
+                <div className="rounded-[14px] border border-dashed border-sky-100/80 bg-white/70 px-3 py-3 text-[12px] text-muted-foreground/70 dark:border-border/70 dark:bg-background/50">
+                  暂无检索历史
+                </div>
+              ) : null}
             </div>
             <div className="mt-4 flex justify-start">
               <button
                 type="button"
+                aria-expanded={fullHistoryOpen}
+                aria-controls={RETRIEVAL_HISTORY_PANEL_ID}
+                onClick={() => setFullHistoryOpen((open) => !open)}
                 className="inline-flex items-center text-[12px] font-medium text-blue-600 transition-colors hover:text-blue-500 dark:text-blue-300 dark:hover:text-blue-200"
               >
-                查看全部历史
-                <ChevronRight className="ml-1 size-3 text-blue-600/90 dark:text-blue-300/90" />
+                {fullHistoryOpen ? '收起全部历史' : '查看全部历史'}
+                <ChevronRight
+                  className={cn(
+                    'ml-1 size-3 text-blue-600/90 transition-transform dark:text-blue-300/90',
+                    fullHistoryOpen && 'rotate-90'
+                  )}
+                />
               </button>
             </div>
+            {fullHistoryOpen ? (
+              <div
+                id={RETRIEVAL_HISTORY_PANEL_ID}
+                className="mt-3 rounded-[16px] border border-sky-100/80 bg-white/86 p-3 dark:border-border/70 dark:bg-background/55"
+              >
+                <div className="text-[11px] font-medium text-foreground">当前会话历史</div>
+                <div className="mt-2 space-y-2">
+                  {recentQueries.length > 0 ? (
+                    recentQueries.map((item) => (
+                      <button
+                        key={`history-${item.query}-${item.timestampLabel}`}
+                        type="button"
+                        onClick={() => handleApplySuggestedQuery(item.query)}
+                        className="flex w-full items-center justify-between gap-3 rounded-[12px] border border-sky-100/70 bg-white/88 px-3 py-2 text-left transition-colors hover:border-primary/30 hover:bg-sky-50/70 dark:border-border/60 dark:bg-background/58 dark:hover:bg-primary/[0.03]"
+                      >
+                        <span className="line-clamp-1 text-[12px] text-foreground/86">{item.query}</span>
+                        <span className="shrink-0 text-[10px] text-muted-foreground/60">{item.timestampLabel}</span>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="rounded-[12px] border border-dashed border-border/70 px-3 py-2 text-[12px] text-muted-foreground/70">
+                      暂无检索历史
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : null}
           </div>
         </Panel>
       </div>
@@ -458,7 +694,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
   )
 
   const renderNoResults = () => (
-    <Panel padding="none" className="rounded-[24px] border border-border/70 bg-background/92 shadow-[0_18px_36px_-28px_rgba(15,23,42,0.18)]">
+    <Panel padding="none" className={cn('rounded-[24px] border', RETRIEVAL_PANEL_SURFACE_CLASS)}>
       <div className="p-6">
         <div className="text-[20px] font-semibold tracking-[-0.03em] text-foreground">Top-K 排序为空</div>
         <div className="mt-3 text-[14px] leading-6 text-muted-foreground/76">
@@ -473,7 +709,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                 key={label}
                 type="button"
                 onClick={() => handleApplySuggestedQuery(label)}
-                className="rounded-full border border-border/70 bg-background px-3 py-1.5 text-[12px] text-foreground/80 transition-colors hover:border-primary/30 hover:bg-primary/[0.04]"
+                className="rounded-full border border-sky-100/80 bg-white/88 px-3 py-1.5 text-[12px] text-foreground/80 transition-colors hover:border-primary/30 hover:bg-sky-50/70 dark:border-border/70 dark:bg-background/58 dark:hover:bg-primary/[0.04]"
               >
                 {label}
               </button>
@@ -485,7 +721,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
           <div className="text-[13px] font-medium text-foreground">排查方向</div>
           <div className="mt-3 grid gap-3 md:grid-cols-3">
             {noResultDiagnosticTips.map((item) => (
-              <div key={item.title} className="rounded-[18px] border border-border/70 bg-background px-4 py-4">
+              <div key={item.title} className="rounded-[18px] border border-sky-100/80 bg-white/88 px-4 py-4 dark:border-border/70 dark:bg-background/58">
                 <div className="text-[13px] font-medium text-foreground">{item.title}</div>
                 <div className="mt-2 text-[12px] leading-5 text-muted-foreground/72">{item.description}</div>
               </div>
@@ -521,7 +757,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
               </span>
             ) : null}
             {role.startsWith('hierarchy_') ? (
-              <span className="rounded-full border border-border/70 bg-background px-2.5 py-1 text-[11px] text-muted-foreground">
+              <span className="rounded-full border border-sky-100/80 bg-white/88 px-2.5 py-1 text-[11px] text-muted-foreground dark:border-border/70 dark:bg-background/58">
                 {role}
               </span>
             ) : null}
@@ -529,7 +765,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
         </div>
 
         {hasImage ? (
-          <div className="overflow-hidden rounded-[20px] border border-border/70 bg-background">
+          <div className="overflow-hidden rounded-[20px] border border-sky-100/80 bg-white/88 dark:border-border/70 dark:bg-background/58">
             {imageUrl ? (
               <AuthImage src={imageUrl} alt="命中图像缩略图" className="h-44 w-full object-cover" />
             ) : (
@@ -540,32 +776,32 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
           </div>
         ) : null}
 
-        <div className="rounded-[20px] border border-border/70 bg-background px-4 py-4">
+        <div className="rounded-[20px] border border-sky-100/80 bg-white/88 px-4 py-4 dark:border-border/70 dark:bg-background/58">
           <div className="text-[12px] leading-6 text-foreground/86">{previewChunkContent(hit.chunk_content)}</div>
         </div>
 
         <div className="grid gap-3 md:grid-cols-2">
-          <div className="rounded-[18px] border border-border/70 bg-background px-4 py-4">
+          <div className="rounded-[18px] border border-sky-100/80 bg-white/88 px-4 py-4 dark:border-border/70 dark:bg-background/58">
             <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/62">Chunk ID</div>
             <div className="mt-2 break-all font-mono text-[12px] text-foreground/84">{chunkId || '—'}</div>
           </div>
-          <div className="rounded-[18px] border border-border/70 bg-background px-4 py-4">
+          <div className="rounded-[18px] border border-sky-100/80 bg-white/88 px-4 py-4 dark:border-border/70 dark:bg-background/58">
             <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/62">Clause</div>
             <div className="mt-2 text-[12px] text-foreground/84">{clause || '—'}</div>
           </div>
         </div>
 
-        <div className="rounded-[18px] border border-border/70 bg-background px-4 py-4">
+        <div className="rounded-[18px] border border-sky-100/80 bg-white/88 px-4 py-4 dark:border-border/70 dark:bg-background/58">
           <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/62">Path</div>
           <div className="mt-2 break-all text-[12px] text-foreground/84">{pathStr || '—'}</div>
         </div>
 
         {terms.length ? (
-          <div className="rounded-[18px] border border-border/70 bg-background px-4 py-4">
+          <div className="rounded-[18px] border border-sky-100/80 bg-white/88 px-4 py-4 dark:border-border/70 dark:bg-background/58">
             <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/62">Matched Terms</div>
             <div className="mt-3 flex flex-wrap gap-2">
               {terms.map((term) => (
-                <span key={term} className="rounded-full border border-border/70 bg-muted/30 px-2.5 py-1 text-[11px] text-foreground/82">
+                <span key={term} className="rounded-full border border-sky-100/80 bg-sky-50/70 px-2.5 py-1 text-[11px] text-foreground/82 dark:border-border/70 dark:bg-muted/30">
                   {term}
                 </span>
               ))}
@@ -613,8 +849,8 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
 
       {searchResults.length > 0 ? (
         <div className="grid min-h-0 gap-5 2xl:grid-cols-[minmax(0,1fr)_21rem]">
-          <div className="min-h-0 rounded-[24px] border border-border/70 bg-background/92 shadow-[0_18px_36px_-28px_rgba(15,23,42,0.18)]">
-            <div className="border-b border-border/60 px-5 py-4">
+          <div className={cn('min-h-0 rounded-[24px] border', RETRIEVAL_PANEL_SURFACE_CLASS)}>
+            <div className="border-b border-sky-100/70 px-5 py-4 dark:border-border/60">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground/62">检索结果</div>
@@ -623,13 +859,13 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2 text-[12px] text-muted-foreground/72">
-                  <span className="rounded-full border border-border/70 bg-background px-3 py-1">Family {resultStats.familyHits}</span>
-                  <span className="rounded-full border border-border/70 bg-background px-3 py-1">Hierarchy {resultStats.hierarchyHits}</span>
+                  <span className="rounded-full border border-sky-100/80 bg-white/88 px-3 py-1 dark:border-border/70 dark:bg-background/58">Family {resultStats.familyHits}</span>
+                  <span className="rounded-full border border-sky-100/80 bg-white/88 px-3 py-1 dark:border-border/70 dark:bg-background/58">Hierarchy {resultStats.hierarchyHits}</span>
                 </div>
               </div>
             </div>
 
-            <div aria-label="检索结果排名列表" className="min-h-0 divide-y divide-border/60">
+            <div aria-label="检索结果排名列表" className="min-h-0 divide-y divide-sky-100/70 dark:divide-border/60">
               {searchResults.map((hit, idx) => {
                 const key = toHitKey(hit)
                 const expandedHit = Boolean(expanded[key])
@@ -683,7 +919,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                         {expandedHit && terms.length ? (
                           <div className="mt-3 flex flex-wrap gap-2">
                             {terms.map((term) => (
-                              <span key={term} className="rounded-full border border-border/70 bg-background px-2.5 py-1 text-[11px] text-foreground/82">
+                               <span key={term} className="rounded-full border border-sky-100/80 bg-white/88 px-2.5 py-1 text-[11px] text-foreground/82 dark:border-border/70 dark:bg-background/58">
                                 {term}
                               </span>
                             ))}
@@ -721,8 +957,8 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
             </div>
           </div>
 
-          <div className="min-h-0 rounded-[24px] border border-border/70 bg-background/92 shadow-[0_18px_36px_-28px_rgba(15,23,42,0.18)]">
-            <div className="border-b border-border/60 px-5 py-4">
+          <div className={cn('min-h-0 rounded-[24px] border', RETRIEVAL_PANEL_SURFACE_CLASS)}>
+            <div className="border-b border-sky-100/70 px-5 py-4 dark:border-border/60">
               <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground/62">命中细节</div>
               <div className="mt-1 text-[16px] font-semibold text-foreground">Active Hit</div>
             </div>
@@ -736,8 +972,8 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
   )
 
   return (
-    <div className={cn('relative flex h-full min-h-0 flex-col overflow-hidden bg-background/40', className)}>
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.08),transparent_44%),linear-gradient(180deg,rgba(255,255,255,0.3),transparent_38%)]" />
+    <div className={cn(className, 'relative flex h-full min-h-0 flex-col overflow-hidden bg-[#F8FBFF]/75 dark:bg-background/30')}>
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.09),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.48),transparent_40%)] dark:bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.08),transparent_44%)]" />
       <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-4">
         {!hasSearched && !isSearching ? renderInitialWorkbench() : renderResultsWorkbench()}
       </div>

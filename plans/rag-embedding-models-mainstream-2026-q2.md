@@ -281,6 +281,16 @@ query → 256d embedding(快)→ ANN 取 top-200 候选(快、便宜)
 - ❌ **不要跳过 benchmark runner 直接换模型**(MTEB 数字不一定代表客户语料表现)
 - ❌ **不要忘记同时改 reranker**(对照 MEMORY 提到的 9 种 reranker plan,embedding 升级要配套 BGE-reranker-v2-m3 / Cohere Rerank 3 / Voyage-rerank-2 升级)
 
+### 9.5 当前选择性落地状态(2026-05-13)
+
+本轮只落地不依赖外部 API key、不改变默认线上行为、能直接验证的 P0 子集:
+
+- [x] **Embedding benchmark runner skeleton**:新增 `app/rag/evaluation/embedding_bench/`,支持同一 golden set 下按模型汇总 `Recall@K / Hit@K / MRR / latency / cost`,并按召回优先选 best model。验证见 `tests/test_embedding_bench_runner.py`。
+- [x] **Matryoshka shortlist + rescore 实验函数**:扩展 `app/rag/embedding/matryoshka.py`,提供低维 shortlist + full-dim rescore 的纯函数,暂不接入生产 retriever 默认链路。验证见 `tests/test_matryoshka_embedding.py`。
+- [ ] **真实 provider 填实**:Voyage/Cohere/Jina/Bedrock 仍暂缓。原因:需要按官方 API contract / 鉴权 / 多模态输入格式逐一接入,不能在没有 API key 和 mock contract 的情况下假实现。
+- [ ] **默认模型升级 / language routing 默认开**:暂缓。原因:必须先用 benchmark runner 跑现有客户 golden set,否则直接改默认可能导致召回回退。
+- [ ] **Milvus SQ8 / binary 量化**:暂缓。原因:索引参数会影响线上召回和运维成本,需要真实向量规模和回归报告。
+
 ---
 
 ## 10. 关键文件清单(将动)

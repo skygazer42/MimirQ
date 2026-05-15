@@ -33,6 +33,7 @@ type WorkbenchScaffoldProps = {
   headerClassName?: string
   toolbarClassName?: string
   bodyClassName?: string
+  mainPaneClassName?: string
   mainPaneBodyClassName?: string
 }
 
@@ -57,10 +58,11 @@ export function WorkbenchScaffold({
   headerClassName,
   toolbarClassName,
   bodyClassName,
+  mainPaneClassName,
   mainPaneBodyClassName,
 }: Readonly<WorkbenchScaffoldProps>) {
   const resolvedMainPanel =
-    mainPanel ?? (children ? <WorkbenchPane className="flex-1" bodyClassName={mainPaneBodyClassName}>{children}</WorkbenchPane> : null)
+    mainPanel ?? (children ? <WorkbenchPane className={cn('flex-1', mainPaneClassName)} bodyClassName={mainPaneBodyClassName}>{children}</WorkbenchPane> : null)
 
   if (!resolvedMainPanel) {
     throw new Error('WorkbenchScaffold requires `mainPanel` or `children`.')

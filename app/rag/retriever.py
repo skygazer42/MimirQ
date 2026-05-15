@@ -29,6 +29,7 @@ from app.core.database import SessionLocal
 from app.core.stream_events import emit_stream_event
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
+from app.models.dataset import Dataset as DBDataset
 from app.rag.core.filters import match_metadata_filter
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
@@ -47,7 +48,13 @@ from app.rag.retrieval_candidate_cache import (
     set_cached_retrieval_candidates,
 )
 from app.services.corpus_cache_tokens import resolve_corpus_cache_token
+from app.services.dataset_embedding_config import (
+    DatasetEmbeddingRuntimeConfig,
+    create_embeddings_for_runtime,
+    resolve_dataset_embedding_runtime,
+)
 from app.storage.vector.factory import get_vector_store
+from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name
 
 logger = get_logger("rag.retriever")
 
@@ -407,6 +414,59 @@ class HybridRetriever(BaseRetriever):
         self._colbert_build_locks.pop(key, None)
         with self._bm25_cache_lock:
             self._bm25_cache_order.pop(key, None)
+
+    def _resolve_embedding_runtime(self, *, tenant_id: UUID | None) -> DatasetEmbeddingRuntimeConfig:
+        if self.dataset_id is None or tenant_id is None:
+            runtime = resolve_dataset_embedding_runtime(None)
+            return replace(runtime, embedding_space_hash=current_embedding_space_hash())
+
+        db = SessionLocal()
+        try:
+            row = (
+                db.query(DBDataset.dataset_metadata)
+                .filter(DBDataset.tenant_id == tenant_id, DBDataset.id == self.dataset_id)
+                .first()
+            )
+            meta = row[0] if row else None
+            runtime = resolve_dataset_embedding_runtime(dict(meta or {}) if isinstance(meta, dict) else {})
+            if runtime.dataset_scoped:
+                return runtime
+            return replace(runtime, embedding_space_hash=current_embedding_space_hash())
+        except Exception:
+            runtime = resolve_dataset_embedding_runtime(None)
+            return replace(runtime, embedding_space_hash=current_embedding_space_hash())
+        finally:
+            try:
+                db.close()
+            except Exception as exc:
+                logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
+
+    def _search_dataset_scoped_vectors(
+        self,
+        *,
+        query: str,
+        top_k: int,
+        score_threshold: float,
+        document_ids: list[UUID] | None,
+        tenant_id: UUID | None,
+        metadata_filter: dict[str, Any] | None,
+        embedding_runtime: DatasetEmbeddingRuntimeConfig,
+    ) -> list[dict[str, Any]]:
+        embeddings = create_embeddings_for_runtime(embedding_runtime)
+        query_vector = embeddings.embed_query(query)
+        scoped_filter = dict(metadata_filter or {})
+        if tenant_id is not None:
+            scoped_filter.setdefault("tenant_id", str(tenant_id))
+        if document_ids:
+            scoped_filter["document_id"] = {"$in": [str(doc_id) for doc_id in document_ids]}
+        adapter = get_milvus_adapter(resolve_collection_name(embedding_runtime.collection_name))
+        results = adapter.search(
+            query_vector=query_vector,
+            top_k=max(1, top_k * 2),
+            metadata_filter=scoped_filter or None,
+        )
+        filtered = [r for r in results if float(r.get("score") or 0.0) >= float(score_threshold or 0.0)]
+        return filtered[:top_k]
 
     def _bm25_dataset_cache_version(
         self,
@@ -2786,6 +2846,9 @@ class HybridRetriever(BaseRetriever):
         colpali_results: list[dict[str, Any]] = []
         want_colpali = False
         colpali_reason = "disabled"
+        tenant_uuid = tenant_id or self.tenant_id
+        embedding_runtime = self._resolve_embedding_runtime(tenant_id=tenant_uuid)
+        embedding_space = str(embedding_runtime.embedding_space_hash or "").strip()
 
         # Metadata filter strategy:
         # - BM25 sees Postgres chunk metadata (rich JSON) -> can apply most filters early.
@@ -2855,7 +2918,7 @@ class HybridRetriever(BaseRetriever):
             # Embedding space guard pushdown (backward compatible): include both the current
             # embedding space and the empty-string legacy value.
             try:
-                space = str(current_embedding_space_hash() or "").strip()
+                space = embedding_space
             except Exception:
                 space = ""
             if space and "embedding_space_hash" not in vf:
@@ -2926,14 +2989,16 @@ class HybridRetriever(BaseRetriever):
         cache_eligible = bool(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_ENABLED", False))
 
         semantic_cache_eligible = bool(getattr(settings, "SEMANTIC_CACHE_ENABLED", False))
+        if embedding_runtime.dataset_scoped:
+            # Semantic cache currently embeds with the global adapter. Avoid cross-space hits for dataset-scoped embeddings.
+            semantic_cache_eligible = False
         semantic_cache_hit = False
         semantic_cached = None
 
         corpus_cache_token: str | None = None
-        tenant_uuid = tenant_id or self.tenant_id
         account_id0 = (self.account_id or "").strip()
         dataset_id0 = str(self.dataset_id) if self.dataset_id is not None else None
-        pipeline_key = str(current_embedding_space_hash() or "") or None
+        pipeline_key = embedding_space or None
         doc_ids = [str(d) for d in (document_ids or [])]
 
         cache_meta: dict[str, Any] = {
@@ -3086,7 +3151,18 @@ class HybridRetriever(BaseRetriever):
 
                 t0 = time.perf_counter()
                 try:
-                    vector_results = vector_store.search(**search_kwargs)
+                    if embedding_runtime.dataset_scoped:
+                        vector_results = self._search_dataset_scoped_vectors(
+                            query=query,
+                            top_k=fetch_k,
+                            score_threshold=score_threshold,
+                            document_ids=document_ids,
+                            tenant_id=tenant_id,
+                            metadata_filter=vector_filter,
+                            embedding_runtime=embedding_runtime,
+                        )
+                    else:
+                        vector_results = vector_store.search(**search_kwargs)
                 finally:
                     vector_elapsed_ms += (time.perf_counter() - t0) * 1000
             except Exception as exc:
@@ -3259,7 +3335,18 @@ class HybridRetriever(BaseRetriever):
                     fallback_kwargs["metadata_filter"] = vector_filter
                 t0 = time.perf_counter()
                 try:
-                    vector_results = vector_store.search(**fallback_kwargs)
+                    if embedding_runtime.dataset_scoped:
+                        vector_results = self._search_dataset_scoped_vectors(
+                            query=query,
+                            top_k=fetch_k,
+                            score_threshold=score_threshold,
+                            document_ids=document_ids,
+                            tenant_id=tenant_id,
+                            metadata_filter=vector_filter,
+                            embedding_runtime=embedding_runtime,
+                        )
+                    else:
+                        vector_results = vector_store.search(**fallback_kwargs)
                 finally:
                     vector_elapsed_ms += (time.perf_counter() - t0) * 1000
             except Exception as exc:
@@ -3738,7 +3825,9 @@ class HybridRetriever(BaseRetriever):
             tenant_filter = self.tenant_id
             account_id = (self.account_id or "").strip() or None
             dataset_filter = self.dataset_id
-            embedding_space = current_embedding_space_hash()
+            embedding_space = self._resolve_embedding_runtime(
+                tenant_id=tenant_filter,
+            ).embedding_space_hash
 
             chunk_ids: list[UUID] = []
             # First collect existing chunk_ids (prefer using these for lookup)

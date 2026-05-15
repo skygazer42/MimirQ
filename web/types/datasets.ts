@@ -8,6 +8,12 @@ import type { DocumentPipelineOptions, IngestionPolicy } from './processing'
 
 // ==================== 数据集相关类型 ====================
 
+export interface DatasetEmbeddingDefaults {
+  provider?: string | null
+  model?: string | null
+  api_base?: string | null
+}
+
 export interface Dataset {
   id: string
   tenant_id: string
@@ -17,6 +23,7 @@ export interface Dataset {
   owner_id?: string | null
   partial_member_list?: string[] | null
   partial_group_list?: string[] | null
+  embedding_defaults?: DatasetEmbeddingDefaults | null
   pipeline?: DocumentPipelineOptions | null
 }
 
@@ -26,6 +33,7 @@ export interface DatasetCreate {
   permission: PermissionEnum
   partial_member_list?: string[] | null
   partial_group_list?: string[] | null
+  embedding_defaults?: DatasetEmbeddingDefaults | null
   pipeline?: DocumentPipelineOptions | null
 }
 
@@ -35,6 +43,7 @@ export interface DatasetUpdate {
   permission?: PermissionEnum | null
   partial_member_list?: string[] | null
   partial_group_list?: string[] | null
+  embedding_defaults?: DatasetEmbeddingDefaults | null
   pipeline?: DocumentPipelineOptions | null
 }
 
@@ -199,6 +208,7 @@ export interface DatasetConfigBundle {
   default_parser_backend?: string | null
   default_chunk_strategy?: string | null
   rag_defaults?: Record<string, unknown> | null
+  embedding_defaults?: DatasetEmbeddingDefaults | null
   default_prompt_template_id?: string | null
   default_prompt_template_key?: string | null
   default_prompt_ab_experiment_key?: string | null
