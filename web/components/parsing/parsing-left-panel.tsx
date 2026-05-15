@@ -24,11 +24,11 @@ export function ParsingLeftPanel({
  return (
  <aside
  className={cn(
- 'group/sidebar relative z-10 flex min-h-0 flex-shrink-0 flex-col overflow-visible border-r border-border/60 bg-card dark:bg-background',
- collapsed ? 'w-0 border-r-0' : 'w-60',
+ 'group/sidebar relative z-10 flex min-h-0 flex-shrink-0 flex-col overflow-visible border-r border-border/60 bg-card/98 dark:bg-background',
+ collapsed ? 'w-0 border-r-0' : 'w-[356px]',
  className
  )}
- style={{ width: collapsed ? 0 : 240 }}
+ style={{ width: collapsed ? 0 : 356 }}
  >
  <Button
  variant="ghost"

@@ -29,6 +29,7 @@ from app.api.schemas.dataset import (
     DatasetConfigExport,
     DatasetConfigImportRequest,
     DatasetCreate,
+    DatasetEmbeddingDefaults,
     DatasetIngestionStats,
     DatasetListResponse,
     DatasetOut,
@@ -265,6 +266,50 @@ def _dataset_rag_defaults_out(ds: Dataset) -> DatasetRAGDefaults | None:
     return parsed
 
 
+def _dataset_embedding_defaults_out(ds: Dataset) -> DatasetEmbeddingDefaults | None:
+    meta = getattr(ds, "dataset_metadata", None)
+    if not isinstance(meta, dict):
+        return None
+    raw = meta.get("embedding_defaults")
+    if not isinstance(raw, dict):
+        return None
+    try:
+        parsed = DatasetEmbeddingDefaults(**raw)
+    except Exception:
+        return None
+    if not parsed.model_dump(exclude_none=True):
+        return None
+    return parsed
+
+
+def _upsert_dataset_embedding_defaults_metadata(
+    meta: dict[str, Any],
+    *,
+    defaults: DatasetEmbeddingDefaults | None,
+    replace: bool = False,
+) -> bool:
+    if defaults is None:
+        if replace:
+            before = "embedding_defaults" in meta
+            meta.pop("embedding_defaults", None)
+            return before
+        return False
+
+    data = defaults.model_dump(exclude_none=True)
+    normalized: dict[str, str] = {}
+    for key in ("provider", "model", "api_base"):
+        raw = data.get(key)
+        value = str(raw or "").strip()
+        if value:
+            normalized[key] = value
+
+    if normalized:
+        meta["embedding_defaults"] = normalized
+    else:
+        meta.pop("embedding_defaults", None)
+    return True
+
+
 def _dataset_rag_config_template_defaults_out(ds: Dataset) -> tuple[UUID | None, str | None, str | None]:
     meta = getattr(ds, "dataset_metadata", None)
     if not isinstance(meta, dict):
@@ -482,7 +527,14 @@ def create_dataset(
             meta.pop("rag_defaults", None)
         changed = True
 
-    # 4) RAG config template defaults (optional; for safe rollout/rollback of retrieval/rerank knobs).
+    # 4) Embedding defaults (dataset-scoped embedding space; no secrets in metadata).
+    if payload.embedding_defaults is not None:
+        changed = _upsert_dataset_embedding_defaults_metadata(
+            meta,
+            defaults=payload.embedding_defaults,
+        ) or changed
+
+    # 5) RAG config template defaults (optional; for safe rollout/rollback of retrieval/rerank knobs).
     if payload.default_rag_config_template_id is not None:
         meta["default_rag_config_template_id"] = str(payload.default_rag_config_template_id)
         changed = True
@@ -501,7 +553,7 @@ def create_dataset(
             meta.pop("default_rag_config_ab_experiment_key", None)
         changed = True
 
-    # 5) Prompt defaults (prompt template + optional A/B experiment key).
+    # 6) Prompt defaults (prompt template + optional A/B experiment key).
     if payload.default_prompt_template_id is not None:
         meta["default_prompt_template_id"] = str(payload.default_prompt_template_id)
         changed = True
@@ -520,7 +572,7 @@ def create_dataset(
             meta.pop("default_prompt_ab_experiment_key", None)
         changed = True
 
-    # 6) Chunk target spec (best-effort; used by profiling/auto-tune).
+    # 7) Chunk target spec (best-effort; used by profiling/auto-tune).
     if payload.chunk_targets_v2 is not None:
         data = payload.chunk_targets_v2.model_dump(exclude_none=True)
         if data:
@@ -529,7 +581,7 @@ def create_dataset(
             meta.pop("chunk_targets_v2", None)
         changed = True
 
-    # 7) Retention policy (lifecycle automation).
+    # 8) Retention policy (lifecycle automation).
     if payload.retention_policy is not None:
         data = payload.retention_policy.model_dump(exclude_none=True)
         if data:
@@ -589,6 +641,7 @@ def create_dataset(
         default_parser_backend=default_parser_backend,
         default_chunk_strategy=default_chunk_strategy,
         rag_defaults=_dataset_rag_defaults_out(dataset),
+        embedding_defaults=_dataset_embedding_defaults_out(dataset),
         default_rag_config_template_id=rag_config_template_id,
         default_rag_config_template_key=rag_config_template_key,
         default_rag_config_ab_experiment_key=rag_config_ab_experiment_key,
@@ -741,6 +794,7 @@ def list_datasets(
             default_parser_backend=default_parser_backend,
             default_chunk_strategy=default_chunk_strategy,
             rag_defaults=_dataset_rag_defaults_out(ds),
+            embedding_defaults=_dataset_embedding_defaults_out(ds),
             default_rag_config_template_id=rag_config_template_id,
             default_rag_config_template_key=rag_config_template_key,
             default_rag_config_ab_experiment_key=rag_config_ab_experiment_key,
@@ -790,6 +844,7 @@ def get_dataset(
         default_parser_backend=default_parser_backend,
         default_chunk_strategy=default_chunk_strategy,
         rag_defaults=_dataset_rag_defaults_out(dataset),
+        embedding_defaults=_dataset_embedding_defaults_out(dataset),
         default_rag_config_template_id=rag_config_template_id,
         default_rag_config_template_key=rag_config_template_key,
         default_rag_config_ab_experiment_key=rag_config_ab_experiment_key,
@@ -887,6 +942,13 @@ def update_dataset(
         else:
             meta.pop("rag_defaults", None)
         changed = True
+
+    if "embedding_defaults" in payload.model_fields_set:
+        changed = _upsert_dataset_embedding_defaults_metadata(
+            meta,
+            defaults=payload.embedding_defaults,
+            replace=True,
+        ) or changed
 
     # RAG config template defaults allow explicit clearing via `null` (need fields_set checks).
     if "default_rag_config_template_id" in payload.model_fields_set:
@@ -998,6 +1060,7 @@ def update_dataset(
         default_parser_backend=default_parser_backend,
         default_chunk_strategy=default_chunk_strategy,
         rag_defaults=_dataset_rag_defaults_out(updated),
+        embedding_defaults=_dataset_embedding_defaults_out(updated),
         default_rag_config_template_id=rag_config_template_id,
         default_rag_config_template_key=rag_config_template_key,
         default_rag_config_ab_experiment_key=rag_config_ab_experiment_key,
@@ -1036,6 +1099,7 @@ def _build_dataset_config_bundle(ds: Dataset) -> DatasetConfigBundle:
         default_parser_backend=default_parser_backend,
         default_chunk_strategy=default_chunk_strategy,
         rag_defaults=_dataset_rag_defaults_out(ds),
+        embedding_defaults=_dataset_embedding_defaults_out(ds),
         default_rag_config_template_id=rag_config_template_id,
         default_rag_config_template_key=rag_config_template_key,
         default_rag_config_ab_experiment_key=rag_config_ab_experiment_key,
@@ -1132,6 +1196,14 @@ def import_dataset_config(
         else:
             meta.pop("rag_defaults", None)
         changed = True
+
+    # Embedding defaults
+    if replace or cfg.embedding_defaults is not None:
+        changed = _upsert_dataset_embedding_defaults_metadata(
+            meta,
+            defaults=cfg.embedding_defaults,
+            replace=replace,
+        ) or changed
 
     # RAG config template defaults
     if replace or cfg.default_rag_config_template_id is not None:
@@ -1265,6 +1337,7 @@ def import_dataset_config(
         default_parser_backend=default_parser_backend,
         default_chunk_strategy=default_chunk_strategy,
         rag_defaults=_dataset_rag_defaults_out(ds),
+        embedding_defaults=_dataset_embedding_defaults_out(ds),
         default_rag_config_template_id=rag_config_template_id,
         default_rag_config_template_key=rag_config_template_key,
         default_rag_config_ab_experiment_key=rag_config_ab_experiment_key,
@@ -1354,6 +1427,7 @@ def clone_dataset(
         default_parser_backend=default_parser_backend,
         default_chunk_strategy=default_chunk_strategy,
         rag_defaults=_dataset_rag_defaults_out(created),
+        embedding_defaults=_dataset_embedding_defaults_out(created),
         default_rag_config_template_id=rag_config_template_id,
         default_rag_config_template_key=rag_config_template_key,
         default_rag_config_ab_experiment_key=rag_config_ab_experiment_key,

@@ -9,6 +9,9 @@ describe('PipelineRail', () => {
 
     expect(src).toContain('IngestionWorkflowStepper')
     expect(src).toContain('入库流程')
-    expect(src).toContain('variant="glass"')
+    expect(src).toContain('data-testid="pipeline-rail"')
+    expect(src).toContain('compact = false')
+    expect(src).toContain('rounded-full')
+    expect(src).toContain('className="min-w-max"')
   })
 })

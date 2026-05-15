@@ -26,5 +26,11 @@ describe('KnowledgeScopePanel status ratios', () => {
     )
     expectSourceToContain(src, "item.key === 'failed'")
     expectSourceToContain(src, "item.key === 'quarantined'")
+    expectSourceToContain(
+      src,
+      "min-h-7 rounded-[9px] border px-2 py-1 text-[11px] font-semibold"
+    )
+    expectSourceToContain(src, 'text-foreground/76')
+    expectSourceNotToContain(src, "count === 0\n              ? 'opacity-20")
   })
 })

@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowRightLeft, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2, FileImage, FileCode, FileSpreadsheet, FileArchive, Library, Package, AlertCircle, Paperclip, FolderUp, FileJson, AlignLeft, FileSignature, RotateCcw, Loader2, Clock3 } from 'lucide-react'
+import { ArrowRightLeft, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2, FileImage, FileCode, FileSpreadsheet, FileArchive, AlertCircle, Paperclip, FolderUp, FileJson, AlignLeft, FileSignature, RotateCcw, Loader2, Clock3 } from 'lucide-react'
 import { toast } from 'sonner'
 import { collectFolderDescendantIds } from '@/lib/folder-tree-index'
 import { cn } from '@/lib/utils'
@@ -50,6 +50,56 @@ export type DocumentTreeFileItem = {
 const TREE_INDENT_STEP = 14
 const TREE_ROW_BASE_PADDING = 8
 
+const smallFileIconToneClasses: Record<
+  string,
+  {
+    bg: string
+    border: string
+    icon: string
+  }
+> = {
+  red: {
+    bg: 'bg-red-50 dark:bg-red-950/20',
+    border: 'border-red-200/80 dark:border-red-800/60',
+    icon: 'text-red-600 dark:text-red-300',
+  },
+  blue: {
+    bg: 'bg-blue-50 dark:bg-blue-950/20',
+    border: 'border-blue-200/80 dark:border-blue-800/60',
+    icon: 'text-blue-600 dark:text-blue-300',
+  },
+  emerald: {
+    bg: 'bg-emerald-50 dark:bg-emerald-950/20',
+    border: 'border-emerald-200/80 dark:border-emerald-800/60',
+    icon: 'text-emerald-700 dark:text-emerald-300',
+  },
+  amber: {
+    bg: 'bg-amber-50 dark:bg-amber-950/20',
+    border: 'border-amber-200/80 dark:border-amber-800/60',
+    icon: 'text-amber-700 dark:text-amber-300',
+  },
+  rose: {
+    bg: 'bg-rose-50 dark:bg-rose-950/20',
+    border: 'border-rose-200/80 dark:border-rose-800/60',
+    icon: 'text-rose-600 dark:text-rose-300',
+  },
+  sky: {
+    bg: 'bg-sky-50 dark:bg-sky-950/20',
+    border: 'border-sky-200/80 dark:border-sky-800/60',
+    icon: 'text-sky-600 dark:text-sky-300',
+  },
+  teal: {
+    bg: 'bg-teal-50 dark:bg-teal-950/20',
+    border: 'border-teal-200/80 dark:border-teal-800/60',
+    icon: 'text-teal-700 dark:text-teal-300',
+  },
+  slate: {
+    bg: 'bg-muted dark:bg-slate-900/40',
+    border: 'border-border/70 dark:border-slate-700/65',
+    icon: 'text-muted-foreground',
+  },
+}
+
 export function getFileIcon(filename: string, className?: string) {
   const ext = filename.split('.').pop()?.toLowerCase() || ''
   const isLarge = className?.includes('w-12')
@@ -62,29 +112,30 @@ export function getFileIcon(filename: string, className?: string) {
   // Keep icon shapes distinct; keep colors subtle (Notes-like) and avoid purple.
   if (['pdf'].includes(ext)) { tone = 'red'; label = 'PDF'; Icon = FileSignature }
   else if (['doc', 'docx'].includes(ext)) { tone = 'blue'; label = 'DOC'; Icon = FileText } // Word
-  else if (['xls', 'xlsx', 'csv'].includes(ext)) { tone = 'emerald'; label = 'XLS'; Icon = FileSpreadsheet } // Excel/CSV
+  else if (['xls', 'xlsx'].includes(ext)) { tone = 'emerald'; label = 'XLS'; Icon = FileSpreadsheet } // Excel
+  else if (['csv'].includes(ext)) { tone = 'emerald'; label = 'CSV'; Icon = FileSpreadsheet }
   else if (['ppt', 'pptx'].includes(ext)) { tone = 'amber'; label = 'PPT'; Icon = FileImage } // PPT
-  else if (['txt', 'md'].includes(ext)) { tone = 'slate'; label = 'TXT'; Icon = AlignLeft } // Text/Markdown
+  else if (['md'].includes(ext)) { tone = 'sky'; label = 'MD'; Icon = AlignLeft }
+  else if (['txt'].includes(ext)) { tone = 'slate'; label = 'TXT'; Icon = AlignLeft }
   else if (['json'].includes(ext)) { tone = 'teal'; label = 'JSON'; Icon = FileJson } // JSON
   else if (['jpg', 'png', 'jpeg', 'gif', 'webp'].includes(ext)) { tone = 'rose'; label = 'IMG'; Icon = FileImage } // Image
   else if (['zip', 'rar', '7z'].includes(ext)) { tone = 'amber'; label = 'ZIP'; Icon = FileArchive } // Archive
   else if (['js', 'ts', 'jsx', 'tsx', 'py'].includes(ext)) { tone = 'sky'; label = 'CODE'; Icon = FileCode } // Code
 
-  // Small Icon (Simple colored badge)
+  // Small Icon: light file-type square matching the parsing tree visual.
   if (!isLarge) {
-    const toneClasses: Record<string, string> = {
-      red: "bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-300",
-      blue: "bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300",
-      emerald: "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300",
-      amber: "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300",
-      rose: "bg-rose-50 text-rose-600 dark:bg-rose-900/20 dark:text-rose-300",
-      sky: "bg-primary/10 text-primary",
-      teal: "bg-teal-50 text-teal-700 dark:bg-teal-900/20 dark:text-teal-300",
-      slate: "bg-muted text-muted-foreground",
-    }
+    const toneClass = smallFileIconToneClasses[tone] || smallFileIconToneClasses.slate
     return (
-      <div className={cn("w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0", toneClasses[tone] || toneClasses.slate, className)}>
-        <Icon className="w-3.5 h-3.5" />
+      <div
+        className={cn(
+          'flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg border shadow-[inset_0_1px_0_rgba(255,255,255,0.78)]',
+          toneClass.bg,
+          toneClass.border,
+          className
+        )}
+        aria-hidden="true"
+      >
+        <Icon className={cn('h-3.5 w-3.5', toneClass.icon)} />
       </div>
     )
   }
@@ -167,29 +218,9 @@ export function getFileIcon(filename: string, className?: string) {
 function getFolderIconElement(depth: number, isOpen: boolean) {
   const className = "w-4 h-4 flex-shrink-0"
 
-  // Root (Depth 0) - handled separately usually, but if passed 0:
-  if (depth === 0) {
-    return <Library className={cn(className, "text-muted-foreground")} />
-  }
-
-  // Level 1 (Top categories)
-  if (depth === 1) {
-    return <Package className={cn(className, "text-muted-foreground")} />
-  }
-
-  // Level 2 (Sub-categories)
-  if (depth === 2) {
-    return isOpen
-      ? <FolderOpen className={cn(className, "text-muted-foreground")} />
-      : <Folder className={cn(className, "text-muted-foreground")} />
-  }
-
-  // Deep levels
-  const color = "text-muted-foreground"
-
   return isOpen
-    ? <FolderOpen className={cn(className, color)} />
-    : <Folder className={cn(className, color)} />
+    ? <FolderOpen className={cn(className, "text-muted-foreground/90")} />
+    : <Folder className={cn(className, "text-muted-foreground/80")} />
 }
 
 export function DocumentFolderTree({
@@ -561,10 +592,10 @@ export function DocumentFolderTree({
         <div
           key={file.id}
           className={cn(
-            'group/file relative overflow-hidden rounded-sm before:absolute before:bottom-1 before:left-0 before:top-1 before:w-px before:rounded-full before:bg-primary/0 before:transition-colors',
+            'group/file relative overflow-hidden rounded-xl before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-primary/0 before:transition-colors',
             file.isActive
-              ? 'bg-primary/[0.045] text-foreground before:bg-primary/55'
-              : 'text-foreground/72 hover:bg-muted/24 hover:text-foreground/88',
+              ? 'bg-info/[0.085] text-foreground shadow-[inset_0_0_0_1px_hsl(var(--info)/0.10)] before:bg-info/70'
+              : 'text-foreground/72 hover:bg-muted/36 hover:text-foreground/88',
             isError && !file.isActive && 'bg-destructive/7 text-destructive/90 hover:bg-destructive/8'
           )}
         >
@@ -572,7 +603,7 @@ export function DocumentFolderTree({
           <button
             type="button"
             className={cn(
-              'flex h-7 w-full items-center gap-1.5 pr-1.5 text-left focus-ring',
+              'flex h-9 w-full items-center gap-2 pr-2 text-left focus-ring',
               hasInlineActions && 'pr-10'
             )}
             style={{ paddingLeft: `${TREE_ROW_BASE_PADDING + level * TREE_INDENT_STEP}px` }}
@@ -584,9 +615,9 @@ export function DocumentFolderTree({
             draggable={Boolean(onFileDragStart) && !file.readOnly}
             onDragStart={!file.readOnly && onFileDragStart ? (event) => onFileDragStart(event, file.id) : undefined}
           >
-            {getFileIcon(file.name, 'h-5 w-5 rounded')}
+            {getFileIcon(file.name, 'h-6 w-6 rounded-lg')}
             <div className="flex min-w-0 flex-1 items-center gap-1.5">
-              <span className="min-w-0 flex-1 truncate text-[11px] font-medium leading-4">{file.name}</span>
+              <span className="min-w-0 flex-1 truncate text-[12px] font-medium leading-4">{file.name}</span>
               {isParsing ? (
                 <span className="shrink-0 text-primary" title={progress != null ? `处理中 ${Math.round(progress)}%` : '处理中'}>
                   <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" />
@@ -665,11 +696,11 @@ export function DocumentFolderTree({
         <div key={folder.id}>
           <div
             className={cn(
-              'group relative flex items-center gap-1 rounded-sm py-1 transition-colors before:absolute before:bottom-1 before:left-0 before:top-1 before:w-px before:rounded-full before:bg-primary/0 before:transition-colors',
+              'group relative flex items-center gap-1 rounded-xl py-1.5 transition-colors before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-primary/0 before:transition-colors',
               isActive
-                ? 'bg-primary/[0.04] text-foreground before:bg-primary/50'
-                : 'text-foreground/72 hover:bg-muted/24 hover:text-foreground/88',
-              dragOverId === folder.id && 'bg-primary/8'
+                ? 'text-foreground before:bg-muted-foreground/35'
+                : 'text-foreground/72 hover:bg-muted/36 hover:text-foreground/88',
+              dragOverId === folder.id && 'bg-info/[0.08] before:bg-info/50'
             )}
             style={{
               paddingLeft: `${TREE_ROW_BASE_PADDING + depth * TREE_INDENT_STEP}px`,
@@ -770,7 +801,7 @@ export function DocumentFolderTree({
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-5 w-5 rounded-md text-muted-foreground opacity-0 transition-opacity duration-150 group-hover:opacity-100 hover:bg-primary/8 hover:text-primary"
+                    className="h-5 w-5 rounded-md text-muted-foreground opacity-0 transition-opacity duration-150 group-hover:opacity-100 hover:bg-muted/60 hover:text-foreground"
                     aria-label="Add content"
                     onClick={(e) => e.stopPropagation()}
                   >
@@ -785,7 +816,7 @@ export function DocumentFolderTree({
                       onRequestUpload(folder.id)
                     }}
                   >
-                    <Paperclip className="w-4 h-4 mr-2 text-primary" />
+                    <Paperclip className="w-4 h-4 mr-2 text-muted-foreground" />
                     上传文件
                   </DropdownMenuItem>
                   {onRequestUploadFolder && (
@@ -796,12 +827,12 @@ export function DocumentFolderTree({
                         onRequestUploadFolder(folder.id)
                       }}
                     >
-                      <FolderUp className="w-4 h-4 mr-2 text-primary" />
+                      <FolderUp className="w-4 h-4 mr-2 text-muted-foreground" />
                       上传文件夹
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuItem className="py-2" onClick={() => openCreate(folder.id)}>
-                    <Folder className="w-4 h-4 mr-2 text-primary" />
+                    <Folder className="w-4 h-4 mr-2 text-muted-foreground" />
                     新建文件夹
                   </DropdownMenuItem>
                   <DropdownMenuItem className="py-2" onClick={() => openMove(folder)}>
@@ -907,11 +938,11 @@ export function DocumentFolderTree({
       <div className="space-y-0.5">
         <div
           className={cn(
-            'group relative flex items-center gap-1 rounded-sm py-1 transition-colors before:absolute before:bottom-1 before:left-0 before:top-1 before:w-px before:rounded-full before:bg-primary/0 before:transition-colors',
+            'group relative flex items-center gap-1 rounded-xl py-1.5 transition-colors before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-primary/0 before:transition-colors',
             activeFolderId === ROOT_FOLDER_ID
-              ? 'bg-primary/[0.04] text-foreground before:bg-primary/50'
-              : 'text-foreground/72 hover:bg-muted/24 hover:text-foreground/88',
-            dragOverId === ROOT_FOLDER_ID && 'bg-primary/8'
+              ? 'text-foreground before:bg-muted-foreground/35'
+              : 'text-foreground/72 hover:bg-muted/36 hover:text-foreground/88',
+            dragOverId === ROOT_FOLDER_ID && 'bg-info/[0.08] before:bg-info/50'
           )}
           style={{ paddingLeft: `${TREE_ROW_BASE_PADDING}px`, paddingRight: '0.5rem' }}
           onDragOver={(e) => {
@@ -995,7 +1026,7 @@ export function DocumentFolderTree({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-5 w-5 rounded-md text-muted-foreground opacity-0 transition-opacity duration-150 group-hover:opacity-100 hover:bg-primary/8 hover:text-primary"
+                  className="h-5 w-5 rounded-md text-muted-foreground opacity-0 transition-opacity duration-150 group-hover:opacity-100 hover:bg-muted/60 hover:text-foreground"
                   aria-label="Upload to root folder"
                   onClick={(e) => e.stopPropagation()}
                 >
@@ -1010,7 +1041,7 @@ export function DocumentFolderTree({
                     onRequestUpload(ROOT_FOLDER_ID)
                   }}
                 >
-                  <Paperclip className="w-4 h-4 mr-2 text-primary" />
+                  <Paperclip className="w-4 h-4 mr-2 text-muted-foreground" />
                   上传文件
                 </DropdownMenuItem>
                 {onRequestUploadFolder && (
@@ -1021,12 +1052,12 @@ export function DocumentFolderTree({
                       onRequestUploadFolder(ROOT_FOLDER_ID)
                     }}
                   >
-                    <FolderUp className="w-4 h-4 mr-2 text-primary" />
+                    <FolderUp className="w-4 h-4 mr-2 text-muted-foreground" />
                     上传文件夹
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem className="py-2" onClick={() => openCreate(ROOT_FOLDER_ID)}>
-                  <Folder className="w-4 h-4 mr-2 text-primary" />
+                  <Folder className="w-4 h-4 mr-2 text-muted-foreground" />
                   新建文件夹
                 </DropdownMenuItem>
               </DropdownMenuContent>
