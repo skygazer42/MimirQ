@@ -39,7 +39,12 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     && /opt/venv/bin/pip install --retries 5 --timeout 120 \
         "/tmp/torch-wheels/${TORCH_WHL}" \
         "/tmp/torch-wheels/${TORCHVISION_WHL}" \
-    && /opt/venv/bin/pip install --retries 10 --timeout 120 --no-cache-dir --no-build-isolation -r "/tmp/requirements.txt" \
+    && for attempt in 1 2 3; do \
+        /opt/venv/bin/pip install --retries 10 --timeout 120 --no-build-isolation -r "/tmp/requirements.txt" \
+        && break; \
+        if [ "$attempt" = "3" ]; then exit 1; fi; \
+        sleep "$((attempt * 10))"; \
+    done \
     && apt-get purge -y --auto-remove build-essential \
     && rm -rf /var/lib/apt/lists/*
 

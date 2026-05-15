@@ -29,3 +29,12 @@ def test_backend_dockerfile_uses_resumable_cpu_torch_downloads() -> None:
     assert f"torch-{torch_version}%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl" in dockerfile
     assert f"torchvision-{torchvision_version}%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl" in dockerfile
     assert "/tmp/torch-wheels" in dockerfile
+
+
+def test_backend_dockerfile_retries_cached_requirements_install() -> None:
+    dockerfile = _read("docker/Dockerfile")
+
+    assert "--mount=type=cache,target=/root/.cache/pip" in dockerfile
+    assert "--no-cache-dir --no-build-isolation -r" not in dockerfile
+    assert "for attempt in 1 2 3" in dockerfile
+    assert "/opt/venv/bin/pip install --retries 10 --timeout 120 --no-build-isolation -r" in dockerfile
