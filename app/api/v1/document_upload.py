@@ -66,6 +66,7 @@ class UploadDocumentsBatchFormFields:
     pipeline: str | None = Form(None)
     dataset_id: UUID | None = Form(None)
     precheck_first: bool = Form(False)
+    precheck_only: bool = Form(False)
     user_metadata_map: str | None = Form(None)
     max_concurrent: int = Form(5)
 
@@ -561,6 +562,7 @@ async def upload_documents_batch(
     pipeline = form.pipeline
     dataset_id = form.dataset_id
     precheck_first = form.precheck_first
+    precheck_only = form.precheck_only
     user_metadata_map = form.user_metadata_map
 
     pipeline_overrides = documents_module.PipelineOptionOverrides(**asdict(overrides_form))
@@ -595,23 +597,24 @@ async def upload_documents_batch(
     )  # type: ignore[arg-type]
 
     ingestion_run = None
-    try:
-        ingestion_run = documents_module.IngestionRunService.create_run(
-            db,
-            tenant_id=tenant_id,
-            dataset_id=getattr(dataset, "id", None),
-            requested_by=account_id,
-            kind="upload_batch",
-            config={
-                "files": int(len(files or [])),
-                "parser_backend_requested": str(parser_backend or "")[:80],
-                "chunk_strategy_requested": str(chunk_strategy or "")[:80],
-                "pipeline": (pipeline_parsed.model_dump(exclude_none=True) if pipeline_parsed is not None else None),
-            },
-            expected_documents=int(len(files or [])),
-        )
-    except Exception:
-        ingestion_run = None
+    if not precheck_only:
+        try:
+            ingestion_run = documents_module.IngestionRunService.create_run(
+                db,
+                tenant_id=tenant_id,
+                dataset_id=getattr(dataset, "id", None),
+                requested_by=account_id,
+                kind="upload_batch",
+                config={
+                    "files": int(len(files or [])),
+                    "parser_backend_requested": str(parser_backend or "")[:80],
+                    "chunk_strategy_requested": str(chunk_strategy or "")[:80],
+                    "pipeline": (pipeline_parsed.model_dump(exclude_none=True) if pipeline_parsed is not None else None),
+                },
+                expected_documents=int(len(files or [])),
+            )
+        except Exception:
+            ingestion_run = None
 
     dataset_default_pb = None
     dataset_default_cs = None
@@ -644,9 +647,9 @@ async def upload_documents_batch(
     if dataset_default_cs and req_cs in {"", global_default_cs}:
         chunk_strategy_base = dataset_default_cs
 
-    if precheck_first:
+    if precheck_first or precheck_only:
         if dataset is None:
-            raise HTTPException(status_code=400, detail="dataset_id is required for precheck_first")
+            raise HTTPException(status_code=400, detail="dataset_id is required for precheck")
 
         async def _save_upload_only(file: UploadFile) -> dict:
             async with semaphore:
@@ -733,8 +736,8 @@ async def upload_documents_batch(
                     Path(str(result.get("file_path") or "")).unlink(missing_ok=True)
             raise
 
+        scan_run = None
         if staged_successful:
-            scan_run = None
             staging_root: Path | None = None
             try:
                 upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id)
@@ -874,29 +877,30 @@ async def upload_documents_batch(
                     with contextlib.suppress(Exception):
                         db.refresh(scan_run)
 
-                    try:
-                        documents_module.apply_ingestion_policy_suggestion(
-                            db,
-                            dataset=dataset,
-                            scan_run=scan_run,
-                            tenant_id=tenant_id,
-                            replace=False,
-                        )
-                    except HTTPException as exc:
-                        if int(getattr(exc, "status_code", 0) or 0) != 409:
-                            documents_module.logger.warning(
-                                "Precheck-first policy apply failed: %s",
-                                str(getattr(exc, "detail", exc))[:200],
+                    if not precheck_only:
+                        try:
+                            documents_module.apply_ingestion_policy_suggestion(
+                                db,
+                                dataset=dataset,
+                                scan_run=scan_run,
+                                tenant_id=tenant_id,
+                                replace=False,
                             )
-                    except Exception as exc:  # noqa: BLE001
-                        documents_module.logger.warning("Precheck-first policy apply failed: %s", str(exc)[:200])
+                        except HTTPException as exc:
+                            if int(getattr(exc, "status_code", 0) or 0) != 409:
+                                documents_module.logger.warning(
+                                    "Precheck-first policy apply failed: %s",
+                                    str(getattr(exc, "detail", exc))[:200],
+                                )
+                        except Exception as exc:  # noqa: BLE001
+                            documents_module.logger.warning("Precheck-first policy apply failed: %s", str(exc)[:200])
 
-                    with contextlib.suppress(Exception):
-                        db.refresh(dataset)
-                    dataset_meta2 = (getattr(dataset, "dataset_metadata", None) or {}) if dataset is not None else {}
-                    policy = documents_module.parse_ingestion_policy_from_metadata(
-                        dataset_meta2 if isinstance(dataset_meta2, dict) else {}
-                    )  # type: ignore[arg-type]
+                        with contextlib.suppress(Exception):
+                            db.refresh(dataset)
+                        dataset_meta2 = (getattr(dataset, "dataset_metadata", None) or {}) if dataset is not None else {}
+                        policy = documents_module.parse_ingestion_policy_from_metadata(
+                            dataset_meta2 if isinstance(dataset_meta2, dict) else {}
+                        )  # type: ignore[arg-type]
             except Exception as exc:  # noqa: BLE001
                 documents_module.logger.warning(
                     "Precheck-first ingest failed; continuing without precheck: %s",
@@ -906,6 +910,29 @@ async def upload_documents_batch(
                 if staging_root is not None:
                     with contextlib.suppress(Exception):
                         documents_module.shutil.rmtree(staging_root)
+
+        if precheck_only:
+            # Precheck-only upload returns scan evidence without creating DBDocument rows
+            # or enqueueing the parser/chunker pipeline.
+            for result in staged_successful:
+                with contextlib.suppress(OSError):
+                    Path(str(result.get("file_path") or "")).unlink(missing_ok=True)
+
+            return {
+                "total": len(files),
+                "successful_count": len(staged_successful),
+                "failed_count": len(staged_failed),
+                "successful": [],
+                "failed": [
+                    {
+                        "filename": result.get("filename") or "unknown",
+                        "source_path": result.get("source_path"),
+                        "error": result.get("error") or "upload_failed",
+                    }
+                    for result in staged_failed
+                ],
+                "precheck_scan_run_id": str(scan_run.id) if scan_run is not None else None,
+            }
 
         governance_profile_cache: dict[str, Any] = {}
 

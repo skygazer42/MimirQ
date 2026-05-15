@@ -12462,6 +12462,11 @@ export interface components {
             successful?: components["schemas"]["DocumentBatchUploadSuccess"][];
             /** Failed */
             failed?: components["schemas"]["DocumentBatchUploadFailure"][];
+            /**
+             * Precheck Scan Run Id
+             * Format: uuid
+             */
+            precheck_scan_run_id?: string | null;
         };
         /**
          * DocumentBatchUploadSuccess

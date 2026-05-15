@@ -311,6 +311,17 @@ def test_document_upload_url_route_is_split_from_documents_router() -> None:
     assert '@router.post("/upload-url"' in split_source
 
 
+def test_document_upload_batch_supports_precheck_only_without_creating_documents() -> None:
+    split_source = _source("app/api/v1/document_upload.py")
+
+    assert "precheck_only: bool = Form(False)" in split_source
+    assert "if precheck_only:" in split_source
+    assert "Precheck-only upload returns scan evidence without creating DBDocument rows" in split_source
+    assert '"precheck_scan_run_id": str(scan_run.id) if scan_run is not None else None' in split_source
+    assert "return {" in split_source
+    assert '"successful": [],' in split_source
+
+
 def test_documents_router_still_exposes_upload_routes() -> None:
     from app.api.v1.documents import router
 

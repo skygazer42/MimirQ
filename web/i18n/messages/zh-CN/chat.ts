@@ -188,7 +188,7 @@ Navbar: {
       chunkPreview: '切块预览',
       datasets: '数据集',
       knowledgeBase: '知识库',
-      ingestion: '入库监控',
+      ingestion: '入库预检',
       quarantine: '隔离队列',
       feedback: '反馈质检',
       ragVisualization: 'RAG 可视化',

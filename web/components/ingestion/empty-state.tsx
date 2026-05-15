@@ -1,16 +1,20 @@
 'use client'
 
 import Link from 'next/link'
-import { BarChart3, Search, Shapes, Sparkles, ShieldCheck } from 'lucide-react'
+import { BarChart3, Search, Shapes, Sparkles, ShieldCheck, UploadCloud } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 
 export function EmptyState({
   mode,
   onClearFilters,
+  onUploadSample,
+  onUploadIngest,
 }: Readonly<{
   mode: 'truly-empty' | 'filter-empty'
   onClearFilters?: () => void
+  onUploadSample?: () => void
+  onUploadIngest?: () => void
 }>) {
   if (mode === 'filter-empty') {
     return (
@@ -35,12 +39,12 @@ export function EmptyState({
         <Shapes className="h-7 w-7 text-sky-500" />
       </div>
       <div className="mx-auto max-w-4xl text-center">
-        <p className="text-lg font-semibold text-foreground">还没有生成数据盘点结果</p>
-        <p className="mt-2 text-sm text-muted-foreground">这个页面的职责是做入库前摸底：看格式分布、文件大小分布、风险与待确认样本，而不是展示入库流程介绍。</p>
+        <p className="text-lg font-semibold text-foreground">还没有生成入库预检结果</p>
+        <p className="mt-2 text-sm text-muted-foreground">这个页面用于入库前摸底：先锁定目标数据集，抽样查看格式分布、文件布局、风险与待确认样本，再决定是否正式入库。</p>
       </div>
       <div className="mx-auto mt-8 grid max-w-3xl gap-3 rounded-[1.5rem] border border-border/60 bg-card/70 p-4 md:grid-cols-3">
         {[
-          ['01', '上传', '收集候选文件并锁定目标数据集'],
+          ['01', '采样', '收集候选文件并锁定目标数据集'],
           ['02', '扫描', '生成处理效率、风险与敏感线索概览'],
           ['03', '结论', '输出可入库结论与人工复核清单'],
         ].map(([step, title, description]) => (
@@ -56,7 +60,7 @@ export function EmptyState({
           <div className="mb-3 flex items-center justify-between">
             <div>
               <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">处理效率线框预览</div>
-              <div className="mt-1 text-sm font-semibold text-foreground">数据盘点后将在此展示处理效率曲线</div>
+              <div className="mt-1 text-sm font-semibold text-foreground">入库预检后将在此展示处理效率曲线</div>
             </div>
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-border/60 bg-background/80">
               <BarChart3 className="h-4 w-4 text-sky-500" />
@@ -106,8 +110,8 @@ export function EmptyState({
                   <Sparkles className="h-4 w-4 text-foreground" />
                 </div>
                 <div>
-                  <div className="font-code text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Audit First</div>
-                  <div className="mt-1 text-sm font-semibold text-foreground">审计 OCR 候选、异常格式和敏感线索</div>
+                  <div className="font-code text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Sample First</div>
+                  <div className="mt-1 text-sm font-semibold text-foreground">确认 OCR 候选、异常格式和敏感线索</div>
                 </div>
               </div>
               <div className="text-xs leading-5 text-muted-foreground">
@@ -117,7 +121,7 @@ export function EmptyState({
           </div>
 
           <div className="rounded-[1.75rem] border border-border/60 bg-card/75 p-4 shadow-subtle">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">风险热力图预留区</div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">入库风险热力图预留区</div>
             <div className="mt-3 grid h-[124px] grid-cols-3 gap-2 rounded-[1.25rem] border border-dashed border-border/60 bg-background/70 p-3">
               <div className="rounded-2xl border border-red-500/10 bg-red-500/5" />
               <div className="rounded-2xl border border-red-500/10 bg-red-500/5" />
@@ -128,9 +132,16 @@ export function EmptyState({
             </div>
           </div>
         </div>
-        <div className="mt-6 flex items-center justify-center gap-3">
-          <Button asChild>
-            <Link href="/datasets">入库预检</Link>
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+          <Button onClick={onUploadSample}>
+            <UploadCloud className="mr-2 h-4 w-4" />
+            上传样本评估
+          </Button>
+          <Button variant="outline" onClick={onUploadIngest}>
+            正式入库
+          </Button>
+          <Button asChild variant="ghost">
+            <Link href="/datasets">选择数据集</Link>
           </Button>
         </div>
       </div>

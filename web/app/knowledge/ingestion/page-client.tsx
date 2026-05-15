@@ -24,9 +24,7 @@ import {
   FileDigit,
   FileCheck2,
   FileSearch,
-  FolderOpen,
   Gauge,
-  ListTodo,
   LucideIcon,
   Radar,
   RefreshCcw,
@@ -75,11 +73,6 @@ import { DropZone, type DropZoneHandle } from '@/components/ingestion/drop-zone'
 import { EmptyState } from '@/components/ingestion/empty-state'
 import { IngestionDetailDialog } from '@/components/ingestion/ingestion-detail-dialog'
 import {
-  LiveVelocity,
-  persistVelocityUnit,
-  readStoredVelocityUnit,
-} from '@/components/ingestion/live-velocity'
-import {
   buildEvidenceSlotReason,
   buildEvidenceSlotTags,
   buildFileSizeDistribution,
@@ -90,15 +83,16 @@ import {
   computeDocsPerMinute,
   computeDurationPercentiles,
   computeMeanFileSize,
-  computeMegabytesPerSecond,
   getDocumentKind,
   getDocumentKindAccent,
   matchesReasonFilter,
 } from '@/components/ingestion/monitor-utils'
 
 import { buildDemoDocuments } from './demo-documents'
+import { IngestionViewSwitch } from './view-switch'
 
 const DATASET_ALL = '__all__'
+const EXECUTION_TASK_PAGE_SIZE = 5
 
 type IngestionMode = 'sales-audit' | 'execution-monitor'
 type SampleDisposition = 'approved' | 'manual'
@@ -364,7 +358,7 @@ function buildReportHtml({
   const basisCards = [
     {
       glyph: 'I',
-      label: '摸底总量',
+      label: '预检总量',
       tone: 'cyan',
       value: totalPrecheckFiles.toLocaleString(),
     },
@@ -404,7 +398,7 @@ function buildReportHtml({
 <head>
  <meta charset="utf-8" />
  <meta name="viewport" content="width=device-width, initial-scale=1" />
- <title>项目数据盘点报告</title>
+ <title>入库预检报告</title>
  <style>
  :root {
  --paper: #f5f8fc;
@@ -659,7 +653,7 @@ function buildReportHtml({
  <main class="report-shell">
  <header class="report-header">
  <div>
- <h1>项目数据盘点报告</h1>
+ <h1>入库预检报告</h1>
  <p class="report-subtitle">Sensitive Data Policy: 默认仅展示脱敏后的聚合事实与待确认线索，不做主观评分；需要人工判断的项统一保留在样本槽与风险清单里。</p>
  <div class="generated-at">生成时间：${escapeHtml(generatedAt)}</div>
  </div>
@@ -676,8 +670,8 @@ function buildReportHtml({
  <section class="section-card">
  <div class="section-head">
  <div>
- <h2>报价依据</h2>
- <p class="section-note">面向入库前摸底与报价沟通，仅保留脱敏后的规模、体量和阻断线索。</p>
+ <h2>入库依据</h2>
+ <p class="section-note">面向入库前预检与确认入库，仅保留脱敏后的规模、体量和阻断线索。</p>
  </div>
  </div>
  <div class="basis-grid">
@@ -710,8 +704,8 @@ function buildReportHtml({
  <section class="section-card">
  <div class="section-head">
  <div>
- <h2>建议 POC 样本</h2>
- <p class="section-note">优先挑选能代表复杂度、体量和阻断原因的样本。</p>
+ <h2>入库抽样确认</h2>
+ <p class="section-note">优先挑选能代表复杂度、体量和阻断原因的样本，用于确认是否入库或转人工处理。</p>
  </div>
  </div>
  ${
@@ -724,7 +718,7 @@ function buildReportHtml({
  <tbody>${pocRows}</tbody>
  </table>
  </div>`
-     : '<div class="empty">暂无 POC 样本数据</div>'
+     : '<div class="empty">暂无入库样本数据</div>'
  }
  </section>
 
@@ -903,7 +897,7 @@ async function renderReportHtmlToJpeg(html: string, filename: string) {
       getText('.report-header h1') ||
       getText('.title') ||
       frameDocument.title ||
-      '项目数据盘点报告'
+      '入库预检报告'
     const subtitle = getText('.report-subtitle') || getText('.sub')
     const generatedAt = getText('.generated-at')
     const metricCards = readCards('.kpi-card')
@@ -915,7 +909,10 @@ async function renderReportHtmlToJpeg(html: string, filename: string) {
       ? readCards('.basis-card')
       : fallbackCards.slice(8, 12)
     const riskSection = readSection('风险分布') ?? readSection('问题清单')
-    const pocSection = readSection('建议 POC') ?? readSection('代表性样本')
+    const pocSection =
+      readSection('入库抽样') ??
+      readSection('建议 POC') ??
+      readSection('代表性样本')
     const highRiskSection =
       readSection('高风险文件') ?? readSection('需复核样本')
     const sampleSection = readSection('当前页面样本')
@@ -1186,9 +1183,9 @@ async function renderReportHtmlToJpeg(html: string, filename: string) {
     y += kpiRows * 124 + 12
 
     const basisSection: CanvasReportSection = {
-      note: '面向入库前摸底与报价沟通，仅保留脱敏后的规模、体量和阻断线索。',
+      note: '面向入库前预检与确认入库，仅保留脱敏后的规模、体量和阻断线索。',
       table: null,
-      title: '报价依据',
+      title: '入库依据',
     }
     drawCardBase(margin, y, contentWidth, 178, 12)
     setFont(20, 800)
@@ -1556,6 +1553,7 @@ export default function KnowledgeIngestionPageClient() {
     searchParams.get('mode') === 'execution-monitor'
       ? 'execution-monitor'
       : 'sales-audit'
+  const showSalesPolicyBadge = mode === 'sales-audit'
   const [datasetScope, setDatasetScope] = useState(
     searchParams.get('datasetId') || DATASET_ALL
   )
@@ -1571,11 +1569,9 @@ export default function KnowledgeIngestionPageClient() {
   const [activeDetailId, setActiveDetailId] = useState<string | null>(null)
   const [selectedEvidenceFile, setSelectedEvidenceFile] =
     useState<DatasetPrecheckFileOut | null>(null)
-  const [velocityUnit, setVelocityUnit] = useState<'docs' | 'bytes'>(
-    readStoredVelocityUnit
-  )
   const [canvasGlow, setCanvasGlow] = useState({ x: 36, y: 24 })
   const [successPulseVisible, setSuccessPulseVisible] = useState(false)
+  const [executionTaskPage, setExecutionTaskPage] = useState(1)
   const [renderTimestamp] = useState(() => Date.now())
 
   const selectedDatasetId = datasetScope === DATASET_ALL ? null : datasetScope
@@ -1822,10 +1818,26 @@ export default function KnowledgeIngestionPageClient() {
       ),
     [throughputRows]
   )
-  const megabytesPerSecond = useMemo(
-    () => computeMegabytesPerSecond(documents),
-    [documents]
-  )
+  const recentThroughputDetail = useMemo(() => {
+    const recentBuckets = throughputRows
+      .filter((row) => row.ts > 0)
+      .slice(-5)
+
+    if (recentBuckets.length >= 2) {
+      const first = recentBuckets[0]?.ts ?? 0
+      const last = recentBuckets[recentBuckets.length - 1]?.ts ?? 0
+      const spanMinutes = Math.round((last - first) / 60_000)
+
+      if (spanMinutes >= 60) {
+        return `最近 ${Math.max(1, Math.round(spanMinutes / 60))} 小时桶均值`
+      }
+      if (spanMinutes > 0) {
+        return `最近 ${spanMinutes} 分钟桶均值`
+      }
+    }
+
+    return '后端时间桶均值'
+  }, [throughputRows])
   const durationPercentiles = useMemo(
     () => computeDurationPercentiles(documents),
     [documents]
@@ -1876,7 +1888,6 @@ export default function KnowledgeIngestionPageClient() {
   }, [documents, salesAuditPersistedDispositions, sampleDispositions])
 
   const reviewQueue = statusCounts.failed + statusCounts.quarantined
-  const pendingQueue = statusCounts.processing + statusCounts.pending
   const approvedCount = Object.values(resolvedSampleDispositions).filter(
     (value) => value === 'approved'
   ).length
@@ -1954,32 +1965,6 @@ export default function KnowledgeIngestionPageClient() {
     activeAuditDocument?.id?.startsWith('demo-')
   )
 
-  const executionRuntimeLabel = useMemo(() => {
-    const startMs = new Date(String(summary.window_start || '')).getTime()
-    const endMs = new Date(String(summary.window_end || '')).getTime()
-    if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs) {
-      return formatDurationClock((endMs - startMs) / 1000)
-    }
-
-    const timestamps = documents
-      .flatMap((document) =>
-        [
-          document.created_at,
-          document.updated_at,
-          document.processed_at,
-        ].filter(Boolean)
-      )
-      .map((value) => new Date(String(value)).getTime())
-      .filter((value) => Number.isFinite(value))
-      .sort((left, right) => left - right)
-    if (timestamps.length >= 2) {
-      return formatDurationClock(
-        (timestamps[timestamps.length - 1] - timestamps[0]) / 1000
-      )
-    }
-    return '00:00:00'
-  }, [documents, summary.window_end, summary.window_start])
-
   const executionProcessedTotal = useMemo(
     () =>
       statusCounts.completed + statusCounts.failed + statusCounts.quarantined,
@@ -2015,70 +2000,94 @@ export default function KnowledgeIngestionPageClient() {
     return value ? `${value.toFixed(1)} min / 文件` : '-- / 文件'
   }, [durationPercentiles.p50, durationPercentiles.p90])
 
-  const executionTopStripItems = useMemo(
+  const executionProcessingMode = useMemo(() => {
+    if (demoMode) {
+      return {
+        value: '演示运行',
+        detail: 'Demo 运行态',
+        tone: 'text-info',
+      }
+    }
+
+    if (!taskQueueSnapshot) {
+      return {
+        value: '观测中',
+        detail: taskQueueStatusLabel,
+        tone: 'text-muted-foreground',
+      }
+    }
+
+    if (!taskQueueSnapshot.enabled) {
+      return {
+        value: '直连处理',
+        detail: '队列未启用',
+        tone: 'text-warning',
+      }
+    }
+
+    if (!taskQueueSnapshot.broker_up) {
+      return {
+        value: '队列异常',
+        detail: taskQueueSnapshot.error || 'Broker 异常',
+        tone: 'text-rose',
+      }
+    }
+
+    const queueDepth =
+      taskQueueSnapshot.queue_depth == null
+        ? '--'
+        : `${taskQueueSnapshot.queue_depth}`
+    const workersActive =
+      taskQueueSnapshot.workers_active == null
+        ? '--'
+        : `${taskQueueSnapshot.workers_active}`
+
+    return {
+      value: '异步队列',
+      detail: `深度 ${queueDepth} · Worker ${workersActive}`,
+      tone: 'text-success',
+    }
+  }, [
+    demoMode,
+    taskQueueSnapshot,
+    taskQueueStatusLabel,
+  ])
+
+  const executionRunStateCards = useMemo(
     () => [
       {
-        label: '范围',
+        label: '监控范围',
         value: selectedDatasetLabel,
-        icon: FolderOpen,
+        suffix: '',
+        icon: FileSearch,
         tone: 'text-info',
-        detail: '全部项目',
+        detail: selectedDatasetId ? '当前数据集' : '跨数据集',
       },
       {
-        label: '队列深度',
-        value:
-          taskQueueSnapshot?.queue_depth == null
-            ? '--'
-            : `${taskQueueSnapshot.queue_depth}`,
-        icon: ListTodo,
-        tone: taskQueueSnapshot?.broker_up ? 'text-success' : 'text-warning',
-        detail: taskQueueSnapshot?.queue_name || 'task queue',
-      },
-      {
-        label: '活跃 Worker',
-        value:
-          taskQueueSnapshot?.workers_active == null
-            ? '--'
-            : `${taskQueueSnapshot.workers_active}`,
-        icon: Activity,
-        tone: taskQueueSnapshot?.workers_active
-          ? 'text-success'
-          : 'text-muted-foreground',
-        detail: taskQueueStatusLabel,
-      },
-      {
-        label: '待人工处理',
-        value: `${reviewQueue + manualCount}`,
-        icon: ShieldAlert,
-        tone: 'text-warning',
-        detail: '待确认清单',
+        label: '处理模式',
+        value: executionProcessingMode.value,
+        suffix: '',
+        icon: Workflow,
+        tone: executionProcessingMode.tone,
+        detail: executionProcessingMode.detail,
       },
       {
         label: '当前吞吐',
         value: `${docsPerMinute?.toFixed(1) ?? '0.0'} docs/min`,
+        suffix: '',
         icon: Activity,
         tone: 'text-accent',
-        detail: '近 5 分钟均值',
-      },
-      {
-        label: '运行时长',
-        value: executionRuntimeLabel,
-        icon: Clock3,
-        tone: 'text-success',
-        detail: '窗口时长',
+        detail: recentThroughputDetail,
       },
     ],
     [
       docsPerMinute,
-      executionRuntimeLabel,
-      manualCount,
-      reviewQueue,
+      executionProcessingMode.detail,
+      executionProcessingMode.tone,
+      executionProcessingMode.value,
+      recentThroughputDetail,
+      selectedDatasetId,
       selectedDatasetLabel,
-      taskQueueSnapshot?.broker_up,
-      taskQueueSnapshot?.queue_depth,
-      taskQueueSnapshot?.queue_name,
-      taskQueueSnapshot?.workers_active,
-      taskQueueStatusLabel,
     ]
   )
 
@@ -2155,6 +2164,7 @@ export default function KnowledgeIngestionPageClient() {
     const parserFailures = statusCounts.failed + statusCounts.quarantined
     const chunkerProcessing = statusCounts.processing
     const chunkerWaiting = statusCounts.pending
+    const parserBacklog = statusCounts.pending + statusCounts.processing
     const governanceQueue = reviewQueue + manualCount
     const exportReady = statusCounts.completed
 
@@ -2167,7 +2177,7 @@ export default function KnowledgeIngestionPageClient() {
         metrics: [
           ['已完成', `${parserDone}`],
           ['失败', `${parserFailures}`],
-          ['耗时', executionRuntimeLabel],
+          ['待处理', `${parserBacklog}`],
         ],
       },
       {
@@ -2212,7 +2222,6 @@ export default function KnowledgeIngestionPageClient() {
   }, [
     documents.length,
     durationPercentiles.p50,
-    executionRuntimeLabel,
     manualCount,
     reviewQueue,
     statusCounts.completed,
@@ -2224,14 +2233,7 @@ export default function KnowledgeIngestionPageClient() {
 
   const executionKpiCards = useMemo(
     () => [
-      {
-        label: '处理效率',
-        value: `${docsPerMinute?.toFixed(1) ?? '0.0'}`,
-        suffix: 'docs/min',
-        icon: Activity,
-        tone: 'text-info',
-        detail: '近 5 分钟平均',
-      },
+      ...executionRunStateCards,
       {
         label: '平均处理耗时',
         value: executionAverageDuration.replace(' / 文件', ''),
@@ -2239,30 +2241,6 @@ export default function KnowledgeIngestionPageClient() {
         icon: Clock3,
         tone: 'text-indigo',
         detail: '近 5 分钟平均',
-      },
-      {
-        label: '队列深度',
-        value:
-          taskQueueSnapshot?.queue_depth == null
-            ? '--'
-            : `${taskQueueSnapshot.queue_depth}`,
-        suffix: '',
-        icon: ListTodo,
-        tone: taskQueueSnapshot?.broker_up ? 'text-success' : 'text-warning',
-        detail: taskQueueSnapshot?.queue_name || 'task queue',
-      },
-      {
-        label: '活跃 Worker',
-        value:
-          taskQueueSnapshot?.workers_active == null
-            ? '--'
-            : `${taskQueueSnapshot.workers_active}`,
-        suffix: '',
-        icon: Activity,
-        tone: taskQueueSnapshot?.workers_active
-          ? 'text-success'
-          : 'text-muted-foreground',
-        detail: taskQueueStatusLabel,
       },
       {
         label: 'OCR 使用率',
@@ -2288,32 +2266,18 @@ export default function KnowledgeIngestionPageClient() {
         tone: 'text-warning',
         detail: `${statusCounts.failed + statusCounts.quarantined} / ${Math.max(1, executionProcessedTotal)} 文件`,
       },
-      {
-        label: '队列总数',
-        value: `${pendingQueue}`,
-        suffix: '',
-        icon: ListTodo,
-        tone: 'text-accent',
-        detail: '等待处理',
-      },
     ],
     [
-      docsPerMinute,
       executionAverageDuration,
+      executionRunStateCards,
       executionOcrUsageRate,
       executionProcessedTotal,
       executionRetryRate,
       executionSuccessRate,
       pdfDisposition,
-      pendingQueue,
       statusCounts.completed,
       statusCounts.failed,
       statusCounts.quarantined,
-      taskQueueSnapshot?.broker_up,
-      taskQueueSnapshot?.queue_depth,
-      taskQueueSnapshot?.queue_name,
-      taskQueueSnapshot?.workers_active,
-      taskQueueStatusLabel,
     ]
   )
 
@@ -2403,8 +2367,28 @@ export default function KnowledgeIngestionPageClient() {
         ).getTime()
         return rightTs - leftTs
       })
-      .slice(0, 8)
   }, [documents])
+  const executionTaskPageCount = useMemo(
+    () =>
+      Math.max(
+        1,
+        Math.ceil(executionTaskRows.length / EXECUTION_TASK_PAGE_SIZE)
+      ),
+    [executionTaskRows.length]
+  )
+  const visibleExecutionTaskRows = useMemo(() => {
+    const pageStart = (executionTaskPage - 1) * EXECUTION_TASK_PAGE_SIZE
+    return executionTaskRows.slice(
+      pageStart,
+      pageStart + EXECUTION_TASK_PAGE_SIZE
+    )
+  }, [executionTaskPage, executionTaskRows])
+
+  useEffect(() => {
+    setExecutionTaskPage((page) =>
+      Math.min(Math.max(page, 1), executionTaskPageCount)
+    )
+  }, [executionTaskPageCount])
 
   const forecastPoints = useMemo(() => {
     if (!throughputRows.length) return []
@@ -2549,6 +2533,16 @@ export default function KnowledgeIngestionPageClient() {
     [salesAuditNearDup, salesAuditSummary]
   )
 
+  const ingestionRecommendationLabel = useMemo(() => {
+    if (!salesAuditProfile) return '待预检'
+    const labelMap: Record<string, string> = {
+      固定报价: '可直接入库',
+      阶梯报价: '分批入库',
+      POC优先: '先抽样确认',
+    }
+    return labelMap[salesAuditProfile.pricingMode] || '待确认'
+  }, [salesAuditProfile])
+
   const salesEvidenceItems = useMemo(() => {
     return collectSalesAuditSampleFiles(salesAuditSamples).slice(0, 12)
   }, [salesAuditSamples])
@@ -2584,7 +2578,7 @@ export default function KnowledgeIngestionPageClient() {
           name: labelMap[item.key] || item.label,
           count: Number(item.count || 0),
           formatLabel: item.severity.toUpperCase(),
-          timeLabel: '报价风险',
+          timeLabel: '入库风险',
           fill:
             item.severity === 'error'
               ? `linear-gradient(135deg, rgba(185,28,28,${0.16 + intensity * 0.32}), rgba(127,29,29,${0.24 + intensity * 0.28}))`
@@ -2604,7 +2598,7 @@ export default function KnowledgeIngestionPageClient() {
       : 0
 
     return [
-      ['文档总数', totalFiles.toLocaleString(), '全量摸底范围'],
+      ['文档总数', totalFiles.toLocaleString(), '全量预检范围'],
       [
         '总体体量',
         formatFileSize(salesAuditSummary?.total_size_bytes || 0),
@@ -2724,7 +2718,7 @@ export default function KnowledgeIngestionPageClient() {
               ? '人工审核'
               : firstTag === 'TABLE_HEAVY'
                 ? '格式转换'
-                : '纳入 POC',
+                : '确认入库',
         icon,
         iconTone,
       }
@@ -3003,14 +2997,6 @@ export default function KnowledgeIngestionPageClient() {
     } as EChartsOption
   }, [salesAuditSummary])
 
-  const handleToggleVelocity = useCallback(() => {
-    setVelocityUnit((previous) => {
-      const next = previous === 'docs' ? 'bytes' : 'docs'
-      persistVelocityUnit(next)
-      return next
-    })
-  }, [])
-
   const persistExecutionMonitorDisposition = useCallback(
     async (documentId: string, disposition: SampleDisposition) => {
       const previousDisposition = resolvedSampleDispositions[documentId]
@@ -3051,7 +3037,7 @@ export default function KnowledgeIngestionPageClient() {
           else delete next[fileName]
           return next
         })
-        toast.error('当前预检运行不存在，无法同步售前处置')
+        toast.error('当前预检运行不存在，无法同步入库处置')
         return
       }
 
@@ -3066,7 +3052,7 @@ export default function KnowledgeIngestionPageClient() {
         )
         await precheckSamplesQuery.refetch()
         if (disposition === 'approved') setSuccessPulseVisible(true)
-        toast.success('已同步售前处置结论')
+        toast.success('已同步入库处置结论')
       } catch {
         setSampleDispositions((previous) => {
           const next = { ...previous }
@@ -3074,7 +3060,7 @@ export default function KnowledgeIngestionPageClient() {
           else delete next[fileName]
           return next
         })
-        toast.error('同步售前处置失败，请稍后重试')
+        toast.error('同步入库处置失败，请稍后重试')
       }
     },
     [
@@ -3128,27 +3114,13 @@ export default function KnowledgeIngestionPageClient() {
     setActiveDetailId(documentId)
   }, [])
 
-  const handleChangeMode = useCallback(
-    (nextMode: IngestionMode) => {
-      const params = new URLSearchParams(searchParams.toString())
-      if (nextMode === 'sales-audit') params.delete('mode')
-      else params.set('mode', nextMode)
-      const query = params.toString()
-      router.replace(query ? `${pathname}?${query}` : pathname)
-    },
-    [pathname, router, searchParams]
-  )
-
   const handleDownloadReport = useCallback(async () => {
     const html = buildReportHtml({
       datasetLabel: selectedDatasetLabel,
       totalDocs: documents.length,
       readyRate,
       manualQueue: reviewQueue + manualCount,
-      efficiency:
-        velocityUnit === 'docs'
-          ? `${docsPerMinute?.toFixed(1) ?? '--'} docs/min`
-          : `${megabytesPerSecond?.toFixed(2) ?? '--'} MB/s`,
+      efficiency: `${docsPerMinute?.toFixed(1) ?? '--'} docs/min`,
       latencyP90: `${durationPercentiles.p90 || 0} min`,
       selectedReason,
       documents: visibleAuditSamples.length ? visibleAuditSamples : documents,
@@ -3188,7 +3160,6 @@ export default function KnowledgeIngestionPageClient() {
     documents,
     durationPercentiles.p90,
     manualCount,
-    megabytesPerSecond,
     readyRate,
     reviewQueue,
     selectedDatasetLabel,
@@ -3196,7 +3167,6 @@ export default function KnowledgeIngestionPageClient() {
     salesAuditSummary,
     salesHighRiskFiles,
     salesPocCandidates,
-    velocityUnit,
     visibleAuditSamples,
   ])
 
@@ -3229,6 +3199,14 @@ export default function KnowledgeIngestionPageClient() {
     selectedDatasetId,
     selectedDatasetLabel,
   ])
+
+  const handleUploadSampleAssessment = useCallback(() => {
+    dropZoneRef.current?.triggerFilePicker({ precheckOnly: true })
+  }, [])
+
+  const handleUploadFormalIngest = useCallback(() => {
+    dropZoneRef.current?.triggerFilePicker({ precheckOnly: false })
+  }, [])
 
   useEffect(() => {
     const off = globalEventBus.on('ingestion:download-report', () => {
@@ -3324,9 +3302,12 @@ export default function KnowledgeIngestionPageClient() {
       <DropZone
         ref={dropZoneRef}
         datasetId={selectedDatasetId}
+        precheckOnly
         onUploadComplete={() => {
           void documentsQuery.refetch()
           void summaryQuery.refetch()
+          void taskQueueQuery.refetch()
+          void precheckRunsQuery.refetch()
         }}
       />
 
@@ -3369,11 +3350,11 @@ export default function KnowledgeIngestionPageClient() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="inline-flex items-center gap-1.5 text-[12px] font-medium text-foreground">
-                      {mode === 'sales-audit' ? '证据槽' : '预检抽样'}
+                      {mode === 'sales-audit' ? '样本槽' : '预检抽样'}
                       <Check className="h-3.5 w-3.5 text-success" />
                     </div>
                     <div className="mt-1 text-[17px] font-semibold leading-none text-foreground">
-                      {mode === 'sales-audit' ? '报价证据' : '待确认线索'}
+                      {mode === 'sales-audit' ? '入库线索' : '待确认线索'}
                     </div>
                   </div>
                   <button
@@ -3511,7 +3492,7 @@ export default function KnowledgeIngestionPageClient() {
                                     {disposition ? (
                                       <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
                                         {disposition === 'approved'
-                                          ? '已入 POC'
+                                          ? '已确认入库'
                                           : '已加阻断'}
                                       </span>
                                     ) : null}
@@ -3545,7 +3526,7 @@ export default function KnowledgeIngestionPageClient() {
                                     )
                                   }
                                 >
-                                  纳入 POC
+                                  确认入库
                                 </Button>
                                 <Button
                                   type="button"
@@ -3568,7 +3549,7 @@ export default function KnowledgeIngestionPageClient() {
                                   className="h-8 rounded-lg px-2 text-[9px]"
                                   onClick={() => setSelectedEvidenceFile(file)}
                                 >
-                                  查看审计依据
+                                  查看入库依据
                                 </Button>
                               </div>
                             </div>
@@ -3706,7 +3687,7 @@ export default function KnowledgeIngestionPageClient() {
                                     handleOpenAuditSnapshot(document.id)
                                   }
                                 >
-                                  审计快照
+                                  入库快照
                                 </Button>
                               </div>
                             </div>
@@ -3761,35 +3742,23 @@ export default function KnowledgeIngestionPageClient() {
                   className="pointer-events-none absolute -right-9 -top-12 size-28 rounded-full bg-info/10 blur-2xl"
                   aria-hidden="true"
                 />
-                <div className="relative px-2.5 md:px-3">
-                  <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                <div
+                  className={cn(
+                    'relative px-2.5 md:px-3',
+                    mode === 'execution-monitor'
+                      ? 'py-3 md:py-3.5'
+                      : 'py-0'
+                  )}
+                >
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <div className="inline-flex items-center rounded-full border border-border/60 bg-background/72 p-0.5">
-                          {(
-                            [
-                              ['sales-audit', '售前摸底'],
-                              ['execution-monitor', '执行监控'],
-                            ] as const
-                          ).map(([value, label]) => (
-                            <button
-                              key={value}
-                              type="button"
-                              onClick={() => handleChangeMode(value)}
-                              className={cn(
-                                'rounded-full px-2.5 py-0.5 text-[8px] font-medium transition-colors',
-                                mode === value
-                                  ? 'bg-foreground text-background'
-                                  : 'text-muted-foreground hover:text-foreground'
-                              )}
-                            >
-                              {label}
-                            </button>
-                          ))}
-                        </div>
-                        <span className="inline-flex items-center rounded-full border border-foreground/10 bg-foreground/[0.04] px-2 py-0.5 text-[7px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                          Sensitive Data Policy
-                        </span>
+                        <IngestionViewSwitch compact />
+                        {showSalesPolicyBadge ? (
+                          <span className="inline-flex items-center rounded-full border border-foreground/10 bg-foreground/[0.04] px-2 py-0.5 text-[7px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                            Sensitive Data Policy
+                          </span>
+                        ) : null}
                         {demoMode ? (
                           <span className="inline-flex items-center rounded-full border border-info/20 bg-info/10 px-2 py-0.5 text-[7px] font-medium uppercase tracking-[0.16em] text-info">
                             演示模式
@@ -3815,8 +3784,8 @@ export default function KnowledgeIngestionPageClient() {
                               <h1 className="text-[clamp(0.96rem,1.18vw,1.26rem)] font-semibold tracking-[-0.015em] text-foreground">
                                 <span className="bg-[linear-gradient(90deg,hsl(var(--foreground)),hsl(var(--info))_92%)] bg-clip-text text-transparent">
                                   {mode === 'sales-audit'
-                                    ? '售前报价证据台'
-                                    : '执行监控工作台'}
+                                    ? '入库预检工作台'
+                                    : '执行监控'}
                                 </span>
                               </h1>
                               {mode === 'execution-monitor' ? (
@@ -3832,8 +3801,8 @@ export default function KnowledgeIngestionPageClient() {
                             </div>
                             <p className="mt-1 max-w-[52rem] text-[9px] leading-[1.42] text-muted-foreground">
                               {mode === 'sales-audit'
-                                ? '先回答怎么报价、是否需要先做付费 POC，再下钻到复杂度细节与证据样本。默认展示脱敏后的客观事实，不做主观评分。'
-                                : '聚焦处理队列、吞吐、失败重试与运行态列表，供交付阶段持续观察执行状态。'}
+                                ? '选择目标数据集后先做入库预检，确认目录、策略、重复与风险，再把文件写入知识库；入库完成后可切换执行监控查看队列和失败重试。'
+                                : '集中观察处理模式、吞吐、失败重试与运行态列表，快速判断入库链路是否健康。'}
                             </p>
                           </div>
                         </div>
@@ -3857,26 +3826,27 @@ export default function KnowledgeIngestionPageClient() {
                             type="button"
                             variant="outline"
                             className="h-7 rounded-lg px-2 text-[9px]"
-                            onClick={() => {
-                              if (selectedDatasetId) {
-                                router.push(
-                                  `/datasets/${selectedDatasetId}/precheck`
-                                )
-                                return
-                              }
-                              toast.error('请先选择一个数据集')
-                            }}
+                            onClick={handleUploadSampleAssessment}
                           >
                             <UploadCloud className="mr-1.5 h-3.5 w-3.5" />
-                            数据预检
+                            上传预检文件
                           </Button>
                           <Button
                             type="button"
                             className="h-7 rounded-lg px-2 text-[9px]"
+                            onClick={handleUploadFormalIngest}
+                          >
+                            <UploadCloud className="mr-1.5 h-3.5 w-3.5" />
+                            正式入库
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-7 rounded-lg px-2 text-[9px]"
                             onClick={() => void handleExportSalesAuditReport()}
                           >
                             <Download className="mr-1.5 h-3.5 w-3.5" />
-                            脱敏报告导出
+                            入库预检报告
                           </Button>
                         </>
                       ) : (
@@ -3897,23 +3867,6 @@ export default function KnowledgeIngestionPageClient() {
                           </Button>
                           <Button
                             type="button"
-                            variant="outline"
-                            className="h-7 rounded-lg px-2 text-[9px]"
-                            onClick={() =>
-                              dropZoneRef.current?.triggerFilePicker()
-                            }
-                          >
-                            <UploadCloud className="mr-1.5 h-3.5 w-3.5" />
-                            上传样本
-                          </Button>
-                          <LiveVelocity
-                            unit={velocityUnit}
-                            docsPerMinute={docsPerMinute}
-                            megabytesPerSecond={megabytesPerSecond}
-                            onToggle={handleToggleVelocity}
-                          />
-                          <Button
-                            type="button"
                             className="h-7 rounded-lg px-2 text-[9px]"
                             onClick={handleDownloadReport}
                           >
@@ -3925,81 +3878,68 @@ export default function KnowledgeIngestionPageClient() {
                     </div>
                   </div>
 
-                  <div className={cn('mt-2.5', SALES_SUMMARY_STRIP_CLASS)}>
-                    <div
-                      className={cn(
-                        'grid gap-px',
-                        mode === 'sales-audit'
-                          ? 'sm:grid-cols-4'
-                          : 'sm:grid-cols-3 xl:grid-cols-6'
-                      )}
-                    >
-                      {(mode === 'sales-audit'
-                        ? [
-                            {
-                              label: '范围',
-                              value: selectedDatasetLabel,
-                              icon: FileSearch,
-                              tone: 'text-muted-foreground/65',
-                              detail: '',
-                            },
-                            {
-                              label: '建议报价模式',
-                              value: salesAuditProfile?.pricingMode || '待预检',
-                              icon: Workflow,
-                              tone: 'text-accent',
-                              detail: '',
-                            },
-                            {
-                              label: '建议 POC 样本量',
-                              value: salesAuditProfile
-                                ? `${salesAuditProfile.pocSampleCount} 份`
-                                : '待预检',
-                              icon: FileCheck2,
-                              tone: 'text-info',
-                              detail: '',
-                            },
-                            {
-                              label: '复杂度',
-                              value: salesAuditProfile?.complexity || '待预检',
-                              icon: Radar,
-                              tone: 'text-warning',
-                              detail: '',
-                            },
-                          ]
-                        : executionTopStripItems
-                      ).map(({ label, value, icon: Icon, tone, detail }) => (
-                        <div
-                          key={label}
-                          className={cn(
-                            'relative bg-background/78 px-2.5 py-2',
-                            mode === 'sales-audit'
-                              ? 'min-h-[3.4rem]'
-                              : 'min-h-[4.2rem]'
-                          )}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="text-[7px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                              {label}
+                  {mode === 'sales-audit' ? (
+                    <div className={cn('mt-2.5', SALES_SUMMARY_STRIP_CLASS)}>
+                      <div className="grid gap-px sm:grid-cols-4">
+                        {[
+                          {
+                            label: '范围',
+                            value: selectedDatasetLabel,
+                            icon: FileSearch,
+                            tone: 'text-muted-foreground/65',
+                            detail: '',
+                          },
+                          {
+                            label: '入库建议',
+                            value: ingestionRecommendationLabel,
+                            icon: Workflow,
+                            tone: 'text-accent',
+                            detail: '',
+                          },
+                          {
+                            label: '抽样确认量',
+                            value: salesAuditProfile
+                              ? `${salesAuditProfile.pocSampleCount} 份`
+                              : '待预检',
+                            icon: FileCheck2,
+                            tone: 'text-info',
+                            detail: '',
+                          },
+                          {
+                            label: '处理复杂度',
+                            value: salesAuditProfile?.complexity || '待预检',
+                            icon: Radar,
+                            tone: 'text-warning',
+                            detail: '',
+                          },
+                        ].map(({ label, value, icon: Icon, tone, detail }) => (
+                          <div
+                            key={label}
+                            className="relative min-h-[3.4rem] bg-background/78 px-2.5 py-2"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="text-[7px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                                {label}
+                              </div>
+                              <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-border/45 bg-muted/30">
+                                <Icon
+                                  className={cn('h-2.5 w-2.5 shrink-0', tone)}
+                                />
+                              </span>
                             </div>
-                            <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-border/45 bg-muted/30">
-                              <Icon
-                                className={cn('h-2.5 w-2.5 shrink-0', tone)}
-                              />
-                            </span>
-                          </div>
-                          <div className="mt-1 font-mono text-[10px] tabular-nums leading-none text-foreground">
-                            {value}
-                          </div>
-                          {detail ? (
-                            <div className="mt-1 text-[7px] text-muted-foreground">
-                              {detail}
+                            <div className="mt-1 font-mono text-[10px] tabular-nums leading-none text-foreground">
+                              {value}
                             </div>
-                          ) : null}
-                        </div>
-                      ))}
+                            {detail ? (
+                              <div className="mt-1 text-[7px] text-muted-foreground">
+                                {detail}
+                              </div>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  ) : null}
                 </div>
               </motion.div>
             </div>
@@ -4015,19 +3955,23 @@ export default function KnowledgeIngestionPageClient() {
                   <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.24),transparent_62%)]" />
                   <div className="relative flex items-center gap-2 text-[12px] text-success">
                     <ShieldCheck className="h-4 w-4" />
-                    审计成功反馈：当前数据集已出现健康可入库样本，可继续批量确认。
+                    入库确认反馈：当前数据集已出现健康可入库样本，可继续批量确认。
                   </div>
                 </motion.div>
               ) : null}
             </AnimatePresence>
 
-            <div className={cn(mode === 'sales-audit' ? 'mt-5' : 'mt-3')}>
+            <div className={cn(mode === 'sales-audit' ? 'mt-5' : 'mt-2.5')}>
               {mode === 'sales-audit' ? (
                 showEmptyState ? (
-                  <EmptyState mode="truly-empty" />
+                  <EmptyState
+                    mode="truly-empty"
+                    onUploadSample={handleUploadSampleAssessment}
+                    onUploadIngest={handleUploadFormalIngest}
+                  />
                 ) : (
                   <div
-                    title="报价依据"
+                    title="入库依据"
                     onMouseMove={handleCanvasMove}
                     className={cn(
                       'relative overflow-hidden rounded-[1.3rem] border border-border/60 bg-background/86 p-2.5 shadow-[0_24px_68px_-44px_rgba(15,23,42,0.24)] md:p-3',
@@ -4047,7 +3991,7 @@ export default function KnowledgeIngestionPageClient() {
                           <div className="rounded-[0.9rem] border border-border/50 bg-[linear-gradient(180deg,rgba(255,255,255,0.9),rgba(248,250,252,0.9))] px-2.5 py-2">
                             <div className="flex items-center justify-between gap-2">
                               <div className="text-[7px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                                报价依据
+                                入库依据
                               </div>
                               <FileDigit className="h-3 w-3 text-muted-foreground/65" />
                             </div>
@@ -4055,8 +3999,7 @@ export default function KnowledgeIngestionPageClient() {
                               核心摘要
                             </div>
                             <p className="mt-1 text-[9px] leading-3.5 text-muted-foreground">
-                              默认输出脱敏后的客观事实，用于解释报价、POC
-                              范围与人工阻断来源。
+                              默认输出脱敏后的客观事实，用于解释入库策略、预检范围与人工阻断来源。
                             </p>
                             <div className="mt-1.5 inline-flex items-center rounded-full border border-border/60 bg-background/80 px-1.5 py-0.5 text-[8px] font-medium text-muted-foreground">
                               Evidence-first · De-identified
@@ -4315,7 +4258,7 @@ export default function KnowledgeIngestionPageClient() {
                       <div className="grid gap-1.5 xl:grid-cols-[1.05fr_0.95fr]">
                         <section className={cn(SALES_PANEL_CLASS, 'p-2.5')}>
                           <SalesPanelHeader
-                            title="建议 POC 样本（5 份）"
+                            title="入库抽样确认（5 份）"
                             icon={FileCheck2}
                             iconTone="text-success"
                             subtitle="按复杂度维度覆盖主风险项"
@@ -4377,7 +4320,7 @@ export default function KnowledgeIngestionPageClient() {
                             title="高风险文件（示例）"
                             icon={CircleAlert}
                             iconTone="text-warning"
-                            subtitle="优先解释高报价的归因"
+                            subtitle="优先解释阻断和人工处理归因"
                             actionLabel="查看全部"
                           />
                           <div className="mt-1.5 overflow-hidden rounded-[0.9rem] border border-border/50">
@@ -4447,13 +4390,17 @@ export default function KnowledgeIngestionPageClient() {
                     <LoadingWireframe />
                   ) : null}
                   {showEmptyState ? (
-                    <EmptyState mode="truly-empty" />
+                    <EmptyState
+                      mode="truly-empty"
+                      onUploadSample={handleUploadSampleAssessment}
+                      onUploadIngest={handleUploadFormalIngest}
+                    />
                   ) : (
                     <div
-                      title="项目数据盘点报告"
+                      title="入库预检报告"
                       onMouseMove={handleCanvasMove}
                       className={cn(
-                        'relative overflow-hidden rounded-[1.6rem] border border-border/60 bg-background/86 p-3.5 shadow-[0_32px_90px_-44px_rgba(15,23,42,0.35)] md:p-4',
+                        'relative overflow-hidden rounded-[1.45rem] border border-border/60 bg-background/86 p-3 shadow-[0_28px_72px_-46px_rgba(15,23,42,0.32)] md:p-3.5',
                         demoMode &&
                           'bg-[linear-gradient(rgba(148,163,184,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.08)_1px,transparent_1px)] [background-size:28px_28px]'
                       )}
@@ -4465,8 +4412,8 @@ export default function KnowledgeIngestionPageClient() {
                           background: `radial-gradient(circle at ${canvasGlow.x}% ${canvasGlow.y}%, rgba(255,255,255,0.48), transparent 28%)`,
                         }}
                       />
-                      <div className="relative z-10 space-y-4">
-                        <div className="grid gap-4 xl:grid-cols-[0.82fr_1.18fr]">
+                      <div className="relative z-10 space-y-3">
+                        <div className="grid gap-3 xl:grid-cols-[0.82fr_1.18fr]">
                           <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
                             <div className="flex items-center justify-between gap-3">
                               <div className="text-[11px] font-medium text-foreground">
@@ -4622,9 +4569,9 @@ export default function KnowledgeIngestionPageClient() {
 
                         <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
                           <div className="text-[11px] font-medium text-foreground">
-                            关键指标（实时）
+                            运行信息汇聚
                           </div>
-                          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
+                          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                             {executionKpiCards.map((item) => {
                               const Icon = item.icon
                               return (
@@ -4734,7 +4681,7 @@ export default function KnowledgeIngestionPageClient() {
                               任务列表
                             </div>
                             <div className="text-[9px] text-muted-foreground">
-                              {executionTaskRows.length} 个最新任务
+                              {executionTaskRows.length} 个任务
                             </div>
                           </div>
                           <div className="mt-3 overflow-hidden rounded-[1rem] border border-border/50">
@@ -4768,7 +4715,7 @@ export default function KnowledgeIngestionPageClient() {
                                 </tr>
                               </thead>
                               <tbody>
-                                {executionTaskRows.map((document) => {
+                                {visibleExecutionTaskRows.map((document) => {
                                   const progress =
                                     typeof document.processing_progress ===
                                     'number'
@@ -4884,6 +4831,52 @@ export default function KnowledgeIngestionPageClient() {
                               </tbody>
                             </table>
                           </div>
+                          <div className="mt-2.5 flex flex-col gap-2 border-t border-border/45 pt-2.5 text-[9px] text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+                            <span className="font-mono tabular-nums">
+                              共 {executionTaskRows.length} 条
+                            </span>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-7 rounded-lg px-2 text-[9px]"
+                                disabled={executionTaskPage <= 1}
+                                onClick={() =>
+                                  setExecutionTaskPage((page) =>
+                                    Math.max(1, page - 1)
+                                  )
+                                }
+                              >
+                                <ChevronLeft className="mr-1 h-3 w-3" />
+                                上一页
+                              </Button>
+                              <span className="min-w-[4.5rem] rounded-lg border border-border/50 bg-background/70 px-2 py-1 text-center font-mono tabular-nums text-foreground">
+                                第 {executionTaskPage} /{' '}
+                                {executionTaskPageCount} 页
+                              </span>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-7 rounded-lg px-2 text-[9px]"
+                                disabled={
+                                  executionTaskPage >= executionTaskPageCount
+                                }
+                                onClick={() =>
+                                  setExecutionTaskPage((page) =>
+                                    Math.min(
+                                      executionTaskPageCount,
+                                      page + 1
+                                    )
+                                  )
+                                }
+                              >
+                                下一页
+                                <ChevronRight className="ml-1 h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
                         </section>
                       </div>
                     </div>
@@ -4915,7 +4908,7 @@ export default function KnowledgeIngestionPageClient() {
             <div className="flex h-full min-h-0 flex-col">
               <div className="border-b border-border/60 px-6 py-5">
                 <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                  审计依据
+                  入库依据
                 </div>
                 <div className="mt-1 text-lg font-semibold text-foreground">
                   {anonymizeEvidenceName(selectedEvidenceFile.name)}
@@ -5017,7 +5010,7 @@ export default function KnowledgeIngestionPageClient() {
                     本地复核
                   </div>
                   <div className="mt-2 text-sm leading-6 text-muted-foreground">
-                    一键打开本地文件仅在本地审计模式可用；普通 Web
+                    一键打开本地文件仅在本地入库复核模式可用；普通 Web
                     部署默认禁用。
                   </div>
                   <Button className="mt-3 rounded-xl" disabled>
@@ -5039,7 +5032,7 @@ export default function KnowledgeIngestionPageClient() {
           >
             <SheetHeader className="sr-only">
               <SheetTitle>
-                {activeAuditDocument?.filename || '审计快照'}
+                {activeAuditDocument?.filename || '入库快照'}
               </SheetTitle>
               <SheetDescription>
                 {activeAuditDocument?.id || ''}
@@ -5049,7 +5042,7 @@ export default function KnowledgeIngestionPageClient() {
               <div className="flex h-full min-h-0 flex-col">
                 <div className="border-b border-border/60 px-6 py-5">
                   <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                    审计快照
+                    入库快照
                   </div>
                   <div className="mt-1 text-lg font-semibold text-foreground">
                     {activeAuditDocument.filename}
@@ -5072,7 +5065,7 @@ export default function KnowledgeIngestionPageClient() {
                       Sensitive Data Policy
                     </div>
                     <div className="mt-2 text-sm leading-6 text-foreground/82">
-                      默认仅展示脱敏后的聚合事实与待确认线索，不做主观评分。该快照用于演示侧边抽屉审计视图。
+                      默认仅展示脱敏后的聚合事实与待确认线索，不做主观评分。该快照用于演示侧边抽屉入库依据视图。
                     </div>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
