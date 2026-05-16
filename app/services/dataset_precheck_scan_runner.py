@@ -62,6 +62,9 @@ logger = get_logger("services.dataset_precheck_scan")
 UPLOAD_DIR_FALLBACK = "./uploads"
 REDACTED_MASK = "[REDACTED]"
 SECRET_MASK = "[SECRET]"
+PRECHECK_SAMPLE_RATIO_NUMERATOR = 3
+PRECHECK_SAMPLE_RATIO_DENOMINATOR = 1000
+PRECHECK_SAMPLE_MAX_SIZE = 2000
 
 
 FINDING_KEY_REASONS: dict[str, dict[str, Any]] = {
@@ -272,6 +275,57 @@ def _bucket_file_size_label(size: int) -> str:
     return "unknown"
 
 
+def _stable_sample_key(item: dict[str, Any], *, salt: str) -> str:
+    raw = "|".join(
+        [
+            str(salt or ""),
+            str(item.get("name") or ""),
+            str(item.get("file_type") or ""),
+            str(item.get("file_size") or ""),
+            str(item.get("file_mtime") or ""),
+        ]
+    )
+    return hashlib.blake2b(raw.encode("utf-8", errors="ignore"), digest_size=8).hexdigest()
+
+
+def _resolve_precheck_sample_target(
+    *,
+    total_files: int,
+    file_type_counts: dict[str, int] | Counter[str],
+    requested_size: int | None = None,
+) -> int:
+    """
+    Resolve representative precheck sample size.
+
+    Default policy is intentionally small for POC/pricing: 3/1000 files,
+    with one sample for every file type that actually appears in the batch.
+    """
+    total_n = max(0, int(total_files or 0))
+    if total_n <= 0:
+        return 0
+
+    present_type_count = len(
+        [
+            str(key or "").strip().lower()
+            for key, count in dict(file_type_counts or {}).items()
+            if str(key or "").strip() and int(count or 0) > 0
+        ]
+    )
+
+    if requested_size is not None:
+        base = max(0, min(int(requested_size or 0), PRECHECK_SAMPLE_MAX_SIZE))
+        if base <= 0:
+            return 0
+    else:
+        base = int(
+            (total_n * PRECHECK_SAMPLE_RATIO_NUMERATOR + PRECHECK_SAMPLE_RATIO_DENOMINATOR - 1)
+            // PRECHECK_SAMPLE_RATIO_DENOMINATOR
+        )
+
+    target = max(1, present_type_count, base)
+    return min(total_n, min(PRECHECK_SAMPLE_MAX_SIZE, target))
+
+
 def _build_samples_payload(*, jsonl_path: Path, target_size: int) -> dict[str, Any]:
     """
     Build representative + problem-focused samples from a precheck JSONL artifact.
@@ -284,6 +338,7 @@ def _build_samples_payload(*, jsonl_path: Path, target_size: int) -> dict[str, A
 
     # Base strata: (file_type, size_bin, pdf_state).
     groups: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    type_groups: dict[str, list[dict[str, Any]]] = {}
     findings_buckets: dict[str, list[dict[str, Any]]] = {}
     largest: list[dict[str, Any]] = []
     longest: list[dict[str, Any]] = []
@@ -321,6 +376,7 @@ def _build_samples_payload(*, jsonl_path: Path, target_size: int) -> dict[str, A
             size_bin = _bucket_file_size_label(file_size)
             key = (file_type.lower(), size_bin, pdf_state)
             groups.setdefault(key, []).append(obj)
+            type_groups.setdefault(file_type.lower(), []).append(obj)
 
             findings = obj.get("findings")
             if isinstance(findings, list):
@@ -333,18 +389,20 @@ def _build_samples_payload(*, jsonl_path: Path, target_size: int) -> dict[str, A
             _push_top(largest, obj, key="file_size", top_k=20)
             _push_top(longest, obj, key="text_characters", top_k=20)
 
-    # Representative picks: choose one file per stratum.
+    # Representative picks: random-like deterministic coverage by present file type first,
+    # then fill the ratio target from the remaining pool. Deterministic ordering keeps
+    # exports and tests reproducible while avoiding "first N files" bias.
     rep: list[dict[str, Any]] = []
-    ordered_groups = sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[0]))
-    if len(ordered_groups) <= target_size:
-        chosen = ordered_groups
-    else:
-        half = max(1, target_size // 2)
-        chosen = ordered_groups[:half] + ordered_groups[-(target_size - half) :]
-
     picked_names: set[str] = set()
-    for _k, items in chosen:
-        items_sorted = sorted(items, key=lambda o: str(o.get("name") or ""))
+    if len(type_groups) > target_size:
+        target_size = min(PRECHECK_SAMPLE_MAX_SIZE, len(type_groups))
+    type_minimum = min(
+        int(len(type_groups)),
+        int(max(0, min(target_size, PRECHECK_SAMPLE_MAX_SIZE))),
+    )
+
+    for file_type, items in sorted(type_groups.items(), key=lambda kv: (-len(kv[1]), kv[0]))[:type_minimum]:
+        items_sorted = sorted(items, key=lambda o: (_stable_sample_key(o, salt=f"type:{file_type}"), str(o.get("name") or "")))
         if not items_sorted:
             continue
         item = items_sorted[0]
@@ -354,6 +412,22 @@ def _build_samples_payload(*, jsonl_path: Path, target_size: int) -> dict[str, A
             rep.append(item)
         if len(rep) >= target_size:
             break
+
+    if len(rep) < target_size:
+        remaining = [
+            item
+            for items in type_groups.values()
+            for item in items
+            if str(item.get("name") or "") not in picked_names
+        ]
+        remaining.sort(key=lambda o: (_stable_sample_key(o, salt="ratio-fill"), str(o.get("name") or "")))
+        for item in remaining:
+            nm = str(item.get("name") or "")
+            if nm and nm not in picked_names:
+                picked_names.add(nm)
+                rep.append(item)
+            if len(rep) >= target_size:
+                break
 
     # Problem-focused samples: per finding bucket (cap per finding).
     needs_review: dict[str, list[dict[str, Any]]] = {}
@@ -849,8 +923,7 @@ def run_dataset_precheck_scan(
     near_dup_max_pairs = max(0, min(near_dup_max_pairs, 200_000))
 
     enable_sampling = bool(cfg.get("enable_sampling", True))
-    sample_size = safe_int(cfg.get("sample_size") or 60, default=60)
-    sample_size = max(0, min(sample_size, 2000))
+    raw_sample_size = cfg.get("sample_size")
 
     threshold_overrides = cfg.get("threshold_overrides") if isinstance(cfg.get("threshold_overrides"), dict) else {}
     thresholds = resolve_pre_poc_scanner_thresholds(
@@ -862,7 +935,12 @@ def run_dataset_precheck_scan(
             "sample_size": cfg.get("sample_size"),
         }
     )
-    sample_size = int(thresholds["sample_size"])
+    configured_default_sample_size = safe_int(getattr(settings, "PRECHECK_SAMPLE_SIZE", 0), default=0)
+    sample_size_override = (
+        int(thresholds["sample_size"])
+        if raw_sample_size is not None or configured_default_sample_size > 0
+        else None
+    )
 
     # Optional: reuse unchanged file records from a previous scan run (incremental scans).
     reuse_unchanged_files = bool(cfg.get("reuse_unchanged_files", False))
@@ -926,6 +1004,7 @@ def run_dataset_precheck_scan(
     # Enumerate file candidates first to compute total for progress (bounded by max_files).
     allowed_exts = set(getattr(settings, "allowed_extensions_list", []) or [])
     candidates: list[Path] = []
+    candidate_type_counts: Counter[str] = Counter()
     total_bytes_seen = 0
     for p in _iter_files(root, max_files=max_files):
         ext = p.suffix.lower()
@@ -938,9 +1017,16 @@ def run_dataset_precheck_scan(
         if max_total_bytes > 0 and (total_bytes_seen + size) > max_total_bytes:
             break
         candidates.append(p)
+        file_type = ext.lstrip(".") if ext.startswith(".") else (p.suffix or "").lower().lstrip(".") or "unknown"
+        candidate_type_counts[str(file_type or "unknown").lower()] += 1
         total_bytes_seen += size
 
     total = len(candidates)
+    sample_size = _resolve_precheck_sample_target(
+        total_files=total,
+        file_type_counts=candidate_type_counts,
+        requested_size=sample_size_override,
+    )
     if total == 0:
         run.status = "completed"
         run.progress = 100

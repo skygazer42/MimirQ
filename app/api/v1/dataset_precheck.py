@@ -757,7 +757,7 @@ def export_dataset_precheck_html_report(
             samples = load_precheck_samples_from_row(
                 row,
                 tenant_id=tenant_id,
-                size=int(cfg.get("sample_size") or 60),
+                size=int(cfg.get("sample_size") or 0),
                 prefer_artifact=True,
             )
         except Exception:

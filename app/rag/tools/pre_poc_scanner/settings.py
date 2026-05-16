@@ -75,7 +75,7 @@ def resolve_pre_poc_scanner_thresholds(overrides: dict[str, Any] | None = None) 
         ),
         "sample_size": _coerce_int(
             cfg.get("sample_size"),
-            default=int(getattr(settings, "PRECHECK_SAMPLE_SIZE", 60) or 60),
+            default=int(getattr(settings, "PRECHECK_SAMPLE_SIZE", 0) or 0),
             minimum=0,
             maximum=2000,
         ),

@@ -14,6 +14,7 @@ from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentPermission
 from app.services.dataset_service import DatasetService
+from app.services.document_runtime_metadata import attach_runtime_document_metadata
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -190,6 +191,8 @@ async def list_documents(
 
     query = query.order_by(order_col.asc() if order_dir == "asc" else order_col.desc(), DBDocument.id.asc())
     documents = query.offset(skip).limit(limit).all()
+    for document in documents:
+        attach_runtime_document_metadata(document)
 
     return {
         "total": total,

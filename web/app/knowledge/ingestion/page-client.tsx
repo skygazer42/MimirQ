@@ -76,13 +76,11 @@ import {
   buildEvidenceSlotReason,
   buildEvidenceSlotTags,
   buildFileSizeDistribution,
-  buildFileTypeDistribution,
   buildPdfDispositionBreakdown,
   buildSalesAuditProfile,
   buildThroughputAreaRows,
   computeDocsPerMinute,
   computeDurationPercentiles,
-  computeMeanFileSize,
   getDocumentKind,
   getDocumentKindAccent,
   matchesReasonFilter,
@@ -93,6 +91,9 @@ import { IngestionViewSwitch } from './view-switch'
 
 const DATASET_ALL = '__all__'
 const EXECUTION_TASK_PAGE_SIZE = 5
+const PRECHECK_SAMPLE_NUMERATOR = 3
+const PRECHECK_SAMPLE_DENOMINATOR = 1000
+const PRECHECK_SAMPLE_MAX = 2000
 
 type IngestionMode = 'sales-audit' | 'execution-monitor'
 type SampleDisposition = 'approved' | 'manual'
@@ -121,6 +122,171 @@ const EMPTY_INGESTION_SUMMARY: IngestionDashboardSummaryResponse = {
 function safeNumber(value: unknown): number {
   const numeric = Number(value)
   return Number.isFinite(numeric) ? numeric : 0
+}
+
+function estimatePdfPageCountFromSignals({
+  characters,
+  fileSize,
+}: {
+  characters: number
+  fileSize: number
+}): number {
+  const chars = Number(characters || 0)
+  const size = Number(fileSize || 0)
+  const pagesFromText = chars > 0 ? Math.ceil(chars / 900) : 0
+  const pagesFromSize = size > 0 ? Math.ceil(size / (350 * 1024)) : 0
+  const estimated = pagesFromText || pagesFromSize
+  return Math.max(0, Math.min(2000, estimated))
+}
+
+const MARKDOWN_IMAGE_REF_PATTERN = /!\[[^\]]*]\([^)]*\)/g
+const HTML_TABLE_PATTERN = /<table\b/gi
+
+function getRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object'
+    ? (value as Record<string, unknown>)
+    : null
+}
+
+function getDocumentMetadataRecord(
+  document: Document
+): Record<string, unknown> {
+  return getRecord(document.metadata) ?? {}
+}
+
+function firstPositiveNumber(...values: unknown[]): number {
+  for (const value of values) {
+    const numeric = safeNumber(value)
+    if (numeric > 0) return numeric
+  }
+  return 0
+}
+
+function getDocumentAnalyticsRecord(
+  document: Document
+): Record<string, unknown> | null {
+  const meta = getDocumentMetadataRecord(document)
+  const pipeline = getRecord(meta.pipeline)
+  return (
+    getRecord(pipeline?.analytics_raw) ??
+    getRecord(meta.document_analytics_raw) ??
+    getRecord(meta.analytics_raw)
+  )
+}
+
+function getDocumentPdfQualityRecord(
+  document: Document
+): Record<string, unknown> | null {
+  const meta = getDocumentMetadataRecord(document)
+  const qualityGate = getRecord(meta.quality_gate)
+  return (
+    getRecord(meta.pdf_quality) ??
+    getRecord(qualityGate?.pdf_quality) ??
+    getRecord(qualityGate?.stats)
+  )
+}
+
+function getDocumentElementTexts(document: Document): string[] {
+  const elements = getDocumentMetadataRecord(document).elements
+  if (!Array.isArray(elements)) return []
+
+  return elements
+    .map((element) => {
+      const record = getRecord(element)
+      const text = record?.text ?? record?.content ?? record?.markdown
+      return typeof text === 'string' ? text : ''
+    })
+    .filter(Boolean)
+}
+
+function countPatternInTexts(texts: string[], pattern: RegExp): number {
+  return texts.reduce((sum, text) => {
+    pattern.lastIndex = 0
+    return sum + (text.match(pattern)?.length ?? 0)
+  }, 0)
+}
+
+function countDocumentImageRefs(document: Document): number {
+  const elements = getDocumentMetadataRecord(document).elements
+  const elementKindCount = Array.isArray(elements)
+    ? elements.filter((element) => {
+        const record = getRecord(element)
+        const kind = String(
+          record?.kind ??
+            record?.type ??
+            record?.category ??
+            record?.visual_kind ??
+            ''
+        ).toLowerCase()
+        return ['image', 'figure', 'picture'].includes(kind)
+      }).length
+    : 0
+
+  return (
+    elementKindCount +
+    countPatternInTexts(getDocumentElementTexts(document), MARKDOWN_IMAGE_REF_PATTERN)
+  )
+}
+
+function countDocumentTableRefs(document: Document): number {
+  const elements = getDocumentMetadataRecord(document).elements
+  const elementKindCount = Array.isArray(elements)
+    ? elements.filter((element) => {
+        const record = getRecord(element)
+        const kind = String(
+          record?.kind ?? record?.type ?? record?.category ?? ''
+        ).toLowerCase()
+        return kind === 'table'
+      }).length
+    : 0
+
+  return (
+    elementKindCount +
+    countPatternInTexts(getDocumentElementTexts(document), HTML_TABLE_PATTERN)
+  )
+}
+
+function getDocumentRuntimeStats(document: Document) {
+  const meta = getDocumentMetadataRecord(document)
+  const analytics = getDocumentAnalyticsRecord(document)
+  const pdfQuality = getDocumentPdfQualityRecord(document)
+  const stageDurations = getRecord(meta.ingest_stage_durations_ms)
+
+  const pageCount = firstPositiveNumber(
+    meta.page_count,
+    analytics?.page_count,
+    pdfQuality?.page_count
+  )
+  const imageCount =
+    firstPositiveNumber(meta.image_count, analytics?.image_count) ||
+    countDocumentImageRefs(document)
+  const tableCount =
+    firstPositiveNumber(meta.table_count, analytics?.table_count) ||
+    countDocumentTableRefs(document)
+  const blockCount = firstPositiveNumber(
+    meta.block_count,
+    analytics?.block_count,
+    Array.isArray(meta.elements) ? meta.elements.length : 0
+  )
+  const parseDurationSec = firstPositiveNumber(
+    meta.parse_duration_sec,
+    stageDurations?.parse
+      ? safeNumber(stageDurations.parse) / 1000
+      : undefined
+  )
+
+  return {
+    blockCount,
+    imageCount,
+    pageCount,
+    pageCountSource: typeof meta.page_count_source === 'string'
+      ? meta.page_count_source
+      : pageCount
+        ? 'metadata'
+        : '',
+    parseDurationSec,
+    tableCount,
+  }
 }
 
 function getDocumentUserMeta(document: Document): Record<string, unknown> | null {
@@ -1842,14 +2008,6 @@ export default function KnowledgeIngestionPageClient() {
     () => computeDurationPercentiles(documents),
     [documents]
   )
-  const meanFileSize = useMemo(
-    () => computeMeanFileSize(documents),
-    [documents]
-  )
-  const fileTypeDistribution = useMemo(
-    () => buildFileTypeDistribution(documents),
-    [documents]
-  )
   const fileSizeDistribution = useMemo(
     () => buildFileSizeDistribution(documents),
     [documents]
@@ -2053,6 +2211,18 @@ export default function KnowledgeIngestionPageClient() {
     taskQueueStatusLabel,
   ])
 
+  const executionCharacterFootprint = useMemo(() => {
+    const totalCharacters = documents.reduce(
+      (sum, document) => sum + Number(document.total_characters || 0),
+      0
+    )
+    if (totalCharacters > 0) {
+      return `${totalCharacters.toLocaleString('zh-CN')} 字符`
+    }
+    if (documents.length > 0) return '字数待统计'
+    return '暂无字数'
+  }, [documents])
+
   const executionRunStateCards = useMemo(
     () => [
       {
@@ -2061,7 +2231,7 @@ export default function KnowledgeIngestionPageClient() {
         suffix: '',
         icon: FileSearch,
         tone: 'text-info',
-        detail: selectedDatasetId ? '当前数据集' : '跨数据集',
+        detail: `${selectedDatasetId ? '当前数据集' : '跨数据集'} · ${executionCharacterFootprint}`,
       },
       {
         label: '处理模式',
@@ -2082,6 +2252,7 @@ export default function KnowledgeIngestionPageClient() {
     ],
     [
       docsPerMinute,
+      executionCharacterFootprint,
       executionProcessingMode.detail,
       executionProcessingMode.tone,
       executionProcessingMode.value,
@@ -2153,83 +2324,202 @@ export default function KnowledgeIngestionPageClient() {
     ]
   }, [reviewQueue, summary.top_error_reasons])
 
-  const executionOverallProgress = useMemo(() => {
-    if (!documents.length) return 0
-    return Math.round((executionProcessedTotal / documents.length) * 100)
-  }, [documents.length, executionProcessedTotal])
-
-  const executionPipelineCards = useMemo(() => {
-    const parserDone =
-      statusCounts.completed + statusCounts.failed + statusCounts.quarantined
+  const executionPipelineState = useMemo(() => {
+    const total = documents.length
+    const safeTotal = Math.max(1, total)
     const parserFailures = statusCounts.failed + statusCounts.quarantined
-    const chunkerProcessing = statusCounts.processing
-    const chunkerWaiting = statusCounts.pending
-    const parserBacklog = statusCounts.pending + statusCounts.processing
-    const governanceQueue = reviewQueue + manualCount
-    const exportReady = statusCounts.completed
+    const processingDocuments = documents.filter(
+      (document) => String(document.status || '').toLowerCase() === 'processing'
+    )
+    const totalChunks = documents.reduce(
+      (sum, document) => sum + Number(document.chunk_count || 0),
+      0
+    )
 
-    return [
-      {
-        key: 'parser',
-        label: 'Parser',
-        tone: 'border-success/28 bg-success/[0.04]',
-        statusTone: 'bg-success',
-        metrics: [
-          ['已完成', `${parserDone}`],
-          ['失败', `${parserFailures}`],
-          ['待处理', `${parserBacklog}`],
-        ],
-      },
-      {
-        key: 'chunker',
-        label: 'Chunker',
-        tone: 'border-info/28 bg-info/[0.04]',
-        statusTone: chunkerProcessing > 0 ? 'bg-info' : 'bg-muted',
-        metrics: [
-          ['进行中', `${chunkerProcessing}`],
-          ['等待中', `${chunkerWaiting}`],
-          [
-            '耗时',
-            durationPercentiles.p50
-              ? `${durationPercentiles.p50.toFixed(1)}m`
-              : '--',
+    const stageIncludes = (document: Document, keywords: string[]) => {
+      const stage = String(document.current_stage || '').toLowerCase()
+      return keywords.some((keyword) => stage.includes(keyword))
+    }
+    const progressOf = (document: Document) =>
+      Math.max(0, Math.min(100, Number(document.processing_progress || 0)))
+    const isCompleted = (document: Document) =>
+      String(document.status || '').toLowerCase() === 'completed'
+    const isTerminal = (document: Document) =>
+      ['completed', 'failed', 'quarantined'].includes(
+        String(document.status || '').toLowerCase()
+      )
+
+    const parserRunning = processingDocuments.filter(
+      (document) =>
+        progressOf(document) < 45 ||
+        stageIncludes(document, ['parse', 'parser', 'extract', 'ocr', 'mineru'])
+    ).length
+    const parserDone = documents.filter(
+      (document) => isTerminal(document) || progressOf(document) >= 45
+    ).length
+    const parserWaiting = Math.max(0, total - parserDone - parserRunning)
+
+    const chunkerRunning = processingDocuments.filter(
+      (document) =>
+        progressOf(document) >= 45 ||
+        stageIncludes(document, [
+          'chunk',
+          'split',
+          'segment',
+          'embed',
+          'index',
+          'vector',
+          'bm25',
+        ])
+    ).length
+    const chunkerDone = documents.filter(
+      (document) => isCompleted(document) || progressOf(document) >= 85
+    ).length
+    const chunkerWaiting = Math.max(0, total - chunkerDone - chunkerRunning)
+
+    const governanceQueue = reviewQueue + manualCount
+    const governanceDone = Math.max(
+      0,
+      Math.min(total, statusCounts.completed + approvedCount - governanceQueue)
+    )
+    const governanceWaiting = Math.max(
+      0,
+      total - governanceDone - governanceQueue
+    )
+    const exportReady = statusCounts.completed
+    const exportWaiting = Math.max(0, total - exportReady)
+
+    const resolveStatus = ({
+      done,
+      running,
+      waiting,
+      failed = 0,
+    }: {
+      done: number
+      running: number
+      waiting: number
+      failed?: number
+    }) => {
+      if (!total) return { label: '未开始', tone: 'bg-muted', cardTone: 'border-border bg-background/75' }
+      if (failed > 0) return { label: '有失败', tone: 'bg-rose', cardTone: 'border-rose/25 bg-rose/[0.04]' }
+      if (running > 0) return { label: '进行中', tone: 'bg-info', cardTone: 'border-info/28 bg-info/[0.04]' }
+      if (done >= total && waiting <= 0) return { label: '已完成', tone: 'bg-success', cardTone: 'border-success/28 bg-success/[0.04]' }
+      if (waiting > 0) return { label: '等待中', tone: 'bg-warning', cardTone: 'border-warning/24 bg-warning/[0.04]' }
+      return { label: '未开始', tone: 'bg-muted', cardTone: 'border-border bg-background/75' }
+    }
+
+    const parserStatus = resolveStatus({
+      done: parserDone,
+      failed: parserFailures,
+      running: parserRunning,
+      waiting: parserWaiting,
+    })
+    const chunkerStatus = resolveStatus({
+      done: chunkerDone,
+      running: chunkerRunning,
+      waiting: chunkerWaiting,
+    })
+    const governanceStatus = resolveStatus({
+      done: governanceDone,
+      running: governanceQueue,
+      waiting: governanceWaiting,
+    })
+    const exportStatus = resolveStatus({
+      done: exportReady,
+      running: 0,
+      waiting: exportWaiting,
+    })
+
+    const parserProgress = total
+      ? Math.round((Math.min(total, parserDone) / safeTotal) * 100)
+      : 0
+    const chunkerProgress = total
+      ? Math.round((Math.min(total, chunkerDone) / safeTotal) * 100)
+      : 0
+    const governanceProgress = total
+      ? Math.round((Math.min(total, governanceDone + governanceQueue) / safeTotal) * 100)
+      : 0
+    const exportProgress = total
+      ? Math.round((Math.min(total, exportReady) / safeTotal) * 100)
+      : 0
+    const overallProgress = Math.round(
+      parserProgress * 0.3 +
+        chunkerProgress * 0.3 +
+        governanceProgress * 0.2 +
+        exportProgress * 0.2
+    )
+
+    return {
+      estimateLabel: taskQueueSnapshot?.enabled ? '队列联动' : '自动估算',
+      overallProgress,
+      cards: [
+        {
+          key: 'parser',
+          label: 'Parser',
+          progress: parserProgress,
+          statusLabel: parserStatus.label,
+          statusTone: parserStatus.tone,
+          tone: parserStatus.cardTone,
+          metrics: [
+            ['完成文档', `${parserDone}`],
+            ['失败', `${parserFailures}`],
+            ['待处理', `${parserWaiting}`],
           ],
-        ],
-      },
-      {
-        key: 'governance',
-        label: 'Governance',
-        tone: 'border-border bg-background/75',
-        statusTone: governanceQueue > 0 ? 'bg-warning' : 'bg-muted',
-        metrics: [
-          ['待复核', `${governanceQueue}`],
-          ['已处理', `${manualCount}`],
-          ['耗时', '--'],
-        ],
-      },
-      {
-        key: 'export',
-        label: '导出',
-        tone: 'border-border bg-background/75',
-        statusTone: exportReady > 0 ? 'bg-success' : 'bg-muted',
-        metrics: [
-          ['已处理', `${exportReady}`],
-          ['待处理', `${Math.max(0, documents.length - exportReady)}`],
-          ['耗时', '--'],
-        ],
-      },
-    ]
+        },
+        {
+          key: 'chunker',
+          label: 'Chunker',
+          progress: chunkerProgress,
+          statusLabel: chunkerStatus.label,
+          statusTone: chunkerStatus.tone,
+          tone: chunkerStatus.cardTone,
+          metrics: [
+            ['完成文档', `${chunkerDone}`],
+            ['分块数', totalChunks ? `${totalChunks}` : '预估'],
+            ['等待中', `${chunkerWaiting}`],
+          ],
+        },
+        {
+          key: 'governance',
+          label: 'Governance',
+          progress: governanceProgress,
+          statusLabel: governanceStatus.label,
+          statusTone: governanceStatus.tone,
+          tone: governanceStatus.cardTone,
+          metrics: [
+            ['自动通过', `${governanceDone}`],
+            ['待复核', `${governanceQueue}`],
+            ['等待中', `${governanceWaiting}`],
+          ],
+        },
+        {
+          key: 'export',
+          label: '导出',
+          progress: exportProgress,
+          statusLabel: exportStatus.label,
+          statusTone: exportStatus.tone,
+          tone: exportStatus.cardTone,
+          metrics: [
+            ['可导出', `${exportReady}`],
+            ['待同步', `${exportWaiting}`],
+            ['模式', selectedDatasetId ? '单数据集' : '跨数据集'],
+          ],
+        },
+      ],
+    }
   }, [
-    documents.length,
-    durationPercentiles.p50,
+    approvedCount,
+    documents,
     manualCount,
     reviewQueue,
+    selectedDatasetId,
     statusCounts.completed,
     statusCounts.failed,
-    statusCounts.pending,
-    statusCounts.processing,
     statusCounts.quarantined,
+    taskQueueSnapshot?.enabled,
   ])
+  const executionPipelineCards = executionPipelineState.cards
+  const executionOverallProgress = executionPipelineState.overallProgress
 
   const executionKpiCards = useMemo(
     () => [
@@ -2470,22 +2760,66 @@ export default function KnowledgeIngestionPageClient() {
     } as EChartsOption
   }, [forecastPoints, throughputRows])
 
-  const ocrRadarValues = useMemo(() => {
+  const costRadarValues = useMemo(() => {
     const pdfCount = documents.filter(
       (document) => String(document.file_type || '').toLowerCase() === 'pdf'
     ).length
-    const meanSizeMb = meanFileSize / (1024 * 1024)
-    const formatVariety = Math.min(100, fileTypeDistribution.length * 18)
-    const ocrComplexity = Math.min(100, pdfCount * 18 + meanSizeMb * 8)
-    const formatRegularity = Math.max(12, 100 - formatVariety)
-    const sensitiveDensity = Math.min(100, reviewQueue * 22 + manualCount * 12)
-    return [ocrComplexity, formatRegularity, sensitiveDensity]
+    const totalFiles = Math.max(1, documents.length)
+    const precheckSampleFiles = collectSalesAuditSampleFiles(salesAuditSamples)
+    const totalCharacters = documents.reduce(
+      (sum, document) => sum + Number(document.total_characters || 0),
+      0
+    )
+    const totalPdfPagesFromSamples = precheckSampleFiles.reduce(
+      (sum, file) =>
+        sum +
+        Number(file.pdf_pages?.page_count || 0),
+      0
+    )
+    const pdfDocuments = documents.filter(
+      (document) => String(document.file_type || '').toLowerCase() === 'pdf'
+    )
+    const totalPdfPagesFromDocuments = pdfDocuments.reduce(
+      (sum, document) => sum + getDocumentRuntimeStats(document).pageCount,
+      0
+    )
+    const totalPdfPagesEstimated = pdfDocuments.reduce(
+      (sum, document) =>
+        sum +
+        estimatePdfPageCountFromSignals({
+          characters: Number(document.total_characters || 0),
+          fileSize: Number(document.file_size || 0),
+        }),
+      0
+    )
+    const totalPdfPages =
+      totalPdfPagesFromSamples ||
+      totalPdfPagesFromDocuments ||
+      totalPdfPagesEstimated
+    const totalImageAssets = documents.reduce(
+      (sum, document) => sum + getDocumentRuntimeStats(document).imageCount,
+      0
+    )
+    const totalSizeMb =
+      documents.reduce((sum, document) => sum + Number(document.file_size || 0), 0) /
+      (1024 * 1024)
+    const p90Duration = durationPercentiles.p90 || durationPercentiles.p50 || 0
+
+    return [
+      Math.min(100, Math.round((pdfCount / totalFiles) * 100)),
+      Math.min(100, Math.round((totalPdfPages / Math.max(1, pdfCount * 80)) * 100)),
+      Math.min(100, Math.round((totalCharacters / Math.max(1, totalFiles * 50_000)) * 100)),
+      Math.min(100, Math.round((totalSizeMb / Math.max(1, totalFiles * 20)) * 100)),
+      Math.min(100, Math.round((totalImageAssets / Math.max(1, pdfCount * 120)) * 100)),
+      Math.min(100, Math.round((p90Duration / 20) * 100)),
+      executionRetryRate,
+    ]
   }, [
     documents,
-    fileTypeDistribution.length,
-    manualCount,
-    meanFileSize,
-    reviewQueue,
+    durationPercentiles.p50,
+    durationPercentiles.p90,
+    executionRetryRate,
+    salesAuditSamples,
   ])
 
   const radarOption = useMemo<EChartsOption>(
@@ -2493,9 +2827,10 @@ export default function KnowledgeIngestionPageClient() {
       ({
         tooltip: { trigger: 'item' },
         radar: {
-          radius: '62%',
+          radius: '56%',
+          center: ['50%', '54%'],
           splitNumber: 4,
-          axisName: { color: '#475569', fontSize: 11 },
+          axisName: { color: '#475569', fontSize: 9 },
           splitLine: { lineStyle: { color: 'rgba(148,163,184,0.22)' } },
           splitArea: {
             areaStyle: {
@@ -2503,9 +2838,13 @@ export default function KnowledgeIngestionPageClient() {
             },
           },
           indicator: [
-            { name: 'OCR 复杂度', max: 100 },
-            { name: '格式规范度', max: 100 },
-            { name: '敏感信息密度', max: 100 },
+            { name: 'PDF 占比', max: 100 },
+            { name: '页数压力', max: 100 },
+            { name: '字数压力', max: 100 },
+            { name: '体积压力', max: 100 },
+            { name: '图片资源', max: 100 },
+            { name: '耗时压力', max: 100 },
+            { name: '失败重试', max: 100 },
           ],
         },
         series: [
@@ -2513,16 +2852,16 @@ export default function KnowledgeIngestionPageClient() {
             type: 'radar',
             data: [
               {
-                value: ocrRadarValues,
-                areaStyle: { color: 'rgba(88,28,135,0.12)' },
-                lineStyle: { color: '#6d28d9', width: 2 },
-                itemStyle: { color: '#6d28d9' },
+                value: costRadarValues,
+                areaStyle: { color: 'rgba(37,99,235,0.12)' },
+                lineStyle: { color: '#2563eb', width: 2 },
+                itemStyle: { color: '#2563eb' },
               },
             ],
           },
         ],
       }) as EChartsOption,
-    [ocrRadarValues]
+    [costRadarValues]
   )
 
   const salesAuditProfile = useMemo(
@@ -2542,6 +2881,264 @@ export default function KnowledgeIngestionPageClient() {
     }
     return labelMap[salesAuditProfile.pricingMode] || '待确认'
   }, [salesAuditProfile])
+
+  const executionBatchAnalysis = useMemo(() => {
+    const average = (values: number[]) => {
+      const valid = values.filter((value) => Number.isFinite(value) && value > 0)
+      if (!valid.length) return 0
+      return valid.reduce((sum, value) => sum + value, 0) / valid.length
+    }
+    const clampScore = (value: number) => Math.max(0, Math.min(100, Math.round(value)))
+
+    const precheckTotalFiles = Number(salesAuditSummary?.total_files || 0)
+    const totalFiles = precheckTotalFiles || documents.length
+    const totalSizeBytes =
+      Number(salesAuditSummary?.total_size_bytes || 0) ||
+      documents.reduce((sum, document) => sum + Number(document.file_size || 0), 0)
+    const precheckTypeCounts = Object.fromEntries(
+      Object.entries(salesAuditSummary?.by_file_type ?? {})
+        .map(([fileType, count]) => [
+          String(fileType || '').toLowerCase(),
+          Number(count || 0),
+        ])
+        .filter(([fileType, count]) => Boolean(fileType) && Number(count) > 0)
+    ) as Record<string, number>
+    const fallbackTypeCounts = documents.reduce<Record<string, number>>(
+      (acc, document) => {
+        const fileType =
+          String(document.file_type || '').trim().toLowerCase() || 'unknown'
+        acc[fileType] = (acc[fileType] ?? 0) + 1
+        return acc
+      },
+      {}
+    )
+    const presentFileTypeCounts = Object.keys(precheckTypeCounts).length
+      ? precheckTypeCounts
+      : fallbackTypeCounts
+    const presentTypeCount = Object.values(presentFileTypeCounts).filter(
+      (count) => Number(count || 0) > 0
+    ).length
+    const precheckPdfTotal =
+      Number(salesAuditSummary?.pdf_scan.scanned || 0) +
+      Number(salesAuditSummary?.pdf_scan.not_scanned || 0) +
+      Number(salesAuditSummary?.pdf_scan.unknown || 0)
+    const fallbackPdfTotal = documents.filter(
+      (document) => String(document.file_type || '').toLowerCase() === 'pdf'
+    ).length
+    const pdfTotal = precheckPdfTotal || fallbackPdfTotal
+    const totalCharacters = documents.reduce(
+      (sum, document) => sum + Number(document.total_characters || 0),
+      0
+    )
+    const samplePool = collectSalesAuditSampleFiles(salesAuditSamples)
+    const needsReviewCount = Object.values(salesAuditSamples?.needs_review ?? {}).flat().length
+    const profileFiles = samplePool.length
+      ? samplePool.map((file) => ({
+          chars: Number(file.text_characters || 0),
+          fileSize: Number(file.file_size || 0),
+          fileType: String(file.file_type || ''),
+          pdfPages:
+            Number(file.pdf_pages?.page_count || 0) ||
+            estimatePdfPageCountFromSignals({
+              characters: Number(file.text_characters || 0),
+              fileSize: Number(file.file_size || 0),
+            }),
+          pageCountEstimated: !file.pdf_pages?.page_count,
+          imageCount: Number(file.pdf_pages?.scanned_pages || 0),
+          tableCount: 0,
+          blockCount: 0,
+        }))
+      : documents.map((document) => {
+          const runtimeStats = getDocumentRuntimeStats(document)
+          const isPdf = String(document.file_type || '').toLowerCase() === 'pdf'
+          const estimatedPdfPages =
+            isPdf && runtimeStats.pageCount <= 0
+              ? estimatePdfPageCountFromSignals({
+                  characters: Number(document.total_characters || 0),
+                  fileSize: Number(document.file_size || 0),
+                })
+              : 0
+
+          return {
+            blockCount: runtimeStats.blockCount,
+            chars: Number(document.total_characters || 0),
+            fileSize: Number(document.file_size || 0),
+            fileType: String(document.file_type || ''),
+            imageCount: runtimeStats.imageCount,
+            pageCountEstimated: Boolean(isPdf && estimatedPdfPages > 0),
+            pdfPages: runtimeStats.pageCount || estimatedPdfPages,
+            tableCount: runtimeStats.tableCount,
+          }
+        })
+    const pdfProfileFiles = profileFiles.filter(
+      (file) => file.fileType.toLowerCase() === 'pdf'
+    )
+    const avgPdfChars = average(pdfProfileFiles.map((file) => file.chars))
+    const avgPdfPages = average(pdfProfileFiles.map((file) => file.pdfPages))
+    const avgPdfImages = average(pdfProfileFiles.map((file) => file.imageCount))
+    const avgPdfTables = average(pdfProfileFiles.map((file) => file.tableCount))
+    const avgPdfBlocks = average(pdfProfileFiles.map((file) => file.blockCount))
+    const hasPdfProfiles = pdfProfileFiles.length > 0
+    const hasEstimatedPdfPages = pdfProfileFiles.some(
+      (file) => file.pdfPages > 0 && file.pageCountEstimated
+    )
+    const avgSizeMb = average(profileFiles.map((file) => file.fileSize)) / (1024 * 1024)
+    const proportionalSampleTarget = totalFiles
+      ? Math.ceil((totalFiles * PRECHECK_SAMPLE_NUMERATOR) / PRECHECK_SAMPLE_DENOMINATOR)
+      : 0
+    const sampleTarget = totalFiles
+      ? Math.min(
+          totalFiles,
+          Math.min(
+            PRECHECK_SAMPLE_MAX,
+            Math.max(1, presentTypeCount, proportionalSampleTarget)
+          )
+        )
+      : 0
+    const sampleTargetDetail =
+      totalFiles > 0
+        ? `3/1000 抽样 · 覆盖 ${presentTypeCount || 0} 类，每类至少 1 个 / 总 ${totalFiles.toLocaleString()} 个`
+        : '等待文件进入监控'
+    const pdfRatio = totalFiles ? pdfTotal / totalFiles : 0
+    const fallbackComplexity =
+      pdfRatio >= 0.35 || executionRetryRate >= 8 || (durationPercentiles.p90 || 0) >= 20
+        ? '高'
+        : pdfRatio >= 0.12 || totalSizeBytes >= 500 * 1024 * 1024 || totalCharacters >= 500_000
+          ? '中'
+          : '低'
+
+    return {
+      complexity: salesAuditProfile?.complexity ?? fallbackComplexity,
+      sampleTarget,
+      sourceLabel: salesAuditSummary ? '来自最新预检扫描' : '来自后端文档统计',
+      totalFiles,
+      pricingMode: salesAuditProfile?.pricingMode ?? (fallbackComplexity === '高' ? 'POC优先' : '阶梯报价'),
+      distributionBars: [
+        {
+          color: '#2563eb',
+          detail: totalFiles ? `${pdfTotal.toLocaleString()} / ${totalFiles.toLocaleString()} 个` : '等待文件进入监控',
+          label: 'PDF 占比',
+          score: clampScore(pdfRatio * 100),
+          value: totalFiles ? `${Math.round(pdfRatio * 100)}%` : '待统计',
+        },
+        {
+          color: '#0f766e',
+          detail: '按 PDF 样本 text_characters 均值',
+          label: 'PDF 平均字数',
+          score: clampScore((avgPdfChars / 50_000) * 100),
+          value: avgPdfChars ? `${Math.round(avgPdfChars).toLocaleString()} chars` : '待统计',
+        },
+        {
+          color: '#f97316',
+          detail: '优先使用后端 page_count，缺失时才按字数/体量估算',
+          label: 'PDF 平均页数',
+          score: clampScore((avgPdfPages / 80) * 100),
+          value: avgPdfPages
+            ? `${Math.round(avgPdfPages)} 页${hasEstimatedPdfPages ? '估算' : ''}`
+            : hasPdfProfiles
+              ? '后端未回传'
+              : '无 PDF',
+        },
+        {
+          color: '#64748b',
+          detail: avgPdfImages
+            ? '来自后端 image_count / elements 图片引用'
+            : '后端未检测到图片引用',
+          label: 'PDF 图片数',
+          score: clampScore((avgPdfImages / 120) * 100),
+          value: hasPdfProfiles ? `${Math.round(avgPdfImages)} 个` : '无 PDF',
+        },
+        {
+          color: '#7c3aed',
+          detail: avgPdfTables
+            ? '来自后端 table_count / elements 表格引用'
+            : `结构块均值 ${Math.round(avgPdfBlocks).toLocaleString()} 个`,
+          label: '表格/结构块',
+          score: clampScore(Math.max(avgPdfTables * 10, avgPdfBlocks / 8)),
+          value: hasPdfProfiles
+            ? avgPdfTables
+              ? `${Math.round(avgPdfTables)} 表`
+              : `${Math.round(avgPdfBlocks).toLocaleString()} 块`
+            : '无 PDF',
+        },
+        {
+          color: '#0891b2',
+          detail: '按当前批次文件均值',
+          label: '平均体积',
+          score: clampScore((avgSizeMb / 20) * 100),
+          value: avgSizeMb ? `${avgSizeMb.toFixed(1)} MB` : '待统计',
+        },
+        {
+          color: '#dc2626',
+          detail: `失败或隔离 ${statusCounts.failed + statusCounts.quarantined} 个`,
+          label: '失败重试率',
+          score: clampScore(executionRetryRate),
+          value: `${executionRetryRate}%`,
+        },
+      ],
+      imageProxyNote: hasEstimatedPdfPages
+        ? '页数缺失的 PDF 已按字数/体量标注估算；图片、表格与结构块优先读取后端元数据和 elements。'
+        : '图片、表格、页数与结构块均优先读取后端元数据和 elements，不再用扫描页代理。',
+      samplePoolLabel: `已回传样本池 ${samplePool.length || sampleTarget || 0} 个 · 大文件 ${salesAuditSamples?.top_large_files?.length ?? 0} · 长文本 ${salesAuditSamples?.top_long_text?.length ?? 0} · 复核 ${needsReviewCount}`,
+      sampleTargetDetail,
+      totalSizeLabel: formatFileSize(totalSizeBytes),
+    }
+  }, [
+    documents,
+    durationPercentiles.p90,
+    executionRetryRate,
+    salesAuditProfile?.complexity,
+    salesAuditProfile?.pricingMode,
+    salesAuditSamples,
+    salesAuditSummary,
+    statusCounts.failed,
+    statusCounts.quarantined,
+  ])
+
+  const batchProfileBarOption = useMemo<EChartsOption>(
+    () =>
+      ({
+        grid: { bottom: 8, left: 86, right: 74, top: 8 },
+        tooltip: {
+          trigger: 'axis',
+          axisPointer: { type: 'shadow' },
+        },
+        xAxis: {
+          max: 100,
+          min: 0,
+          splitLine: { lineStyle: { color: 'rgba(148,163,184,0.14)' } },
+          type: 'value',
+        },
+        yAxis: {
+          axisLabel: { color: '#475569', fontSize: 10 },
+          axisLine: { show: false },
+          axisTick: { show: false },
+          data: executionBatchAnalysis.distributionBars.map((item) => item.label),
+          inverse: true,
+          type: 'category',
+        },
+        series: [
+          {
+            barWidth: 13,
+            data: executionBatchAnalysis.distributionBars.map((item) => ({
+              itemStyle: { color: item.color },
+              value: item.score,
+            })),
+            label: {
+              color: '#0f172a',
+              fontSize: 10,
+              formatter: (params: { dataIndex: number }) =>
+                executionBatchAnalysis.distributionBars[params.dataIndex]?.value ?? '',
+              position: 'right',
+              show: true,
+            },
+            name: '批次画像',
+            type: 'bar',
+          },
+        ],
+      }) as EChartsOption,
+    [executionBatchAnalysis.distributionBars]
+  )
 
   const salesEvidenceItems = useMemo(() => {
     return collectSalesAuditSampleFiles(salesAuditSamples).slice(0, 12)
@@ -4477,8 +5074,13 @@ export default function KnowledgeIngestionPageClient() {
 
                           <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
                             <div className="flex items-center justify-between gap-3">
-                              <div className="text-[11px] font-medium text-foreground">
-                                处理流水线
+                              <div className="flex items-center gap-2">
+                                <div className="text-[11px] font-medium text-foreground">
+                                  处理流水线
+                                </div>
+                                <span className="rounded-full border border-info/20 bg-info/10 px-2 py-0.5 text-[8px] font-medium text-info">
+                                  {executionPipelineState.estimateLabel}
+                                </span>
                               </div>
                               <div className="flex flex-wrap items-center gap-3 text-[9px] text-muted-foreground">
                                 {[
@@ -4524,6 +5126,9 @@ export default function KnowledgeIngestionPageClient() {
                                       <span className="text-[11px] font-medium text-foreground">
                                         {card.label}
                                       </span>
+                                      <span className="ml-auto rounded-full border border-border/45 bg-card/80 px-2 py-0.5 text-[8px] text-muted-foreground">
+                                        {card.statusLabel}
+                                      </span>
                                     </div>
                                     <div className="mt-3 space-y-1.5">
                                       {card.metrics.map(([label, value]) => (
@@ -4539,6 +5144,15 @@ export default function KnowledgeIngestionPageClient() {
                                           </span>
                                         </div>
                                       ))}
+                                    </div>
+                                    <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted/55">
+                                      <div
+                                        className={cn(
+                                          'h-full rounded-full',
+                                          card.statusTone
+                                        )}
+                                        style={{ width: `${card.progress}%` }}
+                                      />
                                     </div>
                                   </div>
                                 </div>
@@ -4567,48 +5181,175 @@ export default function KnowledgeIngestionPageClient() {
                           </section>
                         </div>
 
-                        <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
-                          <div className="text-[11px] font-medium text-foreground">
-                            运行信息汇聚
-                          </div>
-                          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                            {executionKpiCards.map((item) => {
-                              const Icon = item.icon
-                              return (
-                                <div
-                                  key={item.label}
-                                  className="rounded-[1rem] border border-border/55 bg-background/80 p-3"
-                                >
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div className="text-[9px] text-muted-foreground">
-                                      {item.label}
-                                    </div>
-                                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/45 bg-muted/25">
-                                      <Icon
-                                        className={cn('h-3.5 w-3.5', item.tone)}
-                                      />
-                                    </span>
-                                  </div>
-                                  <div className="mt-2 flex items-end gap-1">
-                                    <span className="font-mono text-[15px] font-semibold text-foreground">
-                                      {item.value}
-                                    </span>
-                                    {item.suffix ? (
-                                      <span className="pb-0.5 text-[9px] text-muted-foreground">
-                                        {item.suffix}
-                                      </span>
-                                    ) : null}
-                                  </div>
-                                  <div className="mt-1 text-[8px] text-muted-foreground">
-                                    {item.detail}
-                                  </div>
+                        <section className="overflow-hidden rounded-[1.35rem] border border-border/55 bg-card/95 shadow-sm">
+                          <div className="flex flex-col gap-2 border-b border-border/45 bg-muted/20 px-3 py-2.5 md:flex-row md:items-center md:justify-between">
+                            <div className="flex items-center gap-2.5">
+                              <span className="inline-flex size-8 items-center justify-center rounded-full border border-info/20 bg-info/10 text-info">
+                                <Activity className="size-4" />
+                              </span>
+                              <div>
+                                <div className="text-[11px] font-semibold text-foreground">
+                                  运行信息汇聚
                                 </div>
-                              )
-                            })}
+                                <div className="mt-0.5 text-[9px] text-muted-foreground text-pretty">
+                                  范围、处理模式与质量指标合并展示
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1.5 text-[9px] text-muted-foreground">
+                              <span className="rounded-full border border-border/55 bg-background/80 px-2 py-1 tabular-nums">
+                                已处理 {executionProcessedTotal} / {documents.length}
+                              </span>
+                              <span className="rounded-full border border-success/20 bg-success/10 px-2 py-1 text-success tabular-nums">
+                                成功率 {executionSuccessRate}%
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2 p-2.5">
+                            <div className="grid gap-2 md:grid-cols-3">
+                              {executionKpiCards.slice(0, 3).map((item) => {
+                                const Icon = item.icon
+                                return (
+                                  <div
+                                    key={item.label}
+                                    className="rounded-[1.05rem] border border-border/50 bg-background/85 px-3 py-2.5"
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <span className="inline-flex size-7 items-center justify-center rounded-full border border-border/45 bg-muted/25">
+                                        <Icon
+                                          className={cn('size-3.5', item.tone)}
+                                        />
+                                      </span>
+                                      <div className="min-w-0">
+                                        <div className="text-[9px] text-muted-foreground">
+                                          {item.label}
+                                        </div>
+                                        <div className="truncate text-[13px] font-semibold text-foreground tabular-nums">
+                                          {item.value}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="mt-2 rounded-full bg-muted/30 px-2 py-1 text-[8px] text-muted-foreground">
+                                      {item.detail}
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+
+                            <div>
+                              <div className="mb-2 flex items-center justify-between gap-2 px-1">
+                                <span className="text-[9px] font-medium text-muted-foreground">
+                                  质量指标
+                                </span>
+                                <span className="text-[8px] text-muted-foreground">
+                                  近 5 分钟 / 当前窗口
+                                </span>
+                              </div>
+                              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                                {executionKpiCards.slice(3).map((item) => {
+                                  const Icon = item.icon
+                                  return (
+                                    <div
+                                      key={item.label}
+                                      className="rounded-[1.05rem] border border-border/45 bg-background/80 p-3"
+                                    >
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="min-w-0">
+                                          <div className="text-[9px] text-muted-foreground">
+                                            {item.label}
+                                          </div>
+                                          <div className="mt-2 flex items-baseline gap-1.5">
+                                            <span className="font-mono text-[16px] font-semibold text-foreground tabular-nums">
+                                              {item.value}
+                                            </span>
+                                            {item.suffix ? (
+                                              <span className="text-[9px] text-muted-foreground">
+                                                {item.suffix}
+                                              </span>
+                                            ) : null}
+                                          </div>
+                                        </div>
+                                        <span className="inline-flex size-7 items-center justify-center rounded-full border border-border/45 bg-muted/25">
+                                          <Icon
+                                            className={cn('size-3.5', item.tone)}
+                                          />
+                                        </span>
+                                      </div>
+                                      <div className="mt-2 text-[8px] text-muted-foreground">
+                                        {item.detail}
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
                           </div>
                         </section>
 
-                        <div className="grid gap-4 xl:grid-cols-[1.1fr_0.8fr_0.9fr]">
+                        <section className="rounded-[1.3rem] border border-border/55 bg-background/92 p-3 shadow-sm">
+                          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="inline-flex size-7 items-center justify-center rounded-full border border-info/20 bg-info/10 text-info">
+                                <FileSearch className="size-3.5" />
+                              </span>
+                              <div>
+                                <div className="text-[11px] font-semibold text-foreground">
+                                  批次数据画像
+                                </div>
+                                <div className="mt-0.5 text-[9px] text-muted-foreground text-pretty">
+                                  按 3/1000 抽代表样本，已出现的文件类型每类至少覆盖 1 个
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1.5 text-[9px]">
+                              <span className="rounded-full border border-border/55 bg-muted/25 px-2 py-1 text-muted-foreground">
+                                {executionBatchAnalysis.sourceLabel}
+                              </span>
+                              <span className="rounded-full border border-info/20 bg-info/10 px-2 py-1 font-medium text-info">
+                                难度 {executionBatchAnalysis.complexity}
+                              </span>
+                              <span className="rounded-full border border-warning/20 bg-warning/10 px-2 py-1 font-medium text-warning">
+                                {executionBatchAnalysis.pricingMode}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="mt-3 grid gap-3 xl:grid-cols-[1fr_210px]">
+                            <div className="h-[15rem] rounded-[1rem] border border-border/45 bg-card/86 p-2">
+                              <EChart option={batchProfileBarOption} />
+                            </div>
+                            <div className="grid gap-2">
+                              <div className="rounded-[1rem] border border-border/45 bg-muted/18 px-3 py-2.5">
+                                <div className="text-[8px] text-muted-foreground">
+                                  预检样本
+                                </div>
+                                <div className="mt-1 text-[18px] font-semibold text-foreground tabular-nums">
+                                  {executionBatchAnalysis.sampleTarget || '--'} 个
+                                </div>
+                                <div className="mt-1 text-[8px] text-muted-foreground">
+                                  {executionBatchAnalysis.sampleTargetDetail}
+                                </div>
+                              </div>
+                              <div className="rounded-[1rem] border border-border/45 bg-muted/18 px-3 py-2.5">
+                                <div className="text-[8px] text-muted-foreground">
+                                  批次体量
+                                </div>
+                                <div className="mt-1 font-mono text-[13px] font-semibold text-foreground tabular-nums">
+                                  {executionBatchAnalysis.totalSizeLabel}
+                                </div>
+                                <div className="mt-1 text-[8px] text-muted-foreground">
+                                  {executionBatchAnalysis.samplePoolLabel}
+                                </div>
+                              </div>
+                              <div className="rounded-[1rem] border border-border/45 bg-muted/18 px-3 py-2.5 text-[8px] leading-3.5 text-muted-foreground text-pretty">
+                                {executionBatchAnalysis.imageProxyNote}
+                              </div>
+                            </div>
+                          </div>
+                        </section>
+
+                        <div className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-[1.1fr_0.9fr_0.9fr]">
                           <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
                             <div className="flex items-center justify-between gap-3">
                               <div className="text-[11px] font-medium text-foreground">
@@ -4626,16 +5367,16 @@ export default function KnowledgeIngestionPageClient() {
                           <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
                             <div className="flex items-center justify-between gap-3">
                               <div className="text-[11px] font-medium text-foreground">
-                                OCR 成本预警雷达
+                                成本雷达
                               </div>
                               <Radar className="h-4 w-4 text-accent" />
                             </div>
-                            <div className="mt-3 h-[12rem]">
+                            <div className="mt-3 h-[13rem]">
                               <EChart option={radarOption} />
                             </div>
                           </section>
 
-                          <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
+                          <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)] xl:col-span-2 2xl:col-span-1">
                             <div className="flex items-center justify-between gap-3">
                               <div className="text-[11px] font-medium text-foreground">
                                 运行日志（最近）

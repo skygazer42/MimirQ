@@ -205,6 +205,22 @@ describe('ingestion monitor helpers', () => {
     })
   })
 
+  it('prefers backend parser duration metadata for execution duration percentiles', () => {
+    const summary = computeDurationPercentiles([
+      makeDocument({ id: 'doc-1', metadata: { parse_duration_sec: 12 } }),
+      makeDocument({
+        id: 'doc-2',
+        metadata: { ingest_stage_durations_ms: { parse: 30_000 } },
+      }),
+      makeDocument({ id: 'doc-3', metadata: { parse_duration_sec: 48 } }),
+    ])
+
+    expect(summary).toMatchObject({
+      p50: 0.5,
+      p90: 0.8,
+    })
+  })
+
   it('builds execution status rows for the status donut', () => {
     const rows = buildExecutionStatusRows([
       makeDocument({ id: 'doc-1', status: 'processing' }),
