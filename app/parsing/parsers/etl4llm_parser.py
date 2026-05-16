@@ -353,6 +353,7 @@ class Etl4LlmParser:
                 page_refs: list[str] = []
                 pdf = fitz.open(str(file_path))
                 try:
+                    images_dir.mkdir(parents=True, exist_ok=True)
                     for page_idx, page in enumerate(pdf, start=1):
                         if max_pages and page_idx > max_pages:
                             break

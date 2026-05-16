@@ -80,6 +80,17 @@ def test_documents_router_still_exposes_stats_route() -> None:
     assert ("/stats", ("GET",)) in routes
 
 
+def test_documents_router_registers_static_single_segment_routes_before_detail_route() -> None:
+    from app.api.v1.documents import router
+
+    ordered_paths = [getattr(route, "path", "") for route in router.routes]
+
+    stats_idx = ordered_paths.index("/stats")
+    detail_idx = ordered_paths.index("/{document_id}")
+
+    assert stats_idx < detail_idx
+
+
 def test_document_duplicates_route_is_split_from_documents_router() -> None:
     documents_source = _source("app/api/v1/documents.py")
     split_source = _source("app/api/v1/document_duplicates.py")
