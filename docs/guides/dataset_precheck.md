@@ -61,7 +61,7 @@ PRECHECK_PDF_SAMPLE_PAGES=3
 - 详情：`GET /api/v1/datasets/{dataset_id}/precheck/scan-runs/{run_id}`
 - Summary：`GET /api/v1/datasets/{dataset_id}/precheck/scan-runs/{run_id}/summary`
 - Findings drill-down：`GET /api/v1/datasets/{dataset_id}/precheck/scan-runs/{run_id}/findings/{finding_key}`
-- 代表性样本（抽样）：`GET /api/v1/datasets/{dataset_id}/precheck/scan-runs/{run_id}/samples?size=60`
+- 代表性样本（抽样）：默认按 `3/1000` 文件比例抽样，并保证已出现的每种文件类型至少 1 个；可用 `size` 显式提高上限，例如 `GET /api/v1/datasets/{dataset_id}/precheck/scan-runs/{run_id}/samples?size=30`
 - 近重复详情：`GET /api/v1/datasets/{dataset_id}/precheck/scan-runs/{run_id}/near-dups`
 - Diff：`GET /api/v1/datasets/{dataset_id}/precheck/scan-runs/{run_id}/diff?base_scan_run_id={base_id}`
 - 建议入库策略：`GET /api/v1/datasets/{dataset_id}/precheck/scan-runs/{run_id}/suggest-ingestion-policy`

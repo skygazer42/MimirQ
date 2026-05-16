@@ -289,8 +289,45 @@ function percentile(sortedValues: number[], percentage: number): number {
   return sortedValues[index]
 }
 
-function computeDocumentDurationMinutes(document: Pick<Document, 'status' | 'created_at' | 'updated_at'>): number | null {
+function getDocumentMetadataNumber(
+  document: Pick<Document, 'metadata'>,
+  key: string
+): number {
+  const meta = document.metadata
+  if (!meta || typeof meta !== 'object') return 0
+  return toFiniteNumber((meta as Record<string, unknown>)[key])
+}
+
+function getDocumentStageDurationMs(
+  document: Pick<Document, 'metadata'>,
+  key: string
+): number {
+  const meta = document.metadata
+  if (!meta || typeof meta !== 'object') return 0
+  const stages = (meta as Record<string, unknown>).ingest_stage_durations_ms
+  if (!stages || typeof stages !== 'object') return 0
+  return toFiniteNumber((stages as Record<string, unknown>)[key])
+}
+
+function computeDocumentRuntimeDurationMinutes(
+  document: Pick<Document, 'metadata'>
+): number | null {
+  const parseDurationSec = getDocumentMetadataNumber(document, 'parse_duration_sec')
+  if (parseDurationSec > 0) return roundTo(parseDurationSec / 60, 2)
+
+  const parseDurationMs = getDocumentStageDurationMs(document, 'parse')
+  if (parseDurationMs > 0) return roundTo(parseDurationMs / 60_000, 2)
+
+  return null
+}
+
+function computeDocumentDurationMinutes(
+  document: Pick<Document, 'status' | 'created_at' | 'updated_at' | 'metadata'>
+): number | null {
   if (document.status === 'pending' || document.status === 'processing') return null
+  const runtimeDuration = computeDocumentRuntimeDurationMinutes(document)
+  if (runtimeDuration != null) return runtimeDuration
+
   const createdAt = new Date(String(document.created_at || '')).getTime()
   const updatedAt = new Date(String(document.updated_at || '')).getTime()
   if (!Number.isFinite(createdAt) || !Number.isFinite(updatedAt) || updatedAt <= createdAt) return null

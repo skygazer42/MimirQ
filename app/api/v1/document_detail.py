@@ -16,6 +16,7 @@ from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.services.dataset_service import DatasetService
 from app.services.document_access_service import assert_document_acl_readable
+from app.services.document_runtime_metadata import attach_runtime_document_metadata
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -88,5 +89,6 @@ async def get_document(
 
         chunks = chunk_query.order_by(DocumentChunk.chunk_index.asc()).all()
         document.chunks_loaded = chunks
+    attach_runtime_document_metadata(document)
 
     return document

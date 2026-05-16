@@ -410,7 +410,8 @@ class Settings(BaseSettings):
     PRECHECK_PDF_LOW_DENSITY_RATIO_THRESHOLD: float = 0.3
     PRECHECK_NEAR_DUP_HAMMING_THRESHOLD: int = 5
     PRECHECK_NEAR_DUP_MAX_PAIRS: int = 5000
-    PRECHECK_SAMPLE_SIZE: int = 60
+    # 0 means auto: 3/1000 files, with one representative sample per present file type.
+    PRECHECK_SAMPLE_SIZE: int = 0
     PRECHECK_DIRECTORY_STATS_LIMIT: int = 200
     # Whether to include chunk_size hints derived from token distribution in precheck suggestions.
     PRECHECK_SUGGEST_CHUNK_SIZE: bool = True
