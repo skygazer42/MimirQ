@@ -18,17 +18,33 @@ COPY requirements.txt /tmp/requirements.txt
 
 # 安装系统依赖 + Python 依赖（builder stage）
 RUN --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=cache,target=/tmp/torch-wheels \
     apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     unixodbc-dev \
+    curl \
     && python -m venv /opt/venv \
     && /opt/venv/bin/pip install --upgrade pip setuptools wheel \
     # Avoid fetching "build dependencies" in isolated envs when network is flaky.
     # Most of our sdists are pure-Python and build fine with setuptools already present.
-    && /opt/venv/bin/pip install --retries 5 --timeout 120 --no-cache-dir \
-        "torch @ https://download-r2.pytorch.org/whl/cpu/torch-2.10.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
-        "torchvision @ https://download-r2.pytorch.org/whl/cpu/torchvision-0.25.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
-    && /opt/venv/bin/pip install --retries 10 --timeout 120 --no-cache-dir --no-build-isolation -r "/tmp/requirements.txt" \
+    && mkdir -p /tmp/torch-wheels \
+    && TORCH_WHL="torch-2.11.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
+    && TORCHVISION_WHL="torchvision-0.26.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
+    && curl --fail --location --continue-at - --retry 10 --retry-all-errors --retry-delay 5 \
+        -o "/tmp/torch-wheels/${TORCH_WHL}" \
+        "https://download-r2.pytorch.org/whl/cpu/torch-2.11.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
+    && curl --fail --location --continue-at - --retry 10 --retry-all-errors --retry-delay 5 \
+        -o "/tmp/torch-wheels/${TORCHVISION_WHL}" \
+        "https://download-r2.pytorch.org/whl/cpu/torchvision-0.26.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
+    && /opt/venv/bin/pip install --retries 5 --timeout 120 \
+        "/tmp/torch-wheels/${TORCH_WHL}" \
+        "/tmp/torch-wheels/${TORCHVISION_WHL}" \
+    && for attempt in 1 2 3; do \
+        /opt/venv/bin/pip install --retries 10 --timeout 120 --no-build-isolation -r "/tmp/requirements.txt" \
+        && break; \
+        if [ "$attempt" = "3" ]; then exit 1; fi; \
+        sleep "$((attempt * 10))"; \
+    done \
     && apt-get purge -y --auto-remove build-essential \
     && rm -rf /var/lib/apt/lists/*
 

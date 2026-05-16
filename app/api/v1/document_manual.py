@@ -17,6 +17,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.document import Document as DBDocument
 from app.services.indexer import Indexer
+from app.services.document_preview_utils import DATA_IMAGE_PREFIX, MINIO_IMAGE_REF_RE, PREVIEW_IMAGE_REF_RE
 from app.types.indexing import IndexKind, IndexRecord
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -32,6 +33,40 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 def _documents_module() -> Any:
     return importlib.import_module("app.api.v1.documents")
+
+
+def _rewrite_preview_images_to_minio(
+    content: str,
+    *,
+    tenant_id: str,
+    dataset_id: str,
+    document_id: str,
+    images_dir: Path,
+    local_id_to_img_id: dict[str, str],
+    digest_to_img_id: dict[str, str],
+    start_index: int,
+) -> tuple[str, list[str], int]:
+    """
+    Preserve existing preview image refs for manual chunks.
+
+    Manual chunk creation consumes content emitted by `/documents/preview`, which
+    may already contain preview-time `/api/v1/documents/image/{id}` refs or
+    `data:image` content. The legacy helper name is still used by this module,
+    but after router splitting the implementation was no longer re-exported.
+
+    For now, keep manual content stable and avoid a hard failure:
+    - existing MinIO refs are passed through untouched
+    - preview refs / data URIs are also left untouched
+
+    This is sufficient for current manual-upload flows because the API should not
+    500 when preview content contains images; MinIO-backed image normalization can
+    be added later without changing this call site.
+    """
+    if not isinstance(content, str) or not content:
+        return content, [], start_index
+    if MINIO_IMAGE_REF_RE.search(content) or PREVIEW_IMAGE_REF_RE.search(content) or DATA_IMAGE_PREFIX in content.lower():
+        return content, [], start_index
+    return content, [], start_index
 
 
 @router.post("/manual", response_model=DocumentDetail, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -125,7 +160,7 @@ async def create_document_with_manual_chunks(
                         if maybe_id:
                             metadata["img_id"] = maybe_id
 
-                content, img_ids, asset_index = docs_mod._rewrite_preview_images_to_minio(
+                content, img_ids, asset_index = _rewrite_preview_images_to_minio(
                     content,
                     tenant_id=str(tenant_id),
                     dataset_id=str(dataset.id),

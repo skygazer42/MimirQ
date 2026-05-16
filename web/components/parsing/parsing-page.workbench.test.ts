@@ -174,6 +174,8 @@ describe('ParsingPage workbench scaffold', () => {
     expectSourceToContain(shellSrc, "left-0 top-3 flex h-[124px] w-9")
     expectSourceToContain(shellSrc, "left-[-80px] top-0 flex h-8 w-[112px]")
     expectSourceToContain(shellSrc, 'const [desktopInspectorOpen, setDesktopInspectorOpen] = useState(true)')
+    expectSourceToContain(shellSrc, "if (activeFile?.status === 'pending' || activeFile?.status === 'error') {")
+    expectSourceToContain(shellSrc, 'setDesktopInspectorOpen(false)')
     expectSourceToContain(shellSrc, '<ParsingInspectorDock')
     expectSourceNotToContain(shellSrc, 'rightPanel={')
   })
