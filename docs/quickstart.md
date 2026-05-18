@@ -200,6 +200,7 @@ LIBREOFFICE_ENABLED=true
 |---|---|---:|---|
 | `marker` | CPU-only 本地服务 | ~0 GiB | 无需 GPU；建议独立容器运行 |
 | `etl4llm` | CPU / 无本地 GPU 分配 | ~0 GiB | 无需 GPU；建议独立容器运行 |
+| `textin` | 外部 TextIn xParse API | ~0 GiB | 本地无模型；必须配置 `TEXTIN_APP_ID` / `TEXTIN_SECRET_CODE` 后才可真实解析 |
 | `qianfan_ocr` | 本地轻量 wrapper，实际推理在上游视觉服务 | ~0 GiB | 本地容器无需 GPU；上游服务显存单独评估 |
 | `mineru`（`backend=pipeline` / `file_parse`） | 本地 `mineru-api` + 本地缓存模型 | 当前验证流未观测到独立 GPU 峰值 | 建议单独部署；若切换不同 backend / 模型链路，需重新量测 |
 | `paddle_vl` | 本地 GPU 推理（`gpu:0`） | ~8.2 GiB | 建议至少预留 **10 GiB** 可用显存 |
