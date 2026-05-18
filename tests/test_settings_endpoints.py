@@ -45,6 +45,8 @@ def test_settings_get_includes_url_ingest_and_governance(monkeypatch):  # noqa: 
     monkeypatch.setattr(settings, "CHUNK_MIN_CHARS", 42, raising=False)
     monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", False, raising=False)
     monkeypatch.setattr(settings, "ENABLE_RERANKER", True, raising=False)
+    monkeypatch.setattr(settings, "RERANKER_PROVIDER", "cross_encoder", raising=False)
+    monkeypatch.setattr(settings, "RERANKER_TOP_N", 24, raising=False)
 
     monkeypatch.setattr(settings, "URL_INGEST_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "URL_INGEST_MAX_BYTES", 1234, raising=False)
@@ -56,6 +58,12 @@ def test_settings_get_includes_url_ingest_and_governance(monkeypatch):  # noqa: 
     monkeypatch.setattr(settings, "GOVERNANCE_PII_ANONYMIZE", True, raising=False)
     monkeypatch.setattr(settings, "GOVERNANCE_SECRETS_REDACT", True, raising=False)
     monkeypatch.setattr(settings, "GOVERNANCE_QUARANTINE_ON_DROP", True, raising=False)
+    monkeypatch.setattr(
+        settings,
+        "NAVIGATION_USER_VISIBLE_MODULES",
+        "knowledgeGraph,reports,unknownModule",
+        raising=False,
+    )
 
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_get_db
@@ -71,6 +79,8 @@ def test_settings_get_includes_url_ingest_and_governance(monkeypatch):  # noqa: 
     assert (body.get("rag") or {}).get("chunk_min_chars") == 42
     assert (body.get("rag") or {}).get("bm25_index_enabled") is False
     assert (body.get("rag") or {}).get("enable_reranker") is True
+    assert (body.get("rag") or {}).get("reranker_provider") == "cross_encoder"
+    assert (body.get("rag") or {}).get("reranker_top_n") == 24
 
     url_ingest = body.get("url_ingest") or {}
     assert url_ingest.get("enabled") is True
@@ -88,6 +98,9 @@ def test_settings_get_includes_url_ingest_and_governance(monkeypatch):  # noqa: 
     paddlevl = body.get("paddle_vl") or {}
     assert paddlevl.get("pipeline_version") == "v1.5"
     assert paddlevl.get("mode") == "doc_parser"
+
+    navigation = body.get("navigation") or {}
+    assert navigation.get("user_visible_modules") == ["knowledgeGraph", "reports"]
 
 
 def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN001
@@ -119,6 +132,8 @@ def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN
             "default_chunk_strategy": "langchain_recursive",
             "bm25_index_enabled": False,
             "enable_reranker": True,
+            "reranker_provider": "cross_encoder",
+            "reranker_top_n": 24,
         },
         "url_ingest": {
             "enabled": True,
@@ -139,6 +154,9 @@ def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN
             "pipeline_version": "v1.5",
             "mode": "doc_parser",
         },
+        "navigation": {
+            "user_visible_modules": ["knowledgeGraph", "graphSnapshots", "reports"],
+        },
     }
     res = client.put("/api/v1/settings", json=payload)
     assert res.status_code == 200, res.text
@@ -149,18 +167,23 @@ def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN
     assert "CHUNK_MIN_CHARS" in updated
     assert "BM25_INDEX_ENABLED" in updated
     assert "ENABLE_RERANKER" in updated
+    assert "RERANKER_PROVIDER" in updated
+    assert "RERANKER_TOP_N" in updated
     assert "URL_INGEST_ENABLED" in updated
     assert "GOVERNANCE_ENABLED" in updated
     assert "PADDLE_VL_API_URL" in updated
     assert "PADDLE_VL_TIMEOUT_SEC" in updated
     assert "PADDLE_VL_PIPELINE_VERSION" in updated
     assert "PADDLE_VL_MODE" in updated
+    assert "NAVIGATION_USER_VISIBLE_MODULES" in updated
 
     # Verify env file is written.
     env_text = (tmp_path / "test.env").read_text(encoding="utf-8")
     assert "CHUNK_MIN_CHARS=67" in env_text
     assert "BM25_INDEX_ENABLED=false" in env_text
     assert "ENABLE_RERANKER=true" in env_text
+    assert "RERANKER_PROVIDER=cross_encoder" in env_text
+    assert "RERANKER_TOP_N=24" in env_text
     assert "URL_INGEST_ENABLED=true" in env_text
     assert "URL_INGEST_MAX_BYTES=1000" in env_text
     assert "URL_INGEST_TIMEOUT_SEC=7.5" in env_text
@@ -172,11 +195,14 @@ def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN
     assert "PADDLE_VL_TIMEOUT_SEC=123" in env_text
     assert "PADDLE_VL_PIPELINE_VERSION=v1.5" in env_text
     assert "PADDLE_VL_MODE=doc_parser" in env_text
+    assert "NAVIGATION_USER_VISIBLE_MODULES=knowledgeGraph,graphSnapshots,reports" in env_text
 
     # Verify runtime apply updated in-memory settings (best-effort).
     assert int(settings.CHUNK_MIN_CHARS) == 67
     assert bool(settings.BM25_INDEX_ENABLED) is False
     assert bool(settings.ENABLE_RERANKER) is True
+    assert str(settings.RERANKER_PROVIDER) == "cross_encoder"
+    assert int(settings.RERANKER_TOP_N) == 24
     assert bool(settings.URL_INGEST_ENABLED) is True
     assert int(settings.URL_INGEST_MAX_BYTES) == 1000
     assert abs(float(settings.URL_INGEST_TIMEOUT_SEC) - 7.5) < 1e-6
@@ -188,6 +214,7 @@ def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN
     assert int(settings.PADDLE_VL_TIMEOUT_SEC) == 123
     assert str(getattr(settings, "PADDLE_VL_PIPELINE_VERSION", "")) == "v1.5"
     assert str(getattr(settings, "PADDLE_VL_MODE", "")) == "doc_parser"
+    assert str(getattr(settings, "NAVIGATION_USER_VISIBLE_MODULES", "")) == "knowledgeGraph,graphSnapshots,reports"
 
 
 def test_settings_status_probes_paddlevl_health(monkeypatch):  # noqa: ANN001

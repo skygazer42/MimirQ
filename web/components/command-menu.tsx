@@ -30,6 +30,8 @@ import { queryKeys } from '@/lib/query-keys'
 import { usePathname, useRouter } from "@/i18n/navigation"
 import { useCommandMenuState } from "@/store/command-menu"
 import { useDocumentView } from "@/store/document-view"
+import { useTenantAccess } from '@/hooks/use-tenant-access'
+import { canShowAdminControlledNavigationModule, type AdminControlledNavigationModule } from '@/lib/navigation-visibility'
 
 import {
   CommandDialog,
@@ -69,6 +71,7 @@ type SlashCommand = {
   shortcut: string
   keywords: string[]
   icon: React.ComponentType<{ className?: string }>
+  visibilityKey?: AdminControlledNavigationModule
   run: () => void
 }
 
@@ -79,6 +82,7 @@ type KeyChordCommand = {
   key: string
   label: string
   description: string
+  visibilityKey?: AdminControlledNavigationModule
   run: () => void
 }
 
@@ -112,6 +116,7 @@ type ModuleWorkbenchItem = {
   description: string
   keywords: string[]
   icon: React.ComponentType<{ className?: string }>
+  visibilityKey?: AdminControlledNavigationModule
   run: () => void
 }
 
@@ -195,6 +200,7 @@ export function CommandMenu() {
   const setOpen = useCommandMenuState((state) => state.setOpen)
   const toggleOpen = useCommandMenuState((state) => state.toggle)
   const { lastOpenedTarget, openDocument, reopenLastDocument } = useDocumentView()
+  const tenantAccess = useTenantAccess()
   const currentViewPrompt = React.useMemo(() => buildCurrentViewPrompt(pathname || '/', t), [pathname, t])
   const trimmedQuery = query.trim()
   const isSlashMode = trimmedQuery.startsWith("/")
@@ -205,6 +211,11 @@ export function CommandMenu() {
   const isSearchDebouncing = isTypedSearchActive && debouncedSearchQuery !== trimmedQuery
   const showBaseCommandGroups = !hasTypedSearchQuery && !isSlashMode
   const hasResumeTarget = Boolean(lastOpenedTarget?.documentId)
+  const canShowNavigationModule = React.useCallback(
+    (moduleKey?: AdminControlledNavigationModule) =>
+      canShowAdminControlledNavigationModule(tenantAccess.data, moduleKey),
+    [tenantAccess.data]
+  )
 
   const documentSearchParams = React.useMemo(
     () => ({
@@ -339,15 +350,16 @@ export function CommandMenu() {
   const keyChordCommands = React.useMemo<KeyChordCommand[]>(
     () =>
       ([
-        { id: "documents", key: "g d", run: () => router.push("/knowledge") },
-        { id: "chat", key: "g c", run: () => router.push("/") },
-        { id: "graph", key: "g g", run: () => router.push("/graph") },
-        { id: "observability", key: "g o", run: () => router.push("/observability") },
-        { id: "slice", key: "f s", run: () => router.push("/chunk-preview") },
-        { id: "resume", key: "g v", run: resumeLastDocumentContext },
-      ] as const).map(({ id, key, run }) => ({
+        { id: "documents", key: "g d", visibilityKey: undefined, run: () => router.push("/knowledge") },
+        { id: "chat", key: "g c", visibilityKey: undefined, run: () => router.push("/") },
+        { id: "graph", key: "g g", visibilityKey: 'knowledgeGraph', run: () => router.push("/graph") },
+        { id: "observability", key: "g o", visibilityKey: undefined, run: () => router.push("/observability") },
+        { id: "slice", key: "f s", visibilityKey: undefined, run: () => router.push("/chunk-preview") },
+        { id: "resume", key: "g v", visibilityKey: undefined, run: resumeLastDocumentContext },
+      ] as const).filter((command) => canShowNavigationModule(command.visibilityKey)).map(({ id, key, visibilityKey, run }) => ({
         id,
         key,
+        visibilityKey,
         label: t(`keyChords.${id}.label`),
         description:
           id === "resume" && !hasResumeTarget
@@ -355,7 +367,7 @@ export function CommandMenu() {
             : t(`keyChords.${id}.description`),
         run,
       })),
-    [hasResumeTarget, resumeLastDocumentContext, router, t]
+    [canShowNavigationModule, hasResumeTarget, resumeLastDocumentContext, router, t]
   )
 
   const chordPrefixes = React.useMemo(
@@ -407,26 +419,27 @@ export function CommandMenu() {
   const slashCommands = React.useMemo<SlashCommand[]>(
     () =>
       ([
-        { id: "resume", shortcut: "/resume", icon: FileText },
-        { id: "upload", shortcut: "/upload", icon: Upload },
-        { id: "analyze", shortcut: "/analyze", icon: Sparkles },
-        { id: "report", shortcut: "/report", icon: FileText },
-        { id: "stats", shortcut: "/stats", icon: Coins },
-        { id: "retryFailed", shortcut: "/retry-failed", icon: RefreshCw },
-        { id: "pauseActive", shortcut: "/pause-active", icon: Activity },
-        { id: "precheck", shortcut: "/precheck", icon: Workflow },
-        { id: "datasets", shortcut: "/datasets", icon: Database },
-        { id: "history", shortcut: "/history", icon: History },
-        { id: "graph", shortcut: "/graph", icon: Workflow },
-        { id: "diagnostics", shortcut: "/diagnostics", icon: Activity },
-        { id: "settings", shortcut: "/settings", icon: Settings },
-        { id: "parsing", shortcut: "/parsing", icon: FileText },
-        { id: "reports", shortcut: "/reports", icon: FileText },
-        { id: "observability", shortcut: "/observability", icon: Activity },
-        { id: "governance", shortcut: "/governance", icon: Database },
-        { id: "accessReview", shortcut: "/access", icon: Settings },
-      ] as const).map(({ id, shortcut, icon }) => ({
+        { id: "resume", shortcut: "/resume", icon: FileText, visibilityKey: undefined },
+        { id: "upload", shortcut: "/upload", icon: Upload, visibilityKey: undefined },
+        { id: "analyze", shortcut: "/analyze", icon: Sparkles, visibilityKey: undefined },
+        { id: "report", shortcut: "/report", icon: FileText, visibilityKey: undefined },
+        { id: "stats", shortcut: "/stats", icon: Coins, visibilityKey: undefined },
+        { id: "retryFailed", shortcut: "/retry-failed", icon: RefreshCw, visibilityKey: undefined },
+        { id: "pauseActive", shortcut: "/pause-active", icon: Activity, visibilityKey: undefined },
+        { id: "precheck", shortcut: "/precheck", icon: Workflow, visibilityKey: undefined },
+        { id: "datasets", shortcut: "/datasets", icon: Database, visibilityKey: undefined },
+        { id: "history", shortcut: "/history", icon: History, visibilityKey: undefined },
+        { id: "graph", shortcut: "/graph", icon: Workflow, visibilityKey: 'knowledgeGraph' },
+        { id: "diagnostics", shortcut: "/diagnostics", icon: Activity, visibilityKey: undefined },
+        { id: "settings", shortcut: "/settings", icon: Settings, visibilityKey: undefined },
+        { id: "parsing", shortcut: "/parsing", icon: FileText, visibilityKey: undefined },
+        { id: "reports", shortcut: "/reports", icon: FileText, visibilityKey: 'reports' },
+        { id: "observability", shortcut: "/observability", icon: Activity, visibilityKey: undefined },
+        { id: "governance", shortcut: "/governance", icon: Database, visibilityKey: undefined },
+        { id: "accessReview", shortcut: "/access", icon: Settings, visibilityKey: undefined },
+      ] as const).map(({ id, shortcut, icon, visibilityKey }) => ({
         id,
+        visibilityKey,
         label: t(`slash.commands.${id}.label`),
         description:
           id === "analyze"
@@ -568,35 +581,39 @@ export function CommandMenu() {
   const filteredSlashCommands = React.useMemo(
     () =>
       slashCommands.filter((command) => {
+        if (!canShowNavigationModule(command.visibilityKey)) return false
         if (!slashNeedle) return true
         const haystack = [command.shortcut, command.label, command.description, ...command.keywords]
           .join(" ")
           .toLowerCase()
         return haystack.includes(slashNeedle)
       }),
-    [slashCommands, slashNeedle]
+    [canShowNavigationModule, slashCommands, slashNeedle]
   )
 
   const moduleWorkbenchItems = React.useMemo<ModuleWorkbenchItem[]>(
     () =>
       ([
-        { id: "knowledge", icon: Database, run: () => router.push("/knowledge") },
-        { id: "graph", icon: Workflow, run: () => router.push("/graph") },
-        { id: "slices", icon: FileText, run: () => router.push("/chunk-preview") },
-        { id: "parsing", icon: FileText, run: () => router.push("/parsing") },
-        { id: "reports", icon: FileText, run: () => router.push("/reports") },
-        { id: "observability", icon: Activity, run: () => router.push("/observability") },
-        { id: "governance", icon: Database, run: () => router.push("/data-governance") },
-        { id: "accessReview", icon: Settings, run: () => router.push("/access-review") },
-      ] as const).map(({ id, icon, run }) => ({
+        { id: "knowledge", icon: Database, visibilityKey: undefined, run: () => router.push("/knowledge") },
+        { id: "graph", icon: Workflow, visibilityKey: 'knowledgeGraph', run: () => router.push("/graph") },
+        { id: "slices", icon: FileText, visibilityKey: undefined, run: () => router.push("/chunk-preview") },
+        { id: "parsing", icon: FileText, visibilityKey: undefined, run: () => router.push("/parsing") },
+        { id: "reports", icon: FileText, visibilityKey: 'reports', run: () => router.push("/reports") },
+        { id: "observability", icon: Activity, visibilityKey: undefined, run: () => router.push("/observability") },
+        { id: "governance", icon: Database, visibilityKey: undefined, run: () => router.push("/data-governance") },
+        { id: "accessReview", icon: Settings, visibilityKey: undefined, run: () => router.push("/access-review") },
+      ] as const)
+        .filter((item) => canShowNavigationModule(item.visibilityKey))
+        .map(({ id, icon, visibilityKey, run }) => ({
         id,
+        visibilityKey,
         label: t(`modules.${id}.label`),
         description: t(`modules.${id}.description`),
         keywords: t.raw(`modules.${id}.keywords`) as string[],
         icon,
         run,
       })),
-    [router, t]
+    [canShowNavigationModule, router, t]
   )
 
   const moduleWorkbenchResults = React.useMemo(() => {

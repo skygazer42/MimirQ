@@ -14,4 +14,19 @@ describe('navbar section collapse source', () => {
     expect(src).toContain("id: 'knowledge'")
     expect(src).toContain('setOpenSections')
   })
+
+  it('places the ingestion precheck entry under the ingestion workflow section', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'navbar.tsx'), 'utf8')
+    const knowledgeSection = src.slice(
+      src.indexOf("id: 'knowledge'"),
+      src.indexOf("id: 'ingestion'")
+    )
+    const ingestionSection = src.slice(
+      src.indexOf("id: 'ingestion'"),
+      src.indexOf("id: 'analysis'")
+    )
+
+    expect(knowledgeSection).not.toContain("labelKey: 'items.ingestion'")
+    expect(ingestionSection).toContain("labelKey: 'items.ingestion'")
+  })
 })

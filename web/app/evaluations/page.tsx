@@ -17,6 +17,7 @@ import {
 import { useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { AppFrame } from '@/components/app-frame'
+import { NavigationVisibilityGate } from '@/components/auth/navigation-visibility-gate'
 import { PageLoading } from '@/components/ui/page-loading'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -717,11 +718,13 @@ function IterationDetailsCard({
 
 export default function EvaluationsPage() {
   return (
-    <AppFrame>
-      <Suspense fallback={<EvaluationsLoading />}>
-        <EvaluationsPageContent />
-      </Suspense>
-    </AppFrame>
+    <NavigationVisibilityGate moduleKey="ragas" pageName="RAGAS 评测">
+      <AppFrame>
+        <Suspense fallback={<EvaluationsLoading />}>
+          <EvaluationsPageContent />
+        </Suspense>
+      </AppFrame>
+    </NavigationVisibilityGate>
   )
 }
 

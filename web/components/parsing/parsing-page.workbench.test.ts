@@ -84,8 +84,13 @@ describe('ParsingPage workbench scaffold', () => {
     expectSourceToContain(shellSrc, 'ParsingInspectorPanel')
     expectSourceToContain(shellSrc, 'header={')
     expectSourceToContain(shellSrc, 'data-testid="parsing-workbench-title"')
-    expectSourceToContain(shellSrc, 'bg-[linear-gradient(135deg,hsl(var(--card)/0.98),hsl(var(--muted)/0.36))]')
-    expectSourceToContain(shellSrc, 'bg-clip-text text-transparent')
+    expectSourceToContain(shellSrc, 'data-testid="parsing-workbench-grid"')
+    expectSourceToContain(shellSrc, 'pointer-events-none absolute inset-0 overflow-hidden rounded-[28px]')
+    expectSourceToContain(shellSrc, 'border-dashed border-info/30')
+    expectSourceToContain(shellSrc, "t('sidebar.uploadFile')")
+    expectSourceToContain(shellSrc, 'scopeFileCount={currentFolderFileCount}')
+    expectSourceToContain(shellSrc, 'queueFileCount={visibleQueueFiles.length}')
+    expectSourceNotToContain(shellSrc, 'files={visibleQueueFiles}')
     expectSourceToContain(shellSrc, 'sidebarFileItems')
   })
 
@@ -151,6 +156,10 @@ describe('ParsingPage workbench scaffold', () => {
       'utf8'
     )
 
+    expectSourceToContain(shellSrc, 'data-testid="parsing-selected-file-summary"')
+    expectSourceToContain(shellSrc, '<summary className="flex cursor-pointer list-none items-start justify-between gap-3 px-4 py-4 [&::-webkit-details-marker]:hidden">')
+    expectSourceToContain(shellSrc, '<span className="group-open:hidden">展开</span>')
+    expectSourceToContain(shellSrc, '<span className="hidden group-open:inline">收起</span>')
     expectSourceToContain(shellSrc, 'function ParsingInspectorDisclosure')
     expectSourceToContain(shellSrc, '<ParsingInspectorDisclosure title="解析详情" icon={Info}>')
     expectSourceToContain(shellSrc, '<ParsingInspectorDisclosure title="内容概览" icon={Clock3}>')
@@ -162,21 +171,116 @@ describe('ParsingPage workbench scaffold', () => {
     expectSourceToContain(shellSrc, '<span className="hidden group-open:inline">收起</span>')
   })
 
-  it('floats the desktop inspector so collapsing it does not resize the document preview', () => {
+  it('keeps the governance submit action visually semantic even when disabled', () => {
     const shellSrc = fs.readFileSync(
       path.resolve(__dirname, 'parsing-workbench-shell.tsx'),
       'utf8'
     )
 
-    expectSourceToContain(shellSrc, 'function ParsingInspectorDock')
-    expectSourceToContain(shellSrc, 'data-testid="parsing-inspector-dock"')
-    expectSourceToContain(shellSrc, "open ? 'translate-x-0' : 'translate-x-[360px]'")
-    expectSourceToContain(shellSrc, "left-0 top-3 flex h-[124px] w-9")
-    expectSourceToContain(shellSrc, "left-[-80px] top-0 flex h-8 w-[112px]")
-    expectSourceToContain(shellSrc, 'const [desktopInspectorOpen, setDesktopInspectorOpen] = useState(true)')
-    expectSourceToContain(shellSrc, "if (activeFile?.status === 'pending' || activeFile?.status === 'error') {")
-    expectSourceToContain(shellSrc, 'setDesktopInspectorOpen(false)')
-    expectSourceToContain(shellSrc, '<ParsingInspectorDock')
+    expectSourceToContain(
+      shellSrc,
+      'const canSubmitToGovernance = Boolean(activeFile && canUseMarkdownActions)'
+    )
+    expectSourceToContain(
+      shellSrc,
+      'bg-[linear-gradient(90deg,hsl(var(--info)),hsl(var(--primary)))]'
+    )
+    expectSourceToContain(shellSrc, 'border-info/20 bg-info/[0.10] text-info/70')
+    expectSourceToContain(shellSrc, 'disabled:opacity-100')
+    expectSourceToContain(shellSrc, 'disabled={!canSubmitToGovernance}')
+  })
+
+  it('adds a saved-document batch handoff queue for governance submission', () => {
+    const pageSrc = fs.readFileSync(
+      path.resolve(__dirname, 'parsing-page.tsx'),
+      'utf8'
+    )
+    const shellSrc = fs.readFileSync(
+      path.resolve(__dirname, 'parsing-workbench-shell.tsx'),
+      'utf8'
+    )
+    const sidebarSrc = fs.readFileSync(
+      path.resolve(__dirname, 'parsing-sidebar-pane.tsx'),
+      'utf8'
+    )
+    const folderTreeSrc = fs.readFileSync(
+      path.resolve(__dirname, '../document-library/folder-tree.tsx'),
+      'utf8'
+    )
+    const itemSrc = fs.readFileSync(
+      path.resolve(__dirname, '../ui/file-queue-item.tsx'),
+      'utf8'
+    )
+
+    expectSourceToContain(pageSrc, 'const [selectedGovernanceFileIds, setSelectedGovernanceFileIds] = useState<Set<string>>')
+    expectSourceToContain(pageSrc, 'const toggleGovernanceFileSelection = useCallback(')
+    expectSourceToContain(pageSrc, 'selectedGovernanceFileIds={selectedGovernanceFileIds}')
+    expectSourceToContain(pageSrc, 'onToggleGovernanceFileSelection={toggleGovernanceFileSelection}')
+    expectSourceToContain(pageSrc, 'onSubmitSelectedToGovernance={editorActions.handleSubmitSelectedToGovernance}')
+    expectSourceToContain(shellSrc, "file.governanceStatus === 'ready'")
+    expectSourceToContain(shellSrc, '提交选中文档')
+    expectSourceToContain(shellSrc, '待提交')
+    expectSourceToContain(sidebarSrc, 'onToggleFileSelected={onToggleGovernanceFileSelection}')
+    expectSourceToContain(folderTreeSrc, 'onToggleFileSelected?.(file.id)')
+    expectSourceToContain(folderTreeSrc, 'aria-label={file.isSelected ? \'取消选择待提交文档\' : \'选择待提交文档\'}')
+    expectSourceToContain(itemSrc, "governanceStatus?: 'draft' | 'ready' | 'submitted'")
+  })
+
+  it('renders parsing status metrics as semantic cards instead of a flat table grid', () => {
+    const shellSrc = fs.readFileSync(
+      path.resolve(__dirname, 'parsing-workbench-shell.tsx'),
+      'utf8'
+    )
+
+    expectSourceToContain(shellSrc, 'function ParsingStatusMetricGrid')
+    expectSourceToContain(shellSrc, 'const PARSING_STATUS_METRIC_TONES')
+    expectSourceToContain(shellSrc, 'grid grid-cols-2 gap-2')
+    expectSourceToContain(shellSrc, 'border-success/25 bg-success/[0.07]')
+    expectSourceToContain(shellSrc, 'border-info/25 bg-info/[0.07]')
+    expectSourceToContain(shellSrc, 'border-warning/25 bg-warning/[0.08]')
+    expectSourceToContain(shellSrc, '<ParsingStatusMetricGrid')
+    expectSourceToContain(shellSrc, "{ label: '已解析', value: parsedCount, tone: 'success' }")
+    expectSourceToContain(shellSrc, "{ label: '解析中', value: parsingCount, tone: 'info' }")
+    expectSourceToContain(shellSrc, "{ label: '待处理', value: pendingCount, tone: 'warning' }")
+    expectSourceToContain(shellSrc, "{ label: '队列', value: queueFileCount, tone: 'muted' }")
+  })
+
+  it('renders the desktop inspector as a static right rail matching the parsing design', () => {
+    const shellSrc = fs.readFileSync(
+      path.resolve(__dirname, 'parsing-workbench-shell.tsx'),
+      'utf8'
+    )
+
+    expectSourceToContain(
+      shellSrc,
+      "const PARSING_INSPECTOR_WIDTH_KEY = 'mimirq.parsing.inspectorWidth'"
+    )
+    expectSourceToContain(shellSrc, 'const DEFAULT_PARSING_INSPECTOR_WIDTH = 410')
+    expectSourceToContain(shellSrc, 'const MIN_PARSING_INSPECTOR_WIDTH = 320')
+    expectSourceToContain(shellSrc, 'const MAX_PARSING_INSPECTOR_WIDTH = 560')
+    expectSourceToContain(shellSrc, 'const COLLAPSED_PARSING_INSPECTOR_HOTZONE_WIDTH = 36')
+    expectSourceToContain(shellSrc, 'data-testid="parsing-static-inspector"')
+    expectSourceToContain(shellSrc, 'const [inspectorCollapsed, setInspectorCollapsed] = useState(false)')
+    expectSourceToContain(
+      shellSrc,
+      'style={{ width: inspectorCollapsed ? COLLAPSED_PARSING_INSPECTOR_HOTZONE_WIDTH : inspectorWidth }}'
+    )
+    expectSourceToContain(shellSrc, "aria-label={inspectorCollapsed ? '展开解析信息侧栏' : '收起解析信息侧栏'}")
+    expectSourceToContain(shellSrc, "title={inspectorCollapsed ? '展开解析信息侧栏' : '收起解析信息侧栏'}")
+    expectSourceToContain(shellSrc, 'onClick={() => setInspectorCollapsed((collapsed) => !collapsed)}')
+    expectSourceToContain(shellSrc, "inspectorCollapsed ? 'left-0' : 'left-[-0.875rem]'")
+    expectSourceToContain(shellSrc, 'transition-[left,opacity,background-color,color,box-shadow]')
+    expectSourceToContain(shellSrc, 'opacity-0 hover:opacity-100 focus-visible:opacity-100')
+    expectSourceToContain(shellSrc, "{inspectorCollapsed ? <PanelRightOpen")
+    expectSourceToContain(shellSrc, 'aria-label="调整解析信息宽度"')
+    expectSourceToContain(shellSrc, 'onPointerDown={handleResizePointerDown}')
+    expectSourceToContain(shellSrc, 'role="separator"')
+    expectSourceToContain(shellSrc, 'cursor-col-resize')
+    expectSourceToContain(shellSrc, '!inspectorCollapsed ? (')
+    expectSourceToContain(shellSrc, '<ParsingInspectorPanel')
+    expectSourceToContain(shellSrc, '<ResizableParsingInspectorRail>')
+    expectSourceNotToContain(shellSrc, 'function ParsingInspectorDock')
+    expectSourceNotToContain(shellSrc, 'data-testid="parsing-inspector-dock"')
     expectSourceNotToContain(shellSrc, 'rightPanel={')
   })
 

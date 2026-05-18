@@ -13,6 +13,10 @@ function isFinitePositive(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0
 }
 
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
 export function detectPdfBboxCoordinateSpace(params: {
   items: Array<{ position: ParsingPosition }>
   pageBaseWidth?: number | null
@@ -75,4 +79,37 @@ export function computePdfOverlayRect(params: {
     width: (right - left) * resolvedScale,
     height: (bottom - top) * resolvedScale,
   }
+}
+
+export function computePdfOverlayScrollTop(params: {
+  containerHeight: number
+  containerScrollTop: number
+  containerTop: number
+  overlayHeight: number
+  overlayTop: number
+  pageTop: number
+}): number {
+  const {
+    containerHeight,
+    containerScrollTop,
+    containerTop,
+    overlayHeight,
+    overlayTop,
+    pageTop,
+  } = params
+
+  if (
+    !isFiniteNumber(containerHeight) ||
+    !isFiniteNumber(containerScrollTop) ||
+    !isFiniteNumber(containerTop) ||
+    !isFiniteNumber(overlayHeight) ||
+    !isFiniteNumber(overlayTop) ||
+    !isFiniteNumber(pageTop)
+  ) {
+    return 0
+  }
+
+  const pageTopInContainer = containerScrollTop + (pageTop - containerTop)
+  const overlayCenter = pageTopInContainer + overlayTop + overlayHeight / 2
+  return Math.max(0, Math.round(overlayCenter - containerHeight / 2))
 }

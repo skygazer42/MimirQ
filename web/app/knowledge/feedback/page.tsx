@@ -40,6 +40,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { usePathname, useRouter } from '@/i18n/navigation'
 import { feedbackApi } from '@/lib/api'
 import { cn, formatDate } from '@/lib/utils'
@@ -256,27 +263,27 @@ function FeedbackSummaryCard({
           ? 'text-rose'
           : 'text-info'
   const deltaTone = delta.trim().startsWith('-')
-    ? 'text-foreground'
+    ? 'text-muted-foreground'
     : 'text-foreground'
 
   return (
-    <div className="min-h-[92px] rounded-2xl border border-border/60 bg-card px-5 py-3.5 shadow-soft">
-      <div className="flex items-center gap-3.5">
+    <div className="min-h-[72px] rounded-[1.1rem] border border-border/60 bg-background/92 px-3.5 py-2.5 shadow-[0_14px_34px_-30px_rgba(15,23,42,0.25)]">
+      <div className="flex h-full items-center gap-3">
         <div
           className={cn(
-            'flex size-11 shrink-0 items-center justify-center rounded-full border',
+            'flex size-9 shrink-0 items-center justify-center rounded-xl border',
             iconClassName
           )}
         >
-          <Icon className="size-5.5" />
+          <Icon className="size-4" />
         </div>
         <div className="min-w-0">
-          <div className="text-[11px] font-semibold leading-none text-foreground dark:text-muted-foreground">
+          <div className="text-[10px] font-medium uppercase tracking-[0.12em] leading-none text-muted-foreground">
             {label}
           </div>
           <div
             className={cn(
-              'mt-1 text-[1.625rem] font-semibold leading-none ',
+              'mt-1 text-[1.25rem] font-semibold leading-none tabular-nums',
               valueClassName
             )}
           >
@@ -297,26 +304,29 @@ function FeedbackDonutCard({
   items,
   colors,
   actionLabel,
+  onAction,
 }: Readonly<{
   title: string
   items: Array<{ label: string; value: number }>
   colors: string[]
   actionLabel?: string
+  onAction?: () => void
 }>) {
   const values = items.map((item) => item.value)
   const total = values.reduce((sum, value) => sum + value, 0)
   const gradient = buildConicGradient(values, colors)
 
   return (
-    <div className="rounded-2xl border border-border/60 bg-card p-3 shadow-subtle">
+    <div className="rounded-[1.1rem] border border-border/60 bg-background/92 p-3 shadow-subtle">
       <div className="flex items-center justify-between gap-2.5">
         <div className="text-[0.9rem] font-semibold text-foreground">
           {title}
         </div>
-        {actionLabel ? (
+        {actionLabel && onAction ? (
           <button
             type="button"
             className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+            onClick={onAction}
           >
             {actionLabel}
             <ChevronRight className="size-3" />
@@ -371,11 +381,13 @@ function FeedbackTrendCard({
   labels,
   series,
   actionLabel,
+  onAction,
 }: Readonly<{
   title: string
   labels: string[]
   series: Array<{ label: string; values: number[]; color: string }>
   actionLabel?: string
+  onAction?: () => void
 }>) {
   const allValues = series.flatMap((item) => item.values)
   const max = Math.max(1, ...allValues)
@@ -383,15 +395,16 @@ function FeedbackTrendCard({
   const height = 170
 
   return (
-    <div className="rounded-2xl border border-border/60 bg-card p-3 shadow-subtle">
+    <div className="rounded-[1.1rem] border border-border/60 bg-background/92 p-3 shadow-subtle">
       <div className="flex items-center justify-between gap-2.5">
         <div className="text-[0.9rem] font-semibold text-foreground">
           {title}
         </div>
-        {actionLabel ? (
+        {actionLabel && onAction ? (
           <button
             type="button"
             className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+            onClick={onAction}
           >
             {actionLabel}
             <ChevronRight className="size-3" />
@@ -626,7 +639,7 @@ export default function FeedbackTriagePage() {
   const [filterType, setFilterType] = useState<FeedbackTypeFilter>('all')
   const [boardTab, setBoardTab] = useState<FeedbackBoardTab>('all')
   const [sourceFilter, setSourceFilter] = useState<FeedbackSourceFilter>('all')
-  const [timeRange, setTimeRange] = useState<FeedbackTimeRange>('7d')
+  const [timeRange, setTimeRange] = useState<FeedbackTimeRange>('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [detail, setDetail] = useState<MessageFeedbackEnriched | null>(null)
   const [creatingCase, setCreatingCase] = useState(false)
@@ -737,6 +750,21 @@ export default function FeedbackTriagePage() {
       .filter((item) => item.value > 0)
   }, [demoMetrics.sources, demoMode, items])
 
+  const primarySourceFilter = useMemo(() => {
+    const sourceKeys: FeedbackSourceFilter[] = [
+      'web',
+      'mobile',
+      'enterprise',
+      'api',
+      'other',
+    ]
+    return (
+      sourceKeys.find((source) =>
+        items.some((item) => getFeedbackSource(item) === source)
+      ) ?? 'all'
+    )
+  }, [items])
+
   const trendStats = useMemo(() => {
     if (demoMode) return demoMetrics.trend
     const labels: string[] = []
@@ -796,7 +824,7 @@ export default function FeedbackTriagePage() {
       res = res.filter((item) => isWithinRange(item.created_at, timeRange))
     }
 
-    if (boardTab === 'pending') {
+    if (boardTab !== 'archived') {
       res = res.filter((item) => !isArchivedFeedback(item))
     }
     if (boardTab === 'high-priority') {
@@ -904,7 +932,7 @@ export default function FeedbackTriagePage() {
   const hasExtendedFilters =
     hasActiveFilters ||
     sourceFilter !== 'all' ||
-    timeRange !== '7d' ||
+    timeRange !== 'all' ||
     boardTab !== 'all'
   const totalPages = useMemo(
     () => Math.max(1, Math.ceil(filtered.length / FEEDBACK_PAGE_SIZE)),
@@ -974,7 +1002,7 @@ export default function FeedbackTriagePage() {
         icon={MessageSquare}
         iconColor="text-indigo dark:text-indigo"
         size="full"
-        topClassName="mx-auto w-full max-w-[1480px] px-3 md:px-4 xl:px-5 pt-4 pb-3"
+        topClassName="mx-auto w-full max-w-[1480px] px-3 md:px-4 xl:px-5 pt-4 pb-2"
         description={
           <div className="flex flex-wrap items-center gap-2 text-[12px] leading-5 text-muted-foreground">
             <span>汇总点赞、点踩与低分原因，快速定位需要回归验证的反馈。</span>
@@ -1026,7 +1054,7 @@ export default function FeedbackTriagePage() {
         }
         top={
           <div className="pt-2">
-            <div className="grid gap-3.5 lg:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-2.5 lg:grid-cols-2 xl:grid-cols-4">
               {summaryCards.map((card) => (
                 <FeedbackSummaryCard
                   key={card.label}
@@ -1040,11 +1068,11 @@ export default function FeedbackTriagePage() {
             </div>
           </div>
         }
-        bodyClassName="mx-auto w-full max-w-[1480px] px-3 md:px-4 xl:px-5 pb-8 z-10"
+        bodyClassName="mx-auto w-full max-w-[1480px] px-3 md:px-4 xl:px-5 pb-5 z-10"
       >
-        <div className="grid gap-3 xl:h-[calc(100vh-16.5rem)] xl:min-h-0 xl:grid-cols-[2.08fr_0.68fr]">
+        <div className="grid gap-3 xl:h-[calc(100vh-14.25rem)] xl:min-h-0 xl:grid-cols-[minmax(0,1.72fr)_minmax(320px,0.78fr)]">
           <div className="space-y-4 xl:flex xl:min-h-0 xl:flex-col xl:space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex w-fit max-w-full flex-wrap items-center gap-1 rounded-2xl border border-border/60 bg-card/80 p-1 shadow-subtle">
               {(
                 [
                   ['all', '全部'],
@@ -1058,10 +1086,10 @@ export default function FeedbackTriagePage() {
                   type="button"
                   onClick={() => setBoardTab(value)}
                   className={cn(
-                    'rounded-full border px-4 py-2 text-[12px] font-medium transition-colors',
+                    'rounded-xl border px-3.5 py-1.5 text-[12px] font-medium transition-colors',
                     boardTab === value
-                      ? 'border-indigo/20 bg-indigo/10 text-indigo'
-                      : 'border-border/60 bg-background text-muted-foreground hover:text-foreground'
+                      ? 'border-info/25 bg-info/[0.12] text-info shadow-[0_10px_22px_-18px_rgba(37,99,235,0.55)]'
+                      : 'border-transparent bg-transparent text-muted-foreground hover:bg-background/80 hover:text-foreground'
                   )}
                 >
                   {label}
@@ -1071,8 +1099,9 @@ export default function FeedbackTriagePage() {
 
             <div className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-soft xl:flex xl:min-h-0 xl:flex-1 xl:flex-col">
               <div className="border-b border-border/60 px-5 py-3.5">
-                <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
-                  <div className="min-w-0">
+                <div className="space-y-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-3">
                       <div className="text-[1.22rem] font-semibold text-foreground">
                         反馈列表
@@ -1121,12 +1150,16 @@ export default function FeedbackTriagePage() {
                             {getFeedbackSourceLabel(sourceFilter)}
                           </Badge>
                         ) : null}
-                        {timeRange !== '7d' ? (
+                        {timeRange !== 'all' ? (
                           <Badge
                             variant="secondary"
                             className="rounded-full px-3 py-1 text-[10px] font-medium"
                           >
-                            {timeRange}
+                            {timeRange === '7d'
+                              ? '最近 7 天'
+                              : timeRange === '30d'
+                                ? '最近 30 天'
+                                : '最近 90 天'}
                           </Badge>
                         ) : null}
                         {searchTerm.trim() ? (
@@ -1140,14 +1173,15 @@ export default function FeedbackTriagePage() {
                       </div>
                     ) : null}
                   </div>
+                  </div>
 
-                  <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap lg:w-auto lg:flex-nowrap lg:items-center">
+                  <div className="grid w-full gap-2 md:grid-cols-2 xl:grid-cols-[minmax(18rem,1fr)_7.5rem_7.5rem_7.5rem_8.25rem]">
                     <SearchInput
                       value={searchTerm}
                       onValueChange={setSearchTerm}
                       placeholder="搜索反馈 / 原因 / 标签 / 账号"
-                      containerClassName="w-full lg:min-w-[17rem]"
-                      inputClassName="h-9 rounded-xl border-border/60 bg-muted/40 text-[12px] shadow-none"
+                      containerClassName="w-full"
+                      inputClassName="h-9 rounded-xl border-border/60 bg-background/75 text-[12px] shadow-none"
                     />
 
                     <Select
@@ -1164,7 +1198,7 @@ export default function FeedbackTriagePage() {
                               ? '按类型筛选：点赞反馈'
                               : '按类型筛选：点踩反馈'
                         }
-                        className="h-9 w-full rounded-xl border-border/60 bg-background px-3 shadow-none sm:w-[7.5rem] [&>svg]:text-muted-foreground/65"
+                        className="h-9 w-full rounded-xl border-border/60 bg-background/75 px-3 shadow-none [&>svg]:text-muted-foreground/65"
                       >
                         <span className="truncate pr-2 text-[12px] font-medium text-foreground">
                           {filterType === 'all'
@@ -1191,7 +1225,7 @@ export default function FeedbackTriagePage() {
                             ? '按星级筛选（当前：全部）'
                             : `按星级筛选：${ratingFilter} 星反馈`
                         }
-                        className="h-9 w-full rounded-xl border-border/60 bg-background px-3 shadow-none sm:w-[7.5rem] [&>svg]:text-muted-foreground/65"
+                        className="h-9 w-full rounded-xl border-border/60 bg-background/75 px-3 shadow-none [&>svg]:text-muted-foreground/65"
                       >
                         <span className="truncate pr-2 text-[12px] font-medium text-foreground">
                           {ratingFilter === 'all'
@@ -1215,7 +1249,7 @@ export default function FeedbackTriagePage() {
                         setSourceFilter(v as FeedbackSourceFilter)
                       }
                     >
-                      <SelectTrigger className="h-9 w-full rounded-xl border-border/60 bg-background px-3 shadow-none sm:w-[7.5rem]">
+                      <SelectTrigger className="h-9 w-full rounded-xl border-border/60 bg-background/75 px-3 shadow-none">
                         <SelectValue placeholder="来源" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1234,17 +1268,17 @@ export default function FeedbackTriagePage() {
                         setTimeRange(v as FeedbackTimeRange)
                       }
                     >
-                      <SelectTrigger className="h-9 w-full rounded-xl border-border/60 bg-background px-3 shadow-none sm:w-[8.25rem] [&>svg]:text-muted-foreground/65">
+                      <SelectTrigger className="h-9 w-full rounded-xl border-border/60 bg-background/75 px-3 shadow-none [&>svg]:text-muted-foreground/65">
                         <span className="inline-flex items-center gap-2 truncate pr-2 text-[12px] font-medium text-foreground">
                           <CalendarDays className="size-4 shrink-0 text-muted-foreground" />
                           <span className="truncate">
-                            {timeRange === '7d'
-                              ? '时间范围'
+                            {timeRange === 'all'
+                              ? '全部时间'
+                              : timeRange === '7d'
+                                ? '7 天'
                               : timeRange === '30d'
                                 ? '30 天'
-                                : timeRange === '90d'
-                                  ? '90 天'
-                                  : '全部时间'}
+                                : '90 天'}
                           </span>
                         </span>
                       </SelectTrigger>
@@ -1289,16 +1323,16 @@ export default function FeedbackTriagePage() {
                           issue,
                           sourceBadgeLabel,
                           resolutionLabel,
-                          archived ? '已归档' : null,
+                          archived ? '已处理 / 归档' : null,
                         ].filter(Boolean)
                       )
                     ) as string[]
                     return (
                       <article
                         key={item.id}
-                        className="overflow-hidden rounded-2xl border border-border/60 bg-muted/40 shadow-sm transition-colors hover:border-primary/15"
+                        className="overflow-hidden rounded-[1.05rem] border border-border/55 bg-background/88 shadow-[0_12px_28px_-30px_rgba(15,23,42,0.28)] transition-colors hover:border-info/20 hover:bg-background"
                       >
-                        <div className="flex items-start gap-3 px-4 py-2">
+                        <div className="flex items-start gap-3 px-4 py-2.5">
                           <div
                             className={cn(
                               'flex h-7.5 w-7.5 shrink-0 items-center justify-center rounded-lg border',
@@ -1387,7 +1421,7 @@ export default function FeedbackTriagePage() {
                             </div>
 
                             <div className="mt-2.5 grid gap-2.5 xl:grid-cols-[minmax(0,0.42fr)_minmax(0,0.58fr)]">
-                              <div className="rounded-lg border border-border/60 bg-card/95 p-2.5">
+                              <div className="rounded-lg border border-border/50 bg-muted/25 p-2.5">
                                 <div className="text-[10px] font-medium text-foreground/82">
                                   用户反馈原因
                                 </div>
@@ -1395,7 +1429,7 @@ export default function FeedbackTriagePage() {
                                   {item.reason || '用户未填写反馈原因。'}
                                 </p>
                               </div>
-                              <div className="rounded-lg border border-border/60 bg-card/95 p-2.5">
+                              <div className="rounded-lg border border-border/50 bg-muted/25 p-2.5">
                                 <div className="text-[10px] font-medium text-foreground/82">
                                   模型回答摘要
                                 </div>
@@ -1407,7 +1441,7 @@ export default function FeedbackTriagePage() {
                           </div>
                         </div>
 
-                        <div className="flex flex-wrap items-center justify-between gap-2.5 border-t border-border/60 bg-card/35 px-4 py-1.5">
+                        <div className="flex flex-wrap items-center justify-between gap-2.5 border-t border-border/50 bg-muted/18 px-4 py-1.5">
                           <div className="text-[9px] font-mono text-muted-foreground">
                             {item.id.slice(0, 8)}
                           </div>
@@ -1442,15 +1476,61 @@ export default function FeedbackTriagePage() {
                               )}
                               {archived ? '取消归档' : '标记已处理'}
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6 rounded-xl text-muted-foreground"
-                              aria-label="更多问题操作"
-                              title="更多问题操作"
-                            >
-                              <MoreHorizontal className="size-3" />
-                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 rounded-xl text-muted-foreground hover:bg-info/[0.08] hover:text-info"
+                                  aria-label="更多问题操作"
+                                  title="更多问题操作"
+                                >
+                                  <MoreHorizontal className="size-3" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent
+                                align="end"
+                                className="w-44 rounded-xl"
+                              >
+                                <DropdownMenuItem
+                                  className="text-[12px]"
+                                  onSelect={() => setDetail(item)}
+                                >
+                                  查看完整详情
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="text-[12px]"
+                                  onSelect={() => void copyDetail(item)}
+                                >
+                                  复制反馈 JSON
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="text-[12px]"
+                                  onSelect={() =>
+                                    router.push(
+                                      `/history?id=${encodeURIComponent(item.conversation_id)}`
+                                    )
+                                  }
+                                >
+                                  跳转对话上下文
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="text-[12px]"
+                                  disabled={creatingCase}
+                                  onSelect={() => void createRegressionCase(item)}
+                                >
+                                  加入回归集
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="text-[12px]"
+                                  disabled={archivingId === item.id}
+                                  onSelect={() => void toggleArchived(item)}
+                                >
+                                  {archived ? '取消归档' : '标记已处理'}
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         </div>
                       </article>
@@ -1483,7 +1563,7 @@ export default function FeedbackTriagePage() {
                         setFilterType('all')
                         setRatingFilter('all')
                         setSourceFilter('all')
-                        setTimeRange('7d')
+                        setTimeRange('all')
                         setBoardTab('all')
                       }}
                     >
@@ -1518,7 +1598,7 @@ export default function FeedbackTriagePage() {
                             className={cn(
                               'inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-[11px] font-medium',
                               page === pageNumber
-                                ? 'bg-foreground text-background'
+                                ? 'bg-info/[0.12] text-info'
                                 : 'text-muted-foreground hover:text-foreground'
                             )}
                           >
@@ -1537,7 +1617,7 @@ export default function FeedbackTriagePage() {
                         className={cn(
                           'inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-[11px] font-medium',
                           page === totalPages
-                            ? 'bg-foreground text-background'
+                            ? 'bg-info/[0.12] text-info'
                             : 'text-muted-foreground hover:text-foreground'
                         )}
                       >
@@ -1567,15 +1647,20 @@ export default function FeedbackTriagePage() {
             </div>
           </div>
 
-          <div className="space-y-4 xl:h-full xl:overflow-hidden">
-            <div className="rounded-2xl border border-border/60 bg-card p-4 shadow-subtle">
+          <div className="min-w-0 space-y-3 xl:h-full xl:overflow-y-auto xl:overscroll-contain xl:no-scrollbar">
+            <div className="rounded-[1.1rem] border border-border/60 bg-background/92 p-3.5 shadow-subtle">
               <div className="flex items-center justify-between gap-3">
-                <div className="text-[0.98rem] font-semibold text-foreground">
+                <div className="text-[0.92rem] font-semibold leading-tight text-foreground">
                   高频问题原因 TOP3
                 </div>
                 <button
                   type="button"
                   className="inline-flex items-center gap-1 text-[12px] font-medium text-muted-foreground hover:text-foreground"
+                  onClick={() => {
+                    setBoardTab('high-priority')
+                    setFilterType('thumbs_down')
+                    setPage(1)
+                  }}
                 >
                   更多
                   <ChevronRight className="size-3.5" />
@@ -1631,7 +1716,7 @@ export default function FeedbackTriagePage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-border/60 bg-card p-4 shadow-subtle">
+            <div className="rounded-[1.1rem] border border-border/60 bg-background/92 p-3.5 shadow-subtle">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-[0.98rem] font-semibold text-foreground">
@@ -1649,7 +1734,7 @@ export default function FeedbackTriagePage() {
                 </Badge>
               </div>
               <div className="mt-3 grid grid-cols-3 gap-2">
-                <div className="rounded-xl border border-border/60 bg-muted/35 p-2.5">
+                <div className="rounded-xl border border-border/50 bg-muted/25 p-2.5">
                   <div className="text-[10px] font-medium text-muted-foreground">
                     HardNeg
                   </div>
@@ -1657,7 +1742,7 @@ export default function FeedbackTriagePage() {
                     {loopMetrics.hardNeg}
                   </div>
                 </div>
-                <div className="rounded-xl border border-border/60 bg-muted/35 p-2.5">
+                <div className="rounded-xl border border-border/50 bg-muted/25 p-2.5">
                   <div className="text-[10px] font-medium text-muted-foreground">
                     训练三元组
                   </div>
@@ -1665,7 +1750,7 @@ export default function FeedbackTriagePage() {
                     {loopMetrics.triples}
                   </div>
                 </div>
-                <div className="rounded-xl border border-border/60 bg-muted/35 p-2.5">
+                <div className="rounded-xl border border-border/50 bg-muted/25 p-2.5">
                   <div className="text-[10px] font-medium text-muted-foreground">
                     规则候选
                   </div>
@@ -1721,7 +1806,11 @@ export default function FeedbackTriagePage() {
                 'hsl(var(--accent))',
                 'hsl(var(--muted-foreground) / 0.5)',
               ]}
-              actionLabel="更多"
+              actionLabel={primarySourceFilter === 'all' ? undefined : '更多'}
+              onAction={() => {
+                setSourceFilter(primarySourceFilter)
+                setPage(1)
+              }}
             />
 
             <FeedbackTrendCard
@@ -1729,6 +1818,10 @@ export default function FeedbackTriagePage() {
               labels={trendStats.labels}
               series={trendStats.series}
               actionLabel="更多"
+              onAction={() => {
+                setTimeRange('7d')
+                setPage(1)
+              }}
             />
           </div>
         </div>
@@ -1839,7 +1932,7 @@ export default function FeedbackTriagePage() {
                       setCreatingCase(false)
                     }
                   }}
-                  className="rounded-full border-border hover:bg-muted gap-2"
+                  className="rounded-full border-indigo/25 bg-indigo/[0.06] text-indigo gap-2 hover:border-indigo/35 hover:bg-indigo/[0.10] hover:text-indigo"
                 >
                   {creatingCase ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
@@ -1853,7 +1946,7 @@ export default function FeedbackTriagePage() {
                   <Button
                     variant="outline"
                     onClick={() => router.push(`/evaluations?tab=regression`)}
-                    className="rounded-full border-border hover:bg-muted gap-2"
+                    className="rounded-full border-indigo/25 bg-indigo/[0.06] text-indigo gap-2 hover:border-indigo/35 hover:bg-indigo/[0.10] hover:text-indigo"
                     title={`case_id=${createdCaseId}`}
                   >
                     前往回归测试
@@ -1868,7 +1961,7 @@ export default function FeedbackTriagePage() {
                       `/history?id=${encodeURIComponent(detail.conversation_id)}`
                     )
                   }
-                  className="rounded-full border-border hover:bg-muted gap-2"
+                  className="rounded-full border-info/25 bg-info/[0.06] text-info gap-2 hover:border-info/35 hover:bg-info/[0.10] hover:text-info"
                 >
                   跳转至对话上下文
                   <ArrowUpRight className="h-3.5 w-3.5" />

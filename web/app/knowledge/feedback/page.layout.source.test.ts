@@ -25,6 +25,17 @@ describe('feedback triage page layout', () => {
       src,
       'overflow-hidden rounded-2xl border border-border/60 bg-card shadow-soft'
     )
+    expectSourceToContain(src, "useState<FeedbackTimeRange>('all')")
+    expectSourceToContain(
+      src,
+      'xl:grid-cols-[minmax(0,1.72fr)_minmax(320px,0.78fr)]'
+    )
+    expectSourceToContain(
+      src,
+      'inline-flex w-fit max-w-full flex-wrap items-center gap-1 rounded-2xl border border-border/60 bg-card/80 p-1 shadow-subtle'
+    )
+    expectSourceToContain(src, 'min-h-[72px]')
+    expectSourceToContain(src, 'grid w-full gap-2 md:grid-cols-2 xl:grid-cols-[minmax(18rem,1fr)_7.5rem_7.5rem_7.5rem_8.25rem]')
     expectSourceToContain(src, 'placeholder="搜索反馈 / 原因 / 标签 / 账号"')
     expectSourceToContain(src, '{hasActiveFilters ? (')
     expectSourceToContain(src, 'const listSummary = useMemo(() => {')
@@ -50,5 +61,21 @@ describe('feedback triage page layout', () => {
       src,
       "{ratingFilter === 'all' ? '星级' : `星级 · ${ratingFilter} 星`}"
     )
+    expectSourceToContain(
+      src,
+      'hover:border-info/35 hover:bg-info/[0.10] hover:text-info'
+    )
+    expectSourceToContain(
+      src,
+      'hover:border-indigo/35 hover:bg-indigo/[0.10] hover:text-indigo'
+    )
+    expectSourceToContain(
+      src,
+      "if (boardTab !== 'archived') { res = res.filter((item) => !isArchivedFeedback(item)) }"
+    )
+    expectSourceToContain(src, "archived ? '已处理 / 归档' : null")
+    expectSourceToContain(src, '<DropdownMenuTrigger asChild>')
+    expectSourceToContain(src, '复制反馈 JSON')
+    expectSourceToContain(src, '跳转对话上下文')
   })
 })

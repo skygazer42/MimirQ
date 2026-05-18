@@ -1,11 +1,12 @@
 'use client'
 
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import {
   Activity,
   BarChart3,
   Filter,
   GitBranch,
+  GripHorizontal,
   MousePointer2,
   Network,
   PanelRightClose,
@@ -45,6 +46,14 @@ type ResultState = {
   endpoint: string
   payload: unknown
 }
+
+type PanelDragState = {
+  pointerId: number
+  startClientX: number
+  startClientY: number
+  startX: number
+  startY: number
+} | null
 
 function endpointId(value: unknown): string {
   if (typeof value === 'string') return value
@@ -138,6 +147,8 @@ export function KgNetworkAnalysisPanel({
   const [runningKey, setRunningKey] = useState<string | null>(null)
   const [result, setResult] = useState<ResultState | null>(null)
   const [collapsed, setCollapsed] = useState(false)
+  const [panelOffset, setPanelOffset] = useState({ x: 0, y: 0 })
+  const dragStateRef = useRef<PanelDragState>(null)
 
   const request: KGNetworkRequest = {
     edges,
@@ -156,6 +167,38 @@ export function KgNetworkAnalysisPanel({
       }
     : null
   const buttonClass = 'h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold'
+  const panelDragStyle = {
+    transform: `translate3d(${panelOffset.x}px, ${panelOffset.y}px, 0)`,
+  }
+
+  function startPanelDrag(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (event.button !== 0) return
+    event.preventDefault()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    dragStateRef.current = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startX: panelOffset.x,
+      startY: panelOffset.y,
+    }
+  }
+
+  function movePanel(event: ReactPointerEvent<HTMLButtonElement>) {
+    const drag = dragStateRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    setPanelOffset({
+      x: drag.startX + event.clientX - drag.startClientX,
+      y: drag.startY + event.clientY - drag.startClientY,
+    })
+  }
+
+  function stopPanelDrag(event: ReactPointerEvent<HTMLButtonElement>) {
+    const drag = dragStateRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    dragStateRef.current = null
+    event.currentTarget.releasePointerCapture(event.pointerId)
+  }
 
   async function runAction(
     key: string,
@@ -177,7 +220,7 @@ export function KgNetworkAnalysisPanel({
 
   if (collapsed) {
     return (
-      <div className="absolute right-[6.75rem] top-24 z-20">
+      <div className="absolute right-[6.75rem] top-24 z-20 transition-transform duration-150" style={panelDragStyle}>
         <Button
           type="button"
           variant="outline"
@@ -200,7 +243,9 @@ export function KgNetworkAnalysisPanel({
   return (
     <div
       id="kg-network-analysis-panel"
-      className="absolute right-[6.75rem] top-24 z-20 w-[286px] space-y-3"
+      data-draggable-kg-analysis-panel="true"
+      className="absolute right-[6.75rem] top-24 z-20 w-[286px] space-y-3 will-change-transform"
+      style={panelDragStyle}
     >
       <section className="rounded-2xl border border-border/60 bg-card/92 p-4 shadow-soft backdrop-blur-md">
         <div className="mb-3 flex items-start justify-between gap-3">
@@ -217,18 +262,32 @@ export function KgNetworkAnalysisPanel({
               </p>
             </div>
           </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 shrink-0 rounded-xl text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-            aria-label="收起图谱统计栏"
-            aria-expanded="true"
-            aria-controls="kg-network-analysis-panel"
-            onClick={() => setCollapsed(true)}
-          >
-            <PanelRightClose className="h-4 w-4" />
-          </Button>
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              className="flex h-8 w-8 cursor-grab items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary active:cursor-grabbing"
+              aria-label="拖动图谱统计栏"
+              title="拖动图谱统计栏"
+              onPointerDown={startPanelDrag}
+              onPointerMove={movePanel}
+              onPointerUp={stopPanelDrag}
+              onPointerCancel={stopPanelDrag}
+            >
+              <GripHorizontal className="h-4 w-4" />
+            </button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 rounded-xl text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+              aria-label="收起图谱统计栏"
+              aria-expanded="true"
+              aria-controls="kg-network-analysis-panel"
+              onClick={() => setCollapsed(true)}
+            >
+              <PanelRightClose className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         <div className="rounded-xl border border-dashed border-border/70 bg-background/72 p-3">

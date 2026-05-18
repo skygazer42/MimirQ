@@ -211,8 +211,6 @@ function buildExtractEvidencePosition(
  }
 }
 
-const layoutLegendKinds: ParsingLayoutKind[] = ['heading', 'paragraph', 'list', 'table', 'image', 'equation']
-
 type ParsingActiveFilePaneProps = {
  activeFile: ParsedFile
  activeRun: ParseRun | null
@@ -290,6 +288,7 @@ export function ParsingActiveFilePane({
  evidence: ParsingExtractEvidence
  } | null>(null)
  const editorRef = useRef<HTMLTextAreaElement | null>(null)
+ const layoutReviewCardRefs = useRef<Map<string, HTMLButtonElement>>(new Map())
  const didInitializeEditSelectionRef = useRef(false)
  const pdfViewerKey = `${activeFile.id}:${activeFile.activeRunId || activeRun?.id || 'default'}:${pdfPreviewResetToken}`
  const qualityGrade = getQualityGateGrade(activeQualityGate)
@@ -427,12 +426,16 @@ export function ParsingActiveFilePane({
  }, [activeBlockId, selectedExtractOverlayId])
 
  const handleSelectPdfBlock = (blockId: string, hint?: ParsingEditFocusHint) => {
+ const hasLayoutEntry = layoutEntries.some((entry) => entry.id === blockId)
  const fallbackElement = (activeElements || []).find((element) => String(element.id || '').trim() === blockId)
- if (fallbackElement && !layoutEntries.some((entry) => entry.id === blockId)) {
+ if (fallbackElement && !hasLayoutEntry) {
  handleSelectElement(fallbackElement)
  return
  }
  setActivePdfEditHint(hint ? { blockId, hint } : null)
+ if (hasLayoutEntry) {
+ onRightPanelModeChange('blocks')
+ }
  onActiveBlockIdChange(blockId)
  }
 
@@ -489,6 +492,22 @@ export function ParsingActiveFilePane({
  useEffect(() => {
  setSelectedExtractEvidence(null)
  }, [activeFile.id, activeRun?.id])
+
+ useEffect(() => {
+ if (!activeBlockId || rightPanelMode !== 'blocks') return
+ const targetCard = layoutReviewCardRefs.current.get(activeBlockId)
+ if (!targetCard) return
+ if (typeof targetCard.scrollIntoView !== 'function') return
+ const reduceMotion =
+ typeof globalThis.window !== 'undefined' &&
+ typeof globalThis.window.matchMedia === 'function' &&
+ globalThis.window.matchMedia('(prefers-reduced-motion: reduce)').matches
+ targetCard.scrollIntoView({
+ behavior: reduceMotion ? 'auto' : 'smooth',
+ block: 'nearest',
+ inline: 'nearest',
+ })
+ }, [activeBlockId, layoutEntries, rightPanelMode])
 
  const parsedStatItems =
  activeFile.status === 'parsed' && activeFile.stats
@@ -864,6 +883,11 @@ export function ParsingActiveFilePane({
  编辑
  </Button>
 
+ <Button variant="outline" size="sm" onClick={onSaveEdit} className="h-8 gap-1.5 rounded-lg px-2.5 text-xs">
+ <Save className="h-4 w-4" />
+ 保存
+ </Button>
+
  <Button variant="outline" size="sm" onClick={onCopyMarkdown} className="h-8 gap-1.5 rounded-lg px-2.5 text-xs">
  {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
  {copied ? '已复制' : '复制'}
@@ -1029,36 +1053,6 @@ export function ParsingActiveFilePane({
  <div className="flex h-full min-h-[560px] flex-col bg-[radial-gradient(circle_at_30%_0%,hsl(var(--primary)/0.04),transparent_34%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.22))] lg:flex-row">
  {isPdf ? (
  <div className="relative flex h-full min-h-0 w-full flex-col border-b border-border/60 bg-muted/60 dark:border-border/60 dark:bg-background/40 lg:flex-[1.42] lg:border-b-0 lg:border-r">
- {layoutEntries.length > 0 ? (
- <div className="border-b border-border/60 bg-card/92 px-4 py-3 shadow-soft dark:bg-background/72">
- <div className="flex flex-wrap items-start justify-between gap-2.5">
- <div className="min-w-0">
- <div className="text-[11px] font-medium tracking-[0.06em] text-foreground/78">
- 版面视图
- </div>
- <div className="mt-0.5 text-[11px] leading-5 text-muted-foreground/78">
- <span className="font-medium text-foreground/72">版面图例</span>
- <span className="mx-1.5 text-border">·</span>
- 点击右侧片段可定位到左侧 PDF 原页
- </div>
- </div>
- <div className="flex flex-wrap items-center gap-1.5">
- {layoutLegendKinds.map((kind) => {
- const meta = getParsingLayoutMeta(kind)
- return (
- <span
- key={kind}
- className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card px-2 py-1 text-[11px] font-medium text-muted-foreground shadow-[0_1px_0_hsl(var(--background))]"
- >
- <span className={cn('h-1.5 w-1.5 rounded-full', meta.dotClassName)} />
- {meta.shortLabel}
- </span>
- )
- })}
- </div>
- </div>
- </div>
- ) : null}
  <div className="min-h-0 flex-1">
  <PdfViewer
  key={pdfViewerKey}
@@ -1100,6 +1094,14 @@ export function ParsingActiveFilePane({
  return (
  <button
  key={entry.id}
+ ref={(node) => {
+ if (node) {
+ layoutReviewCardRefs.current.set(entry.id, node)
+ } else {
+ layoutReviewCardRefs.current.delete(entry.id)
+ }
+ }}
+ data-layout-entry-id={entry.id}
  type="button"
  onClick={() => handleSelectReviewBlock(entry.id)}
  onMouseEnter={() => onHoveredBlockIdChange(entry.id)}
@@ -1174,8 +1176,8 @@ export function ParsingActiveFilePane({
  />
  </div>
  {tocEnabled ? (
- <aside className="hidden w-64 shrink-0 xl:block self-start sticky top-0">
- <div className="max-h-[calc(100%-2rem)] overflow-y-auto overscroll-contain no-scrollbar pl-2">
+ <aside className="hidden w-64 shrink-0 self-start xl:sticky xl:top-0 xl:block">
+ <div className="max-h-[min(72vh,calc(100vh-13rem))] overflow-y-auto overscroll-contain custom-scrollbar rounded-2xl border border-border/60 bg-card/82 p-3 pr-2 shadow-soft">
  <MarkdownToc markdown={activeMarkdown} scrollContainerSelector=".parsing-md-scroll" />
  </div>
  </aside>

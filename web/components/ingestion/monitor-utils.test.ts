@@ -16,6 +16,7 @@ import {
   buildSalesAuditProfile,
   buildStageTreemapRows,
   buildThroughputAreaRows,
+  buildDocumentThroughputAreaRows,
   buildFileSizeDistribution,
   buildFileTypeDistribution,
   buildPdfDispositionBreakdown,
@@ -265,6 +266,56 @@ describe('ingestion monitor helpers', () => {
     ])
   })
 
+  it('builds fallback throughput rows from document timestamps when summary buckets are empty', () => {
+    const rows = buildDocumentThroughputAreaRows(
+      [
+        makeDocument({
+          id: 'done-1',
+          status: 'completed',
+          processed_at: null,
+          updated_at: '2026-05-01T10:05:00.000Z',
+        }),
+        makeDocument({
+          id: 'done-2',
+          status: 'completed',
+          processed_at: '2026-05-01T10:55:00.000Z',
+          updated_at: '2026-05-01T11:00:00.000Z',
+        }),
+        makeDocument({
+          id: 'failed-1',
+          status: 'failed',
+          processed_at: null,
+          updated_at: '2026-05-01T11:10:00.000Z',
+        }),
+        makeDocument({
+          id: 'pending-1',
+          status: 'processing',
+          updated_at: '2026-05-01T11:20:00.000Z',
+        }),
+      ],
+      { bucketMinutes: 60 }
+    )
+
+    expect(rows).toEqual([
+      {
+        ts: Date.parse('2026-05-01T10:00:00.000Z'),
+        completed: 2,
+        failed: 0,
+        quarantined: 0,
+        cancelled: 0,
+        total: 2,
+      },
+      {
+        ts: Date.parse('2026-05-01T11:00:00.000Z'),
+        completed: 0,
+        failed: 1,
+        quarantined: 0,
+        cancelled: 0,
+        total: 1,
+      },
+    ])
+  })
+
   it('builds boxplot rows for execution cycle-time categories', () => {
     const rows = buildLatencyBoxplotRows([
       makeDocument({ id: 'done-1', status: 'completed', created_at: '2026-04-21T10:00:00.000Z', updated_at: '2026-04-21T10:05:00.000Z' }),
@@ -306,10 +357,12 @@ describe('ingestion monitor helpers', () => {
       makeDocument({ id: 'doc-2', file_type: 'pdf' }),
       makeDocument({ id: 'doc-3', file_type: 'xlsx' }),
       makeDocument({ id: 'doc-4', file_type: 'md' }),
+      makeDocument({ id: 'doc-5', filename: 'fallback.html', file_type: '' }),
     ])
 
     expect(output[0]).toMatchObject({ label: 'PDF', count: 2 })
     expect(output[1]).toMatchObject({ label: 'XLSX', count: 1 })
+    expect(output).toContainEqual({ label: 'HTML', count: 1 })
   })
 
   it('builds file size histogram buckets for complexity estimation', () => {

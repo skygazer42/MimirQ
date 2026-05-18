@@ -34,6 +34,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { TenantQuotaPanel } from '@/components/usage/tenant-quota-panel'
+import { Link } from '@/i18n/navigation'
 import { datasetApi, usageApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { queryKeys } from '@/lib/query-keys'
@@ -93,6 +94,15 @@ function formatWindow(start?: string | null, end?: string | null) {
   } catch {
     return `${start} - ${end}`
   }
+}
+
+function buildDatasetKnowledgeHref(datasetId: string) {
+  const params = new URLSearchParams({
+    dataset: datasetId,
+    lifecycle: 'all',
+    status: 'all',
+  })
+  return `/knowledge?${params.toString()}`
 }
 
 // --- Specialized Components ---
@@ -189,6 +199,25 @@ function StylizedMetricCard({
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function ScopeChip({
+  label,
+  value,
+}: {
+  label: string
+  value: string
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-2 rounded-xl border border-slate-200/70 bg-white/70 px-3 py-2 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
+      <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+        {label}
+      </span>
+      <span className="truncate text-[12px] font-semibold text-slate-800">
+        {value}
+      </span>
     </div>
   )
 }
@@ -291,7 +320,7 @@ function UsagePageContent() {
     <AppFrame>
       <PageScaffold
         title="用量/配额"
-        description="按数据集聚合的令牌、成本估算与接口配额占用（仅管理员）"
+        description="管理员查看当前租户的总用量、数据集归因和租户级配额状态"
         iconImage="usage-quota"
         icon={Coins}
         iconColor="text-blue-600"
@@ -304,21 +333,31 @@ function UsagePageContent() {
           <div className="absolute -right-[5%] top-[20%] size-[30%] rounded-full bg-indigo-400/5 blur-[100px]" />
         </div>
 
-        <div className="relative z-10 flex flex-col gap-10 pb-32">
+        <div className="relative z-10 flex flex-col gap-6 pb-24">
           {/* Header Actions */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="size-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-              <span className="text-[11px] font-black text-slate-400 uppercase">
-                Live System Usage Monitoring
-              </span>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/70 bg-card/70 px-4 py-3 shadow-sm backdrop-blur-sm">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex size-8 items-center justify-center rounded-xl border border-emerald-100 bg-emerald-50 text-emerald-600">
+                <div className="size-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[12px] font-semibold text-slate-900">
+                  租户用量与配额
+                </p>
+                <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">
+                  当前租户 · 数据集归因
+                </p>
+              </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-medium text-slate-500">
+                窗口
+              </span>
               <Select
                 value={String(windowDays)}
                 onValueChange={(v) => setWindowDays(Number(v))}
               >
-                <SelectTrigger className="h-10 w-[120px] rounded-xl border-border bg-card/60 backdrop-blur-sm font-bold text-[13px] shadow-sm hover:bg-card transition-all">
+                <SelectTrigger className="h-8 w-[92px] rounded-xl border-border bg-card text-[12px] font-semibold shadow-sm transition-all hover:bg-slate-50">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -332,7 +371,7 @@ function UsagePageContent() {
               <Button
                 variant="outline"
                 size="icon"
-                className="size-10 rounded-xl border-border bg-card/60 backdrop-blur-sm shadow-sm transition-all hover:bg-card"
+                className="size-8 rounded-xl border-border bg-card shadow-sm transition-all hover:bg-slate-50"
                 aria-label="刷新用量数据"
                 onClick={() => {
                   void summaryQuery.refetch()
@@ -351,6 +390,12 @@ function UsagePageContent() {
             </div>
           </div>
 
+          <div className="grid gap-3 md:grid-cols-3">
+            <ScopeChip label="统计范围" value="当前租户总量" />
+            <ScopeChip label="归因口径" value="按数据集拆分聊天与检索成本" />
+            <ScopeChip label="分配方式" value="租户级配额，暂不按用户分配" />
+          </div>
+
           {/* HUD Status Bar (Glassmorphism) */}
           <div className="grid overflow-hidden rounded-3xl border border-border/60 bg-card/40 shadow-soft shadow-slate-200/20 backdrop-blur-xl md:grid-cols-5">
             {loadErrorMessage && (
@@ -366,7 +411,7 @@ function UsagePageContent() {
             />
             <HUDStatus
               icon={Database}
-              label="数据集条目"
+              label="归因数据集"
               value={rows.length}
               tone="blue"
             />
@@ -378,7 +423,7 @@ function UsagePageContent() {
             />
             <HUDStatus
               icon={ShieldCheck}
-              label="配额状态"
+              label="聊天配额"
               value={quotaStatus}
               tone={
                 quota?.enabled && !quota.exceeded
@@ -400,21 +445,21 @@ function UsagePageContent() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
             <StylizedMetricCard
               icon={UserRound}
-              label="助手令牌"
+              label="聊天输出令牌"
               value={formatNumber(summary?.total_assistant_tokens)}
               detail="ASSISTANT"
               tone="blue"
             />
             <StylizedMetricCard
               icon={Coins}
-              label="LLM 预估总额"
+              label="LLM 总令牌"
               value={formatNumber(cost?.total_llm_total_tokens)}
               detail="LLM_EST"
               tone="indigo"
             />
             <StylizedMetricCard
               icon={Database}
-              label="向量令牌"
+              label="检索向量令牌"
               value={formatNumber(cost?.total_embedding_query_tokens)}
               detail="EMBEDDING"
               tone="blue"
@@ -428,14 +473,14 @@ function UsagePageContent() {
             />
             <StylizedMetricCard
               icon={Clock3}
-              label="配额剩余"
+              label="聊天配额剩余"
               value={quota?.enabled ? formatNumber(quota.remaining) : '0'}
               detail="REMAINING"
               tone="green"
             />
             <StylizedMetricCard
               icon={MessageSquareText}
-              label="总消息数"
+              label="助手消息数"
               value={formatNumber(summary?.total_assistant_messages)}
               detail="TOTAL_MSG"
               tone="slate"
@@ -457,7 +502,7 @@ function UsagePageContent() {
                     数据集用量排行
                   </h3>
                   <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">
-                    {formatWindow(summary?.window_start, summary?.window_end)}
+                    按 dataset_id 归因 · {formatWindow(summary?.window_start, summary?.window_end)}
                   </p>
                 </div>
                 <div className="size-8 rounded-lg bg-card border border-slate-100 flex items-center justify-center text-slate-200">
@@ -474,37 +519,60 @@ function UsagePageContent() {
                       <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-right">
                         消息
                       </th>
-                      <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-right">
-                        消耗
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50/50">
-                    {rows.map((r) => (
-                      <tr
-                        key={r.dataset_id}
-                        className="hover:bg-blue-50/30 transition-all duration-200 group"
-                      >
-                        <td className="px-8 py-5">
-                          <p className="text-[13px] font-bold text-slate-700 truncate max-w-[200px] group-hover:text-blue-600 transition-colors">
-                            {datasetNameById[r.dataset_id || ''] || '未绑定'}
-                          </p>
-                          <p className="text-[9px] font-mono text-slate-300 group-hover:text-slate-400 uppercase">
-                            {shortId(r.dataset_id || '')}
-                          </p>
-                        </td>
-                        <td className="px-8 py-5 text-[12px] font-mono text-slate-500 text-right">
-                          {formatNumber(r.assistant_messages)}
-                        </td>
-                        <td className="px-8 py-5 text-[12px] font-mono font-black text-slate-900 text-right">
-                          {formatNumber(r.assistant_tokens)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+	                      <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-right">
+	                        消耗
+	                      </th>
+	                      <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-right">
+	                        操作
+	                      </th>
+	                    </tr>
+	                  </thead>
+	                  <tbody className="divide-y divide-slate-50/50">
+	                    {rows.map((r) => {
+	                      const datasetId = r.dataset_id || ''
+	                      const datasetName = datasetNameById[datasetId] || ''
+	                      const canOpenDataset = Boolean(datasetId && datasetName)
+	                      return (
+	                        <tr
+	                          key={datasetId || 'unbound'}
+	                          className="hover:bg-blue-50/30 transition-all duration-200 group"
+	                        >
+	                          <td className="px-8 py-5">
+	                            <p className="text-[13px] font-bold text-slate-700 truncate max-w-[200px] group-hover:text-blue-600 transition-colors">
+	                              {datasetName || (datasetId ? '已删除或无权限数据集' : '未绑定数据集')}
+	                            </p>
+	                            <p className="text-[9px] font-mono text-slate-300 group-hover:text-slate-400 uppercase">
+	                              {datasetId ? shortId(datasetId) : 'NO DATASET ID'}
+	                            </p>
+	                          </td>
+	                          <td className="px-8 py-5 text-[12px] font-mono text-slate-500 text-right">
+	                            {formatNumber(r.assistant_messages)}
+	                          </td>
+	                          <td className="px-8 py-5 text-[12px] font-mono font-black text-slate-900 text-right">
+	                            {formatNumber(r.assistant_tokens)}
+	                          </td>
+	                          <td className="px-8 py-5 text-right">
+	                            {canOpenDataset ? (
+	                              <Link
+	                                href={buildDatasetKnowledgeHref(datasetId)}
+	                                className="inline-flex items-center gap-1.5 rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-1.5 text-[11px] font-semibold text-blue-700 transition-colors hover:border-blue-200 hover:bg-blue-100"
+	                              >
+	                                查看
+	                                <ArrowUpRight className="size-3" />
+	                              </Link>
+	                            ) : (
+	                              <span className="text-[11px] font-medium text-slate-300">
+	                                不可跳转
+	                              </span>
+	                            )}
+	                          </td>
+	                        </tr>
+	                      )
+	                    })}
+	                  </tbody>
+	                </table>
+	              </div>
+	            </div>
 
             {/* Cost Attribution Table Section */}
             <div
@@ -517,10 +585,10 @@ function UsagePageContent() {
                 <div>
                   <h3 className="text-[14px] font-black text-slate-900 uppercase flex items-center gap-2">
                     <Zap className="size-4 text-indigo-500 fill-current" />
-                    成本归因分析 (估算)
+                    数据集成本归因（估算）
                   </h3>
                   <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">
-                    {formatWindow(cost?.window_start, cost?.window_end)}
+                    聊天与检索链路聚合 · {formatWindow(cost?.window_start, cost?.window_end)}
                   </p>
                 </div>
                 <div className="size-8 rounded-lg bg-card border border-slate-100 flex items-center justify-center text-slate-200">
@@ -540,41 +608,64 @@ function UsagePageContent() {
                       <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-right">
                         向量 TOKEN
                       </th>
-                      <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-right">
-                        平均检索
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50/50">
-                    {costRows.map((r) => (
-                      <tr
-                        key={r.dataset_id}
-                        className="hover:bg-indigo-50/30 transition-all duration-200 group"
-                      >
-                        <td className="px-8 py-5">
-                          <p className="text-[13px] font-bold text-slate-700 truncate max-w-[240px] group-hover:text-indigo-600 transition-colors">
-                            {datasetNameById[r.dataset_id || ''] || '未绑定'}
-                          </p>
-                          <p className="text-[9px] font-mono text-slate-300 group-hover:text-slate-400 uppercase">
-                            {shortId(r.dataset_id || '')}
-                          </p>
-                        </td>
-                        <td className="px-8 py-5 text-[12px] font-mono font-black text-slate-800 text-right">
-                          {formatNumber(r.llm_total_tokens)}
-                        </td>
-                        <td className="px-8 py-5 text-[12px] font-mono text-slate-500 text-right">
-                          {formatNumber(r.embedding_query_tokens)}
-                        </td>
-                        <td className="px-8 py-5 text-[12px] font-mono text-slate-400 text-right">
-                          {formatSec(
-                            r.retrieval_elapsed_sec_sum /
-                              Math.max(1, r.assistant_messages || 0)
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+	                      <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-right">
+	                        平均检索
+	                      </th>
+	                      <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-right">
+	                        操作
+	                      </th>
+	                    </tr>
+	                  </thead>
+	                  <tbody className="divide-y divide-slate-50/50">
+	                    {costRows.map((r) => {
+	                      const datasetId = r.dataset_id || ''
+	                      const datasetName = datasetNameById[datasetId] || ''
+	                      const canOpenDataset = Boolean(datasetId && datasetName)
+	                      return (
+	                        <tr
+	                          key={datasetId || 'unbound-cost'}
+	                          className="hover:bg-indigo-50/30 transition-all duration-200 group"
+	                        >
+	                          <td className="px-8 py-5">
+	                            <p className="text-[13px] font-bold text-slate-700 truncate max-w-[240px] group-hover:text-indigo-600 transition-colors">
+	                              {datasetName || (datasetId ? '已删除或无权限数据集' : '未绑定数据集')}
+	                            </p>
+	                            <p className="text-[9px] font-mono text-slate-300 group-hover:text-slate-400 uppercase">
+	                              {datasetId ? shortId(datasetId) : 'NO DATASET ID'}
+	                            </p>
+	                          </td>
+	                          <td className="px-8 py-5 text-[12px] font-mono font-black text-slate-800 text-right">
+	                            {formatNumber(r.llm_total_tokens)}
+	                          </td>
+	                          <td className="px-8 py-5 text-[12px] font-mono text-slate-500 text-right">
+	                            {formatNumber(r.embedding_query_tokens)}
+	                          </td>
+	                          <td className="px-8 py-5 text-[12px] font-mono text-slate-400 text-right">
+	                            {formatSec(
+	                              r.retrieval_elapsed_sec_sum /
+	                                Math.max(1, r.assistant_messages || 0)
+	                            )}
+	                          </td>
+	                          <td className="px-8 py-5 text-right">
+	                            {canOpenDataset ? (
+	                              <Link
+	                                href={buildDatasetKnowledgeHref(datasetId)}
+	                                className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-100 bg-indigo-50 px-2.5 py-1.5 text-[11px] font-semibold text-indigo-700 transition-colors hover:border-indigo-200 hover:bg-indigo-100"
+	                              >
+	                                查看
+	                                <ArrowUpRight className="size-3" />
+	                              </Link>
+	                            ) : (
+	                              <span className="text-[11px] font-medium text-slate-300">
+	                                不可跳转
+	                              </span>
+	                            )}
+	                          </td>
+	                        </tr>
+	                      )
+	                    })}
+	                  </tbody>
+	                </table>
               </div>
             </div>
           </div>

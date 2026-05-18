@@ -60,6 +60,7 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { NavigationVisibilityGate } from '@/components/auth/navigation-visibility-gate'
 import { KgExtractPromptSettings } from '@/components/kg-extract-prompt-settings'
 import { KgPredicateOntologySettings } from '@/components/kg-predicate-ontology-settings'
 import { AppFrame } from '@/components/app-frame'
@@ -72,6 +73,14 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
 
 export default function PromptsPage() {
+  return (
+    <NavigationVisibilityGate moduleKey="prompts" pageName="提示词">
+      <PromptsPageContent />
+    </NavigationVisibilityGate>
+  )
+}
+
+function PromptsPageContent() {
   const queryClient = useQueryClient()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false)

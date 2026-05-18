@@ -228,11 +228,36 @@ class DatasetRegressionRunSummaryOut(BaseModel):
     finished_at: datetime | None = None
 
 
+class DatasetReportDataProvenanceOut(BaseModel):
+    """Machine-readable proof that report sections come from persisted backend data."""
+
+    source: str = "database"
+    mocked: bool = False
+    generated_by: str = "ReportService.build_dataset_report"
+    sections: dict[str, str] = Field(
+        default_factory=lambda: {
+            "datasets": "datasets",
+            "documents": "documents",
+            "dataset_profile": "computed_from_documents",
+            "connectors": "connector_runs",
+            "folders": "documents.metadata.source_path",
+            "governance": "documents.metadata.governance_*",
+            "pipeline_versions": "documents.metadata.pipeline_hash",
+            "kg": "kg_tables",
+            "regression": "regression_runs",
+            "precheck": "dataset_precheck_scan_runs",
+        }
+    )
+
+
 class DatasetReportOut(BaseModel):
     dataset_id: UUID
     dataset_name: str | None = None
     pipeline_hash: str | None = None
     generated_at: datetime
+    data_provenance: DatasetReportDataProvenanceOut = Field(
+        default_factory=DatasetReportDataProvenanceOut
+    )
 
     profile: DatasetProfileSummary
     compliance: ComplianceSummary

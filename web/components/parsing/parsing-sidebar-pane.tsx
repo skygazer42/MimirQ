@@ -2,9 +2,6 @@
 
 import type { RefObject } from 'react'
 import {
-  Check,
-  ChevronDown,
-  Clock,
   Database,
   FileText,
   FolderUp,
@@ -54,9 +51,6 @@ type ParsingSidebarPaneProps = {
   currentFolderFileCount: number
   datasetOptions: DatasetScopeOption[]
   selectedDatasetId: string | null
-  pendingCount: number
-  parsingCount: number
-  parsedCount: number
   parseableCount: number
   parserBackend: string
   imageCaptionEnabled: boolean
@@ -82,6 +76,7 @@ type ParsingSidebarPaneProps = {
   onFolderDragLeave: () => void
   onFolderDrop: (event: React.DragEvent<HTMLElement>, folderId: string) => void
   onFolderTreeSelectFile: (fileId: string) => void
+  onToggleGovernanceFileSelection: (fileId: string) => void
   onDeleteFolder: (folderIds: string[]) => void
   onMoveFileToFolder: (fileId: string, folderId: string) => void
   onFileDragStart: (event: React.DragEvent<HTMLElement>, fileId: string) => void
@@ -98,6 +93,22 @@ type DatasetScopeOption = {
 }
 
 const DATASET_ALL_VALUE = '__all__'
+const DOCUMENT_EXTENSIONS = new Set([
+  'pdf',
+  'md',
+  'markdown',
+  'doc',
+  'docx',
+  'txt',
+  'rtf',
+  'rst',
+  'adoc',
+])
+const SPREADSHEET_EXTENSIONS = new Set(['xls', 'xlsx', 'csv', 'tsv'])
+
+function getSidebarFileExtension(name: string) {
+  return name.split('.').pop()?.trim().toLowerCase() || ''
+}
 
 export function ParsingSidebarPane({
   collapsed,
@@ -108,9 +119,6 @@ export function ParsingSidebarPane({
   currentFolderFileCount,
   datasetOptions,
   selectedDatasetId,
-  pendingCount,
-  parsingCount,
-  parsedCount,
   parseableCount,
   parserBackend,
   imageCaptionEnabled,
@@ -133,6 +141,7 @@ export function ParsingSidebarPane({
   onFolderDragLeave,
   onFolderDrop,
   onFolderTreeSelectFile,
+  onToggleGovernanceFileSelection,
   onDeleteFolder,
   onMoveFileToFolder,
   onFileDragStart,
@@ -142,6 +151,26 @@ export function ParsingSidebarPane({
   onRebindFileSelect,
 }: Readonly<ParsingSidebarPaneProps>) {
   const t = useTranslations('ParsingWorkbench')
+  const fileTypeCounts = sidebarFileItems.reduce(
+    (acc, file) => {
+      const extension = getSidebarFileExtension(file.name)
+      if (SPREADSHEET_EXTENSIONS.has(extension)) {
+        acc.spreadsheets += 1
+      } else if (DOCUMENT_EXTENSIONS.has(extension)) {
+        acc.documents += 1
+      } else {
+        acc.other += 1
+      }
+      return acc
+    },
+    { documents: 0, other: 0, spreadsheets: 0 }
+  )
+  const fileTypeSummary = [
+    { label: '全部', value: sidebarFileItems.length, icon: Paperclip },
+    { label: '文档', value: fileTypeCounts.documents, icon: FileText },
+    { label: '表格', value: fileTypeCounts.spreadsheets, icon: Database },
+    { label: '其他', value: fileTypeCounts.other, icon: Settings2 },
+  ]
 
   return (
     <ParsingLeftPanel
@@ -151,7 +180,7 @@ export function ParsingSidebarPane({
     >
       <div
         className={cn(
-          'sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-border/60 bg-card/98 px-3.5 py-3'
+          'sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-border/55 bg-card/96 px-4 py-3.5'
         )}
       >
         <button
@@ -163,7 +192,7 @@ export function ParsingSidebarPane({
           onDrop={(event) => onFolderDrop(event, currentFolderId)}
           title={t('sidebar.uploadCurrentFolderTitle')}
         >
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-info/20 bg-info/[0.09] text-info shadow-[0_6px_16px_-14px_hsl(var(--info))]">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-info/20 bg-info/[0.10] text-info shadow-[0_6px_16px_-14px_hsl(var(--info))]">
             <FileText className="size-3.5" />
           </div>
           <div className="min-w-0 flex-1">
@@ -361,7 +390,7 @@ export function ParsingSidebarPane({
         </div>
       ) : null}
 
-      <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar bg-card px-2.5 py-2.5 dark:bg-card">
+      <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar bg-background/35 px-3 py-3 dark:bg-card">
         {isLibraryLoaded ? (
           <DocumentFolderTree
             className="pb-1"
@@ -370,6 +399,7 @@ export function ParsingSidebarPane({
             onRequestUploadFolder={onRequestUploadFolder}
             showFiles="expanded"
             onSelectFile={onFolderTreeSelectFile}
+            onToggleFileSelected={onToggleGovernanceFileSelection}
             onDeleteFolder={onDeleteFolder}
             onFileDrop={onMoveFileToFolder}
             onRetryFile={onRetryFile}
@@ -416,46 +446,18 @@ export function ParsingSidebarPane({
       />
 
       {currentFolderFileCount > 0 ? (
-        <div className="border-t border-border/60 bg-[linear-gradient(180deg,hsl(var(--background)/0.78),hsl(var(--muted)/0.36))] px-3.5 py-3 backdrop-blur-sm">
-          <div className="grid grid-cols-3 gap-1.5 text-[11px] tabular-nums">
-            <span
-              className={cn(
-                'inline-flex items-center justify-center gap-1 rounded-md border px-1.5 py-1 transition-colors',
-                pendingCount > 0
-                  ? 'border-warning/25 bg-warning/[0.08] text-warning'
-                  : 'border-border/60 bg-muted/40 text-muted-foreground/70'
-              )}
-            >
-              <Clock className="size-3" />
-              <span className="font-medium">{pendingCount}</span>
-            </span>
-            <span
-              className={cn(
-                'inline-flex items-center justify-center gap-1 rounded-md border px-1.5 py-1 transition-colors',
-                parsingCount > 0
-                  ? 'border-info/25 bg-info/[0.08] text-info'
-                  : 'border-border/60 bg-muted/40 text-muted-foreground/70'
-              )}
-            >
-              <Loader2
-                className={cn(
-                  'size-3',
-                  parsingCount > 0 && 'animate-spin motion-reduce:animate-none'
-                )}
-              />
-              <span className="font-medium">{parsingCount}</span>
-            </span>
-            <span
-              className={cn(
-                'inline-flex items-center justify-center gap-1 rounded-md border px-1.5 py-1 transition-colors',
-                parsedCount > 0
-                  ? 'border-success/25 bg-success/[0.08] text-success'
-                  : 'border-border/60 bg-muted/40 text-muted-foreground/70'
-              )}
-            >
-              <Check className="size-3" />
-              <span className="font-medium">{parsedCount}</span>
-            </span>
+        <div className="border-t border-border/60 bg-[linear-gradient(180deg,hsl(var(--background)/0.82),hsl(var(--muted)/0.28))] px-3.5 py-3 backdrop-blur-sm">
+          <div className="grid grid-cols-4 gap-1.5 text-[11px] tabular-nums">
+            {fileTypeSummary.map(({ icon: Icon, label, value }) => (
+              <span
+                key={label}
+                className="inline-flex items-center justify-center gap-1 rounded-md border border-border/60 bg-card/70 px-1.5 py-1 text-muted-foreground/80 transition-colors"
+              >
+                <Icon className="size-3 text-muted-foreground/70" />
+                <span>{label}</span>
+                <span className="font-semibold text-foreground">{value}</span>
+              </span>
+            ))}
           </div>
         </div>
       ) : null}

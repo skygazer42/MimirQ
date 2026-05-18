@@ -31,7 +31,6 @@ describe('data governance panel source', () => {
       src,
       '<span className="w-1.5 h-1.5 rounded-full bg-info/10 dark:bg-info/20" aria-hidden="true" />'
     )
-    expectSourceToContain(src, "aria-label={t('inbound.close')}")
     expectSourceToContain(src, "aria-label={t('emptyUpload.openUploadDialog')}")
     expectSourceToContain(
       src,
@@ -41,5 +40,44 @@ describe('data governance panel source', () => {
     expectSourceToContain(src, 'const contentBody =')
     expectSourceToContain(src, 'const activeFolderLabel = useMemo(() => {')
     expectSourceToContain(src, "t('sidebar.allFolders')")
+  })
+
+  it('does not render inbound routing hints as visible page chrome', () => {
+    const panelSrc = fs.readFileSync(
+      path.resolve(__dirname, 'data-governance-panel.tsx'),
+      'utf8'
+    )
+    const zhSrc = fs.readFileSync(
+      path.resolve(__dirname, '../i18n/messages/zh-CN/governance.ts'),
+      'utf8'
+    )
+
+    expectSourceNotToContain(panelSrc, 'const InboundBanner = useMemo')
+    expectSourceNotToContain(panelSrc, 'top={InboundBanner}')
+    expectSourceNotToContain(panelSrc, "t('inbound.description')")
+    expectSourceNotToContain(zhSrc, '该页当前仅做引导展示')
+    expectSourceNotToContain(zhSrc, 'pipeline/governance')
+  })
+
+  it('adds a saved-document batch handoff queue for chunk preview submission', () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, 'data-governance-panel.tsx'),
+      'utf8'
+    )
+    const storeSrc = fs.readFileSync(
+      path.resolve(__dirname, '../store/use-parsed-files-store.ts'),
+      'utf8'
+    )
+
+    expectSourceToContain(src, 'selectedChunkFileIds')
+    expectSourceToContain(src, 'toggleChunkFileSelection')
+    expectSourceToContain(src, "file.chunkStatus === 'ready'")
+    expectSourceToContain(src, 'markReadyFileIds')
+    expectSourceToContain(src, 'markSubmittedFileIds')
+    expectSourceToContain(src, 'handleSubmitSelectedToChunkPreview')
+    expectSourceToContain(src, 'actions.submitSelectedToChunkPreview')
+    expectSourceToContain(src, "t('sidebar.chunkReady')")
+    expectSourceToContain(src, "t('sidebar.chunkSubmitted')")
+    expectSourceToContain(storeSrc, "chunkStatus?: 'draft' | 'ready' | 'submitted'")
   })
 })

@@ -12,6 +12,18 @@ describe('PipelineRail', () => {
     expect(src).toContain('data-testid="pipeline-rail"')
     expect(src).toContain('compact = false')
     expect(src).toContain('rounded-full')
-    expect(src).toContain('className="min-w-max"')
+    expect(src).toContain('w-full max-w-full overflow-hidden')
+    expect(src).toContain("compact ? 'min-w-max' : 'w-full min-w-[640px]'")
+  })
+
+  it('uses a full-row dashed connector in the non-compact workflow rail', () => {
+    const stepperSrc = fs.readFileSync(
+      path.resolve(__dirname, '../ui/ingestion-workflow-stepper.tsx'),
+      'utf8'
+    )
+
+    expect(stepperSrc).toContain('flex-1 border-t border-dashed')
+    expect(stepperSrc).toContain('aria-hidden="true"')
+    expect(stepperSrc).not.toContain('mx-2 text-sm')
   })
 })

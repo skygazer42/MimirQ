@@ -2261,7 +2261,10 @@ function RightEmptyInfoCard({
 
 function SimilarityEmptyState() {
   return (
-    <section className="flex h-full w-full max-w-[920px] flex-col items-center justify-center overflow-hidden rounded-[30px] border border-sidebar-border/70 bg-card px-10 py-8 text-center shadow-soft">
+    <section
+      aria-label="相似度矩阵空状态"
+      className="flex h-full w-full max-w-[920px] flex-col items-center justify-center overflow-hidden rounded-[30px] border border-sidebar-border/70 bg-card px-10 py-8 text-center shadow-soft"
+    >
       <div className="relative h-48 w-72">
         <div className="absolute left-1/2 top-4 h-36 w-36 -translate-x-1/2 rounded-full border border-blue-300/35" />
         <div className="absolute left-1/2 top-0 h-48 w-48 -translate-x-1/2 rounded-full border border-blue-200/35" />
@@ -2290,14 +2293,7 @@ function SimilarityEmptyState() {
         <span className="absolute right-16 top-28 size-2 rounded-full bg-blue-300/70" />
       </div>
 
-      <h2 className="mt-1 text-[28px] font-semibold text-foreground">
-        等待相似度矩阵
-      </h2>
-      <p className="mt-3 max-w-[520px] text-[15px] leading-7 text-muted-foreground">
-        请先在左侧选择横/纵坐标 Collection，点「计算相似度」后在这里查看热力图。
-      </p>
-
-      <div className="mt-8 flex w-full max-w-[560px] items-start justify-between">
+      <div className="mt-5 flex w-full max-w-[560px] items-start justify-between">
         <EmptyStep
           index={1}
           title="选择 X Collection"

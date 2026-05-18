@@ -1,7 +1,7 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import {
   Activity,
   BarChart3,
@@ -24,6 +24,7 @@ import {
   Settings2,
   LayoutGrid,
   ShieldAlert,
+  Info,
   type LucideIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -41,6 +42,12 @@ import {
   SelectTrigger,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { useBackendHealth } from '@/hooks/use-backend-health'
 import { useBackendMeta } from '@/hooks/use-backend-meta'
 import { formatApiError } from '@/lib/api-errors'
@@ -66,6 +73,8 @@ const FIELD_LABEL = 'text-[12px] font-medium text-slate-500 mb-1.5 block'
 const ALL_DOCUMENTS_VALUE = '__all_documents__'
 const EMPTY_DATASETS: Dataset[] = []
 const EMPTY_DOCUMENTS: KnowledgeDocument[] = []
+const PENDING_RUN_LABEL = '待执行'
+const MISSING_RESULT_LABEL = '未返回'
 
 const DIAGNOSTIC_DIMENSIONS = [
   {
@@ -141,12 +150,35 @@ function pickMetricNumber(source: any, keys: string[]): number | null {
   return null
 }
 
+function pickMetricNumberByPath(source: any, paths: string[]): number | null {
+  if (!source || typeof source !== 'object') return null
+  for (const path of paths) {
+    const value = path
+      .split('.')
+      .reduce<any>(
+        (current, key) =>
+          current && typeof current === 'object' ? current[key] : undefined,
+        source
+      )
+    if (typeof value === 'number' && Number.isFinite(value)) return value
+    if (typeof value === 'string' && Number.isFinite(Number(value))) {
+      return Number(value)
+    }
+  }
+  return null
+}
+
 function fmtScore(v: number | null, d = 2) {
-  return v === null ? '未运行' : v.toFixed(d)
+  return v === null ? PENDING_RUN_LABEL : v.toFixed(d)
 }
 
 function fmtMetric(v: number | null, d = 2, suffix = '') {
-  if (v === null) return '未运行'
+  if (v === null) return PENDING_RUN_LABEL
+  return `${v.toFixed(d)}${suffix}`
+}
+
+function fmtExecutedMetric(v: number | null, d = 2, suffix = '') {
+  if (v === null) return MISSING_RESULT_LABEL
   return `${v.toFixed(d)}${suffix}`
 }
 
@@ -157,7 +189,7 @@ function fmtMetricOrMissing(
   suffix = ''
 ) {
   if (value !== null) return `${value.toFixed(d)}${suffix}`
-  return hasResult ? '未返回' : '未运行'
+  return hasResult ? MISSING_RESULT_LABEL : PENDING_RUN_LABEL
 }
 
 function fmtCountOrMissing(
@@ -166,7 +198,11 @@ function fmtCountOrMissing(
   suffix = ''
 ) {
   if (value !== null) return `${value.toLocaleString()}${suffix}`
-  return hasResult ? '未返回' : '未运行'
+  return hasResult ? MISSING_RESULT_LABEL : PENDING_RUN_LABEL
+}
+
+function isPendingMetricLabel(value: string) {
+  return value === PENDING_RUN_LABEL || value === MISSING_RESULT_LABEL
 }
 
 function fmtDateTime(value?: string | null) {
@@ -207,7 +243,7 @@ function documentLabel(document: KnowledgeDocument) {
 }
 
 function metricSource(hasResult: boolean, source: string) {
-  return hasResult ? source : '等待运行'
+  return hasResult ? source : '手动诊断'
 }
 
 function dependencyStatus(value: unknown): string {
@@ -363,9 +399,7 @@ function DimensionMatrixItem({
           <span
             className={cn(
               'truncate text-[11px] font-semibold',
-              value === '未运行' || value === '未返回'
-                ? 'text-slate-400'
-                : 'text-slate-700'
+              isPendingMetricLabel(value) ? 'text-slate-400' : 'text-slate-700'
             )}
           >
             {value}
@@ -383,16 +417,18 @@ function MainMetricCard({
   icon: Icon,
   label,
   value,
+  help,
   loading = false,
   tone = 'slate',
 }: {
   icon: LucideIcon
   label: string
   value: string
+  help?: ReactNode
   loading?: boolean
   tone?: string
 }) {
-  const isWait = value === '未运行'
+  const isWait = isPendingMetricLabel(value)
   const toneClass =
     {
       slate: 'bg-slate-50 text-slate-400 border-slate-100',
@@ -412,9 +448,14 @@ function MainMetricCard({
         <Icon className="size-5" />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-medium text-slate-500 leading-none mb-2">
-          {label}
-        </p>
+        <div className="mb-2 flex items-center gap-1.5">
+          <p className="text-[11px] font-medium leading-none text-slate-500">
+            {label}
+          </p>
+          {help ? (
+            <MetricInfoTooltip label={`${label}说明`}>{help}</MetricInfoTooltip>
+          ) : null}
+        </div>
         {loading ? (
           <div className="h-5 w-20 bg-slate-50 animate-pulse rounded" />
         ) : (
@@ -427,6 +468,91 @@ function MainMetricCard({
             {value}
           </p>
         )}
+      </div>
+    </div>
+  )
+}
+
+function MetricInfoTooltip({
+  label,
+  children,
+  side = 'top',
+}: {
+  label: string
+  children: ReactNode
+  side?: 'top' | 'right' | 'bottom' | 'left'
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label={label}
+          className="inline-flex size-4 items-center justify-center rounded-full border border-slate-200 bg-card text-slate-400 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+        >
+          <Info className="size-3" aria-hidden="true" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent
+        side={side}
+        align="center"
+        className="max-w-[280px] rounded-lg bg-slate-950 px-3 py-2 text-[11px] leading-5 text-slate-50 shadow-lg"
+      >
+        {children}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+function DiagnosticUseGuide() {
+  return (
+    <div className="rounded-2xl border border-blue-100/70 bg-gradient-to-r from-blue-50/90 via-white to-sky-50/80 p-3 shadow-[0_10px_24px_rgba(37,99,235,0.05)]">
+      <div className="grid gap-2 lg:grid-cols-[1.1fr_1fr_1fr]">
+        <DiagnosticUseStep
+          icon={Search}
+          title="RAG 预览看召回"
+          action="点击：运行 RAG 预览"
+          text="用当前问题真实调用检索预览，生成检索相关性、召回引用和 token 成本。"
+        />
+        <DiagnosticUseStep
+          icon={Timer}
+          title="漂移检查看重嵌入风险"
+          action="点击：漂移检查"
+          text="抽样比较当前 embedding 配置和已存向量，判断是否需要重建向量。"
+        />
+        <DiagnosticUseStep
+          icon={ShieldCheck}
+          title="性能门禁看稳定性"
+          action="点击：性能门禁"
+          text="运行后端性能探针，确认接口耗时和稳定性是否达到上线门槛。"
+        />
+      </div>
+    </div>
+  )
+}
+
+function DiagnosticUseStep({
+  icon: Icon,
+  title,
+  action,
+  text,
+}: {
+  icon: LucideIcon
+  title: string
+  action: string
+  text: string
+}) {
+  return (
+    <div className="flex gap-3 rounded-xl border border-white/80 bg-white/75 px-3 py-2.5">
+      <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-blue-100 bg-blue-50 text-blue-600">
+        <Icon className="size-4" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-[12px] font-semibold text-slate-900">{title}</p>
+        <p className="mt-0.5 text-[10px] font-semibold text-blue-600">
+          {action}
+        </p>
+        <p className="mt-1 text-[11px] leading-5 text-slate-500">{text}</p>
       </div>
     </div>
   )
@@ -629,14 +755,25 @@ export default function DiagnosticsPage() {
   const systemStatusLabel = healthOk && readyOk ? '正常' : '需要排查'
   const systemStatusTone = healthOk && readyOk ? 'green' : 'red'
   const serviceTime = fmtDateTime(meta.data?.time || health.data?.payload?.time)
-  const driftMetric = pickMetricNumber(driftSnapshot, [
+  const driftMetric = pickMetricNumberByPath(driftSnapshot, [
+    'above_threshold.ratio',
+    'above_threshold_ratio',
+    'exceed_threshold_ratio',
+    'exceed_ratio',
     'drift_rate',
     'driftRate',
     'drifted_ratio',
     'exceed_rate',
+    'drift.avg',
+    'drift.mean',
     'avg_drift',
     'mean_drift',
   ])
+  const driftStatusLabel = driftSnapshot
+    ? driftMetric === null
+      ? MISSING_RESULT_LABEL
+      : `${driftMetric.toFixed(3)} 漂移率`
+    : PENDING_RUN_LABEL
   const perfGateStatus = perfSuiteResult
     ? String(
         perfSuiteResult.status ||
@@ -644,7 +781,7 @@ export default function DiagnosticsPage() {
           perfSuiteResult.result ||
           '已运行'
       )
-    : '未运行'
+    : PENDING_RUN_LABEL
   const perfGateTone = /pass|passed|ok|success|通过|已运行/i.test(
     perfGateStatus
   )
@@ -768,6 +905,11 @@ export default function DiagnosticsPage() {
     ? probeResult.citations.length
     : null
   const hasProbeResult = Boolean(probeResult)
+  const ragPreviewStatusLabel = hasProbeResult
+    ? citationCount === null
+      ? MISSING_RESULT_LABEL
+      : `${citationCount.toLocaleString()} 条引用`
+    : PENDING_RUN_LABEL
   const dimensionStatuses: Record<
     DiagnosticDimensionId,
     { value: string; source: string; tone: MetricTone }
@@ -819,14 +961,14 @@ export default function DiagnosticsPage() {
           : perfSuiteResult
             ? perfGateStatus
             : hasProbeResult
-              ? '未返回'
-              : '未运行',
+              ? MISSING_RESULT_LABEL
+              : PENDING_RUN_LABEL,
       source:
         latencyMs !== null
           ? 'metrics'
           : perfSuiteResult
             ? 'perf-suite'
-            : '等待运行',
+            : PENDING_RUN_LABEL,
       tone:
         latencyMs !== null
           ? latencyMs <= 1000
@@ -879,6 +1021,15 @@ export default function DiagnosticsPage() {
       health.data,
     ]
   )
+  const hasManualDiagnostics = Boolean(
+    probeResult || driftSnapshot || perfSuiteResult
+  )
+  const manualDiagnosticsStatus =
+    probeRunning || driftRunning || perfSuiteRunning
+      ? '执行中'
+      : hasManualDiagnostics
+        ? '已生成'
+        : PENDING_RUN_LABEL
 
   const backendRecommendations = ((onlineQuality as any)?.recommendations ??
     []) as string[]
@@ -888,14 +1039,15 @@ export default function DiagnosticsPage() {
       <PageScaffold
         title="诊断中心"
         description="全面诊断系统健康状态、服务依赖与 RAG 质量，保障稳定可靠运行"
-        icon={Activity}
-        iconColor="text-blue-600"
-        size="full"
-        showHeader={false}
-        bodyGutter="dense"
-        bodyClassName="bg-slate-50/50 pt-3 pb-6"
-      >
-        <div className="flex flex-col gap-3">
+	        icon={Activity}
+	        iconColor="text-blue-600"
+	        size="full"
+	        showHeader={false}
+	        bodyGutter="dense"
+	        bodyClassName="bg-slate-50/50 pt-3 pb-6"
+	      >
+	        <TooltipProvider delayDuration={120}>
+	          <div className="flex flex-col gap-3">
           <PageHeader
             title="诊断中心"
             description="全面诊断系统健康状态、服务依赖与 RAG 质量，保障稳定可靠运行"
@@ -986,15 +1138,17 @@ export default function DiagnosticsPage() {
               label="向量后端"
               value={
                 readySnapshot?.vector?.backend ||
-                health.data?.payload?.vector_backend ||
-                'milvus'
-              }
-              detail="VECTOR_PROVIDER"
-              tone="green"
-            />
-          </div>
+	                health.data?.payload?.vector_backend ||
+	                'milvus'
+	              }
+	              detail="VECTOR_PROVIDER"
+	              tone="green"
+	            />
+	          </div>
 
-          {/* Main Config Section */}
+	          <DiagnosticUseGuide />
+
+	          {/* Main Config Section */}
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
             {/* 1. 诊断配置 */}
             <div className={cn(CARD_BASE, 'lg:col-span-4')}>
@@ -1260,94 +1414,103 @@ export default function DiagnosticsPage() {
             </div>
           </div>
 
-          {/* 4. 核心指标横条 */}
-          <div>
-            <div className="mb-3 flex items-center justify-between gap-3 px-2">
-              <h3 className="m-0 flex items-center gap-2 text-[14px] font-semibold text-slate-950">
-                <BarChart3 className="size-4 text-blue-500" /> 核心指标
-              </h3>
-              <p className="text-[11px] font-medium text-slate-400">
-                来自 RAG 预览、Embedding Drift 与 Perf Suite 的后端响应
-              </p>
-            </div>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
-              <MainMetricCard
-                icon={Search}
-                label="检索相关性"
-                value={fmtMetricOrMissing(hasProbeResult, retrievalScore)}
-                loading={probeRunning}
-                tone={metricTone(retrievalScore)}
-              />
-              <MainMetricCard
-                icon={CheckCircle2}
-                label="召回引用"
-                value={fmtCountOrMissing(hasProbeResult, citationCount)}
-                loading={probeRunning}
-                tone={
-                  citationCount === null
-                    ? 'slate'
-                    : citationCount > 0
+	          {/* 4. 核心指标横条 */}
+	          <div>
+	            <div className="mb-3 flex items-center justify-between gap-3 px-2">
+	              <h3 className="m-0 flex items-center gap-2 text-[14px] font-semibold text-slate-950">
+	                <BarChart3 className="size-4 text-blue-500" /> 核心指标
+	                <MetricInfoTooltip label="核心指标说明" side="right">
+	                  这里不是自动生成的总报告。RAG
+	                  预览、漂移检查、性能门禁是三个独立探针，分别点击后只更新自己负责的指标。
+	                </MetricInfoTooltip>
+	              </h3>
+	              <p className="text-[11px] font-medium text-slate-400">
+	                先跑左侧按钮，再看对应指标
+	              </p>
+	            </div>
+	            <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
+	              <MainMetricCard
+	                icon={Search}
+	                label="检索相关性"
+	                value={fmtMetricOrMissing(hasProbeResult, retrievalScore)}
+	                help="点击“运行 RAG 预览”后生成。用于判断当前问题召回的片段和问题是否相关，低分通常要检查切块、embedding、Top K 或 reranker。"
+	                loading={probeRunning}
+	                tone={metricTone(retrievalScore)}
+	              />
+	              <MainMetricCard
+	                icon={CheckCircle2}
+	                label="召回引用"
+	                value={fmtCountOrMissing(hasProbeResult, citationCount)}
+	                help="点击“运行 RAG 预览”后生成。表示这次回答拿到了多少条可引用证据；为 0 时通常说明检索没找到可用上下文。"
+	                loading={probeRunning}
+	                tone={
+	                  citationCount === null
+	                    ? 'slate'
+	                    : citationCount > 0
                       ? 'green'
                       : 'amber'
-                }
-              />
-              <MainMetricCard
-                icon={Hash}
-                label="提示词 token"
-                value={fmtCountOrMissing(hasProbeResult, promptTokenCount)}
-                loading={probeRunning}
-                tone={promptTokenCount === null ? 'slate' : 'amber'}
-              />
-              <MainMetricCard
-                icon={Timer}
-                label="漂移率"
-                value={
-                  driftRunning
-                    ? '检查中'
-                    : driftSnapshot
-                      ? fmtScore(driftMetric, 3)
-                      : '未运行'
-                }
-                loading={driftRunning}
-                tone={metricTone(driftMetric)}
-              />
-              <MainMetricCard
-                icon={ShieldCheck}
-                label="性能门禁"
-                value={perfSuiteRunning ? '执行中' : perfGateStatus}
-                loading={perfSuiteRunning}
-                tone={perfGateTone}
-              />
-            </div>
-          </div>
+	                }
+	              />
+	              <MainMetricCard
+	                icon={Hash}
+	                label="提示词 token"
+	                value={fmtCountOrMissing(hasProbeResult, promptTokenCount)}
+	                help="点击“运行 RAG 预览”后生成。用于估算本次检索上下文和问题进入模型的 token 成本，过高会影响费用和响应速度。"
+	                loading={probeRunning}
+	                tone={promptTokenCount === null ? 'slate' : 'amber'}
+	              />
+	              <MainMetricCard
+	                icon={Timer}
+	                label="漂移率"
+	                value={
+	                  driftRunning
+	                    ? '检查中'
+	                    : driftSnapshot
+	                      ? fmtExecutedMetric(driftMetric, 3)
+	                      : PENDING_RUN_LABEL
+	                }
+	                help="点击“漂移检查”后生成。后端抽样比较当前 embedding 配置与已存向量；0 表示样本未发现漂移，比例升高说明可能需要重新嵌入。"
+	                loading={driftRunning}
+	                tone={metricTone(driftMetric)}
+	              />
+	              <MainMetricCard
+	                icon={ShieldCheck}
+	                label="性能门禁"
+	                value={perfSuiteRunning ? '执行中' : perfGateStatus}
+	                help="点击“性能门禁”后生成。用于快速判断后端诊断接口在当前迭代次数和超时设置下是否稳定通过。"
+	                loading={perfSuiteRunning}
+	                tone={perfGateTone}
+	              />
+	            </div>
+	          </div>
 
-          {/* 5. 底层分析网格 */}
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
-            {/* 分析结论 */}
-            <div className={cn(CARD_BASE, 'lg:col-span-3')}>
-              <h3 className={SECTION_TITLE}>
-                <LayoutGrid className="size-4 text-blue-500" /> 分析结论
-              </h3>
-              <div className="space-y-2 pt-1">
-                <结论项
-                  label="整体评估"
-                  status={
-                    probeResult || driftSnapshot || perfSuiteResult
-                      ? systemStatusLabel
-                      : '未运行'
-                  }
-                />
-                <结论项 label="门禁状态" status={perfGateStatus} />
-                <结论项
-                  label="召回引用"
-                  status={fmtCountOrMissing(hasProbeResult, citationCount)}
-                />
-                <结论项
-                  label="报告时间"
-                  status={fmtDateTime(health.data?.payload?.time)}
-                />
-              </div>
-            </div>
+	          {/* 5. 底层分析网格 */}
+	          <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
+	            {/* 执行结果 */}
+	            <div className={cn(CARD_BASE, 'lg:col-span-3')}>
+	              <h3 className={SECTION_TITLE}>
+	                <LayoutGrid className="size-4 text-blue-500" /> 执行结果
+	                <MetricInfoTooltip label="执行结果说明" side="right">
+	                  每一行对应一个按钮。只点“漂移检查”时，RAG
+	                  预览和性能门禁保持待执行是正常的。
+	                </MetricInfoTooltip>
+	              </h3>
+	              <div className="space-y-2 pt-1">
+	                <结论项
+	                  label="RAG 预览"
+	                  status={probeRunning ? '执行中' : ragPreviewStatusLabel}
+	                />
+	                <结论项
+	                  label="漂移检查"
+	                  status={driftRunning ? '执行中' : driftStatusLabel}
+	                />
+	                <结论项 label="性能门禁" status={perfGateStatus} />
+	                <结论项
+	                  label="报告时间"
+	                  status={fmtDateTime(health.data?.payload?.time)}
+	                />
+	              </div>
+	            </div>
 
             {/* 依赖资源 */}
             <div className={cn(CARD_BASE, 'lg:col-span-3')}>
@@ -1369,34 +1532,50 @@ export default function DiagnosticsPage() {
               </div>
             </div>
 
-            {/* 后端输出 */}
+            {/* 排障摘要 */}
             <div className={cn(CARD_BASE, 'lg:col-span-3 flex flex-col')}>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-[14px] font-semibold text-slate-950 flex items-center gap-2 m-0">
-                  <Terminal className="size-4 text-blue-500" /> 后端输出
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <h3 className="m-0 flex items-center gap-2 text-[14px] font-semibold text-slate-950">
+                  <Terminal className="size-4 text-blue-500" /> 排障摘要
                 </h3>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  aria-label="复制后端输出 JSON"
-                  className="h-7 gap-1.5 text-[11px] font-semibold"
-                  onClick={() => copyToClipboard(backendSummaryJson)}
-                >
-                  <Copy className="size-3" /> 复制
-                </Button>
+                <span className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-600">
+                  原始响应已收起
+                </span>
               </div>
-              <div className="flex-1 bg-slate-950 rounded-xl p-4 font-mono text-[12px] relative group overflow-hidden">
-                <div className="absolute left-0 top-0 bottom-0 w-8 bg-slate-900/50 flex flex-col items-center pt-4 text-slate-600 select-none border-r border-slate-800">
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
-                    <span key={n} className="leading-5">
-                      {n}
-                    </span>
-                  ))}
-                </div>
-                <pre className="pl-8 leading-5 text-blue-400/90 max-h-[170px] overflow-auto custom-scrollbar">
-                  {backendSummaryJson}
-                </pre>
+              <div className="space-y-2">
+                <DiagnosticsSummaryItem
+                  label="系统健康"
+                  value={health.isPending ? '检查中' : systemStatusLabel}
+                  detail={serviceTime}
+                  tone={systemStatusTone}
+                />
+                <DiagnosticsSummaryItem
+                  label="依赖就绪"
+                  value={
+                    readyLoading && !readySnapshot
+                      ? '检查中'
+                      : readyOk
+                        ? '已就绪'
+                        : '需排查'
+                  }
+                  detail={readySnapshot ? '/health/ready 已返回' : '等待就绪响应'}
+                  tone={readyOk ? 'blue' : 'red'}
+                />
+                <DiagnosticsSummaryItem
+                  label="诊断任务"
+                  value={manualDiagnosticsStatus}
+                  detail={
+                    hasManualDiagnostics
+                      ? '已有 RAG / Drift / Perf 结果'
+                      : '需手动运行左侧诊断'
+                  }
+                  tone={hasManualDiagnostics ? 'green' : 'slate'}
+                />
               </div>
+              <RawDiagnosticsDetails
+                json={backendSummaryJson}
+                onCopy={() => copyToClipboard(backendSummaryJson)}
+              />
             </div>
 
             {/* 后端建议 */}
@@ -1421,29 +1600,18 @@ export default function DiagnosticsPage() {
                     <Activity className="size-6 text-slate-200" />
                   </div>
                   <p className="text-[13px] font-semibold text-slate-400">
-                    未运行诊断，暂无建议
+                    暂无后端建议
                   </p>
                   <p className="mt-1 text-[11px] text-slate-300">
-                    运行诊断后将提供优化建议
+                    运行 RAG 预览、漂移检查或性能门禁后生成建议
                   </p>
                 </div>
               )}
             </div>
-          </div>
-
-          {/* Footer Collapsibles */}
-          <div className="space-y-2">
-            <FooterCollapsible
-              label="排障材料 (原始响应)"
-              detail="用于排查诊断异常或问题的原始材料与响应内容"
-            />
-            <FooterCollapsible
-              label="更多明细"
-              detail="查看各维度更详细的指标与数据"
-            />
-          </div>
-        </div>
-      </PageScaffold>
+	          </div>
+	        </div>
+	      </TooltipProvider>
+	      </PageScaffold>
     </AppFrame>
   )
 }
@@ -1488,25 +1656,81 @@ function 资源项({ label, status }: { label: string; status: string }) {
   )
 }
 
-function FooterCollapsible({
+function DiagnosticsSummaryItem({
   label,
   detail,
+  value,
+  tone = 'slate',
 }: {
   label: string
   detail: string
+  value: string
+  tone?: 'slate' | 'green' | 'blue' | 'red' | 'amber'
+}) {
+  const toneClass =
+    {
+      slate: 'border-slate-100 bg-slate-50 text-slate-600',
+      green: 'border-emerald-100 bg-emerald-50 text-emerald-600',
+      blue: 'border-blue-100 bg-blue-50 text-blue-600',
+      red: 'border-red-100 bg-red-50 text-red-500',
+      amber: 'border-amber-100 bg-amber-50 text-amber-600',
+    }[tone] || 'border-slate-100 bg-slate-50 text-slate-600'
+
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2">
+      <div className="min-w-0">
+        <p className="truncate text-[11px] font-medium text-slate-500">
+          {label}
+        </p>
+        <p className="mt-0.5 truncate text-[10px] text-slate-400">{detail}</p>
+      </div>
+      <span
+        className={cn(
+          'shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold',
+          toneClass
+        )}
+      >
+        {value}
+      </span>
+    </div>
+  )
+}
+
+function RawDiagnosticsDetails({
+  json,
+  onCopy,
+}: {
+  json: string
+  onCopy: () => void
 }) {
   return (
-    <div className="bg-card rounded-xl border border-slate-200/70 px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors group">
-      <div className="flex items-center gap-4">
-        <div className="size-8 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400 group-hover:text-blue-500 group-hover:bg-blue-50">
-          <FileJson className="size-4" />
+    <details className="group mt-3 rounded-xl border border-slate-200/70 bg-card">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-[12px] font-semibold text-slate-700 transition-colors hover:bg-blue-50/50 [&::-webkit-details-marker]:hidden">
+        <span className="flex items-center gap-2">
+          <FileJson className="size-3.5 text-blue-500" />
+          查看原始响应
+        </span>
+        <ChevronDown className="size-3.5 text-slate-400 transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="border-t border-slate-100 p-3">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <p className="text-[11px] font-medium text-slate-400">
+            仅用于排障复制，不默认占用诊断主视图。
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            aria-label="复制原始响应 JSON"
+            className="h-7 gap-1.5 rounded-lg border-slate-200 bg-card text-[11px] font-semibold text-slate-600 hover:bg-blue-50 hover:text-blue-600"
+            onClick={onCopy}
+          >
+            <Copy className="size-3" /> 复制
+          </Button>
         </div>
-        <div className="min-w-0">
-          <p className="text-[13px] font-bold text-slate-700">{label}</p>
-          <p className="text-[11px] text-slate-400 font-medium">{detail}</p>
-        </div>
+        <pre className="max-h-[180px] overflow-auto rounded-lg bg-slate-950 p-3 font-mono text-[11px] leading-5 text-blue-100 custom-scrollbar">
+          {json}
+        </pre>
       </div>
-      <ChevronDown className="size-4 text-slate-300" />
-    </div>
+    </details>
   )
 }

@@ -18,6 +18,7 @@ import { GovernanceSection } from './_sections/governance-section'
 import { IndustryRulesSection } from './_sections/industry-rules-section'
 import { LtrModelRegistrySection } from './_sections/ltr-model-registry-section'
 import { ModelProvidersSection } from './_sections/model-providers-section'
+import { NavigationVisibilitySection } from './_sections/navigation-visibility-section'
 import { ObservabilitySection } from './_sections/observability-section'
 import { ParserServicesSection } from './_sections/parser-services-section'
 import { RagSection } from './_sections/rag-section'
@@ -45,6 +46,7 @@ import { systemPageTokens } from '@/components/ui/system-page-tokens'
 const SETTINGS_SECTIONS = [
   { id: 'sec-flags', label: '功能开关' },
   { id: 'sec-frontend', label: '前端偏好' },
+  { id: 'sec-navigation', label: '导航权限' },
   { id: 'sec-parsers', label: '解析服务' },
   { id: 'sec-status', label: '系统状态' },
   { id: 'sec-models', label: '模型接入' },
@@ -548,6 +550,13 @@ function SettingsContent({
             setParserBackend={setParserBackend}
             chunkStrategy={chunkStrategy}
             setChunkStrategy={setChunkStrategy}
+          />
+        </div>
+
+        <div id="sec-navigation" className="scroll-mt-24">
+          <NavigationVisibilitySection
+            navigation={state.navigationMerged}
+            updateNavigation={state.updateNavigation}
           />
         </div>
 

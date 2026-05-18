@@ -76,6 +76,7 @@ type KnowledgeDocumentsPanelProps = {
   isLoading: boolean
   documents: Document[]
   filteredDocuments: Document[]
+  totalDocumentsCount: number
   datasets?: Dataset[]
   embedded?: boolean
 
@@ -101,6 +102,10 @@ type KnowledgeDocumentsPanelProps = {
   docGridRowCount: number
   docsGridVirtualizer: any
   docsTableVirtualizer: any
+  page: number
+  pageSize: number
+  pageCount: number
+  onPageChange: (page: number) => void
 
   selectedDocIds: string[]
   setSelectedDocIds: (value: string[]) => void
@@ -199,6 +204,7 @@ export function KnowledgeDocumentsPanel({
   isLoading,
   documents,
   filteredDocuments,
+  totalDocumentsCount,
   datasets = [],
   embedded = false,
   selectedDatasetId,
@@ -219,6 +225,10 @@ export function KnowledgeDocumentsPanel({
   docGridRowCount,
   docsGridVirtualizer,
   docsTableVirtualizer,
+  page,
+  pageSize,
+  pageCount,
+  onPageChange,
   selectedDocIds,
   setSelectedDocIds,
   selectedSet,
@@ -359,14 +369,90 @@ export function KnowledgeDocumentsPanel({
     )
   }
 
-  const visibleDocumentsCount = filteredDocuments.length
+  const visibleDocumentsCount = totalDocumentsCount
+  const pageStart = visibleDocumentsCount
+    ? (page - 1) * pageSize + 1
+    : 0
+  const pageEnd = Math.min(page * pageSize, visibleDocumentsCount)
+  const canGoPrevious = page > 1
+  const canGoNext = page < pageCount
   const isDatasetEmpty = documents.length === 0
-  const showEmptyState = filteredDocuments.length === 0
+  const showEmptyState = visibleDocumentsCount === 0
   const compactEmptyInventory = embedded && showEmptyState
   const iconShellClassName =
     'relative overflow-hidden shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_10px_20px_-18px_rgba(15,23,42,0.24)] backdrop-blur-[6px]'
   const inventoryStatCardClassName =
     'group relative overflow-hidden rounded-[16px] border border-sky-100/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(239,248,255,0.82))] px-3 py-2 shadow-[0_12px_24px_-24px_rgba(37,99,235,0.34)] transition-[border-color,box-shadow,transform] hover:border-sky-200/90 hover:shadow-[0_16px_28px_-24px_rgba(37,99,235,0.32)] dark:border-border/70 dark:bg-background/60'
+  const checkboxCellClassName =
+    'flex size-7 items-center justify-center rounded-[10px] border border-sky-100/80 bg-white/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.86),0_8px_16px_-14px_rgba(37,99,235,0.35)] dark:border-border/70 dark:bg-background/70'
+  const checkboxInputClassName =
+    'size-4 cursor-pointer rounded-[5px] border-sky-200/90 bg-white text-primary shadow-sm focus-ring dark:border-border/70 dark:bg-background'
+  const inventoryToolbar = (
+    <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+      <SearchInput
+        value={docFilter}
+        onValueChange={setDocFilter}
+        containerClassName="min-w-0 w-full xl:max-w-[480px]"
+        inputClassName="h-9 rounded-[12px] border-sky-100/75 bg-white/92 pr-4 text-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,0.86)] dark:border-border/70 dark:bg-background/72"
+        placeholder={
+          showDatasetColumn
+            ? '搜索文件名 / 文档 ID / 数据集'
+            : '搜索文件名 / 文档 ID'
+        }
+      />
+
+      <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap lg:justify-end">
+        <Select
+          value={sortKey}
+          onValueChange={(value) => setSortKey(value as DocSortKey)}
+        >
+          <SelectTrigger className="h-9 min-w-[144px] rounded-[12px] border-sky-100/75 bg-white/92 text-[11px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.86)] dark:border-border/70 dark:bg-background/72">
+            <SelectValue placeholder={t('table.columns.name')} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="created_at">按上传时间</SelectItem>
+            <SelectItem value="filename">按文件名</SelectItem>
+            <SelectItem value="file_size">按文件大小</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-9 min-w-[80px] justify-center rounded-[12px] border-sky-100/75 bg-white/92 px-3 text-[11px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.86)] hover:border-sky-200/90 dark:border-border/70 dark:bg-background/72"
+          onClick={() => setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}
+        >
+          {sortDir === 'asc' ? '升序' : '降序'}
+        </Button>
+
+        {hasActiveFilters ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-9 min-w-[96px] justify-center rounded-[12px] border border-sky-100/75 bg-white/84 px-3 text-[11px] font-medium hover:bg-white dark:border-border/70 dark:bg-background/62"
+            onClick={onClearFilters}
+          >
+            <RotateCcw className="mr-2 size-3.5" />
+            清空筛选
+          </Button>
+        ) : null}
+
+        <Button
+          type="button"
+          variant={opsOpen ? 'default' : 'outline'}
+          size="sm"
+          className="h-9 min-w-[96px] justify-center rounded-[12px] px-3 text-[11px] font-medium"
+          aria-expanded={opsOpen}
+          onClick={() => setOpsOpen((open) => !open)}
+        >
+          <Activity className="mr-2 size-3.5" />
+          运维工具
+        </Button>
+      </div>
+    </div>
+  )
 
   return (
     <div
@@ -656,7 +742,7 @@ export function KnowledgeDocumentsPanel({
                 </div>
                 Document Inventory
               </div>
-              <div className="text-[18px] font-medium text-foreground/92">
+              <div className="text-[19px] font-semibold text-foreground">
                 {selectedDatasetLabel || '全部知识库文档总览'}
               </div>
               <div className="max-w-3xl text-[12px] leading-5 text-muted-foreground/76">
@@ -720,89 +806,35 @@ export function KnowledgeDocumentsPanel({
           </div>
 
           {scopeSummary ? <div className="mt-2.5">{scopeSummary}</div> : null}
-
-          <div className="mt-2.5 rounded-[14px] border border-sky-100/65 bg-white/58 p-1.5 shadow-[0_12px_28px_-30px_rgba(37,99,235,0.24)] backdrop-blur-xl dark:border-border/60 dark:bg-background/35">
-            <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-              <SearchInput
-                value={docFilter}
-                onValueChange={setDocFilter}
-                containerClassName="min-w-0 w-full xl:max-w-[460px]"
-                inputClassName="h-9 rounded-[10px] border-sky-100/75 bg-white/90 pr-4 text-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-border/70 dark:bg-background/70"
-                placeholder={
-                  showDatasetColumn
-                    ? '搜索文件名 / 文档 ID / 数据集'
-                    : '搜索文件名 / 文档 ID'
-                }
-              />
-
-              <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap lg:justify-end">
-                <Select
-                  value={sortKey}
-                  onValueChange={(value) => setSortKey(value as DocSortKey)}
-                >
-                  <SelectTrigger className="h-9 min-w-[144px] rounded-[10px] border-sky-100/75 bg-white/90 text-[11px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-border/70 dark:bg-background/70">
-                    <SelectValue placeholder={t('table.columns.name')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="created_at">按上传时间</SelectItem>
-                    <SelectItem value="filename">按文件名</SelectItem>
-                    <SelectItem value="file_size">按文件大小</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-9 min-w-[80px] justify-center rounded-[10px] border-sky-100/75 bg-white/90 px-3 text-[11px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] hover:border-sky-200/90 dark:border-border/70 dark:bg-background/70"
-                  onClick={() =>
-                    setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
-                  }
-                >
-                  {sortDir === 'asc' ? '升序' : '降序'}
-                </Button>
-
-                {hasActiveFilters ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-9 min-w-[96px] justify-center rounded-[10px] border border-sky-100/75 bg-white/80 px-3 text-[11px] font-medium hover:bg-white dark:border-border/70 dark:bg-background/60"
-                    onClick={onClearFilters}
-                  >
-                    <RotateCcw className="mr-2 size-3.5" />
-                    清空筛选
-                  </Button>
-                ) : null}
-
-                <Button
-                  type="button"
-                  variant={opsOpen ? 'default' : 'outline'}
-                  size="sm"
-                  className="h-9 min-w-[96px] justify-center rounded-[10px] px-3 text-[11px] font-medium"
-                  aria-expanded={opsOpen}
-                  onClick={() => setOpsOpen((open) => !open)}
-                >
-                  <Activity className="mr-2 size-3.5" />
-                  运维工具
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          {opsOpen ? (
-            <div className="mt-3">
-              <DocumentOperationsPanel
-                selectedDocumentIds={selectedDocIds}
-                datasetId={selectedDatasetId}
-                datasets={datasets}
-              />
-            </div>
-          ) : null}
         </div>
 
-        <div className="flex flex-1 min-h-0 flex-col">
-          {(() => {
+        <div
+          className={cn(
+            'flex min-h-0 flex-1 flex-col',
+            embedded && 'bg-[#F6FAFF]/60 p-5 dark:bg-background/15',
+            compactEmptyInventory && 'p-2'
+          )}
+        >
+          <div
+            className={cn(
+              'flex min-h-0 flex-1 flex-col overflow-hidden rounded-[22px] border border-sky-100/70 bg-white/92 shadow-[0_18px_42px_-34px_rgba(37,99,235,0.32)] dark:border-border/70 dark:bg-background/70',
+              compactEmptyInventory && 'flex-none'
+            )}
+          >
+            <div className="border-b border-sky-100/70 bg-[linear-gradient(180deg,rgba(248,251,255,0.94),rgba(240,247,255,0.78))] px-3 py-2.5 dark:border-border/60 dark:bg-muted/[0.16]">
+              {inventoryToolbar}
+              {opsOpen ? (
+                <div className="mt-2.5 rounded-[16px] border border-sky-100/70 bg-white/88 p-2 shadow-[0_14px_34px_-30px_rgba(37,99,235,0.28)] dark:border-border/70 dark:bg-background/70">
+                  <DocumentOperationsPanel
+                    selectedDocumentIds={selectedDocIds}
+                    datasetId={selectedDatasetId}
+                    datasets={datasets}
+                  />
+                </div>
+              ) : null}
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              {(() => {
             if (isLoading && isDatasetEmpty) {
               return (
                 <div className="flex h-full min-h-[360px] items-center justify-center px-6 py-10 text-muted-foreground">
@@ -1013,21 +1045,9 @@ export function KnowledgeDocumentsPanel({
             }
 
             return (
-              <div
-                className={cn(
-                  embedded
-                    ? 'flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[#F6FAFF]/60 px-5 py-5 dark:bg-background/15'
-                    : 'rounded-xl overflow-hidden'
-                )}
-              >
+              <>
                 {/* className="group hover:bg-muted/20 transition-colors" */}
-                <div
-                  className={cn(
-                    'overflow-hidden rounded-[22px] border border-sky-100/70 bg-white/92 dark:border-border/70 dark:bg-background/70',
-                    embedded && 'flex h-full min-h-0 flex-1 flex-col'
-                  )}
-                >
-                  <div className="min-h-0 flex-1 overflow-auto">
+                <div className="min-h-0 flex-1 overflow-auto">
                     <table
                       aria-label={t('table.ariaLabel')}
                       className="w-full table-fixed text-sm text-left"
@@ -1057,10 +1077,10 @@ export function KnowledgeDocumentsPanel({
                                 gridTemplateColumns: documentListGridTemplate,
                               }}
                             >
-                              <div className="flex items-center justify-center">
+                              <div className={checkboxCellClassName}>
                                 <input
                                   type="checkbox"
-                                  className="h-4 w-4 rounded border-border/60 text-primary focus-ring"
+                                  className={checkboxInputClassName}
                                   checked={allVisibleSelected}
                                   onChange={toggleSelectAllVisible}
                                   aria-label={t('table.selectAllVisible')}
@@ -1147,10 +1167,10 @@ export function KnowledgeDocumentsPanel({
                                         documentListGridTemplate,
                                     }}
                                   >
-                                    <div className="flex items-center justify-center">
+                                    <div className={checkboxCellClassName}>
                                       <input
                                         type="checkbox"
-                                        className="h-4 w-4 rounded border-border/60 text-primary focus-ring"
+                                        className={checkboxInputClassName}
                                         checked={selectedSet.has(doc.id)}
                                         onChange={() =>
                                           toggleDocSelection(doc.id)
@@ -1359,40 +1379,45 @@ export function KnowledgeDocumentsPanel({
                   </div>
                   <div className="mt-auto flex items-center justify-end gap-3 border-t border-border/60 px-4 py-3">
                     <span className="text-[12px] text-muted-foreground/78">
-                      共 {visibleDocumentsCount} 条
+                      显示 {pageStart}-{pageEnd} / 共 {visibleDocumentsCount} 条
                     </span>
                     <button
                       type="button"
                       className="inline-flex h-9 items-center rounded-[12px] border border-border/70 bg-background px-3 text-[12px] text-muted-foreground"
                     >
-                      20 条/页
+                      {pageSize} 条/页
                     </button>
                     <div className="inline-flex items-center gap-2">
                       <button
                         type="button"
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-[12px] border border-border/70 bg-background text-muted-foreground/50"
-                        disabled
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-[12px] border border-border/70 bg-background text-muted-foreground transition-colors hover:border-primary/20 hover:bg-primary/5 disabled:cursor-not-allowed disabled:text-muted-foreground/35"
+                        disabled={!canGoPrevious}
+                        aria-label="上一页"
+                        onClick={() => onPageChange(page - 1)}
                       >
                         ‹
                       </button>
-                      <span className="inline-flex h-9 min-w-9 items-center justify-center rounded-[12px] bg-primary px-3 text-[12px] font-medium text-primary-foreground">
-                        1
+                      <span className="inline-flex h-9 min-w-[5.5rem] items-center justify-center rounded-[12px] bg-primary px-3 text-[12px] font-medium text-primary-foreground">
+                        第 {page} / {pageCount} 页
                       </span>
                       <button
                         type="button"
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-[12px] border border-border/70 bg-background text-muted-foreground/50"
-                        disabled
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-[12px] border border-border/70 bg-background text-muted-foreground transition-colors hover:border-primary/20 hover:bg-primary/5 disabled:cursor-not-allowed disabled:text-muted-foreground/35"
+                        disabled={!canGoNext}
+                        aria-label="下一页"
+                        onClick={() => onPageChange(page + 1)}
                       >
                         ›
                       </button>
                     </div>
                   </div>
-                </div>
-              </div>
+                </>
             )
           })()}
         </div>
       </div>
+    </div>
+    </div>
     </div>
   )
 }

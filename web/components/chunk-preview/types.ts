@@ -52,6 +52,7 @@ export interface ChunkPreviewState {
   submitSuccess: boolean
   error: string | null
   processedStatus: Record<string, 'pending' | 'success' | 'error'>
+  selectedIngestFileIds: Set<string>
   createdDocumentId: string | null
 
   // 预览数据
@@ -118,6 +119,7 @@ export interface ChunkPreviewActions {
   updateChunkOverride: (index: number, override: ChunkOverride) => void
   toggleChunkDisabled: (index: number) => void
   setChunksDisabled: (indices: number[], disabled: boolean) => void
+  toggleIngestFileSelection: (fileId: string) => void
   clearChunkOverride: (index: number) => void
   clearAllChunkOverrides: () => void
   toggleOriginalPanel: () => void
@@ -133,6 +135,7 @@ export interface ChunkPreviewActions {
   runPreview: (options?: { force?: boolean }) => Promise<void>
   cancelPreview: () => void
   submitChunks: () => Promise<void>
+  submitSelectedFiles: () => Promise<void>
   loadExample: () => void
   reset: () => void
   toggleAutoPreview: (enabled?: boolean) => void

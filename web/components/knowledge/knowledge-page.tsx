@@ -74,6 +74,7 @@ const KNOWLEDGE_GLASS_CARD_CLASS =
   'border-sky-100/70 bg-white/[0.92] shadow-[0_8px_22px_rgba(37,99,235,0.035)] backdrop-blur-xl dark:border-border/45 dark:bg-card/72'
 const KNOWLEDGE_WORKBENCH_SURFACE_CLASS =
   'border-sky-100/70 bg-white/[0.86] shadow-[0_10px_28px_rgba(37,99,235,0.032)] backdrop-blur-xl dark:border-border/45 dark:bg-card/62'
+const DOCUMENTS_PAGE_SIZE = 20
 type TabKey = 'documents' | 'retrieval' | 'settings'
 
 export default function KnowledgePage() {
@@ -117,6 +118,7 @@ export default function KnowledgePage() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>(
     initialQueryState.viewMode
   )
+  const [documentsPage, setDocumentsPage] = useState(1)
   const [activeConnectorRunId, setActiveConnectorRunId] = useState<
     string | null
   >(initialQueryState.connectorRunId)
@@ -259,6 +261,18 @@ export default function KnowledgePage() {
 
     return next
   }, [docFilter, scopedDocuments, sortDir, sortKey])
+  const documentsPageCount = Math.max(
+    1,
+    Math.ceil(filteredDocuments.length / DOCUMENTS_PAGE_SIZE)
+  )
+  const paginatedDocuments = useMemo(
+    () =>
+      filteredDocuments.slice(
+        (documentsPage - 1) * DOCUMENTS_PAGE_SIZE,
+        documentsPage * DOCUMENTS_PAGE_SIZE
+      ),
+    [documentsPage, filteredDocuments]
+  )
   const documentsEmptySurface =
     documentsModeActive && !isLoading && filteredDocuments.length === 0
 
@@ -266,7 +280,7 @@ export default function KnowledgePage() {
     useKnowledgeScrollContainer()
 
   const docGridColumns = 3
-  const docGridRowCount = Math.ceil(filteredDocuments.length / docGridColumns)
+  const docGridRowCount = Math.ceil(paginatedDocuments.length / docGridColumns)
   const docsGridVirtualizer = useVirtualizer({
     count: docGridRowCount,
     getScrollElement: () => mainPaneScrollEl,
@@ -274,11 +288,27 @@ export default function KnowledgePage() {
     overscan: 5,
   })
   const docsTableVirtualizer = useVirtualizer({
-    count: filteredDocuments.length,
+    count: paginatedDocuments.length,
     getScrollElement: () => mainPaneScrollEl,
     estimateSize: () => 108,
     overscan: 10,
   })
+
+  useEffect(() => {
+    setDocumentsPage(1)
+  }, [
+    datasetScope,
+    docFilter,
+    folderPath,
+    lifecycleFilter,
+    sortDir,
+    sortKey,
+    statusFilter,
+  ])
+
+  useEffect(() => {
+    setDocumentsPage((current) => Math.min(current, documentsPageCount))
+  }, [documentsPageCount])
 
   useEffect(() => {
     mainPaneScrollEl?.scrollTo({
@@ -295,8 +325,8 @@ export default function KnowledgePage() {
 
   const selectedSet = useMemo(() => new Set(selectedDocIds), [selectedDocIds])
   const allVisibleSelected =
-    filteredDocuments.length > 0 &&
-    filteredDocuments.every((doc) => selectedSet.has(doc.id))
+    paginatedDocuments.length > 0 &&
+    paginatedDocuments.every((doc) => selectedSet.has(doc.id))
   const selectedDocuments = useMemo(
     () => filteredDocuments.filter((doc) => selectedSet.has(doc.id)),
     [filteredDocuments, selectedSet]
@@ -420,22 +450,22 @@ export default function KnowledgePage() {
         icon: FileStack,
         label: '文档总数',
         value: totalDocs,
-        caption: `${datasets.length} 个知识库范围`,
+        caption: `${datasets.length} 库`,
         iconShell: 'border-info/15 bg-info/[0.08] text-info dark:text-info',
       },
       {
         icon: CheckCircle,
         label: '已完成',
         value: completedDocsValue,
-        caption: `健康可用 ${readyRate}%`,
+        caption: `可用 ${readyRate}%`,
         iconShell:
           'border-success/15 bg-success/[0.08] text-success dark:text-success',
       },
       {
         icon: Layers,
-        label: '处理中 / 隔离',
+        label: '处理中',
         value: processingDocsValue + quarantinedDocsValue + failedDocsValue,
-        caption: `处理中 ${processingDocsValue} · 失败 ${failedDocsValue}`,
+        caption: `${quarantinedDocsValue} 隔离 · ${failedDocsValue} 失败`,
         iconShell:
           'border-accent/15 bg-accent/[0.08] text-accent dark:text-accent',
       },
@@ -443,7 +473,7 @@ export default function KnowledgePage() {
         icon: HardDrive,
         label: '总体体量',
         value: totalSizeValue,
-        caption: `分块 ${totalChunksValue}`,
+        caption: `${totalChunksValue} 分块`,
         iconShell: 'border-info/15 bg-info/[0.08] text-info dark:text-info',
       },
     ],
@@ -466,14 +496,14 @@ export default function KnowledgePage() {
         icon: FileStack,
         label: '文档总数',
         value: totalDocs,
-        caption: '文档总数',
+        caption: `${completedDocsValue} 已就绪`,
         iconShell: 'border-info/15 bg-info/[0.08] text-info dark:text-info',
       },
       {
         icon: CheckCircle,
         label: '已就绪数',
         value: completedDocsValue,
-        caption: '已就绪',
+        caption: `健康 ${readyRate}%`,
         iconShell:
           'border-success/15 bg-success/[0.08] text-success dark:text-success',
       },
@@ -481,19 +511,26 @@ export default function KnowledgePage() {
         icon: Database,
         label: '知识分类',
         value: datasets.length,
-        caption: '知识分类',
+        caption: '数据集范围',
         iconShell: 'border-info/15 bg-info/[0.08] text-info dark:text-info',
       },
       {
         icon: HardDrive,
         label: '存储占用',
         value: totalSizeValue,
-        caption: '存储占用',
+        caption: `${totalChunksValue} 分块`,
         iconShell:
           'border-success/15 bg-success/[0.08] text-success dark:text-success',
       },
     ],
-    [completedDocsValue, datasets.length, totalDocs, totalSizeValue]
+    [
+      completedDocsValue,
+      datasets.length,
+      readyRate,
+      totalChunksValue,
+      totalDocs,
+      totalSizeValue,
+    ]
   )
 
   const handleDatasetScopeChange = useCallback((value: string) => {
@@ -529,12 +566,12 @@ export default function KnowledgePage() {
     setSelectedDocIds((prev) => {
       if (allVisibleSelected) return []
       const next = new Set(prev)
-      for (const doc of filteredDocuments) {
+      for (const doc of paginatedDocuments) {
         next.add(doc.id)
       }
       return Array.from(next)
     })
-  }, [allVisibleSelected, filteredDocuments])
+  }, [allVisibleSelected, paginatedDocuments])
 
   const runBatchLifecycle = useCallback(
     async (action: 'enable' | 'disable' | 'archive' | 'unarchive') => {
@@ -675,13 +712,10 @@ export default function KnowledgePage() {
           </div>
         }
         top={
-          activeTab === 'documents' || activeTab === 'settings' ? (
-            <div
-              className={cn(
-                'grid md:grid-cols-2 xl:grid-cols-4',
-                activeTab === 'settings' ? 'gap-2' : 'gap-3'
-              )}
-            >
+          activeTab === 'documents' ||
+          activeTab === 'settings' ||
+          activeTab === 'retrieval' ? (
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
               {(activeTab === 'settings'
                 ? settingsSummaryCards
                 : summaryCards
@@ -691,55 +725,29 @@ export default function KnowledgePage() {
                   className={cn(
                     'group relative overflow-hidden rounded-2xl border transition-colors duration-150 hover:border-info/20',
                     KNOWLEDGE_GLASS_CARD_CLASS,
-                    activeTab === 'settings'
-                      ? 'min-h-[68px] px-3 py-2.5'
-                      : 'min-h-[88px] px-4 py-3.5'
+                    'min-h-[58px] px-3 py-2'
                   )}
                 >
-                  <div className="flex h-full items-center gap-3">
+                  <div className="flex h-full items-center gap-2.5">
                     <div
                       className={cn(
-                        'shrink-0 flex items-center justify-center rounded-xl border',
-                        activeTab === 'settings' ? 'size-8' : 'size-10',
+                        'flex size-8 shrink-0 items-center justify-center rounded-xl border',
                         card.iconShell
                       )}
                     >
-                      <card.icon
-                        className={cn(
-                          activeTab === 'settings' ? 'size-3.5' : 'size-4'
-                        )}
-                      />
+                      <card.icon className="size-3.5" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div
-                        className={cn(
-                          activeTab === 'settings'
-                            ? 'text-[10px]'
-                            : 'text-[11px]',
-                          'font-medium uppercase tracking-[0.12em] text-muted-foreground/85'
-                        )}
-                      >
+                      <div className="truncate text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground/82">
                         {card.label}
                       </div>
-                      <div
-                        className={cn(
-                          activeTab === 'settings'
-                            ? 'mt-0.5 text-[16px]'
-                            : 'mt-1 text-[20px]',
-                          'font-semibold leading-none tabular-nums text-foreground'
-                        )}
-                      >
-                        {card.value}
-                      </div>
-                      <div
-                        className={cn(
-                          activeTab === 'settings'
-                            ? 'mt-0.5 text-[10px]'
-                            : 'mt-1 text-[11px]',
-                          'text-muted-foreground/75'
-                        )}
-                      >
-                        {card.caption}
+                      <div className="mt-0.5 flex min-w-0 items-baseline gap-2">
+                        <span className="truncate text-[15px] font-semibold leading-none tabular-nums text-foreground">
+                          {card.value}
+                        </span>
+                        <span className="min-w-0 truncate text-[10px] text-muted-foreground/72">
+                          {card.caption}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -1221,7 +1229,8 @@ export default function KnowledgePage() {
               embedded
               isLoading={isLoading}
               documents={scopedDocuments}
-              filteredDocuments={filteredDocuments}
+              filteredDocuments={paginatedDocuments}
+              totalDocumentsCount={filteredDocuments.length}
               datasets={datasets}
               selectedDatasetId={selectedDatasetId}
               selectedDatasetLabel={selectedDatasetLabel}
@@ -1254,6 +1263,10 @@ export default function KnowledgePage() {
               docGridRowCount={docGridRowCount}
               docsGridVirtualizer={docsGridVirtualizer}
               docsTableVirtualizer={docsTableVirtualizer}
+              page={documentsPage}
+              pageSize={DOCUMENTS_PAGE_SIZE}
+              pageCount={documentsPageCount}
+              onPageChange={setDocumentsPage}
               selectedDocIds={selectedDocIds}
               setSelectedDocIds={setSelectedDocIds}
               selectedSet={selectedSet}

@@ -115,6 +115,11 @@ function sumRecordValues(value: Record<string, number> | null | undefined) {
   )
 }
 
+function capCoverageValue(value: unknown, max: number) {
+  if (max <= 0) return 0
+  return Math.max(0, Math.min(max, safeNumber(value)))
+}
+
 function DataPill({
   icon: Icon,
   label,
@@ -214,7 +219,7 @@ function MiniRiskCard({
   label: string
   value: string
   sub: string
-  tone?: 'blue' | 'green' | 'amber' | 'rose' | 'violet'
+  tone?: 'blue' | 'green' | 'amber' | 'rose' | 'violet' | 'slate'
 }>) {
   const toneClass = {
     blue: 'text-blue-600',
@@ -222,6 +227,7 @@ function MiniRiskCard({
     amber: 'text-amber-600',
     rose: 'text-rose-600',
     violet: 'text-violet-600',
+    slate: 'text-slate-600',
   }[tone]
   return (
     <div className="rounded-xl border border-slate-200/80 bg-card/80 p-3">
@@ -305,7 +311,6 @@ export default function ReportsCenterPage() {
     queryKey: queryKeys.reports.dataset(datasetId, reportParams),
     queryFn: () => reportApi.getDatasetReport(datasetId, reportParams),
     enabled: Boolean(datasetId),
-    placeholderData: (previousData) => previousData,
   })
 
   const datasets = useMemo(
@@ -705,8 +710,10 @@ export default function ReportsCenterPage() {
   const completedDocs = safeNumber(
     statusCounts.completed ?? statusCounts.ready ?? statusCounts.done
   )
-  const successDocs =
-    completedDocs || Math.max(0, totalDocs - failed - quarantined)
+  const hasStatusCounts = Object.keys(statusCounts).length > 0
+  const successDocs = hasStatusCounts
+    ? completedDocs
+    : Math.max(0, totalDocs - failed - quarantined)
   const successRate = formatPct(successDocs, totalDocs)
   const failedRate = formatPct(failed, totalDocs)
   const selectedDatasetName =
@@ -714,6 +721,17 @@ export default function ReportsCenterPage() {
   const latestAuditTime = report?.generated_at
     ? formatDate(report.generated_at)
     : '-'
+  const dataProvenance = report?.data_provenance || null
+  const dataSourceLabel =
+    dataProvenance?.mocked === false && dataProvenance?.source === 'database'
+      ? '真实后端数据'
+      : dataProvenance?.source
+        ? String(dataProvenance.source)
+        : '等待后端数据'
+  const dataSourceSub =
+    dataProvenance?.mocked === false
+      ? '后端数据库 / API 实时聚合'
+      : '未返回来源证明'
   const piiHits = sumRecordValues(report?.compliance?.pii_hits_total)
   const secretHits = sumRecordValues(report?.compliance?.secrets_hits_total)
   const sensitiveHits = piiHits + secretHits
@@ -755,10 +773,13 @@ export default function ReportsCenterPage() {
     (acc, item) => acc + safeNumber(item.documents),
     0
   )
+  const activeFindingRows = findingRows.filter(
+    (item) => safeNumber(item.count) > 0
+  )
   const issueRows = [
-    ...findingRows.map((item) => ({
+    ...activeFindingRows.map((item) => ({
       id: `finding-${item.key}`,
-      time: latestAuditTime,
+      time: '质量扫描',
       level:
         item.severity === 'error'
           ? '错误'
@@ -781,42 +802,117 @@ export default function ReportsCenterPage() {
         target: item.connector_id || '-',
       })),
   ].slice(0, 5)
-  const fieldCoverageRows = useMemo(
-    () => [
-      {
-        label: '字符统计覆盖',
-        value: safeNumber(governanceAudit?.docs_with_char_stats),
-        max: safeNumber(governanceAudit?.used_documents || totalDocs),
-      },
-      {
-        label: '解析内容持久化',
-        value: safeNumber(governanceAudit?.docs_with_parsed_content_persisted),
-        max: safeNumber(governanceAudit?.used_documents || totalDocs),
-      },
-      {
-        label: '治理记录覆盖',
-        value: safeNumber(governance?.docs_with_governance),
-        max: safeNumber(governance?.used_documents || totalDocs),
-      },
-      {
-        label: '变更文档占比',
-        value: safeNumber(governanceAudit?.docs_changed),
-        max: safeNumber(governanceAudit?.used_documents || totalDocs),
-      },
-      {
-        label: '过滤/隔离占比',
-        value: safeNumber(governanceAudit?.docs_dropped || quarantined),
-        max: safeNumber(governanceAudit?.used_documents || totalDocs),
-      },
-    ],
-    [
-      governance?.docs_with_governance,
-      governance?.used_documents,
-      governanceAudit,
-      quarantined,
-      totalDocs,
-    ]
-  )
+  const governanceCoverageMax =
+    safeNumber(governanceAudit?.used_documents) ||
+    safeNumber(governance?.used_documents)
+  const governanceAuditHasSamples =
+    safeNumber(governanceAudit?.used_documents) > 0
+  const governanceAuditUnavailableSub = '当前报告无治理审计样本'
+  const governanceAuditUrlValue = governanceAuditHasSamples
+    ? String(governanceAudit?.urls_changed_total || 0)
+    : '未统计'
+  const governanceAuditImageValue = governanceAuditHasSamples
+    ? String(governanceAudit?.images_removed_total || 0)
+    : '未统计'
+  const governanceAuditUrlSub = governanceAuditHasSamples
+    ? 'URL 规范化变更'
+    : governanceAuditUnavailableSub
+  const governanceAuditImageSub = governanceAuditHasSamples
+    ? '治理审计图片移除'
+    : governanceAuditUnavailableSub
+  const hasGovernanceCoverage = governanceCoverageMax > 0
+  const chunkStatsCovered =
+    sumRecordValues(
+      Object.fromEntries(
+        (report?.profile?.chunk_count_histogram || []).map((bin, index) => [
+          `${bin.label || index}`,
+          safeNumber(bin.count),
+        ])
+      )
+    ) ||
+    (totalDocs > 0 &&
+    safeNumber(report?.profile?.chunk_count_percentiles?.p50) > 0
+      ? totalDocs
+      : 0)
+  const baseCoverageRows = [
+    {
+      label: '状态字段覆盖',
+      value: capCoverageValue(sumRecordValues(statusCounts), totalDocs),
+      max: totalDocs,
+    },
+    {
+      label: '文件类型覆盖',
+      value: capCoverageValue(
+        sumRecordValues(report?.profile?.by_file_type),
+        totalDocs
+      ),
+      max: totalDocs,
+    },
+    {
+      label: '目录字段覆盖',
+      value: capCoverageValue(
+        sumRecordValues(report?.profile?.by_directory),
+        totalDocs
+      ),
+      max: totalDocs,
+    },
+    {
+      label: '解析来源覆盖',
+      value: capCoverageValue(
+        report?.profile?.parsing_provenance?.docs_with_provenance,
+        totalDocs
+      ),
+      max: totalDocs,
+    },
+    {
+      label: '分块统计覆盖',
+      value: capCoverageValue(chunkStatsCovered, totalDocs),
+      max: totalDocs,
+    },
+  ]
+  const governanceCoverageRows = [
+    {
+      label: '字符统计覆盖',
+      value: capCoverageValue(
+        governanceAudit?.docs_with_char_stats,
+        governanceCoverageMax
+      ),
+      max: governanceCoverageMax,
+    },
+    {
+      label: '解析内容持久化',
+      value: capCoverageValue(
+        governanceAudit?.docs_with_parsed_content_persisted,
+        governanceCoverageMax
+      ),
+      max: governanceCoverageMax,
+    },
+    {
+      label: '治理记录覆盖',
+      value: capCoverageValue(
+        governance?.docs_with_governance,
+        governanceCoverageMax
+      ),
+      max: governanceCoverageMax,
+    },
+    {
+      label: '变更文档占比',
+      value: capCoverageValue(governanceAudit?.docs_changed, governanceCoverageMax),
+      max: governanceCoverageMax,
+    },
+    {
+      label: '过滤/隔离占比',
+      value: capCoverageValue(
+        governanceAudit?.docs_dropped || quarantined,
+        governanceCoverageMax
+      ),
+      max: governanceCoverageMax,
+    },
+  ]
+  const fieldCoverageRows = hasGovernanceCoverage
+    ? governanceCoverageRows
+    : baseCoverageRows
+  const fieldCoverageBadge = hasGovernanceCoverage ? '后端治理审计' : '后端基础画像'
 
   const handleExportChartsJson = useCallback(() => {
     if (!datasetId || !report) return
@@ -923,7 +1019,7 @@ export default function ReportsCenterPage() {
   return (
     <AppFrame>
       <AnalysisPageShell
-        title="数据报告导出与审计概览"
+        title="数据报告与审计概览"
         description="一键导出数据报告与审计结果，支持多种格式与指标视图，便于数据治理与合规审查。"
         icon={FileText}
         iconColor="text-primary"
@@ -937,7 +1033,7 @@ export default function ReportsCenterPage() {
         <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_22%)] shadow-[0_1px_0_rgba(15,23,42,0.04)]">
           <div className="border-b border-slate-200/80 bg-[linear-gradient(180deg,#f8fbff_0%,#ffffff_100%)] px-5 py-4">
             <PageHeader
-              title="数据报告导出与审计概览"
+              title="数据报告与审计概览"
               description="一键导出数据报告与审计结果，所有指标均来自后端报告接口与数据集接口。"
               iconImage="report-export"
               icon={FileText}
@@ -963,19 +1059,26 @@ export default function ReportsCenterPage() {
               />
               <DataPill
                 icon={ShieldCheck}
-                label="审计状态"
+                label="报告状态"
                 value={
-                  isLoadingReport ? '执行中' : report ? '已完成' : '待执行'
+                  isLoadingReport ? '生成中' : report ? '已生成' : '待生成'
                 }
-                sub={report ? '报告已生成' : '等待执行审计'}
+                sub={report ? '后端报告已返回' : '等待生成报告'}
                 tone={report ? 'green' : 'slate'}
               />
               <DataPill
                 icon={Clock3}
-                label="最近审计"
+                label="报告生成"
                 value={latestAuditTime}
                 sub={report ? '后端生成时间' : '暂无'}
                 tone="slate"
+              />
+              <DataPill
+                icon={ShieldCheck}
+                label="数据来源"
+                value={dataSourceLabel}
+                sub={dataSourceSub}
+                tone={dataProvenance?.mocked === false ? 'green' : 'amber'}
               />
             </div>
             </PageHeader>
@@ -1134,10 +1237,10 @@ export default function ReportsCenterPage() {
                     className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
                     onClick={handleExportChartsJson}
                     disabled={!datasetId || !report}
-                    aria-label="导出 RAC 统计"
+                    aria-label="导出 RAG 统计"
                   >
                     <BarChart3 className="size-4" />
-                    <span className="ml-2">导出 RAC 统计</span>
+                    <span className="ml-2">导出 RAG 统计</span>
                   </Button>
                   <Button
                     variant="outline"
@@ -1185,14 +1288,14 @@ export default function ReportsCenterPage() {
                     className="h-8 rounded-lg bg-blue-600 text-info-foreground shadow-[0_8px_20px_rgba(37,99,235,0.22)] hover:bg-blue-700"
                     onClick={() => void reportQuery.refetch()}
                     disabled={!datasetId || isLoadingReport}
-                    aria-label="执行审计"
+                    aria-label="重新生成报告"
                   >
                     {isLoadingReport ? (
                       <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
                     ) : (
                       <PlayCircle className="size-4" />
                     )}
-                    <span className="ml-2">执行审计</span>
+                    <span className="ml-2">重新生成报告</span>
                   </Button>
                   <Button
                     variant="outline"
@@ -1256,7 +1359,7 @@ export default function ReportsCenterPage() {
                   />
                   <AuditMetricCard
                     icon={Clock3}
-                    label="最近审计"
+                    label="报告生成"
                     value={latestAuditTime}
                     sub="本次报告生成时间"
                     tone="slate"
@@ -1305,7 +1408,7 @@ export default function ReportsCenterPage() {
                         variant="outline"
                         className="rounded-full text-[11px]"
                       >
-                        后端治理审计
+                        {fieldCoverageBadge}
                       </Badge>
                     </div>
                     <div className="space-y-3">
@@ -1375,17 +1478,15 @@ export default function ReportsCenterPage() {
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
                       <MiniRiskCard
                         label="可疑链接数"
-                        value={String(governanceAudit?.urls_changed_total || 0)}
-                        sub="URL 规范化变更"
-                        tone="blue"
+                        value={governanceAuditUrlValue}
+                        sub={governanceAuditUrlSub}
+                        tone={governanceAuditHasSamples ? 'blue' : 'slate'}
                       />
                       <MiniRiskCard
                         label="外部附件数"
-                        value={String(
-                          governanceAudit?.images_removed_total || 0
-                        )}
-                        sub="治理审计图片移除"
-                        tone="green"
+                        value={governanceAuditImageValue}
+                        sub={governanceAuditImageSub}
+                        tone={governanceAuditHasSamples ? 'green' : 'slate'}
                       />
                       <MiniRiskCard
                         label="敏感词命中"
@@ -1406,7 +1507,7 @@ export default function ReportsCenterPage() {
                 <div className="grid gap-4 xl:grid-cols-[1.2fr_0.9fr_1.4fr]">
                   <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
                     <div className="mb-4 text-[15px] font-semibold text-slate-900">
-                      类别统计 / 分布图
+                      知识分类统计
                     </div>
                     {categoryBarData.length === 0 ? (
                       <EmptyState
@@ -1516,29 +1617,28 @@ export default function ReportsCenterPage() {
                   <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
                     <div className="mb-4 flex items-center justify-between gap-3">
                       <div className="text-[15px] font-semibold text-slate-900">
-                        最近错误解析
+                        风险命中记录
                       </div>
-                      <Button
-                        variant="link"
-                        className="h-auto p-0 text-xs"
-                        onClick={() => setShowOnlyIssues(false)}
+                      <Badge
+                        variant="outline"
+                        className="rounded-full text-[11px]"
                       >
-                        查看全部解读
-                      </Button>
+                        仅显示命中项
+                      </Badge>
                     </div>
                     {issueRows.length === 0 ? (
                       <EmptyState
                         title="暂无异常记录"
-                        description="当前后端报告没有返回失败连接器或风险 finding。"
+                        description="当前后端报告没有命中的失败连接器或风险 finding。"
                       />
                     ) : (
                       <div className="overflow-hidden rounded-xl border border-slate-100">
                         <div className="grid grid-cols-[120px_72px_120px_1fr_64px] bg-slate-50 px-3 py-2 text-[11px] font-medium text-slate-500">
-                          <span>时间</span>
+                          <span>来源/时间</span>
                           <span>级别</span>
                           <span>类型</span>
                           <span>描述</span>
-                          <span className="text-right">数量</span>
+                          <span className="text-right">命中数</span>
                         </div>
                         {issueRows.map((row) => (
                           <div
@@ -1585,7 +1685,7 @@ export default function ReportsCenterPage() {
                   datasetId
                     ? isLoadingReport
                       ? '正在拉取后端报告数据...'
-                      : '点击“执行审计”生成报告。'
+                      : '点击“重新生成报告”拉取最新后端报告。'
                     : '选择一个数据集后即可生成报告预览并导出。'
                 }
               />

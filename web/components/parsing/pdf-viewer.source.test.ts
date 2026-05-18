@@ -64,6 +64,17 @@ describe('pdf viewer source', () => {
     expect(src).toContain('const pageIndex = resolvedBlockIdToPageIndex.get(firstActive)')
   })
 
+  it('centers the active layout box instead of only scrolling to the PDF page', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'pdf-viewer.tsx'), 'utf8')
+
+    expect(src).toContain('computePdfOverlayScrollTop')
+    expect(src).toContain('const targetBox = pageBoxes.find((box) => box.id === firstActive)')
+    expect(src).toContain('container.scrollTo({')
+    expect(src).toContain('top: computePdfOverlayScrollTop({')
+    expect(src).toContain('overlayTop: rect.top')
+    expect(src).toContain('overlayHeight: rect.height')
+  })
+
   it('cancels stale render tasks and cleans up page resources after rendering', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'pdf-viewer.tsx'), 'utf8')
 

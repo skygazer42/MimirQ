@@ -421,6 +421,49 @@ export function buildThroughputAreaRows(timeseries: Record<string, unknown[]> | 
   })
 }
 
+export function buildDocumentThroughputAreaRows(
+  documents: Document[],
+  options: { bucketMinutes?: number; maxRows?: number } = {}
+): ThroughputAreaRow[] {
+  const bucketMinutes = Math.max(1, Math.round(toFiniteNumber(options.bucketMinutes) || 60))
+  const bucketMs = bucketMinutes * 60_000
+  const maxRows = Math.max(1, Math.round(toFiniteNumber(options.maxRows) || 120))
+  const buckets = new Map<number, ThroughputAreaRow>()
+
+  documents.forEach((document) => {
+    const status = String(document.status || '').toLowerCase()
+    if (!['completed', 'failed', 'quarantined', 'cancelled'].includes(status)) return
+
+    const timestamp = Date.parse(
+      String(document.processed_at || document.updated_at || document.created_at || '')
+    )
+    if (!Number.isFinite(timestamp)) return
+
+    const bucketTs = Math.floor(timestamp / bucketMs) * bucketMs
+    const bucket =
+      buckets.get(bucketTs) ??
+      ({
+        ts: bucketTs,
+        completed: 0,
+        failed: 0,
+        quarantined: 0,
+        cancelled: 0,
+        total: 0,
+      } satisfies ThroughputAreaRow)
+
+    if (status === 'completed') bucket.completed += 1
+    if (status === 'failed') bucket.failed += 1
+    if (status === 'quarantined') bucket.quarantined += 1
+    if (status === 'cancelled') bucket.cancelled += 1
+    bucket.total = bucket.completed + bucket.failed + bucket.quarantined + bucket.cancelled
+    buckets.set(bucketTs, bucket)
+  })
+
+  return Array.from(buckets.values())
+    .sort((left, right) => left.ts - right.ts)
+    .slice(-maxRows)
+}
+
 export function buildLatencyBoxplotRows(documents: Document[]): LatencyBoxplotRows {
   const groups = [
     { label: '已完成', values: documents.filter((document) => document.status === 'completed') },
@@ -475,7 +518,7 @@ export function buildExecutionScatterRows(documents: Document[]): ExecutionScatt
 export function buildFileTypeDistribution(documents: Document[]): Array<{ label: string; count: number }> {
   const counts = new Map<string, number>()
   documents.forEach((doc) => {
-    const label = String(doc.file_type || 'unknown').trim().toUpperCase() || 'UNKNOWN'
+    const label = String(doc.file_type || getDocumentKind(doc.filename) || 'unknown').trim().toUpperCase() || 'UNKNOWN'
     counts.set(label, (counts.get(label) ?? 0) + 1)
   })
   return Array.from(counts.entries())

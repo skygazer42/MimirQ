@@ -57,6 +57,8 @@ export interface RAGConfig {
   default_chunk_strategy: string
   bm25_index_enabled: boolean
   enable_reranker: boolean
+  reranker_provider: string
+  reranker_top_n: number
 }
 
 export interface CacheConfig {
@@ -157,6 +159,10 @@ export interface LangGraphConfig {
   use_subgraphs: boolean
 }
 
+export interface NavigationConfig {
+  user_visible_modules: string[]
+}
+
 export interface SystemSettings {
   feature_flags: FeatureFlags
   kg: KGConfig
@@ -177,6 +183,7 @@ export interface SystemSettings {
   safety: SafetyConfig
   chat: ChatConfig
   langgraph: LangGraphConfig
+  navigation: NavigationConfig
 }
 
 export interface ParserBackendStatus {

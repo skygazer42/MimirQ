@@ -1,8 +1,8 @@
 const graphMessages = {
 KGDiagnosticsPage: {
     page: {
-      title: 'KG检索评测',
-      description: '运行一轮知识图谱检索评测，查看核心指标、抽取质量，并对比不同历史运行的变化。',
+      title: '图谱检索评测',
+      description: '运行一轮图谱检索评测，查看核心指标、抽取质量，并对比不同历史运行的变化。',
       actions: {
         refreshRuns: '刷新运行记录',
         run: '开始评测',

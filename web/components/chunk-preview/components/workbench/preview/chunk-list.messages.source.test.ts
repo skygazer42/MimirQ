@@ -12,6 +12,9 @@ describe('chunk list messages source', () => {
     expect(src).toContain("t('chunkList.title')")
     expect(src).toContain("t('chunkList.searchPlaceholder')")
     expect(src).toContain("t('chunkList.clearSearch')")
+    expect(src).toContain('data-chunk-list-toolbar')
+    expect(src).toContain('data-chunk-list-search')
+    expect(src).toContain('chunkListToolbarButtonClass')
 
     expect(src).toContain("t('chunkList.view.placeholder')")
     expect(src).toContain("t('chunkList.view.flat')")

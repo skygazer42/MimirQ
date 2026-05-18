@@ -326,31 +326,48 @@ export function QualityChecker({
     }
   }, [content, handleScan, initialScore])
 
+  const backendScanToggleClass = cn(
+    'h-7 rounded-lg px-2.5 text-[11px] shadow-none transition-colors motion-reduce:transition-none',
+    backendScanEnabled
+      ? 'border-success/25 bg-success/10 text-success hover:border-success/35 hover:bg-success/20 hover:text-success'
+      : 'border-border/60 bg-background/70 text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+  )
+  const scanButtonClass =
+    'h-7 gap-1.5 rounded-lg border-info/25 bg-info/10 text-info px-2.5 text-[11px] shadow-none hover:border-info/35 hover:bg-info/20 hover:text-info'
+  const scoreCardClass = cn(
+    'rounded-xl border p-3',
+    scoreGrade.tone === 'success' && 'border-success/25 bg-success/8',
+    scoreGrade.tone === 'info' && 'border-info/25 bg-info/8',
+    scoreGrade.tone === 'warning' && 'border-warning/25 bg-warning/10',
+    scoreGrade.tone === 'destructive' && 'border-destructive/25 bg-destructive/10'
+  )
+
   return (
-    <div className="space-y-6 p-6">
-      <div className="space-y-4">
+    <div className="space-y-4 p-4">
+      <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <ScanLine className="size-5 text-info" />
-            <h3 className="font-medium text-foreground">{t("header.title")}</h3>
+            <ScanLine className="size-4 text-info" />
+            <h3 className="text-[14px] font-medium tracking-[-0.01em] text-foreground/85">{t("header.title")}</h3>
           </div>
           <div className="flex items-center gap-2">
             <Button
-              variant={backendScanEnabled ? 'default' : 'outline'}
+              variant="outline"
               size="sm"
+              className={backendScanToggleClass}
               onClick={() => setBackendScanEnabled((value) => !value)}
             >
               {backendScanEnabled ? t('actions.backendScanOn') : t('actions.backendScanOff')}
             </Button>
-            <Button onClick={handleScan} disabled={isScanning} size="sm" className="gap-2">
+            <Button onClick={handleScan} disabled={isScanning} variant="outline" size="sm" className={scanButtonClass}>
               {isScanning ? (
                 <>
-                  <div className="h-4 w-4 rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground motion-safe:animate-spin motion-reduce:animate-none" />
+                  <div className="h-3.5 w-3.5 rounded-full border-2 border-info/25 border-t-info motion-safe:animate-spin motion-reduce:animate-none" />
                   {t('actions.scanning', { progress: scanProgress })}
                 </>
               ) : (
                 <>
-                  <Play className="size-4" />
+                  <Play className="size-3.5" />
                   {t("actions.scan")}
                 </>
               )}
@@ -359,29 +376,21 @@ export function QualityChecker({
         </div>
 
         {score > 0 && (
-          <div
-            className={cn(
-              'rounded-xl border-2 p-4',
-              scoreGrade.tone === 'success' && 'border-success/30 bg-success/10',
-              scoreGrade.tone === 'info' && 'border-info/30 bg-info/10',
-              scoreGrade.tone === 'warning' && 'border-warning/30 bg-warning/10',
-              scoreGrade.tone === 'destructive' && 'border-destructive/30 bg-destructive/10'
-            )}
-          >
+          <div className={scoreCardClass}>
             <div className="flex items-center justify-between">
               <div>
-                <div className="mb-1 text-sm text-muted-foreground">{t('score.title')}</div>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-4xl font-medium text-foreground">{score}</span>
-                  <span className="text-sm text-muted-foreground">{t('score.outOf')}</span>
-                  <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', scoreGrade.badge)}>
+                <div className="mb-1 text-[11px] font-medium text-muted-foreground/80">{t('score.title')}</div>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-[28px] font-semibold leading-none text-foreground">{score}</span>
+                  <span className="text-[12px] text-muted-foreground">{t('score.outOf')}</span>
+                  <span className={cn('rounded-full px-1.5 py-0.5 text-[10.5px] font-medium leading-none', scoreGrade.badge)}>
                     {scoreGrade.label}
                   </span>
                 </div>
               </div>
               <div
                 className={cn(
-                  'flex h-16 w-16 items-center justify-center rounded-full border-4',
+                  'flex h-12 w-12 items-center justify-center rounded-full border-2',
                   scoreGrade.tone === 'success' && 'border-success/30 bg-success/10',
                   scoreGrade.tone === 'info' && 'border-info/30 bg-info/10',
                   scoreGrade.tone === 'warning' && 'border-warning/30 bg-warning/10',
@@ -390,7 +399,7 @@ export function QualityChecker({
               >
                 <span
                   className={cn(
-                    'text-2xl font-medium',
+                    'text-[18px] font-semibold leading-none',
                     scoreGrade.tone === 'success' && 'text-success',
                     scoreGrade.tone === 'info' && 'text-info',
                     scoreGrade.tone === 'warning' && 'text-warning',

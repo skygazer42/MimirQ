@@ -363,52 +363,41 @@ export function OriginalPreview() {
     el.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth', block: 'center' })
   }, [activeChunkIndex, previewMode])
 
+  const originalHeaderMetaChipClass =
+    'inline-flex h-5 min-w-0 items-center gap-1 rounded-full border border-border/45 bg-background/68 px-1.5 text-[10px] font-medium leading-none text-muted-foreground/80'
+  const originalHeaderModeButtonClass =
+    'h-6 rounded-full px-2 text-[10.5px] font-medium shadow-none hover:bg-primary/8 hover:text-foreground/85'
+
   return (
     <div className="flex-1 flex flex-col min-w-0 border-b lg:border-b-0 lg:border-r border-border/60 bg-card">
-      <div className="min-h-10 border-b border-border/60 bg-card px-4 py-2 shrink-0">
-        <div className="flex min-w-0 flex-col gap-2 xl:flex-row xl:items-start xl:justify-between">
-          <div className="flex min-w-0 flex-1 flex-col gap-2">
-            <span className="flex min-w-0 items-center gap-2 text-sm font-semibold text-foreground">
-              <FileText className="w-4 h-4 shrink-0 text-muted-foreground" />
-              <span className="truncate">{previewMode === 'pdf' ? t('originalPreview.titlePdf') : t('originalPreview.title')}</span>
-              {previewMode === 'pdf' ? (
-                <span className="hidden xl:inline text-[11px] font-normal text-muted-foreground/75">
-                  {t('originalPreview.hints.pdfMode')}
+      <div className="min-h-10 shrink-0 border-b border-border/55 bg-card px-3 py-2">
+        <div
+          data-original-preview-header
+          className="flex min-w-0 flex-col gap-2 xl:flex-row xl:items-center xl:justify-between"
+        >
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+              <span className="inline-flex min-w-0 items-center gap-1.5 text-sm font-semibold text-foreground">
+                <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="truncate">
+                  {previewMode === 'pdf' ? t('originalPreview.titlePdf') : t('originalPreview.title')}
                 </span>
-              ) : null}
-            </span>
-            {previewData && (
-              <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] font-mono text-muted-foreground">
-              {activeChunkMeta ? (
-                <span className="inline-flex h-5 max-w-full items-center rounded-md border border-primary/20 bg-primary/10 px-1.5 text-primary">
-                  {activeChunkMeta.label}
-                  {activeChunkMeta.page == null ? '' : ` P.${activeChunkMeta.page}`}
-                  {' '}
-                  <span className="truncate text-muted-foreground">{activeChunkMeta.range}</span>
-                  {activeChunkMeta.role ? (
-                    <span className="ml-1 shrink-0 text-[9px] uppercase  text-muted-foreground">
-                      {activeChunkMeta.role}
-                    </span>
-                  ) : null}
-                </span>
-              ) : null}
-              <span className="inline-flex h-5 items-center rounded-md border border-border/60 bg-muted/35 px-1.5 tabular-nums">
-                {t('originalPreview.charCount', {
-                  count: backendTotalCharacters.toLocaleString(),
-                })}
               </span>
-              <CoverageHeatmapMini
-                stats={previewData.stats}
-                className="hidden lg:flex"
-              />
+              {previewData ? (
+                <span className={cn(originalHeaderMetaChipClass, 'tabular-nums')}>
+                  {t('originalPreview.charCount', {
+                    count: backendTotalCharacters.toLocaleString(),
+                  })}
+                </span>
+              ) : null}
               {originalTextSource ? (
-                <span className="inline-flex h-5 items-center rounded-md border border-border/60 bg-muted/35 px-1.5">
+                <span className={originalHeaderMetaChipClass}>
                   {originalTextSource === 'server'
                     ? t('originalPreview.source.server')
                     : t('originalPreview.source.local')}
                 </span>
               ) : null}
-              {previewData.original_text ? null : (() => {
+              {previewData?.original_text ? null : previewData ? (() => {
                 const limit = previewData.original_text_max_chars ?? 100000
                 const truncated = Boolean(previewData.original_text_truncated)
                 const badgeTitle = truncated
@@ -425,7 +414,7 @@ export function OriginalPreview() {
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <span
-                          className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-warning/25 bg-warning/10 text-warning"
+                          className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-warning/25 bg-warning/10 text-warning"
                           aria-label={badgeLabel}
                         >
                           <AlertCircle className="h-3 w-3" />
@@ -440,17 +429,46 @@ export function OriginalPreview() {
                     </Tooltip>
                   </TooltipProvider>
                 )
-              })()}
+              })() : null}
+              {previewMode === 'pdf' ? (
+                <span className="hidden text-[10.5px] font-normal text-muted-foreground/70 xl:inline">
+                  {t('originalPreview.hints.pdfMode')}
+                </span>
+              ) : null}
+            </div>
+
+            {previewData ? (
+              <div
+                data-original-preview-health-strip
+                className="flex min-w-0 flex-wrap items-center gap-1.5 text-[10px] font-mono text-muted-foreground"
+              >
+              {activeChunkMeta ? (
+                <span className="inline-flex h-5 max-w-full items-center rounded-full border border-primary/20 bg-primary/10 px-1.5 text-primary">
+                  {activeChunkMeta.label}
+                  {activeChunkMeta.page == null ? '' : ` P.${activeChunkMeta.page}`}
+                  {' '}
+                  <span className="truncate text-muted-foreground">{activeChunkMeta.range}</span>
+                  {activeChunkMeta.role ? (
+                    <span className="ml-1 shrink-0 text-[9px] uppercase  text-muted-foreground">
+                      {activeChunkMeta.role}
+                    </span>
+                  ) : null}
+                </span>
+              ) : null}
+              <CoverageHeatmapMini
+                stats={previewData.stats}
+                className="hidden min-w-0 max-w-full border-border/45 bg-muted/16 px-1.5 py-0.5 shadow-none lg:flex"
+              />
               </div>
-            )}
+            ) : null}
           </div>
 
-          <div className="flex shrink-0 items-center gap-2 self-start xl:self-center">
+          <div className="flex shrink-0 flex-wrap items-center gap-1.5 self-start xl:self-center">
             {previewMode === 'raw' && effectiveOriginalText && activeChunkIndex !== null && effectiveOriginalText.length > 20000 ? (
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 px-2 text-[11px]"
+                className={originalHeaderModeButtonClass}
                 onClick={() => setForceFullHighlight((v) => !v)}
                 title={
                   forceFullHighlight
@@ -463,11 +481,11 @@ export function OriginalPreview() {
                   : t('originalPreview.toggle.full')}
               </Button>
             ) : null}
-            <div className="flex items-center gap-1 rounded-md border border-border/60 bg-muted/20 p-0.5">
+            <div className="flex items-center gap-0.5 rounded-full border border-border/50 bg-muted/18 p-0.5">
               <Button
                 variant={previewMode === 'raw' ? 'secondary' : 'ghost'}
                 size="sm"
-                className="h-7 px-2 text-[11px]"
+                className={originalHeaderModeButtonClass}
                 onClick={() => setPreviewMode('raw')}
                 disabled={!effectiveOriginalText}
               >
@@ -476,7 +494,7 @@ export function OriginalPreview() {
               <Button
                 variant={previewMode === 'rendered' ? 'secondary' : 'ghost'}
                 size="sm"
-                className="h-7 px-2 text-[11px]"
+                className={originalHeaderModeButtonClass}
                 onClick={() => setPreviewMode('rendered')}
                 disabled={!effectiveOriginalText}
               >
@@ -485,7 +503,7 @@ export function OriginalPreview() {
               <Button
                 variant={previewMode === 'editor' ? 'secondary' : 'ghost'}
                 size="sm"
-                className="h-7 px-2 text-[11px]"
+                className={originalHeaderModeButtonClass}
                 onClick={() => setPreviewMode('editor')}
                 disabled={!effectiveOriginalText}
                 title={t('originalPreview.tabs.editorTitle')}
@@ -496,7 +514,7 @@ export function OriginalPreview() {
                 <Button
                   variant={previewMode === 'pdf' ? 'secondary' : 'ghost'}
                   size="sm"
-                  className="h-7 px-2 text-[11px]"
+                  className={originalHeaderModeButtonClass}
                   onClick={() => setPreviewMode('pdf')}
                   disabled={!previewData || !currentFile}
                   title={

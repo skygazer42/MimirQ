@@ -1,7 +1,7 @@
 'use client'
 
 import { LockKeyhole, RefreshCw, ShieldAlert } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 
 import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
@@ -17,10 +17,15 @@ type TenantPermissionGateProps = {
 }
 
 export function TenantPermissionGate({ permission, pageName, children }: Readonly<TenantPermissionGateProps>) {
+  const [hasHydrated, setHasHydrated] = useState(false)
   const access = useTenantAccess()
-  const allowed = tenantAccessAllows(access.data, permission)
+  const allowed = hasHydrated && tenantAccessAllows(access.data, permission)
 
-  if (access.isLoading) {
+  useEffect(() => {
+    setHasHydrated(true)
+  }, [])
+
+  if (!hasHydrated || access.isLoading) {
     return (
       <AppFrame>
         <PageLoading

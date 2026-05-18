@@ -48,14 +48,18 @@ export interface FileQueueItemData {
   pageCount?: number
   folderPathLabel?: string
   sourcePath?: string
+  governanceStatus?: 'draft' | 'ready' | 'submitted'
 }
 
 interface FileQueueItemProps {
   file: FileQueueItemData
   isActive?: boolean
+  isSelected?: boolean
+  isSelectable?: boolean
   draggable?: boolean
   onDragStart?: (e: React.DragEvent<HTMLElement>) => void
   onClick?: () => void
+  onToggleSelected?: () => void
   onRemove?: () => void
   onRetry?: () => void
 }
@@ -63,9 +67,12 @@ interface FileQueueItemProps {
 export function FileQueueItem({
   file,
   isActive = false,
+  isSelected = false,
+  isSelectable = false,
   draggable = false,
   onDragStart,
   onClick,
+  onToggleSelected,
   onRemove,
   onRetry,
 }: Readonly<FileQueueItemProps>) {
@@ -78,6 +85,8 @@ export function FileQueueItem({
       ? 0
       : Math.max(0, Math.min(100, Number(file.progress)))
   const parsedSummary = [file.parser, file.chunkStrategyLabel].filter(Boolean).join(' · ')
+  const governanceStatusLabel =
+    file.governanceStatus === 'ready' ? '待提交' : file.governanceStatus === 'submitted' ? '已提交' : ''
 
   const getStatusContent = () => {
     switch (file.status) {
@@ -110,6 +119,18 @@ export function FileQueueItem({
             {parsedSummary ? (
               <span className="min-w-0 truncate text-muted-foreground">
                 {parsedSummary}
+              </span>
+            ) : null}
+            {governanceStatusLabel ? (
+              <span
+                className={cn(
+                  'shrink-0 rounded-full border px-1.5 py-0.5 font-medium',
+                  file.governanceStatus === 'ready'
+                    ? 'border-warning/25 bg-warning/[0.10] text-warning'
+                    : 'border-success/25 bg-success/[0.08] text-success'
+                )}
+              >
+                {governanceStatusLabel}
               </span>
             ) : null}
             {typeof file.duration === 'number' && Number.isFinite(file.duration) ? (
@@ -180,6 +201,26 @@ export function FileQueueItem({
       )}
     >
       <div className="flex items-start gap-2">
+        {isSelectable ? (
+          <button
+            type="button"
+            aria-pressed={isSelected}
+            aria-label={isSelected ? '取消选择待提交文档' : '选择待提交文档'}
+            className={cn(
+              'mt-1 flex size-5 shrink-0 items-center justify-center rounded-full border transition-colors focus-ring',
+              isSelected
+                ? 'border-primary bg-primary text-primary-foreground'
+                : 'border-border/70 bg-background text-transparent hover:border-primary/50 hover:text-primary/40'
+            )}
+            onClick={(event) => {
+              event.stopPropagation()
+              onToggleSelected?.()
+            }}
+          >
+            <CheckCircle className="size-3.5" />
+          </button>
+        ) : null}
+
         {onClick ? (
           <button
             type="button"

@@ -29,6 +29,7 @@ import { detachPromise } from '@/lib/utils'
 import type { GraphClusteringWorkerApi } from '@/workers/graph-clustering.worker'
 
 import type { GraphLinkLike, GraphNodeLike } from '../graph-page-utils'
+import { graphmlImportButtonClass } from './graph-button-styles'
 import { getNextKeyboardRovingIndex } from './graph-keyboard-roving'
 
 const SEMANTIC_LIST_ITEM_LIMIT = 200
@@ -908,7 +909,7 @@ export function GraphCanvas({
                   size="lg"
                   variant="outline"
                   onClick={onTriggerFileUpload}
-                  className="h-10 rounded-lg border-border/70 bg-background/82 px-4 text-[13px] font-medium text-foreground/88 shadow-none hover:bg-background"
+                  className={`h-10 rounded-lg px-4 text-[13px] font-medium ${graphmlImportButtonClass}`}
                 >
                   导入 GraphML
                 </Button>

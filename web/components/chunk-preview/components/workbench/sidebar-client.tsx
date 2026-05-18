@@ -211,6 +211,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
     scopeSyncError,
     previewData,
     isLoading,
+    isSubmitting,
     cacheHit,
     chunkSize,
     chunkOverlap,
@@ -229,6 +230,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
     autoPreviewEnabled,
     runHistory,
     processedStatus,
+    selectedIngestFileIds,
     setCurrentFileIndex,
     removeFile,
     clearFiles,
@@ -240,6 +242,8 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
     updateParentChildSettings,
     runPreview,
     cancelPreview,
+    submitSelectedFiles,
+    toggleIngestFileSelection,
     setParserBackend,
     toggleAutoPreview,
     clearRunHistory,
@@ -270,6 +274,12 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
   const p95StatLabel = isTokenStrategy ? t('sidebar.stats.p95Tokens') : t('sidebar.stats.p95')
   const minMaxStatLabel = isTokenStrategy ? t('sidebar.stats.minMaxTokens') : t('sidebar.stats.minMaxLength')
   const histogramTitle = isTokenStrategy ? t('sidebar.stats.histogramTokens') : t('sidebar.stats.histogramLength')
+  const compactStatCardClass =
+    'min-w-0 rounded-lg border border-border/45 bg-[linear-gradient(180deg,hsl(var(--background)/0.9),hsl(var(--muted)/0.16))] px-2 py-1.5 shadow-none'
+  const compactStatLabelClass =
+    'truncate text-[8.5px] font-medium leading-3 tracking-[0.01em] text-muted-foreground/72'
+  const compactStatValueClass =
+    'mt-0.5 truncate text-[13px] font-medium leading-4 tracking-[-0.02em] tabular-nums text-foreground/90'
 
   const chunkSizeMin = isTokenStrategy ? 50 : 100
   const chunkSizeMax = isTokenStrategy ? 2000 : 4000
@@ -282,6 +292,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
   )
 
   const currentFileId = fileList[currentFileIndex]?.id
+  const selectedIngestCount = selectedIngestFileIds.size
   const currentFileMatchesScope = useMemo(() => {
     if (!currentFileItem) return false
     if (currentFileItem.source === 'local_upload' || currentFileItem.source === 'example') {
@@ -590,50 +601,83 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
           ) : null}
           <div className="h-px bg-border/45" />
 
-          <div className="flex items-center justify-between gap-3">
-            <SidebarSectionHeader
-              icon={Folder}
-              label={t('sidebar.fileList.title', { count: fileList.length })}
-              tone="sky"
-            />
-            <div className="flex items-center gap-1">
-              <SidebarIconButton
+          <div
+            data-chunk-file-queue
+            className="rounded-2xl border border-border/55 bg-[linear-gradient(180deg,hsl(var(--background)/0.94),hsl(var(--muted)/0.2))] p-2 shadow-[0_12px_30px_-28px_rgba(15,23,42,0.45)]"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <SidebarSectionHeader
+                icon={Folder}
+                label={t('sidebar.fileList.title', { count: fileList.length })}
                 tone="sky"
-                onClick={() => document.getElementById('add-file-input')?.click()}
-                aria-label={t('sidebar.fileList.addFile')}
-                title={t('sidebar.fileList.addFile')}
-              >
-                <Upload className="w-3.5 h-3.5 text-primary" />
-              </SidebarIconButton>
-              <SidebarIconButton
-                tone="amber"
-                onClick={() => {
-                  clearFiles()
-                  toast.success(t('sidebar.fileList.clearFilesSuccess'))
+              />
+              <div className="flex items-center gap-1">
+                <SidebarIconButton
+                  tone="sky"
+                  onClick={() => document.getElementById('add-file-input')?.click()}
+                  aria-label={t('sidebar.fileList.addFile')}
+                  title={t('sidebar.fileList.addFile')}
+                >
+                  <Upload className="w-3.5 h-3.5 text-primary" />
+                </SidebarIconButton>
+                <SidebarIconButton
+                  tone="amber"
+                  onClick={() => {
+                    clearFiles()
+                    toast.success(t('sidebar.fileList.clearFilesSuccess'))
+                  }}
+                  className="text-destructive/80"
+                  disabled={fileList.length === 0}
+                  aria-label={t('sidebar.fileList.clearFiles')}
+                  title={t('sidebar.fileList.clearFiles')}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </SidebarIconButton>
+              </div>
+              <input
+                id="add-file-input"
+                type="file"
+                accept={UPLOAD_ACCEPT}
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  const files = e.target.files ? Array.from(e.target.files) : []
+                  if (files.length > 0) addFiles(files)
+                  e.target.value = ''
                 }}
-                className="text-destructive/80"
-                disabled={fileList.length === 0}
-                aria-label={t('sidebar.fileList.clearFiles')}
-                title={t('sidebar.fileList.clearFiles')}
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </SidebarIconButton>
+              />
             </div>
-            <input
-              id="add-file-input"
-              type="file"
-              accept={UPLOAD_ACCEPT}
-              multiple
-              className="hidden"
-              onChange={(e) => {
-                const files = e.target.files ? Array.from(e.target.files) : []
-                if (files.length > 0) addFiles(files)
-                e.target.value = ''
-              }}
-            />
+
+            <div className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-border/40 bg-background/72 px-2 py-1.5">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span
+                  className={cn(
+                    'h-1.5 w-1.5 shrink-0 rounded-full',
+                    selectedIngestCount > 0 ? 'bg-primary shadow-[0_0_0_3px_hsl(var(--primary)/0.12)]' : 'bg-muted-foreground/35'
+                  )}
+                />
+                <span className="min-w-0 truncate text-[10px] font-medium text-muted-foreground/85">
+                  {selectedIngestCount > 0
+                    ? t('sidebar.fileList.batchIngestSelected', {
+                        count: selectedIngestCount,
+                      })
+                    : t('sidebar.fileList.batchIngestIdle')}
+                </span>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant={selectedIngestCount > 0 ? 'default' : 'outline'}
+                onClick={submitSelectedFiles}
+                disabled={selectedIngestCount === 0 || isSubmitting}
+                className="h-6 shrink-0 rounded-lg px-2 text-[10px] shadow-none"
+              >
+                {selectedIngestCount > 0 ? t('sidebar.fileList.batchIngest') : t('sidebar.fileList.batchIngestShort')}
+              </Button>
+            </div>
           </div>
 
-          <div className="max-h-[176px] space-y-1.5 overflow-y-auto overscroll-contain rounded-xl border border-border/50 bg-background/72 p-1.5 pr-1 no-scrollbar">
+          <div className="max-h-[216px] space-y-1 overflow-y-auto overscroll-contain rounded-2xl border border-border/45 bg-[linear-gradient(180deg,hsl(var(--background)/0.82),hsl(var(--muted)/0.14))] p-1 no-scrollbar">
             {sortedFileList.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 px-3 py-4 text-center">
                 <div className="text-[11px] font-medium text-foreground/75">
@@ -649,6 +693,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
               </div>
             ) : sortedFileList.map((f) => {
               const isActive = currentFileId === f.id
+              const isSelectedForIngest = selectedIngestFileIds.has(f.id)
               const displayTime = f.addedAt
                 ? new Date(f.addedAt).toLocaleString([], {
                     month: '2-digit',
@@ -656,25 +701,25 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     hour: '2-digit',
                     minute: '2-digit',
                   })
-	                : ''
-	              const fileIndex = fileList.findIndex((item) => item.id === f.id)
-	              const fileTypeLabel = f.originalFileType ? String(f.originalFileType).toUpperCase() : null
-	              const fileSizeLabel = typeof f.originalFileSize === 'number' ? formatFileSize(f.originalFileSize) : null
-	              const fileSourceLabel = f.source ? t(`sidebar.datasetScope.sources.${f.source}`) : null
-	              const fileMetaLabel = [
-	                fileTypeLabel,
-	                displayTime || t('sidebar.fileList.timeFallback'),
-	                fileSizeLabel,
-	                fileSourceLabel,
-	              ].filter(Boolean).join(' · ')
+                : ''
+              const fileIndex = fileList.findIndex((item) => item.id === f.id)
+              const fileTypeLabel = f.originalFileType ? String(f.originalFileType).toUpperCase() : null
+              const fileSizeLabel = typeof f.originalFileSize === 'number' ? formatFileSize(f.originalFileSize) : null
+              const fileSourceLabel = f.source ? t(`sidebar.datasetScope.sources.${f.source}`) : null
+              const fileMetaLabel = [
+                fileTypeLabel,
+                displayTime || t('sidebar.fileList.timeFallback'),
+                fileSizeLabel,
+                fileSourceLabel,
+              ].filter(Boolean).join(' · ')
               return (
                 <div
                   key={f.id}
                   className={cn(
-                    'group relative overflow-hidden rounded-xl border text-[10.5px] transition-colors',
+                    'group relative overflow-hidden rounded-xl border text-[10px] transition-[background,border,box-shadow] duration-150',
                     isActive
                       ? 'border-primary/35 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--primary)/0.08))] shadow-sm ring-1 ring-primary/25'
-                      : 'border-transparent bg-transparent hover:border-primary/18 hover:bg-primary/8'
+                      : 'border-transparent bg-transparent hover:border-primary/18 hover:bg-primary/7'
                   )}
                 >
                   <button
@@ -683,29 +728,44 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                       if (fileIndex >= 0) setCurrentFileIndex(fileIndex)
                     }}
                     aria-label={t('sidebar.fileList.selectFile', { name: f.displayName })}
-                    className="w-full min-w-0 cursor-pointer rounded-xl py-2 pl-2.5 pr-8 text-left focus-ring"
+                    className="grid w-full min-w-0 cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-xl py-1.5 pl-2 pr-12 text-left focus-ring"
                   >
-                    <div className="grid min-w-0 gap-1.5">
-                      <div className="flex min-w-0 items-center gap-1.5">
-                        <FileIcon
-                          className={cn('h-3.5 w-3.5 shrink-0', isActive ? 'text-primary' : 'text-muted-foreground')}
-                        />
+                    <span
+                      className={cn(
+                        'grid h-7 w-7 shrink-0 place-items-center rounded-lg border',
+                        isActive ? 'border-primary/25 bg-primary/10 text-primary' : 'border-border/55 bg-background/75 text-muted-foreground'
+                      )}
+                    >
+                      <FileIcon className="h-3.5 w-3.5" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="flex min-w-0 items-center gap-1">
                         <span
                           title={f.displayName}
-                          className={cn('min-w-0 flex-1 truncate font-medium leading-4', isActive ? 'text-foreground' : 'text-muted-foreground')}
+                          className={cn(
+                            'min-w-0 truncate font-medium leading-4',
+                            isActive ? 'text-foreground' : 'text-foreground/78'
+                          )}
                         >
                           {f.displayName}
                         </span>
                         {processedStatus[f.id] === 'success' ? <Check className="h-3 w-3 shrink-0 text-success" /> : null}
                         {processedStatus[f.id] === 'error' ? <AlertCircle className="h-3 w-3 shrink-0 text-destructive" /> : null}
-                      </div>
-                      <div
-                        className="min-w-0 truncate whitespace-nowrap text-[9px] leading-4 text-muted-foreground/80"
+                      </span>
+                      <span
+                        className="mt-0.5 flex min-w-0 items-center gap-1 overflow-hidden text-[8.5px] leading-3 text-muted-foreground/75"
                         title={fileMetaLabel}
                       >
-                        {fileMetaLabel}
-                      </div>
-                    </div>
+                        {fileTypeLabel ? (
+                          <span className="shrink-0 rounded-md border border-border/45 bg-background/70 px-1 py-px font-medium text-muted-foreground/85">
+                            {fileTypeLabel}
+                          </span>
+                        ) : null}
+                        {fileSizeLabel ? <span className="shrink-0 tabular-nums">{fileSizeLabel}</span> : null}
+                        {displayTime ? <span className="shrink-0 max-w-[4.2rem] truncate tabular-nums">{displayTime}</span> : null}
+                        {fileSourceLabel ? <span className="min-w-0 truncate">{fileSourceLabel}</span> : null}
+                      </span>
+                    </span>
                   </button>
 
                   <button
@@ -714,7 +774,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                       if (fileIndex >= 0) removeFile(fileIndex)
                     }}
                     className={cn(
-                      'absolute right-1.5 top-1.5 cursor-pointer rounded-lg p-1 text-muted-foreground/70 opacity-0 transition-colors transition-opacity duration-150 motion-reduce:transition-none',
+                      'absolute right-1.5 top-1/2 -translate-y-1/2 cursor-pointer rounded-lg p-1 text-muted-foreground/70 opacity-0 transition-colors transition-opacity duration-150 motion-reduce:transition-none',
                       'hover:bg-destructive/10 hover:text-destructive focus-ring focus-visible:opacity-100 group-hover:opacity-100',
                       isActive ? 'opacity-100' : ''
                     )}
@@ -722,6 +782,22 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     title={t('sidebar.fileList.removeFile', { name: f.displayName })}
                   >
                     <Trash2 className="w-3 h-3" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleIngestFileSelection(f.id)}
+                    aria-pressed={isSelectedForIngest}
+                    aria-label={t('sidebar.fileList.toggleForIngest', { name: f.displayName })}
+                    title={t('sidebar.fileList.toggleForIngest', { name: f.displayName })}
+                    className={cn(
+                      'absolute right-7 top-1/2 grid h-5 w-5 -translate-y-1/2 cursor-pointer place-items-center rounded-lg border text-[9px] opacity-0 transition-colors transition-opacity duration-150 motion-reduce:transition-none focus-ring focus-visible:opacity-100 group-hover:opacity-100',
+                      isSelectedForIngest || isActive ? 'opacity-100' : '',
+                      isSelectedForIngest
+                        ? 'border-primary/45 bg-primary text-primary-foreground shadow-sm'
+                        : 'border-border/70 bg-background/90 text-muted-foreground hover:border-primary/35 hover:bg-primary/10 hover:text-primary'
+                    )}
+                  >
+                    {isSelectedForIngest ? <Check className="h-3 w-3" /> : null}
                   </button>
                 </div>
               )
@@ -1594,48 +1670,48 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
 
             {analysisExpanded ? (
               <>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="rounded-xl border border-border/50 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.20))] p-2.5 shadow-none">
-                    <div className="text-[9.5px] font-medium tracking-[0.01em] text-muted-foreground/72">{t('sidebar.stats.totalChunks')}</div>
-                    <div className="mt-1 text-[16px] font-medium leading-none tracking-[-0.02em] tabular-nums text-foreground/90">{previewData.total_chunks}</div>
+                <div data-chunk-stat-grid className="grid grid-cols-3 gap-1.5">
+                  <div className={compactStatCardClass}>
+                    <div className={compactStatLabelClass}>{t('sidebar.stats.totalChunks')}</div>
+                    <div className={compactStatValueClass}>{previewData.total_chunks}</div>
                   </div>
-                  <div className="rounded-xl border border-border/50 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.20))] p-2.5 shadow-none">
-                    <div className="text-[9.5px] font-medium tracking-[0.01em] text-muted-foreground/72">{averageStatLabel}</div>
-                    <div className="mt-1 text-[16px] font-medium leading-none tracking-[-0.02em] tabular-nums text-foreground/90">
+                  <div className={compactStatCardClass}>
+                    <div className={compactStatLabelClass}>{averageStatLabel}</div>
+                    <div className={compactStatValueClass}>
                       {serverStats?.avg ?? '-'}
                       {isTokenStrategy ? (
                         <span className="ml-1 text-[8.5px] font-mono text-muted-foreground/75">{statsUnitLabel}</span>
                       ) : null}
                     </div>
                   </div>
-                  <div className="rounded-xl border border-border/50 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.20))] p-2.5 shadow-none">
-                    <div className="text-[9.5px] font-medium tracking-[0.01em] text-muted-foreground/72">{p95StatLabel}</div>
-                    <div className="mt-1 text-[16px] font-medium leading-none tracking-[-0.02em] tabular-nums text-foreground/90">
+                  <div className={compactStatCardClass}>
+                    <div className={compactStatLabelClass}>{p95StatLabel}</div>
+                    <div className={compactStatValueClass}>
                       {serverStats?.p95 ?? '-'}
                       {isTokenStrategy ? (
                         <span className="ml-1 text-[8.5px] font-mono text-muted-foreground/75">{statsUnitLabel}</span>
                       ) : null}
                     </div>
                   </div>
-                  <div className="rounded-xl border border-border/50 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.20))] p-2.5 shadow-none" title={t('sidebar.stats.coverage')}>
-                    <div className="text-[9.5px] font-medium tracking-[0.01em] text-muted-foreground/72">{t('sidebar.stats.coverage')}</div>
-                    <div className="mt-1 text-[16px] font-medium leading-none tracking-[-0.02em] tabular-nums text-foreground/90">
+                  <div className={compactStatCardClass} title={t('sidebar.stats.coverage')}>
+                    <div className={compactStatLabelClass}>{t('sidebar.stats.coverage')}</div>
+                    <div className={compactStatValueClass}>
                       {coverageSignals?.coveragePct == null ? '-' : `${coverageSignals.coveragePct}%`}
                     </div>
                   </div>
-                  <div className="rounded-xl border border-border/50 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.20))] p-2.5 shadow-none" title={t('sidebar.stats.overlapWaste')}>
-                    <div className="text-[9.5px] font-medium tracking-[0.01em] text-muted-foreground/72">{t('sidebar.stats.overlapWaste')}</div>
-                    <div className="mt-1 text-[16px] font-medium leading-none tracking-[-0.02em] tabular-nums text-foreground/90">
+                  <div className={compactStatCardClass} title={t('sidebar.stats.overlapWaste')}>
+                    <div className={compactStatLabelClass}>{t('sidebar.stats.overlapWaste')}</div>
+                    <div className={compactStatValueClass}>
                       {coverageSignals?.overlapWastePct == null ? '-' : `${coverageSignals.overlapWastePct}%`}
                     </div>
                   </div>
-                  <div className="rounded-xl border border-border/50 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.20))] p-2.5 shadow-none" title={t('sidebar.stats.gaps')}>
-                    <div className="text-[9.5px] font-medium tracking-[0.01em] text-muted-foreground/72">{t('sidebar.stats.gaps')}</div>
-                    <div className="mt-1 text-[16px] font-medium leading-none tracking-[-0.02em] tabular-nums text-foreground/90">
+                  <div className={compactStatCardClass} title={t('sidebar.stats.gaps')}>
+                    <div className={compactStatLabelClass}>{t('sidebar.stats.gaps')}</div>
+                    <div className={compactStatValueClass}>
                       {coverageSignals?.gapCount == null ? '-' : String(coverageSignals.gapCount)}
                     </div>
                     {coverageSignals?.largestGap == null ? null : (
-                      <div className="mt-1 text-[8px] text-muted-foreground/72 font-mono">
+                      <div className="mt-0.5 truncate text-[7.5px] font-mono leading-3 text-muted-foreground/66">
                         {t('sidebar.stats.largestGap', { value: coverageSignals.largestGap })}
                       </div>
                     )}

@@ -147,6 +147,13 @@ export interface DatasetReportConnectorRun {
   stats: Record<string, unknown>
 }
 
+export interface DatasetReportDataProvenance {
+  source: string
+  mocked: boolean
+  generated_by?: string | null
+  sections: Record<string, string>
+}
+
 export interface DatasetGovernanceMetrics {
   total_documents: number
   used_documents: number
@@ -194,6 +201,7 @@ export interface DatasetReport {
   dataset_name?: string | null
   pipeline_hash?: string | null
   generated_at: string
+  data_provenance?: DatasetReportDataProvenance | null
   profile: DatasetProfileSummary
   compliance: DatasetReportCompliance
   pipeline_versions: DatasetReportPipelineVersion[]

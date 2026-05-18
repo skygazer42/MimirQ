@@ -146,4 +146,15 @@ describe('similarity workbench source', () => {
     expectSourceNotToContain(src, 'setCollectionsError')
     expectSourceNotToContain(src, 'detachPromise(loadCollections())')
   })
+
+  it('keeps the empty matrix state visual instead of repeating setup instructions', () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, 'similarity-workbench.tsx'),
+      'utf8'
+    )
+
+    expectSourceToContain(src, 'aria-label="相似度矩阵空状态"')
+    expectSourceNotToContain(src, '等待相似度矩阵')
+    expectSourceNotToContain(src, '请先在左侧选择横/纵坐标 Collection')
+  })
 })

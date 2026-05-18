@@ -224,9 +224,55 @@ export function TopBar() {
       .replaceAll('`', '\\`')
 
   const summaryChipClass =
-    'inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-background/75 px-2.5 py-1 text-[11px] leading-none text-muted-foreground'
+    'inline-flex h-7 items-center gap-1.5 rounded-full border border-border/55 bg-muted/30 px-2.5 text-[11px] leading-none text-muted-foreground'
+  const fileMetaChipClass =
+    'inline-flex h-5 min-w-0 items-center gap-1 rounded-md border border-border/45 bg-background/62 px-1.5 text-[9.5px] leading-none text-muted-foreground/78'
   const stateChipClass =
-    'inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px] font-medium leading-none'
+    'inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-medium leading-none'
+  const actionButtonClass =
+    'h-8 rounded-lg px-2.5 text-[11px] font-medium text-muted-foreground hover:bg-primary/8 hover:text-foreground'
+  const visibleFileName =
+    currentFileItem.displayName || previewData?.filename || currentFile.name
+  const visibleFileType =
+    previewData?.file_type ||
+    currentFileItem.originalFileType ||
+    currentFile.name.split('.').pop() ||
+    ''
+  const visibleFileSize =
+    typeof previewData?.file_size === 'number' &&
+    Number.isFinite(previewData.file_size)
+      ? previewData.file_size
+      : typeof currentFileItem.originalFileSize === 'number' &&
+          Number.isFinite(currentFileItem.originalFileSize)
+        ? currentFileItem.originalFileSize
+        : currentFile.size
+  const visibleChunkSize =
+    typeof previewData?.params?.chunk_size === 'number' &&
+    Number.isFinite(previewData.params.chunk_size)
+      ? Math.trunc(previewData.params.chunk_size)
+      : chunkSize
+  const visibleChunkOverlap =
+    typeof previewData?.params?.chunk_overlap === 'number' &&
+    Number.isFinite(previewData.params.chunk_overlap)
+      ? Math.trunc(previewData.params.chunk_overlap)
+      : chunkOverlap
+  const visibleChunkUnit = previewData?.params?.unit || 'chars'
+  const visiblePreviewDurationMs =
+    typeof previewData?.preview_duration_ms === 'number' &&
+    Number.isFinite(previewData.preview_duration_ms)
+      ? Math.max(0, Math.round(previewData.preview_duration_ms))
+      : lastPreviewDurationMs
+  const visibleQualityGrade = previewData?.quality_gate?.grade
+  const visibleQualityLabel =
+    visibleQualityGrade === 'pass'
+      ? t('topBar.status.qualityGrades.pass')
+      : visibleQualityGrade === 'warn'
+        ? t('topBar.status.qualityGrades.warn')
+        : visibleQualityGrade === 'fail'
+          ? t('topBar.status.qualityGrades.fail')
+          : visibleQualityGrade
+            ? String(visibleQualityGrade).toUpperCase()
+            : ''
 
   const buildConfig = () => ({
     dataset_id: datasetId || undefined,
@@ -343,27 +389,45 @@ export function TopBar() {
     <div
       role="group"
       aria-label={workbenchTitle}
-      className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between"
+      className="relative flex min-w-0 flex-col gap-2.5 rounded-2xl border border-border/55 bg-card/90 px-3 py-2.5 shadow-[0_10px_28px_rgba(15,23,42,0.045)] xl:flex-row xl:items-center xl:justify-between"
     >
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-          <span
-            className="max-w-full truncate text-sm font-semibold text-foreground sm:max-w-[28rem] xl:max-w-[34rem]"
-            title={currentFileItem?.displayName || currentFile.name}
-          >
-            {currentFileItem?.displayName || currentFile.name}
-          </span>
-          <span className="inline-flex min-w-[2rem] items-center justify-center rounded-md bg-primary/12 px-1.5 py-0.5 text-[11px] font-semibold text-primary">
-            #{currentFileIndex + 1}
-          </span>
-          {currentFileItem?.originalFileType ? (
-            <span className="inline-flex items-center rounded-md border border-border/60 bg-muted/45 px-1.5 py-0.5 text-[11px] font-mono font-medium text-muted-foreground">
-              {String(currentFileItem.originalFileType).toUpperCase()}
-            </span>
-          ) : null}
-          <span className="text-[11px] font-medium text-muted-foreground/80">
-            {formatFileSize(currentFileItem?.originalFileSize ?? currentFile.size)}
-          </span>
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <div data-current-file-summary className="flex min-w-0 items-center gap-2.5">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-primary/8 text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
+            <FileText className="h-4 w-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2">
+              <span
+                className="max-w-full truncate text-sm font-semibold text-foreground sm:max-w-[28rem] xl:max-w-[34rem]"
+                title={visibleFileName}
+              >
+                {visibleFileName}
+              </span>
+            </div>
+            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
+              <span className={cn(fileMetaChipClass, 'border-primary/20 bg-primary/6 text-primary/85')}>
+                <span className="text-primary/58">{t('topBar.fileMeta.index')}</span>
+                <span className="font-medium tabular-nums">#{currentFileIndex + 1}</span>
+              </span>
+              {visibleFileType ? (
+                <span className={fileMetaChipClass}>
+                  <span className="text-muted-foreground/55">{t('topBar.fileMeta.type')}</span>
+                  <span className="font-mono font-medium text-foreground/72">{String(visibleFileType).toUpperCase()}</span>
+                </span>
+              ) : null}
+              <span className={fileMetaChipClass}>
+                <span className="text-muted-foreground/55">{t('topBar.fileMeta.size')}</span>
+                <span className="font-mono font-medium text-foreground/72">{formatFileSize(visibleFileSize)}</span>
+              </span>
+              <span className={cn(fileMetaChipClass, 'max-w-[8.5rem]')}>
+                <span className="text-muted-foreground/55">{t('topBar.fileMeta.parser')}</span>
+                <span className="min-w-0 truncate font-medium text-foreground/72" title={effectiveParserBackend}>
+                  {effectiveParserBackend}
+                </span>
+              </span>
+            </div>
+          </div>
         </div>
 
         <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -389,15 +453,18 @@ export function TopBar() {
 
           <span className={summaryChipClass}>
             <span className="text-muted-foreground/70">{t('topBar.paramsLabel')}</span>
-            <span className="font-mono font-medium text-foreground/85">
-              {chunkSize}/{chunkOverlap}
+            <span
+              className="font-mono font-medium text-foreground/85"
+              title={visibleChunkUnit}
+            >
+              {visibleChunkSize}/{visibleChunkOverlap}
             </span>
           </span>
 
-          {typeof lastPreviewDurationMs === 'number' ? (
+          {typeof visiblePreviewDurationMs === 'number' ? (
             <span className={summaryChipClass} title={serverTimingTitle}>
               <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
-              <span className="font-medium text-foreground/85">{lastPreviewDurationMs}ms</span>
+              <span className="font-medium text-foreground/85">{visiblePreviewDurationMs}ms</span>
             </span>
           ) : null}
 
@@ -438,20 +505,20 @@ export function TopBar() {
             </span>
           ) : null}
 
-          {previewData?.quality_gate?.grade ? (
+          {visibleQualityGrade ? (
             <span
               className={cn(
                 stateChipClass,
-                previewData.quality_gate.grade === 'pass'
+                visibleQualityGrade === 'pass'
                   ? 'border-success/20 bg-success/10 text-success'
-                  : previewData.quality_gate.grade === 'fail'
+                  : visibleQualityGrade === 'fail'
                     ? 'border-destructive/20 bg-destructive/10 text-destructive'
                     : 'border-warning/20 bg-warning/10 text-warning'
               )}
-              title={(previewData.quality_gate.reasons || []).join('\\n')}
+              title={(previewData?.quality_gate?.reasons || []).join('\\n')}
             >
               {t('topBar.status.quality', {
-                grade: String(previewData.quality_gate.grade).toUpperCase(),
+                grade: visibleQualityLabel,
               })}
             </span>
           ) : null}
@@ -469,7 +536,7 @@ export function TopBar() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2.5 xl:justify-end">
+      <div className="flex flex-wrap items-center gap-2 xl:justify-end">
         {submitSuccess ? (
           <div className="flex items-center gap-1.5 rounded-lg border border-success/20 bg-success/10 px-2.5 py-1.5 text-xs font-medium text-success animate-in fade-in slide-in-from-right-4 motion-reduce:animate-none">
             <Check className="w-3.5 h-3.5" />
@@ -491,80 +558,83 @@ export function TopBar() {
           </div>
         ) : null}
 
-        <div className="mx-1 h-7 w-px bg-border/70" />
+        <div className="flex items-center gap-1 rounded-xl border border-border/55 bg-muted/25 p-1">
 
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={reset}
-          className="h-8 rounded-lg px-2.5 text-[11px] font-medium text-muted-foreground hover:bg-muted/70 hover:text-foreground"
-        >
-          <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
-          {t('topBar.actions.reset')}
-        </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={reset}
+            className={actionButtonClass}
+          >
+            <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
+            {t('topBar.actions.reset')}
+          </Button>
 
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={toggleSettingsPanel}
-          className="h-8 rounded-lg px-2.5 text-[11px] font-medium text-muted-foreground hover:bg-muted/70 hover:text-foreground lg:hidden"
-          aria-label={t('topBar.actions.openSettingsPanel')}
-          title={t('topBar.actions.openSettingsPanel')}
-        >
-          <SlidersHorizontal className="w-3.5 h-3.5 mr-1.5" />
-          {t('topBar.actions.settings')}
-        </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={toggleSettingsPanel}
+            className={cn(actionButtonClass, 'lg:hidden')}
+            aria-label={t('topBar.actions.openSettingsPanel')}
+            title={t('topBar.actions.openSettingsPanel')}
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5 mr-1.5" />
+            {t('topBar.actions.settings')}
+          </Button>
 
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={toggleOriginalPanel}
-          className="h-8 rounded-lg px-2.5 text-[11px] font-medium text-muted-foreground hover:bg-muted/70 hover:text-foreground"
-          aria-label={
-            showOriginalPanel
-              ? t('topBar.actions.hideOriginalPanel')
-              : t('topBar.actions.showOriginalPanel')
-          }
-          title={
-            showOriginalPanel
-              ? t('topBar.actions.hideOriginalPanel')
-              : t('topBar.actions.showOriginalPanel')
-          }
-        >
-          <FileText className="w-3.5 h-3.5 mr-1.5" />
-          {showOriginalPanel
-            ? t('topBar.actions.hideOriginal')
-            : t('topBar.actions.showOriginal')}
-        </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={toggleOriginalPanel}
+            className={cn(
+              actionButtonClass,
+              showOriginalPanel ? 'bg-primary/8 text-primary hover:text-primary' : null
+            )}
+            aria-label={
+              showOriginalPanel
+                ? t('topBar.actions.hideOriginalPanel')
+                : t('topBar.actions.showOriginalPanel')
+            }
+            title={
+              showOriginalPanel
+                ? t('topBar.actions.hideOriginalPanel')
+                : t('topBar.actions.showOriginalPanel')
+            }
+          >
+            <FileText className="w-3.5 h-3.5 mr-1.5" />
+            {showOriginalPanel
+              ? t('topBar.actions.hideOriginal')
+              : t('topBar.actions.showOriginal')}
+          </Button>
 
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => setHelpOpen(true)}
-          className="h-8 rounded-lg px-2.5 text-[11px] font-medium text-muted-foreground hover:bg-muted/70 hover:text-foreground"
-          aria-label={t('topBar.actions.helpTitle')}
-          title={t('topBar.actions.helpTitle')}
-        >
-          <HelpCircle className="w-3.5 h-3.5 mr-1.5" />
-          <span className="hidden md:inline">{t('topBar.actions.help')}</span>
-        </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setHelpOpen(true)}
+            className={actionButtonClass}
+            aria-label={t('topBar.actions.helpTitle')}
+            title={t('topBar.actions.helpTitle')}
+          >
+            <HelpCircle className="w-3.5 h-3.5 mr-1.5" />
+            <span className="hidden md:inline">{t('topBar.actions.help')}</span>
+          </Button>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 rounded-lg p-0 text-muted-foreground hover:bg-muted/70 hover:text-foreground/80"
-              aria-label={t('topBar.actions.moreActions')}
-              title={t('topBar.actions.moreActions')}
-            >
-              <MoreVertical className="w-4 h-4" />
-            </Button>
-          </DropdownMenuTrigger>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 rounded-lg p-0 text-muted-foreground hover:bg-primary/8 hover:text-foreground/80"
+                aria-label={t('topBar.actions.moreActions')}
+                title={t('topBar.actions.moreActions')}
+              >
+                <MoreVertical className="w-4 h-4" />
+              </Button>
+            </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             <input
               ref={importConfigInputRef}
@@ -902,7 +972,8 @@ export function TopBar() {
               </>
             ) : null}
           </DropdownMenuContent>
-        </DropdownMenu>
+          </DropdownMenu>
+        </div>
 
         {onClose ? (
           <Button
@@ -939,8 +1010,6 @@ export function TopBar() {
             : t('topBar.actions.confirmIngest')}
         </Button>
       </div>
-
-      <div className="absolute inset-x-6 bottom-0 h-px bg-border/60" />
 
       <ChunkingHelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
       {previewData ? (

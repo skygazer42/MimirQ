@@ -16,6 +16,7 @@ import type { ParsedFile } from './parsing-types'
 
 export default function ParsingPage() {
   const [files, setFiles] = useState<ParsedFile[]>([])
+  const [selectedGovernanceFileIds, setSelectedGovernanceFileIds] = useState<Set<string>>(() => new Set())
   const pageState = useParsingPageState({ files, setFiles })
 
   const addParsedFile = useParsedFiles((state) => state.addParsedFile)
@@ -103,6 +104,18 @@ export default function ParsingPage() {
     [addFiles, consumeUploadTargetFolderId]
   )
 
+  const toggleGovernanceFileSelection = useCallback((fileId: string) => {
+    setSelectedGovernanceFileIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(fileId)) {
+        next.delete(fileId)
+      } else {
+        next.add(fileId)
+      }
+      return next
+    })
+  }, [])
+
   const queueActions = useParsingQueueActions({
     activeFileId: pageState.activeFileId,
     activeLibraryFileId: pageState.activeLibraryFileId,
@@ -152,6 +165,9 @@ export default function ParsingPage() {
     countMarkdownHeadings,
     editSession: pageState.editSession,
     editedContent: pageState.editedContent,
+    files,
+    libraryFiles,
+    selectedGovernanceFileIds,
     setActiveBlockId: pageState.setActiveBlockId,
     setCopied: pageState.setCopied,
     setEditSession: pageState.setEditSession,
@@ -160,6 +176,7 @@ export default function ParsingPage() {
     setHoveredBlockId: pageState.setHoveredBlockId,
     setIsEditing: pageState.setIsEditing,
     setRightPanelMode: pageState.setRightPanelMode,
+    setSelectedGovernanceFileIds,
     updateParsedFile,
   })
 
@@ -240,7 +257,10 @@ export default function ParsingPage() {
       setQueueFileParserBackend={pageState.setQueueFileParserBackend}
       setQueueOpen={pageState.setQueueOpen}
       setRightPanelMode={pageState.setRightPanelMode}
+      selectedGovernanceFileIds={selectedGovernanceFileIds}
       selectedDatasetId={pageState.selectedDatasetId}
+      onSubmitSelectedToGovernance={editorActions.handleSubmitSelectedToGovernance}
+      onToggleGovernanceFileSelection={toggleGovernanceFileSelection}
       onDatasetScopeChange={(datasetId) => {
         pageState.setSelectedDatasetId(datasetId)
         pageState.setActiveFileId(null)

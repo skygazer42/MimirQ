@@ -19,7 +19,7 @@ describe('quarantine queue page layout', () => {
     expectSourceToContain(src, 'description="聚合命中规则，抽样预览原文，一键调参回放。这里集中处理被隔离的异常样本，帮助你快速完成复核和回放。"')
     expectSourceToContain(
       src,
-      "const [selectedDataset, setSelectedDataset] = useState('all')"
+      "searchParams.get('datasetId') || 'all'"
     )
     expectSourceToContain(
       src,
@@ -29,6 +29,7 @@ describe('quarantine queue page layout', () => {
     expectSourceToContain(src, 'placeholder="搜索文件名 / ID / 规则 / 原因"')
     expectSourceToContain(src, '规则集中率')
     expectSourceToContain(src, '较昨日')
+    expect((src.match(/hover:bg-info\/\[0\.12\]/g) || []).length).toBeGreaterThanOrEqual(2)
     expectSourceToContain(src, 'max-w-[1520px]')
     expectSourceToContain(src, 'min-h-[104px]')
     expectSourceToContain(

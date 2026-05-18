@@ -177,9 +177,9 @@ CommandMenu: {
           keywords: ['parsing', 'parser', 'chunking', 'extract', '解析', '文档解析', '切分', '抽取', '解析工作台'],
         },
         reports: {
-          label: '打开数据报告导出',
+          label: '打开数据报告',
           description: '按数据集生成质量、治理和 RAG 审计报告，支持导出分享。',
-          keywords: ['reports', 'report', 'analytics', 'dashboard', '报表', '报告', '数据集报告', '数据报告导出', '质量报告', '审计'],
+          keywords: ['reports', 'report', 'analytics', 'dashboard', '报表', '报告', '数据报告', '数据集报告', '质量报告', '审计'],
         },
         observability: {
           label: '打开可观测中心',
@@ -242,9 +242,9 @@ CommandMenu: {
         keywords: ['parsing', 'parser', 'extract', '文档解析', '解析', '切分', '抽取'],
       },
       reports: {
-        label: '数据报告导出',
+        label: '数据报告',
         description: '生成数据集质量、治理和 RAG 审计交付物。',
-        keywords: ['reports', 'report', 'analytics', 'dashboard', '报表', '报告', '数据集报告', '数据报告导出', '质量报告', '审计'],
+        keywords: ['reports', 'report', 'analytics', 'dashboard', '报表', '报告', '数据报告', '数据集报告', '质量报告', '审计'],
       },
       observability: {
         label: '可观测中心',

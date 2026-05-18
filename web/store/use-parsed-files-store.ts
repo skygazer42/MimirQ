@@ -33,6 +33,8 @@ export interface ParsedFileData {
   datasetName?: string | null
   source?: 'parsing_workspace' | 'knowledge_base'
   sourcePath?: string | null
+  governanceStatus?: 'draft' | 'ready' | 'submitted'
+  chunkStatus?: 'draft' | 'ready' | 'submitted'
   /**
    * UI status for the document library.
    * Note: we don't persist the original File object, only metadata + parsed markdown.

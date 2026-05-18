@@ -263,41 +263,74 @@ export function DataCleaner({
     onClean(content)
   }, [content, onClean])
 
-  return (
-    <div className="space-y-4 p-4 md:space-y-5 md:p-5">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Wrench className="size-[18px] text-primary/80" />
-          <h3 className="text-[15px] font-medium tracking-[-0.01em] text-foreground/80">{t("header.title")}</h3>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] text-muted-foreground/80">{t('inputFormat.label')}</span>
-          <Select
-            value={inputFormat}
-            onValueChange={(value) => setInputFormat(coerceOneOf(DATA_CLEANER_INPUT_FORMAT_VALUES, value, 'markdown'))}
-          >
-            <SelectTrigger className="h-8 w-[112px] rounded-lg border-border/60 bg-background/70 text-[11px] text-foreground/80 shadow-none">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="markdown">{t('inputFormat.options.markdown')}</SelectItem>
-              <SelectItem value="html">{t('inputFormat.options.html')}</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+  const applyButtonClass =
+    'h-8 flex-1 gap-2 rounded-lg border-primary/35 bg-gradient-to-r from-primary/[0.16] via-primary/[0.12] to-info/[0.14] text-primary shadow-[0_8px_18px_rgba(37,99,235,0.08)] hover:border-primary/45 hover:from-primary/[0.22] hover:via-primary/[0.16] hover:to-info/[0.18] hover:text-primary'
+  const llmToggleClass = cn(
+    'h-8 rounded-lg shadow-none transition-colors motion-reduce:transition-none',
+    llmEnabled
+      ? 'border-accent/30 bg-accent/10 text-accent hover:border-accent/40 hover:bg-accent/20 hover:text-accent'
+      : 'border-border/60 bg-background/70 text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+  )
+  const configShellClass =
+    'space-y-2.5 rounded-2xl border border-info/15 bg-gradient-to-b from-surface-2/80 to-card/95 p-3 shadow-soft'
+  const configHeaderClass =
+    'rounded-xl border border-info/15 bg-gradient-to-br from-info/10 via-card to-primary/5 px-3 py-2.5'
+  const rulesPanelClass =
+    'overflow-hidden rounded-xl border border-info/15 bg-gradient-to-b from-surface-2/80 to-card/95'
+  const llmPanelClass =
+    'rounded-xl border border-accent/20 bg-accent/5 p-3'
+  const diffPanelClass =
+    'overflow-hidden rounded-xl border border-border/55 bg-card/95 shadow-[0_8px_18px_rgba(15,23,42,0.025)]'
 
-      <div className="overflow-hidden rounded-2xl border border-border/60 bg-card/95">
-        <div className="border-b border-border/60 bg-muted/20 px-3.5 py-2 text-[11px] font-medium text-muted-foreground/80">
-          {t('rules.title')}
+  return (
+    <div className="space-y-3 p-4 md:p-5">
+      <div className={configShellClass}>
+        <div className={configHeaderClass}>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-info/20 bg-card/80">
+                <Wrench className="size-3.5 text-info" />
+              </span>
+              <div className="min-w-0">
+                <h3 className="text-[13px] font-semibold tracking-[-0.01em] text-foreground/88">{t("header.title")}</h3>
+                <p className="mt-0.5 truncate text-[10.5px] leading-snug text-muted-foreground/72">
+                  预设、管线与索引策略集中配置
+                </p>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5 rounded-lg border border-info/15 bg-card/80 px-2 py-1">
+              <span className="text-[9.5px] font-medium uppercase tracking-[0.12em] text-muted-foreground/70">{t('inputFormat.label')}</span>
+              <Select
+                value={inputFormat}
+                onValueChange={(value) => setInputFormat(coerceOneOf(DATA_CLEANER_INPUT_FORMAT_VALUES, value, 'markdown'))}
+              >
+                <SelectTrigger className="h-6 w-[96px] rounded-md border-border/45 bg-background/70 text-[10.5px] font-medium text-foreground/80 shadow-none">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="markdown">{t('inputFormat.options.markdown')}</SelectItem>
+                  <SelectItem value="html">{t('inputFormat.options.html')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </div>
-        <div className="p-3.5">
-          <div className="space-y-3">
-            <div className="rounded-xl border border-border/60 bg-muted/[0.16] p-2.5">
-              <div className="mb-1.5 text-[11px] font-medium text-muted-foreground/80">{t('rules.profilesTitle')}</div>
+
+        <div className={rulesPanelClass}>
+          <div className="flex items-center justify-between gap-3 border-b border-info/10 bg-info/5 px-3 py-2">
+            <div className="min-w-0">
+              <div className="text-[11.5px] font-semibold tracking-[-0.01em] text-foreground/82">治理编排</div>
+              <div className="mt-0.5 truncate text-[10px] text-muted-foreground/68">{t('rules.profilesTitle')} · Pipeline</div>
+            </div>
+            <span className="rounded-full border border-info/15 bg-card/80 px-2 py-0.5 text-[9.5px] font-medium uppercase tracking-[0.12em] text-info">
+              Rules
+            </span>
+          </div>
+          <div className="space-y-2.5 p-3">
+            <div className="rounded-lg border border-primary/10 bg-card/80 p-2.5 shadow-[0_8px_20px_rgba(15,23,42,0.02)]">
               <GovernanceProfileSelector compact={true} onApplyPatch={applyPipelinePatch} />
             </div>
-            <PipelineOptionsPanel compact={false} />
+            <PipelineOptionsPanel compact={true} showJsonToolbar={true} />
           </div>
         </div>
       </div>
@@ -321,12 +354,12 @@ export function DataCleaner({
         </Alert>
       )}
 
-      <div className="flex items-center gap-2 border-t border-border/60 pt-3.5">
+      <div className="flex items-center gap-2 border-t border-border/60 pt-3">
         <Button onClick={handleReset} variant="outline" size="sm" className="h-8 flex-1 gap-1.5 rounded-lg border-border/60 bg-background/70 text-foreground/75 shadow-none">
           <Undo className="h-3.5 w-3.5" />
           {t('actions.reset')}
         </Button>
-        <Button onClick={handleApply} disabled={isApplying} className="h-8 flex-1 gap-2 rounded-lg shadow-none">
+        <Button onClick={handleApply} disabled={isApplying} variant="outline" className={applyButtonClass}>
           {isApplying ? (
             <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
           ) : (
@@ -336,13 +369,16 @@ export function DataCleaner({
         </Button>
       </div>
 
-      <div className="rounded-xl border border-border/60 bg-card/95 p-3.5">
+      <div className={llmPanelClass}>
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Sparkles className="size-4 text-primary/75" />
-            <span className="text-sm font-medium text-foreground/80">{t('llm.title')}</span>
+          <div className="flex min-w-0 items-center gap-2">
+            <Sparkles className="size-3.5 text-accent" />
+            <div className="min-w-0">
+              <span className="text-[12px] font-medium text-foreground/80">{t('llm.title')}</span>
+              <p className="mt-0.5 truncate text-[10.5px] text-muted-foreground/68">可选二次清洗，默认只执行规则预览</p>
+            </div>
           </div>
-          <Button variant={llmEnabled ? 'default' : 'outline'} size="sm" className="h-8 rounded-lg shadow-none" onClick={() => setLlmEnabled((value) => !value)}>
+          <Button variant="outline" size="sm" className={llmToggleClass} onClick={() => setLlmEnabled((value) => !value)}>
             {llmEnabled ? t('llm.enabled') : t('llm.enable')}
           </Button>
         </div>
@@ -372,13 +408,13 @@ export function DataCleaner({
         )}
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-border/60 bg-card/95">
+      <div className={diffPanelClass}>
         <button
           type="button"
           onClick={() => setPreviewDiff((value) => !value)}
-          className="flex w-full items-center justify-between px-3 py-2.5 transition-colors hover:bg-muted/30"
+          className="flex w-full items-center justify-between px-3 py-2 transition-colors hover:bg-muted/30"
         >
-          <span className="text-sm font-medium text-foreground/75">{t('diff.title')}</span>
+          <span className="text-[12px] font-medium text-foreground/75">{t('diff.title')}</span>
           <TextCursorInput className="size-4 text-muted-foreground" />
         </button>
         {previewDiff && (

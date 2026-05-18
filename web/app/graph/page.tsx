@@ -7,6 +7,7 @@
  */
 import { useTheme } from 'next-themes'
 
+import { NavigationVisibilityGate } from '@/components/auth/navigation-visibility-gate'
 import { GraphPageShell } from './_components/graph-page-shell'
 import { useGraphDataLoading } from './use-graph-data-loading'
 import { useGraphDisplayFilters } from './use-graph-display-filters'
@@ -17,6 +18,14 @@ import { useGraphPageActions } from './use-graph-page-actions'
 import { useGraphPageState } from './use-graph-page-state'
 
 export default function GraphPage() {
+  return (
+    <NavigationVisibilityGate moduleKey="knowledgeGraph" pageName="知识图谱">
+      <GraphPageContent />
+    </NavigationVisibilityGate>
+  )
+}
+
+function GraphPageContent() {
   const { resolvedTheme } = useTheme()
   const state = useGraphPageState()
   const isDark = resolvedTheme === 'dark'

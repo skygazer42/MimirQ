@@ -17,15 +17,15 @@ from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
-from app.core.constants import DEFAULT_OPENAI_API_BASE
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.jwt_inspect import format_unix_ts_utc, try_get_jwt_exp
+from app.services.navigation_visibility import normalize_navigation_modules, serialize_navigation_modules
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -253,6 +253,48 @@ class RAGConfig(BaseModel):
     default_chunk_strategy: str = "langchain_recursive"
     bm25_index_enabled: bool = True
     enable_reranker: bool = False
+    reranker_provider: str = "llm"
+    reranker_top_n: int = Field(default=20, ge=1, le=200)
+
+    @field_validator("reranker_provider", mode="before")
+    @classmethod
+    def _normalize_reranker_provider(cls, value):  # noqa: ANN001
+        provider = str(value or "llm").strip().lower().replace("-", "_")
+        aliases = {
+            "sentence_transformers": "cross_encoder",
+            "sentence_transformer": "cross_encoder",
+            "sentence-transformers": "cross_encoder",
+            "crossencoder": "cross_encoder",
+            "cross-encoder": "cross_encoder",
+            "parent_child": "pc",
+            "bge_v2_m3": "local_bge_v2_m3",
+            "xgboost_ltr": "ltr",
+            "off": "none",
+            "false": "none",
+            "0": "none",
+        }
+        provider = aliases.get(provider, provider)
+        valid = {
+            "llm",
+            "pc",
+            "weighted",
+            "openai",
+            "dashscope",
+            "aliyun",
+            "colbert",
+            "late_interaction",
+            "ltr",
+            "cross_encoder",
+            "local_bge_v2_m3",
+            "long_context",
+            "mmr",
+            "kg_pagerank",
+            "kg_rrf",
+            "none",
+        }
+        if provider not in valid:
+            raise ValueError(f"reranker_provider must be one of: {', '.join(sorted(valid))}")
+        return provider
 
 
 class UrlIngestConfig(BaseModel):
@@ -378,6 +420,17 @@ class TextInConfig(BaseModel):
     page_count: int = 0
 
 
+class NavigationConfig(BaseModel):
+    """Frontend navigation visibility for ordinary tenant members."""
+
+    user_visible_modules: list[str] = Field(default_factory=list)
+
+    @field_validator("user_visible_modules", mode="before")
+    @classmethod
+    def _normalize_modules(cls, value):  # noqa: ANN001
+        return normalize_navigation_modules(value, reject_unknown=True)
+
+
 class SystemSettings(BaseModel):
     """Full system config."""
     feature_flags: FeatureFlags
@@ -399,6 +452,7 @@ class SystemSettings(BaseModel):
     safety: SafetyConfig
     chat: ChatConfig
     langgraph: LangGraphConfig
+    navigation: NavigationConfig
 
 
 class UpdateSettingsRequest(BaseModel):
@@ -422,6 +476,7 @@ class UpdateSettingsRequest(BaseModel):
     safety: SafetyConfig | None = None
     chat: ChatConfig | None = None
     langgraph: LangGraphConfig | None = None
+    navigation: NavigationConfig | None = None
 
 
 def _parse_bool(value: Any) -> bool:
@@ -552,6 +607,10 @@ def _apply_runtime_settings(env_vars: dict[str, str], updated_keys: list[str]) -
                 hybrid_retriever.clear_bm25_cache()
     if "ENABLE_RERANKER" in updated_keys and "ENABLE_RERANKER" in env_vars:
         settings.ENABLE_RERANKER = _parse_bool(env_vars["ENABLE_RERANKER"])
+    if "RERANKER_PROVIDER" in updated_keys and "RERANKER_PROVIDER" in env_vars:
+        settings.RERANKER_PROVIDER = env_vars["RERANKER_PROVIDER"]
+    if "RERANKER_TOP_N" in updated_keys and "RERANKER_TOP_N" in env_vars:
+        settings.RERANKER_TOP_N = _parse_int(env_vars["RERANKER_TOP_N"], default=settings.RERANKER_TOP_N)
 
     # Cache / performance (best-effort).
     if "UPLOAD_DEDUP_ENABLED" in updated_keys and "UPLOAD_DEDUP_ENABLED" in env_vars:
@@ -702,6 +761,10 @@ def _apply_runtime_settings(env_vars: dict[str, str], updated_keys: list[str]) -
     if "LANGGRAPH_USE_SUBGRAPHS" in updated_keys and "LANGGRAPH_USE_SUBGRAPHS" in env_vars:
         settings.LANGGRAPH_USE_SUBGRAPHS = _parse_bool(env_vars["LANGGRAPH_USE_SUBGRAPHS"])
 
+    # Frontend navigation visibility
+    if "NAVIGATION_USER_VISIBLE_MODULES" in updated_keys and "NAVIGATION_USER_VISIBLE_MODULES" in env_vars:
+        settings.NAVIGATION_USER_VISIBLE_MODULES = env_vars["NAVIGATION_USER_VISIBLE_MODULES"]
+
 
 def read_env_file() -> dict[str, str]:
     """Read .env file."""
@@ -841,6 +904,8 @@ async def get_settings(
             default_chunk_strategy=settings.DEFAULT_CHUNK_STRATEGY,
             bm25_index_enabled=bool(getattr(settings, "BM25_INDEX_ENABLED", True)),
             enable_reranker=bool(getattr(settings, "ENABLE_RERANKER", False)),
+            reranker_provider=str(getattr(settings, "RERANKER_PROVIDER", "llm") or "llm"),
+            reranker_top_n=int(getattr(settings, "RERANKER_TOP_N", 20) or 20),
         ),
         cache=CacheConfig(
             upload_dedup_enabled=bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False)),
@@ -928,6 +993,11 @@ async def get_settings(
         ),
         langgraph=LangGraphConfig(
             use_subgraphs=settings.LANGGRAPH_USE_SUBGRAPHS,
+        ),
+        navigation=NavigationConfig(
+            user_visible_modules=normalize_navigation_modules(
+                getattr(settings, "NAVIGATION_USER_VISIBLE_MODULES", "") or ""
+            ),
         ),
     )
 
@@ -1064,6 +1134,8 @@ async def update_settings(
             env_vars["DEFAULT_CHUNK_STRATEGY"] = _sanitize_env_value("DEFAULT_CHUNK_STRATEGY", rag.default_chunk_strategy)
             env_vars["BM25_INDEX_ENABLED"] = str(bool(getattr(rag, "bm25_index_enabled", True))).lower()
             env_vars["ENABLE_RERANKER"] = str(bool(getattr(rag, "enable_reranker", False))).lower()
+            env_vars["RERANKER_PROVIDER"] = _sanitize_env_value("RERANKER_PROVIDER", rag.reranker_provider)
+            env_vars["RERANKER_TOP_N"] = str(int(getattr(rag, "reranker_top_n", 20) or 20))
             updated_keys.extend(
                 [
                     "CHUNK_SIZE",
@@ -1075,6 +1147,8 @@ async def update_settings(
                     "DEFAULT_CHUNK_STRATEGY",
                     "BM25_INDEX_ENABLED",
                     "ENABLE_RERANKER",
+                    "RERANKER_PROVIDER",
+                    "RERANKER_TOP_N",
                 ]
             )
 
@@ -1295,6 +1369,13 @@ async def update_settings(
             lg = request.langgraph
             env_vars["LANGGRAPH_USE_SUBGRAPHS"] = str(lg.use_subgraphs).lower()
             updated_keys.append("LANGGRAPH_USE_SUBGRAPHS")
+
+        # Update ordinary-user frontend navigation visibility.
+        if request.navigation:
+            env_vars["NAVIGATION_USER_VISIBLE_MODULES"] = serialize_navigation_modules(
+                request.navigation.user_visible_modules
+            )
+            updated_keys.append("NAVIGATION_USER_VISIBLE_MODULES")
 
         write_env_file(env_vars)
         with contextlib.suppress(Exception):

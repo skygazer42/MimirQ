@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic'
 import { useTranslations } from 'next-intl'
 
+import { NavigationVisibilityGate } from '@/components/auth/navigation-visibility-gate'
 import { AppFrame } from '@/components/app-frame'
 import { PageLoading } from '@/components/ui/page-loading'
 
@@ -19,9 +20,11 @@ const GovernanceProfilesPage = dynamic(
 
 export default function GovernanceProfilesRoutePage() {
   return (
-    <AppFrame>
-      <GovernanceProfilesPage />
-    </AppFrame>
+    <NavigationVisibilityGate moduleKey="governanceProfiles" pageName="治理配置">
+      <AppFrame>
+        <GovernanceProfilesPage />
+      </AppFrame>
+    </NavigationVisibilityGate>
   )
 }
 

@@ -33,4 +33,16 @@ describe('KG network analysis panel', () => {
     expect(src).toContain('id="kg-network-analysis-panel"')
     expect(src).toContain('right-[6.75rem]')
   })
+
+  it('allows dragging the graph statistics panel around the canvas', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'kg-network-analysis-panel.tsx'), 'utf8')
+
+    expect(src).toContain('data-draggable-kg-analysis-panel="true"')
+    expect(src).toContain('const [panelOffset, setPanelOffset] = useState({ x: 0, y: 0 })')
+    expect(src).toContain('aria-label="拖动图谱统计栏"')
+    expect(src).toContain('onPointerDown={startPanelDrag}')
+    expect(src).toContain('onPointerMove={movePanel}')
+    expect(src).toContain('onPointerUp={stopPanelDrag}')
+    expect(src).toContain('translate3d(${panelOffset.x}px, ${panelOffset.y}px, 0)')
+  })
 })

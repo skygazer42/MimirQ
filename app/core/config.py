@@ -236,6 +236,17 @@ class Settings(BaseSettings):
     # - "warn": allow but annotate metrics (no enforcement)
     CHAT_ASSISTANT_TOKEN_QUOTA_MODE: str = "block"
 
+    # Tenant resource quotas (best-effort; disabled by default).
+    # These are aggregate tenant guardrails, not per-user or per-dataset allocations.
+    TENANT_DOC_QUOTA_ENABLED: bool = False
+    TENANT_DOC_QUOTA_LIMIT: int = 0
+    TENANT_STORAGE_QUOTA_ENABLED: bool = False
+    TENANT_STORAGE_QUOTA_LIMIT_BYTES: int = 0
+    TENANT_EMBED_CHAR_QUOTA_ENABLED: bool = False
+    TENANT_EMBED_CHAR_QUOTA_LIMIT: int = 0
+    TENANT_EMBED_CHAR_QUOTA_WINDOW_HOURS: int = 24
+    TENANT_EMBED_CHAR_QUOTA_MODE: str = "block"
+
     # Vector write batching (Milvus/Chroma/etc). Smaller batches reduce tail latency and memory spikes.
     VECTOR_WRITE_BATCH_SIZE: int = 256
     # Adaptive write batching: when chunks are large, reduce batch size to avoid
@@ -805,6 +816,10 @@ class Settings(BaseSettings):
     # This reduces the blast radius of a compromised admin token and aligns with
     # "config via deploy pipeline" practices.
     SETTINGS_ENV_WRITE_ENABLED: bool = True
+
+    # Comma-separated admin-controlled frontend modules visible to ordinary
+    # tenant members. Admin roles always see these modules.
+    NAVIGATION_USER_VISIBLE_MODULES: str = ""
 
     # Emit Server-Timing response header for quick perf debugging.
     SERVER_TIMING_ENABLED: bool = True
@@ -2571,6 +2586,22 @@ class Settings(BaseSettings):
         quota_mode = str(getattr(self, "CHAT_ASSISTANT_TOKEN_QUOTA_MODE", "block") or "block").lower()
         if quota_mode not in {"block", "warn"}:
             raise ValueError("CHAT_ASSISTANT_TOKEN_QUOTA_MODE must be one of: block, warn")
+        if self.CHAT_ASSISTANT_TOKEN_QUOTA_MODE != quota_mode:
+            self.CHAT_ASSISTANT_TOKEN_QUOTA_MODE = quota_mode
+
+        if int(getattr(self, "TENANT_DOC_QUOTA_LIMIT", 0) or 0) < 0:
+            raise ValueError("TENANT_DOC_QUOTA_LIMIT must be >= 0")
+        if int(getattr(self, "TENANT_STORAGE_QUOTA_LIMIT_BYTES", 0) or 0) < 0:
+            raise ValueError("TENANT_STORAGE_QUOTA_LIMIT_BYTES must be >= 0")
+        if int(getattr(self, "TENANT_EMBED_CHAR_QUOTA_LIMIT", 0) or 0) < 0:
+            raise ValueError("TENANT_EMBED_CHAR_QUOTA_LIMIT must be >= 0")
+        if int(getattr(self, "TENANT_EMBED_CHAR_QUOTA_WINDOW_HOURS", 0) or 0) <= 0:
+            raise ValueError("TENANT_EMBED_CHAR_QUOTA_WINDOW_HOURS must be > 0")
+        embed_quota_mode = str(getattr(self, "TENANT_EMBED_CHAR_QUOTA_MODE", "block") or "block").lower()
+        if embed_quota_mode not in {"block", "warn"}:
+            raise ValueError("TENANT_EMBED_CHAR_QUOTA_MODE must be one of: block, warn")
+        if self.TENANT_EMBED_CHAR_QUOTA_MODE != embed_quota_mode:
+            self.TENANT_EMBED_CHAR_QUOTA_MODE = embed_quota_mode
 
         if int(getattr(self, "PERSISTENT_SUMMARY_MEMORY_LOOKBACK_MESSAGES", 0) or 0) <= 0:
             raise ValueError("PERSISTENT_SUMMARY_MEMORY_LOOKBACK_MESSAGES must be > 0")
@@ -2845,6 +2876,8 @@ class Settings(BaseSettings):
             "cross-encoder",
             "sentence_transformers",
             "sentence-transformers",
+            "local_bge_v2_m3",
+            "bge_v2_m3",
             "long_context",
             "mmr",
             "kg_pagerank",
