@@ -67,6 +67,22 @@ describe('KnowledgeSettingsPanel module', () => {
     expectSourceNotToContain(src, 'admin')
   })
 
+  it('binds qwen embedding presets as real provider plus api_base combinations', () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, 'knowledge-settings-panel.tsx'),
+      'utf8'
+    )
+
+    expectSourceToContain(src, "model: 'text-embedding-v4'")
+    expectSourceToContain(src, "model: 'text-embedding-v3'")
+    expectSourceToContain(src, "provider: 'dashscope'")
+    expectSourceToContain(src, "apiBase: 'https://dashscope.aliyuncs.com/compatible-mode/v1'")
+    expectSourceToContain(src, 'embedding: {')
+    expectSourceToContain(src, 'provider: preset.provider')
+    expectSourceToContain(src, 'api_base: preset.apiBase')
+    expectSourceToContain(src, 'brand: \'Qwen Embedding\'')
+  })
+
   it('makes the configuration guide trigger reveal inline guidance instead of being a dead button', () => {
     const src = fs.readFileSync(
       path.resolve(__dirname, 'knowledge-settings-panel.tsx'),

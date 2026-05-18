@@ -32,6 +32,16 @@ describe('audit page bound filters', () => {
     expectSourceToContain(src, 'options={requestOptions}')
     expectSourceToContain(src, 'options={resourceTypeOptions}')
     expectSourceToContain(src, 'options={resourceIdOptions}')
+    expectSourceToContain(src, 'function formatAuditAction')
+    expectSourceToContain(src, 'formatOption={formatAuditAction}')
+    expectSourceToContain(src, 'formatOption={formatAuditResourceType}')
+    expectSourceToContain(src, 'hover:bg-blue-50 hover:text-blue-700')
+    expectSourceToContain(src, 'border-blue-600 bg-blue-600 text-white')
+    expectSourceToContain(src, 'auditApi.deleteLog(id)')
+    expectSourceToContain(src, 'auditApi.bulkDeleteLogs(ids)')
+    expectSourceToContain(src, '删除已选 {selectedIds.length}')
+    expectSourceToContain(src, 'aria-label="选择当前页审计日志"')
+    expectSourceToContain(src, 'confirmLabel="删除"')
     expectSourceNotToContain(
       src,
       "placeholder={t('filters.actionPlaceholder')}"

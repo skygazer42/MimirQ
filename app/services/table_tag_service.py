@@ -54,7 +54,7 @@ _GENERIC_NON_KEY_COLUMNS = {
 def _build_llm(*, temperature: float = 0.0) -> ChatOpenAI:
     model_name = (getattr(settings, "LLM_MODEL_FAST", None) or getattr(settings, "LLM_MODEL", None) or "").strip()
     if not model_name:
-        model_name = "gpt-4o-mini"
+        model_name = "gpt-5.4-mini"
     return ChatOpenAI(
         model=model_name,
         api_key=getattr(settings, "LLM_API_KEY", None),

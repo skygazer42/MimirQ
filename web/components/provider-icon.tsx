@@ -25,6 +25,7 @@ const LOBEHUB_ICON_BY_PROVIDER_ID: Record<string, string> = {
   zhipuai: 'zhipu',
 
   qwen: 'qwen',
+  'qwen-embedding': 'qwen',
   dashscope: 'qwen',
 
   moonshot: 'moonshot',
@@ -69,6 +70,7 @@ const PROVIDER_ICONS: Record<string, { file: string; format: 'svg' | 'png' }> = 
   zhipu: { file: 'zhipuai', format: 'png' },
   zhipuai: { file: 'zhipuai', format: 'png' },
   qwen: { file: 'dashscope', format: 'png' },
+  'qwen-embedding': { file: 'dashscope', format: 'png' },
   dashscope: { file: 'dashscope', format: 'png' },
   ark: { file: 'ark', format: 'png' },
   lingyiwanwu: { file: 'lingyiwanwu', format: 'png' },

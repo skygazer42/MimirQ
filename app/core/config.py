@@ -259,7 +259,7 @@ class Settings(BaseSettings):
 
     LLM_API_KEY: str = Field(default="", validation_alias=AliasChoices("LLM_API_KEY", "OPENAI_API_KEY"))
     LLM_API_BASE: str = Field(default=DEFAULT_OPENAI_API_BASE, validation_alias=AliasChoices("LLM_API_BASE", "OPENAI_BASE_URL"))
-    LLM_MODEL: str = Field(default="gpt-4-turbo-preview", validation_alias=AliasChoices("LLM_MODEL", "OPENAI_MODEL"))
+    LLM_MODEL: str = Field(default="gpt-5.4-mini", validation_alias=AliasChoices("LLM_MODEL", "OPENAI_MODEL"))
     LLM_MODEL_FAST: str | None = Field(default=None, validation_alias=AliasChoices("LLM_MODEL_FAST", "LLM_MODEL_LIGHT"))
     LLM_MODEL_HEAVY: str | None = Field(default=None, validation_alias=AliasChoices("LLM_MODEL_HEAVY", "LLM_MODEL_COMPLEX"))
     ENABLE_DYNAMIC_MODEL_ROUTING: bool = False
@@ -1650,9 +1650,9 @@ class Settings(BaseSettings):
         default="",
         validation_alias=AliasChoices("MIMIRQ_VISION_LLM_API_BASE", "VISION_LLM_API_BASE"),
     )
-    # OpenAI-compatible vision model id, e.g. "gpt-4o-mini".
+    # OpenAI-compatible vision model id, e.g. "gpt-5.4-mini".
     VISION_LLM_MODEL: str = Field(
-        default="gpt-4o-mini",
+        default="gpt-5.4-mini",
         validation_alias=AliasChoices("MIMIRQ_VISION_LLM_MODEL", "VISION_LLM_MODEL"),
     )
     VISION_LLM_TIMEOUT_SEC: int = Field(

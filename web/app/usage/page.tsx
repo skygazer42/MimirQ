@@ -3,16 +3,12 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
-  Activity,
   BarChart3,
-  CalendarDays,
-  CheckCircle2,
   Clock3,
   Coins,
   Database,
   MessageSquareText,
   RefreshCw,
-  ShieldCheck,
   Timer,
   UserRound,
   ArrowUpRight,
@@ -107,44 +103,6 @@ function buildDatasetKnowledgeHref(datasetId: string) {
 
 // --- Specialized Components ---
 
-function HUDStatus({
-  icon: Icon,
-  label,
-  value,
-  tone = 'blue',
-}: {
-  icon: LucideIcon
-  label: string
-  value: string | number
-  tone?: string
-}) {
-  const toneMap = {
-    blue: 'text-blue-600 bg-blue-50/50 border-blue-100',
-    green: 'text-emerald-600 bg-emerald-50/50 border-emerald-100',
-    slate: 'text-slate-400 bg-slate-50 border-slate-100',
-  }
-  return (
-    <div className="relative flex min-h-[88px] items-center justify-center gap-4 border-r border-slate-100 px-6 py-4 text-center last:border-none group">
-      <div
-        className={cn(
-          'size-10 rounded-xl flex items-center justify-center border shadow-inner transition-transform group-hover:scale-110',
-          toneMap[tone as keyof typeof toneMap]
-        )}
-      >
-        <Icon className="size-5" />
-      </div>
-      <div className="flex min-w-0 flex-col items-center text-center">
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 leading-none mb-1.5">
-          {label}
-        </p>
-        <h4 className="text-[16px] font-black text-slate-800 leading-none">
-          {value}
-        </h4>
-      </div>
-    </div>
-  )
-}
-
 function StylizedMetricCard({
   icon: Icon,
   label,
@@ -203,7 +161,39 @@ function StylizedMetricCard({
   )
 }
 
-function ScopeChip({
+function OverviewStat({
+  label,
+  value,
+  tone = 'slate',
+}: {
+  label: string
+  value: string | number
+  tone?: 'blue' | 'green' | 'red' | 'slate'
+}) {
+  const toneClass = {
+    blue: 'border-blue-100 bg-blue-50/70 text-blue-700',
+    green: 'border-emerald-100 bg-emerald-50/70 text-emerald-700',
+    red: 'border-rose-100 bg-rose-50/70 text-rose-700',
+    slate: 'border-slate-200/70 bg-white/75 text-slate-700',
+  }[tone]
+  return (
+    <div
+      className={cn(
+        'min-w-[104px] rounded-2xl border px-3 py-2 shadow-[0_1px_0_rgba(15,23,42,0.03)]',
+        toneClass
+      )}
+    >
+      <span className="block text-[10px] font-bold tracking-[0.12em] text-slate-400">
+        {label}
+      </span>
+      <span className="mt-0.5 block truncate text-[14px] font-black leading-tight">
+        {value}
+      </span>
+    </div>
+  )
+}
+
+function OverviewMeta({
   label,
   value,
 }: {
@@ -211,11 +201,11 @@ function ScopeChip({
   value: string
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-2 rounded-xl border border-slate-200/70 bg-white/70 px-3 py-2 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
+    <div className="flex min-w-0 items-center gap-2">
       <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
         {label}
       </span>
-      <span className="truncate text-[12px] font-semibold text-slate-800">
+      <span className="truncate text-[12px] font-semibold text-slate-700">
         {value}
       </span>
     </div>
@@ -334,112 +324,111 @@ function UsagePageContent() {
         </div>
 
         <div className="relative z-10 flex flex-col gap-6 pb-24">
-          {/* Header Actions */}
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/70 bg-card/70 px-4 py-3 shadow-sm backdrop-blur-sm">
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="flex size-8 items-center justify-center rounded-xl border border-emerald-100 bg-emerald-50 text-emerald-600">
-                <div className="size-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-[12px] font-semibold text-slate-900">
-                  租户用量与配额
-                </p>
-                <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-slate-400">
-                  当前租户 · 数据集归因
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-medium text-slate-500">
-                窗口
-              </span>
-              <Select
-                value={String(windowDays)}
-                onValueChange={(v) => setWindowDays(Number(v))}
-              >
-                <SelectTrigger className="h-8 w-[92px] rounded-xl border-border bg-card text-[12px] font-semibold shadow-sm transition-all hover:bg-slate-50">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {WINDOW_PRESETS.map((p) => (
-                    <SelectItem key={p.value} value={String(p.value)}>
-                      {p.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                variant="outline"
-                size="icon"
-                className="size-8 rounded-xl border-border bg-card shadow-sm transition-all hover:bg-slate-50"
-                aria-label="刷新用量数据"
-                onClick={() => {
-                  void summaryQuery.refetch()
-                  void costQuery.refetch()
-                  void quotaQuery.refetch()
-                  void datasetLabelsQuery.refetch()
-                }}
-              >
-                <RefreshCw
-                  className={cn(
-                    'size-4 text-slate-600',
-                    loading && 'animate-spin'
-                  )}
-                />
-              </Button>
-            </div>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-3">
-            <ScopeChip label="统计范围" value="当前租户总量" />
-            <ScopeChip label="归因口径" value="按数据集拆分聊天与检索成本" />
-            <ScopeChip label="分配方式" value="租户级配额，暂不按用户分配" />
-          </div>
-
-          {/* HUD Status Bar (Glassmorphism) */}
-          <div className="grid overflow-hidden rounded-3xl border border-border/60 bg-card/40 shadow-soft shadow-slate-200/20 backdrop-blur-xl md:grid-cols-5">
+          <section
+            data-usage-overview="compact"
+            className="overflow-hidden rounded-3xl border border-slate-200/80 bg-white/85 shadow-[0_14px_40px_rgba(15,23,42,0.05)] backdrop-blur-xl"
+          >
             {loadErrorMessage && (
               <span className="sr-only" role="status">
                 {loadErrorMessage}
               </span>
             )}
-            <HUDStatus
-              icon={CalendarDays}
-              label="统计窗口"
-              value={windowDays === 1 ? '24小时' : `${windowDays}天`}
-              tone="blue"
-            />
-            <HUDStatus
-              icon={Database}
-              label="归因数据集"
-              value={rows.length}
-              tone="blue"
-            />
-            <HUDStatus
-              icon={Coins}
-              label="模型总令牌"
-              value={formatNumber(cost?.total_llm_total_tokens)}
-              tone="blue"
-            />
-            <HUDStatus
-              icon={ShieldCheck}
-              label="聊天配额"
-              value={quotaStatus}
-              tone={
-                quota?.enabled && !quota.exceeded
-                  ? 'green'
-                  : quotaExceeded
-                    ? 'red'
-                    : 'slate'
-              }
-            />
-            <HUDStatus
-              icon={CheckCircle2}
-              label="数据状态"
-              value={dataStatus}
-              tone={summary ? 'green' : 'slate'}
-            />
-          </div>
+            <div className="flex flex-col gap-4 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-[220px] items-center gap-3">
+                <div className="flex size-9 items-center justify-center rounded-2xl border border-blue-100 bg-blue-50 text-blue-600 shadow-inner">
+                  <Coins className="size-4" />
+                </div>
+                <div className="min-w-0">
+                  <h2 className="text-[15px] font-black leading-tight text-slate-950">
+                    租户用量与配额
+                  </h2>
+                  <p className="mt-1 text-[11px] font-semibold text-slate-500">
+                    当前租户 · 数据集归因 · 租户级配额
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid flex-1 grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
+                <OverviewStat
+                  label="窗口"
+                  value={windowDays === 1 ? '24小时' : `${windowDays}天`}
+                  tone="blue"
+                />
+                <OverviewStat label="归因数据集" value={rows.length} />
+                <OverviewStat
+                  label="模型令牌"
+                  value={formatNumber(cost?.total_llm_total_tokens)}
+                />
+                <OverviewStat
+                  label="聊天配额"
+                  value={quotaStatus}
+                  tone={
+                    quota?.enabled && !quota.exceeded
+                      ? 'green'
+                      : quotaExceeded
+                        ? 'red'
+                        : 'slate'
+                  }
+                />
+                <OverviewStat
+                  label="数据状态"
+                  value={dataStatus}
+                  tone={summary ? 'green' : 'slate'}
+                />
+              </div>
+
+              <div className="flex shrink-0 items-center gap-2">
+                <Select
+                  value={String(windowDays)}
+                  onValueChange={(v) => setWindowDays(Number(v))}
+                >
+                  <SelectTrigger className="h-9 w-[96px] rounded-2xl border-slate-200 bg-white text-[12px] font-bold shadow-sm transition-all hover:bg-blue-50/70">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {WINDOW_PRESETS.map((p) => (
+                      <SelectItem key={p.value} value={String(p.value)}>
+                        {p.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="size-9 rounded-2xl border-slate-200 bg-white shadow-sm transition-all hover:bg-blue-50 hover:text-blue-700"
+                  aria-label="刷新用量数据"
+                  onClick={() => {
+                    void summaryQuery.refetch()
+                    void costQuery.refetch()
+                    void quotaQuery.refetch()
+                    void datasetLabelsQuery.refetch()
+                  }}
+                >
+                  <RefreshCw
+                    className={cn(
+                      'size-4 text-slate-600',
+                      loading && 'animate-spin'
+                    )}
+                  />
+                </Button>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-100 bg-slate-50/55 px-4 py-2.5">
+              <div className="grid gap-2 md:grid-cols-3">
+                <OverviewMeta label="统计范围" value="当前租户总量" />
+                <OverviewMeta
+                  label="归因口径"
+                  value="按数据集拆分聊天与检索成本"
+                />
+                <OverviewMeta
+                  label="分配方式"
+                  value="租户级配额，暂不按用户分配"
+                />
+              </div>
+            </div>
+          </section>
 
           {/* Main Visual KPIs */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">

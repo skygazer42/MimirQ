@@ -2,7 +2,7 @@
 
 import type { BackendMeta, SystemStatus } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { CheckCircle2, Database, XCircle } from 'lucide-react'
+import { CheckCircle2, XCircle } from 'lucide-react'
 import { systemPageTokens } from '@/components/ui/system-page-tokens'
 
 type SystemStatusSectionProps = {
@@ -49,12 +49,7 @@ export function SystemStatusSection({
   backendMeta,
 }: Readonly<SystemStatusSectionProps>) {
   return (
-    <section>
-      <h2 className={cn('mb-4 flex items-center gap-2 text-base', systemPageTokens.heading)}>
-        <Database className="h-4 w-4 text-primary" />
-        系统状态
-      </h2>
-
+    <section className="space-y-3">
       <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
         <StatusCard
           label="PostgreSQL"
@@ -79,7 +74,7 @@ export function SystemStatusSection({
       </div>
 
       {backendMeta ? (
-        <div className="mt-4 rounded-lg border border-border/70 bg-card p-4 shadow-none">
+        <div className="rounded-lg border border-border/70 bg-card p-4 shadow-none">
           <div className={cn('mb-2', systemPageTokens.microLabel, 'text-foreground/80')}>后端信息</div>
           <div className="space-y-1.5 text-[11px] text-muted-foreground">
             <div>
@@ -107,7 +102,7 @@ export function SystemStatusSection({
       ) : null}
 
       {status.parsers ? (
-        <div className="mt-4 rounded-lg border border-border/70 bg-card p-4 shadow-none">
+        <div className="rounded-lg border border-border/70 bg-card p-4 shadow-none">
           <div className={cn('mb-2', systemPageTokens.microLabel, 'text-foreground/80')}>解析器状态</div>
           <div className="flex flex-wrap gap-2">
             {Object.entries(status.parsers).map(([key, info]) => (

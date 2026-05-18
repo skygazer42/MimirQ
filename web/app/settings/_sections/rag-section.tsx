@@ -1,5 +1,6 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -10,7 +11,7 @@ import {
 } from '@/components/ui/select'
 import type { SystemSettings } from '@/lib/api'
 import { RERANKER_PROVIDER_OPTIONS } from '@/lib/reranker-provider-options'
-import { Sliders, ToggleLeft, ToggleRight } from 'lucide-react'
+import { HelpCircle, Sliders, ToggleLeft, ToggleRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { systemPageTokens } from '@/components/ui/system-page-tokens'
 
@@ -21,9 +22,39 @@ type RagSectionProps = {
   updateRag: (patch: Partial<RagSettings>) => void
 }
 
+const RANGE_INPUT_CLASS =
+  'h-2 w-full cursor-pointer appearance-none rounded-full bg-blue-100 accent-blue-600 outline-none transition-colors hover:bg-blue-200/70 focus-visible:ring-2 focus-visible:ring-blue-500/30 focus-visible:ring-offset-2 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-white [&::-moz-range-thumb]:bg-blue-600 [&::-moz-range-thumb]:shadow-[0_2px_8px_rgba(37,99,235,0.28)] [&::-moz-range-track]:h-2 [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-blue-100 [&::-webkit-slider-runnable-track]:h-2 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-blue-100 [&::-webkit-slider-thumb]:mt-[-4px] [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white [&::-webkit-slider-thumb]:bg-blue-600 [&::-webkit-slider-thumb]:shadow-[0_2px_8px_rgba(37,99,235,0.28)]'
+const DEFAULT_RERANKER_PROVIDER = 'llm'
+
+function getRerankerProviderLabel(value: string): string {
+  return RERANKER_PROVIDER_OPTIONS.find((option) => option.key === value)?.label ?? '大模型重排'
+}
+
+function InlineHelp({
+  label,
+  children,
+}: Readonly<{ label: string; children: ReactNode }>) {
+  return (
+    <span className="group/help relative inline-flex align-middle">
+      <button
+        type="button"
+        aria-label={label}
+        className="ml-1 inline-flex size-4 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-blue-50 hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30"
+      >
+        <HelpCircle className="size-3.5" />
+      </button>
+      <span className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 hidden w-64 -translate-x-1/2 rounded-xl border border-blue-100 bg-white px-3 py-2 text-[11px] font-medium leading-relaxed text-slate-600 shadow-[0_12px_30px_rgba(15,23,42,0.12)] group-hover/help:block group-focus-within/help:block">
+        {children}
+      </span>
+    </span>
+  )
+}
+
 export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
   const isBm25IndexEnabled = rag.bm25_index_enabled
   const isRerankerEnabled = rag.enable_reranker
+  const rerankerProviderValue = rag.reranker_provider || DEFAULT_RERANKER_PROVIDER
+  const rerankerProviderLabel = getRerankerProviderLabel(rerankerProviderValue)
 
   return (
     <section>
@@ -63,7 +94,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
                   retrieval_top_k: Number.parseInt(event.target.value, 10),
                 })
               }
-              className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-muted accent-primary"
+              className={RANGE_INPUT_CLASS}
             />
             <p className="mt-1.5 text-[11px] text-muted-foreground">
               每次检索返回的最相关文档片段数量
@@ -95,7 +126,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
                   similarity_threshold: Number.parseFloat(event.target.value),
                 })
               }
-              className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-muted accent-primary"
+              className={RANGE_INPUT_CLASS}
             />
             <p className="mt-1.5 text-[11px] text-muted-foreground">
               过滤掉相关性得分低于此值的片段
@@ -111,8 +142,10 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
                   BM25 关键字检索
                 </div>
                 <div className="mt-1 text-[11px] text-muted-foreground">
-                  启用关键词通道（hybrid/keyword
-                  模式），对“精确词匹配”召回更友好
+                  启用关键词通道，对精确词匹配召回更友好
+                  <InlineHelp label="BM25 检索模式说明">
+                    这里对应 hybrid / keyword 模式；适合标题、术语、编号和精确关键词匹配。
+                  </InlineHelp>
                 </div>
               </div>
               <button
@@ -131,7 +164,10 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
               </button>
             </div>
             <p className="mt-2 text-[11px] text-muted-foreground">
-              关闭后将不会使用/构建 BM25 索引（更省内存/CPU，但可能降低召回）
+              关闭后将不会使用或构建 BM25 索引
+              <InlineHelp label="关闭 BM25 的影响">
+                更省内存和 CPU，但可能降低关键词类问题的召回质量。
+              </InlineHelp>
             </p>
           </div>
 
@@ -141,10 +177,16 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
                 <div
                   className={cn(systemPageTokens.microLabel, 'text-foreground')}
                 >
-                  启用重排序（Reranker）
+                  启用重排序
+                  <InlineHelp label="Reranker 说明">
+                    Reranker 会对候选片段二次排序，适合提升复杂问题的答案质量。
+                  </InlineHelp>
                 </div>
                 <div className="mt-1 text-[11px] text-muted-foreground">
-                  用重排序模型对候选片段二次排序，通常可提升答案质量（会增加延迟/成本）
+                  用重排序模型对候选片段二次排序
+                  <InlineHelp label="重排序成本说明">
+                    通常可提升答案质量，但会增加检索链路延迟和模型调用成本。
+                  </InlineHelp>
                 </div>
               </div>
               <button
@@ -177,12 +219,12 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
               >
                 重排服务
               </div>
-              <span className="rounded bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
-                {rag.reranker_provider || 'llm'}
+              <span className="rounded bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
+                {rerankerProviderLabel}
               </span>
             </div>
             <Select
-              value={rag.reranker_provider || 'llm'}
+              value={rerankerProviderValue}
               onValueChange={(value) => updateRag({ reranker_provider: value })}
             >
               <SelectTrigger className="h-9 rounded-[12px] border-border/70 bg-card text-[12px]">
@@ -197,7 +239,10 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
               </SelectContent>
             </Select>
             <p className="mt-1.5 text-[11px] text-muted-foreground">
-              保存后写入后端 RERANKER_PROVIDER，实验页只做临时覆盖
+              保存后作为默认重排服务，实验页只做临时覆盖
+              <InlineHelp label="重排服务后端字段">
+                对应后端 RERANKER_PROVIDER；主界面只显示中文服务名称。
+              </InlineHelp>
             </p>
           </div>
 
@@ -231,7 +276,10 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
               className="h-9 rounded-[12px] border-border/70 bg-card text-[12px]"
             />
             <p className="mt-1.5 text-[11px] text-muted-foreground">
-              保存后写入后端 RERANKER_TOP_N，建议保持 10-50
+              保存后作为默认重排数量，建议保持 10-50
+              <InlineHelp label="重排数量后端字段">
+                对应后端 RERANKER_TOP_N。
+              </InlineHelp>
             </p>
           </div>
 
@@ -260,7 +308,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
                   chunk_size: Number.parseInt(event.target.value, 10),
                 })
               }
-              className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-muted accent-primary"
+              className={RANGE_INPUT_CLASS}
             />
             <p className="mt-1.5 text-[11px] text-muted-foreground">
               文档分块的目标字符数
@@ -292,10 +340,13 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
                   chunk_overlap: Number.parseInt(event.target.value, 10),
                 })
               }
-              className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-muted accent-primary"
+              className={RANGE_INPUT_CLASS}
             />
             <p className="mt-1.5 text-[11px] text-muted-foreground">
-              相邻分块（chunk）的重叠字符数（提高连续性，但会增加索引体积）
+              相邻分块的重叠字符数
+              <InlineHelp label="分块重叠说明">
+                chunk 是写入索引的文本片段；增加重叠可提高上下文连续性，但会增加索引体积。
+              </InlineHelp>
             </p>
           </div>
 
@@ -328,7 +379,10 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
               }
             />
             <p className="mt-1.5 text-[11px] text-muted-foreground">
-              入库时丢弃过短分块（chunk）（0 表示关闭；图片/表格分块会尽量保留）
+              入库时丢弃过短分块
+              <InlineHelp label="最小分块长度说明">
+                0 表示关闭；图片和表格分块会尽量保留，避免误删结构化内容。
+              </InlineHelp>
             </p>
           </div>
         </div>

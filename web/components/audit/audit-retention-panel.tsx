@@ -1,13 +1,13 @@
 'use client'
 
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useState } from 'react'
 import {
-  ChevronDown,
+  AlertTriangle,
   Download,
   Loader2,
-  Trash2,
-  Zap,
   Settings2,
+  ShieldCheck,
+  Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
@@ -15,13 +15,45 @@ import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Panel } from '@/components/ui/panel'
 import { Switch } from '@/components/ui/switch'
-import { OperationResultPanel } from '@/components/ops/operation-result-panel'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { auditApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
-import { detachPromise } from '@/lib/utils'
-import { cn } from '@/lib/utils'
+import { useTenantAccess } from '@/hooks/use-tenant-access'
+import {
+  TENANT_PERMISSIONS,
+  tenantAccessAllows,
+} from '@/lib/tenant-permissions'
+import { cn, detachPromise } from '@/lib/utils'
+
+export type AuditOperationFilters = {
+  actor_id?: string
+  action?: string
+  resource_type?: string
+  resource_id?: string
+  request_id?: string
+  since?: string
+  until?: string
+}
+
+type PurgeScope = 'retention' | 'filtered'
+type ResultKind = 'export' | 'purge'
+
+type OperationResult = {
+  kind: ResultKind
+  title: string
+  payload: unknown
+}
+
+const FILTER_LABELS: Record<string, string> = {
+  actor_id: '操作者',
+  action: '动作',
+  resource_type: '资源类型',
+  resource_id: '资源 ID',
+  request_id: '请求 ID',
+  since: '开始时间',
+  until: '结束时间',
+}
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -36,48 +68,78 @@ function stamp() {
   return new Date().toISOString().replace(/[:.]/g, '-')
 }
 
-export function AuditRetentionPanel() {
+function payloadNumber(payload: unknown, key: string) {
+  if (!payload || typeof payload !== 'object') return 0
+  const raw = (payload as Record<string, unknown>)[key]
+  const value = Number(raw)
+  return Number.isFinite(value) ? value : 0
+}
+
+function payloadString(payload: unknown, key: string) {
+  if (!payload || typeof payload !== 'object') return ''
+  const raw = (payload as Record<string, unknown>)[key]
+  return typeof raw === 'string' ? raw : ''
+}
+
+export function AuditRetentionPanel({
+  filters = {},
+  activeFilterCount = 0,
+  total,
+  onAfterPurge,
+}: Readonly<{
+  filters?: AuditOperationFilters
+  activeFilterCount?: number
+  total?: number
+  onAfterPurge?: () => void
+}>) {
   const t = useTranslations('AuditPage.retention')
-  const [action, setAction] = useState('')
-  const [actorId, setActorId] = useState('')
-  const [requestId, setRequestId] = useState('')
   const [retentionDays, setRetentionDays] = useState(90)
   const [maxDelete, setMaxDelete] = useState(1000)
   const [dryRun, setDryRun] = useState(true)
+  const [purgeScope, setPurgeScope] = useState<PurgeScope>('retention')
   const [includeSensitive, setIncludeSensitive] = useState(false)
   const [gzip, setGzip] = useState(true)
-  const [softDelete, setSoftDelete] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
-  const [result, setResult] = useState<{
-    title: string
-    payload: unknown
-  } | null>(null)
-
-  const filters = useMemo(
-    () => ({
-      action: action.trim() || undefined,
-      actor_id: actorId.trim() || undefined,
-      request_id: requestId.trim() || undefined,
-    }),
-    [action, actorId, requestId]
+  const [result, setResult] = useState<OperationResult | null>(null)
+  const tenantAccess = useTenantAccess()
+  const canManageAudit = tenantAccessAllows(
+    tenantAccess.data,
+    TENANT_PERMISSIONS.AUDIT_MANAGE
   )
+
+  const exportFilters = useMemo(() => {
+    const out: AuditOperationFilters = {}
+    for (const [key, value] of Object.entries(filters || {})) {
+      const trimmed = String(value || '').trim()
+      if (trimmed) out[key as keyof AuditOperationFilters] = trimmed
+    }
+    return out
+  }, [filters])
+
+  const filterEntries = Object.entries(exportFilters)
+  const filterCount = filterEntries.length || activeFilterCount
+  const hasFilterScope = filterEntries.length > 0
+  const canRunPurge =
+    canManageAudit && (purgeScope === 'retention' || hasFilterScope)
 
   async function exportLogs() {
     setBusy('export')
     try {
       const blob = await auditApi.exportLogs({
-        ...filters,
+        ...exportFilters,
         limit: 10_000,
         include_sensitive: includeSensitive,
         gzip,
       })
       downloadBlob(blob, `audit-logs.${stamp()}.ndjson${gzip ? '.gz' : ''}`)
       setResult({
+        kind: 'export',
         title: t('export'),
         payload: {
           bytes: blob.size,
           include_sensitive: includeSensitive,
           gzip,
+          filters: exportFilters,
         },
       })
       toast.success('导出完成')
@@ -89,18 +151,27 @@ export function AuditRetentionPanel() {
   }
 
   async function purgeLogs() {
+    if (purgeScope === 'filtered' && !hasFilterScope) {
+      toast.error('请先设置至少一个筛选条件')
+      return
+    }
+
     setBusy('purge')
     try {
       const payload = await auditApi.purgeLogs({
+        ...(purgeScope === 'filtered' ? exportFilters : {}),
+        purge_scope: purgeScope,
         retention_days: retentionDays,
         max_delete: maxDelete,
         dry_run: dryRun,
       })
       setResult({
-        title: dryRun ? `${t('purge')} (预演)` : t('purge'),
+        kind: 'purge',
+        title: dryRun ? '清理预演' : t('purge'),
         payload,
       })
       toast.success(dryRun ? '预演完成' : '清理完成')
+      if (!dryRun) onAfterPurge?.()
     } catch (error) {
       toast.error(formatApiError(error, '清理失败'))
     } finally {
@@ -108,30 +179,121 @@ export function AuditRetentionPanel() {
     }
   }
 
+  const purgeDisabled = Boolean(busy) || !canRunPurge
+  const confirmDescription =
+    purgeScope === 'filtered'
+      ? `将真实删除当前筛选命中的审计日志，最多 ${maxDelete} 条。请确认筛选范围无误。`
+      : `将真实删除当前租户中早于 ${retentionDays} 天的审计日志，最多 ${maxDelete} 条。`
+
   return (
-    <Panel
-      padding="md"
-      className="mt-6 border-slate-200 bg-card shadow-sm overflow-hidden rounded-2xl"
-    >
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between border-b border-slate-50 pb-4 mb-4">
-        <div className="flex items-start gap-3">
-          <div className="size-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600 shrink-0 border border-blue-100/50 shadow-inner">
+    <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200/70 bg-white/90 shadow-[0_14px_34px_rgba(15,23,42,0.045)]">
+      <div className="flex flex-col gap-3 border-b border-slate-100 bg-gradient-to-r from-white via-blue-50/35 to-white px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-blue-100 bg-blue-50 text-blue-600">
             <Settings2 className="size-5" />
           </div>
-          <div>
-            <div className="text-[14px] font-black text-slate-900">
+          <div className="min-w-0">
+            <div className="text-[13px] font-black text-slate-900">
               {t('title')}
             </div>
-            <p className="mt-1 text-[11px] leading-relaxed text-slate-500 font-medium max-w-2xl">
-              {t('description')}
+            <p className="mt-1 max-w-[720px] text-[11px] font-medium leading-relaxed text-slate-500">
+              保留策略清旧日志；当前筛选只清上方筛选命中的日志。默认预演，不会直接删除。
             </p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-500">
+            当前结果 {typeof total === 'number' ? total : '-'} 条
+          </span>
+          <span className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
+            筛选 {filterCount} 项
+          </span>
+        </div>
+      </div>
+
+      <div className="grid gap-3 px-4 py-3 lg:grid-cols-[1.15fr_1fr_1.2fr]">
+        <ControlBlock label="清理范围">
+          <div className="grid grid-cols-2 gap-1 rounded-xl border border-slate-200 bg-slate-50/70 p-1">
+            <SegmentButton
+              active={purgeScope === 'retention'}
+              label="保留策略"
+              onClick={() => setPurgeScope('retention')}
+            />
+            <SegmentButton
+              active={purgeScope === 'filtered'}
+              label="当前筛选"
+              onClick={() => setPurgeScope('filtered')}
+            />
+          </div>
+        </ControlBlock>
+
+        <ControlBlock label="执行模式">
+          <div className="grid grid-cols-2 gap-1 rounded-xl border border-slate-200 bg-slate-50/70 p-1">
+            <SegmentButton
+              active={dryRun}
+              label="预演"
+              onClick={() => setDryRun(true)}
+            />
+            <SegmentButton
+              active={!dryRun}
+              label="真实清理"
+              tone="danger"
+              onClick={() => setDryRun(false)}
+            />
+          </div>
+        </ControlBlock>
+
+        <ControlBlock label="导出选项">
+          <div className="flex min-h-9 flex-wrap items-center gap-3">
+            <Toggle label={t('gzip')} checked={gzip} onCheckedChange={setGzip} />
+            <Toggle
+              label={t('includeSensitive')}
+              checked={includeSensitive}
+              onCheckedChange={setIncludeSensitive}
+            />
+          </div>
+        </ControlBlock>
+      </div>
+
+      <div className="grid gap-3 border-t border-slate-100 px-4 py-3 lg:grid-cols-[minmax(0,1fr)_160px_160px_auto] lg:items-end">
+        <div className="rounded-xl border border-slate-200 bg-slate-50/55 px-3 py-2 text-[11px] font-medium leading-relaxed text-slate-600">
+          {purgeScope === 'retention' ? (
+            <>
+              <span className="font-black text-slate-800">保留策略：</span>
+              只清理早于 {retentionDays} 天的旧审计日志。若预演为 0，
+              说明当前结果仍在保留期内。
+            </>
+          ) : hasFilterScope ? (
+            <>
+              <span className="font-black text-slate-800">当前筛选：</span>
+              将范围限制在上方 {filterEntries.length} 个筛选条件内，
+              适合清理测试/回放产生的噪声日志。
+            </>
+          ) : (
+            <span className="inline-flex items-center gap-2 font-bold text-amber-700">
+              <AlertTriangle className="size-3.5" />
+              当前筛选清理需要先设置动作、操作者、请求、资源或时间范围。
+            </span>
+          )}
+        </div>
+
+        <NumberField
+          label={t('days')}
+          value={retentionDays}
+          disabled={purgeScope === 'filtered'}
+          onChange={setRetentionDays}
+        />
+        <NumberField
+          label={t('maxDelete')}
+          value={maxDelete}
+          onChange={setMaxDelete}
+        />
+
+        <div className="flex flex-wrap gap-2 lg:justify-end">
           <Button
             size="sm"
             variant="outline"
-            className="h-8 gap-2 rounded-lg text-[11px] font-bold border-slate-200"
+            className="h-9 gap-2 rounded-xl border-blue-100 bg-blue-50 text-[11px] font-bold text-blue-700 hover:bg-blue-100 hover:text-blue-800"
             disabled={Boolean(busy)}
             onClick={() => detachPromise(exportLogs())}
           >
@@ -142,118 +304,158 @@ export function AuditRetentionPanel() {
             )}
             {t('export')}
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 gap-2 rounded-lg text-[11px] font-bold border-slate-200 text-red-600 hover:bg-red-50 hover:text-red-700"
-            disabled={Boolean(busy)}
-            onClick={() => detachPromise(purgeLogs())}
-          >
-            {busy === 'purge' ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Trash2 className="h-3.5 w-3.5" />
-            )}
-            {t('purge')}
-          </Button>
+          {dryRun ? (
+            <PurgeButton
+              busy={busy === 'purge'}
+              disabled={purgeDisabled}
+              label="预演清理"
+              onClick={() => detachPromise(purgeLogs())}
+            />
+          ) : (
+            <ConfirmDialog
+              title="确认清理审计日志"
+              description={confirmDescription}
+              confirmLabel="确认清理"
+              confirmVariant="destructive"
+              confirmDisabled={purgeDisabled}
+              onConfirm={purgeLogs}
+            >
+              <PurgeButton
+                busy={busy === 'purge'}
+                disabled={purgeDisabled}
+                label="确认清理"
+              />
+            </ConfirmDialog>
+          )}
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-3 xl:grid-cols-6">
-        <div className="space-y-1.5">
-          <Label className="text-[10px] font-black uppercase text-slate-400">
-            {t('actionType')}
-          </Label>
-          <Input
-            value={action}
-            onChange={(event) => setAction(event.target.value)}
-            className="h-9 text-xs rounded-lg border-slate-200 bg-slate-50/50"
-            placeholder="可选"
-          />
+      {purgeScope === 'filtered' && hasFilterScope && (
+        <div className="mx-4 mb-3 flex flex-wrap gap-1.5 rounded-xl border border-blue-100 bg-blue-50/45 p-2">
+          {filterEntries.map(([key, value]) => (
+            <span
+              key={key}
+              className="rounded-full border border-blue-100 bg-white px-2 py-1 font-mono text-[10px] font-semibold text-blue-700"
+            >
+              {FILTER_LABELS[key] || key}: {String(value)}
+            </span>
+          ))}
         </div>
-        <div className="space-y-1.5">
-          <Label className="text-[10px] font-black uppercase text-slate-400">
-            {t('days')}
-          </Label>
-          <Input
-            value={String(retentionDays)}
-            onChange={(event) =>
-              setRetentionDays(
-                Number.parseInt(event.target.value || '0', 10) || 90
-              )
-            }
-            className="h-9 text-xs rounded-lg border-slate-200 bg-slate-50/50"
-            inputMode="numeric"
-          />
+      )}
+
+      {!canManageAudit && (
+        <div className="mx-4 mb-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-700">
+          清理需要 audit.manage 权限；当前权限可查看和导出审计日志。
         </div>
-        <div className="space-y-1.5">
-          <Label className="text-[10px] font-black uppercase text-slate-400">
-            {t('maxDelete')}
-          </Label>
-          <Input
-            value={String(maxDelete)}
-            onChange={(event) =>
-              setMaxDelete(
-                Number.parseInt(event.target.value || '0', 10) || 1000
-              )
-            }
-            className="h-9 text-xs rounded-lg border-slate-200 bg-slate-50/50"
-            inputMode="numeric"
-          />
-        </div>
-        <div className="flex items-center gap-4 xl:col-span-3 pt-5">
-          <Toggle
-            label={t('dryRun')}
-            checked={dryRun}
-            onCheckedChange={setDryRun}
-          />
-          <Toggle label={t('gzip')} checked={gzip} onCheckedChange={setGzip} />
-          <Toggle
-            label={t('softDelete')}
-            checked={softDelete}
-            onCheckedChange={setSoftDelete}
-          />
-        </div>
+      )}
+
+      {result && <AuditResultStrip result={result} />}
+    </div>
+  )
+}
+
+function ControlBlock({
+  label,
+  children,
+}: Readonly<{ label: string; children: React.ReactNode }>) {
+  return (
+    <div className="space-y-1.5">
+      <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
+        {label}
       </div>
+      {children}
+    </div>
+  )
+}
 
-      <details className="mt-4 group rounded-xl border border-slate-100 bg-slate-50/30 overflow-hidden">
-        <summary className="cursor-pointer px-4 py-2 text-[11px] font-black text-slate-400 uppercase flex items-center gap-2 hover:bg-slate-50 transition-colors">
-          <ChevronDown className="size-3 transition-transform group-open:rotate-180" />
-          {t('advanced')}
-        </summary>
-        <div className="p-4 grid gap-4 md:grid-cols-2 bg-card">
-          <div className="space-y-1.5">
-            <Label className="text-[10px] font-black text-slate-400 uppercase">
-              运行名
-            </Label>
-            <Input
-              value={actorId}
-              onChange={(event) => setActorId(event.target.value)}
-              className="h-8 text-xs rounded-lg border-slate-200"
-              placeholder="可选"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-[10px] font-black text-slate-400 uppercase">
-              请求追踪号
-            </Label>
-            <Input
-              value={requestId}
-              onChange={(event) => setRequestId(event.target.value)}
-              className="h-8 text-xs rounded-lg border-slate-200"
-              placeholder="可选"
-            />
-          </div>
-        </div>
-      </details>
+function SegmentButton({
+  active,
+  label,
+  tone = 'primary',
+  onClick,
+}: Readonly<{
+  active: boolean
+  label: string
+  tone?: 'primary' | 'danger'
+  onClick: () => void
+}>) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      className={cn(
+        'h-8 rounded-lg px-3 text-[11px] font-black transition-colors',
+        active &&
+          tone === 'primary' &&
+          'bg-blue-600 text-white shadow-sm shadow-blue-200',
+        active &&
+          tone === 'danger' &&
+          'bg-red-600 text-white shadow-sm shadow-red-200',
+        !active &&
+          'bg-transparent text-slate-500 hover:bg-white hover:text-slate-900'
+      )}
+      onClick={onClick}
+    >
+      {label}
+    </button>
+  )
+}
 
-      <OperationResultPanel
-        className="mt-4 border-slate-100"
-        title={t('operationResult')}
-        result={result}
-        emptyMessage={t('resultEmpty')}
+function NumberField({
+  label,
+  value,
+  disabled,
+  onChange,
+}: Readonly<{
+  label: string
+  value: number
+  disabled?: boolean
+  onChange: (value: number) => void
+}>) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+        {label}
+      </Label>
+      <Input
+        value={String(value)}
+        disabled={disabled}
+        onChange={(event) =>
+          onChange(Number.parseInt(event.target.value || '0', 10) || value)
+        }
+        className="h-9 rounded-xl border-slate-200 bg-white text-xs font-bold disabled:bg-slate-50 disabled:text-slate-400"
+        inputMode="numeric"
       />
-    </Panel>
+    </div>
+  )
+}
+
+function PurgeButton({
+  busy,
+  disabled,
+  label,
+  onClick,
+}: Readonly<{
+  busy: boolean
+  disabled: boolean
+  label: string
+  onClick?: () => void
+}>) {
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      className="h-9 gap-2 rounded-xl border-red-100 bg-red-50 text-[11px] font-bold text-red-700 hover:bg-red-100 hover:text-red-800 disabled:bg-slate-50 disabled:text-slate-400"
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {busy ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      ) : (
+        <Trash2 className="h-3.5 w-3.5" />
+      )}
+      {label}
+    </Button>
   )
 }
 
@@ -267,9 +469,71 @@ function Toggle({
   onCheckedChange: (checked: boolean) => void
 }>) {
   return (
-    <label className="flex items-center gap-2 cursor-pointer select-none">
-      <Switch checked={checked} onCheckedChange={onCheckedChange} />
+    <label className="flex cursor-pointer select-none items-center gap-2">
+      <Switch
+        checked={checked}
+        onCheckedChange={onCheckedChange}
+        className={checked ? 'bg-blue-500' : 'bg-slate-200'}
+      />
       <span className="text-[11px] font-bold text-slate-600">{label}</span>
     </label>
+  )
+}
+
+function AuditResultStrip({ result }: Readonly<{ result: OperationResult }>) {
+  if (result.kind === 'export') {
+    const bytes = payloadNumber(result.payload, 'bytes')
+    const gzip = Boolean(
+      result.payload &&
+        typeof result.payload === 'object' &&
+        (result.payload as Record<string, unknown>).gzip
+    )
+    return (
+      <ResultShell result={result}>
+        导出文件 {bytes.toLocaleString()} Bytes · {gzip ? 'gzip 传输' : 'NDJSON'}
+      </ResultShell>
+    )
+  }
+
+  const eligible = payloadNumber(result.payload, 'eligible')
+  const deleted = payloadNumber(result.payload, 'deleted')
+  const scope = payloadString(result.payload, 'scope')
+  const dryRun = Boolean(
+    result.payload &&
+      typeof result.payload === 'object' &&
+      (result.payload as Record<string, unknown>).dry_run
+  )
+
+  return (
+    <ResultShell result={result}>
+      {scope === 'filtered' ? '当前筛选' : '保留策略'} ·
+      可清理 {eligible.toLocaleString()} 条 · 已删除{' '}
+      {deleted.toLocaleString()} 条 · {dryRun ? '预演' : '已执行'}
+    </ResultShell>
+  )
+}
+
+function ResultShell({
+  result,
+  children,
+}: Readonly<{ result: OperationResult; children: React.ReactNode }>) {
+  return (
+    <div className="mx-4 mb-4 rounded-xl border border-emerald-100 bg-emerald-50/55 px-3 py-2 text-[11px] text-emerald-800">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 font-black">
+          <ShieldCheck className="size-3.5" />
+          {result.title}
+        </div>
+        <div className="font-semibold">{children}</div>
+      </div>
+      <details className="mt-2">
+        <summary className="cursor-pointer text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-700/70 hover:text-emerald-900">
+          原始 JSON
+        </summary>
+        <pre className="mt-2 max-h-44 overflow-auto rounded-lg bg-white/70 p-2 text-[10px] leading-relaxed text-slate-600">
+          {JSON.stringify(result.payload, null, 2)}
+        </pre>
+      </details>
+    </div>
   )
 }

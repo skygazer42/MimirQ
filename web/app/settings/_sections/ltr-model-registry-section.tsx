@@ -18,7 +18,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import type { LTRModelInfo } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { systemDenseControls, systemPageTokens, systemWorkbenchTokens } from '@/components/ui/system-page-tokens'
-import { AlertCircle, CheckCircle2, Layers, RefreshCw, XCircle } from 'lucide-react'
+import { AlertCircle, CheckCircle2, RefreshCw, UploadCloud, XCircle } from 'lucide-react'
 
 type LtrMessage = { type: 'success' | 'error'; text: string } | null
 
@@ -62,18 +62,8 @@ export function LtrModelRegistrySection({
   shortId,
 }: Readonly<LtrModelRegistrySectionProps>) {
   return (
-    <section className="space-y-2.5">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="flex items-center gap-1.5 text-sm font-semibold tracking-[-0.01em] text-foreground">
-          <Layers className="h-4 w-4 text-primary" />
-          LTR 模型注册表
-        </h2>
-        <div className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-muted/50 px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
-          <span>支持激活与一键回滚</span>
-        </div>
-      </div>
-
-      <div className="space-y-3">
+    <section className="space-y-3">
+      <div className="space-y-2">
         {ltrError ? (
           <Alert
             variant="destructive"
@@ -103,22 +93,53 @@ export function LtrModelRegistrySection({
             </div>
           </Alert>
         ) : null}
+      </div>
 
-        <Panel
-          padding="none"
-          className={cn(systemWorkbenchTokens.panel, 'space-y-3 p-3.5')}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className={systemPageTokens.heading}>上传并注册</div>
-              <div className={cn(systemPageTokens.subtle, 'mt-0.5 text-pretty')}>
-                需要上传 XGBoost JSON 模型文件与配套清单（sidecar manifest，会校验 sha256 与 feature schema）。
+      <div className="grid gap-3 xl:grid-cols-[minmax(280px,0.85fr)_minmax(0,1.15fr)]">
+        <Panel padding="none" className={cn(systemWorkbenchTokens.panel, 'p-3.5')}>
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="inline-flex items-center gap-1.5 rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-600">
+                <UploadCloud className="h-3 w-3" />
+                注册入口
               </div>
+              <div className={cn(systemPageTokens.subtle, 'mt-2 text-pretty')}>
+                上传 XGBoost 模型和清单文件，后端会校验 sha256 与特征结构。
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <div className="text-[11px] font-semibold text-foreground/80">模型文件</div>
+              <label className="flex h-8 cursor-pointer items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50/45 hover:text-blue-600">
+                选择模型 JSON
+                <Input
+                  key={`ltr-model-${ltrUploadResetKey}`}
+                  type="file"
+                  accept=".json,application/json"
+                  onChange={(event) => onModelFileChange(event.target.files?.[0] || null)}
+                  className="sr-only"
+                />
+              </label>
+            </div>
+            <div className="space-y-1.5">
+              <div className="text-[11px] font-semibold text-foreground/80">清单文件</div>
+              <label className="flex h-8 cursor-pointer items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50/45 hover:text-blue-600">
+                选择清单 JSON
+                <Input
+                  key={`ltr-manifest-${ltrUploadResetKey}`}
+                  type="file"
+                  accept=".json,application/json"
+                  onChange={(event) => onManifestFileChange(event.target.files?.[0] || null)}
+                  className="sr-only"
+                />
+              </label>
             </div>
             <Button
               onClick={onRegister}
               disabled={!ltrUploadReady || ltrUploading}
-              className={cn(systemDenseControls.primaryButton, 'gap-1.5')}
+              className={cn(systemDenseControls.primaryButton, 'w-full gap-1.5')}
             >
               <RefreshCw
                 className={cn('h-3.5 w-3.5', ltrUploading && 'animate-spin motion-reduce:animate-none')}
@@ -126,40 +147,17 @@ export function LtrModelRegistrySection({
               {ltrUploading ? '注册中...' : '注册模型'}
             </Button>
           </div>
-
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <div className="space-y-1.5">
-              <div className="text-[11px] font-semibold text-foreground/80">模型文件（JSON）</div>
-              <Input
-                key={`ltr-model-${ltrUploadResetKey}`}
-                type="file"
-                accept=".json,application/json"
-                onChange={(event) => onModelFileChange(event.target.files?.[0] || null)}
-                className="h-8 text-[11px] file:text-[11px]"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <div className="text-[11px] font-semibold text-foreground/80">Manifest（JSON）</div>
-              <Input
-                key={`ltr-manifest-${ltrUploadResetKey}`}
-                type="file"
-                accept=".json,application/json"
-                onChange={(event) => onManifestFileChange(event.target.files?.[0] || null)}
-                className="h-8 text-[11px] file:text-[11px]"
-              />
-            </div>
-          </div>
         </Panel>
 
         <Panel
           padding="none"
           className={cn(systemWorkbenchTokens.panel, 'space-y-3 p-3.5')}
         >
-          <div className="flex items-center justify-between gap-2.5">
+          <div className="flex items-start justify-between gap-2.5">
             <div>
-              <div className={systemPageTokens.heading}>已注册模型</div>
+              <div className={systemPageTokens.heading}>模型版本</div>
               <div className={cn(systemPageTokens.subtle, 'mt-0.5')}>
-                激活后会在后端运行时使用该模型进行 LTR 重排序（失败时关闭流程，fail-closed）。
+                激活后用于线上重排序；失败时关闭 LTR 流程。
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -205,15 +203,15 @@ export function LtrModelRegistrySection({
           </div>
 
           {ltrModels.length === 0 ? (
-            <div className="rounded-lg border border-border/70 bg-muted/20 p-4">
-              <div className="text-[13px] font-semibold text-foreground">暂无已注册模型</div>
+            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/55 p-5 text-center">
+              <div className="text-[13px] font-semibold text-foreground">暂无模型版本</div>
               <div className="mt-0.5 text-[11px] text-muted-foreground">
-                先在上方上传并注册一个模型，再进行激活或回滚。
+                上传模型与清单后，可在这里激活或回滚。
               </div>
             </div>
           ) : (
             <div className="overflow-x-auto rounded-lg border border-border/70">
-              <table aria-label="LTR 模型注册表" className="w-full text-[11px]">
+              <table aria-label="已注册 LTR 模型" className="w-full text-[11px]">
                 <thead className="bg-muted/35">
                   <tr className="text-left">
                     <th className={cn(systemPageTokens.tableHead, 'px-2.5 py-1.5 whitespace-nowrap')}>状态</th>
@@ -242,11 +240,11 @@ export function LtrModelRegistrySection({
                           {isActive ? (
                             <span className="inline-flex items-center gap-1 rounded-full border border-success/25 bg-success/10 px-1.5 py-0.5 text-[11px] font-semibold text-success">
                               <CheckCircle2 className="h-3 w-3" />
-                              已激活（ACTIVE）
+                              已激活
                             </span>
                           ) : (
                             <span className="inline-flex items-center rounded-full border border-border/70 bg-muted/45 px-1.5 py-0.5 text-[11px] text-muted-foreground">
-                              空闲（idle）
+                              待用
                             </span>
                           )}
                         </td>
@@ -262,7 +260,7 @@ export function LtrModelRegistrySection({
                             {model.feature_schema || '-'}
                           </div>
                           <div className="tabular-nums">
-                            {Array.isArray(model.feature_names) ? model.feature_names.length : 0} 维（dims）
+                            {Array.isArray(model.feature_names) ? model.feature_names.length : 0} 维
                           </div>
                         </td>
                         <td className="px-2.5 py-1.5 text-[11px] tabular-nums">

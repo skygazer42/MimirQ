@@ -2,6 +2,13 @@ import type { AuditLogListResponse } from '@/types'
 
 import { apiClient } from '@/lib/api/core'
 
+export type AuditLogDeleteResponse = {
+  requested: number
+  deleted: number
+  missing: number
+  ids: string[]
+}
+
 export const auditApi = {
   async listLogs(params: {
     skip?: number
@@ -36,8 +43,30 @@ export const auditApi = {
     return data as Blob
   },
 
-  async purgeLogs(params: { retention_days?: number; max_delete?: number; dry_run?: boolean } = {}): Promise<any> {
+  async purgeLogs(params: {
+    retention_days?: number
+    max_delete?: number
+    dry_run?: boolean
+    purge_scope?: 'retention' | 'filtered'
+    actor_id?: string
+    action?: string
+    resource_type?: string
+    resource_id?: string
+    request_id?: string
+    since?: string
+    until?: string
+  } = {}): Promise<any> {
     const { data } = await apiClient.post('/audit/logs/purge', undefined, { params })
+    return data
+  },
+
+  async deleteLog(logId: string): Promise<AuditLogDeleteResponse> {
+    const { data } = await apiClient.delete(`/audit/logs/${encodeURIComponent(logId)}`)
+    return data
+  },
+
+  async bulkDeleteLogs(ids: string[]): Promise<AuditLogDeleteResponse> {
+    const { data } = await apiClient.post('/audit/logs/bulk-delete', { ids })
     return data
   },
 

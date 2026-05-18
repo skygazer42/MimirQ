@@ -1,8 +1,12 @@
 'use client'
 
+import { DangerZonePanel } from '@/components/settings/danger-zone-panel'
 import { Input } from '@/components/ui/input'
 import type { CacheConfig, ChatConfig, LangGraphConfig, SafetyConfig } from '@/lib/api'
+import { cn } from '@/lib/utils'
 import { Database, EyeOff, Network, Server, ToggleLeft, ToggleRight } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
+import type { ReactNode } from 'react'
 
 type RuntimeControlsSectionProps = {
   chat: ChatConfig
@@ -13,6 +17,112 @@ type RuntimeControlsSectionProps = {
   updateSafety: (patch: Partial<SafetyConfig>) => void
   langgraph: LangGraphConfig
   updateLangGraph: (patch: Partial<LangGraphConfig>) => void
+}
+
+const RUNTIME_CARD =
+  'rounded-[16px] border border-slate-200/75 bg-white/88 p-3.5 shadow-[0_8px_24px_rgba(15,23,42,0.03)]'
+const RUNTIME_LABEL = 'text-[11px] font-semibold text-slate-700'
+const RUNTIME_HINT = 'text-[11px] leading-4 text-slate-500'
+const RUNTIME_INPUT = 'h-8 rounded-lg border-slate-200 bg-white text-[12px]'
+
+function RuntimeToggle({
+  checked,
+  onToggle,
+  label,
+}: Readonly<{ checked: boolean; onToggle: () => void; label: string }>) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="shrink-0 rounded-full transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+      aria-label={label}
+      aria-pressed={checked}
+    >
+      {checked ? (
+        <ToggleRight className="h-7 w-7 text-blue-600" />
+      ) : (
+        <ToggleLeft className="h-7 w-7 text-slate-400 hover:text-slate-500" />
+      )}
+    </button>
+  )
+}
+
+function RuntimeCard({
+  icon: Icon,
+  label,
+  title,
+  description,
+  action,
+  children,
+}: Readonly<{
+  icon: LucideIcon
+  label: string
+  title: string
+  description: string
+  action?: ReactNode
+  children?: ReactNode
+}>) {
+  return (
+    <div className={RUNTIME_CARD}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 gap-2.5">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-[12px] border border-blue-100 bg-blue-50 text-blue-600">
+            <Icon className="h-4 w-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-blue-500/80">{label}</div>
+            <div className="mt-0.5 text-[13px] font-semibold tracking-[-0.01em] text-slate-950">{title}</div>
+            <div className={cn(RUNTIME_HINT, 'mt-0.5')}>{description}</div>
+          </div>
+        </div>
+        {action}
+      </div>
+      {children ? <div className="mt-3 space-y-3">{children}</div> : null}
+    </div>
+  )
+}
+
+function OptionRow({
+  title,
+  description,
+  checked,
+  onToggle,
+  label,
+}: Readonly<{
+  title: string
+  description: string
+  checked: boolean
+  onToggle: () => void
+  label: string
+}>) {
+  return (
+    <div
+      className={cn(
+        'flex items-start justify-between gap-3 rounded-xl border px-3 py-2.5 transition-colors',
+        checked ? 'border-blue-200 bg-blue-50/45' : 'border-slate-200 bg-slate-50/45'
+      )}
+    >
+      <div className="min-w-0">
+        <div className="text-[12px] font-semibold text-slate-900">{title}</div>
+        <div className={cn(RUNTIME_HINT, 'mt-0.5')}>{description}</div>
+      </div>
+      <RuntimeToggle checked={checked} onToggle={onToggle} label={label} />
+    </div>
+  )
+}
+
+function Field({
+  label,
+  children,
+  hint,
+}: Readonly<{ label: string; children: ReactNode; hint?: string }>) {
+  return (
+    <div className="space-y-1.5">
+      <div className={RUNTIME_LABEL}>{label}</div>
+      {children}
+      {hint ? <div className={RUNTIME_HINT}>{hint}</div> : null}
+    </div>
+  )
 }
 
 export function RuntimeControlsSection({
@@ -32,242 +142,179 @@ export function RuntimeControlsSection({
   const isSubgraphEnabled = langgraph.use_subgraphs ?? false
 
   return (
-    <section>
-      <div className="space-y-8 rounded-2xl border border-border bg-card p-6 shadow-sm">
-        <div className="space-y-3">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                <Server className="h-4 w-4 text-muted-foreground" />
-                对话流式稳定性（SSE）
-              </div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                心跳用于保活连接；断连自动取消可减少资源浪费（保存后通常可立即生效）
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() =>
-                updateChat({
-                  stream_cancel_on_disconnect: !isCancelOnDisconnectEnabled,
-                })
+    <DangerZonePanel
+      title="运行时控制"
+      impact="会影响对话长连接、上传去重、响应缓存、敏感信息脱敏和流程编排；建议只在排障或上线前窗口调整。"
+      badge="高影响配置"
+      compact
+      tone="neutral"
+      icon="help"
+    >
+      <section className="grid gap-3 xl:grid-cols-2">
+      <RuntimeCard
+        icon={Server}
+        label="流式"
+        title="对话流式稳定性"
+        description="心跳保活连接，断连后自动释放资源。"
+        action={
+          <RuntimeToggle
+            checked={isCancelOnDisconnectEnabled}
+            onToggle={() =>
+              updateChat({
+                stream_cancel_on_disconnect: !isCancelOnDisconnectEnabled,
+              })
+            }
+            label="切换断连自动取消"
+          />
+        }
+      >
+        <div className="grid gap-3 sm:grid-cols-[140px_minmax(0,1fr)]">
+          <Field label="心跳间隔" hint="0 表示禁用，不推荐。">
+            <Input
+              type="number"
+              min={0}
+              max={120}
+              step={1}
+              value={chat.stream_heartbeat_sec ?? 10}
+              onChange={(event) =>
+                updateChat({ stream_heartbeat_sec: Number.parseFloat(event.target.value || '0') })
               }
-              className="shrink-0"
-              aria-label="切换断连自动取消（chat.stream_cancel_on_disconnect）"
-            >
-              {isCancelOnDisconnectEnabled ? (
-                <ToggleRight className="h-10 w-10 text-primary" />
-              ) : (
-                <ToggleLeft className="h-10 w-10 text-muted-foreground hover:text-muted-foreground" />
-              )}
-            </button>
+              className={RUNTIME_INPUT}
+            />
+          </Field>
+          <div className="rounded-xl border border-slate-200 bg-slate-50/55 px-3 py-2 text-[11px] leading-4 text-slate-500">
+            适合经过代理或负载均衡的长连接场景，避免空闲连接被误断。
           </div>
+        </div>
+      </RuntimeCard>
 
-          <div className="grid grid-cols-1 gap-4 pt-2 md:grid-cols-3">
-            <div>
-              <div className="mb-1 text-xs text-muted-foreground">心跳间隔（heartbeat，秒）</div>
+      <RuntimeCard
+        icon={Database}
+        label="缓存"
+        title="性能与缓存"
+        description="去重与缓存为尽力而为，Redis 不可用时放行主流程。"
+      >
+        <div className="grid gap-2">
+          <OptionRow
+            title="上传去重"
+            description="同文件指纹和管线配置时复用已有文档。"
+            checked={isUploadDedupEnabled}
+            onToggle={() => updateCache({ upload_dedup_enabled: !isUploadDedupEnabled })}
+            label="切换上传去重"
+          />
+          <OptionRow
+            title="对话响应缓存"
+            description="相同问题、范围和配置命中后直接返回。"
+            checked={isChatResponseCacheEnabled}
+            onToggle={() =>
+              updateCache({ chat_response_cache_enabled: !isChatResponseCacheEnabled })
+            }
+            label="切换对话响应缓存"
+          />
+        </div>
+
+        {isChatResponseCacheEnabled ? (
+          <div className="grid gap-3 rounded-xl border border-blue-100 bg-blue-50/35 p-3 md:grid-cols-3">
+            <Field label="缓存时长（秒）">
               <Input
                 type="number"
                 min={0}
-                max={120}
-                step={1}
-                value={chat.stream_heartbeat_sec ?? 10}
+                max={86400}
+                value={cache.chat_response_cache_ttl_sec ?? 300}
                 onChange={(event) =>
-                  updateChat({ stream_heartbeat_sec: Number.parseFloat(event.target.value || '0') })
+                  updateCache({
+                    chat_response_cache_ttl_sec: Number.parseInt(event.target.value || '0', 10),
+                  })
                 }
+                className={RUNTIME_INPUT}
               />
-            </div>
-            <div className="flex items-center text-xs text-muted-foreground md:col-span-2">
-              设为 0 将禁用心跳（不推荐，可能被代理/负载均衡断开）
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-3 border-t pt-6">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                <Database className="h-4 w-4 text-muted-foreground" />
-                性能与缓存
-              </div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                去重/缓存属于“尽力而为（best-effort）”，依赖 Redis 时会“失败放行（fail-open）”（不可用时不影响主流程）
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 pt-2 md:grid-cols-2">
-            <div className="flex items-start justify-between gap-4 rounded-xl border border-border bg-muted/30 p-4">
-              <div>
-                <div className="text-sm font-semibold text-foreground">上传去重（数据集内，upload_dedup）</div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  同 file_sha256 + pipeline_hash 时直接复用已存在文档，减少重复入库/embedding
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => updateCache({ upload_dedup_enabled: !isUploadDedupEnabled })}
-                className="shrink-0"
-                aria-label="切换上传去重（cache.upload_dedup_enabled）"
-              >
-                {isUploadDedupEnabled ? (
-                  <ToggleRight className="h-10 w-10 text-primary" />
-                ) : (
-                  <ToggleLeft className="h-10 w-10 text-muted-foreground hover:text-muted-foreground" />
-                )}
-              </button>
-            </div>
-
-            <div className="flex items-start justify-between gap-4 rounded-xl border border-border bg-muted/30 p-4">
-              <div>
-                <div className="text-sm font-semibold text-foreground">对话响应缓存（Redis）</div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  相同问题+相同文档范围+相同配置命中后直接返回，降低大语言模型（LLM）/检索成本
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() =>
-                  updateCache({ chat_response_cache_enabled: !isChatResponseCacheEnabled })
+            </Field>
+            <Field label="最大字节">
+              <Input
+                type="number"
+                min={0}
+                max={5000000}
+                value={cache.chat_response_cache_max_value_bytes ?? 200000}
+                onChange={(event) =>
+                  updateCache({
+                    chat_response_cache_max_value_bytes: Number.parseInt(
+                      event.target.value || '0',
+                      10
+                    ),
+                  })
                 }
-                className="shrink-0"
-                aria-label="切换对话响应缓存（cache.chat_response_cache_enabled）"
-              >
-                {isChatResponseCacheEnabled ? (
-                  <ToggleRight className="h-10 w-10 text-primary" />
-                ) : (
-                  <ToggleLeft className="h-10 w-10 text-muted-foreground hover:text-muted-foreground" />
-                )}
-              </button>
-            </div>
+                className={RUNTIME_INPUT}
+              />
+            </Field>
+            <label className="flex items-center gap-2 pt-5 text-[12px] font-medium text-slate-700">
+              <input
+                type="checkbox"
+                checked={cache.chat_response_cache_require_empty_history ?? true}
+                onChange={(event) =>
+                  updateCache({ chat_response_cache_require_empty_history: event.target.checked })
+                }
+                className="h-4 w-4 accent-blue-600"
+              />
+              仅无历史
+            </label>
           </div>
+        ) : null}
+      </RuntimeCard>
 
-          {isChatResponseCacheEnabled ? (
-            <div className="grid grid-cols-1 gap-4 pt-2 md:grid-cols-3">
-              <div>
-                <div className="mb-1 text-xs text-muted-foreground">过期时间（TTL，秒）</div>
-                <Input
-                  type="number"
-                  min={0}
-                  max={86400}
-                  value={cache.chat_response_cache_ttl_sec ?? 300}
-                  onChange={(event) =>
-                    updateCache({
-                      chat_response_cache_ttl_sec: Number.parseInt(event.target.value || '0', 10),
-                    })
-                  }
-                />
-              </div>
-              <div>
-                <div className="mb-1 text-xs text-muted-foreground">最大值字节数（max_value_bytes）</div>
-                <Input
-                  type="number"
-                  min={0}
-                  max={5000000}
-                  value={cache.chat_response_cache_max_value_bytes ?? 200000}
-                  onChange={(event) =>
-                    updateCache({
-                      chat_response_cache_max_value_bytes: Number.parseInt(
-                        event.target.value || '0',
-                        10
-                      ),
-                    })
-                  }
-                />
-              </div>
-              <div className="flex items-center gap-2 pt-5">
-                <input
-                  type="checkbox"
-                  checked={cache.chat_response_cache_require_empty_history ?? true}
-                  onChange={(event) =>
-                    updateCache({ chat_response_cache_require_empty_history: event.target.checked })
-                  }
-                  className="h-4 w-4 accent-primary"
-                />
-                <span className="text-sm text-foreground/80">仅缓存无历史请求</span>
-              </div>
-            </div>
-          ) : null}
-        </div>
-
-        <div className="space-y-3 border-t pt-6">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                <EyeOff className="h-4 w-4 text-muted-foreground" />
-                PII 脱敏
-              </div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                对模型输入/输出与工具调用做脱敏（流式输出会做延迟缓冲 holdback，以减少漏出）
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => updateSafety({ pii_redaction_enabled: !isPiiRedactionEnabled })}
-              className="shrink-0"
-              aria-label="切换 PII 脱敏（safety.pii_redaction_enabled）"
-            >
-              {isPiiRedactionEnabled ? (
-                <ToggleRight className="h-10 w-10 text-primary" />
-              ) : (
-                <ToggleLeft className="h-10 w-10 text-muted-foreground hover:text-muted-foreground" />
-              )}
-            </button>
+      <RuntimeCard
+        icon={EyeOff}
+        label="安全"
+        title="敏感信息脱敏"
+        description="对模型输入、输出和工具调用做敏感信息遮蔽。"
+        action={
+          <RuntimeToggle
+            checked={isPiiRedactionEnabled}
+            onToggle={() => updateSafety({ pii_redaction_enabled: !isPiiRedactionEnabled })}
+            label="切换敏感信息脱敏"
+          />
+        }
+      >
+        {isPiiRedactionEnabled ? (
+          <div className="grid gap-3 md:grid-cols-2">
+            <Field label="脱敏占位符">
+              <Input
+                value={safety.pii_redaction_mask ?? '[REDACTED]'}
+                onChange={(event) => updateSafety({ pii_redaction_mask: event.target.value })}
+                className={RUNTIME_INPUT}
+              />
+            </Field>
+            <Field label="流式缓冲字符">
+              <Input
+                type="number"
+                min={0}
+                max={2048}
+                value={safety.pii_stream_holdback_chars ?? 128}
+                onChange={(event) =>
+                  updateSafety({
+                    pii_stream_holdback_chars: Number.parseInt(event.target.value || '0', 10),
+                  })
+                }
+                className={RUNTIME_INPUT}
+              />
+            </Field>
           </div>
+        ) : null}
+      </RuntimeCard>
 
-          {isPiiRedactionEnabled ? (
-            <div className="grid grid-cols-1 gap-4 pt-2 md:grid-cols-3">
-              <div>
-                <div className="mb-1 text-xs text-muted-foreground">脱敏占位符</div>
-                <Input
-                  value={safety.pii_redaction_mask ?? '[REDACTED]'}
-                  onChange={(event) => updateSafety({ pii_redaction_mask: event.target.value })}
-                />
-              </div>
-              <div>
-                <div className="mb-1 text-xs text-muted-foreground">流式延迟缓冲字符数（holdback）</div>
-                <Input
-                  type="number"
-                  min={0}
-                  max={2048}
-                  value={safety.pii_stream_holdback_chars ?? 128}
-                  onChange={(event) =>
-                    updateSafety({
-                      pii_stream_holdback_chars: Number.parseInt(event.target.value || '0', 10),
-                    })
-                  }
-                />
-              </div>
-            </div>
-          ) : null}
-        </div>
-
-        <div className="space-y-3 border-t pt-6">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                <Network className="h-4 w-4 text-muted-foreground" />
-                LangGraph 子图组合（Subgraph）
-              </div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                将检索/生成作为子图节点组合（更模块化，便于后续扩展）
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => updateLangGraph({ use_subgraphs: !isSubgraphEnabled })}
-              className="shrink-0"
-              aria-label="切换子图组合（langgraph.use_subgraphs）"
-            >
-              {isSubgraphEnabled ? (
-                <ToggleRight className="h-10 w-10 text-primary" />
-              ) : (
-                <ToggleLeft className="h-10 w-10 text-muted-foreground hover:text-muted-foreground" />
-              )}
-            </button>
-          </div>
-        </div>
-      </div>
-    </section>
+      <RuntimeCard
+        icon={Network}
+        label="编排"
+        title="子图编排"
+        description="将检索和生成拆成子图节点，便于后续扩展编排。"
+        action={
+          <RuntimeToggle
+            checked={isSubgraphEnabled}
+            onToggle={() => updateLangGraph({ use_subgraphs: !isSubgraphEnabled })}
+            label="切换子图编排"
+          />
+        }
+      />
+      </section>
+    </DangerZonePanel>
   )
 }
