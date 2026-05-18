@@ -21,3 +21,16 @@ export const systemWorkbenchTokens = {
   panelMuted: 'rounded-lg border-border/60 bg-muted/10 shadow-none',
   divider: 'border-border/70',
 } as const
+
+export const settingsTextTokens = {
+  sectionTitle: 'text-sm font-semibold tracking-[-0.01em] text-slate-800',
+  sectionIcon: 'h-4 w-4 text-blue-500',
+  sectionBadge:
+    'rounded-full border border-blue-100 bg-blue-50/70 px-2 py-0.5 text-[11px] font-medium text-blue-600',
+  panelTitle: 'text-[12px] font-medium tracking-[-0.005em] text-slate-800',
+  panelTitleIcon: 'h-4 w-4 text-slate-400',
+  fieldLabel: 'text-[11px] font-medium text-slate-500',
+  helpText: 'text-[11px] leading-4 text-slate-500/90',
+  microText: 'text-[10px] leading-4 text-slate-500/80',
+  valueText: 'text-slate-700',
+} as const

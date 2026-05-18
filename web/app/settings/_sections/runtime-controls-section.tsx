@@ -1,10 +1,12 @@
 'use client'
 
 import { DangerZonePanel } from '@/components/settings/danger-zone-panel'
+import { SettingsSwitch } from '@/components/settings/settings-switch'
 import { Input } from '@/components/ui/input'
+import { settingsTextTokens } from '@/components/ui/system-page-tokens'
 import type { CacheConfig, ChatConfig, LangGraphConfig, SafetyConfig } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { Database, EyeOff, Network, Server, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Database, EyeOff, Network, Server } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 
@@ -21,8 +23,8 @@ type RuntimeControlsSectionProps = {
 
 const RUNTIME_CARD =
   'rounded-[16px] border border-slate-200/75 bg-white/88 p-3.5 shadow-[0_8px_24px_rgba(15,23,42,0.03)]'
-const RUNTIME_LABEL = 'text-[11px] font-semibold text-slate-700'
-const RUNTIME_HINT = 'text-[11px] leading-4 text-slate-500'
+const RUNTIME_LABEL = settingsTextTokens.fieldLabel
+const RUNTIME_HINT = settingsTextTokens.helpText
 const RUNTIME_INPUT = 'h-8 rounded-lg border-slate-200 bg-white text-[12px]'
 
 function RuntimeToggle({
@@ -31,19 +33,12 @@ function RuntimeToggle({
   label,
 }: Readonly<{ checked: boolean; onToggle: () => void; label: string }>) {
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className="shrink-0 rounded-full transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+    <SettingsSwitch
+      checked={checked}
+      onCheckedChange={() => onToggle()}
+      className="shrink-0"
       aria-label={label}
-      aria-pressed={checked}
-    >
-      {checked ? (
-        <ToggleRight className="h-7 w-7 text-blue-600" />
-      ) : (
-        <ToggleLeft className="h-7 w-7 text-slate-400 hover:text-slate-500" />
-      )}
-    </button>
+    />
   )
 }
 
@@ -70,8 +65,8 @@ function RuntimeCard({
             <Icon className="h-4 w-4" />
           </div>
           <div className="min-w-0">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-blue-500/80">{label}</div>
-            <div className="mt-0.5 text-[13px] font-semibold tracking-[-0.01em] text-slate-950">{title}</div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-blue-500/75">{label}</div>
+            <div className="mt-0.5 text-[13px] font-medium tracking-[-0.005em] text-slate-800">{title}</div>
             <div className={cn(RUNTIME_HINT, 'mt-0.5')}>{description}</div>
           </div>
         </div>
@@ -103,7 +98,7 @@ function OptionRow({
       )}
     >
       <div className="min-w-0">
-        <div className="text-[12px] font-semibold text-slate-900">{title}</div>
+        <div className={settingsTextTokens.panelTitle}>{title}</div>
         <div className={cn(RUNTIME_HINT, 'mt-0.5')}>{description}</div>
       </div>
       <RuntimeToggle checked={checked} onToggle={onToggle} label={label} />
@@ -182,7 +177,7 @@ export function RuntimeControlsSection({
               className={RUNTIME_INPUT}
             />
           </Field>
-          <div className="rounded-xl border border-slate-200 bg-slate-50/55 px-3 py-2 text-[11px] leading-4 text-slate-500">
+          <div className={cn('rounded-xl border border-slate-200 bg-slate-50/55 px-3 py-2', settingsTextTokens.helpText)}>
             适合经过代理或负载均衡的长连接场景，避免空闲连接被误断。
           </div>
         </div>
@@ -246,7 +241,7 @@ export function RuntimeControlsSection({
                 className={RUNTIME_INPUT}
               />
             </Field>
-            <label className="flex items-center gap-2 pt-5 text-[12px] font-medium text-slate-700">
+            <label className="flex items-center gap-2 pt-5 text-[12px] font-medium text-slate-600">
               <input
                 type="checkbox"
                 checked={cache.chat_response_cache_require_empty_history ?? true}

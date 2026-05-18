@@ -41,7 +41,7 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { TENANT_PERMISSIONS } from '@/lib/tenant-permissions'
-import { systemPageTokens } from '@/components/ui/system-page-tokens'
+import { settingsTextTokens, systemPageTokens } from '@/components/ui/system-page-tokens'
 
 const SETTINGS_SECTIONS = [
   { id: 'sec-models', label: '模型接入', hint: 'LLM / Embedding / Rerank 服务商' },
@@ -336,7 +336,7 @@ function SettingsSectionFrame({
           <div className="min-w-0">
             <h2
               id={`${section.id}-title`}
-              className="text-[14px] font-semibold leading-tight text-slate-950"
+              className={cn(settingsTextTokens.sectionTitle, 'leading-tight')}
             >
               {section.label}
             </h2>

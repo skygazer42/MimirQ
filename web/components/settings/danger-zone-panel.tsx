@@ -60,12 +60,12 @@ export function DangerZonePanel({
           </div>
           <div className="min-w-0">
             <div className={cn('flex flex-wrap items-center', compact ? 'gap-1.5' : 'gap-2')}>
-              <span className={cn('font-semibold tracking-[-0.005em] text-foreground', compact ? 'text-[11.5px]' : 'text-[12px]')}>{title}</span>
+              <span className={cn('font-medium tracking-[-0.005em] text-slate-800', compact ? 'text-[11.5px]' : 'text-[12px]')}>{title}</span>
               <span
                 className={cn(
                   'rounded-full bg-background/80 font-semibold',
                   isNeutral
-                    ? 'border border-border/60 text-foreground/72'
+                    ? 'border border-border/60 text-slate-500'
                     : 'border border-destructive/20 text-destructive',
                   compact ? 'px-1.5 py-0.5 text-[9px]' : 'px-1.5 py-0.5 text-[10px]'
                 )}
@@ -73,7 +73,7 @@ export function DangerZonePanel({
                 {badge}
               </span>
             </div>
-            <p className={cn('text-muted-foreground/85', compact ? 'mt-0.5 text-[10px] leading-3.5' : 'mt-0.5 text-[11px] leading-4')}>
+            <p className={cn('text-slate-500/90', compact ? 'mt-0.5 text-[10px] leading-3.5' : 'mt-0.5 text-[11px] leading-4')}>
               {impact}
             </p>
           </div>

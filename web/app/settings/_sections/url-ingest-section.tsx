@@ -12,11 +12,11 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { DangerZonePanel } from '@/components/settings/danger-zone-panel'
+import { SettingsSwitch } from '@/components/settings/settings-switch'
 import { Input } from '@/components/ui/input'
-import { systemPageTokens } from '@/components/ui/system-page-tokens'
+import { settingsTextTokens } from '@/components/ui/system-page-tokens'
 import type { SystemSettings } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { ToggleLeft, ToggleRight } from 'lucide-react'
 
 type UrlIngestSettings = NonNullable<SystemSettings['url_ingest']>
 
@@ -32,7 +32,6 @@ export function UrlIngestSection({
   const isUrlIngestEnabled = urlIngest.enabled
   const allowsPrivateIps = urlIngest.allow_private_ips
   const followsRedirects = urlIngest.follow_redirects
-  const toggleIconClass = 'h-7 w-7'
 
   return (
     <section>
@@ -47,32 +46,26 @@ export function UrlIngestSection({
         <div className="space-y-3">
           <div className="flex items-start justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5">
             <div>
-              <div className={systemPageTokens.heading}>网页采集入口</div>
-              <div className={cn(systemPageTokens.subtle, 'mt-0.5')}>
+              <div className={settingsTextTokens.panelTitle}>网页采集入口</div>
+              <div className={cn(settingsTextTokens.helpText, 'mt-0.5')}>
                 允许通过网页地址拉取内容并写入知识库；知识库页面的网页采集会依赖此开关。
               </div>
             </div>
             {isUrlIngestEnabled ? (
-              <button
-                type="button"
+              <SettingsSwitch
+                checked
                 onClick={() => updateUrlIngest({ enabled: false })}
                 className="shrink-0"
                 aria-label="切换网页采集开关"
-              >
-                <ToggleRight className={cn(toggleIconClass, 'text-primary')} />
-              </button>
+              />
             ) : (
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <button
-                    type="button"
+                  <SettingsSwitch
+                    checked={false}
                     className="shrink-0"
                     aria-label="切换网页采集开关"
-                  >
-                    <ToggleLeft
-                      className={cn(toggleIconClass, 'text-muted-foreground hover:text-muted-foreground')}
-                    />
-                  </button>
+                  />
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                   <AlertDialogHeader>
@@ -94,7 +87,7 @@ export function UrlIngestSection({
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div>
-              <div className="mb-1 text-[11px] font-semibold text-foreground/80">
+              <div className={cn(settingsTextTokens.fieldLabel, 'mb-1')}>
                 最大下载大小（字节）
               </div>
               <Input
@@ -110,7 +103,7 @@ export function UrlIngestSection({
               />
             </div>
             <div>
-              <div className="mb-1 text-[11px] font-semibold text-foreground/80">
+              <div className={cn(settingsTextTokens.fieldLabel, 'mb-1')}>
                 下载超时（秒）
               </div>
               <Input
@@ -131,32 +124,26 @@ export function UrlIngestSection({
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div className="flex items-start justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5">
               <div>
-                <div className={systemPageTokens.heading}>允许访问内网/私网 IP</div>
-                <div className={cn(systemPageTokens.subtle, 'mt-0.5')}>
+                <div className={settingsTextTokens.panelTitle}>允许访问内网/私网 IP</div>
+                <div className={cn(settingsTextTokens.helpText, 'mt-0.5')}>
                   高风险：可能访问到内网服务（强烈不建议）
                 </div>
               </div>
               {allowsPrivateIps ? (
-                <button
-                  type="button"
+                <SettingsSwitch
+                  checked
                   onClick={() => updateUrlIngest({ allow_private_ips: false })}
                   className="shrink-0"
                   aria-label="切换允许私网 IP 访问"
-                >
-                  <ToggleRight className={cn(toggleIconClass, 'text-primary')} />
-                </button>
+                />
               ) : (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <button
-                      type="button"
+                    <SettingsSwitch
+                      checked={false}
                       className="shrink-0"
                       aria-label="切换允许私网 IP 访问"
-                    >
-                      <ToggleLeft
-                        className={cn(toggleIconClass, 'text-muted-foreground hover:text-muted-foreground')}
-                      />
-                    </button>
+                    />
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
@@ -178,32 +165,26 @@ export function UrlIngestSection({
 
             <div className="flex items-start justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5">
               <div>
-                <div className={systemPageTokens.heading}>跟随重定向</div>
-                <div className={cn(systemPageTokens.subtle, 'mt-0.5')}>
+                <div className={settingsTextTokens.panelTitle}>跟随重定向</div>
+                <div className={cn(settingsTextTokens.helpText, 'mt-0.5')}>
                   可能重定向到内网/大文件；建议保持关闭
                 </div>
               </div>
               {followsRedirects ? (
-                <button
-                  type="button"
+                <SettingsSwitch
+                  checked
                   onClick={() => updateUrlIngest({ follow_redirects: false })}
                   className="shrink-0"
                   aria-label="切换跟随重定向"
-                >
-                  <ToggleRight className={cn(toggleIconClass, 'text-primary')} />
-                </button>
+                />
               ) : (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <button
-                      type="button"
+                    <SettingsSwitch
+                      checked={false}
                       className="shrink-0"
                       aria-label="切换跟随重定向"
-                    >
-                      <ToggleLeft
-                        className={cn(toggleIconClass, 'text-muted-foreground hover:text-muted-foreground')}
-                      />
-                    </button>
+                    />
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>

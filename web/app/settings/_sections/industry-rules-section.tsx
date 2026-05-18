@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { OperationResultPanel } from '@/components/ops/operation-result-panel'
-import { systemPageTokens, systemWorkbenchTokens } from '@/components/ui/system-page-tokens'
+import { settingsTextTokens, systemWorkbenchTokens } from '@/components/ui/system-page-tokens'
 import { industryRulesApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { queryKeys } from '@/lib/query-keys'
@@ -93,28 +93,28 @@ export function IndustryRulesSection() {
   return (
     <section className="space-y-2.5">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="flex items-center gap-1.5 text-sm font-semibold tracking-[-0.01em] text-foreground">
-          <Sparkles className="h-4 w-4 text-info" />
+        <h2 className={cn(settingsTextTokens.sectionTitle, 'flex items-center gap-1.5')}>
+          <Sparkles className={settingsTextTokens.sectionIcon} />
           行业规则与查询改写
         </h2>
         <div className="flex items-center gap-2">
           <Button asChild variant="outline" className="h-8 rounded-lg px-3 text-xs font-semibold">
             <Link href="/governance/industry-rules">打开完整工作台</Link>
           </Button>
-          <div className="rounded-full border border-info/20 bg-info/10 px-2 py-0.5 text-[11px] font-semibold text-info">
+          <div className={settingsTextTokens.sectionBadge}>
             industry-rules API
           </div>
         </div>
       </div>
 
       <div className={cn(systemWorkbenchTokens.panel, 'space-y-3 p-3.5')}>
-        <p className={systemPageTokens.subtle}>
+        <p className={settingsTextTokens.helpText}>
           管理后端行业规则集的 glossary / patterns / intents，并在保存前预览 query rewrite 效果。
         </p>
 
         <div className="grid gap-3 md:grid-cols-3">
           <div className="space-y-1.5">
-            <Label htmlFor="industry-rules-name" className="text-[11px] font-medium text-muted-foreground">
+            <Label htmlFor="industry-rules-name" className={settingsTextTokens.fieldLabel}>
               Ruleset
             </Label>
             <Input id="industry-rules-name" value={rulesetName} onChange={(event) => setRulesetName(event.target.value)} className="h-8 text-xs" />
@@ -124,7 +124,7 @@ export function IndustryRulesSection() {
                   <button
                     key={item.name}
                     type="button"
-                    className="rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+                    className="rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[11px] text-slate-500 transition-colors hover:text-slate-700"
                     onClick={() => setRulesetName(item.name)}
                   >
                     {item.name}
@@ -134,7 +134,7 @@ export function IndustryRulesSection() {
             ) : null}
           </div>
           <div className="space-y-1.5 md:col-span-2">
-            <Label htmlFor="industry-rules-query" className="text-[11px] font-medium text-muted-foreground">
+            <Label htmlFor="industry-rules-query" className={settingsTextTokens.fieldLabel}>
               Preview Query
             </Label>
             <Input id="industry-rules-query" value={query} onChange={(event) => setQuery(event.target.value)} className="h-8 text-xs" />
@@ -279,7 +279,7 @@ function JsonField({
 }>) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-[11px] font-medium text-muted-foreground">{label}</Label>
+      <Label className={settingsTextTokens.fieldLabel}>{label}</Label>
       <Textarea value={value} onChange={(event) => onChange(event.target.value)} className="min-h-[140px] font-mono text-xs" />
     </div>
   )
