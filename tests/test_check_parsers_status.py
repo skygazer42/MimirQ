@@ -49,3 +49,25 @@ def test_mineru_status_keeps_expired_token_message_ahead_of_import_checks() -> N
         import_message="libGL.so.1: cannot open shared object file",
     )
     assert status == "api_token expired at 2026-01-24T16:19:46Z"
+
+
+def test_textin_status_requires_credentials_when_enabled() -> None:
+    mod = _load_module()
+    status = mod._textin_status(  # type: ignore[attr-defined]
+        enabled=True,
+        api_url="https://api.textin.com/ai/service/v1/pdf_to_markdown",
+        app_id="",
+        secret_code="",
+    )
+    assert status == "missing TEXTIN_APP_ID"
+
+
+def test_textin_status_reports_configured_only_with_url_and_credentials() -> None:
+    mod = _load_module()
+    status = mod._textin_status(  # type: ignore[attr-defined]
+        enabled=True,
+        api_url="https://api.textin.com/ai/service/v1/pdf_to_markdown",
+        app_id="demo-app-id",
+        secret_code="demo-secret",
+    )
+    assert status == "configured"

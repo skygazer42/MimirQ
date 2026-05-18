@@ -33,6 +33,24 @@ def _configured_cli_status(enabled: bool, cli_path: str | None) -> str:
     return "disabled"
 
 
+def _textin_status(
+    *,
+    enabled: bool,
+    api_url: str | None,
+    app_id: str | None,
+    secret_code: str | None,
+) -> str:
+    if not enabled:
+        return "disabled"
+    if not (api_url or "").strip():
+        return "missing TEXTIN_API_URL"
+    if not (app_id or "").strip():
+        return "missing TEXTIN_APP_ID"
+    if not (secret_code or "").strip():
+        return "missing TEXTIN_SECRET_CODE"
+    return "configured"
+
+
 def _mineru_status(
     *,
     enabled: bool,
@@ -115,6 +133,20 @@ def main() -> int:
             "olmocr",
             "on" if olmocr_enabled else "off",
             _configured_status(olmocr_enabled, olmocr_configured, "missing OLMOCR_API_URL"),
+        )
+    )
+
+    textin_enabled = bool(getattr(settings, "TEXTIN_ENABLED", False))
+    rows.append(
+        (
+            "textin",
+            "on" if textin_enabled else "off",
+            _textin_status(
+                enabled=textin_enabled,
+                api_url=getattr(settings, "TEXTIN_API_URL", ""),
+                app_id=getattr(settings, "TEXTIN_APP_ID", ""),
+                secret_code=getattr(settings, "TEXTIN_SECRET_CODE", ""),
+            ),
         )
     )
 

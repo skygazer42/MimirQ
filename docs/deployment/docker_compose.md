@@ -25,6 +25,19 @@ cp web/.env.local.example web/.env.local
 - `LLM_API_KEY`（以及可选的 `LLM_API_BASE/LLM_MODEL`）
 - 若启用生产 JWT：`AUTH_MODE=jwt` + `SECRET_KEY`（长度 >= 32）
 
+若使用 DashScope / 通义千问的 OpenAI-compatible 接口，示例：
+
+```env
+LLM_API_BASE=https://dashscope.aliyuncs.com/compatible-mode/v1
+LLM_MODEL=qwen-plus
+LLM_MODEL_FAST=qwen-plus
+LLM_MODEL_HEAVY=qwen3-max
+```
+
+注意：不同账号/套餐可用模型不同；如果聊天或 KG 抽取返回 403/404，请先在容器内探测
+当前 `LLM_MODEL` 是否有权限，再重启 `mimirq-api` / `mimirq-worker`。不要把带密钥的
+`.env` 提交到仓库。
+
 根目录 `.env.example` 是本地启动最小模板；解析、RAG、KG、可观测性等高级项见 `config/env/*.env.example`。
 
 前端（Docker）可选配置（`docker/docker-compose.web.yml` 使用）：
