@@ -114,8 +114,16 @@ export function ChunkCard({
   const needsReviewTitle = useMemo(() => {
     if (!needsReview) return undefined
     const reasons = semanticQuality?.reasons ?? []
-    return reasons.length > 0 ? `needs_review: ${reasons.join(', ')}` : 'needs_review'
-  }, [needsReview, semanticQuality?.reasons])
+    return reasons.length > 0
+      ? `${t('chunkCard.needsReviewTitle')}：${reasons.join(', ')}`
+      : t('chunkCard.needsReviewTitle')
+  }, [needsReview, semanticQuality?.reasons, t])
+  const chunkMetricLabel = unit === 'tokens' ? `${tokens ?? '-'} token` : `${chunk.length} 字`
+  const chunkMetricTitle = [
+    `${chunk.length} chars`,
+    tokens == null ? null : `${tokens} tokens`,
+    rangeLabel,
+  ].filter(Boolean).join(' · ')
   const citationText = useMemo(() => {
     const name = (sourceFilename || '').trim() || t('chunkCard.documentFallback')
     const pageLabel = chunk.page_number == null ? '' : ` · P.${chunk.page_number}`
@@ -223,10 +231,12 @@ export function ChunkCard({
           ) : null}
           {needsReview ? (
             <span
-              className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-destructive/10 text-destructive border border-destructive/25"
+              className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-destructive/20 bg-destructive/10 text-destructive"
               title={needsReviewTitle}
+              aria-label={needsReviewTitle}
             >
-              {t('chunkCard.needsReview')}
+              <span className="h-1.5 w-1.5 rounded-full bg-destructive" />
+              <span className="sr-only">{t('chunkCard.needsReview')}</span>
             </span>
           ) : null}
           {reviewed ? (
@@ -260,21 +270,11 @@ export function ChunkCard({
               {sectionLabel.short}
             </span>
           ) : null}
-          {unit === 'tokens' ? (
-            <>
-              <span className="text-[11px] text-muted-foreground font-mono">{tokens ?? '-'} tok</span>
-              <span className="text-[11px] text-muted-foreground font-mono">{chunk.length} chars</span>
-            </>
-          ) : (
-            <span
-              className="text-[11px] text-muted-foreground font-mono"
-              title={tokens == null ? `${chunk.length} chars` : `${chunk.length} chars · ${tokens} tok`}
-            >
-              {chunk.length} chars
-            </span>
-          )}
-          <span className="text-[11px] text-muted-foreground font-mono" title="start-end">
-            {rangeLabel}
+          <span
+            className="inline-flex h-5 items-center whitespace-nowrap rounded-full border border-border/55 bg-muted/35 px-1.5 text-[11px] font-medium text-muted-foreground"
+            title={chunkMetricTitle}
+          >
+            {chunkMetricLabel}
           </span>
         </div>
         <div className="flex items-center gap-1.5">

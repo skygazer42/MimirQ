@@ -138,8 +138,12 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
   }, [selectedRef, selectedSummary])
 
   const triggerCls = compact
-    ? 'h-8 rounded-lg border-border/50 bg-background/70 text-[11px] text-foreground/80 shadow-none'
-    : 'h-9 rounded-lg border-border/50 bg-background/70 text-sm text-foreground/80 shadow-none'
+    ? 'h-8 rounded-lg border-border/50 bg-card/85 text-[11px] font-medium text-foreground/80 shadow-none'
+    : 'h-9 rounded-lg border-border/50 bg-card/85 text-sm font-medium text-foreground/80 shadow-none'
+  const primaryActionClass =
+    'h-8 gap-2 rounded-lg border-primary/25 bg-primary/10 text-primary shadow-none hover:border-primary/35 hover:bg-primary/20 hover:text-primary'
+  const secondaryActionClass =
+    'h-8 gap-2 rounded-lg border-border/50 bg-background/60 text-foreground/70 shadow-none hover:bg-muted/45 hover:text-foreground'
 
   const inheritanceText = useMemo(() => {
     const chain = selectedResolved?.chain || []
@@ -190,11 +194,12 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-border/35 bg-background/45 p-1.5">
         <Button
           onClick={handleApply}
           size={compact ? 'sm' : 'default'}
-          className="h-8 gap-2 rounded-lg shadow-none"
+          variant="outline"
+          className={primaryActionClass}
           disabled={!selectedResolved}
         >
           <Sparkles className="w-4 h-4" />
@@ -204,7 +209,7 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
           variant="outline"
           onClick={handleImportClick}
           size={compact ? 'sm' : 'default'}
-          className="h-8 gap-2 rounded-lg border-border/50 bg-background/70 text-foreground/75 shadow-none"
+          className={secondaryActionClass}
         >
           <FileUp className="w-4 h-4" />
           导入脚本
@@ -213,7 +218,7 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
           variant="outline"
           onClick={handleExport}
           size={compact ? 'sm' : 'default'}
-          className="h-8 gap-2 rounded-lg border-border/50 bg-background/70 text-foreground/75 shadow-none"
+          className={secondaryActionClass}
           disabled={!selectedRef || selectedRef === SELECT_NONE}
         >
           <Download className="w-4 h-4" />

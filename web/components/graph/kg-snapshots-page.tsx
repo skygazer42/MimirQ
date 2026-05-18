@@ -2043,7 +2043,7 @@ function SnapshotAuditPanel({
     <div className="flex h-full min-h-0 flex-col">
       <div className="shrink-0 border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.20))] px-4 py-3">
         <SectionHeading
-          eyebrow="Audit"
+          eyebrow="评估"
           title="效果面板"
           description="快速查看快照差异强度、类型漂移与整体风险等级。"
           icon={<BarChart3 className="h-5 w-5" aria-hidden="true" />}
@@ -2619,8 +2619,8 @@ export function KGSnapshotsPage() {
         <header className="shrink-0 border-b border-border/70 bg-background/80 backdrop-blur">
           <div className="px-4 py-3 md:px-6">
             <PageHeader
-              title="KG Snapshots"
-              description="对比流水线哈希生成的轻量 KG 快照，并在 Audit 面板快速判断波动强度。"
+              title="图谱快照"
+              description="对比流水线哈希生成的轻量图谱快照，并在评估面板快速判断波动强度。"
               iconImage="kg-snapshot"
               icon={GitCompare}
               iconColor="text-info"
@@ -2718,7 +2718,7 @@ export function KGSnapshotsPage() {
                     }}
                   >
                     <FileJson className="h-3.5 w-3.5" aria-hidden="true" />
-                    Studio
+                    工作台
                   </button>
                   <button
                     type="button"
@@ -2733,7 +2733,7 @@ export function KGSnapshotsPage() {
                     }}
                   >
                     <BarChart3 className="h-3.5 w-3.5" aria-hidden="true" />
-                    Audit
+                    评估
                   </button>
                 </div>
                 <div className="mt-2.5 flex flex-wrap items-center gap-2">

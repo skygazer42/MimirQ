@@ -69,7 +69,9 @@ describe('navbar source', () => {
     expect(src).toContain('requiredPermission: TENANT_PERMISSIONS.AUDIT_READ')
     expect(src).toContain('requiredPermission: TENANT_PERMISSIONS.SETTINGS_READ')
     expect(src).toContain('visibleMenuSections')
-    expect(src).toContain('tenantAccessAllows(tenantAccess.data, permission)')
+    expect(src).toContain('hasHydratedNavigationAccess')
+    expect(src).toContain('tenantAccessAllows(navigationTenantAccess, permission)')
+    expect(src).toContain('canShowAdminControlledNavigationModule(navigationTenantAccess, moduleKey)')
   })
 
   it('keeps the expanded sidebar width aligned with the 2048px dashboard layout reference', () => {

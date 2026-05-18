@@ -41,7 +41,7 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
-import { connectorApi, datasetApi, documentApi } from '@/lib/api'
+import { connectorApi, datasetApi, documentApi, settingsApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, formatDate, formatFileSize } from '@/lib/utils'
 import type { ConnectorRunOut, Dataset, DatasetIngestionStats, DocumentBatchUploadResponse, DocumentPipelineOptions } from '@/types'
@@ -240,6 +240,11 @@ function parseExtensions(raw: string) {
   return extensions.length ? extensions : ['.pdf', '.md', '.txt']
 }
 
+function apiPayloadFileType(filename: string) {
+  const ext = filename.split('.').pop()?.trim().toLowerCase()
+  return ext || 'json'
+}
+
 function connectorSourceLabel(connectorId: string) {
   if (connectorId === 'url_batch') return 'URL列表'
   if (connectorId === 'minio_bucket') return '对象存储'
@@ -354,6 +359,14 @@ export default function KnowledgeIngestionOperationPage() {
     [connectorRunsQuery.data?.items]
   )
 
+  const settingsQuery = useQuery({
+    queryKey: ['knowledge-ingestion-operation-settings'],
+    queryFn: () => settingsApi.get(),
+    staleTime: 30_000,
+  })
+
+  const urlIngestEnabled = Boolean(settingsQuery.data?.url_ingest.enabled)
+
   const selectedTotalBytes = useMemo(
     () => files.reduce((sum, file) => sum + file.size, 0),
     [files]
@@ -368,7 +381,12 @@ export default function KnowledgeIngestionOperationPage() {
     return files.length
   }, [apiContent, files.length, objectMaxObjects, parsedUrls.length, source])
 
-  const canStartIngest = Boolean(draft.datasetId) && status !== 'uploading' && pendingSourceCount > 0
+  const connectorSourceBlocked = (source === 'url' || source === 'object') && !urlIngestEnabled
+  const canStartIngest =
+    Boolean(draft.datasetId) &&
+    status !== 'uploading' &&
+    pendingSourceCount > 0 &&
+    !connectorSourceBlocked
 
   const statusCounts = useMemo(() => {
     if (ingestionStats) {
@@ -520,6 +538,10 @@ export default function KnowledgeIngestionOperationPage() {
       toast.error('请先选择目标数据集')
       return
     }
+    if (!urlIngestEnabled) {
+      toast.error('URL 导入未启用：请先在系统设置中开启 URL_INGEST_ENABLED')
+      return
+    }
     setStatus('uploading')
     setUploadResponse(null)
     try {
@@ -567,6 +589,7 @@ export default function KnowledgeIngestionOperationPage() {
     parsedObjectExtensions,
     parsedUrls,
     source,
+    urlIngestEnabled,
     urlFilename,
   ])
 
@@ -592,14 +615,6 @@ export default function KnowledgeIngestionOperationPage() {
         await submitConnectorRun()
         return
       }
-      const apiFile =
-        source === 'api'
-          ? new File([apiContent], apiFilename.trim() || 'api-payload.json', {
-              type: (apiFilename || 'api-payload.json').endsWith('.json')
-                ? 'application/json'
-                : 'text/plain',
-            })
-          : null
       if (source === 'api' && !apiContent.trim()) {
         toast.error('请先填写 API 导入内容')
         return
@@ -608,11 +623,59 @@ export default function KnowledgeIngestionOperationPage() {
         toast.error('请先选择待入库文件')
         return
       }
-      const uploadTargets = apiFile ? [apiFile] : files
+      const uploadTargets = files
       const nextStatus: TaskStatus = mode === 'precheck' ? 'prechecking' : 'uploading'
       setStatus(nextStatus)
       setUploadResponse(null)
       try {
+        if (source === 'api') {
+          const filename = apiFilename.trim() || 'api-payload.json'
+          const document = await documentApi.createFromChunks({
+            dataset_id: draft.datasetId,
+            filename,
+            file_type: apiPayloadFileType(filename),
+            file_size: new TextEncoder().encode(apiContent).length,
+            pipeline: buildPipeline(draft),
+            metadata: {
+              source: 'api',
+              collection: draft.collection,
+              tags: draft.tags
+                .split(',')
+                .map((tag) => tag.trim())
+                .filter(Boolean),
+              ingest_mode: draft.ingestMode,
+            },
+            chunks: [
+              {
+                content: apiContent,
+                page_number: 1,
+                start_char: 0,
+                end_char: apiContent.length,
+                metadata: {
+                  source: 'api',
+                  collection: draft.collection,
+                },
+              },
+            ],
+          })
+          setUploadResponse({
+            total: 1,
+            successful_count: 1,
+            failed_count: 0,
+            successful: [
+              {
+                document_id: document.id,
+                filename,
+                status: String(document.status || 'completed'),
+              },
+            ],
+            failed: [],
+          })
+          setStatus('completed')
+          await Promise.all([documentsQuery.refetch(), ingestionStatsQuery.refetch()])
+          toast.success(`API 导入已写入：${filename}`)
+          return
+        }
         const uploadOptions = {
           dataset_id: draft.datasetId,
           parser_backend: draft.parserBackend,
@@ -635,9 +698,7 @@ export default function KnowledgeIngestionOperationPage() {
             ])
           ),
         }
-        const response = apiFile
-          ? await documentApi.uploadBatch([apiFile], uploadOptions)
-          : await documentApi.uploadBatch(files, uploadOptions)
+        const response = await documentApi.uploadBatch(files, uploadOptions)
         setUploadResponse(response)
         setStatus(response.failed_count > 0 ? 'failed' : 'completed')
         if (mode === 'ingest') {
@@ -684,6 +745,7 @@ export default function KnowledgeIngestionOperationPage() {
     objectMaxObjects,
     setObjectMaxObjects,
     parsedObjectExtensions,
+    urlIngestEnabled,
     apiFilename,
     setApiFilename,
     apiContent,
@@ -1027,6 +1089,7 @@ function SourceConfiguration({
   objectMaxObjects,
   setObjectMaxObjects,
   parsedObjectExtensions,
+  urlIngestEnabled,
   apiFilename,
   setApiFilename,
   apiContent,
@@ -1049,6 +1112,7 @@ function SourceConfiguration({
   objectMaxObjects: number
   setObjectMaxObjects: (value: number) => void
   parsedObjectExtensions: string[]
+  urlIngestEnabled: boolean
   apiFilename: string
   setApiFilename: (value: string) => void
   apiContent: string
@@ -1097,7 +1161,11 @@ function SourceConfiguration({
             onChange={(event) => setUrlList(event.target.value)}
             placeholder="https://example.com/manual.pdf&#10;https://example.com/guide.md"
           />
-          <div className="mt-1 text-[11px] text-slate-500">已识别 {parsedUrls.length} 个有效 http(s) 地址，提交后走后端 URL 批量导入任务。</div>
+          <div className="mt-1 text-[11px] text-slate-500">
+            {urlIngestEnabled
+              ? `已识别 ${parsedUrls.length} 个有效 http(s) 地址，提交后走后端 URL 批量导入任务。`
+              : 'URL 导入未启用：请先在系统设置开启 URL_INGEST_ENABLED。'}
+          </div>
         </FieldBlock>
         <FieldBlock label="统一文件名（可选）">
           <Input
@@ -1114,6 +1182,11 @@ function SourceConfiguration({
   if (source === 'object') {
     return (
       <div className="grid gap-2 rounded-[1.25rem] border border-blue-100/70 bg-blue-50/28 p-2 md:grid-cols-2 xl:grid-cols-4">
+        {!urlIngestEnabled ? (
+          <div className="md:col-span-2 xl:col-span-4 rounded-[1rem] border border-amber-100 bg-amber-50/70 px-3 py-2 text-xs text-amber-700">
+            URL 导入未启用：对象存储需要后端通过 presigned URL 拉取文件，请先开启 URL_INGEST_ENABLED。
+          </div>
+        ) : null}
         <FieldBlock label="Bucket（可选）">
           <Input
             className="h-9 rounded-[1rem] border-blue-100/80 bg-white/88 shadow-sm"
@@ -1162,7 +1235,9 @@ function SourceConfiguration({
           onChange={(event) => setApiFilename(event.target.value)}
           placeholder="api-payload.json"
         />
-        <div className="mt-1 text-[11px] text-slate-500">提交时会生成临时文件并调用批量上传接口。</div>
+        <div className="mt-1 text-[11px] text-slate-500">
+          提交时直接调用后端手动入库接口，按单段内容写入当前数据集。
+        </div>
       </FieldBlock>
       <FieldBlock label="API Payload">
         <Textarea

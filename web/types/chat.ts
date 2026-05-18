@@ -292,6 +292,7 @@ export interface TenantQpsQuotaConfig {
   mode: string
   rps: number
   burst: number
+  scopes?: string[]
 }
 
 export interface TenantQuotaSummary {

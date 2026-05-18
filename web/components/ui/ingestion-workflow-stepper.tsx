@@ -83,7 +83,14 @@ export function IngestionWorkflowStepper({
         return (
           <div
             key={step.key}
-            className={cn('flex items-center', compact ? 'gap-2' : 'flex-1 gap-0')}
+            className={cn(
+              'flex items-center',
+              compact
+                ? 'gap-2'
+                : index < steps.length - 1
+                  ? 'min-w-0 flex-1'
+                  : 'shrink-0'
+            )}
           >
             <Link
               href={step.href}
@@ -138,15 +145,21 @@ export function IngestionWorkflowStepper({
               )}
               <span className="whitespace-nowrap">{step.label}</span>
             </Link>
-            {index < steps.length - 1 ? (
+            {index < steps.length - 1 && compact ? (
               <span
                 className={cn(
                   'select-none text-muted-foreground/40',
-                  compact ? 'text-xs' : 'mx-2 text-sm'
+                  compact ? 'text-xs' : 'sr-only'
                 )}
               >
                 →
               </span>
+            ) : null}
+            {index < steps.length - 1 && !compact ? (
+              <span
+                aria-hidden="true"
+                className="mx-4 h-px min-w-8 flex-1 border-t border-dashed border-border/55"
+              />
             ) : null}
           </div>
         )

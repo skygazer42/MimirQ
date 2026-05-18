@@ -17,6 +17,7 @@ import {
   type LTRModelInfo,
   type MagicPDFConfig,
   type MarkerConfig,
+  type NavigationConfig,
   type ObservabilityConfig,
   type PaddleVLConfig,
   type SafetyConfig,
@@ -85,6 +86,10 @@ const DEFAULT_LANGGRAPH: LangGraphConfig = {
   use_subgraphs: false,
 }
 
+const DEFAULT_NAVIGATION: NavigationConfig = {
+  user_visible_modules: [],
+}
+
 const DEFAULT_CACHE: CacheConfig = {
   upload_dedup_enabled: false,
   chat_response_cache_enabled: false,
@@ -117,6 +122,8 @@ const DEFAULT_RAG: RagSettings = {
   default_chunk_strategy: 'recursive',
   bm25_index_enabled: true,
   enable_reranker: false,
+  reranker_provider: 'llm',
+  reranker_top_n: 20,
 }
 
 const DEFAULT_URL_INGEST: UrlIngestSettings = {
@@ -268,6 +275,10 @@ export function useSettingsPageState() {
   const langGraphMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_LANGGRAPH, settings?.langgraph, editedSettings.langgraph),
     [settings?.langgraph, editedSettings.langgraph]
+  )
+  const navigationMerged = useMemo(
+    () => mergeWithDefaults(DEFAULT_NAVIGATION, settings?.navigation, editedSettings.navigation),
+    [settings?.navigation, editedSettings.navigation]
   )
   const cacheMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_CACHE, settings?.cache, editedSettings.cache),
@@ -457,6 +468,16 @@ export function useSettingsPageState() {
       ...prev,
       langgraph: mergeConfig(
         mergeWithDefaults(DEFAULT_LANGGRAPH, settings?.langgraph, prev.langgraph),
+        patch
+      ),
+    }))
+  }
+
+  const updateNavigation = (patch: Partial<NavigationConfig>) => {
+    setEditedSettings((prev) => ({
+      ...prev,
+      navigation: mergeConfig(
+        mergeWithDefaults(DEFAULT_NAVIGATION, settings?.navigation, prev.navigation),
         patch
       ),
     }))
@@ -659,6 +680,7 @@ export function useSettingsPageState() {
     ltrUploading,
     magicPdfMerged,
     markerMerged,
+    navigationMerged,
     observabilityMerged,
     paddleVlMerged,
     textInMerged,
@@ -682,6 +704,7 @@ export function useSettingsPageState() {
     updateEtl4Llm,
     updateGovernance,
     updateLangGraph,
+    updateNavigation,
     updateMagicPDF,
     updateMarker,
     updateObservability,

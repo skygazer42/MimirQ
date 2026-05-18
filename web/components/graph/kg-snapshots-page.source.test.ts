@@ -7,6 +7,12 @@ describe('KG snapshots page layout', () => {
   it('uses an IDE-style tabs workspace with side-by-side diff by default', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'kg-snapshots-page.tsx'), 'utf8')
 
+    expect(src).toContain('title="图谱快照"')
+    expect(src).toContain('轻量图谱快照')
+    expect(src).toContain('工作台')
+    expect(src).toContain('评估')
+    expect(src).not.toContain('title="KG Snapshots"')
+    expect(src).not.toContain('Audit 面板')
     expect(src).toContain('Diff 对比')
     expect(src).toContain('视图 A')
     expect(src).toContain('视图 B')

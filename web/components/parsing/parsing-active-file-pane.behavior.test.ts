@@ -309,6 +309,37 @@ describe('ParsingActiveFilePane lazy compare interactions', () => {
     document.body.innerHTML = ''
   })
 
+  it('shows a save action alongside edit, copy, and download for parsed markdown', () => {
+    const onSaveEdit = vi.fn()
+    const onStartEdit = vi.fn()
+    const view = renderComponent(
+      React.createElement(ParsingActiveFilePane, {
+        ...makePaneProps({
+          onSaveEdit,
+          onStartEdit,
+          isEditing: false,
+          rightPanelMode: 'markdown',
+          previewMode: 'raw',
+        }),
+      })
+    )
+
+    const saveButton = findButtonByText(view.container, '保存')
+    expect(saveButton).not.toBeNull()
+    expect(findButtonByText(view.container, '编辑')).not.toBeNull()
+    expect(findButtonByText(view.container, '复制')).not.toBeNull()
+    expect(findButtonByText(view.container, '下载')).not.toBeNull()
+
+    act(() => {
+      saveButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    expect(onSaveEdit).toHaveBeenCalledTimes(1)
+    expect(onStartEdit).not.toHaveBeenCalled()
+
+    view.unmount()
+  })
+
   it('opens the parse compare dialog after the lazy chunk resolves', async () => {
     const runs = [
       makeRun({ id: 'run-a', parserLabel: 'Marker' }),
@@ -374,7 +405,7 @@ describe('ParsingActiveFilePane lazy compare interactions', () => {
     view.unmount()
   })
 
-  it('renders a denser layout review panel with kind labels and a pdf legend', async () => {
+  it('renders a denser layout review panel without the redundant pdf legend', async () => {
     const onActiveBlockIdChange = vi.fn()
 
     const view = renderComponent(
@@ -400,10 +431,11 @@ describe('ParsingActiveFilePane lazy compare interactions', () => {
       )
     )
 
-    expect(view.container.textContent).toContain('版面图例')
+    expect(view.container.textContent).not.toContain('版面视图')
+    expect(view.container.textContent).not.toContain('版面图例')
+    expect(view.container.textContent).not.toContain('点击右侧片段可定位到左侧 PDF 原页')
     expect(view.container.textContent).toContain('标题')
     expect(view.container.textContent).toContain('表格')
-    expect(view.container.textContent).toContain('点击右侧片段可定位到左侧 PDF 原页')
 
     const cards = Array.from(view.container.querySelectorAll('button')).filter((button) =>
       button.textContent?.includes('页')
@@ -739,6 +771,7 @@ describe('ParsingActiveFilePane lazy compare interactions', () => {
   it('forwards pdf overlay clicks into the active block selection state', async () => {
     const onActiveBlockIdChange = vi.fn()
     const onHoveredBlockIdChange = vi.fn()
+    const onRightPanelModeChange = vi.fn()
     const view = renderComponent(
       React.createElement(
         ParsingActiveFilePane,
@@ -753,6 +786,7 @@ describe('ParsingActiveFilePane lazy compare interactions', () => {
           isPdf: true,
           onActiveBlockIdChange,
           onHoveredBlockIdChange,
+          onRightPanelModeChange,
           rightPanelMode: 'markdown',
         })
       )
@@ -771,8 +805,49 @@ describe('ParsingActiveFilePane lazy compare interactions', () => {
     })
 
     expect(onActiveBlockIdChange).toHaveBeenCalledWith('pdf-block-1')
+    expect(onRightPanelModeChange).toHaveBeenCalledWith('blocks')
 
     view.unmount()
+  })
+
+  it('scrolls the matching layout review card into view when a pdf block is active', async () => {
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView
+    const scrollIntoView = vi.fn()
+    HTMLElement.prototype.scrollIntoView = scrollIntoView
+
+    let view: ReturnType<typeof renderComponent> | null = null
+    try {
+      view = renderComponent(
+        React.createElement(
+          ParsingActiveFilePane,
+          makePaneProps({
+            activeBlockId: 'pdf-block-1',
+            activeBlocksWithPositions: [
+              {
+                id: 'pdf-block-1',
+                positions: [{ bottom: 0.22, left: 0.08, pages: [0], raw: '@@1', right: 0.84, top: 0.12 }],
+                text: 'Paragraph',
+              },
+            ],
+            isPdf: true,
+            rightPanelMode: 'blocks',
+          })
+        )
+      )
+
+      await waitForAssertion(() => {
+        expect(view?.container.querySelector('[data-layout-entry-id="pdf-block-1"]')).not.toBeNull()
+        expect(scrollIntoView).toHaveBeenCalledWith(
+          expect.objectContaining({
+            block: 'nearest',
+            inline: 'nearest',
+          })
+        )
+      })
+    } finally {
+      view?.unmount()
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView
+    }
   })
 
   it('falls back to element bbox overlays when layout blocks are missing', async () => {

@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic'
 import { useTranslations } from 'next-intl'
 
+import { NavigationVisibilityGate } from '@/components/auth/navigation-visibility-gate'
 import { PageLoading } from '@/components/ui/page-loading'
 
 const ReportsCenterPageClient = dynamic(() => import('./page-client'), {
@@ -11,7 +12,11 @@ const ReportsCenterPageClient = dynamic(() => import('./page-client'), {
 })
 
 export default function ReportsCenterPage() {
-  return <ReportsCenterPageClient />
+  return (
+    <NavigationVisibilityGate moduleKey="reports" pageName="数据报告">
+      <ReportsCenterPageClient />
+    </NavigationVisibilityGate>
+  )
 }
 
 function ReportsLoading() {

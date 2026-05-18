@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderHook, waitForAssertion } from '@/test/hook-harness'
 
 import type { ParsingEditSession } from '@/lib/parsing-edit-focus'
+import type { ParsedFileData } from '@/store/use-parsed-files-store'
 
 const pushMock = vi.fn()
 
@@ -33,6 +34,7 @@ vi.mock('@/lib/api', () => ({
 }))
 
 import type { ParsedFile, ParseRun } from './parsing-types'
+import { parsingApi } from '@/lib/api'
 import { useParsingEditorActions } from './use-parsing-editor-actions'
 
 function makeRun(overrides: Partial<ParseRun> = {}): ParseRun {
@@ -81,12 +83,21 @@ function makeParsedFile(run: ParseRun, overrides: Partial<ParsedFile> = {}): Par
   }
 }
 
-function createHarness() {
+function createHarness(
+  options: Readonly<{
+    initialFiles?: ParsedFile[]
+    initialLibraryFiles?: ParsedFileData[]
+    initialSelectedGovernanceFileIds?: string[]
+  }> = {}
+) {
   const updateParsedFile = vi.fn().mockResolvedValue(undefined)
   const addParsedFile = vi.fn()
 
   function useHarness() {
-    const [files, setFiles] = React.useState<ParsedFile[]>([makeParsedFile(makeRun())])
+    const [files, setFiles] = React.useState<ParsedFile[]>(options.initialFiles ?? [makeParsedFile(makeRun())])
+    const [selectedGovernanceFileIds, setSelectedGovernanceFileIds] = React.useState<Set<string>>(
+      () => new Set(options.initialSelectedGovernanceFileIds ?? [])
+    )
     const [editedContent, setEditedContent] = React.useState('')
     const [isEditing, setIsEditing] = React.useState(false)
     const [rightPanelMode, setRightPanelMode] = React.useState<'blocks' | 'markdown'>('blocks')
@@ -108,6 +119,9 @@ function createHarness() {
       countMarkdownHeadings: (markdown: string) => markdown.split('\n').filter((line) => /^#{1,6}\s/.test(line)).length,
       editSession,
       editedContent,
+      files,
+      libraryFiles: options.initialLibraryFiles ?? [],
+      selectedGovernanceFileIds,
       setActiveBlockId,
       setCopied,
       setEditedContent,
@@ -116,6 +130,7 @@ function createHarness() {
       setHoveredBlockId,
       setIsEditing,
       setRightPanelMode,
+      setSelectedGovernanceFileIds,
       updateParsedFile,
     })
 
@@ -129,6 +144,7 @@ function createHarness() {
       hoveredBlockId,
       isEditing,
       rightPanelMode,
+      selectedGovernanceFileIds,
       setEditedContent,
       updateParsedFile,
     }
@@ -144,6 +160,22 @@ function createHarness() {
 describe('useParsingEditorActions behavior', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(parsingApi.updateContent).mockResolvedValue({
+      document_id: 'library-1',
+      elements: [],
+      markdown_content: '# Summary\n\nFirst paragraph.\n\nUpdated paragraph.\n\n## Details',
+      original_markdown_content: '# Summary\n\nFirst paragraph.\n\nUpdated paragraph.\n\n## Details',
+      parser_backend: 'mineru',
+      pdf_quality: {
+        format_consistency_score: 1,
+        is_scanned: false,
+        page_count: 1,
+        score: 1,
+        table_quality_score: 1,
+        text_quality_score: 1,
+      },
+      quality_gate: { grade: 'pass', reasons: [], evidence: {} },
+    })
   })
 
   it('starts editing from only the selected layout block content', () => {
@@ -186,12 +218,132 @@ describe('useParsingEditorActions behavior', () => {
       expect(hook.result.current.files[0]?.markdownContent).toBe(
         '# Summary\n\nFirst paragraph.\n\nUpdated paragraph.\n\n## Details'
       )
+      expect(hook.result.current.files[0]?.governanceStatus).toBe('ready')
     })
 
     expect(hook.result.current.isEditing).toBe(false)
     expect(hook.result.current.rightPanelMode).toBe('markdown')
     expect(hook.result.current.activeBlockId).toBeNull()
     expect(hook.result.current.editSession).toBeNull()
+
+    hook.unmount()
+  })
+
+  it('saves a parsed library document as ready for batch governance submission', async () => {
+    const run = makeRun()
+    const { updateParsedFile, useHarness } = createHarness({
+      initialFiles: [makeParsedFile(run, { libraryId: 'library-1' })],
+    })
+    const hook = renderHook(() => useHarness())
+
+    act(() => {
+      hook.result.current.handleStartEdit()
+    })
+
+    act(() => {
+      hook.result.current.setEditedContent('Updated paragraph.')
+    })
+
+    await act(async () => {
+      await hook.result.current.handleSaveEdit()
+    })
+
+    expect(updateParsedFile).toHaveBeenCalledWith(
+      'library-1',
+      expect.objectContaining({
+        governanceStatus: 'ready',
+        status: 'parsed',
+      })
+    )
+
+    hook.unmount()
+  })
+
+  it('saves the current markdown without blanking content when no edit session is active', async () => {
+    const run = makeRun()
+    vi.mocked(parsingApi.updateContent).mockResolvedValueOnce({
+      document_id: 'library-1',
+      elements: [],
+      markdown_content: run.cleanedMarkdown,
+      original_markdown_content: run.cleanedMarkdown,
+      parser_backend: 'mineru',
+      pdf_quality: null,
+      quality_gate: null,
+    })
+    const { updateParsedFile, useHarness } = createHarness({
+      initialFiles: [makeParsedFile(run, { libraryId: 'library-1' })],
+    })
+    const hook = renderHook(() => useHarness())
+
+    await act(async () => {
+      await hook.result.current.handleSaveEdit()
+    })
+
+    expect(parsingApi.updateContent).toHaveBeenCalledWith('library-1', {
+      markdown_content: run.cleanedMarkdown,
+    })
+    expect(updateParsedFile).toHaveBeenCalledWith(
+      'library-1',
+      expect.objectContaining({
+        markdownContent: run.cleanedMarkdown,
+        governanceStatus: 'ready',
+        status: 'parsed',
+      })
+    )
+    expect(hook.result.current.files[0]?.markdownContent).toBe(run.cleanedMarkdown)
+
+    hook.unmount()
+  })
+
+  it('submits selected ready documents to governance in one batch', async () => {
+    const run = makeRun()
+    const { updateParsedFile, useHarness } = createHarness({
+      initialFiles: [
+        makeParsedFile(run, {
+          governanceStatus: 'ready',
+          id: 'queue-file-1',
+          libraryId: 'library-1',
+        }),
+      ],
+      initialLibraryFiles: [
+        {
+          fileSize: 128,
+          fileType: 'md',
+          filename: 'stored.md',
+          governanceStatus: 'ready',
+          id: 'library-2',
+          markdownContent: '# Stored',
+          parsedAt: '2024-01-01T00:00:00.000Z',
+          parser: 'Markdown',
+          status: 'parsed',
+        },
+      ],
+      initialSelectedGovernanceFileIds: ['queue-file-1', 'library-2'],
+    })
+    const hook = renderHook(() => useHarness())
+
+    await act(async () => {
+      await hook.result.current.handleSubmitSelectedToGovernance()
+    })
+
+    expect(updateParsedFile).toHaveBeenCalledWith(
+      'library-1',
+      expect.objectContaining({
+        governanceStatus: 'submitted',
+        markdownContent: expect.stringContaining('# Summary'),
+        status: 'parsed',
+      })
+    )
+    expect(updateParsedFile).toHaveBeenCalledWith(
+      'library-2',
+      expect.objectContaining({
+        governanceStatus: 'submitted',
+        markdownContent: '# Stored',
+        status: 'parsed',
+      })
+    )
+    expect(hook.result.current.selectedGovernanceFileIds.size).toBe(0)
+    expect(pushMock).toHaveBeenCalledWith('/data-governance')
 
     hook.unmount()
   })

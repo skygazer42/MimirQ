@@ -10,6 +10,11 @@ import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist'
 import { ParsingBlock } from '@/lib/parsing-positions'
 import type { ParsingEditFocusHint } from '@/lib/parsing-edit-focus'
 import { classifyParsingBlock } from '@/lib/parsing-layout'
+import {
+ computePdfOverlayRect,
+ computePdfOverlayScrollTop,
+ detectPdfBboxCoordinateSpace,
+} from '@/lib/pdf-bbox'
 import { toPrimitiveString } from '@/lib/primitive-text'
 import { Button } from '@/components/ui/button'
 import { BboxOverlay, type BboxOverlayItem } from '@/components/parsing/bbox-overlay'
@@ -1115,12 +1120,46 @@ export function PdfViewer({
  const pageIndex = resolvedBlockIdToPageIndex.get(firstActive)
  if (pageIndex == null) return
  const el = pageRefs.current.get(pageIndex)
+ const container = containerRef.current
+ if (!el || !container) return
  const reduceMotion =
  globalThis.window !== undefined &&
  typeof globalThis.window.matchMedia === 'function' &&
  globalThis.window.matchMedia('(prefers-reduced-motion: reduce)').matches
- el?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' })
- }, [activeBlockIds, resolvedBlockIdToPageIndex])
+ const behavior = reduceMotion ? 'auto' : 'smooth'
+ const pageBoxes = resolvedBoxesByPage.get(pageIndex) || []
+ const targetBox = pageBoxes.find((box) => box.id === firstActive)
+ const pageBaseSize = pageBaseSizes.get(pageIndex) ?? defaultPageBaseSize
+ if (targetBox) {
+ const coordinateSpace = detectPdfBboxCoordinateSpace({
+ items: pageBoxes,
+ pageBaseWidth: pageBaseSize?.width ?? null,
+ pageBaseHeight: pageBaseSize?.height ?? null,
+ })
+ const rect = computePdfOverlayRect({
+ position: targetBox.position,
+ scale,
+ pageBaseWidth: pageBaseSize?.width ?? null,
+ pageBaseHeight: pageBaseSize?.height ?? null,
+ coordinateSpace,
+ })
+ const containerRect = container.getBoundingClientRect()
+ const pageRect = el.getBoundingClientRect()
+ container.scrollTo({
+ behavior,
+ top: computePdfOverlayScrollTop({
+ containerHeight: container.clientHeight,
+ containerScrollTop: container.scrollTop,
+ containerTop: containerRect.top,
+ overlayHeight: rect.height,
+ overlayTop: rect.top,
+ pageTop: pageRect.top,
+ }),
+ })
+ return
+ }
+ el.scrollIntoView({ behavior, block: 'center' })
+ }, [activeBlockIds, defaultPageBaseSize, pageBaseSizes, resolvedBlockIdToPageIndex, resolvedBoxesByPage, scale])
 
  useEffect(() => {
  if (process.env.NODE_ENV !== 'development') return

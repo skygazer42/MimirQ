@@ -46,6 +46,7 @@ function applyEditedMarkdown(
 
     return {
       ...file,
+      governanceStatus: 'ready',
       markdownContent: editedContent,
       runs,
       stats: file.stats
@@ -61,6 +62,30 @@ function applyEditedMarkdown(
   })
 }
 
+function getParsedMarkdown(file: ParsedFile): string {
+  const activeRun = file.runs?.find((run) => run.id === file.activeRunId) ?? file.runs?.[0]
+  return activeRun?.cleanedMarkdown || file.markdownContent || ''
+}
+
+function buildGovernanceLibraryPayload(
+  file: ParsedFile,
+  markdown: string,
+  governanceStatus: 'ready' | 'submitted'
+): Omit<ParsedFileData, 'id' | 'parsedAt'> {
+  return {
+    filename: file.file.name,
+    fileType: file.file.name.split('.').pop()?.toLowerCase() || '',
+    fileSize: file.file.size,
+    markdownContent: markdown,
+    originalMarkdownContent: markdown,
+    parser: file.parserLabel,
+    folderId: file.folderId,
+    status: 'parsed',
+    error: undefined,
+    governanceStatus,
+  }
+}
+
 type UseParsingEditorActionsOptions = {
   activeBlockId: string | null
   activeBlocksWithPositions: ParsingBlock[]
@@ -71,6 +96,9 @@ type UseParsingEditorActionsOptions = {
   countMarkdownHeadings: (markdown: string) => number
   editSession: ParsingEditSession | null
   editedContent: string
+  files: ParsedFile[]
+  libraryFiles: ParsedFileData[]
+  selectedGovernanceFileIds: ReadonlySet<string>
   setActiveBlockId: Dispatch<SetStateAction<string | null>>
   setCopied: Dispatch<SetStateAction<boolean>>
   setEditSession: Dispatch<SetStateAction<ParsingEditSession | null>>
@@ -79,6 +107,7 @@ type UseParsingEditorActionsOptions = {
   setHoveredBlockId: Dispatch<SetStateAction<string | null>>
   setIsEditing: Dispatch<SetStateAction<boolean>>
   setRightPanelMode: Dispatch<SetStateAction<'blocks' | 'markdown'>>
+  setSelectedGovernanceFileIds: Dispatch<SetStateAction<Set<string>>>
   updateParsedFile: (id: string, updates: Partial<Omit<ParsedFileData, 'id'>>) => Promise<void>
 }
 
@@ -92,6 +121,9 @@ export function useParsingEditorActions({
   countMarkdownHeadings,
   editSession,
   editedContent,
+  files,
+  libraryFiles,
+  selectedGovernanceFileIds,
   setActiveBlockId,
   setCopied,
   setEditSession,
@@ -100,6 +132,7 @@ export function useParsingEditorActions({
   setHoveredBlockId,
   setIsEditing,
   setRightPanelMode,
+  setSelectedGovernanceFileIds,
   updateParsedFile,
 }: Readonly<UseParsingEditorActionsOptions>) {
   const router = useRouter()
@@ -159,7 +192,9 @@ export function useParsingEditorActions({
     const nextMarkdown =
       editSession?.mode === 'block'
         ? applyBlockEditToMarkdown(editSession.sourceMarkdown, editSession.range, editedContent)
-        : editedContent
+        : editSession
+          ? editedContent
+          : activeMarkdown
 
     setFiles((prev) => applyEditedMarkdown(prev, activeFile.id, targetRunId, nextMarkdown, countMarkdownHeadings))
     setRightPanelMode('markdown')
@@ -179,6 +214,7 @@ export function useParsingEditorActions({
         status: 'parsed',
         error: undefined,
         parser: getParserLabel(saved.parser_backend || 'auto'),
+        governanceStatus: 'ready',
       })
       toast.success(t('toasts.saveSuccess'))
     } catch (err: unknown) {
@@ -186,6 +222,7 @@ export function useParsingEditorActions({
     }
   }, [
     activeFile,
+    activeMarkdown,
     activeRun,
     countMarkdownHeadings,
     editSession,
@@ -210,24 +247,98 @@ export function useParsingEditorActions({
         parser: activeFile.parserLabel,
         status: 'parsed',
         error: undefined,
+        governanceStatus: 'submitted',
       })
     } else {
-      const libraryId = addParsedFile({
-        filename: activeFile.file.name,
-        fileType: activeFile.file.name.split('.').pop()?.toLowerCase() || '',
-        fileSize: activeFile.file.size,
-        markdownContent: activeMarkdown,
-        originalMarkdownContent: activeMarkdown,
-        parser: activeFile.parserLabel,
-        folderId: activeFile.folderId,
-        status: 'parsed',
-        error: undefined,
-      })
-      setFiles((prev) => prev.map((file) => (file.id === activeFile.id ? { ...file, libraryId } : file)))
+      const libraryId = addParsedFile(buildGovernanceLibraryPayload(activeFile, activeMarkdown, 'submitted'))
+      setFiles((prev) =>
+        prev.map((file) =>
+          file.id === activeFile.id ? { ...file, governanceStatus: 'submitted', libraryId } : file
+        )
+      )
     }
 
+    setSelectedGovernanceFileIds((prev) => {
+      const next = new Set(prev)
+      next.delete(activeFile.id)
+      if (activeFile.libraryId) next.delete(activeFile.libraryId)
+      return next
+    })
     router.push('/data-governance')
-  }, [activeFile, activeMarkdown, addParsedFile, router, setFiles, updateParsedFile])
+  }, [activeFile, activeMarkdown, addParsedFile, router, setFiles, setSelectedGovernanceFileIds, updateParsedFile])
+
+  const handleSubmitSelectedToGovernance = useCallback(async () => {
+    const selectedIds = new Set(selectedGovernanceFileIds)
+    if (selectedIds.size === 0) return
+
+    const newLibraryIdsByFileId = new Map<string, string>()
+    let submittedCount = 0
+
+    try {
+      for (const file of files) {
+        if (!selectedIds.has(file.id) || file.governanceStatus !== 'ready') continue
+
+        const markdown = getParsedMarkdown(file)
+        if (!markdown.trim()) continue
+
+        if (file.libraryId) {
+          await updateParsedFile(file.libraryId, {
+            ...buildGovernanceLibraryPayload(file, markdown, 'submitted'),
+          })
+        } else {
+          const libraryId = addParsedFile(buildGovernanceLibraryPayload(file, markdown, 'submitted'))
+          newLibraryIdsByFileId.set(file.id, libraryId)
+        }
+        submittedCount += 1
+      }
+
+      for (const file of libraryFiles) {
+        if (!selectedIds.has(file.id) || file.governanceStatus !== 'ready') continue
+        if (!file.markdownContent.trim()) continue
+
+        await updateParsedFile(file.id, {
+          markdownContent: file.markdownContent,
+          originalMarkdownContent: file.originalMarkdownContent || file.markdownContent,
+          parser: file.parser,
+          status: 'parsed',
+          error: undefined,
+          governanceStatus: 'submitted',
+        })
+        submittedCount += 1
+      }
+
+      if (submittedCount === 0) {
+        toast.error('没有可提交的待提交文档')
+        return
+      }
+
+      setFiles((prev) =>
+        prev.map((file) =>
+          selectedIds.has(file.id)
+            ? {
+                ...file,
+                governanceStatus: 'submitted',
+                libraryId: newLibraryIdsByFileId.get(file.id) || file.libraryId,
+              }
+            : file
+        )
+      )
+      setSelectedGovernanceFileIds(new Set())
+      toast.success(`已提交 ${submittedCount} 个文档到数据治理`)
+      router.push('/data-governance')
+    } catch (err: unknown) {
+      toast.error(formatApiError(err, '批量提交失败'))
+    }
+  }, [
+    addParsedFile,
+    files,
+    libraryFiles,
+    router,
+    selectedGovernanceFileIds,
+    setFiles,
+    setSelectedGovernanceFileIds,
+    updateParsedFile,
+  ])
 
   return {
     copyMarkdown,
@@ -235,6 +346,7 @@ export function useParsingEditorActions({
     handleCancelEdit,
     handleSaveEdit,
     handleStartEdit,
+    handleSubmitSelectedToGovernance,
     handleSubmitToGovernance,
   }
 }

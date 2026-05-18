@@ -39,6 +39,7 @@ import { Badge } from '@/components/ui/badge'
 import { cn, formatDate, formatFileSize } from '@/lib/utils'
 import { documentApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { useDatasets } from '@/hooks/use-datasets'
 import type { Document, DocumentPipelineOptions } from '@/types'
 import { useDocumentView } from '@/store/document-view'
 import { usePathname, useRouter } from '@/i18n/navigation'
@@ -1221,7 +1222,9 @@ export default function QuarantineQueuePage() {
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [search, setSearch] = useState('')
   const [selectedReason, setSelectedReason] = useState('all')
-  const [selectedDataset, setSelectedDataset] = useState('all')
+  const [selectedDataset, setSelectedDataset] = useState(
+    searchParams.get('datasetId') || 'all'
+  )
   const [selectedSource, setSelectedSource] = useState('all')
   const [selectedSeverity, setSelectedSeverity] = useState('all')
   const [dateFrom, setDateFrom] = useState('')
@@ -1239,14 +1242,17 @@ export default function QuarantineQueuePage() {
   const [tuneOpen, setTuneOpen] = useState(false)
   const [tuneTarget, setTuneTarget] = useState<Document | null>(null)
   const [tunePatch, setTunePatch] = useState<DocumentPipelineOptions>({})
+  const { datasets, isLoading: datasetsLoading } = useDatasets()
+  const selectedDatasetId = selectedDataset === 'all' ? null : selectedDataset
 
   const { data, isFetching, refetch } = useQuery({
-    queryKey: ['quarantine-documents', 'quarantined'],
+    queryKey: ['quarantine-documents', 'quarantined', selectedDatasetId],
     queryFn: ({ signal }) =>
       documentApi.list(
         {
           limit: 200,
           status: 'quarantined',
+          dataset_id: selectedDatasetId ?? undefined,
         },
         { signal }
       ),
@@ -1260,12 +1266,13 @@ export default function QuarantineQueuePage() {
     isFetching: isFetchingFailed,
     refetch: refetchFailed,
   } = useQuery({
-    queryKey: ['quarantine-documents', 'failed'],
+    queryKey: ['quarantine-documents', 'failed', selectedDatasetId],
     queryFn: ({ signal }) =>
       documentApi.list(
         {
           limit: 200,
           status: 'failed',
+          dataset_id: selectedDatasetId ?? undefined,
         },
         { signal }
       ),
@@ -1286,6 +1293,25 @@ export default function QuarantineQueuePage() {
     await Promise.all([refetch(), refetchFailed()])
   }, [refetch, refetchFailed])
 
+  useEffect(() => {
+    setSelectedDataset(searchParams.get('datasetId') || 'all')
+  }, [searchParams])
+
+  const handleDatasetScopeChange = useCallback(
+    (value: string) => {
+      setSelectedDataset(value)
+      const params = new URLSearchParams(searchParams.toString())
+      if (value === 'all') {
+        params.delete('datasetId')
+      } else {
+        params.set('datasetId', value)
+      }
+      const query = params.toString()
+      router.replace(query ? `${pathname}?${query}` : pathname)
+    },
+    [pathname, router, searchParams]
+  )
+
   const reasonCounts = useMemo(() => {
     const counts: Record<string, number> = {}
     for (const doc of documents) {
@@ -1303,17 +1329,27 @@ export default function QuarantineQueuePage() {
       .map(([reason]) => reason)
   }, [reasonCounts])
 
-  const datasetOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          documents
-            .map((doc) => doc.dataset_id)
-            .filter((value): value is string => Boolean(value))
-        )
-      ).sort((a, b) => a.localeCompare(b)),
-    [documents]
-  )
+  const datasetLabelById = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const dataset of datasets) {
+      map[dataset.id] = dataset.name
+    }
+    return map
+  }, [datasets])
+
+  const datasetOptions = useMemo(() => {
+    const seen = new Set<string>()
+    const options = datasets.map((dataset) => {
+      seen.add(dataset.id)
+      return { id: dataset.id, label: dataset.name }
+    })
+    for (const doc of documents) {
+      if (!doc.dataset_id || seen.has(doc.dataset_id)) continue
+      seen.add(doc.dataset_id)
+      options.push({ id: doc.dataset_id, label: doc.dataset_id })
+    }
+    return options.sort((a, b) => a.label.localeCompare(b.label))
+  }, [datasets, documents])
 
   const sourceOptions = useMemo(
     () =>
@@ -1548,13 +1584,13 @@ export default function QuarantineQueuePage() {
   const resetFilters = useCallback(() => {
     setSearch('')
     setSelectedReason('all')
-    setSelectedDataset('all')
+    handleDatasetScopeChange('all')
     setSelectedSource('all')
     setSelectedSeverity('all')
     setDateFrom('')
     setDateTo('')
     setReviewState('all')
-  }, [])
+  }, [handleDatasetScopeChange])
 
   const markReviewed = useCallback(
     async (docId: string, extra?: Record<string, any>) => {
@@ -1801,7 +1837,7 @@ export default function QuarantineQueuePage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-9 gap-2 rounded-xl border-border/60 bg-background px-3.5 text-[12px] font-medium hover:bg-background/90"
+                  className="h-9 gap-2 rounded-xl border-info/25 bg-info/[0.06] px-3.5 text-[12px] font-medium text-info shadow-[0_12px_24px_-22px_rgba(37,99,235,0.5)] hover:border-info/40 hover:bg-info/[0.12] hover:text-info"
                   onClick={() => {
                     if (demoMode) {
                       toast.success('Demo 数据已刷新')
@@ -1915,7 +1951,7 @@ export default function QuarantineQueuePage() {
                           variant="secondary"
                           className="rounded-full px-2.5 py-1 text-[11px] font-medium"
                         >
-                          数据集: {selectedDataset}
+                          数据集: {datasetLabelById[selectedDataset] || selectedDataset}
                         </Badge>
                       ) : null}
                       {selectedSource !== 'all' ? (
@@ -2053,18 +2089,27 @@ export default function QuarantineQueuePage() {
                   <div className="min-w-0">
                     <Select
                       value={selectedDataset}
-                      onValueChange={setSelectedDataset}
+                      onValueChange={handleDatasetScopeChange}
                     >
                       <SelectTrigger className="h-9 rounded-xl border-border/60 bg-background px-3 text-[11px] font-normal shadow-none">
                         <SelectValue placeholder="数据集" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">全部数据集</SelectItem>
-                        {datasetOptions.map((datasetId) => (
-                          <SelectItem key={datasetId} value={datasetId}>
-                            {datasetId}
+                        <SelectItem value="all">
+                          {datasetsLoading ? '加载数据集…' : '全部数据集'}
+                        </SelectItem>
+                        {datasets.map((dataset) => (
+                          <SelectItem key={dataset.id} value={dataset.id}>
+                            {dataset.name}
                           </SelectItem>
                         ))}
+                        {datasetOptions
+                          .filter((option) => !datasetLabelById[option.id])
+                          .map((option) => (
+                            <SelectItem key={option.id} value={option.id}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -2113,7 +2158,7 @@ export default function QuarantineQueuePage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="h-9 rounded-xl border-border/60 bg-background px-3.5 text-[11px] font-medium"
+                    className="h-9 rounded-xl border-info/25 bg-info/[0.06] px-3.5 text-[11px] font-medium text-info shadow-[0_12px_24px_-22px_rgba(37,99,235,0.5)] hover:border-info/40 hover:bg-info/[0.12] hover:text-info"
                     onClick={() => void refreshQueue()}
                   >
                     <RefreshCw

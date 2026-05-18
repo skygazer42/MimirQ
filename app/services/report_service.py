@@ -7,7 +7,6 @@ Goal:
 
 from __future__ import annotations
 
-from app.rag.core.logging import get_logger
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -28,12 +27,14 @@ from app.api.schemas.report import (
     DatasetParseRiskDocumentOut,
     DatasetParseRiskSummaryOut,
     DatasetRegressionRunSummaryOut,
+    DatasetReportDataProvenanceOut,
     DatasetReportOut,
     PipelineVersionSummary,
 )
 from app.core.config import settings
 from app.models.connector import ConnectorRun as DBConnectorRun
 from app.models.document import Document as DBDocument
+from app.rag.core.logging import get_logger
 from app.services.dataset_profile_service import build_dataset_documents_query, compute_dataset_profile_summary
 from app.services.dataset_profile_utils import HistogramBinSpec, histogram, percentile_from_sorted
 from app.services.dataset_service import DatasetService
@@ -1153,6 +1154,7 @@ class ReportService:
             dataset_name=str(getattr(dataset, "name", "") or "") or None,
             pipeline_hash=pipeline_hash_norm,
             generated_at=datetime.now(UTC),
+            data_provenance=DatasetReportDataProvenanceOut(),
             profile=profile,
             compliance=compliance,
             pipeline_versions=pipeline_versions,

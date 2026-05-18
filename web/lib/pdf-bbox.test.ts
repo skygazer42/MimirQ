@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { computePdfOverlayRect, detectPdfBboxCoordinateSpace } from './pdf-bbox'
+import {
+  computePdfOverlayRect,
+  computePdfOverlayScrollTop,
+  detectPdfBboxCoordinateSpace,
+} from './pdf-bbox'
 
 describe('pdf-bbox', () => {
   it('keeps absolute PDF-point coordinates on the legacy scale path', () => {
@@ -45,5 +49,31 @@ describe('pdf-bbox', () => {
     expect(rect.top).toBeCloseTo(102.96)
     expect(rect.width).toBeCloseTo(291.312)
     expect(rect.height).toBeCloseTo(17.424)
+  })
+
+  it('centers the active overlay box inside the PDF scroll container', () => {
+    const scrollTop = computePdfOverlayScrollTop({
+      containerHeight: 600,
+      containerScrollTop: 120,
+      containerTop: 40,
+      overlayHeight: 80,
+      overlayTop: 500,
+      pageTop: 220,
+    })
+
+    expect(scrollTop).toBe(540)
+  })
+
+  it('does not scroll above the top of the PDF container', () => {
+    const scrollTop = computePdfOverlayScrollTop({
+      containerHeight: 600,
+      containerScrollTop: 0,
+      containerTop: 40,
+      overlayHeight: 40,
+      overlayTop: 30,
+      pageTop: 80,
+    })
+
+    expect(scrollTop).toBe(0)
   })
 })

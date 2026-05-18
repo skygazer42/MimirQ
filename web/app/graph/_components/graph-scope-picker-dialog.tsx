@@ -20,6 +20,8 @@ import { datasetApi } from '@/lib/api'
 import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
 
+import { graphmlImportButtonClass } from './graph-button-styles'
+
 type GraphScopePickerDialogProps = Readonly<{
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -194,7 +196,7 @@ export function GraphScopePickerDialog({
             <Button
               type="button"
               variant="outline"
-              className="rounded-xl border-border/60"
+              className={`rounded-xl ${graphmlImportButtonClass}`}
               onClick={() => {
                 onOpenChange(false)
                 onTriggerFileUpload()

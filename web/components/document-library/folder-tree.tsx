@@ -43,7 +43,10 @@ export type DocumentTreeFileItem = {
   parser?: string
   duration?: number
   pageCount?: number
+  governanceStatus?: 'draft' | 'ready' | 'submitted'
   isActive?: boolean
+  isSelectable?: boolean
+  isSelected?: boolean
   readOnly?: boolean
 }
 
@@ -235,6 +238,7 @@ export function DocumentFolderTree({
   onRetryFile,
   onRemoveFile,
   onFileDragStart,
+  onToggleFileSelected,
 }: Readonly<{
   className?: string
   onRequestUpload?: (folderId: string) => void
@@ -247,6 +251,7 @@ export function DocumentFolderTree({
   onRetryFile?: (fileId: string) => void
   onRemoveFile?: (fileId: string) => void
   onFileDragStart?: (event: React.DragEvent<HTMLElement>, fileId: string) => void
+  onToggleFileSelected?: (fileId: string) => void
 }>) {
   const libraryFiles = useParsedFiles((state) => state.files)
   const folders = useParsedFiles((state) => state.folders)
@@ -582,6 +587,8 @@ export function DocumentFolderTree({
       const isParsing = status === 'parsing'
       const isError = status === 'error'
       const isPending = status === 'pending'
+      const governanceStatusLabel =
+        file.governanceStatus === 'ready' ? '待提交' : file.governanceStatus === 'submitted' ? '已提交' : ''
       const progress =
         file.progress == null || !Number.isFinite(Number(file.progress))
           ? null
@@ -604,7 +611,8 @@ export function DocumentFolderTree({
             type="button"
             className={cn(
               'flex h-9 w-full items-center gap-2 pr-2 text-left focus-ring',
-              hasInlineActions && 'pr-10'
+              hasInlineActions && 'pr-10',
+              file.isSelectable && 'pl-1'
             )}
             style={{ paddingLeft: `${TREE_ROW_BASE_PADDING + level * TREE_INDENT_STEP}px` }}
             title={file.error || (file.sourcePath ? `${file.name} · ${file.sourcePath}` : file.name)}
@@ -615,9 +623,40 @@ export function DocumentFolderTree({
             draggable={Boolean(onFileDragStart) && !file.readOnly}
             onDragStart={!file.readOnly && onFileDragStart ? (event) => onFileDragStart(event, file.id) : undefined}
           >
+            {file.isSelectable ? (
+              <span
+                role="checkbox"
+                aria-checked={file.isSelected}
+                aria-label={file.isSelected ? '取消选择待提交文档' : '选择待提交文档'}
+                className={cn(
+                  'flex size-4 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold transition-colors',
+                  file.isSelected
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-border/70 bg-background text-transparent group-hover/file:border-primary/50 group-hover/file:text-primary/40'
+                )}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onToggleFileSelected?.(file.id)
+                }}
+              >
+                ✓
+              </span>
+            ) : null}
             {getFileIcon(file.name, 'h-6 w-6 rounded-lg')}
             <div className="flex min-w-0 flex-1 items-center gap-1.5">
               <span className="min-w-0 flex-1 truncate text-[12px] font-medium leading-4">{file.name}</span>
+              {governanceStatusLabel ? (
+                <span
+                  className={cn(
+                    'shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-medium',
+                    file.governanceStatus === 'ready'
+                      ? 'border-warning/25 bg-warning/[0.10] text-warning'
+                      : 'border-success/25 bg-success/[0.08] text-success'
+                  )}
+                >
+                  {governanceStatusLabel}
+                </span>
+              ) : null}
               {isParsing ? (
                 <span className="shrink-0 text-primary" title={progress != null ? `处理中 ${Math.round(progress)}%` : '处理中'}>
                   <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" />
@@ -676,7 +715,7 @@ export function DocumentFolderTree({
         </div>
       )
     },
-    [onFileDragStart, onRemoveFile, onRetryFile, onSelectFile, setActiveFolderId]
+    [onFileDragStart, onRemoveFile, onRetryFile, onSelectFile, onToggleFileSelected, setActiveFolderId]
   )
 
   function renderFolder(folder: FolderNode, depth: number) {

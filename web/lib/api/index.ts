@@ -82,6 +82,7 @@ export type {
   LangGraphConfig,
   MagicPDFConfig,
   MarkerConfig,
+  NavigationConfig,
   ObservabilityConfig,
   PaddleVLConfig,
   SafetyConfig,

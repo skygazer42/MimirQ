@@ -15,6 +15,9 @@ describe('chunk preview top bar messages source', () => {
     expect(src).toContain("t('topBar.status.cacheHit')")
     expect(src).toContain("t('topBar.status.parseCache')")
     expect(src).toContain('topBar.status.quality')
+    expect(src).toContain("t('topBar.status.qualityGrades.pass')")
+    expect(src).toContain("t('topBar.status.qualityGrades.warn')")
+    expect(src).toContain("t('topBar.status.qualityGrades.fail')")
     expect(src).toContain('topBar.status.warnings')
     expect(src).toContain("t('topBar.submitSuccess')")
     expect(src).toContain("t('topBar.dirtyWarning')")
@@ -44,5 +47,68 @@ describe('chunk preview top bar messages source', () => {
     expect(src).toContain('const authHeaders = getAuthHeaders()')
     expect(src).toContain('Object.entries(authHeaders)')
     expect(src).not.toContain('X-User-ID: demo')
+  })
+
+  it('syncs visible preview timing to the active preview payload before falling back to local timing', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'top-bar.tsx'), 'utf8')
+
+    expect(src).toContain('const visiblePreviewDurationMs =')
+    expect(src).toContain("typeof previewData?.preview_duration_ms === 'number'")
+    expect(src).toContain('Math.round(previewData.preview_duration_ms)')
+    expect(src).toContain(': lastPreviewDurationMs')
+    expect(src).not.toContain("{lastPreviewDurationMs}ms</span>")
+  })
+
+  it('binds visible top-bar facts to the active preview payload before local settings', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'top-bar.tsx'), 'utf8')
+
+    expect(src).toContain('const visibleFileType =')
+    expect(src).toContain('previewData?.file_type')
+    expect(src).toContain('const visibleFileSize =')
+    expect(src).toContain('previewData?.file_size')
+    expect(src).toContain('const visibleChunkSize =')
+    expect(src).toContain('previewData?.params?.chunk_size')
+    expect(src).toContain('const visibleChunkOverlap =')
+    expect(src).toContain('previewData?.params?.chunk_overlap')
+    expect(src).toContain('{visibleChunkSize}/{visibleChunkOverlap}')
+    expect(src).not.toContain('{chunkSize}/{chunkOverlap}')
+  })
+
+  it('presents the current file identity as dense labeled metadata instead of loose text', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'top-bar.tsx'), 'utf8')
+
+    expect(src).toContain('data-current-file-summary')
+    expect(src).toContain('const fileMetaChipClass =')
+    expect(src).toContain("t('topBar.fileMeta.index')")
+    expect(src).toContain("t('topBar.fileMeta.type')")
+    expect(src).toContain("t('topBar.fileMeta.size')")
+    expect(src).toContain("t('topBar.fileMeta.parser')")
+    expect(src).not.toContain('<span>{formatFileSize(visibleFileSize)}</span>')
+    expect(src).not.toContain('<span>{effectiveParserBackend}</span>')
+  })
+
+  it('renders the quality gate using localized grade labels instead of English PASS/WARN/FAIL', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'top-bar.tsx'), 'utf8')
+    const messages = fs.readFileSync(
+      path.resolve(__dirname, '../../../../i18n/messages/zh-CN/chunk-preview.ts'),
+      'utf8'
+    )
+
+    expect(src).toContain('const visibleQualityLabel =')
+    expect(src).toContain("t('topBar.status.qualityGrades.pass')")
+    expect(src).not.toContain('String(previewData.quality_gate.grade).toUpperCase()')
+    expect(messages).toContain("quality: '质量：{grade}'")
+    expect(messages).toContain("pass: '通过'")
+    expect(messages).not.toContain("quality: 'Quality: {grade}'")
+  })
+
+  it('uses localized chunk count copy in the Chinese top bar', () => {
+    const messages = fs.readFileSync(
+      path.resolve(__dirname, '../../../../i18n/messages/zh-CN/chunk-preview.ts'),
+      'utf8'
+    )
+
+    expect(messages).toContain("chunks: '{count} 个切块'")
+    expect(messages).not.toContain("chunks: '{count} Chunks'")
   })
 })

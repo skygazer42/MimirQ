@@ -31,6 +31,7 @@ class TenantAccessOut(BaseModel):
     account_id: str
     role: str = Field(default=UserRoles.VIEWER, description="owner|admin|auditor|editor|dataset_operator|viewer")
     permissions: list[str] = Field(default_factory=list)
+    navigation_user_visible_modules: list[str] = Field(default_factory=list)
     is_active: bool = True
     is_current: bool = False
 

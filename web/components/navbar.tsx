@@ -50,6 +50,7 @@ import { useBackendReady } from '@/hooks/use-backend-ready'
 import { useTenantAccess } from '@/hooks/use-tenant-access'
 import { useCommandMenuState } from '@/store/command-menu'
 import { TENANT_PERMISSIONS, tenantAccessAllows, type TenantPermission } from '@/lib/tenant-permissions'
+import { canShowAdminControlledNavigationModule, type AdminControlledNavigationModule } from '@/lib/navigation-visibility'
 
 type SectionId = 'core' | 'ingestion' | 'knowledge' | 'analysis' | 'system'
 
@@ -58,6 +59,7 @@ type MenuItem = {
   labelKey: string
   href: string
   requiredPermission?: TenantPermission
+  visibilityKey?: AdminControlledNavigationModule
 }
 
 type MenuSection = {
@@ -82,7 +84,6 @@ const menuSections: MenuSection[] = [
     items: [
       { icon: Layers, labelKey: 'items.datasets', href: '/datasets' },
       { icon: Database, labelKey: 'items.knowledgeBase', href: '/knowledge' },
-      { icon: Activity, labelKey: 'items.ingestion', href: '/knowledge/ingestion' },
       { icon: ShieldAlert, labelKey: 'items.quarantine', href: '/knowledge/quarantine' },
       { icon: Star, labelKey: 'items.feedback', href: '/knowledge/feedback' },
     ],
@@ -91,10 +92,11 @@ const menuSections: MenuSection[] = [
     id: 'ingestion',
     titleKey: 'sections.ingestion',
     items: [
+      { icon: Activity, labelKey: 'items.ingestion', href: '/knowledge/ingestion' },
       { icon: FileText, labelKey: 'items.parsing', href: '/parsing' },
       { icon: ShieldCheck, labelKey: 'items.dataGovernance', href: '/data-governance' },
-      { icon: Braces, labelKey: 'items.governanceProfiles', href: '/data-governance/profiles' },
-      { icon: Hash, labelKey: 'items.commonLines', href: '/data-governance/common-lines' },
+      { icon: Braces, labelKey: 'items.governanceProfiles', href: '/data-governance/profiles', visibilityKey: 'governanceProfiles' },
+      { icon: Hash, labelKey: 'items.commonLines', href: '/data-governance/common-lines', visibilityKey: 'commonLines' },
       { icon: Scissors, labelKey: 'items.chunkPreview', href: '/chunk-preview' },
     ],
   },
@@ -103,13 +105,13 @@ const menuSections: MenuSection[] = [
     titleKey: 'sections.analysis',
     items: [
       { icon: Grid3X3, labelKey: 'items.ragVisualization', href: '/knowledge/similarity' },
-      { icon: Share2, labelKey: 'items.knowledgeGraph', href: '/graph' },
-      { icon: GitCompare, labelKey: 'items.graphSnapshots', href: '/graph/snapshots' },
-      { icon: FileSearch, labelKey: 'items.graphDiagnostics', href: '/graph/diagnostics' },
-      { icon: BarChart3, labelKey: 'items.ragas', href: '/evaluations' },
-      { icon: SlidersHorizontal, labelKey: 'items.ablations', href: '/evaluations/ablations' },
-      { icon: FileText, labelKey: 'items.reports', href: '/reports' },
-      { icon: Wand2, labelKey: 'items.prompts', href: '/prompts' },
+      { icon: Share2, labelKey: 'items.knowledgeGraph', href: '/graph', visibilityKey: 'knowledgeGraph' },
+      { icon: GitCompare, labelKey: 'items.graphSnapshots', href: '/graph/snapshots', visibilityKey: 'graphSnapshots' },
+      { icon: FileSearch, labelKey: 'items.graphDiagnostics', href: '/graph/diagnostics', visibilityKey: 'graphDiagnostics' },
+      { icon: BarChart3, labelKey: 'items.ragas', href: '/evaluations', visibilityKey: 'ragas' },
+      { icon: SlidersHorizontal, labelKey: 'items.ablations', href: '/evaluations/ablations', visibilityKey: 'ablations' },
+      { icon: FileText, labelKey: 'items.reports', href: '/reports', visibilityKey: 'reports' },
+      { icon: Wand2, labelKey: 'items.prompts', href: '/prompts', visibilityKey: 'prompts' },
     ],
   },
   {
@@ -228,6 +230,7 @@ export function Navbar({
   const [internalIsOpen, setInternalIsOpen] = useState(true)
   const [openSections, setOpenSections] = useState<Record<SectionId, boolean>>(createInitialOpenSections)
   const [hasHydratedOpenSections, setHasHydratedOpenSections] = useState(false)
+  const [hasHydratedNavigationAccess, setHasHydratedNavigationAccess] = useState(false)
   const isSidebarOpen = externalIsOpen ?? internalIsOpen
   const setSidebarOpen = externalSetOpen ?? setInternalIsOpen
   const pathname = usePathname()
@@ -237,21 +240,29 @@ export function Navbar({
   const { data: backendMeta } = useBackendMeta()
   const backendReady = useBackendReady()
   const tenantAccess = useTenantAccess()
+  const navigationTenantAccess = hasHydratedNavigationAccess ? tenantAccess.data : undefined
   const commandMenuOpen = useCommandMenuState((state) => state.open)
   const setCommandMenuOpen = useCommandMenuState((state) => state.setOpen)
   const canAccessPermission = useCallback(
-    (permission?: TenantPermission) => !permission || tenantAccessAllows(tenantAccess.data, permission),
-    [tenantAccess.data]
+    (permission?: TenantPermission) => !permission || tenantAccessAllows(navigationTenantAccess, permission),
+    [navigationTenantAccess]
+  )
+  const canShowNavigationModule = useCallback(
+    (moduleKey?: AdminControlledNavigationModule) =>
+      canShowAdminControlledNavigationModule(navigationTenantAccess, moduleKey),
+    [navigationTenantAccess]
   )
   const visibleMenuSections = useMemo(
     () =>
       menuSections
         .map((section) => ({
           ...section,
-          items: section.items.filter((item) => canAccessPermission(item.requiredPermission)),
+          items: section.items.filter(
+            (item) => canAccessPermission(item.requiredPermission) && canShowNavigationModule(item.visibilityKey)
+          ),
         }))
         .filter((section) => section.items.length > 0),
-    [canAccessPermission]
+    [canAccessPermission, canShowNavigationModule]
   )
   const visibleMenuItems = useMemo(() => visibleMenuSections.flatMap((section) => section.items), [visibleMenuSections])
   const activeHref = getMostSpecificActiveHref(pathname, visibleMenuItems)
@@ -373,6 +384,9 @@ export function Navbar({
   useEffect(() => {
     setOpenSections(loadOpenSections())
     setHasHydratedOpenSections(true)
+    // Keep SSR and the first client render structurally identical. Tenant access can
+    // be cached on the client, so applying it before mount can reorder/insert links.
+    setHasHydratedNavigationAccess(true)
   }, [])
 
   useEffect(() => {

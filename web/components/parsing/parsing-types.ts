@@ -40,6 +40,7 @@ export interface ParsedFile extends FileQueueItemData {
   parserLabel: string
   libraryId?: string
   librarySource?: 'parsing_workspace' | 'knowledge_base'
+  governanceStatus?: 'draft' | 'ready' | 'submitted'
   runs?: ParseRun[]
   activeRunId?: string
   parseStartTime?: number

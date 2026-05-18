@@ -24,6 +24,7 @@ type PipelineOptionsPanelProps = {
   onEnabledChange?: (value: boolean) => void
   onOptionChange?: <K extends keyof DocumentPipelineOptions>(key: K, value: DocumentPipelineOptions[K]) => void
   hideEnabledToggle?: boolean
+  showJsonToolbar?: boolean
 }
 
 type PipelineIndexPreset = 'custom' | 'economical' | 'high_quality'
@@ -175,6 +176,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
   const governanceEnabled = !!options.governance_enabled
   const governanceDisabled = !enabled || !governanceEnabled
   const pipelineDisabled = !enabled
+  const showJsonToolbar = props.showJsonToolbar ?? !compact
 
   const [chunkStrategyParamsText, setChunkStrategyParamsText] = useState('')
   const [chunkStrategyParamsError, setChunkStrategyParamsError] = useState<string | null>(null)
@@ -198,7 +200,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
   }, [options.chunk_strategy_params])
 
   const titleClasses = compact ? 'text-[11px]' : 'text-[13px]'
-  const descClasses = compact ? 'text-[11px]' : 'text-[11px]'
+  const descClasses = compact ? 'text-[10.5px]' : 'text-[11px]'
   const activeIndexPreset = useMemo(() => detectPipelineIndexPreset(options), [options])
   const pendingIndexPreset = useMemo(() => {
     if (!indexPresetDraft) return null
@@ -638,12 +640,30 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
     toast.success(`已应用索引模式：${PIPELINE_INDEX_PRESETS[preset].label}`)
   }
 
+  const pipelinePanelClass = cn(
+    compact ? "space-y-2.5 font-sans" : "space-y-3.5 font-sans",
+    className
+  )
+  const toggleCardClass = cn(
+    'flex items-center justify-between rounded-xl border border-primary/15 bg-primary/5',
+    compact ? 'px-2.5 py-2' : 'px-3 py-2.5'
+  )
+  const indexPresetCardClass = cn(
+    'rounded-xl border border-info/15 bg-info/5',
+    compact ? 'px-2.5 py-2' : 'px-3 py-2.5'
+  )
+  const jsonToolbarClass = cn(
+    compact ? "flex items-center justify-between gap-1.5 rounded-xl border border-border/35 bg-card/70 px-2 py-1" : "flex items-center justify-end gap-1.5 rounded-xl border border-border/35 bg-card/70 px-2 py-1.5"
+  )
+  const jsonButtonClass =
+    'h-7 rounded-lg border-border/50 bg-background/60 px-2 text-[10.5px] text-foreground/70 shadow-none hover:bg-muted/45 hover:text-foreground'
+
   return (
-    <div className={cn("space-y-3.5 font-sans", className)}>
+    <div className={pipelinePanelClass}>
       {!props.hideEnabledToggle && (
-        <div className="flex items-center justify-between rounded-xl border border-border/50 bg-card/85 px-3 py-2.5">
+        <div className={toggleCardClass}>
           <div>
-            <div className={cn("font-medium tracking-[-0.01em] text-foreground/80", titleClasses)}>
+            <div className={cn("font-semibold tracking-[-0.01em] text-foreground/85", titleClasses)}>
               自定义管线
             </div>
             <p className={cn("mt-0.5 text-muted-foreground/80", descClasses)}>
@@ -657,10 +677,10 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
         </div>
       )}
 
-      <div className={cn("rounded-xl border border-border/50 bg-card/85", compact ? "px-2.5 py-2" : "px-3 py-2.5")}>
+      <div className={indexPresetCardClass}>
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <div className={cn("font-medium tracking-[-0.01em] text-foreground/80", titleClasses)}>索引模式（成本/质量）</div>
+            <div className={cn("font-semibold tracking-[-0.01em] text-foreground/85", titleClasses)}>索引模式（成本/质量）</div>
             <p className={cn("mt-0.5 text-muted-foreground/80", descClasses)}>
               {compact ? 'Economical / High-quality presets' : '先预览改动再应用；你仍可继续逐项微调。'}
             </p>
@@ -752,13 +772,21 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
         ) : null}
       </div>
 
-      {!compact && (
-        <div className="flex items-center justify-end gap-1.5">
+      {showJsonToolbar && (
+        <div className={jsonToolbarClass}>
+          {compact ? (
+            <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground/62">
+              JSON
+            </span>
+          ) : null}
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            className="h-8 rounded-lg text-foreground/70"
+            className={cn(
+              'rounded-lg text-muted-foreground hover:bg-muted/45 hover:text-foreground',
+              compact ? 'h-7 px-2 text-[10.5px]' : 'h-8'
+            )}
             onClick={() => {
               ctx.reset()
               toast.message('已重置为默认管线')
@@ -774,7 +802,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
             }}
           >
             <DialogTrigger asChild>
-              <Button type="button" variant="outline" size="sm" className="h-8 rounded-lg border-border/50 bg-background/70 text-foreground/75 shadow-none">
+              <Button type="button" variant="outline" size="sm" className={jsonButtonClass}>
                 导入 JSON
               </Button>
             </DialogTrigger>
@@ -803,13 +831,13 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
               </DialogFooter>
             </DialogContent>
           </Dialog>
-          <Button type="button" variant="outline" size="sm" className="h-8 rounded-lg border-border/50 bg-background/70 text-foreground/75 shadow-none" onClick={exportPipelineJson}>
+          <Button type="button" variant="outline" size="sm" className={jsonButtonClass} onClick={exportPipelineJson}>
             导出 JSON
           </Button>
         </div>
       )}
 
-      <div className={cn("grid gap-3", compact ? "gap-3" : "gap-4")}>
+      <div className={cn("grid", compact ? "gap-2.5" : "gap-4")}>
         {optionGroups.map((group) => {
           const Icon = group.icon
           return (
@@ -820,14 +848,14 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                 !enabled && "opacity-60 grayscale-[0.5] pointer-events-none"
               )}
             >
-              <div className="flex items-center gap-2 border-b border-border/50 bg-muted/20 px-3 py-2">
+              <div className={cn("flex items-center gap-2 border-b border-border/50 bg-muted/20", compact ? "px-2.5 py-1.5" : "px-3 py-2")}>
                 <div className={cn("p-1 rounded-md", group.bgColor)}>
                   <Icon className={cn("h-3.5 w-3.5", group.color)} />
                 </div>
                 <span className={cn("font-medium text-foreground/75", titleClasses)}>{group.title}</span>
               </div>
 
-              <div className="space-y-2.5 p-3">
+              <div className={cn("space-y-2.5", compact ? "p-2.5" : "p-3")}>
                 {group.items.map((item) => {
                   const depends = item.dependsOn === 'kg_enabled'
                   const disabled = !enabled || (depends && !kgEnabled)
@@ -1173,11 +1201,11 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
               {group.title === '知识图谱' && !kgEnabled && (
                 <div
                   className={cn(
-                    "flex items-center gap-2 border-t border-border bg-muted px-3 py-2 text-muted-foreground italic",
-                    compact && "px-2.5 py-1.5 text-[9px]"
+                    "flex items-center gap-1.5 border-t border-border/50 bg-muted/35 px-3 py-1.5 text-[11px] leading-snug text-muted-foreground/75",
+                    compact && "px-2.5 py-1.5 text-[10px]"
                   )}
                 >
-                  <Sparkles className="size-3" />
+                  <Sparkles className="size-3 text-muted-foreground/60" />
                   需先开启 KG 抽取才能配置索引
                 </div>
               )}

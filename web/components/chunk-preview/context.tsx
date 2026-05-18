@@ -327,6 +327,9 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
 
   // 其他状态
   const [processedStatus, setProcessedStatus] = useState<Record<string, 'pending' | 'success' | 'error'>>({})
+  const [selectedIngestFileIds, setSelectedIngestFileIds] = useState<Set<string>>(
+    () => new Set()
+  )
   const [submitSuccess, setSubmitSuccess] = useState(false)
 
   // Refs
@@ -543,6 +546,14 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     }
   }, [currentFileIndex, fileList.length])
 
+  useEffect(() => {
+    const availableIds = new Set(fileList.map((item) => item.id))
+    setSelectedIngestFileIds((prev) => {
+      const next = new Set(Array.from(prev).filter((id) => availableIds.has(id)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [fileList])
+
   // Persist the currently focused file (best-effort UX when coming back to the page).
   useEffect(() => {
     if (globalThis.window === undefined) return
@@ -674,11 +685,20 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
   }, [datasetId, makeId])
 
   const removeFile = useCallback((index: number) => {
+    const removedId = fileList[index]?.id
     setFileList((prev) => {
       const newList = [...prev]
       newList.splice(index, 1)
       return newList
     })
+    if (removedId) {
+      setSelectedIngestFileIds((prev) => {
+        if (!prev.has(removedId)) return prev
+        const next = new Set(prev)
+        next.delete(removedId)
+        return next
+      })
+    }
     if (currentFileIndex >= index && currentFileIndex > 0) {
       setCurrentFileIndex((prev) => prev - 1)
     }
@@ -687,12 +707,13 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     setHoveredChunkIndex(null)
     setSelectedChunkIndex(null)
     setCreatedDocumentId(null)
-  }, [currentFileIndex])
+  }, [currentFileIndex, fileList])
 
   const clearFiles = useCallback(() => {
     previewAbortRef.current?.abort()
     previewAbortRef.current = null
     setFileList([])
+    setSelectedIngestFileIds(new Set())
     setCurrentFileIndex(0)
     setPreviewData(null)
     setChunkOverrides({})
@@ -718,6 +739,15 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     setHoveredChunkIndex(null)
     setSelectedChunkIndex(null)
     setCreatedDocumentId(null)
+  }, [])
+
+  const toggleIngestFileSelection = useCallback((fileId: string) => {
+    setSelectedIngestFileIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(fileId)) next.delete(fileId)
+      else next.add(fileId)
+      return next
+    })
   }, [])
 
   // Actions: 拖放
@@ -766,6 +796,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
       },
     ])
     setCurrentFileIndex(0)
+    setSelectedIngestFileIds(new Set())
     setPreviewData(null)
     setChunkOverrides({})
     setError(null)
@@ -826,6 +857,61 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
   const isPreviewDirty = Boolean(
     previewData && lastPreviewCacheKey && currentPreviewCacheKey && currentPreviewCacheKey !== lastPreviewCacheKey
   )
+
+  const buildChunkPreviewRequestParams = useCallback(() => {
+    const effectiveOverlap = chunkStrategy === 'separator' ? 0 : chunkOverlap
+    const separator =
+      chunkStrategy === 'separator'
+        ? separatorPreset === 'custom'
+          ? decodeSeparatorInput(separatorCustom) || '\n\n'
+          : undefined
+        : undefined
+
+    return {
+      effectiveOverlap,
+      params: {
+        chunk_size: chunkSize,
+        chunk_overlap: effectiveOverlap,
+        include_original_text: includeOriginalText,
+        include_review_signals: true,
+        original_text_max_chars: originalTextMaxChars,
+        max_chunks: maxChunks,
+        use_parse_cache: useParseCache,
+        parser_backend: parserBackend,
+        chunk_strategy: chunkStrategy,
+        child_ratio:
+          chunkStrategy === 'parent_child' ? parentChildRatio : undefined,
+        min_child_size:
+          chunkStrategy === 'parent_child' ? parentChildMinChildSize : undefined,
+        dataset_id: datasetId || undefined,
+        pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
+        separator_preset:
+          chunkStrategy === 'separator' ? separatorPreset : undefined,
+        separator,
+        keep_separator: chunkStrategy === 'separator' ? keepSeparator : undefined,
+        separator_max_chunk_size:
+          chunkStrategy === 'separator' ? separatorMaxChunkSize : undefined,
+      },
+    }
+  }, [
+    chunkOverlap,
+    chunkSize,
+    chunkStrategy,
+    datasetId,
+    includeOriginalText,
+    keepSeparator,
+    maxChunks,
+    originalTextMaxChars,
+    parentChildMinChildSize,
+    parentChildRatio,
+    parserBackend,
+    pipelineOptions,
+    pipelineOverridesEnabled,
+    separatorCustom,
+    separatorMaxChunkSize,
+    separatorPreset,
+    useParseCache,
+  ])
 
   // Actions: 执行预览
   const runPreview = useCallback(async (options?: { force?: boolean }) => {
@@ -1030,20 +1116,19 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     return previewCacheRef.current.get(key)?.data ?? null
   }, [])
 
-  // Actions: 提交入库
-  const submitChunks = useCallback(async () => {
-    if (!previewData || !file) return
-
-    setIsSubmitting(true)
-    setError(null)
-
-    try {
-      const chunks = previewData.chunks.reduce<ManualChunk[]>((acc, chunk) => {
-        const idx = typeof chunk.index === 'number' ? chunk.index : previewData.chunks.indexOf(chunk)
-        const override = chunkOverrides[idx] || null
+  const createDocumentFromPreview = useCallback(
+    async (
+      data: ChunkPreviewResponse,
+      item: ChunkPreviewFileItem,
+      overrides: ChunkOverrides = {}
+    ) => {
+      const chunks = data.chunks.reduce<ManualChunk[]>((acc, chunk) => {
+        const idx =
+          typeof chunk.index === 'number' ? chunk.index : data.chunks.indexOf(chunk)
+        const override = overrides[idx] || null
         if (override?.disabled) return acc
         const content = String(override?.content ?? chunk.content ?? '')
-        const metadata = (override?.metadata ?? chunk.metadata ?? {})
+        const metadata = override?.metadata ?? chunk.metadata ?? {}
         acc.push({
           content,
           page_number: chunk.page_number,
@@ -1055,9 +1140,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
       }, [])
 
       if (!chunks.length) {
-        setError('No chunks to submit (all skipped)')
-        toast.error('No chunks to submit (all skipped)')
-        return
+        throw new Error('No chunks to submit (all skipped)')
       }
 
       const pipeline = pipelineOverridesEnabled
@@ -1069,7 +1152,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
         : undefined
 
       const separatorMeta =
-        previewData.chunk_strategy === 'separator'
+        data.chunk_strategy === 'separator'
           ? {
               separator_preset: separatorPreset,
               separator_custom: separatorCustom,
@@ -1078,23 +1161,52 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
             }
           : {}
 
-      const created = await documentApi.createFromChunks({
-        filename: previewData.filename,
-        file_type: previewData.file_type,
-        file_size: previewData.file_size,
+      return documentApi.createFromChunks({
+        filename: data.filename || item.displayName || item.file.name,
+        file_type: data.file_type || item.originalFileType || item.file.type,
+        file_size: data.file_size || item.originalFileSize || item.file.size,
         chunks,
         dataset_id: datasetId || undefined,
         metadata: {
           chunk_size: chunkSize,
           chunk_overlap: chunkOverlap,
-          chunk_strategy: previewData.chunk_strategy,
-          chunk_strategy_label: getChunkStrategyLabel(previewData.chunk_strategy),
-          parser_backend: previewData.parser_backend,
+          chunk_strategy: data.chunk_strategy,
+          chunk_strategy_label: getChunkStrategyLabel(data.chunk_strategy),
+          parser_backend: data.parser_backend,
           dataset_id: datasetId || undefined,
+          source_document_id: item.documentId || undefined,
+          source: item.source || undefined,
           ...separatorMeta,
         },
         pipeline,
       })
+    },
+    [
+      chunkOverlap,
+      chunkSize,
+      datasetId,
+      keepSeparator,
+      pipelineOptions,
+      pipelineOverridesEnabled,
+      separatorCustom,
+      separatorMaxChunkSize,
+      separatorPreset,
+    ]
+  )
+
+  // Actions: 提交入库
+  const submitChunks = useCallback(async () => {
+    if (!previewData || !file || !currentFileItem) return
+
+    setIsSubmitting(true)
+    setError(null)
+
+    try {
+      const created = await createDocumentFromPreview(
+        previewData,
+        currentFileItem,
+        chunkOverrides
+      )
 
       setSubmitSuccess(true)
       setCreatedDocumentId(created?.id || null)
@@ -1112,16 +1224,101 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     chunkOverrides,
     file,
     currentFileItem,
-    datasetId,
+    createDocumentFromPreview,
     chunkSize,
     chunkOverlap,
-    pipelineOverridesEnabled,
-    pipelineOptions,
-    separatorPreset,
-    separatorCustom,
-    keepSeparator,
-    separatorMaxChunkSize,
     onConfirm,
+  ])
+
+  const submitSelectedFiles = useCallback(async () => {
+    const targets = fileList.filter(
+      (item) =>
+        selectedIngestFileIds.has(item.id) &&
+        isChunkPreviewFileInScope(item, datasetId)
+    )
+    if (!targets.length) {
+      setError('请先选择要入库的文件')
+      toast.error('请先选择要入库的文件')
+      return
+    }
+
+    const { effectiveOverlap, params } = buildChunkPreviewRequestParams()
+    if (effectiveOverlap >= chunkSize) {
+      setError('重叠长度必须小于切块长度')
+      return
+    }
+    const strategyAvailable = chunkStrategyAvailable(chunkStrategy)
+    if (strategyAvailable === false) {
+      setError(`当前切块策略不可用：${getChunkStrategyLabel(chunkStrategy)}`)
+      return
+    }
+
+    setIsSubmitting(true)
+    setError(null)
+
+    let successCount = 0
+    let failureCount = 0
+    let lastFailure: string | null = null
+    const failedIds = new Set<string>()
+
+    for (const target of targets) {
+      setProcessedStatus((prev) => ({ ...prev, [target.id]: 'pending' }))
+      try {
+        const isActive = target.id === currentFileItem?.id
+        const data =
+          isActive && previewData
+            ? previewData
+            : await documentApi.chunkPreview(target.file, params)
+        const created = await createDocumentFromPreview(
+          data,
+          target,
+          isActive ? chunkOverrides : {}
+        )
+        successCount += 1
+        if (isActive) {
+          setSubmitSuccess(true)
+          setCreatedDocumentId(created?.id || null)
+        }
+        setProcessedStatus((prev) => ({ ...prev, [target.id]: 'success' }))
+      } catch (err: unknown) {
+        failureCount += 1
+        failedIds.add(target.id)
+        lastFailure = formatApiError(err, '入库失败')
+        setProcessedStatus((prev) => ({ ...prev, [target.id]: 'error' }))
+      }
+    }
+
+    setSelectedIngestFileIds((prev) => {
+      const next = new Set(prev)
+      if (failureCount === 0) {
+        for (const target of targets) next.delete(target.id)
+      } else {
+        for (const target of targets) {
+          if (!failedIds.has(target.id)) next.delete(target.id)
+        }
+      }
+      return next
+    })
+
+    if (failureCount > 0) {
+      setError(lastFailure || '部分文件入库失败')
+      toast.error(`已入库 ${successCount} 个，失败 ${failureCount} 个`)
+    } else {
+      toast.success(`已批量入库 ${successCount} 个文件`)
+    }
+    setIsSubmitting(false)
+  }, [
+    buildChunkPreviewRequestParams,
+    chunkOverrides,
+    chunkSize,
+    chunkStrategy,
+    chunkStrategyAvailable,
+    createDocumentFromPreview,
+    currentFileItem?.id,
+    datasetId,
+    fileList,
+    previewData,
+    selectedIngestFileIds,
   ])
 
   // Actions: 更新配置
@@ -1290,6 +1487,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
   const reset = useCallback(() => {
     setFileList([])
     setCurrentFileIndex(0)
+    setSelectedIngestFileIds(new Set())
     setPreviewData(null)
     setChunkOverrides({})
     setError(null)
@@ -1372,6 +1570,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     setDatasetIdState(nextDatasetId)
     setPreviewData(null)
     setChunkOverrides({})
+    setSelectedIngestFileIds(new Set())
     setError(null)
     setSubmitSuccess(false)
     setHoveredChunkIndex(null)
@@ -1427,6 +1626,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     currentFileItem,
     submitSuccess,
     processedStatus,
+    selectedIngestFileIds,
 
     // Actions
     addFiles,
@@ -1440,6 +1640,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     updateChunkOverride,
     toggleChunkDisabled,
     setChunksDisabled,
+    toggleIngestFileSelection,
     clearChunkOverride,
     clearAllChunkOverrides,
     toggleOriginalPanel,
@@ -1448,6 +1649,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     runPreview,
     cancelPreview,
     submitChunks,
+    submitSelectedFiles,
     updateSettings,
     updatePerfSettings,
     updateSeparatorSettings,

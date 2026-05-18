@@ -16,6 +16,7 @@ export type TenantAccess = {
   account_id: string
   role: string
   permissions: string[]
+  navigation_user_visible_modules?: string[]
   is_active: boolean
   is_current: boolean
 }

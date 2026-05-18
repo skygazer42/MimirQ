@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
 import React, { act } from 'react'
-import { createRoot } from 'react-dom/client'
+import { createRoot, hydrateRoot } from 'react-dom/client'
+import { renderToString } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const routerMocks = vi.hoisted(() => ({
@@ -13,6 +14,30 @@ const routerMocks = vi.hoisted(() => ({
 const commandMenuStore = vi.hoisted(() => ({
   open: false,
   setOpen: vi.fn(),
+}))
+
+const adminTenantAccess = {
+  account_id: 'test-account',
+  is_active: true,
+  is_current: true,
+  permissions: [
+    'settings.read',
+    'settings.write',
+    'observability.read',
+    'usage.read',
+    'audit.read',
+    'audit.manage',
+    'table_sql.read',
+    'lifecycle.manage',
+  ],
+  role: 'admin',
+  tenant_id: 'test-tenant',
+}
+
+const tenantAccessMock = vi.hoisted(() => ({
+  current: {
+    data: undefined as unknown,
+  },
 }))
 
 const messages: Record<
@@ -95,25 +120,7 @@ vi.mock('@/hooks/use-backend-ready', () => ({
 }))
 
 vi.mock('@/hooks/use-tenant-access', () => ({
-  useTenantAccess: () => ({
-    data: {
-      account_id: 'test-account',
-      is_active: true,
-      is_current: true,
-      permissions: [
-        'settings.read',
-        'settings.write',
-        'observability.read',
-        'usage.read',
-        'audit.read',
-        'audit.manage',
-        'table_sql.read',
-        'lifecycle.manage',
-      ],
-      role: 'admin',
-      tenant_id: 'test-tenant',
-    },
-  }),
+  useTenantAccess: () => tenantAccessMock.current,
 }))
 
 vi.mock('@/store/command-menu', () => ({
@@ -173,6 +180,7 @@ describe('Navbar behavior', () => {
     routerMocks.pathname = '/knowledge/similarity'
     commandMenuStore.open = false
     commandMenuStore.setOpen = vi.fn()
+    tenantAccessMock.current = { data: adminTenantAccess }
     window.localStorage.clear()
     Object.defineProperty(window, 'matchMedia', {
       configurable: true,
@@ -260,5 +268,32 @@ describe('Navbar behavior', () => {
     expect(analysisSection?.getAttribute('class')).toContain('grid-rows-[1fr]')
 
     secondView.unmount()
+  })
+
+  it('keeps permission-gated navigation stable across hydration when tenant access is client-cached', async () => {
+    routerMocks.pathname = '/usage'
+    tenantAccessMock.current = { data: undefined }
+    const html = renderToString(React.createElement(Navbar))
+
+    const container = document.createElement('div')
+    container.innerHTML = html
+    document.body.appendChild(container)
+    tenantAccessMock.current = { data: adminTenantAccess }
+
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    let root: ReturnType<typeof hydrateRoot> | null = null
+
+    await act(async () => {
+      root = hydrateRoot(container, React.createElement(Navbar))
+      await Promise.resolve()
+    })
+
+    const errorOutput = consoleError.mock.calls.map((call) => call.join(' ')).join('\n')
+    expect(errorOutput).not.toContain('Hydration failed')
+
+    await act(async () => {
+      root?.unmount()
+    })
+    container.remove()
   })
 })

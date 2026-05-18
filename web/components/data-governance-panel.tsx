@@ -27,6 +27,7 @@ import {
   Info,
   AlertTriangle,
   Copy,
+  Check,
   PanelRightOpen,
   PanelRightClose,
 } from 'lucide-react'
@@ -287,7 +288,6 @@ export function DataGovernancePanel() {
 
   // UI 鐘舵€?
   const [activeTab, setActiveTab] = useState<GovernanceTab>('quality')
-  const [inboundBannerDismissed, setInboundBannerDismissed] = useState(false)
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'edit' | 'preview' | 'original'>(
     'preview'
@@ -338,24 +338,16 @@ export function DataGovernancePanel() {
     }
   }, [governanceTabs, searchParams])
 
-  const inboundContext = useMemo(() => {
-    const from = (searchParams.get('from') || '').trim()
+  const inboundDatasetId = useMemo(() => {
     const datasetId = (searchParams.get('dataset_id') || '').trim()
-    const governanceProfileRef = (
-      searchParams.get('governance_profile_ref') || ''
-    ).trim()
-    return {
-      from: from || null,
-      datasetId: datasetId || null,
-      governanceProfileRef: governanceProfileRef || null,
-    }
+    return datasetId || null
   }, [searchParams])
 
   useEffect(() => {
-    setSelectedDatasetId(inboundContext.datasetId)
+    setSelectedDatasetId(inboundDatasetId)
     setActiveFolderId(ROOT_FOLDER_ID)
     setSelectedFileId(null)
-  }, [inboundContext.datasetId, setActiveFolderId])
+  }, [inboundDatasetId, setActiveFolderId])
 
   const datasetsQuery = useQuery({
     queryKey: ['data-governance', 'datasets'],
@@ -464,6 +456,8 @@ export function DataGovernancePanel() {
         originalMarkdownContent:
           file.originalMarkdownContent || remote.originalMarkdownContent,
         folderId: file.folderId || remote.folderId || ROOT_FOLDER_ID,
+        governanceStatus: file.governanceStatus || remote.governanceStatus,
+        chunkStatus: file.chunkStatus || remote.chunkStatus,
       }
     })
 
@@ -486,62 +480,6 @@ export function DataGovernancePanel() {
     [router, searchParams, setActiveFolderId]
   )
 
-  const InboundBanner = useMemo(() => {
-    if (inboundBannerDismissed) return null
-    if (
-      !inboundContext.from &&
-      !inboundContext.datasetId &&
-      !inboundContext.governanceProfileRef
-    )
-      return null
-    return (
-      <div className="mt-3 rounded-xl border border-border/60 bg-card px-4 py-3 text-[12px] text-muted-foreground flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-[11px] uppercase text-muted-foreground/80">
-            {t('inbound.title')}
-          </div>
-          <div className="mt-1 flex flex-wrap items-center gap-2">
-            {inboundContext.from ? (
-              <span className="px-2 py-0.5 rounded-full border border-border/60 bg-muted/40 font-mono">
-                {t('inbound.fromLabel')}: {inboundContext.from}
-              </span>
-            ) : null}
-            {inboundContext.datasetId ? (
-              <span className="px-2 py-0.5 rounded-full border border-border/60 bg-muted/40 font-mono">
-                {t('inbound.datasetLabel')}: {inboundContext.datasetId}
-              </span>
-            ) : null}
-            {inboundContext.governanceProfileRef ? (
-              <span className="px-2 py-0.5 rounded-full border border-border/60 bg-muted/40 font-mono">
-                {t('inbound.profileLabel')}:{' '}
-                {inboundContext.governanceProfileRef}
-              </span>
-            ) : null}
-          </div>
-          <div className="mt-2 text-[11px] text-muted-foreground">
-            {t('inbound.description')}
-          </div>
-        </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-8 w-8 p-0 rounded-full text-muted-foreground hover:text-foreground"
-          aria-label={t('inbound.close')}
-          onClick={() => setInboundBannerDismissed(true)}
-        >
-          <X className="w-4 h-4" />
-        </Button>
-      </div>
-    )
-  }, [
-    inboundBannerDismissed,
-    inboundContext.datasetId,
-    inboundContext.from,
-    inboundContext.governanceProfileRef,
-    t,
-  ])
-
   const cancelUploadAndParse = useCallback(() => {
     uploadAbortRef.current?.abort()
     uploadAbortRef.current = null
@@ -553,6 +491,9 @@ export function DataGovernancePanel() {
   const [governanceStates, setGovernanceStates] = useState<
     Record<string, FileGovernanceState>
   >({})
+  const [selectedChunkFileIds, setSelectedChunkFileIds] = useState<Set<string>>(
+    () => new Set()
+  )
 
   // 渚ц竟鏍忕姸鎬?
   const [sidebarWidth, setSidebarWidth] = useState(280)
@@ -673,6 +614,33 @@ export function DataGovernancePanel() {
       allowedFolderIds.has(f.folderId || ROOT_FOLDER_ID)
     )
   }, [scopedFiles, activeFolderId, libraryFolders])
+
+  const readyChunkFiles = useMemo(
+    () => visibleFiles.filter((file) => file.chunkStatus === 'ready'),
+    [visibleFiles]
+  )
+  const selectedReadyChunkFiles = useMemo(
+    () => readyChunkFiles.filter((file) => selectedChunkFileIds.has(file.id)),
+    [readyChunkFiles, selectedChunkFileIds]
+  )
+  const selectedReadyChunkCount = selectedReadyChunkFiles.length
+
+  useEffect(() => {
+    const readyIds = new Set(readyChunkFiles.map((file) => file.id))
+    setSelectedChunkFileIds((prev) => {
+      const next = new Set(Array.from(prev).filter((id) => readyIds.has(id)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [readyChunkFiles])
+
+  const toggleChunkFileSelection = useCallback((fileId: string) => {
+    setSelectedChunkFileIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(fileId)) next.delete(fileId)
+      else next.add(fileId)
+      return next
+    })
+  }, [])
 
   // 鍒濆鍖栨枃浠舵不鐞嗙姸鎬?
   const initializeGovernanceState = useCallback(
@@ -1187,42 +1155,98 @@ export function DataGovernancePanel() {
   }, [selectedFileId, governanceState])
 
   // 灏嗘不鐞嗗悗鐨勫唴瀹瑰洖鍐欏埌鍏变韩瀛樺偍锛坙ocalStorage锛夛紝浠ヤ究 /chunk-preview 浣跨敤鏈€鏂扮増鏈?
-  const persistGovernanceEdits = useCallback(() => {
-    for (const f of files) {
-      const state = governanceStates[f.id]
-      if (!state) continue
+  const persistGovernanceEdits = useCallback(
+    (options?: {
+      markReadyFileIds?: Set<string>
+      markSubmittedFileIds?: Set<string>
+    }) => {
+      const markReadyFileIds = options?.markReadyFileIds || new Set<string>()
+      const markSubmittedFileIds =
+        options?.markSubmittedFileIds || new Set<string>()
 
-      // 濡傛灉鍘嗗彶鏁版嵁娌℃湁淇濆瓨 originalMarkdownContent锛屽厛鐢ㄥ綋鍓嶅唴瀹硅ˉ榻愶紝閬垮厤琚悗缁繚瀛樿鐩栨帀銆?
-      const originalMarkdownContent =
-        typeof f.originalMarkdownContent === 'string'
-          ? f.originalMarkdownContent
-          : f.markdownContent
+      for (const f of files) {
+        const state = governanceStates[f.id]
+        const nextChunkStatus = markSubmittedFileIds.has(f.id)
+          ? 'submitted'
+          : markReadyFileIds.has(f.id)
+            ? 'ready'
+            : undefined
+        if (!state && !nextChunkStatus) continue
 
-      const shouldUpdateMarkdown =
-        state.cleanedContent != null &&
-        state.cleanedContent !== f.markdownContent
-      const shouldSetOriginal = typeof f.originalMarkdownContent !== 'string'
+        // 濡傛灉鍘嗗彶鏁版嵁娌℃湁淇濆瓨 originalMarkdownContent锛屽厛鐢ㄥ綋鍓嶅唴瀹硅ˉ榻愶紝閬垮厤琚悗缁繚瀛樿鐩栨帀銆?
+        const originalMarkdownContent =
+          typeof f.originalMarkdownContent === 'string'
+            ? f.originalMarkdownContent
+            : f.markdownContent
 
-      if (shouldUpdateMarkdown || shouldSetOriginal) {
-        updateParsedFile(f.id, {
-          ...(shouldUpdateMarkdown
-            ? { markdownContent: state.cleanedContent }
-            : {}),
-          ...(shouldSetOriginal ? { originalMarkdownContent } : {}),
-        })
+        const shouldUpdateMarkdown =
+          state?.cleanedContent != null &&
+          state.cleanedContent !== f.markdownContent
+        const shouldSetOriginal =
+          Boolean(state) && typeof f.originalMarkdownContent !== 'string'
+
+        if (shouldUpdateMarkdown || shouldSetOriginal || nextChunkStatus) {
+          updateParsedFile(f.id, {
+            ...(shouldUpdateMarkdown
+              ? { markdownContent: state?.cleanedContent }
+              : {}),
+            ...(shouldSetOriginal ? { originalMarkdownContent } : {}),
+            ...(nextChunkStatus ? { chunkStatus: nextChunkStatus } : {}),
+          })
+        }
       }
-    }
-  }, [files, governanceStates, updateParsedFile])
+    },
+    [files, governanceStates, updateParsedFile]
+  )
 
   const handleSave = useCallback(() => {
-    persistGovernanceEdits()
+    if (!selectedFileId) return
+    persistGovernanceEdits({
+      markReadyFileIds: new Set([selectedFileId]),
+    })
+    setSelectedChunkFileIds((prev) => new Set(prev).add(selectedFileId))
     toast.success(t('toasts.resultsSaved'))
-  }, [persistGovernanceEdits, t])
+  }, [persistGovernanceEdits, selectedFileId, t])
+
+  const handleSubmitSelectedToChunkPreview = useCallback(() => {
+    if (!selectedReadyChunkFiles.length) {
+      toast.error(t('toasts.noChunkReadySelection'))
+      return
+    }
+
+    const targetIds = new Set(selectedReadyChunkFiles.map((file) => file.id))
+    persistGovernanceEdits({
+      markSubmittedFileIds: targetIds,
+    })
+    setSelectedChunkFileIds(new Set())
+    toast.success(
+      t('toasts.submittedToChunkPreview', {
+        count: selectedReadyChunkFiles.length,
+      })
+    )
+    router.push('/chunk-preview')
+  }, [persistGovernanceEdits, router, selectedReadyChunkFiles, t])
 
   const handlePushToChunkPreview = useCallback(() => {
-    persistGovernanceEdits()
+    if (selectedReadyChunkFiles.length > 0) {
+      handleSubmitSelectedToChunkPreview()
+      return
+    }
+    if (selectedFileId) {
+      persistGovernanceEdits({
+        markSubmittedFileIds: new Set([selectedFileId]),
+      })
+    } else {
+      persistGovernanceEdits()
+    }
     router.push('/chunk-preview')
-  }, [persistGovernanceEdits, router])
+  }, [
+    handleSubmitSelectedToChunkPreview,
+    persistGovernanceEdits,
+    router,
+    selectedFileId,
+    selectedReadyChunkFiles.length,
+  ])
 
   // 缁熻鏁版嵁
   const stats = useMemo(() => {
@@ -1262,7 +1286,6 @@ export function DataGovernancePanel() {
         }
         size="full"
         bodyClassName="px-0 pb-0"
-        top={InboundBanner}
         pipelineRail={<PipelineRail />}
         mainPanel={
           <div className="flex-1 flex flex-col min-h-0">
@@ -1517,6 +1540,18 @@ export function DataGovernancePanel() {
           </Button>
           <div className="w-px h-4 bg-border dark:bg-card mx-1" />
           <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSubmitSelectedToChunkPreview}
+            disabled={selectedReadyChunkCount === 0}
+            className="gap-2 h-8 text-xs"
+          >
+            <Layers className="w-3.5 h-3.5" />
+            {t('actions.submitSelectedToChunkPreview', {
+              count: selectedReadyChunkCount,
+            })}
+          </Button>
+          <Button
             variant="default"
             size="sm"
             onClick={handlePushToChunkPreview}
@@ -1530,7 +1565,6 @@ export function DataGovernancePanel() {
       }
       size="full"
       bodyClassName="px-0 pb-0"
-      top={InboundBanner}
       pipelineRail={<PipelineRail />}
       mainPanel={
         <div className="flex-1 flex flex-col bg-background text-foreground min-h-0">
@@ -1722,6 +1756,11 @@ export function DataGovernancePanel() {
                         (i) => i.type === 'error'
                       )
                       const score = state?.qualityScore || 0
+                      const isReadyForChunk = file.chunkStatus === 'ready'
+                      const isSubmittedForChunk =
+                        file.chunkStatus === 'submitted'
+                      const isSelectedForChunk =
+                        selectedChunkFileIds.has(file.id)
 
                       return (
                         <div key={file.id} className="group relative">
@@ -1834,6 +1873,16 @@ export function DataGovernancePanel() {
                                         {t('sidebar.cleaned')}
                                       </span>
                                     )}
+                                    {isReadyForChunk ? (
+                                      <span className="text-[9px] text-info flex items-center gap-1 bg-info/10 px-1.5 py-0.5 rounded border border-info/20 font-medium">
+                                        {t('sidebar.chunkReady')}
+                                      </span>
+                                    ) : null}
+                                    {isSubmittedForChunk ? (
+                                      <span className="text-[9px] text-success flex items-center gap-1 bg-success/10 px-1.5 py-0.5 rounded border border-success/20 font-medium">
+                                        {t('sidebar.chunkSubmitted')}
+                                      </span>
+                                    ) : null}
                                     {hasIssue && (
                                       <span className="text-[9px] text-rose flex items-center gap-1 bg-rose/10 px-1.5 py-0.5 rounded border border-rose/25 font-medium">
                                         <AlertTriangle className="w-2.5 h-2.5" />{' '}
@@ -1862,6 +1911,24 @@ export function DataGovernancePanel() {
                               title={t('dialogs.deleteFile.confirm')}
                             >
                               <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          ) : null}
+                          {isReadyForChunk ? (
+                            <button
+                              type="button"
+                              onClick={() => toggleChunkFileSelection(file.id)}
+                              aria-pressed={isSelectedForChunk}
+                              aria-label={t('a11y.toggleChunkFile', {
+                                filename: file.filename,
+                              })}
+                              className={cn(
+                                'absolute right-2.5 top-2.5 grid h-5 w-5 place-items-center rounded-md border text-[10px] transition-colors duration-150 motion-reduce:transition-none',
+                                isSelectedForChunk
+                                  ? 'border-info/45 bg-info text-info-foreground shadow-sm'
+                                  : 'border-border/70 bg-background/90 text-muted-foreground hover:border-info/35 hover:bg-info/10 hover:text-info'
+                              )}
+                            >
+                              {isSelectedForChunk ? <Check className="h-3 w-3" /> : null}
                             </button>
                           ) : null}
                         </div>

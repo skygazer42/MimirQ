@@ -362,15 +362,6 @@ DataGovernancePanel: {
       emptyBadge: '治理',
       mainBadge: '工作台',
     },
-    inbound: {
-      title: 'Inbound',
-      fromLabel: 'from',
-      datasetLabel: 'dataset_id',
-      profileLabel: 'governance_profile_ref',
-      description:
-        '提示：该页当前仅做引导展示；如需精确复现治理效果，请在入库配置或规则中启用对应的 pipeline/governance 配置。',
-      close: '关闭提示',
-    },
     tabs: {
       quality: {
         label: '质量检测',
@@ -392,6 +383,7 @@ DataGovernancePanel: {
     actions: {
       reset: '重置',
       save: '保存',
+      submitSelectedToChunkPreview: '提交选中 {count}',
       pushToChunkPreview: '推送到切块预览',
     },
     scope: {
@@ -422,6 +414,8 @@ DataGovernancePanel: {
       skippedUnsupported: '已跳过 {count} 个不支持的文件',
       parseFailed: '解析失败，请稍后重试',
       resultsSaved: '已保存治理结果',
+      noChunkReadySelection: '请先保存并选择待切块文档',
+      submittedToChunkPreview: '已提交 {count} 个文档到切块预览',
       filenameCopied: '文件名已复制',
       fileRemoved: '文件已移除',
     },
@@ -468,6 +462,8 @@ DataGovernancePanel: {
       scoreLabel: '{score} 分',
       notScanned: '未检测',
       cleaned: '已清洗',
+      chunkReady: '待切块',
+      chunkSubmitted: '已提交切块',
       needsAttention: '需关注',
       foldersHeader: '目录树',
     },
@@ -510,6 +506,7 @@ DataGovernancePanel: {
     a11y: {
       openFile: '打开文件：{filename}',
       deleteFile: '删除文件：{filename}',
+      toggleChunkFile: '选择待切块文档：{filename}',
     },
   }
 } as const

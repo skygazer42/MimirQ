@@ -864,6 +864,10 @@ export function ChunkList() {
     : supportsPdfDocking
       ? t('chunkList.keyboardHints.withPdfDocking')
       : t('chunkList.keyboardHints.hiddenOriginal')
+  const chunkListToolbarButtonClass =
+    'h-7 rounded-full border-border/45 px-2 text-[10.5px] font-medium text-muted-foreground shadow-none transition-colors hover:border-primary/30 hover:bg-primary/10 hover:text-primary'
+  const chunkListToolbarActiveButtonClass =
+    'h-7 rounded-full border-primary/20 bg-primary/10 px-2 text-[10.5px] font-semibold text-primary shadow-none transition-colors hover:bg-primary/20'
 
   const copyText = async (value: string, okMessage: string) => {
     try {
@@ -880,36 +884,45 @@ export function ChunkList() {
 
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-background">
-      <div className="border-b border-border/60 bg-card px-3.5 py-2.5 shrink-0">
-        <div className="flex flex-col gap-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="border-b border-border/55 bg-card px-3 py-2 shrink-0">
+        <div className="flex flex-col gap-1.5">
+          <div className="flex min-w-0 items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-1.5">
-              <span className="text-[13px] font-semibold text-foreground flex items-center gap-1.5 whitespace-nowrap">
-                <Rows3 className="w-4 h-4 text-muted-foreground" />
+              <span className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-[13px] font-semibold text-foreground">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full border border-primary/20 bg-primary/10 text-primary">
+                  <Rows3 className="h-3.5 w-3.5" />
+                </span>
                 {t('chunkList.title')}
               </span>
               {previewData?.total_chunks ? (
-                <span className="text-[11px] text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-full">
+                <span className="rounded-full border border-primary/20 bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-primary">
                   {previewData.total_chunks}
                 </span>
               ) : null}
-              {matchesLabel ? <span className="text-[11px] text-muted-foreground font-mono">{matchesLabel}</span> : null}
+              {matchesLabel ? <span className="truncate font-mono text-[10.5px] text-muted-foreground">{matchesLabel}</span> : null}
             </div>
+          </div>
 
-            <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
-              <div className="relative w-44 max-w-full lg:w-56">
-                <Search className="w-3 h-3 text-muted-foreground absolute left-2 top-1/2 -translate-y-1/2" />
+          <div
+            data-chunk-list-toolbar
+            className="flex min-w-0 flex-wrap items-center gap-1 rounded-[18px] border border-border/45 bg-muted/20 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]"
+          >
+            <div
+              data-chunk-list-search
+              className="relative flex h-7 min-w-[150px] flex-1 items-center rounded-full border border-border/40 bg-background/90 px-2 shadow-sm"
+            >
+                <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                 <Input
                   ref={searchRef}
                   value={queryInput}
                   onChange={(e) => setQueryInput(e.target.value)}
                   placeholder={t('chunkList.searchPlaceholder')}
-                  className="h-[28px] rounded-lg border-border/60 bg-background px-2 pl-6 pr-6 text-[11px]"
+                  className="h-full min-w-0 flex-1 border-0 bg-transparent px-1.5 pr-5 text-[11px] shadow-none placeholder:text-muted-foreground/65 focus-visible:ring-0"
                 />
                 {queryInput ? (
                   <button
                     type="button"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors focus-ring rounded"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded text-muted-foreground transition-colors hover:text-foreground focus-ring"
                     onClick={() => {
                       setQueryInput('')
                       setQuery('')
@@ -926,7 +939,7 @@ export function ChunkList() {
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-[28px] rounded-lg px-2 text-[11px]"
+                  className={chunkListToolbarButtonClass}
                   onClick={() => selectChunkIndex(null)}
                 >
                   {t('chunkList.actions.clearSelection')}
@@ -937,7 +950,7 @@ export function ChunkList() {
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="h-[28px] rounded-lg px-2 text-[11px]"
+                  className={chunkListToolbarButtonClass}
                   onClick={openDockedPdfPreview}
                   title={t('chunkList.actions.restorePdfDockTitle')}
                 >
@@ -946,9 +959,9 @@ export function ChunkList() {
               ) : null}
               <Button
                 type="button"
-                variant={retrieveOpen ? 'secondary' : 'ghost'}
+                variant={retrieveOpen ? 'secondary' : 'outline'}
                 size="sm"
-                className="h-[28px] rounded-lg px-2 text-[11px]"
+                className={retrieveOpen || retrieveQuery.trim() ? chunkListToolbarActiveButtonClass : chunkListToolbarButtonClass}
                 onClick={() => setRetrieveOpen((v) => !v)}
                 title={t('chunkList.retrieve.triggerTitle')}
               >
@@ -960,7 +973,7 @@ export function ChunkList() {
                 type="button"
                 variant={filtersOpen || filterActiveCount > 0 ? 'secondary' : 'outline'}
                 size="sm"
-                className="h-[28px] rounded-lg px-2 text-[11px]"
+                className={filtersOpen || filterActiveCount > 0 ? chunkListToolbarActiveButtonClass : chunkListToolbarButtonClass}
                 onClick={() => setFiltersOpen((v) => !v)}
                 aria-expanded={filtersOpen}
                 aria-controls="chunk-list-filter-panel"
@@ -969,10 +982,9 @@ export function ChunkList() {
                 <SlidersHorizontal className="h-3.5 w-3.5 mr-1" />
                 {filterButtonLabel}
               </Button>
-            </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/45 bg-muted/15 px-2 py-1.5">
+          <div className="flex flex-wrap items-center justify-between gap-1.5 rounded-2xl border border-border/40 bg-background/70 px-2 py-1">
             <div className="flex min-w-0 flex-wrap items-center gap-1.5">
               {effectiveChunks.length > 0 ? (
                 <>

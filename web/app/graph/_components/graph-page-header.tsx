@@ -13,6 +13,7 @@ import type { KGStatsResponse } from '@/types'
 
 import type { GraphConfBucket } from '../graph-page-utils'
 import { GraphFiltersPopover } from './graph-filters-popover'
+import { graphmlImportButtonClass } from './graph-button-styles'
 import { GraphSearchOverlay } from './graph-search-overlay'
 import { GraphStatusBanners } from './graph-status-banners'
 
@@ -329,7 +330,7 @@ export function GraphPageHeader({
           onChange={onTraceFileUpload}
         />
 
-        <Button variant="outline" size="sm" className="gap-2 border-border/60" onClick={onTriggerFileUpload}>
+        <Button variant="outline" size="sm" className={`gap-2 ${graphmlImportButtonClass}`} onClick={onTriggerFileUpload}>
           <Upload className="w-4 h-4" />
           GraphML
         </Button>

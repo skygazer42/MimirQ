@@ -1,7 +1,15 @@
 'use client'
 
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import type { SystemSettings } from '@/lib/api'
+import { RERANKER_PROVIDER_OPTIONS } from '@/lib/reranker-provider-options'
 import { Sliders, ToggleLeft, ToggleRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { systemPageTokens } from '@/components/ui/system-page-tokens'
@@ -155,7 +163,75 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
               </button>
             </div>
             <p className="mt-2 text-[11px] text-muted-foreground">
-              需要先在“重排序模型”里配置 Provider（否则可能无效果）
+              开启后会使用下方重排服务与数量，并同步到实验页面作为默认值
+            </p>
+          </div>
+
+          <div>
+            <div className="mb-1.5 flex items-center justify-between">
+              <div
+                className={cn(
+                  systemPageTokens.microLabel,
+                  'text-foreground/80'
+                )}
+              >
+                重排服务
+              </div>
+              <span className="rounded bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+                {rag.reranker_provider || 'llm'}
+              </span>
+            </div>
+            <Select
+              value={rag.reranker_provider || 'llm'}
+              onValueChange={(value) => updateRag({ reranker_provider: value })}
+            >
+              <SelectTrigger className="h-9 rounded-[12px] border-border/70 bg-card text-[12px]">
+                <SelectValue placeholder="选择重排服务" />
+              </SelectTrigger>
+              <SelectContent>
+                {RERANKER_PROVIDER_OPTIONS.map((option) => (
+                  <SelectItem key={option.key} value={option.key}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="mt-1.5 text-[11px] text-muted-foreground">
+              保存后写入后端 RERANKER_PROVIDER，实验页只做临时覆盖
+            </p>
+          </div>
+
+          <div>
+            <div className="mb-1.5 flex items-center justify-between">
+              <div
+                className={cn(
+                  systemPageTokens.microLabel,
+                  'text-foreground/80'
+                )}
+              >
+                重排数量
+              </div>
+              <span className="rounded bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+                {rag.reranker_top_n}
+              </span>
+            </div>
+            <Input
+              type="number"
+              min={1}
+              max={200}
+              value={rag.reranker_top_n}
+              onChange={(event) =>
+                updateRag({
+                  reranker_top_n: Math.max(
+                    1,
+                    Math.min(200, Number.parseInt(event.target.value || '1', 10))
+                  ),
+                })
+              }
+              className="h-9 rounded-[12px] border-border/70 bg-card text-[12px]"
+            />
+            <p className="mt-1.5 text-[11px] text-muted-foreground">
+              保存后写入后端 RERANKER_TOP_N，建议保持 10-50
             </p>
           </div>
 

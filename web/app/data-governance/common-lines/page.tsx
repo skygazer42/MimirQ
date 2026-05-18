@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic'
 import { useTranslations } from 'next-intl'
 
+import { NavigationVisibilityGate } from '@/components/auth/navigation-visibility-gate'
 import { AppFrame } from '@/components/app-frame'
 import { PageLoading } from '@/components/ui/page-loading'
 
@@ -19,9 +20,11 @@ const GovernanceCommonLinesPage = dynamic(
 
 export default function GovernanceCommonLinesRoutePage() {
   return (
-    <AppFrame>
-      <GovernanceCommonLinesPage />
-    </AppFrame>
+    <NavigationVisibilityGate moduleKey="commonLines" pageName="样板行发现">
+      <AppFrame>
+        <GovernanceCommonLinesPage />
+      </AppFrame>
+    </NavigationVisibilityGate>
   )
 }
 

@@ -27,6 +27,7 @@ type ParsingLibraryBrowserProps = {
  visibleQueueFiles: ParsedFile[]
  visibleLibraryOnlyFiles: ParsedFileData[]
  folderPathById: Record<string, string>
+ selectedGovernanceFileIds: ReadonlySet<string>
  onFolderSelect: (folderId: string) => void
  onFolderDragOver: (event: React.DragEvent<HTMLElement>, folderId: string) => void
  onFolderDragLeave: () => void
@@ -34,6 +35,7 @@ type ParsingLibraryBrowserProps = {
  onQueueFileDragStart: (event: React.DragEvent<HTMLElement>, fileId: string) => void
  onSelectQueueFile: (fileId: string) => void
  onSelectLibraryFile: (fileId: string) => void
+ onToggleGovernanceFileSelection: (fileId: string) => void
  onRemoveFile: (fileId: string) => void
  onRetryParse: (fileId: string) => void
 }
@@ -52,6 +54,7 @@ export function ParsingLibraryBrowser({
  visibleQueueFiles,
  visibleLibraryOnlyFiles,
  folderPathById,
+ selectedGovernanceFileIds,
  onFolderSelect,
  onFolderDragOver,
  onFolderDragLeave,
@@ -59,6 +62,7 @@ export function ParsingLibraryBrowser({
  onQueueFileDragStart,
  onSelectQueueFile,
  onSelectLibraryFile,
+ onToggleGovernanceFileSelection,
  onRemoveFile,
  onRetryParse,
 }: Readonly<ParsingLibraryBrowserProps>) {
@@ -218,10 +222,14 @@ export function ParsingLibraryBrowser({
  name: file.filename,
  size: file.fileSize,
  status: file.status || 'parsed',
- parser: file.parser,
- duration: file.durationSec,
+        parser: file.parser,
+        governanceStatus: file.governanceStatus,
+        duration: file.durationSec,
  folderPathLabel: file.folderId && file.folderId !== ROOT_FOLDER_ID ? folderPathById[file.folderId] : undefined,
- }}
+      }}
+ isSelectable={file.governanceStatus === 'ready'}
+ isSelected={selectedGovernanceFileIds.has(file.id)}
+ onToggleSelected={() => onToggleGovernanceFileSelection(file.id)}
  isActive={activeLibraryFileId === file.id}
  onClick={() => onSelectLibraryFile(file.id)}
  onRemove={() => onRemoveFile(file.id)}
@@ -238,6 +246,7 @@ export function ParsingLibraryBrowser({
  status: file.status,
  progress: file.progress,
  parser: file.parserLabel,
+ governanceStatus: file.governanceStatus,
  folderPathLabel: file.folderId && file.folderId !== ROOT_FOLDER_ID ? folderPathById[file.folderId] : undefined,
  sourcePath: file.sourcePath,
  error: file.error,
@@ -247,6 +256,9 @@ export function ParsingLibraryBrowser({
  draggable
  onDragStart={(event) => onQueueFileDragStart(event, file.id)}
  isActive={activeFileId === file.id}
+ isSelectable={file.governanceStatus === 'ready'}
+ isSelected={selectedGovernanceFileIds.has(file.id)}
+ onToggleSelected={() => onToggleGovernanceFileSelection(file.id)}
  onClick={() => onSelectQueueFile(file.id)}
  onRemove={() => onRemoveFile(file.id)}
  onRetry={file.status === 'error' ? () => onRetryParse(file.id) : undefined}

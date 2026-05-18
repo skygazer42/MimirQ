@@ -20,7 +20,8 @@ describe('parsing active file pane source', () => {
     expect(src).not.toContain('StatCard')
     expect(src).toContain('border-b border-border/60 bg-[linear-gradient(180deg,hsl(var(--background)/0.96),hsl(var(--muted)/0.35))] px-5 py-3')
     expect(src).toContain('rounded-full border border-border/60 bg-card/88 px-2.5 py-1')
-    expect(src).toContain('overflow-y-auto overscroll-contain no-scrollbar pl-2')
+    expect(src).toContain('max-h-[min(72vh,calc(100vh-13rem))] overflow-y-auto overscroll-contain custom-scrollbar')
+    expect(src).not.toContain('max-h-[calc(100%-2rem)] overflow-y-auto overscroll-contain no-scrollbar pl-2')
     expect(src).toContain("dragScroll={rightPanelMode === 'markdown'}")
     expect(src).toContain('scrollContainerSelector=".parsing-md-scroll"')
   })
@@ -63,5 +64,16 @@ describe('parsing active file pane source', () => {
     expect(src).toContain('selectedExtractEvidence.evidence.visual_kind')
     expect(src).toContain('跨页')
     expect(src).toContain('证据定位')
+  })
+
+  it('keeps the PDF page overlay and layout review list bidirectionally synchronized', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'parsing-active-file-pane.tsx'), 'utf8')
+
+    expect(src).toContain('const layoutReviewCardRefs = useRef<Map<string, HTMLButtonElement>>(new Map())')
+    expect(src).toContain("onRightPanelModeChange('blocks')")
+    expect(src).toContain('layoutReviewCardRefs.current.get(activeBlockId)')
+    expect(src).toContain('scrollIntoView({')
+    expect(src).toContain("block: 'nearest'")
+    expect(src).toContain('data-layout-entry-id={entry.id}')
   })
 })
