@@ -61,6 +61,20 @@ class JsonReportProcessor:
     def __init__(self, parser: "DoclingParser") -> None:
         self._parser = parser
 
+    @staticmethod
+    def _coerce_page_count(doc: Any) -> int:
+        raw = getattr(doc, "num_pages", 0)
+        if callable(raw):
+            try:
+                raw = raw()
+            except Exception as exc:
+                logger.debug("Ignoring non-critical docling page-count fallback failure: %s", exc)
+                raw = 0
+        try:
+            return max(0, int(raw or 0))
+        except Exception:
+            return 0
+
     def _table_entries(self, doc: Any) -> list[tuple[tuple[Any, Any], Any]]:
         rows: list[tuple[tuple[Any, Any], Any]] = []
         for tab in getattr(doc, "tables", []):
@@ -152,7 +166,7 @@ class JsonReportProcessor:
         return {
             "schema": "mimirq.docling_json_report.v1",
             "metainfo": {
-                "page_count": int(getattr(doc, "num_pages", 0) or 0),
+                "page_count": self._coerce_page_count(doc),
                 "page_continuity": {
                     "pages_seen": pages_seen,
                     "missing_pages": missing_pages,

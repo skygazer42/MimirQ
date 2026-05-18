@@ -104,3 +104,27 @@ def test_docling_json_report_processor_flags_missing_pages_in_continuity() -> No
     assert continuity["continuous"] is False
     assert continuity["pages_seen"] == [1, 3]
     assert continuity["missing_pages"] == [2]
+
+
+def test_docling_json_report_processor_accepts_num_pages_method() -> None:
+    from app.deepdoc.parser.docling_parser import DoclingParser, JsonReportProcessor
+
+    parser = DoclingParser()
+    processor = JsonReportProcessor(parser)
+    doc = SimpleNamespace(
+        num_pages=lambda: 4,
+        texts=[
+            SimpleNamespace(
+                text="Page one",
+                label="text",
+                parent=SimpleNamespace(cref="#/body"),
+                prov=_prov(1, (10, 20, 30, 40)),
+            ),
+        ],
+        tables=[],
+        pictures=[],
+    )
+
+    report = processor.build_report(doc, parse_method="raw")
+
+    assert report["metainfo"]["page_count"] == 4

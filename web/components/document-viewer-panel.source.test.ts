@@ -61,4 +61,11 @@ describe('document viewer panel source', () => {
     expect(hookSrc).toContain('"save_reembed"')
     expect(hookSrc).toContain('"save_rerun"')
   })
+
+  it('exposes the opened document filename as a heading for live deep-link smoke checks', () => {
+    const headerSrc = fs.readFileSync(path.resolve(__dirname, 'document-viewer/document-viewer-header.tsx'), 'utf8')
+
+    expect(headerSrc).toContain('<h2')
+    expect(headerSrc).toContain('{filename || "加载中..."}')
+  })
 })

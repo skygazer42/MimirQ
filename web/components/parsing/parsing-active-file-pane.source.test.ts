@@ -26,6 +26,14 @@ describe('parsing active file pane source', () => {
     expect(src).toContain('scrollContainerSelector=".parsing-md-scroll"')
   })
 
+
+  it('keeps the markdown table-of-contents out of medium-width live smoke layouts', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'parsing-active-file-pane.tsx'), 'utf8')
+
+    expect(src).toContain('self-start 2xl:sticky 2xl:top-0 2xl:block')
+    expect(src).not.toContain('self-start xl:sticky xl:top-0 xl:block')
+  })
+
   it('treats the governance action footer like a floating control dock instead of a flat strip', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'parsing-active-file-pane.tsx'), 'utf8')
 

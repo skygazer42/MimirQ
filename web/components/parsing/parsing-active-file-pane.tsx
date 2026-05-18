@@ -1176,7 +1176,7 @@ export function ParsingActiveFilePane({
  />
  </div>
  {tocEnabled ? (
- <aside className="hidden w-64 shrink-0 self-start xl:sticky xl:top-0 xl:block">
+ <aside className="hidden w-64 shrink-0 self-start 2xl:sticky 2xl:top-0 2xl:block">
  <div className="max-h-[min(72vh,calc(100vh-13rem))] overflow-y-auto overscroll-contain custom-scrollbar rounded-2xl border border-border/60 bg-card/82 p-3 pr-2 shadow-soft">
  <MarkdownToc markdown={activeMarkdown} scrollContainerSelector=".parsing-md-scroll" />
  </div>

@@ -4,6 +4,24 @@ import createNextIntlPlugin from 'next-intl/plugin'
 const sentryEnabled = Boolean(
   process.env.NEXT_PUBLIC_SENTRY_DSN || process.env.SENTRY_DSN || process.env.SENTRY_AUTH_TOKEN
 )
+const localDevHostnames = new Set(['localhost', '127.0.0.1', '0.0.0.0', 'web', 'mimirq-api'])
+const hstsDisabled =
+  String(process.env.NEXT_DISABLE_HSTS || '').trim().toLowerCase() === '1' ||
+  String(process.env.NEXT_DISABLE_HSTS || '').trim().toLowerCase() === 'true'
+
+function isLocalDevOrigin(value) {
+  try {
+    const parsed = new URL(value)
+    return parsed.protocol === 'http:' && localDevHostnames.has((parsed.hostname || '').toLowerCase())
+  } catch {
+    return false
+  }
+}
+
+const shouldSendHsts =
+  process.env.NODE_ENV === 'production' &&
+  !hstsDisabled &&
+  !isLocalDevOrigin(process.env.NEXT_PUBLIC_API_URL || '')
 const withNextIntl = createNextIntlPlugin('./i18n/request.ts')
 const sharedSecurityHeaders = [
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
@@ -12,7 +30,7 @@ const sharedSecurityHeaders = [
   { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
 ]
 
-if (process.env.NODE_ENV === 'production') {
+if (shouldSendHsts) {
   sharedSecurityHeaders.push({
     key: 'Strict-Transport-Security',
     value: 'max-age=63072000; includeSubDomains; preload',

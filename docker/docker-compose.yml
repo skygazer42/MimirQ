@@ -25,7 +25,7 @@ x-backend-env: &backend_env
   MINIO_USE_SSL: ${MINIO_USE_SSL_DOCKER:-false}
   MINIO_DOCUMENTS_ENABLED: ${MINIO_DOCUMENTS_ENABLED_DOCKER:-true}
   # CORS (frontend)
-  CORS_ORIGINS: ${CORS_ORIGINS_DOCKER:-http://localhost:3000,http://localhost:3001}
+  CORS_ORIGINS: ${CORS_ORIGINS_DOCKER:-http://localhost:3000,http://localhost:3001,http://web:3000}
   # Task queue
   TASK_QUEUE_ENABLED: ${TASK_QUEUE_ENABLED_DOCKER:-true}
   REDIS_URL: ${REDIS_URL_DOCKER:-redis://mimirq-redis:6379/0}

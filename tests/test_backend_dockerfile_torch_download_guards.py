@@ -38,3 +38,13 @@ def test_backend_dockerfile_retries_cached_requirements_install() -> None:
     assert "--no-cache-dir --no-build-isolation -r" not in dockerfile
     assert "for attempt in 1 2 3" in dockerfile
     assert "/opt/venv/bin/pip install --retries 10 --timeout 120 --no-build-isolation -r" in dockerfile
+
+
+def test_backend_dockerfile_allows_runtime_rapidocr_model_cache() -> None:
+    dockerfile = _read("docker/Dockerfile")
+
+    assert "/opt/venv/lib/python3.11/site-packages/rapidocr/models" in dockerfile
+    assert (
+        "chown -R appuser:appuser /app /data /opt/venv/lib/python3.11/site-packages/rapidocr/models"
+        in dockerfile
+    )

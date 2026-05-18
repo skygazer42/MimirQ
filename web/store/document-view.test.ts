@@ -106,6 +106,20 @@ describe('document view store persistence', () => {
     })
   })
 
+
+  it('opening a new URL document replaces a hydrated viewer target from a previous session', async () => {
+    const localStorage = createLocalStorage()
+    let { useDocumentView } = await loadStore(localStorage)
+
+    useDocumentView.getState().openDocument('old-doc')
+
+    ;({ useDocumentView } = await loadStore(localStorage))
+    useDocumentView.getState().openDocument('new-doc')
+
+    expect(useDocumentView.getState().isOpen).toBe(true)
+    expect(useDocumentView.getState().documentId).toBe('new-doc')
+  })
+
   it('keeps the last opened target after closing and can reopen the same context', async () => {
     const { useDocumentView } = await loadStore()
 

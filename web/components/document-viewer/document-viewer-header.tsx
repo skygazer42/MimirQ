@@ -30,9 +30,9 @@ export function DocumentViewerHeader({
           <FileText className="size-5 text-muted-foreground" />
         </div>
         <div className="flex min-w-0 flex-col">
-          <h3 className="max-w-[200px] truncate text-sm font-semibold leading-snug" title={filename ?? undefined}>
+          <h2 className="max-w-[200px] truncate text-sm font-semibold leading-snug" title={filename ?? undefined}>
             {filename || "加载中..."}
-          </h3>
+          </h2>
           <span className="text-xs text-muted-foreground">{chunkCount} 个切片</span>
         </div>
       </div>
