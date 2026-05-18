@@ -16,5 +16,8 @@ describe('settings runtime controls section', () => {
     expect(src).toContain('compact')
     expect(src).toContain('tone="neutral"')
     expect(src).toContain('icon="help"')
+    expect(src).toContain('SettingsSwitch')
+    expect(src).not.toContain('ToggleLeft')
+    expect(src).not.toContain('ToggleRight')
   })
 })
