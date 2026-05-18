@@ -170,4 +170,46 @@ describe('management surface api clients', () => {
       responseType: 'blob',
     })
   })
+
+  it('forwards audit purge scope and filters to the backend purge endpoint', async () => {
+    const postSpy = vi.spyOn(apiClient, 'post')
+    postSpy.mockResolvedValueOnce({
+      data: { scope: 'filtered', eligible: 4, deleted: 0 },
+    } as never)
+
+    await expect(
+      auditApi.purgeLogs({
+        purge_scope: 'filtered',
+        action: 'audit.logs.purge',
+        actor_id: 'demo',
+        max_delete: 100,
+        dry_run: true,
+      })
+    ).resolves.toMatchObject({ scope: 'filtered', eligible: 4 })
+
+    expect(postSpy).toHaveBeenCalledWith('/audit/logs/purge', undefined, {
+      params: {
+        purge_scope: 'filtered',
+        action: 'audit.logs.purge',
+        actor_id: 'demo',
+        max_delete: 100,
+        dry_run: true,
+      },
+    })
+  })
+
+  it('calls audit single and bulk delete endpoints with selected ids', async () => {
+    const deleteSpy = vi.spyOn(apiClient, 'delete')
+    const postSpy = vi.spyOn(apiClient, 'post')
+    deleteSpy.mockResolvedValueOnce({ data: { requested: 1, deleted: 1, missing: 0, ids: ['log-1'] } } as never)
+    postSpy.mockResolvedValueOnce({ data: { requested: 2, deleted: 2, missing: 0, ids: ['log-1', 'log-2'] } } as never)
+
+    await expect(auditApi.deleteLog('log/1')).resolves.toMatchObject({ deleted: 1 })
+    await expect(auditApi.bulkDeleteLogs(['log-1', 'log-2'])).resolves.toMatchObject({ deleted: 2 })
+
+    expect(deleteSpy).toHaveBeenCalledWith('/audit/logs/log%2F1')
+    expect(postSpy).toHaveBeenCalledWith('/audit/logs/bulk-delete', {
+      ids: ['log-1', 'log-2'],
+    })
+  })
 })

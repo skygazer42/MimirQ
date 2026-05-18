@@ -3,7 +3,7 @@
 import { ModelProviderCard } from '@/components/model-provider-card'
 import type { ModelProvider, ProviderCategory } from '@/types/models'
 import type { LucideIcon } from 'lucide-react'
-import { Cpu, Layers, Lightbulb, Server } from 'lucide-react'
+import { Cpu, Layers, Server } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { systemPageTokens, systemWorkbenchTokens } from '@/components/ui/system-page-tokens'
 
@@ -35,18 +35,7 @@ export function ModelProvidersSection({
   onConfigure,
 }: Readonly<ModelProvidersSectionProps>) {
   return (
-    <section className="space-y-3">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="flex items-center gap-2 text-sm font-semibold tracking-[-0.01em] text-foreground">
-          <Server className="h-4 w-4 text-primary" />
-          模型服务商
-        </h2>
-        <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary">
-          <Lightbulb className="h-3.5 w-3.5" />
-          <span>点击卡片配置 API 密钥（API Key）</span>
-        </div>
-      </div>
-
+    <section>
       <div className="space-y-4">
         {(['model', 'embedding', 'reranker'] as ProviderCategory[]).map((category) => {
           const info = CATEGORY_INFO[category]

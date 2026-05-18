@@ -11,6 +11,7 @@ describe('model config dialog source', () => {
     expect(src).toContain("deepseek: 'https://api.deepseek.com/v1'")
     expect(src).toContain("zhipu: 'https://open.bigmodel.cn/api/paas/v4'")
     expect(src).toContain("qwen: 'https://dashscope.aliyuncs.com/compatible-mode/v1'")
+    expect(src).toContain("'qwen-embedding': 'https://dashscope.aliyuncs.com/compatible-mode/v1'")
     expect(src).toContain("moonshot: 'https://api.moonshot.cn/v1'")
     expect(src).toContain("ark: 'https://ark.cn-beijing.volces.com/api/v3'")
     expect(src).toContain("lingyiwanwu: 'https://api.lingyiwanwu.com/v1'")

@@ -220,7 +220,7 @@ class RAGEngine:
         self.http_async_client = pool.get_external_async_client()
 
         # Build available models for dynamic routing (inspired by agent middleware pattern)
-        default_model_name = settings.LLM_MODEL or "gpt-4-turbo-preview"
+        default_model_name = settings.LLM_MODEL or "gpt-5.4-mini"
         self.models: dict[str, Any] = {}
         self.models["default"] = self._build_llm(ChatOpenAI, default_model_name)
         if settings.ENABLE_DYNAMIC_MODEL_ROUTING:
@@ -378,7 +378,7 @@ Requirements:
         if route == "fast" and settings.LLM_MODEL_FAST:
             return str(settings.LLM_MODEL_FAST)
         value = getattr(llm, "model_name", None) or getattr(llm, "model", None) or settings.LLM_MODEL
-        return str(value or settings.LLM_MODEL or "gpt-4-turbo-preview")
+        return str(value or settings.LLM_MODEL or "gpt-5.4-mini")
 
     def _maybe_override_llm_for_request(
         self,

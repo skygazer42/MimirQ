@@ -1,15 +1,19 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { DangerZonePanel } from '@/components/settings/danger-zone-panel'
 import { GovernanceOpsPanel } from '@/components/settings/governance-ops-panel'
 import { systemPageTokens, systemWorkbenchTokens } from '@/components/ui/system-page-tokens'
-import { rtbfApi, type SystemSettings } from '@/lib/api'
+import { rbacApi, rtbfApi, type SystemSettings, type TenantMember } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise } from '@/lib/utils'
-import { AlertCircle, EyeOff, Loader2, ShieldCheck, ToggleLeft, ToggleRight } from 'lucide-react'
+import { AlertCircle, Loader2, ToggleLeft, ToggleRight } from 'lucide-react'
 import { toast } from 'sonner'
 
 type GovernanceSettings = NonNullable<SystemSettings['governance']>
@@ -23,6 +27,202 @@ type GovernanceSectionProps = {
 }
 
 const FIELD_LABEL = 'text-[11px] font-medium text-muted-foreground'
+const RTBF_MEMBERS_PARAMS = { limit: 500 } as const
+const RTBF_CURRENT_ACCOUNT_VALUE = '__current_account__'
+const RTBF_MANUAL_ACCOUNT_VALUE = '__manual_account__'
+
+type RtbfTone = 'idle' | 'info' | 'success' | 'danger'
+
+type RtbfResultView = {
+  title: string
+  description: string
+  tone: RtbfTone
+  badge: string
+  metrics: Array<{ label: string; value: string; hint?: string }>
+  rawText: string | null
+}
+
+const RTBF_STATUS_LABELS: Record<string, string> = {
+  accepted: '已受理',
+  completed: '已完成',
+  failed: '失败',
+  pending: '等待中',
+  processing: '处理中',
+  running: '执行中',
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null
+}
+
+function stringValue(value: unknown, fallback = '-'): string {
+  if (typeof value === 'string' && value.trim()) return value
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  if (typeof value === 'boolean') return value ? '是' : '否'
+  return fallback
+}
+
+function numberValue(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string') {
+    const parsed = Number.parseInt(value, 10)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return 0
+}
+
+function formatRtbfRaw(value: unknown): string | null {
+  if (value == null) return null
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
+}
+
+function rtbfNoteCopy(value: string): string {
+  if (!value) return ''
+  if (value.includes('status persistence is not enabled')) {
+    return '当前后端未启用状态持久化，只返回受理状态；完整执行结果以请求返回为准。'
+  }
+  return value
+}
+
+function buildRtbfResultView(value: unknown): RtbfResultView {
+  const record = asRecord(value)
+  if (!record) {
+    return {
+      title: '尚未调用 RTBF 接口',
+      description: '默认会绑定当前账号。需要处理其他用户时，从成员列表选择；只有列表里找不到时才手动输入账号 ID。',
+      tone: 'idle',
+      badge: '默认自动绑定',
+      metrics: [
+        { label: '1 选账号', value: '自动', hint: '当前账号 / 成员列表' },
+        { label: '2 先预演', value: '安全预演', hint: '只评估不删除' },
+        { label: '3 再执行', value: '确认删除', hint: '确认后切换删除' },
+        { label: '4 查状态', value: '工单', hint: '工单自动回填' },
+      ],
+      rawText: null,
+    }
+  }
+
+  const eligible = numberValue(record.eligible)
+  const deleted = numberValue(record.deleted)
+  const errors = numberValue(record.errors)
+  const cacheInvalidations = numberValue(record.cache_invalidations)
+  const documents = Array.isArray(record.documents) ? record.documents.length : eligible
+  const dryRun = record.dry_run !== false
+  const status = stringValue(record.status, '')
+  const statusLabel = status ? (RTBF_STATUS_LABELS[status] ?? status) : ''
+  const subject = stringValue(record.subject_account_id, '')
+  const ticketId = stringValue(record.ticket_id, '')
+  const note = rtbfNoteCopy(stringValue(record.note, ''))
+  const message = stringValue(record.message, '')
+  const isStatusOnly = Boolean(ticketId && status && !('eligible' in record))
+  const title = errors > 0 ? 'RTBF 执行存在错误' : isStatusOnly ? `状态查询：${statusLabel}` : dryRun ? '安全预演完成' : '级联删除已执行'
+  const description = note || message || (dryRun
+    ? `本次只评估影响范围，命中 ${eligible} 个候选文档，未执行删除。`
+    : `本次已执行级联删除，删除 ${deleted}/${eligible} 个候选文档。`)
+
+  if (isStatusOnly) {
+    return {
+      title,
+      description,
+      tone: errors > 0 ? 'danger' : 'info',
+      badge: statusLabel || '已查询',
+      metrics: [
+        { label: '工单', value: ticketId ? `${ticketId.slice(0, 10)}...` : '-', hint: '完整 ID 见输入框' },
+        { label: '状态', value: statusLabel || '-', hint: '后端状态' },
+        { label: '持久化', value: note ? '未启用' : '-', hint: '状态存储' },
+        { label: '动作', value: '查询', hint: '未触发删除' },
+      ],
+      rawText: formatRtbfRaw(value),
+    }
+  }
+
+  return {
+    title,
+    description,
+    tone: errors > 0 ? 'danger' : isStatusOnly ? 'info' : 'success',
+    badge: errors > 0 ? '需排查' : isStatusOnly ? statusLabel || '已查询' : dryRun ? '安全预演' : '已执行',
+    metrics: [
+      { label: '候选文档', value: String(eligible || documents || 0), hint: subject ? `账号 ${subject}` : '按账号匹配' },
+      { label: '已删除', value: String(deleted), hint: dryRun ? '安全预演未删除' : '实际删除数' },
+      { label: '错误', value: String(errors), hint: errors > 0 ? '查看原始响应' : '无错误' },
+      { label: '缓存刷新', value: String(cacheInvalidations), hint: '相关数据集缓存' },
+    ],
+    rawText: formatRtbfRaw(value),
+  }
+}
+
+function rtbfToneClass(tone: RtbfTone): string {
+  if (tone === 'danger') return 'border-destructive/25 bg-destructive/10 text-destructive'
+  if (tone === 'success') return 'border-success/25 bg-success/10 text-success'
+  if (tone === 'info') return 'border-info/25 bg-info/10 text-info'
+  return 'border-border/70 bg-muted/40 text-muted-foreground'
+}
+
+function rtbfMemberLabel(member: TenantMember): { primary: string; secondary: string } {
+  const id = String(member.user_id || '').trim()
+  if (!id) return { primary: '未知成员', secondary: '缺少账号 ID' }
+  if (id.includes('@')) {
+    const [name, domain] = id.split('@')
+    return { primary: name || id, secondary: domain || id }
+  }
+  return { primary: id.length > 18 ? `${id.slice(0, 10)}...${id.slice(-6)}` : id, secondary: '账号 ID' }
+}
+
+function RtbfResultSummary({ value }: Readonly<{ value: unknown }>) {
+  const result = buildRtbfResultView(value)
+
+  return (
+    <div
+      data-testid="rtbf-result-summary"
+      className="mt-3 rounded-xl border border-border/60 bg-background/85 p-3 shadow-[0_8px_18px_rgba(15,23,42,0.025)]"
+    >
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">个人数据操作结果</div>
+          <div className="mt-1 text-[12px] font-semibold tracking-[-0.005em] text-foreground/90">{result.title}</div>
+          <p className="mt-1 max-w-3xl text-[11px] leading-[1.55] text-muted-foreground/85">{result.description}</p>
+        </div>
+        <span className={cn('inline-flex w-fit shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold', rtbfToneClass(result.tone))}>
+          {result.badge}
+        </span>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
+        {result.metrics.map((metric) => (
+          <div key={metric.label} className="rounded-lg border border-border/50 bg-muted/10 px-2.5 py-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="truncate text-[10px] font-medium text-muted-foreground/80">{metric.label}</div>
+              <div className="rounded-full bg-background px-1.5 py-0.5 text-[10px] font-semibold text-foreground/75">{metric.value}</div>
+            </div>
+            {metric.hint ? <div className="mt-1.5 truncate text-[10px] leading-3 text-muted-foreground/70">{metric.hint}</div> : null}
+          </div>
+        ))}
+      </div>
+
+      <details
+        data-testid="rtbf-raw-response"
+        className="group mt-2.5 rounded-lg border border-border/60 bg-muted/15 px-2.5 py-2 text-[11px] text-muted-foreground"
+      >
+        <summary className="cursor-pointer select-none font-medium text-foreground/75 transition-colors hover:text-primary">
+          原始响应（排障时展开）
+        </summary>
+        {result.rawText ? (
+          <pre className="mt-2 max-h-44 overflow-auto rounded-md border border-border/50 bg-background/95 p-2 font-mono text-[11px] leading-4 text-muted-foreground whitespace-pre-wrap break-words">
+            {result.rawText}
+          </pre>
+        ) : (
+          <div className="mt-2 rounded-md border border-dashed border-border/60 bg-background/70 px-2 py-1.5 text-[11px] text-muted-foreground">
+            暂无后端响应。提交请求或查询状态后，这里会保留原始材料。
+          </div>
+        )}
+      </details>
+    </div>
+  )
+}
 
 export function GovernanceSection({
   isGovernanceEnabled,
@@ -39,6 +239,60 @@ export function GovernanceSection({
   const [rtbfMaxRetries, setRtbfMaxRetries] = useState(1)
   const [rtbfRunningKey, setRtbfRunningKey] = useState<string | null>(null)
   const [rtbfResult, setRtbfResult] = useState<unknown>(null)
+  const [rtbfSubjectSource, setRtbfSubjectSource] = useState<'current' | 'member' | 'manual'>('current')
+
+  const currentAccessQuery = useQuery({
+    queryKey: queryKeys.access.current,
+    queryFn: () => rbacApi.getCurrentTenantAccess(),
+    retry: false,
+  })
+  const membersQuery = useQuery({
+    queryKey: queryKeys.rbac.members(RTBF_MEMBERS_PARAMS),
+    queryFn: async () => {
+      const res = await rbacApi.listTenantMembers(RTBF_MEMBERS_PARAMS)
+      return Array.isArray(res.items) ? res.items : []
+    },
+    retry: false,
+  })
+  const members = useMemo(() => membersQuery.data || [], [membersQuery.data])
+  const currentAccountId = String(currentAccessQuery.data?.account_id || '').trim()
+  const currentMember = useMemo(() => {
+    return (
+      members.find((member) => member.is_current && String(member.user_id || '').trim()) ||
+      members.find((member) => String(member.user_id || '').trim() === currentAccountId) ||
+      null
+    )
+  }, [currentAccountId, members])
+  const autoSubjectId = String(currentMember?.user_id || currentAccountId || '').trim()
+  const selectableMembers = useMemo(() => {
+    const seen = new Set<string>()
+    return members.filter((member) => {
+      const id = String(member.user_id || '').trim()
+      if (!id || id === autoSubjectId || seen.has(id)) return false
+      seen.add(id)
+      return true
+    })
+  }, [autoSubjectId, members])
+  const selectedMember = useMemo(
+    () => members.find((member) => String(member.user_id || '').trim() === rtbfAccountId.trim()) || null,
+    [members, rtbfAccountId]
+  )
+  const selectedSubjectValue = rtbfSubjectSource === 'current'
+    ? RTBF_CURRENT_ACCOUNT_VALUE
+    : rtbfSubjectSource === 'member' && selectedMember
+      ? String(selectedMember.user_id || '').trim()
+      : RTBF_MANUAL_ACCOUNT_VALUE
+  const subjectSourceLabel = rtbfSubjectSource === 'current'
+    ? '当前账号自动绑定'
+    : rtbfSubjectSource === 'member'
+      ? '成员列表选择'
+      : '手动覆盖'
+
+  useEffect(() => {
+    if (rtbfSubjectSource !== 'current') return
+    if (!autoSubjectId) return
+    setRtbfAccountId(autoSubjectId)
+  }, [autoSubjectId, rtbfSubjectSource])
 
   async function runRtbfAction(key: string, title: string, action: () => Promise<unknown>) {
     setRtbfRunningKey(key)
@@ -57,36 +311,23 @@ export function GovernanceSection({
     }
   }
 
-  function prettyRtbfResult(value: unknown) {
-    try {
-      return JSON.stringify(value ?? { message: '尚未调用 RTBF 接口' }, null, 2)
-    } catch {
-      return String(value)
-    }
-  }
-
   return (
-    <section className="space-y-2.5">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="flex items-center gap-1.5 text-sm font-semibold tracking-[-0.01em] text-foreground">
-          <EyeOff className="h-4 w-4 text-primary" />
-          数据治理
-        </h2>
-        <div className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
-          <span>保存后通常可立即生效</span>
-        </div>
-      </div>
-
+    <section>
       <div className={cn(systemWorkbenchTokens.panel, 'space-y-3 p-3.5')}>
-        <Alert className="p-3 shadow-none [&>svg]:left-3 [&>svg]:top-3 [&>svg~*]:pl-6">
-          <AlertCircle className="h-3.5 w-3.5" />
-          <div>
-            <AlertTitle className="text-xs">默认治理规则</AlertTitle>
-            <AlertDescription className="text-[11px] leading-4 text-foreground/80">
-              这些开关会影响“入库前清洗/脱敏”，用于没有单独配置管线（dataset/document pipeline overrides）时的默认行为。
-            </AlertDescription>
+        <div className="flex items-start justify-between gap-3">
+          <Alert className="flex-1 p-3 shadow-none [&>svg]:left-3 [&>svg]:top-3 [&>svg~*]:pl-6">
+            <AlertCircle className="h-3.5 w-3.5" />
+            <div>
+              <AlertTitle className="text-xs">默认治理规则</AlertTitle>
+              <AlertDescription className="text-[11px] leading-4 text-foreground/80">
+                这些开关会影响“入库前清洗/脱敏”，用于没有单独配置数据集或文档级管线时的默认行为。
+              </AlertDescription>
+            </div>
+          </Alert>
+          <div className="inline-flex shrink-0 items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+            保存后通常可立即生效
           </div>
-        </Alert>
+        </div>
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div className="flex items-start justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5">
@@ -110,7 +351,7 @@ export function GovernanceSection({
 
           <div className="flex items-start justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5">
             <div>
-              <div className={systemPageTokens.heading}>PII 脱敏</div>
+              <div className={systemPageTokens.heading}>个人信息脱敏</div>
               <div className={cn(systemPageTokens.subtle, 'mt-0.5')}>
                 尝试识别并匿名化手机号/邮箱等个人信息（可能影响检索/可读性）
               </div>
@@ -131,9 +372,9 @@ export function GovernanceSection({
 
           <div className="flex items-start justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5">
             <div>
-              <div className={systemPageTokens.heading}>密钥信息脱敏（secrets）</div>
+              <div className={systemPageTokens.heading}>密钥信息脱敏</div>
               <div className={cn(systemPageTokens.subtle, 'mt-0.5')}>
-                尝试识别并遮蔽 API 密钥（API Key）/令牌（Token）等敏感信息
+                尝试识别并遮蔽 API 密钥、访问令牌等敏感凭据
               </div>
             </div>
             <button
@@ -172,108 +413,183 @@ export function GovernanceSection({
           </div>
         </div>
 
-        <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <div className="flex items-center gap-1.5 text-[12px] font-semibold text-foreground">
-                <ShieldCheck className="h-3.5 w-3.5 text-info" />
-                RTBF 级联删除闭环
-              </div>
-              <div className={cn(systemPageTokens.subtle, 'mt-0.5')}>
-                默认 dry-run，只评估 subject_account_id 对应账号的文档/索引/反馈级联影响；关闭 dry-run 才会执行删除。
-              </div>
-            </div>
+        <DangerZonePanel
+          title="个人数据删除闭环（RTBF）"
+          impact="会按账号级联影响文档、分块、向量、图谱和缓存；默认只做安全预演，确认范围后才执行删除。"
+          badge="默认收起"
+          compact
+          tone="neutral"
+          icon="help"
+        >
+          <div className="grid gap-2 md:grid-cols-2">
             <button
               type="button"
-              onClick={() => setRtbfDryRun((value) => !value)}
+              onClick={() => setRtbfDryRun(true)}
               className={cn(
-                'rounded-full border px-2.5 py-1 text-[11px] font-semibold',
+                'rounded-xl border px-3 py-2 text-left transition-colors',
                 rtbfDryRun
-                  ? 'border-info/20 bg-info/10 text-info'
-                  : 'border-destructive/30 bg-destructive/10 text-destructive'
+                  ? 'border-info/30 bg-info/10 text-info shadow-[0_8px_22px_rgba(14,165,233,0.08)]'
+                  : 'border-border/60 bg-background/70 text-muted-foreground hover:border-info/25 hover:bg-info/5 hover:text-foreground'
               )}
               aria-pressed={rtbfDryRun}
             >
-              {rtbfDryRun ? 'dry-run' : 'execute'}
+              <div className="text-[12px] font-semibold">安全预演</div>
+              <div className="mt-0.5 text-[11px] leading-4 opacity-80">推荐先点这个，只返回命中文档和影响范围，不删除数据。</div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setRtbfDryRun(false)}
+              className={cn(
+                'rounded-xl border px-3 py-2 text-left transition-colors',
+                !rtbfDryRun
+                  ? 'border-destructive/35 bg-destructive/10 text-destructive shadow-[0_8px_22px_rgba(239,68,68,0.08)]'
+                  : 'border-border/60 bg-background/70 text-muted-foreground hover:border-destructive/25 hover:bg-destructive/5 hover:text-foreground'
+              )}
+              aria-pressed={!rtbfDryRun}
+            >
+              <div className="text-[12px] font-semibold">执行删除</div>
+              <div className="mt-0.5 text-[11px] leading-4 opacity-80">只在预演结果确认后使用，会调用后端级联删除并刷新相关缓存。</div>
             </button>
           </div>
 
-          <div className="mt-3 grid gap-3 md:grid-cols-4">
-            <div className="space-y-1.5 md:col-span-2">
-              <div className={FIELD_LABEL}>subject_account_id</div>
-              <Input
-                value={rtbfAccountId}
-                onChange={(event) => setRtbfAccountId(event.target.value)}
-                className="h-8 rounded-md border-border/70 bg-background text-[12px]"
-                placeholder="account/user id"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <div className={FIELD_LABEL}>max_docs</div>
-              <Input
-                value={String(rtbfMaxDocs)}
-                onChange={(event) => setRtbfMaxDocs(Number.parseInt(event.target.value || '0', 10) || 100)}
-                className="h-8 rounded-md border-border/70 bg-background text-[12px]"
-                inputMode="numeric"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <div className={FIELD_LABEL}>max_retries</div>
-              <Input
-                value={String(rtbfMaxRetries)}
-                onChange={(event) => setRtbfMaxRetries(Number.parseInt(event.target.value || '0', 10) || 1)}
-                className="h-8 rounded-md border-border/70 bg-background text-[12px]"
-                inputMode="numeric"
-              />
-            </div>
-            <div className="space-y-1.5 md:col-span-2">
-              <div className={FIELD_LABEL}>ticket_id</div>
-              <Input
-                value={rtbfTicketId}
-                onChange={(event) => setRtbfTicketId(event.target.value)}
-                className="h-8 rounded-md border-border/70 bg-background font-mono text-[12px]"
-                placeholder="请求后自动回填"
-              />
-            </div>
-            <div className="flex items-end gap-2 md:col-span-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold"
-                disabled={Boolean(rtbfRunningKey) || !rtbfAccountId.trim()}
-                onClick={() =>
-                  detachPromise(
-                    runRtbfAction('request', 'RTBF 请求', () =>
-                      rtbfApi.request({
-                        subject_account_id: rtbfAccountId.trim(),
-                        dry_run: rtbfDryRun,
-                        max_docs: rtbfMaxDocs,
-                        max_retries: rtbfMaxRetries,
-                      })
-                    )
-                  )
-                }
-              >
-                {rtbfRunningKey === 'request' ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : null}
-                请求
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold"
-                disabled={Boolean(rtbfRunningKey) || !rtbfTicketId.trim()}
-                onClick={() => detachPromise(runRtbfAction('status', 'RTBF 状态', () => rtbfApi.getStatus(rtbfTicketId.trim())))}
-              >
-                {rtbfRunningKey === 'status' ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : null}
-                查状态
-              </Button>
+          <div className="mt-3 rounded-xl border border-border/60 bg-background/75 p-3">
+            <div className="grid gap-3 md:grid-cols-4">
+              <div className="space-y-1.5 md:col-span-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className={FIELD_LABEL}>目标账号</div>
+                  <span className="rounded-full border border-info/20 bg-info/10 px-1.5 py-0.5 text-[10px] font-semibold text-info">
+                    {subjectSourceLabel}
+                  </span>
+                </div>
+                <Select
+                  value={selectedSubjectValue}
+                  onValueChange={(value) => {
+                    if (value === RTBF_CURRENT_ACCOUNT_VALUE) {
+                      setRtbfSubjectSource('current')
+                      if (autoSubjectId) setRtbfAccountId(autoSubjectId)
+                      return
+                    }
+                    if (value === RTBF_MANUAL_ACCOUNT_VALUE) {
+                      setRtbfSubjectSource('manual')
+                      return
+                    }
+                    setRtbfSubjectSource('member')
+                    setRtbfAccountId(value)
+                  }}
+                >
+                  <SelectTrigger className="h-8 rounded-md border-border/70 bg-background text-[12px]">
+                    <SelectValue placeholder="自动绑定当前账号" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={RTBF_CURRENT_ACCOUNT_VALUE}>
+                      当前账号（自动绑定）{autoSubjectId ? ` · ${autoSubjectId}` : ' · 加载中'}
+                    </SelectItem>
+                    {selectableMembers.map((member) => {
+                      const id = String(member.user_id || '').trim()
+                      const label = rtbfMemberLabel(member)
+                      return (
+                        <SelectItem key={id} value={id}>
+                          {label.primary} · {label.secondary}
+                        </SelectItem>
+                      )
+                    })}
+                    <SelectItem value={RTBF_MANUAL_ACCOUNT_VALUE}>
+                      手动输入账号 ID
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <div className="rounded-lg border border-border/60 bg-muted/10 px-2.5 py-2 text-[10px] leading-4 text-muted-foreground/80">
+                  将提交：<span className="font-mono text-foreground/80">{rtbfAccountId.trim() || '等待自动绑定'}</span>
+                  {membersQuery.isError ? '。成员列表加载失败时仍可使用手动输入。' : '。下拉会优先使用当前账号，也可切换到其他租户成员。'}
+                </div>
+              </div>
+              <div className="space-y-1.5 md:col-span-2">
+                <div className={FIELD_LABEL}>手动覆盖（找不到成员时使用）</div>
+                <Input
+                  value={rtbfSubjectSource === 'manual' ? rtbfAccountId : ''}
+                  onChange={(event) => {
+                    setRtbfSubjectSource('manual')
+                    setRtbfAccountId(event.target.value)
+                  }}
+                  className="h-8 rounded-md border-border/70 bg-background text-[12px]"
+                  placeholder="例如 user-123 / acct-1 / 用户 UUID"
+                />
+                <div className="text-[10px] leading-4 text-muted-foreground/80">
+                  后端会按文档归属账号和生命周期负责人匹配；如果填写用户 UUID，也会一并匹配。建议从成员权限或审计日志复制，不要填昵称。
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <div className={FIELD_LABEL}>最多扫描文档</div>
+                <Input
+                  value={String(rtbfMaxDocs)}
+                  onChange={(event) => setRtbfMaxDocs(Number.parseInt(event.target.value || '0', 10) || 100)}
+                  className="h-8 rounded-md border-border/70 bg-background text-[12px]"
+                  inputMode="numeric"
+                />
+                <div className="text-[10px] leading-4 text-muted-foreground/80">保护阈值，后端允许 1-1000。</div>
+              </div>
+              <div className="space-y-1.5">
+                <div className={FIELD_LABEL}>失败重试</div>
+                <Input
+                  value={String(rtbfMaxRetries)}
+                  onChange={(event) => setRtbfMaxRetries(Number.parseInt(event.target.value || '0', 10) || 1)}
+                  className="h-8 rounded-md border-border/70 bg-background text-[12px]"
+                  inputMode="numeric"
+                />
+                <div className="text-[10px] leading-4 text-muted-foreground/80">删除失败时重试，后端允许 0-10。</div>
+              </div>
+              <div className="space-y-1.5 md:col-span-2">
+                <div className={FIELD_LABEL}>状态查询工单</div>
+                <Input
+                  value={rtbfTicketId}
+                  onChange={(event) => setRtbfTicketId(event.target.value)}
+                  className="h-8 rounded-md border-border/70 bg-background font-mono text-[12px]"
+                  placeholder="提交请求后自动回填；也可粘贴已有工单 ID"
+                />
+              </div>
+              <div className="flex flex-col gap-2 md:col-span-2">
+                <div className="rounded-lg border border-dashed border-border/70 bg-muted/15 px-2.5 py-2 text-[11px] leading-4 text-muted-foreground">
+                  操作顺序：确认目标账号 → 点“开始安全预演” → 看候选文档数量 → 确认无误后切换“执行删除”。
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant={rtbfDryRun ? 'outline' : 'destructive'}
+                    className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold"
+                    disabled={Boolean(rtbfRunningKey) || !rtbfAccountId.trim()}
+                    onClick={() =>
+                      detachPromise(
+                        runRtbfAction('RTBF 请求', rtbfDryRun ? 'RTBF 安全预演' : 'RTBF 删除执行', () =>
+                          rtbfApi.request({
+                            subject_account_id: rtbfAccountId.trim(),
+                            dry_run: rtbfDryRun,
+                            max_docs: rtbfMaxDocs,
+                            max_retries: rtbfMaxRetries,
+                          })
+                        )
+                      )
+                    }
+                  >
+                    {rtbfRunningKey === 'RTBF 请求' ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : null}
+                    {rtbfDryRun ? '开始安全预演' : '确认执行删除'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold"
+                    disabled={Boolean(rtbfRunningKey) || !rtbfTicketId.trim()}
+                    onClick={() => detachPromise(runRtbfAction('RTBF 状态', 'RTBF 状态查询', () => rtbfApi.getStatus(rtbfTicketId.trim())))}
+                  >
+                    {rtbfRunningKey === 'RTBF 状态' ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : null}
+                    查询工单状态
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
 
-          <pre className={cn('mt-3 max-h-44 overflow-auto rounded-md border border-border/60 bg-background p-2 text-xs', 'whitespace-pre-wrap break-words')}>
-            {prettyRtbfResult(rtbfResult)}
-          </pre>
-        </div>
+          <RtbfResultSummary value={rtbfResult} />
+        </DangerZonePanel>
 
         <GovernanceOpsPanel />
       </div>

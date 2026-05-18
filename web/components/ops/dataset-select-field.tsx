@@ -1,5 +1,7 @@
 'use client'
 
+import { useEffect } from 'react'
+
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useDatasets } from '@/hooks/use-datasets'
@@ -14,6 +16,7 @@ export function DatasetSelectField({
   placeholder = '选择数据集',
   allLabel = '全部数据集',
   allowAll = false,
+  autoSelectFirst = false,
   className,
 }: Readonly<{
   value: string
@@ -22,11 +25,18 @@ export function DatasetSelectField({
   placeholder?: string
   allLabel?: string
   allowAll?: boolean
+  autoSelectFirst?: boolean
   className?: string
 }>) {
   const { datasets, isLoading } = useDatasets()
 
   const selectedValue = value || (allowAll ? ALL_DATASETS_VALUE : '')
+  const firstDatasetId = String(datasets[0]?.id || '').trim()
+
+  useEffect(() => {
+    if (!autoSelectFirst || allowAll || value || !firstDatasetId) return
+    onChange(firstDatasetId)
+  }, [allowAll, autoSelectFirst, firstDatasetId, onChange, value])
 
   return (
     <div className={cn('space-y-1', className)}>

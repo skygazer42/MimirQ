@@ -3,7 +3,7 @@
  */
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { TenantPermissionGate } from '@/components/auth/tenant-permission-gate'
 import { AppFrame } from '@/components/app-frame'
@@ -44,19 +44,19 @@ import { TENANT_PERMISSIONS } from '@/lib/tenant-permissions'
 import { systemPageTokens } from '@/components/ui/system-page-tokens'
 
 const SETTINGS_SECTIONS = [
-  { id: 'sec-flags', label: '功能开关' },
-  { id: 'sec-frontend', label: '前端偏好' },
-  { id: 'sec-navigation', label: '导航权限' },
-  { id: 'sec-parsers', label: '解析服务' },
-  { id: 'sec-status', label: '系统状态' },
-  { id: 'sec-models', label: '模型接入' },
-  { id: 'sec-ltr', label: 'LTR 模型' },
-  { id: 'sec-rag', label: 'RAG 配置' },
-  { id: 'sec-url', label: 'URL 采集' },
-  { id: 'sec-governance', label: '数据治理' },
-  { id: 'sec-industry-rules', label: '行业规则' },
-  { id: 'sec-observability', label: '可观测性' },
-  { id: 'sec-runtime', label: '运行时控制' },
+  { id: 'sec-models', label: '模型接入', hint: 'LLM / Embedding / Rerank 服务商' },
+  { id: 'sec-flags', label: '功能开关', hint: 'RAG/KG 能力开关与依赖提示' },
+  { id: 'sec-frontend', label: '前端偏好', hint: '本地浏览器偏好，不直接写后端' },
+  { id: 'sec-navigation', label: '导航权限', hint: '普通用户入口可见性控制' },
+  { id: 'sec-parsers', label: '解析服务', hint: '外部解析器地址、超时与解析参数' },
+  { id: 'sec-status', label: '系统状态', hint: '后端连通性与运行状态' },
+  { id: 'sec-ltr', label: 'LTR 模型', hint: '排序模型注册、回滚和启用' },
+  { id: 'sec-rag', label: 'RAG 配置', hint: '检索、召回与生成参数' },
+  { id: 'sec-url', label: 'URL 采集', hint: '网页采集与清洗策略' },
+  { id: 'sec-governance', label: '数据治理', hint: 'PII、密钥、隔离与清洗策略' },
+  { id: 'sec-industry-rules', label: '行业规则', hint: '行业规则包与解析模板' },
+  { id: 'sec-observability', label: '可观测性', hint: '监控、审计和诊断开关' },
+  { id: 'sec-runtime', label: '运行时控制', hint: '聊天、缓存、安全和流程编排' },
 ] as const
 const SETTINGS_CARD_CLASS =
   'rounded-[16px] border border-slate-200/75 bg-card shadow-sm'
@@ -86,32 +86,32 @@ function SettingsMetricStrip({
   items,
 }: Readonly<{ items: readonly SettingsMetricItem[] }>) {
   return (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+    <div
+      data-testid="settings-metric-strip"
+      className="flex flex-wrap items-center gap-1.5 rounded-[16px] border border-slate-200/75 bg-white/78 p-1.5 shadow-[0_8px_24px_rgba(15,23,42,0.03)]"
+    >
       {items.map((item) => {
         const Icon = item.icon
         return (
           <div
             key={item.label}
-            className={cn(
-              SETTINGS_CARD_CLASS,
-              'flex min-h-[68px] items-center gap-3 px-4 py-3'
-            )}
+            className="flex min-h-9 flex-1 basis-[150px] items-center gap-2 rounded-[12px] border border-slate-100 bg-slate-50/60 px-2.5 py-1.5"
           >
             <div
               className={cn(
-                'flex size-9 shrink-0 items-center justify-center rounded-[13px]',
+                'flex size-6 shrink-0 items-center justify-center rounded-[9px]',
                 SETTINGS_METRIC_TONE_CLASS[item.tone]
               )}
             >
-              <Icon className="size-[17px]" />
+              <Icon className="size-3.5" />
             </div>
-            <div className="min-w-0">
-              <p className="text-[11px] font-medium text-slate-500">
+            <div className="flex min-w-0 flex-1 items-baseline justify-between gap-2">
+              <p className="truncate text-[11px] font-medium text-slate-500">
                 {item.label}
               </p>
               <p
                 className={cn(
-                  'mt-1 text-[16px] font-semibold leading-none text-slate-950',
+                  'shrink-0 text-[13px] font-semibold leading-none text-slate-950',
                   item.valueClassName
                 )}
               >
@@ -304,6 +304,51 @@ function useSettingsScrollSpy(sectionIds: readonly string[]) {
   }, [sectionIds])
 
   return activeId
+}
+
+type SettingsSectionDefinition = (typeof SETTINGS_SECTIONS)[number]
+
+function SettingsSectionFrame({
+  section,
+  index,
+  children,
+  className,
+}: Readonly<{
+  section: SettingsSectionDefinition
+  index: number
+  children: ReactNode
+  className?: string
+}>) {
+  return (
+    <section
+      id={section.id}
+      aria-labelledby={`${section.id}-title`}
+      className={cn(
+        'scroll-mt-24 overflow-hidden rounded-[20px] border border-slate-200/70 bg-white/78 shadow-[0_14px_34px_rgba(15,23,42,0.035)]',
+        className
+      )}
+    >
+      <div className="border-b border-slate-100 bg-gradient-to-r from-slate-50/95 via-white to-blue-50/45 px-4 py-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex h-7 w-9 shrink-0 items-center justify-center rounded-[12px] border border-blue-100 bg-blue-50 text-[11px] font-black text-blue-600">
+            {String(index + 1).padStart(2, '0')}
+          </span>
+          <div className="min-w-0">
+            <h2
+              id={`${section.id}-title`}
+              className="text-[14px] font-semibold leading-tight text-slate-950"
+            >
+              {section.label}
+            </h2>
+            <p className="mt-0.5 text-[11px] leading-4 text-slate-500">
+              {section.hint}
+            </p>
+          </div>
+        </div>
+      </div>
+      <div className="space-y-3 p-3.5">{children}</div>
+    </section>
+  )
 }
 
 export default function SettingsPage() {
@@ -502,7 +547,21 @@ function SettingsContent({
   const scrollTo = useCallback((id: string) => {
     const el = document.getElementById(id)
     if (!el) return
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    const main = document.getElementById('main-content')
+    const scrollContainer = document.querySelector<HTMLElement>('[data-page-scroll-container]')
+    if (!scrollContainer) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      return
+    }
+
+    // Keep the app shell fixed; only the page body should scroll when using
+    // the settings side index. scrollIntoView can also move overflow-hidden
+    // ancestors, which visually cuts off the right pane bottom.
+    main?.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+    const containerRect = scrollContainer.getBoundingClientRect()
+    const targetRect = el.getBoundingClientRect()
+    const nextTop = targetRect.top - containerRect.top + scrollContainer.scrollTop - 8
+    scrollContainer.scrollTo({ top: Math.max(0, nextTop), behavior: 'smooth' })
   }, [])
 
   return (
@@ -535,32 +594,47 @@ function SettingsContent({
       </nav>
 
       <div className="min-w-0 space-y-4">
-        <div id="sec-flags" className="scroll-mt-24 space-y-3">
+        <SettingsSectionFrame section={SETTINGS_SECTIONS[0]} index={0}>
+          <ModelProvidersSection
+            groupedProviders={state.groupedProviders}
+            onConfigure={state.handleConfigure}
+          />
+        </SettingsSectionFrame>
+
+        <SettingsSectionFrame
+          section={SETTINGS_SECTIONS[1]}
+          index={1}
+          className="[&>div:last-child]:space-y-3"
+        >
           <RetrievalEnhancementSection state={state} />
           <FeatureFlagsSection
             editedFeatureFlags={state.editedFeatureFlags}
             getFeatureValue={state.getFeatureValue}
             toggleFeature={state.toggleFeature}
           />
-        </div>
+        </SettingsSectionFrame>
 
-        <div id="sec-frontend" className="scroll-mt-24">
+        <SettingsSectionFrame section={SETTINGS_SECTIONS[2]} index={2}>
           <FrontendPreferencesSection
             parserBackend={parserBackend}
             setParserBackend={setParserBackend}
             chunkStrategy={chunkStrategy}
             setChunkStrategy={setChunkStrategy}
           />
-        </div>
+        </SettingsSectionFrame>
 
-        <div id="sec-navigation" className="scroll-mt-24">
+        <SettingsSectionFrame section={SETTINGS_SECTIONS[3]} index={3}>
           <NavigationVisibilitySection
             navigation={state.navigationMerged}
             updateNavigation={state.updateNavigation}
           />
-        </div>
+        </SettingsSectionFrame>
 
-        <div id="sec-parsers" className="scroll-mt-24">
+        <SettingsSectionFrame
+          section={SETTINGS_SECTIONS[4]}
+          index={4}
+          className="[&>div:last-child]:space-y-4"
+        >
           <ParserServicesSection
             etl4llm={state.etl4llmMerged}
             marker={state.markerMerged}
@@ -573,25 +647,18 @@ function SettingsContent({
             updateTextIn={state.updateTextIn}
             updateMagicPDF={state.updateMagicPDF}
           />
-        </div>
+        </SettingsSectionFrame>
 
-        <div id="sec-status" className="scroll-mt-24">
+        <SettingsSectionFrame section={SETTINGS_SECTIONS[5]} index={5}>
           {state.status ? (
             <SystemStatusSection
               status={state.status}
               backendMeta={state.backendMeta}
             />
           ) : null}
-        </div>
+        </SettingsSectionFrame>
 
-        <div id="sec-models" className="scroll-mt-24">
-          <ModelProvidersSection
-            groupedProviders={state.groupedProviders}
-            onConfigure={state.handleConfigure}
-          />
-        </div>
-
-        <div id="sec-ltr" className="scroll-mt-24">
+        <SettingsSectionFrame section={SETTINGS_SECTIONS[6]} index={6}>
           <LtrModelRegistrySection
             ltrError={state.ltrError}
             ltrMessage={state.ltrMessage}
@@ -611,20 +678,20 @@ function SettingsContent({
             formatTime={state.formatTime}
             shortId={state.shortId}
           />
-        </div>
+        </SettingsSectionFrame>
 
-        <div id="sec-rag" className="scroll-mt-24">
+        <SettingsSectionFrame section={SETTINGS_SECTIONS[7]} index={7}>
           <RagSection rag={state.ragMerged} updateRag={state.updateRag} />
-        </div>
+        </SettingsSectionFrame>
 
-        <div id="sec-url" className="scroll-mt-24">
+        <SettingsSectionFrame section={SETTINGS_SECTIONS[8]} index={8}>
           <UrlIngestSection
             urlIngest={state.urlIngestMerged}
             updateUrlIngest={state.updateUrlIngest}
           />
-        </div>
+        </SettingsSectionFrame>
 
-        <div id="sec-governance" className="scroll-mt-24">
+        <SettingsSectionFrame section={SETTINGS_SECTIONS[9]} index={9}>
           <GovernanceSection
             isGovernanceEnabled={state.isGovernanceEnabled}
             isPiiAnonymizeEnabled={state.isPiiAnonymizeEnabled}
@@ -632,20 +699,20 @@ function SettingsContent({
             isQuarantineOnDropEnabled={state.isQuarantineOnDropEnabled}
             updateGovernance={state.updateGovernance}
           />
-        </div>
+        </SettingsSectionFrame>
 
-        <div id="sec-industry-rules" className="scroll-mt-24">
+        <SettingsSectionFrame section={SETTINGS_SECTIONS[10]} index={10}>
           <IndustryRulesSection />
-        </div>
+        </SettingsSectionFrame>
 
-        <div id="sec-observability" className="scroll-mt-24">
+        <SettingsSectionFrame section={SETTINGS_SECTIONS[11]} index={11}>
           <ObservabilitySection
             observability={state.observabilityMerged}
             updateObservability={state.updateObservability}
           />
-        </div>
+        </SettingsSectionFrame>
 
-        <div id="sec-runtime" className="scroll-mt-24">
+        <SettingsSectionFrame section={SETTINGS_SECTIONS[12]} index={12}>
           <RuntimeControlsSection
             chat={state.chatMerged}
             updateChat={state.updateChat}
@@ -656,7 +723,7 @@ function SettingsContent({
             langgraph={state.langGraphMerged}
             updateLangGraph={state.updateLangGraph}
           />
-        </div>
+        </SettingsSectionFrame>
       </div>
     </div>
   )

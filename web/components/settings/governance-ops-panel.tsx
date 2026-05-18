@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
-import { FileClock, Loader2, Trash2 } from 'lucide-react'
+import { Database, FileClock, Loader2, Trash2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -13,6 +13,7 @@ import { Panel } from '@/components/ui/panel'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DatasetSelectField } from '@/components/ops/dataset-select-field'
 import { OperationResultPanel } from '@/components/ops/operation-result-panel'
+import { DangerZonePanel } from '@/components/settings/danger-zone-panel'
 import { chunkPresetApi, governanceApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { detachPromise } from '@/lib/utils'
@@ -42,16 +43,32 @@ export function GovernanceOpsPanel() {
     <Panel padding="md" className="border-border/70 bg-card/95">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <div className="text-sm font-semibold text-foreground">治理运维操作</div>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            查询数据集待复核/过期文档；Chunk Preset 删除属于高风险维护，默认收进高级参数。
+          <div className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+            <Database className="h-3.5 w-3.5 text-primary" />
+            数据集复核运维
+          </div>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground/85">
+            待复核/过期文档是按数据集查询，已自动绑定首个可用数据集，可按需切换。
+            切块预设删除不按数据集筛选，放在高级维护里单独确认。
           </p>
         </div>
-        {busy ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground motion-reduce:animate-none" /> : null}
+        <div className="flex items-center gap-2">
+          <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+            {datasetId ? '已绑定数据集' : '等待数据集'}
+          </span>
+          {busy ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground motion-reduce:animate-none" /> : null}
+        </div>
       </div>
 
       <div className="mt-3 grid gap-2 md:grid-cols-4">
-        <DatasetSelectField value={datasetId} onChange={setDatasetId} />
+        <DatasetSelectField
+          value={datasetId}
+          onChange={setDatasetId}
+          label="绑定数据集"
+          placeholder="选择要巡检的数据集"
+          autoSelectFirst
+          className="md:col-span-2"
+        />
         <Field label="复核范围">
           <Select value={mode} onValueChange={(value) => setMode(value as typeof mode)}>
             <SelectTrigger className="h-8 text-xs">
@@ -69,35 +86,47 @@ export function GovernanceOpsPanel() {
         </Field>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
-        <ActionButton icon={FileClock} busy={busy === 'stale'} disabled={Boolean(busy) || !datasetId.trim()} label="Stale 文档" onClick={() => runAction('stale', 'Stale 文档', () => governanceApi.listStaleDocumentsByDataset(datasetId.trim(), { mode, due_within_days: dueWithinDays, limit: 50 }))} />
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <ActionButton icon={FileClock} busy={busy === 'stale'} disabled={Boolean(busy) || !datasetId.trim()} label="查询待复核文档" onClick={() => runAction('stale', '待复核文档', () => governanceApi.listStaleDocumentsByDataset(datasetId.trim(), { mode, due_within_days: dueWithinDays, limit: 50 }))} />
+        <div className="text-[11px] leading-4 text-muted-foreground/75">
+          当前接口：<span className="font-mono">/governance/datasets/{'{dataset_id}'}/stale-documents</span>
+        </div>
       </div>
 
-      <details className="mt-3 rounded-lg border border-border/60 bg-background/70 p-3">
-        <summary className="cursor-pointer text-xs font-semibold text-foreground">高级参数（可选）</summary>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">仅在确认不再引用某个 Chunk Preset 时使用删除操作。</p>
+      <DangerZonePanel
+        className="mt-3"
+        title="切块预设删除"
+        impact="不按上方数据集筛选；删除前请确认没有数据集或入库策略继续引用该预设。"
+        badge="高级维护"
+        compact
+        tone="neutral"
+        icon="help"
+      >
+        <p className="text-xs leading-5 text-muted-foreground">
+          这里不跟上方数据集巡检联动；删除前请确认没有数据集或入库策略继续引用该预设。
+        </p>
         <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
-          <Field label="Chunk Preset">
+          <Field label="切块预设 ID">
             <Input value={presetId} onChange={(event) => setPresetId(event.target.value)} className="h-8 font-mono text-xs" />
           </Field>
           <ConfirmDialog
-            title="删除 Chunk Preset？"
-            description={`将删除 chunk_preset_id=${presetId.trim() || '-'}。如果数据集仍引用该 preset，后续策略可能需要重新配置。`}
-            confirmLabel="删除 Preset"
-            onConfirm={() => runAction('delete-preset', '删除 Chunk Preset', async () => {
+            title="删除切块预设？"
+            description={`将删除切块预设 ID=${presetId.trim() || '-'}。如果数据集仍引用该预设，后续策略可能需要重新配置。`}
+            confirmLabel="确认删除"
+            onConfirm={() => runAction('delete-preset', '删除切块预设', async () => {
               await chunkPresetApi.delete(presetId.trim())
               return { preset_id: presetId.trim(), deleted: true }
             })}
           >
             <Button variant="outline" className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold" disabled={Boolean(busy) || !presetId.trim()}>
               {busy === 'delete-preset' ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <Trash2 className="h-3.5 w-3.5" />}
-              删除 Chunk Preset
+              删除切块预设
             </Button>
           </ConfirmDialog>
         </div>
-      </details>
+      </DangerZonePanel>
 
-      <OperationResultPanel className="mt-3" title="治理运维结果" result={result} emptyMessage="选择上方操作后，这里展示执行摘要；原始响应默认收起。" />
+      <OperationResultPanel className="mt-3" title="治理运维结果" result={result} emptyMessage="选择绑定数据集后查询待复核文档；原始响应默认收起。" />
     </Panel>
   )
 }

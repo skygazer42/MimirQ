@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   FileJson,
   LayoutGrid,
+  Trash2,
   ChevronLeft,
   ChevronRight,
   type LucideIcon,
@@ -25,6 +26,7 @@ import { TenantPermissionGate } from '@/components/auth/tenant-permission-gate'
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -37,11 +39,15 @@ import {
 import { auditApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { queryKeys } from '@/lib/query-keys'
-import { TENANT_PERMISSIONS } from '@/lib/tenant-permissions'
+import {
+  TENANT_PERMISSIONS,
+  tenantAccessAllows,
+} from '@/lib/tenant-permissions'
 import type { AuditLogItem, AuditLogListResponse } from '@/types'
 import { cn } from '@/lib/utils'
 import { EmptyState } from '@/components/ui/empty-state'
 import { AuditRetentionPanel } from '@/components/audit/audit-retention-panel'
+import { useTenantAccess } from '@/hooks/use-tenant-access'
 
 // --- Constants ---
 
@@ -97,6 +103,100 @@ function withCurrentOption(options: string[], current: string) {
 
 function compactOption(value: string, max = 42) {
   return value.length > max ? `${value.slice(0, Math.max(8, max - 1))}…` : value
+}
+
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  'audit.logs.purge': '审计日志清理',
+  'audit.logs.retention': '审计保留策略',
+  'compliance.access_graph.export': '访问回溯导出',
+  'compliance.access_review.daily': '访问审查（日常）',
+  'dataset.retention.sweep': '数据集保留清理',
+  'document.version.retention_delete': '文档版本保留删除',
+  'evaluations.regression_runs.retention': '评测运行保留清理',
+  'evidence.drift_audit.daily': '证据策略（日常）',
+  'knowledge.assets.retention': '知识资产保留清理',
+  'observability.index_audit.daily': '索引审计（日常）',
+}
+
+const AUDIT_TERM_LABELS: Record<string, string> = {
+  access: '访问',
+  account: '账号',
+  answer: '回答',
+  api: '接口',
+  asset: '资产',
+  assets: '资产',
+  audit: '审计',
+  chat: '对话',
+  chunk: '分块',
+  chunks: '分块',
+  compliance: '合规',
+  completed: '已完成',
+  create: '创建',
+  created: '已创建',
+  daily: '日常',
+  dataset: '数据集',
+  datasets: '数据集',
+  delete: '删除',
+  deleted: '已删除',
+  document: '文档',
+  documents: '文档',
+  drift: '漂移',
+  evidence: '证据',
+  export: '导出',
+  failed: '失败',
+  graph: '图谱',
+  index: '索引',
+  ingest: '入库',
+  ingestion: '入库',
+  kg: '知识图谱',
+  knowledge: '知识库',
+  log: '日志',
+  logs: '日志',
+  parse: '解析',
+  purge: '清理',
+  query: '查询',
+  retention: '保留',
+  review: '审查',
+  run: '运行',
+  runs: '运行',
+  started: '已开始',
+  sweep: '扫描清理',
+  version: '版本',
+}
+
+const AUDIT_RESOURCE_TYPE_LABELS: Record<string, string> = {
+  audit_logs: '审计日志',
+  dataset: '数据集',
+  dataset_member_permission: '数据集成员权限',
+  dataset_group_permission: '数据集组权限',
+  document: '文档',
+  document_member_permission: '文档成员权限',
+  document_group_permission: '文档组权限',
+  document_version: '文档版本',
+  knowledge_asset: '知识资产',
+  regression_run: '评测运行',
+  stale_report: '过期报告',
+}
+
+function humanizeAuditTokens(value: string) {
+  return value
+    .split(/[._:-]+/)
+    .map((part) => part.trim().toLowerCase())
+    .filter(Boolean)
+    .map((part) => AUDIT_TERM_LABELS[part] || part)
+    .join(' / ')
+}
+
+function formatAuditAction(value: string | null | undefined) {
+  const raw = String(value || '').trim()
+  if (!raw) return '未记录动作'
+  return AUDIT_ACTION_LABELS[raw] || humanizeAuditTokens(raw)
+}
+
+function formatAuditResourceType(value: string | null | undefined) {
+  const raw = String(value || '').trim()
+  if (!raw) return '未绑定资源'
+  return AUDIT_RESOURCE_TYPE_LABELS[raw] || humanizeAuditTokens(raw)
 }
 
 function formatAuditDateTime(value: string) {
@@ -169,10 +269,10 @@ function PresetButton({
       variant="outline"
       size="sm"
       className={cn(
-        'h-7 rounded-full px-3 text-[11px] font-bold transition-all border-slate-200 shadow-none hover:bg-slate-50',
+        'h-7 rounded-full px-3 text-[11px] font-bold shadow-none transition-all',
         active
-          ? 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100'
-          : 'bg-card text-slate-600'
+          ? 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700 hover:text-white'
+          : 'border-blue-100 bg-blue-50/35 text-slate-600 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700'
       )}
       onClick={onClick}
     >
@@ -188,6 +288,7 @@ function BoundFilterSelect({
   options,
   allLabel,
   loading,
+  formatOption,
   onChange,
 }: {
   id: string
@@ -196,9 +297,13 @@ function BoundFilterSelect({
   options: string[]
   allLabel: string
   loading?: boolean
+  formatOption?: (value: string) => string
   onChange: (value: string) => void
 }) {
   const emptyValue = `${FILTER_EMPTY_VALUE_PREFIX}-${id}`
+  const currentLabel = value
+    ? compactOption(formatOption ? formatOption(value) : value, 28)
+    : allLabel
 
   return (
     <div className="space-y-1">
@@ -217,7 +322,7 @@ function BoundFilterSelect({
           aria-label={label}
           className="h-9 rounded-lg border-slate-200 bg-slate-50/60 text-left text-xs font-medium text-slate-700 shadow-none hover:border-blue-200 hover:bg-card focus-visible:ring-blue-100"
         >
-          <SelectValue placeholder={allLabel} />
+          <span className="truncate">{currentLabel}</span>
         </SelectTrigger>
         <SelectContent className="max-h-72 rounded-xl border-slate-200 bg-card text-slate-700 shadow-lg">
           <SelectItem value={FILTER_ALL_VALUE} className="text-xs font-medium">
@@ -229,7 +334,16 @@ function BoundFilterSelect({
               value={option}
               className="text-xs font-medium"
             >
-              {compactOption(option)}
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span className="truncate">
+                  {compactOption(formatOption ? formatOption(option) : option)}
+                </span>
+                {formatOption && formatOption(option) !== option && (
+                  <span className="truncate font-mono text-[10px] font-normal text-slate-400">
+                    {compactOption(option, 56)}
+                  </span>
+                )}
+              </span>
             </SelectItem>
           ))}
           {!options.length && (
@@ -270,6 +384,13 @@ function AuditLogsPageContent() {
 
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [showAdvanced, setShowAdvanced] = useState(true)
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [deletingScope, setDeletingScope] = useState<string | null>(null)
+  const tenantAccess = useTenantAccess()
+  const canManageAudit = tenantAccessAllows(
+    tenantAccess.data,
+    TENANT_PERMISSIONS.AUDIT_MANAGE
+  )
 
   const presets = useMemo(
     () => [
@@ -354,6 +475,16 @@ function AuditLogsPageContent() {
   const page = Math.floor(skip / limit) + 1
   const totalPages = Math.max(1, Math.ceil(total / limit))
   const displayPage = Math.min(page, totalPages)
+  const visibleLogIds = useMemo(
+    () => (resp?.items || []).map((item) => item.id),
+    [resp?.items]
+  )
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
+  const selectedVisibleCount = visibleLogIds.filter((id) =>
+    selectedSet.has(id)
+  ).length
+  const allVisibleSelected =
+    visibleLogIds.length > 0 && selectedVisibleCount === visibleLogIds.length
   const activeFilterCount = Object.values(filters).filter((v) =>
     String(v || '').trim()
   ).length
@@ -401,6 +532,14 @@ function AuditLogsPageContent() {
       ),
     [optionSourceItems, filters.resource_id]
   )
+  const auditOperationFilters = useMemo(() => {
+    const out: Record<string, string> = {}
+    for (const [key, value] of Object.entries(filters)) {
+      const trimmed = String(value || '').trim()
+      if (trimmed) out[key] = trimmed
+    }
+    return out
+  }, [filters])
 
   const setFilterValue = useCallback((key: AuditFilterKey, value: string) => {
     setSkip(0)
@@ -425,6 +564,60 @@ function AuditLogsPageContent() {
       : 20
     setLimit(safeLimit)
     setSkip(0)
+  }
+
+  const refetchAuditLogs = async () => {
+    await Promise.all([logsQuery.refetch(), filterOptionsQuery.refetch()])
+  }
+
+  const toggleSelectAllVisible = (checked: boolean) => {
+    setSelectedIds((current) => {
+      const next = new Set(current)
+      for (const id of visibleLogIds) {
+        if (checked) next.add(id)
+        else next.delete(id)
+      }
+      return Array.from(next)
+    })
+  }
+
+  const toggleSelectLog = (id: string, checked: boolean) => {
+    setSelectedIds((current) => {
+      const next = new Set(current)
+      if (checked) next.add(id)
+      else next.delete(id)
+      return Array.from(next)
+    })
+  }
+
+  const handleDeleteLog = async (id: string) => {
+    setDeletingScope(id)
+    try {
+      const result = await auditApi.deleteLog(id)
+      setSelectedIds((current) => current.filter((value) => value !== id))
+      toast.success(`已删除 ${result.deleted} 条审计日志`)
+      await refetchAuditLogs()
+    } catch (error) {
+      toast.error(formatApiError(error, '删除审计日志失败'))
+    } finally {
+      setDeletingScope(null)
+    }
+  }
+
+  const handleBulkDeleteLogs = async () => {
+    if (selectedIds.length === 0) return
+    setDeletingScope('bulk')
+    try {
+      const ids = [...selectedIds]
+      const result = await auditApi.bulkDeleteLogs(ids)
+      setSelectedIds([])
+      toast.success(`已删除 ${result.deleted} 条审计日志`)
+      await refetchAuditLogs()
+    } catch (error) {
+      toast.error(formatApiError(error, '批量删除审计日志失败'))
+    } finally {
+      setDeletingScope(null)
+    }
   }
 
   return (
@@ -545,6 +738,7 @@ function AuditLogsPageContent() {
                   options={actionOptions}
                   allLabel="全部动作"
                   loading={filterOptionsLoading}
+                  formatOption={formatAuditAction}
                   onChange={(value) => setFilterValue('action', value)}
                 />
                 <BoundFilterSelect
@@ -572,6 +766,7 @@ function AuditLogsPageContent() {
                   options={resourceTypeOptions}
                   allLabel="全部资源类型"
                   loading={filterOptionsLoading}
+                  formatOption={formatAuditResourceType}
                   onChange={(value) => setFilterValue('resource_type', value)}
                 />
                 <BoundFilterSelect
@@ -606,14 +801,16 @@ function AuditLogsPageContent() {
               </div>
             )}
 
-            <div className="mt-6 flex items-center border-t border-slate-50 pt-4">
-              <span className="text-[11px] font-medium text-slate-400">
-                总计：{total} · 筛选项来自后端审计日志
-              </span>
-            </div>
+            <AuditRetentionPanel
+              filters={auditOperationFilters}
+              activeFilterCount={activeFilterCount}
+              total={total}
+              onAfterPurge={() => {
+                void logsQuery.refetch()
+                void filterOptionsQuery.refetch()
+              }}
+            />
           </div>
-
-          <AuditRetentionPanel />
 
           {/* Table Canvas */}
           <div className="bg-card rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden">
@@ -626,14 +823,48 @@ function AuditLogsPageContent() {
                   按后端审计日志展示时间、操作者、事件名称、资源/租户与操作明细。
                 </p>
               </div>
-              <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-500">
-                共 {total} 条
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {selectedIds.length > 0 && (
+                  <ConfirmDialog
+                    title="确认批量删除审计日志"
+                    description={`将真实删除已选 ${selectedIds.length} 条审计日志。删除后会新增一条批量删除审计记录。`}
+                    confirmLabel="删除已选"
+                    confirmVariant="destructive"
+                    confirmDisabled={deletingScope === 'bulk' || !canManageAudit}
+                    onConfirm={handleBulkDeleteLogs}
+                  >
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={!canManageAudit || Boolean(deletingScope)}
+                      className="h-8 gap-1.5 rounded-lg border-red-100 bg-red-50 px-3 text-[11px] font-bold text-red-700 shadow-none hover:bg-red-100 hover:text-red-800"
+                    >
+                      <Trash2 className="size-3.5" />
+                      删除已选 {selectedIds.length}
+                    </Button>
+                  </ConfirmDialog>
+                )}
+                <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-500">
+                  共 {total} 条
+                </div>
               </div>
             </div>
             <div className="max-h-[640px] overflow-auto">
               <table className="w-full border-collapse">
                 <thead className="sticky top-0 z-10">
                   <tr className="border-b border-slate-100 bg-slate-50/95 text-left backdrop-blur">
+                    <th className="w-10 px-6 py-3.5">
+                      <input
+                        type="checkbox"
+                        aria-label="选择当前页审计日志"
+                        disabled={!canManageAudit || visibleLogIds.length === 0}
+                        checked={allVisibleSelected}
+                        onChange={(event) =>
+                          toggleSelectAllVisible(event.currentTarget.checked)
+                        }
+                        className="size-3.5 rounded border-slate-300 text-blue-600 accent-blue-600"
+                      />
+                    </th>
                     <th className="px-6 py-3.5 text-[11px] font-semibold tracking-[0.08em] text-slate-500">
                       时间
                     </th>
@@ -659,15 +890,22 @@ function AuditLogsPageContent() {
                           key={log.id}
                           log={log}
                           expanded={expandedId === log.id}
+                          selected={selectedSet.has(log.id)}
+                          canDelete={canManageAudit}
+                          deleting={deletingScope === log.id}
+                          onSelectChange={(checked) =>
+                            toggleSelectLog(log.id, checked)
+                          }
                           onToggle={() =>
                             setExpandedId(expandedId === log.id ? null : log.id)
                           }
                           onCopy={handleCopy}
+                          onDelete={() => handleDeleteLog(log.id)}
                         />
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={5} className="py-20">
+                        <td colSpan={6} className="py-20">
                           <EmptyState
                             icon={ScrollText}
                             title={t('emptyState.title')}
@@ -679,7 +917,7 @@ function AuditLogsPageContent() {
                   ) : (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={6}
                         className="p-12 text-center text-xs text-slate-400 font-medium"
                       >
                         {loading ? (
@@ -777,27 +1015,50 @@ function AuditLogsPageContent() {
 function AuditRow({
   log,
   expanded,
+  selected,
+  canDelete,
+  deleting,
+  onSelectChange,
   onToggle,
   onCopy,
+  onDelete,
 }: {
   log: AuditLogItem
   expanded: boolean
+  selected: boolean
+  canDelete: boolean
+  deleting: boolean
+  onSelectChange: (checked: boolean) => void
   onToggle: () => void
   onCopy: (s: string) => void
+  onDelete: () => void | Promise<void>
 }) {
   const resource = [log.resource_type, log.resource_id]
     .filter(Boolean)
     .join(': ')
   const timestamp = formatAuditDateTime(log.created_at)
+  const actionLabel = formatAuditAction(log.action)
+  const resourceTypeLabel = formatAuditResourceType(log.resource_type)
 
   return (
     <>
       <tr
         className={cn(
           'hover:bg-slate-50/50 transition-colors group cursor-pointer',
-          expanded && 'bg-blue-50/20'
+          expanded && 'bg-blue-50/20',
+          selected && 'bg-blue-50/30'
         )}
       >
+        <td className="px-6 py-4 align-top">
+          <input
+            type="checkbox"
+            aria-label={`选择审计日志 ${log.id}`}
+            disabled={!canDelete}
+            checked={selected}
+            onChange={(event) => onSelectChange(event.currentTarget.checked)}
+            className="mt-1 size-3.5 rounded border-slate-300 text-blue-600 accent-blue-600"
+          />
+        </td>
         <td className="px-6 py-4" onClick={onToggle}>
           <div className="flex flex-col">
             <span className="text-[12px] font-semibold text-slate-800 leading-none mb-1">
@@ -827,7 +1088,10 @@ function AuditRow({
         </td>
         <td className="px-6 py-4" onClick={onToggle}>
           <div className="max-w-[320px]">
-            <div className="truncate font-mono text-[13px] font-semibold text-slate-800">
+            <div className="truncate text-[13px] font-semibold text-slate-800">
+              {actionLabel}
+            </div>
+            <div className="mt-1 truncate font-mono text-[10px] text-slate-400">
               {log.action}
             </div>
             {log.request_id && (
@@ -839,9 +1103,14 @@ function AuditRow({
         </td>
         <td className="px-6 py-4" onClick={onToggle}>
           <div className="max-w-[320px]">
-            <div className="truncate font-mono text-[11px] font-medium text-slate-600">
-              {resource || '未绑定资源'}
+            <div className="truncate text-[12px] font-semibold text-slate-700">
+              {log.resource_type ? resourceTypeLabel : '未绑定资源'}
             </div>
+            {resource && (
+              <div className="mt-1 truncate font-mono text-[10px] font-medium text-slate-400">
+                {resource}
+              </div>
+            )}
             <div className="mt-1 truncate text-[10px] font-medium text-slate-400">
               租户 <span className="font-mono">{log.tenant_id || '-'}</span>
             </div>
@@ -865,12 +1134,34 @@ function AuditRow({
             >
               <FileJson className="size-3" /> JSON
             </Button>
+            <ConfirmDialog
+              title="确认删除审计日志"
+              description="将真实删除这条审计日志。删除后会新增一条删除操作审计记录。"
+              confirmLabel="删除"
+              confirmVariant="destructive"
+              confirmDisabled={!canDelete || deleting}
+              onConfirm={onDelete}
+            >
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!canDelete || deleting}
+                className="h-7 gap-1.5 rounded-lg border-red-100 bg-red-50 px-2.5 text-[10px] font-black text-red-700 shadow-none transition-all hover:bg-red-100 hover:text-red-800"
+              >
+                {deleting ? (
+                  <RefreshCw className="size-3 animate-spin" />
+                ) : (
+                  <Trash2 className="size-3" />
+                )}
+                删除
+              </Button>
+            </ConfirmDialog>
           </div>
         </td>
       </tr>
       {expanded && (
         <tr className="bg-blue-50/10">
-          <td colSpan={5} className="px-6 pb-6">
+          <td colSpan={6} className="px-6 pb-6">
             <div className="rounded-xl border border-blue-100 bg-card p-4 shadow-inner relative group">
               <Button
                 variant="ghost"

@@ -9,5 +9,7 @@ describe('audit page productized operations', () => {
 
     expect(src).toContain("import { AuditRetentionPanel } from '@/components/audit/audit-retention-panel'")
     expect(src).toContain('<AuditRetentionPanel')
+    expect(src).toContain('filters={auditOperationFilters}')
+    expect(src).not.toContain('<AuditRetentionPanel />')
   })
 })

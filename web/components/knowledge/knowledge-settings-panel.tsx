@@ -135,19 +135,45 @@ function getConnectorRunProgress(stats: any) {
   return { total, processed }
 }
 
-const EMBEDDING_MODEL_OPTIONS = [
-  'text-embedding-v3',
-  'text-embedding-3-small',
-  'bge-large-zh',
+const EMBEDDING_PRESETS = [
+  {
+    model: 'text-embedding-v4',
+    provider: 'dashscope',
+    apiBase: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    brand: 'Qwen Embedding',
+  },
+  {
+    model: 'text-embedding-v3',
+    provider: 'dashscope',
+    apiBase: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    brand: 'Qwen Embedding',
+  },
+  {
+    model: 'text-embedding-3-small',
+    provider: 'openai_compatible',
+    apiBase: 'https://api.openai.com/v1',
+    brand: 'OpenAI Embedding',
+  },
+  {
+    model: 'bge-large-zh',
+    provider: 'local',
+    apiBase: '',
+    brand: '本地 Embedding',
+  },
 ] as const
+type EmbeddingPresetModel = (typeof EMBEDDING_PRESETS)[number]['model']
 const SETTINGS_GUIDE_PANEL_ID = 'knowledge-settings-guide'
 const EMBEDDING_MODEL_META: Record<
-  (typeof EMBEDDING_MODEL_OPTIONS)[number],
+  EmbeddingPresetModel,
   { description: string; chips: string[] }
 > = {
+  'text-embedding-v4': {
+    description: '阿里云百炼当前推荐文本向量模型，适合作为中文 RAG 的默认选择。',
+    chips: ['Qwen3 向量', '官方推荐', '中文优先'],
+  },
   'text-embedding-v3': {
-    description: '兼顾精度与成本，适合作为系统默认模型。',
-    chips: ['推荐默认', '中英混合', '通用语义'],
+    description: '适合兼容已有百炼 v3 索引或低成本平滑迁移场景。',
+    chips: ['Qwen3 向量', '兼容迁移', '中文友好'],
   },
   'text-embedding-3-small': {
     description: '响应更轻量，适合成本敏感或高频检索场景。',
@@ -157,6 +183,39 @@ const EMBEDDING_MODEL_META: Record<
     description: '中文语义更强，适合中文知识库和条款型文本。',
     chips: ['中文增强', '本地可部署', '长文本友好'],
   },
+}
+
+function findEmbeddingPreset(model: string) {
+  return (
+    EMBEDDING_PRESETS.find((preset) => preset.model === model) ??
+    EMBEDDING_PRESETS[0]
+  )
+}
+
+function normalizeApiBase(value: string | null | undefined): string {
+  return String(value || '').trim().toLowerCase()
+}
+
+function inferEmbeddingBrand(
+  embedding: KnowledgeSettingsConfig['embedding'] | null | undefined
+): string {
+  if (!embedding) return '未识别'
+  const model = String(embedding.model || '').trim().toLowerCase()
+  const provider = String(embedding.provider || '').trim().toLowerCase()
+  const apiBase = normalizeApiBase(embedding.api_base)
+
+  if (
+    provider === 'dashscope' ||
+    apiBase.includes('dashscope.aliyuncs.com') ||
+    model === 'text-embedding-v4' ||
+    model === 'text-embedding-v3'
+  ) {
+    return 'Qwen Embedding'
+  }
+  if (provider === 'local' || model === 'bge-large-zh') {
+    return '本地 Embedding'
+  }
+  return 'OpenAI Embedding'
 }
 
 function cloneSettingsConfig(
@@ -325,6 +384,7 @@ export function KnowledgeSettingsPanel({
   const scopeDatasetId = selectedDatasetId || 'global-default'
   const selectedDatasetName =
     selectedDataset?.name || selectedDatasetId || '系统默认'
+  const currentEmbeddingBrand = inferEmbeddingBrand(savedConfig?.embedding)
   const scopeLabel = isDatasetScoped ? selectedDatasetName : '系统默认'
   const scopeDetail = isDatasetScoped
     ? `${selectedDatasetName} · ${selectedDatasetId}`
@@ -354,14 +414,20 @@ export function KnowledgeSettingsPanel({
   const topKTrackPercent = ((retrievalTopK - 1) / (50 - 1)) * 100
   const similarityTrackPercent = similarityThreshold * 100
   const comparisonMetrics: Record<
-    (typeof EMBEDDING_MODEL_OPTIONS)[number],
+    EmbeddingPresetModel,
     Array<{ label: string; value: string; dots: number; tone: string }>
   > = {
-    'text-embedding-v3': [
+    'text-embedding-v4': [
       { label: '准确率', value: '高', dots: 4, tone: 'bg-success' },
       { label: '成本', value: '中等', dots: 2, tone: 'bg-warning' },
       { label: '速度', value: '快', dots: 4, tone: 'bg-success' },
       { label: '中文能力', value: '强', dots: 4, tone: 'bg-success' },
+    ],
+    'text-embedding-v3': [
+      { label: '准确率', value: '中高', dots: 3, tone: 'bg-success' },
+      { label: '成本', value: '中等', dots: 2, tone: 'bg-warning' },
+      { label: '速度', value: '快', dots: 4, tone: 'bg-success' },
+      { label: '中文能力', value: '较强', dots: 3, tone: 'bg-success' },
     ],
     'text-embedding-3-small': [
       { label: '准确率', value: '中等', dots: 2, tone: 'bg-warning' },
@@ -590,8 +656,13 @@ export function KnowledgeSettingsPanel({
                       <span className="text-[10px] text-muted-foreground/72">
                         嵌入模型
                       </span>
-                      <span className="max-w-[8rem] truncate text-[10px] font-medium text-foreground">
-                        {savedConfig?.embedding.model || '-'}
+                      <span className="max-w-[8rem] truncate text-right">
+                        <span className="block truncate text-[10px] font-medium text-foreground">
+                          {savedConfig?.embedding.model || '-'}
+                        </span>
+                        <span className="mt-0.5 block truncate text-[9px] text-muted-foreground/62">
+                          {currentEmbeddingBrand}
+                        </span>
                       </span>
                     </div>
                   </div>
@@ -647,7 +718,8 @@ export function KnowledgeSettingsPanel({
 
               <div className="p-3">
                 <div className="grid gap-2 xl:grid-cols-3">
-                  {EMBEDDING_MODEL_OPTIONS.map((model) => {
+                  {EMBEDDING_PRESETS.map((preset) => {
+                    const model = preset.model
                     const selected = draftConfig?.embedding.model === model
                     const metrics = comparisonMetrics[model]
                     return (
@@ -659,7 +731,12 @@ export function KnowledgeSettingsPanel({
                             prev
                               ? {
                                   ...prev,
-                                  embedding: { ...prev.embedding, model },
+                                  embedding: {
+                                    ...prev.embedding,
+                                    provider: preset.provider,
+                                    api_base: preset.apiBase,
+                                    model,
+                                  },
                                 }
                               : null
                           )
@@ -699,7 +776,7 @@ export function KnowledgeSettingsPanel({
                             >
                               {model}
                             </div>
-                            {model === 'text-embedding-v3' ? (
+                            {model === 'text-embedding-v4' ? (
                               <span className="rounded-full bg-success/10 px-1.5 py-0.5 text-[9px] font-medium text-success">
                                 推荐
                               </span>
@@ -713,6 +790,15 @@ export function KnowledgeSettingsPanel({
                         <p className="mt-2 text-[10px] leading-4.5 text-muted-foreground/74">
                           {EMBEDDING_MODEL_META[model].description}
                         </p>
+
+                        <div className="mt-2 flex items-center justify-between gap-3 text-[9px]">
+                          <span className="rounded-full border border-sky-100/80 bg-white/85 px-2 py-0.5 font-medium text-foreground/75 dark:border-border/70 dark:bg-background/62">
+                            {preset.brand}
+                          </span>
+                          <span className="font-mono text-muted-foreground/62">
+                            {preset.provider}
+                          </span>
+                        </div>
 
                         <div className="mt-3 grid grid-cols-4 gap-1.5">
                           {metrics.map((metric) => (
@@ -763,9 +849,9 @@ export function KnowledgeSettingsPanel({
                     <div className="text-[10px] text-foreground/82">
                       当前数据建议：您的数据集中中文占比较高，建议优先使用{' '}
                       <span className="font-medium text-foreground">
-                        bge-large-zh
+                        text-embedding-v4
                       </span>{' '}
-                      模型以获得更好的中文语义理解效果。
+                      或本地中文增强模型，以获得更好的中文语义理解效果。
                     </div>
                   </div>
                 </div>

@@ -9,15 +9,14 @@ from __future__ import annotations
 import gzip as gzip_lib
 import io
 import json
-from app.rag.core.logging import get_logger
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import and_, desc, or_
 from sqlalchemy.orm import Session
 
@@ -30,7 +29,14 @@ from app.models.document import Document, DocumentPermission
 from app.models.group_permissions import DatasetGroupPermission, DocumentGroupPermission
 from app.models.tenant_group import TenantGroup, TenantGroupMember
 from app.rag.core.hashing import stable_hash
-from app.services.audit_log_retention import plan_audit_log_purge, purge_audit_log_rows
+from app.rag.core.logging import get_logger
+from app.services.audit_log_retention import (
+    delete_audit_log_rows,
+    plan_audit_log_purge,
+    plan_filtered_audit_log_purge,
+    purge_audit_log_rows,
+    purge_filtered_audit_log_rows,
+)
 from app.services.audit_log_service import audit_log_event
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 
@@ -100,11 +106,24 @@ class AuditLogListResponse(BaseModel):
 
 class AuditLogPurgeResponse(BaseModel):
     dry_run: bool = True
+    scope: str = "retention"
     retention_days: int
     cutoff: datetime
     max_delete: int
     eligible: int
     deleted: int
+    filters: dict[str, Any] = Field(default_factory=dict)
+
+
+class AuditLogDeleteRequest(BaseModel):
+    ids: list[UUID] = Field(..., min_length=1, max_length=500)
+
+
+class AuditLogDeleteResponse(BaseModel):
+    requested: int
+    deleted: int
+    missing: int
+    ids: list[UUID]
 
 
 def _sanitize_details(details: dict[str, Any], *, include_sensitive: bool) -> dict[str, Any]:
@@ -167,6 +186,10 @@ def _dt_to_json(v: Any) -> str | None:
     if s.endswith("+00:00"):
         s = s[:-6] + "Z"
     return s
+
+
+def _dedupe_uuids(values: list[UUID]) -> list[UUID]:
+    return list(dict.fromkeys(values or []))
 
 
 @router.get("/logs", response_model=AuditLogListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -304,6 +327,17 @@ def purge_audit_logs(
     retention_days: Annotated[int, Query(ge=1, le=3650, description='Delete logs older than N days')] = 90,
     max_delete: Annotated[int, Query(ge=1, le=1000000, description='Max rows to delete in this call')] = 100_000,
     dry_run: Annotated[bool, Query(description='Plan only; do not delete rows')] = True,
+    purge_scope: Annotated[
+        Literal["retention", "filtered"],
+        Query(description='retention=older than N days; filtered=current explicit filters'),
+    ] = "retention",
+    actor_id: Annotated[str | None, Query(max_length=255)] = None,
+    action: Annotated[str | None, Query(max_length=128)] = None,
+    resource_type: Annotated[str | None, Query(max_length=64)] = None,
+    resource_id: Annotated[str | None, Query(max_length=255)] = None,
+    request_id: Annotated[str | None, Query(max_length=128)] = None,
+    since: Annotated[datetime | None, Query()] = None,
+    until: Annotated[datetime | None, Query()] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -326,19 +360,75 @@ def purge_audit_logs(
     now = datetime.now(UTC)
     cutoff = now - timedelta(days=int(retention_days or 0))
 
-    eligible = int(plan_audit_log_purge(db, tenant_id=tenant_id, cutoff=cutoff, max_delete=int(max_delete or 0)) or 0)
-    deleted = 0
-    if not bool(dry_run):
-        deleted = int(
-            purge_audit_log_rows(
+    filter_payload: dict[str, Any] = {
+        k: v
+        for k, v in {
+            "actor_id": actor_id,
+            "action": action,
+            "resource_type": resource_type,
+            "resource_id": resource_id,
+            "request_id": request_id,
+            "since": since.isoformat() if since is not None else None,
+            "until": until.isoformat() if until is not None else None,
+        }.items()
+        if v not in (None, "")
+    }
+
+    if purge_scope == "filtered" and not filter_payload:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one filter is required for filtered audit log purge",
+        )
+
+    if purge_scope == "filtered":
+        eligible = int(
+            plan_filtered_audit_log_purge(
                 db,
                 tenant_id=tenant_id,
-                cutoff=cutoff,
                 max_delete=int(max_delete or 0),
-                commit=True,
+                actor_id=actor_id,
+                action=action,
+                resource_type=resource_type,
+                resource_id=resource_id,
+                request_id=request_id,
+                since=since,
+                until=until,
             )
             or 0
         )
+    else:
+        eligible = int(plan_audit_log_purge(db, tenant_id=tenant_id, cutoff=cutoff, max_delete=int(max_delete or 0)) or 0)
+
+    deleted = 0
+    if not bool(dry_run):
+        if purge_scope == "filtered":
+            deleted = int(
+                purge_filtered_audit_log_rows(
+                    db,
+                    tenant_id=tenant_id,
+                    max_delete=int(max_delete or 0),
+                    actor_id=actor_id,
+                    action=action,
+                    resource_type=resource_type,
+                    resource_id=resource_id,
+                    request_id=request_id,
+                    since=since,
+                    until=until,
+                    commit=True,
+                )
+                or 0
+            )
+        else:
+            deleted = int(
+                purge_audit_log_rows(
+                    db,
+                    tenant_id=tenant_id,
+                    cutoff=cutoff,
+                    max_delete=int(max_delete or 0),
+                    commit=True,
+                )
+                or 0
+            )
 
     # Best-effort: record the purge operation itself (small, PII-safe).
     try:
@@ -351,11 +441,13 @@ def purge_audit_logs(
             resource_id=None,
             details={
                 "dry_run": bool(dry_run),
+                "purge_scope": str(purge_scope),
                 "retention_days": int(retention_days or 0),
                 "cutoff": cutoff.isoformat(),
                 "max_delete": int(max_delete or 0),
                 "eligible": int(eligible or 0),
                 "deleted": int(deleted or 0),
+                "filters": filter_payload,
             },
         )
         db.commit()
@@ -367,11 +459,99 @@ def purge_audit_logs(
 
     return AuditLogPurgeResponse(
         dry_run=bool(dry_run),
+        scope=str(purge_scope),
         retention_days=int(retention_days or 0),
         cutoff=cutoff,
         max_delete=int(max_delete or 0),
         eligible=int(eligible or 0),
         deleted=int(deleted or 0),
+        filters=filter_payload,
+    )
+
+
+@router.delete("/logs/{log_id}", response_model=AuditLogDeleteResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+def delete_audit_log(
+    log_id: UUID,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Delete one audit log row for the current tenant."""
+    return _delete_audit_logs_by_id(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        ids=[log_id],
+        action="audit.logs.delete",
+    )
+
+
+@router.post("/logs/bulk-delete", response_model=AuditLogDeleteResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+def bulk_delete_audit_logs(
+    payload: AuditLogDeleteRequest,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Delete selected audit log rows for the current tenant."""
+    return _delete_audit_logs_by_id(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        ids=payload.ids,
+        action="audit.logs.bulk_delete",
+    )
+
+
+def _delete_audit_logs_by_id(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    ids: list[UUID],
+    action: str,
+) -> AuditLogDeleteResponse:
+    ensure_tenant_permission(
+        db,
+        tenant_id,
+        account_id,
+        TenantPermissions.AUDIT_MANAGE,
+        detail="No permission to manage audit logs",
+    )
+
+    unique_ids = _dedupe_uuids(ids)
+    deleted = int(delete_audit_log_rows(db, tenant_id=tenant_id, ids=unique_ids, commit=True) or 0)
+    missing = max(0, len(unique_ids) - deleted)
+
+    try:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action=action,
+            resource_type="audit_logs",
+            resource_id=str(unique_ids[0]) if len(unique_ids) == 1 else None,
+            details={
+                "requested": len(unique_ids),
+                "deleted": deleted,
+                "missing": missing,
+                "ids": [str(value) for value in unique_ids[:50]],
+            },
+        )
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception as exc:
+            logger.debug("Ignoring non-critical audit delete fallback failure: %s", exc)
+
+    return AuditLogDeleteResponse(
+        requested=len(unique_ids),
+        deleted=deleted,
+        missing=missing,
+        ids=unique_ids,
     )
 
 

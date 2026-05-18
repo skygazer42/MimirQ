@@ -221,6 +221,128 @@ function shortId(value: unknown, keep: number = 8): string {
   return s.length <= k ? s : `${s.slice(0, k)}…`
 }
 
+function normalizeApiBase(value: unknown): string {
+  return String(value || '').trim().toLowerCase()
+}
+
+function providerHasModel(provider: ModelProvider, modelName: string): boolean {
+  const target = String(modelName || '').trim().toLowerCase()
+  if (!target) return false
+  return provider.models.some((model) => String(model.name || '').trim().toLowerCase() === target)
+}
+
+function findProviderIdByModel(
+  providers: ModelProvider[],
+  category: ProviderCategory,
+  modelName: string
+): string | null {
+  return (
+    providers.find(
+      (provider) =>
+        provider.category === category && providerHasModel(provider, modelName)
+    )?.id ?? null
+  )
+}
+
+function resolveLlmProviderId(
+  providers: ModelProvider[],
+  llm: SystemSettings['llm'] | null | undefined
+): string | null {
+  if (!llm) return null
+  const base = normalizeApiBase(llm.api_base)
+  const model = trimmedPrimitiveString(llm.model)
+
+  if (base.includes('dashscope.aliyuncs.com')) return 'qwen'
+  if (base.includes('api.openai.com')) return 'openai'
+  if (base.includes('anthropic.com')) return 'anthropic'
+  if (base.includes('api.deepseek.com')) return 'deepseek'
+  if (base.includes('bigmodel.cn')) return 'zhipu'
+  if (base.includes('moonshot.cn')) return 'moonshot'
+  if (base.includes('volces.com')) return 'ark'
+  if (base.includes('lingyiwanwu.com')) return 'lingyiwanwu'
+  if (base.includes('baidubce.com')) return 'qianfan'
+  if (base.includes('siliconflow.cn')) return 'siliconflow'
+  if (base.includes('openrouter.ai')) return 'openrouter'
+  if (base.includes('together.xyz')) return 'together'
+  if (base.includes('localhost:11434')) return 'ollama'
+
+  return findProviderIdByModel(providers, 'model', model)
+}
+
+function resolveEmbeddingProviderId(
+  providers: ModelProvider[],
+  embedding: SystemSettings['embedding'] | null | undefined
+): string | null {
+  if (!embedding) return null
+  const base = normalizeApiBase(embedding.api_base)
+  const provider = trimmedPrimitiveString(embedding.provider).toLowerCase()
+  const model = trimmedPrimitiveString(embedding.model)
+
+  if (provider === 'dashscope' || base.includes('dashscope.aliyuncs.com')) {
+    return 'qwen-embedding'
+  }
+  if (provider === 'local' || /bge|text2vec|nomic|mxbai/i.test(model)) {
+    return 'local-embedding'
+  }
+  if (base.includes('api.openai.com')) return 'openai-embedding'
+
+  return findProviderIdByModel(providers, 'embedding', model)
+}
+
+function hydrateProvidersFromSettings(
+  providers: ModelProvider[],
+  settings: SystemSettings | null
+): ModelProvider[] {
+  const next: ModelProvider[] = providers.map((provider) => ({
+    ...provider,
+    isConfigured: false,
+    config: undefined as ProviderConfig | undefined,
+  }))
+
+  if (!settings) return next
+
+  const llmProviderId = resolveLlmProviderId(next, settings.llm)
+  if (llmProviderId) {
+    const llmConfig: ProviderConfig = {
+      apiKey: settings.llm.api_key || '',
+      apiBase: settings.llm.api_base || '',
+      model: settings.llm.model || '',
+      temperature: settings.llm.temperature,
+      timeout: settings.llm.timeout,
+    }
+    const provider = next.find((item) => item.id === llmProviderId)
+    if (provider) {
+      provider.isConfigured = Boolean(llmConfig.model || llmConfig.apiBase || llmConfig.apiKey)
+      provider.config = llmConfig
+    }
+  }
+
+  const embeddingProviderId = resolveEmbeddingProviderId(next, settings.embedding)
+  if (embeddingProviderId) {
+    const embeddingConfig: ProviderConfig = {
+      apiKey: settings.embedding.api_key || '',
+      apiBase: settings.embedding.api_base || '',
+      model: settings.embedding.model || '',
+    }
+    const provider = next.find((item) => item.id === embeddingProviderId)
+    if (provider) {
+      provider.isConfigured = Boolean(
+        embeddingConfig.model || embeddingConfig.apiBase || embeddingConfig.apiKey
+      )
+      provider.config = embeddingConfig
+    }
+  }
+
+  return next
+}
+
+function resolveEmbeddingProvider(providerId: string): string {
+  const pid = String(providerId || '').trim().toLowerCase()
+  if (pid === 'qwen-embedding') return 'dashscope'
+  if (pid === 'local-embedding') return 'local'
+  return 'openai_compatible'
+}
+
 export function useSettingsPageState() {
   const { refresh: refreshCapabilities } = usePipelineCapabilities()
 
@@ -347,6 +469,10 @@ export function useSettingsPageState() {
     void loadSettings()
     void loadLtrModels()
   }, [])
+
+  useEffect(() => {
+    setProviders(hydrateProvidersFromSettings(MODEL_PROVIDERS, settings))
+  }, [settings])
 
   const registerLtrModel = async () => {
     if (!ltrUploadModelFile || !ltrUploadManifestFile) return
@@ -592,29 +718,35 @@ export function useSettingsPageState() {
   }
 
   const handleSaveConfig = async (providerId: string, config: ProviderConfig) => {
-    setProviders((prev) =>
-      prev.map((provider) =>
-        provider.id === providerId ? { ...provider, isConfigured: true, config } : provider
-      )
-    )
-
     const provider = providers.find((item) => item.id === providerId)
     if (!provider) return
 
-    if (provider.category === 'model') {
+    if (provider.category === 'model' || provider.category === 'embedding') {
       setSaving(true)
       setSaveMessage(null)
       try {
-        const result = await settingsApi.update({
-          llm: {
-            api_key: config.apiKey || '',
-            api_base: config.apiBase || '',
-            model: config.model || '',
-            temperature: config.temperature ?? 0.7,
-            timeout: config.timeout ?? 60,
-            max_retries: 3,
-          },
-        })
+        const payload =
+          provider.category === 'model'
+            ? {
+                llm: {
+                  api_key: config.apiKey || '',
+                  api_base: config.apiBase || '',
+                  model: config.model || '',
+                  temperature: config.temperature ?? 0.7,
+                  timeout: config.timeout ?? 60,
+                  max_retries: 3,
+                },
+              }
+            : {
+                embedding: {
+                  provider: resolveEmbeddingProvider(provider.id),
+                  model: config.model || '',
+                  api_key: config.apiKey || '',
+                  api_base: config.apiBase || '',
+                },
+              }
+
+        const result = await settingsApi.update(payload)
         setSaveMessage({ type: 'success', text: result.message })
         await loadSettings()
       } catch (error) {

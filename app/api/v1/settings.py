@@ -219,7 +219,7 @@ class LLMConfig(BaseModel):
     """LLM config."""
     api_key: str = ""
     api_base: str = Field(default_factory=_default_llm_api_base)
-    model: str = "gpt-4o-mini"
+    model: str = "gpt-5.4-mini"
     temperature: float = 0.7
     timeout: int = 60
     max_retries: int = 3
