@@ -86,8 +86,9 @@ COPY . .
 
 # 创建必要的目录
 RUN mkdir -p uploads logs vector_faiss vector_chroma chroma_db /data/uploads \
+    /opt/venv/lib/python3.11/site-packages/rapidocr/models \
     && adduser --disabled-password --gecos "" --home /app appuser \
-    && chown -R appuser:appuser /app /data
+    && chown -R appuser:appuser /app /data /opt/venv/lib/python3.11/site-packages/rapidocr/models
 
 USER appuser
 
