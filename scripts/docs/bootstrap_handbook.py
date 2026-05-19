@@ -590,7 +590,7 @@ def integration_patterns_real() -> None:
         """
 ## 后端
 
-- 根目录 `.env.example` 只保留本地启动最小项；高级配置按域拆到 [`config/env/*.env.example`](https://github.com/skygazer42/MimirQ/tree/main/config/env)，部署说明见 [docker_compose](https://github.com/skygazer42/MimirQ/blob/main/docs/deployment/docker_compose.md)。
+- 根目录 [`.env.example`](https://github.com/skygazer42/MimirQ/blob/main/.env.example) 是完整环境变量模板；本地启动可复制为 `.env`，部署说明见 [docker_compose](https://github.com/skygazer42/MimirQ/blob/main/docs/deployment/docker_compose.md)。
 
 ## 前端
 

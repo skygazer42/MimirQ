@@ -24,7 +24,7 @@ LLM_API_KEY=sk-your-api-key-here
 > - `web/.env.local`（来自 `web/.env.local.example`）
 > - `.env`（来自根目录最小 `.env.example`，用于本地运行后端时读取）
 >
-> 解析、RAG、KG、可观测性等高级环境变量按域放在 `config/env/*.env.example`，需要时复制对应键到 `.env`。
+> 根目录 `.env.example` 已包含解析、RAG、KG、可观测性等环境变量；本地按需复制到 `.env` 后修改即可。
 
 ### 3. 启动服务
 
@@ -249,7 +249,7 @@ docker compose up -d --build
 docker compose -f docker-compose.yml -f docker-compose.web.yml up -d --build   # 可选：启用前端
 ```
 
-根目录 `.env.example` 只保留最小启动项；高级项见 `config/env/README.md`。
+根目录 `.env.example` 已包含本地启动和高级能力配置；未启用的能力保持默认关闭即可。
 
 可选：本地启动后端（Python），依赖服务仍用 Docker：
 ```bash

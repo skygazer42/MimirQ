@@ -16,7 +16,7 @@ if str(_REPO_ROOT) not in sys.path:
 from app.parsing.models.hf_cache import HfSnapshotResult, download_hf_snapshot  # noqa: E402,F401
 from app.parsing.models.manifest import SmallModelManifest, SmallModelSpec, load_small_model_manifest  # noqa: E402
 
-_DEFAULT_MANIFEST = _REPO_ROOT / "configs" / "parsing_small_models.yaml"
+_DEFAULT_MANIFEST = _REPO_ROOT / "config" / "parsing_small_models.yaml"
 _DEFAULT_OUTPUT_ROOT = _REPO_ROOT / "app" / "deepdoc" / "resources" / "models"
 _SAFE_SLUG_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
@@ -278,7 +278,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--manifest",
         default=str(_DEFAULT_MANIFEST),
-        help="Small-model manifest path. Defaults to configs/parsing_small_models.yaml.",
+        help="Small-model manifest path. Defaults to config/parsing_small_models.yaml.",
     )
     parser.add_argument(
         "--model",

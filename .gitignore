@@ -41,16 +41,20 @@ package-lock.json
 .vscode/
 .idea/
 .cursor/
-# Claude (keep local state ignored, but allow committing curated skills)
-.claude/*
-!.claude/skills/
-!.claude/skills/**
 *.swp
 *.swo
 *~
 
-# AI agent tooling (local-only; do not commit skill caches)
+# AI/agent tooling (local-only; do not commit agent state or skills)
+.agents/
+.beads/
+.claude/
+.codex/
 .gemini/
+.omx/
+.serena/
+.shared/
+.worktrees/
 
 # OS
 .DS_Store
@@ -68,11 +72,6 @@ runs/.deepseek_ocr/
 runs/perf/
 runs/parser_checks/
 runs/smoke/
-.worktrees/
-.beads/*.db
-.beads/*.log
-.beads/*.jsonl
-.beads/.migration-hint-ts
 .playwright-mcp/
 chunk-preview-*.png
 graph-snapshots-*.png
@@ -101,14 +100,4 @@ docker/.env.*
 # Retrieval index caches (generated artifacts; keep out of git)
 data/sparse_indexes/
 data/colbert_indexes/
-.omx/
-.codex/*
-!.codex/agents/
-!.codex/agents/**
-!.codex/skills/
-!.codex/skills/**
-.codex/skills/.system/**
-!.codex/prompts/
-!.codex/prompts/**
-
 web/.next_3101/

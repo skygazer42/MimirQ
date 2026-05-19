@@ -28,7 +28,7 @@
 
 | 必做项 | 落点 | 验收 |
 |---|---|---|
-| 模型 manifest | `configs/parsing_small_models.yaml` | 能声明 layout/table/ocr 小模型 |
+| 模型 manifest | `config/parsing_small_models.yaml` | 能声明 layout/table/ocr 小模型 |
 | runtime loader | `app/parsing/models/` | 能解析本地 ONNX、本地 HF snapshot、可选下载 HF |
 | HF 模型落地 | `app/deepdoc/resources/models/hf/` | TATR、PP-OCRv5 等真实 snapshot 放入项目 |
 | ONNX 落地 | `app/deepdoc/resources/models/hf_onnx/` | 能加载已转换 TATR ONNX |

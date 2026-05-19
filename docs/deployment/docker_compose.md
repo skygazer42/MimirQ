@@ -42,7 +42,7 @@ LLM_MODEL_HEAVY=qwen3-max
 当前 `LLM_MODEL` 是否有权限，再重启 `mimirq-api` / `mimirq-worker`。不要把带密钥的
 `.env` 提交到仓库。
 
-根目录 `.env.example` 是本地启动最小模板；解析、RAG、KG、可观测性等高级项见 `config/env/*.env.example`。
+根目录 `.env.example` 是完整环境变量模板；本地启动可直接复制为 `.env`，未用到的高级能力保持默认即可。
 
 ### 解析器 / KG 关键依赖
 
