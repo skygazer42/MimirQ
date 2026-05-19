@@ -376,6 +376,8 @@ class MagicPDFConfig(BaseModel):
     lang: str = ""
     debug: bool = False
     timeout_sec: int = 600
+    models_dir: str = ""
+    device_mode: str = "cpu"
     keep_artifacts: bool = False
 
 
@@ -708,6 +710,10 @@ def _apply_runtime_settings(env_vars: dict[str, str], updated_keys: list[str]) -
         settings.MAGIC_PDF_DEBUG = _parse_bool(env_vars["MAGIC_PDF_DEBUG"])
     if "MAGIC_PDF_TIMEOUT_SEC" in updated_keys and "MAGIC_PDF_TIMEOUT_SEC" in env_vars:
         settings.MAGIC_PDF_TIMEOUT_SEC = _parse_int(env_vars["MAGIC_PDF_TIMEOUT_SEC"], default=settings.MAGIC_PDF_TIMEOUT_SEC)
+    if "MAGIC_PDF_MODELS_DIR" in updated_keys and "MAGIC_PDF_MODELS_DIR" in env_vars:
+        settings.MAGIC_PDF_MODELS_DIR = env_vars["MAGIC_PDF_MODELS_DIR"]
+    if "MAGIC_PDF_DEVICE_MODE" in updated_keys and "MAGIC_PDF_DEVICE_MODE" in env_vars:
+        settings.MAGIC_PDF_DEVICE_MODE = env_vars["MAGIC_PDF_DEVICE_MODE"]
     if "MAGIC_PDF_KEEP_ARTIFACTS" in updated_keys and "MAGIC_PDF_KEEP_ARTIFACTS" in env_vars:
         settings.MAGIC_PDF_KEEP_ARTIFACTS = _parse_bool(env_vars["MAGIC_PDF_KEEP_ARTIFACTS"])
 
@@ -970,6 +976,8 @@ async def get_settings(
             lang=getattr(settings, "MAGIC_PDF_LANG", "") or "",
             debug=bool(getattr(settings, "MAGIC_PDF_DEBUG", False)),
             timeout_sec=int(getattr(settings, "MAGIC_PDF_TIMEOUT_SEC", 600) or 600),
+            models_dir=getattr(settings, "MAGIC_PDF_MODELS_DIR", "") or "",
+            device_mode=getattr(settings, "MAGIC_PDF_DEVICE_MODE", "cpu") or "cpu",
             keep_artifacts=bool(getattr(settings, "MAGIC_PDF_KEEP_ARTIFACTS", False)),
         ),
         observability=ObservabilityConfig(
@@ -1307,6 +1315,8 @@ async def update_settings(
             env_vars["MAGIC_PDF_LANG"] = _sanitize_env_value("MAGIC_PDF_LANG", mp.lang)
             env_vars["MAGIC_PDF_DEBUG"] = str(bool(mp.debug)).lower()
             env_vars["MAGIC_PDF_TIMEOUT_SEC"] = str(int(mp.timeout_sec or 0))
+            env_vars["MAGIC_PDF_MODELS_DIR"] = _sanitize_env_value("MAGIC_PDF_MODELS_DIR", mp.models_dir)
+            env_vars["MAGIC_PDF_DEVICE_MODE"] = _sanitize_env_value("MAGIC_PDF_DEVICE_MODE", mp.device_mode)
             env_vars["MAGIC_PDF_KEEP_ARTIFACTS"] = str(bool(mp.keep_artifacts)).lower()
             updated_keys.extend(
                 [
@@ -1315,6 +1325,8 @@ async def update_settings(
                     "MAGIC_PDF_LANG",
                     "MAGIC_PDF_DEBUG",
                     "MAGIC_PDF_TIMEOUT_SEC",
+                    "MAGIC_PDF_MODELS_DIR",
+                    "MAGIC_PDF_DEVICE_MODE",
                     "MAGIC_PDF_KEEP_ARTIFACTS",
                 ]
             )
@@ -1459,6 +1471,7 @@ async def get_system_status(
         return True, "ok"
 
     from app.parsing.utils.cli import resolve_cli_command
+    from app.parsing.parsers.magic_pdf_parser import resolve_magicpdf_models_dir
 
     def _configured_message(enabled: bool, configured: bool, missing_message: str) -> str:
         if enabled and configured:
@@ -1647,10 +1660,19 @@ async def get_system_status(
     magicpdf_enabled = bool(getattr(settings, "MAGIC_PDF_ENABLED", False))
     magicpdf_cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
     magicpdf_cli_ok = bool(resolve_cli_command(magicpdf_cli))
+    magicpdf_models_dir = resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", ""))
+    if not magicpdf_enabled:
+        magicpdf_message = "disabled"
+    elif not magicpdf_cli_ok:
+        magicpdf_message = f"missing cli: {magicpdf_cli}"
+    elif magicpdf_models_dir is None:
+        magicpdf_message = "missing models"
+    else:
+        magicpdf_message = f"configured (models: {magicpdf_models_dir})"
     parsers["magicpdf"] = {
         "enabled": magicpdf_enabled,
-        "available": bool(magicpdf_enabled and magicpdf_cli_ok),
-        "message": _configured_message(magicpdf_enabled, magicpdf_cli_ok, f"missing cli: {magicpdf_cli}"),
+        "available": bool(magicpdf_enabled and magicpdf_cli_ok and magicpdf_models_dir is not None),
+        "message": magicpdf_message,
     }
 
     status["parsers"] = parsers

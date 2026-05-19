@@ -177,6 +177,9 @@ services:
       <<: *backend_env
     volumes:
       - upload_data:/data/uploads
+      # Reuse the MinerU/PDF-Extract-Kit cache for MagicPDF local parsing.
+      # Mounted read-only; populate/update it via the optional mineru parser service.
+      - mineru_cache:/opt/mimirq-model-cache:ro
 
   # Arq worker（后台处理文档解析/索引）
   mimirq-worker:
@@ -200,6 +203,8 @@ services:
       <<: *backend_env
     volumes:
       - upload_data:/data/uploads
+      # Worker runs persisted ingestion; it needs the same local MagicPDF models.
+      - mineru_cache:/opt/mimirq-model-cache:ro
     command: arq app.tasks.worker.WorkerSettings
 
 volumes:
@@ -213,3 +218,5 @@ volumes:
   milvus_data:
   # Uploaded documents + derived artifacts (/data/uploads)
   upload_data:
+  # Shared MinerU/PDF-Extract-Kit model cache, also used by MagicPDF local parser.
+  mineru_cache:

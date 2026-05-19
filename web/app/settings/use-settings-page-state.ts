@@ -147,6 +147,8 @@ const DEFAULT_MAGICPDF: MagicPDFConfig = {
   lang: '',
   debug: false,
   timeout_sec: 600,
+  models_dir: '',
+  device_mode: 'cpu',
   keep_artifacts: false,
 }
 

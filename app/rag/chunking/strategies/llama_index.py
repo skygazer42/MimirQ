@@ -60,7 +60,12 @@ class LlamaIndexChunker(BaseChunker):
         
         chunks: list[Document] = []
         for doc in documents:
-            li_doc = LlamaDocument(text=doc.page_content, metadata=dict(doc.metadata or {}))
+            # LlamaIndex subtracts document metadata from the chunk token budget
+            # even when include_metadata=False. MimirQ stores parser/provenance
+            # metadata separately on the LangChain document/chunks, so keep the
+            # LlamaIndex input metadata empty and merge the original metadata
+            # back onto output chunks below.
+            li_doc = LlamaDocument(text=doc.page_content, metadata={})
             nodes = self.splitter.get_nodes_from_documents([li_doc])
             for node in nodes:
                 metadata = dict(doc.metadata or {})
@@ -119,7 +124,9 @@ class LlamaIndexHierarchicalChunker(BaseChunker):
         
         chunks: list[Document] = []
         for doc in documents:
-            li_doc = LlamaDocument(text=doc.page_content, metadata=dict(doc.metadata or {}))
+            # See LlamaIndexChunker above: keep metadata out of LlamaIndex's
+            # splitting budget, then restore MimirQ metadata on emitted chunks.
+            li_doc = LlamaDocument(text=doc.page_content, metadata={})
             nodes = self.parser.get_nodes_from_documents([li_doc])
 
             node_ids: set[str] = set()

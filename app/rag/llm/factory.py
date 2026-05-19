@@ -195,6 +195,15 @@ class EmbeddingClient:
 
     async def generate_batch(self, texts: list[str]) -> list[list[float]]:
         provider = self._provider
+        batch_limit = min(
+            max(1, int(getattr(settings, "EMBEDDING_API_BATCH_SIZE", 64) or 64)),
+            max(1, int(getattr(settings, "KG_EXTRACT_EMBED_BATCH_SIZE", 128) or 128)),
+        )
+        if len(texts or []) > batch_limit:
+            out: list[list[float]] = []
+            for start in range(0, len(texts), batch_limit):
+                out.extend(await self.generate_batch(texts[start : start + batch_limit]))
+            return out
         if hasattr(provider, "embed_documents"):
             return await asyncio.to_thread(provider.embed_documents, texts)  # type: ignore[attr-defined]
         return [await self.generate(t) for t in texts]

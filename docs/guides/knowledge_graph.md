@@ -15,6 +15,13 @@ MimirQ 的 Knowledge Graph（KG）以“事件（Event）—实体（Entity）�
 - `KG_EXTRACT_EVIDENCE_REQUIRED=true`：证据优先抽取（推荐开启）。
   - 启用后：事件->实体边、实体->实体关系边需要能在 chunk 原文中找到 `evidence_quote/span` 才会落库。
   - 目的：减少噪声与幻觉边，避免 KG 关系扩展召回漂移，提升 RAG 可控性与可解释性。
+- `EVENT_VECTOR_ENABLED=true` / `ENTITY_VECTOR_ENABLED=true`：把事件/实体向量写入 Milvus
+  collection（`kg_events` / `kg_entities`），用于 KG vector recall。
+- `KG_EXTRACT_EMBED_BATCH_SIZE=8`：KG 向量写入前的 embedding 请求批量上限。OpenAI-compatible
+  provider（例如 DashScope `text-embedding-v4`）建议保持较小批量，避免大批量请求被 400 拒绝。
+
+KG 抽取需要可用 LLM；KG vector recall 还需要 embedding provider 与 Milvus 主栈可用。Docker
+主栈默认包含 Milvus，lite 模式不适合验证 KG Milvus 向量写入。
 
 ### 抽取 Prompt 选择
 KG 抽取支持 3 种选项（按优先级从高到低）：

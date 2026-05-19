@@ -71,3 +71,21 @@ def test_textin_status_reports_configured_only_with_url_and_credentials() -> Non
         secret_code="demo-secret",
     )
     assert status == "configured"
+
+
+def test_magicpdf_status_requires_cli_and_models(tmp_path: Path) -> None:
+    mod = _load_module()
+    assert (
+        mod._magicpdf_status(enabled=True, cli_path=None, models_dir=tmp_path)  # type: ignore[attr-defined]
+        == "missing cli"
+    )
+    assert (
+        mod._magicpdf_status(enabled=True, cli_path="/usr/bin/magic-pdf", models_dir=None)  # type: ignore[attr-defined]
+        == "missing models"
+    )
+    status = mod._magicpdf_status(  # type: ignore[attr-defined]
+        enabled=True,
+        cli_path="/usr/bin/magic-pdf",
+        models_dir=tmp_path,
+    )
+    assert status == f"configured (models: {tmp_path})"

@@ -130,6 +130,8 @@ export interface MagicPDFConfig {
   lang: string
   debug: boolean
   timeout_sec: number
+  models_dir: string
+  device_mode: string
   keep_artifacts: boolean
 }
 

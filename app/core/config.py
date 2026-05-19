@@ -1726,6 +1726,8 @@ class Settings(BaseSettings):
     MAGIC_PDF_LANG: str = ""  # optional PaddleOCR language code, e.g. "ch"
     MAGIC_PDF_DEBUG: bool = False
     MAGIC_PDF_TIMEOUT_SEC: int = 600
+    MAGIC_PDF_MODELS_DIR: str = ""
+    MAGIC_PDF_DEVICE_MODE: str = "cpu"  # cpu | cuda
     MAGIC_PDF_FORMULA_ENABLED: bool = False
     MAGIC_PDF_KEEP_ARTIFACTS: bool = False
     # MagicPDF upstream config file path override (env var name used by magic-pdf).
@@ -1792,7 +1794,11 @@ class Settings(BaseSettings):
     KG_EXTRACT_PRUNE_ORPHAN_ENTITIES: bool = True
     # KG extraction performance/guardrails.
     KG_EXTRACT_MAX_CONCURRENCY: int = 3
-    KG_EXTRACT_EMBED_BATCH_SIZE: int = 128
+    # Keep KG embedding batches conservative because OpenAI-compatible
+    # providers such as DashScope text-embedding-v4 reject larger batches even
+    # though document chunk indexing can often use a higher global embedding
+    # batch size.
+    KG_EXTRACT_EMBED_BATCH_SIZE: int = 8
     KG_EXTRACT_MAX_EVENTS_PER_CHUNK: int = 6
     KG_EXTRACT_MAX_ENTITIES_PER_EVENT: int = 30
     # Skip low-signal chunks (0 disables).

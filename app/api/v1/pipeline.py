@@ -71,6 +71,7 @@ from app.models.document import DocumentParsedContent
 from app.models.governance_profile import GovernanceProfile as DBGovernanceProfile
 from app.parsing.backends import normalize_parser_backend
 from app.parsing.factory import ParserFactory
+from app.parsing.parsers.magic_pdf_parser import resolve_magicpdf_models_dir
 from app.parsing.preprocess.file_preprocessor import preprocess_file
 from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
 from app.parsing.utils.cli import resolve_cli_command
@@ -1086,6 +1087,9 @@ async def get_pipeline_capabilities(
         cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
         if not resolve_cli_command(cli):
             return False, f"MagicPDF CLI not found: {cli} (try activating the env or set MAGIC_PDF_CLI to full path)"
+        models_dir = resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", ""))
+        if not models_dir:
+            return False, "MagicPDF models not found: mount PDF-Extract-Kit cache or set MAGIC_PDF_MODELS_DIR"
         return True, None
 
     pdf_backends: list[ParserBackendInfo] = []

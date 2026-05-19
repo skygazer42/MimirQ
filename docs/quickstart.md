@@ -179,6 +179,30 @@ MINERU_MODEL_SOURCE=local
 MINERU_LOCAL_SERVER_URL=http://localhost:30001
 ```
 
+### (可选) 启用 MagicPDF（本地 magic-pdf CLI）
+
+MagicPDF 在 MimirQ API / worker 镜像内通过 `magic-pdf` CLI 调用。CLI 已随 Docker backend
+安装，但真实本地解析还需要挂载 PDF-Extract-Kit 模型缓存；核心 compose 会把
+`mineru_cache` 只读挂到 `/opt/mimirq-model-cache`，可复用 MinerU 下载的模型。
+
+```env
+MAGIC_PDF_ENABLED=true
+MAGIC_PDF_CLI=magic-pdf
+MAGIC_PDF_METHOD=auto
+MAGIC_PDF_LANG=ch
+MAGIC_PDF_MODELS_DIR=
+MAGIC_PDF_DEVICE_MODE=cpu
+```
+
+诊断：
+
+```bash
+docker compose -f docker/docker-compose.yml exec -T -w /app mimirq-api python scripts/check_parsers.py
+```
+
+MagicPDF 只有在状态为 `configured (models: ...)` 时才会被自动路由/能力接口标记为可用；
+如果显示 `missing cli` 或 `missing models`，需要先修镜像或模型挂载。
+
 ### (可选) 启用 Pandoc/LibreOffice（Office/HTML 高质量转 Markdown）
 
 适用于：`doc/docx/ppt/pptx/xls/xlsx/html/htm`（图片/表格保真更好）。
@@ -203,6 +227,7 @@ LIBREOFFICE_ENABLED=true
 | `textin` | 外部 TextIn xParse API | ~0 GiB | 本地无模型；必须配置 `TEXTIN_APP_ID` / `TEXTIN_SECRET_CODE` 后才可真实解析 |
 | `qianfan_ocr` | 本地轻量 wrapper，实际推理在上游视觉服务 | ~0 GiB | 本地容器无需 GPU；上游服务显存单独评估 |
 | `mineru`（`backend=pipeline` / `file_parse`） | 本地 `mineru-api` + 本地缓存模型 | 当前验证流未观测到独立 GPU 峰值 | 建议单独部署；若切换不同 backend / 模型链路，需重新量测 |
+| `magicpdf` | API/worker 内本地 `magic-pdf` CLI + PDF-Extract-Kit 缓存模型 | CPU 模式 ~0 GiB；CUDA 模式需单独量测 | CPU 可用但慢；建议复用 `mineru_cache`，显式检查 `configured (models: ...)` |
 | `paddle_vl` | 本地 GPU 推理（`gpu:0`） | ~8.2 GiB | 建议至少预留 **10 GiB** 可用显存 |
 | `olmocr` | 本地 GPU 重模型推理 | ~43.7 GiB | 建议至少预留 **44 GiB** 可用显存，基本等同 48G 级别单卡独占 |
 
