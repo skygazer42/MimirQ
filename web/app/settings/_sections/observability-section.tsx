@@ -28,7 +28,7 @@ export function ObservabilitySection({
           观测与调试
         </h2>
         <div className={settingsTextTokens.sectionBadge}>
-          <span>保存后通常可立即生效</span>
+          <span>保存后对新请求生效</span>
         </div>
       </div>
 
@@ -38,10 +38,18 @@ export function ObservabilitySection({
             <div>
               <div className={cn(settingsTextTokens.panelTitle, 'flex items-center gap-1.5')}>
                 <FileSearch className={settingsTextTokens.panelTitleIcon} />
-                工具调用日志（tool_call_log）
+                工具调用记录
               </div>
               <div className={cn(settingsTextTokens.helpText, 'mt-0.5')}>
-                记录工具调用耗时、成功/失败与参数键名（可选结果预览，建议配合 PII 脱敏）
+                用于排查“某个工具为什么慢、为什么失败”。会记录调用耗时、是否成功，以及常用入参字段名；需要时可附带截断后的结果摘要。
+              </div>
+              <div className="mt-1 flex flex-wrap gap-1">
+                <span className="rounded-md border border-slate-200 bg-background/85 px-1.5 py-0.5 text-[10px] text-slate-500">
+                  配置键：tool_call_log
+                </span>
+                <span className="rounded-md border border-slate-200 bg-background/85 px-1.5 py-0.5 text-[10px] text-slate-500">
+                  适合排查工具失败
+                </span>
               </div>
             </div>
             <SettingsSwitch
@@ -61,10 +69,10 @@ export function ObservabilitySection({
                   onChange={(event) => updateObservability({ tool_call_log_include_preview: event.target.checked })}
                   className="h-3.5 w-3.5 accent-primary"
                 />
-                <span className="text-[11px] font-medium text-slate-600">包含结果预览（include_preview）</span>
+                <span className="text-[11px] font-medium text-slate-600">记录结果摘要</span>
               </label>
               <div>
-                <div className={cn(settingsTextTokens.fieldLabel, 'mb-1')}>预览最大字符数（max_preview_chars）</div>
+                <div className={cn(settingsTextTokens.fieldLabel, 'mb-1')}>结果摘要最大字符数</div>
                 <Input
                   type="number"
                   min={0}
@@ -87,10 +95,18 @@ export function ObservabilitySection({
             <div>
               <div className={cn(settingsTextTokens.panelTitle, 'flex items-center gap-1.5')}>
                 <Settings2 className={settingsTextTokens.panelTitleIcon} />
-                工作流生命周期日志（agent_log）
+                工作流运行记录
               </div>
               <div className={cn(settingsTextTokens.helpText, 'mt-0.5')}>
-                记录工作流总耗时、步骤、成功/失败（可选携带执行路径 execution_path）
+                用于排查“一次任务卡在哪一步”。会记录总耗时、步骤节点和成功/失败，必要时可把运行路径一起带上。
+              </div>
+              <div className="mt-1 flex flex-wrap gap-1">
+                <span className="rounded-md border border-slate-200 bg-background/85 px-1.5 py-0.5 text-[10px] text-slate-500">
+                  配置键：agent_log
+                </span>
+                <span className="rounded-md border border-slate-200 bg-background/85 px-1.5 py-0.5 text-[10px] text-slate-500">
+                  适合排查流程卡点
+                </span>
               </div>
             </div>
             <SettingsSwitch
@@ -112,10 +128,10 @@ export function ObservabilitySection({
                   }
                   className="h-3.5 w-3.5 accent-primary"
                 />
-                <span className="text-[11px] font-medium text-slate-600">包含执行路径（execution_path）</span>
+                <span className="text-[11px] font-medium text-slate-600">记录步骤路径</span>
               </label>
               <div>
-                <div className={cn(settingsTextTokens.fieldLabel, 'mb-1')}>错误预览最大字符数（max_preview_chars）</div>
+                <div className={cn(settingsTextTokens.fieldLabel, 'mb-1')}>错误摘要最大字符数</div>
                 <Input
                   type="number"
                   min={0}
@@ -138,10 +154,18 @@ export function ObservabilitySection({
             <div>
               <div className={cn(settingsTextTokens.panelTitle, 'flex items-center gap-1.5')}>
                 <Eye className={settingsTextTokens.panelTitleIcon} />
-                RAG 指标日志（metrics_log，JSONL）
+                RAG 过程指标
               </div>
               <div className={cn(settingsTextTokens.helpText, 'mt-0.5')}>
-                写入 RAG 过程指标到 logs/rag_metrics.jsonl（建议生产环境关闭“包含原始文本”）
+                用于观察检索和生成是否稳定。会把每次问答的关键指标写入日志文件，适合做趋势分析、问题复盘和离线审计。
+              </div>
+              <div className="mt-1 flex flex-wrap gap-1">
+                <span className="rounded-md border border-slate-200 bg-background/85 px-1.5 py-0.5 text-[10px] text-slate-500">
+                  配置键：metrics_log
+                </span>
+                <span className="rounded-md border border-slate-200 bg-background/85 px-1.5 py-0.5 text-[10px] text-slate-500">
+                  日志文件：logs/rag_metrics.jsonl
+                </span>
               </div>
             </div>
             <SettingsSwitch
@@ -161,7 +185,7 @@ export function ObservabilitySection({
                   onChange={(event) => updateObservability({ metrics_log_include_text: event.target.checked })}
                   className="h-3.5 w-3.5 accent-primary"
                 />
-                <span className="text-[11px] font-medium text-slate-600">包含原始文本</span>
+                <span className="text-[11px] font-medium text-slate-600">写入问题与答案原文</span>
               </label>
             </div>
           ) : null}
