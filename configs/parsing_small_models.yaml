@@ -1,0 +1,235 @@
+layout:
+  default: deepdoc_layout_onnx
+  models:
+    deepdoc_layout_onnx:
+      kind: onnx
+      path: app/deepdoc/resources/models/layout/layout.onnx
+      task: document_layout
+      optional: false
+      max_size_mb: 500
+      cpu_feasible: true
+      metadata:
+        source: bundled_deepdoc
+        language: multilingual
+    pp_doclayout_v3:
+      kind: hf_transformers
+      repo_id: PaddlePaddle/PP-DocLayoutV3_safetensors
+      task: object_detection
+      optional: true
+      cpu_feasible: false
+      metadata:
+        source: huggingface
+        language: multilingual
+        reason: not_enabled_until_cpu_onnx_is_available
+
+table_detection:
+  default: deepdoc_layout_table_signal
+  models:
+    deepdoc_layout_table_signal:
+      kind: onnx
+      path: app/deepdoc/resources/models/layout/layout.onnx
+      task: object_detection
+      optional: false
+      max_size_mb: 500
+      cpu_feasible: true
+      metadata:
+        source: bundled_deepdoc
+        label: Table
+    tatr_detection:
+      kind: hf_transformers
+      repo_id: microsoft/table-transformer-detection
+      task: object_detection
+      optional: true
+      max_size_mb: 500
+      cpu_feasible: false
+      metadata:
+        source: huggingface
+        family: table_transformer
+        estimated_size_mb: 120
+        reason: conversion_requires_timm_not_installed
+    tatr_detection_onnx:
+      kind: onnx
+      path: app/deepdoc/resources/models/hf_onnx/table_detection__tatr_detection__microsoft__table-transformer-detection/model.onnx
+      task: object_detection
+      optional: true
+      max_size_mb: 500
+      cpu_feasible: true
+      providers:
+        - CUDAExecutionProvider
+        - CPUExecutionProvider
+      metadata:
+        source: huggingface_converted
+        repo_id: microsoft/table-transformer-detection
+        preprocessor_path: app/deepdoc/resources/models/hf/table_detection__tatr_detection__microsoft__table-transformer-detection
+        family: table_transformer
+        conversion_backend: torch.onnx
+
+table_structure:
+  default: deepdoc_tsr_onnx
+  models:
+    deepdoc_tsr_onnx:
+      kind: onnx
+      path: app/deepdoc/resources/models/table/tsr.onnx
+      task: table_structure
+      optional: false
+      max_size_mb: 500
+      cpu_feasible: true
+      metadata:
+        source: bundled_deepdoc
+        language: multilingual
+    tatr_v1_1_all:
+      kind: hf_transformers
+      repo_id: microsoft/table-transformer-structure-recognition-v1.1-all
+      path: app/deepdoc/resources/models/hf/table_structure__tatr_v1_1_all__microsoft__table-transformer-structure-recognition-v1.1-all
+      task: object_detection
+      optional: true
+      max_size_mb: 500
+      cpu_feasible: true
+      metadata:
+        source: huggingface
+        family: table_transformer
+        estimated_size_mb: 120
+    tatr_v1_1_all_onnx:
+      kind: onnx
+      path: app/deepdoc/resources/models/hf_onnx/table_structure__tatr_v1_1_all__microsoft__table-transformer-structure-recognition-v1.1-all/model.onnx
+      task: table_structure
+      optional: true
+      max_size_mb: 500
+      cpu_feasible: true
+      providers:
+        - CUDAExecutionProvider
+        - CPUExecutionProvider
+      metadata:
+        source: huggingface_converted
+        repo_id: microsoft/table-transformer-structure-recognition-v1.1-all
+        preprocessor_path: app/deepdoc/resources/models/hf/table_structure__tatr_v1_1_all__microsoft__table-transformer-structure-recognition-v1.1-all
+        family: table_transformer
+        conversion_backend: torch.onnx
+    slanext_wireless:
+      kind: hf_transformers
+      repo_id: PaddlePaddle/SLANeXt_wireless_safetensors
+      task: table_structure
+      optional: true
+      cpu_feasible: false
+      metadata:
+        source: huggingface
+        language: zh
+        reason: not_enabled_until_cpu_onnx_is_available
+
+ocr_detection:
+  default: monkt_paddleocr_v5_det_onnx
+  models:
+    monkt_paddleocr_v5_det_onnx:
+      kind: onnx
+      path: app/deepdoc/resources/models/hf_onnx/ocr_pipeline__paddleocr_onnx__monkt__paddleocr-onnx/detection/v5/det.onnx
+      task: ocr_detection
+      optional: true
+      max_size_mb: 500
+      cpu_feasible: true
+      providers:
+        - CUDAExecutionProvider
+        - CPUExecutionProvider
+      metadata:
+        source: huggingface_onnx
+        repo_id: monkt/paddleocr-onnx
+        family: paddleocr
+        version: ppocrv5
+        language: multilingual
+
+ocr_recognition:
+  default: deepdoc_ocr_rec_onnx
+  models:
+    deepdoc_ocr_rec_onnx:
+      kind: onnx
+      path: app/deepdoc/resources/models/ocr/PP-OCRv4/PP-OCRv4/ch_PP-OCRv4_rec_infer.onnx
+      task: ocr_recognition
+      optional: false
+      max_size_mb: 500
+      cpu_feasible: true
+      metadata:
+        source: bundled_deepdoc
+        language: zh
+    monkt_paddleocr_chinese_rec_onnx:
+      kind: onnx
+      path: app/deepdoc/resources/models/hf_onnx/ocr_pipeline__paddleocr_onnx__monkt__paddleocr-onnx/languages/chinese/rec.onnx
+      task: ocr_recognition
+      optional: true
+      max_size_mb: 500
+      cpu_feasible: true
+      providers:
+        - CUDAExecutionProvider
+        - CPUExecutionProvider
+      metadata:
+        source: huggingface_onnx
+        repo_id: monkt/paddleocr-onnx
+        family: paddleocr
+        version: ppocrv5
+        language: zh,ja
+        rec_keys_path: app/deepdoc/resources/models/hf_onnx/ocr_pipeline__paddleocr_onnx__monkt__paddleocr-onnx/languages/chinese/dict.txt
+
+document_orientation:
+  default: monkt_pp_lcnet_doc_ori_onnx
+  models:
+    monkt_pp_lcnet_doc_ori_onnx:
+      kind: onnx
+      path: app/deepdoc/resources/models/hf_onnx/ocr_pipeline__paddleocr_onnx__monkt__paddleocr-onnx/preprocessing/doc-orientation/PP-LCNet_x1_0_doc_ori.onnx
+      task: document_orientation
+      optional: true
+      max_size_mb: 500
+      cpu_feasible: true
+      providers:
+        - CUDAExecutionProvider
+        - CPUExecutionProvider
+      metadata:
+        source: huggingface_onnx
+        repo_id: monkt/paddleocr-onnx
+        family: paddleocr
+        purpose: document_orientation
+
+document_rectification:
+  default: monkt_uvdoc_onnx
+  models:
+    monkt_uvdoc_onnx:
+      kind: onnx
+      path: app/deepdoc/resources/models/hf_onnx/ocr_pipeline__paddleocr_onnx__monkt__paddleocr-onnx/preprocessing/doc-unwarping/UVDoc.onnx
+      task: document_unwarping
+      optional: true
+      max_size_mb: 500
+      cpu_feasible: true
+      providers:
+        - CUDAExecutionProvider
+        - CPUExecutionProvider
+      metadata:
+        source: huggingface_onnx
+        repo_id: monkt/paddleocr-onnx
+        family: paddleocr
+        purpose: document_unwarping
+    uvdoc_optional:
+      kind: hf_transformers
+      repo_id: PaddlePaddle/UVDoc
+      task: image-to-image
+      optional: true
+      cpu_feasible: false
+      metadata:
+        source: huggingface
+        purpose: document_unwarping
+        reason: replaced_by_monkt_uvdoc_onnx
+
+textline_orientation:
+  default: monkt_pp_lcnet_textline_ori_onnx
+  models:
+    monkt_pp_lcnet_textline_ori_onnx:
+      kind: onnx
+      path: app/deepdoc/resources/models/hf_onnx/ocr_pipeline__paddleocr_onnx__monkt__paddleocr-onnx/preprocessing/textline-orientation/PP-LCNet_x1_0_textline_ori.onnx
+      task: textline_orientation
+      optional: true
+      max_size_mb: 500
+      cpu_feasible: true
+      providers:
+        - CUDAExecutionProvider
+        - CPUExecutionProvider
+      metadata:
+        source: huggingface_onnx
+        repo_id: monkt/paddleocr-onnx
+        family: paddleocr
+        purpose: textline_orientation

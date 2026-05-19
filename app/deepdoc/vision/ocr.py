@@ -19,6 +19,7 @@ import logging
 import math
 import os
 import time
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -35,15 +36,34 @@ PARALLEL_DEVICES = 1
 
 def get_default_resource_dir():
     """
-    Return the default resource directory path, assuming this file is in:
-    project_root/some/module/path/tokenizer.py
-    Then the resource dir is: project_root/resources/data_parser/qieci
-    If the directory does not exist, it will be created automatically.
+    Return the repo-bundled OCR resource directory.
+
+    Upstream DeepDoc defaults to ``app/resources/data_parser/qieci`` and will
+    download duplicate models there. MimirQ keeps OCR assets under
+    ``app/deepdoc/resources/models/ocr`` so ONNX assets stay in one place.
     """
     resource_dir = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "../../resources/data_parser/qieci")
+        os.path.join(os.path.dirname(__file__), "../resources/models/ocr")
     )
     return resource_dir
+
+
+def resolve_model_file_path(model_dir, nm):
+    model_dir_path = os.path.abspath(str(model_dir))
+    direct = os.path.join(model_dir_path, nm + ".onnx")
+    if os.path.exists(direct):
+        return Path(direct)
+    nested = {
+        "det": os.path.join(model_dir_path, "PP-OCRv4", "PP-OCRv4", "ch_PP-OCRv4_det_infer.onnx"),
+        "rec": os.path.join(model_dir_path, "PP-OCRv4", "PP-OCRv4", "ch_PP-OCRv4_rec_infer.onnx"),
+    }.get(str(nm))
+    if nested and os.path.exists(nested):
+        return Path(nested)
+    return Path(direct)
+
+
+def _deepdoc_onnx_gpu_enabled() -> bool:
+    return str(os.environ.get("DEEPDOC_ONNX_USE_GPU", "")).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def transform(data, ops=None):
@@ -80,8 +100,31 @@ def create_operators(op_param_list, global_config=None):
 
 
 def load_model(model_dir, nm, device_id: int | None = None):
-    model_file_path = os.path.join(model_dir, nm + ".onnx")
-    model_cached_tag = model_file_path + str(device_id) if device_id is not None else model_file_path
+    model_file_path = str(resolve_model_file_path(model_dir, nm))
+
+    if not os.path.exists(model_file_path):
+        raise ValueError("not find model file path {}".format(
+            model_file_path))
+
+    def resolve_cuda_device_id() -> int | None:
+        if not _deepdoc_onnx_gpu_enabled():
+            return None
+        candidate = 0 if device_id is None else int(device_id)
+        try:
+            if "CUDAExecutionProvider" not in ort.get_available_providers():
+                return None
+        except Exception:
+            return None
+        try:
+            import torch
+            if torch.cuda.is_available() and torch.cuda.device_count() > candidate:
+                return candidate
+        except Exception:
+            return None
+        return None
+
+    cuda_device_id = resolve_cuda_device_id()
+    model_cached_tag = f"{model_file_path}:cuda:{cuda_device_id}" if cuda_device_id is not None else f"{model_file_path}:cpu"
 
     global loaded_models
     loaded_model = loaded_models.get(model_cached_tag)
@@ -89,49 +132,46 @@ def load_model(model_dir, nm, device_id: int | None = None):
         logging.info(f"load_model {model_file_path} reuses cached model")
         return loaded_model
 
-    if not os.path.exists(model_file_path):
-        raise ValueError("not find model file path {}".format(
-            model_file_path))
-
-    def cuda_is_available():
-        try:
-            import torch
-            if torch.cuda.is_available() and torch.cuda.device_count() > device_id:
-                return True
-        except Exception:
-            return False
-        return False
-
     options = ort.SessionOptions()
     options.enable_cpu_mem_arena = False
     options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
     options.intra_op_num_threads = 2
     options.inter_op_num_threads = 2
 
-    # https://github.com/microsoft/onnxruntime/issues/9509#issuecomment-951546580
-    # Shrink GPU memory after execution
-    run_options = ort.RunOptions()
-    if cuda_is_available():
-        cuda_provider_options = {
-            "device_id": device_id,  # Use specific GPU
-            "gpu_mem_limit": 512 * 1024 * 1024,  # Limit gpu memory
-            "arena_extend_strategy": "kNextPowerOfTwo",  # gpu memory allocation strategy
-        }
-        sess = ort.InferenceSession(
-            model_file_path,
-            options=options,
-            providers=['CUDAExecutionProvider'],
-            provider_options=[cuda_provider_options]
-        )
-        run_options.add_run_config_entry("memory.enable_memory_arena_shrinkage", "gpu:" + str(device_id))
-        logging.info(f"load_model {model_file_path} uses GPU")
-    else:
-        sess = ort.InferenceSession(
+    def cpu_session():
+        cpu_run_options = ort.RunOptions()
+        sess_ = ort.InferenceSession(
             model_file_path,
             options=options,
             providers=['CPUExecutionProvider'])
-        run_options.add_run_config_entry("memory.enable_memory_arena_shrinkage", "cpu")
+        cpu_run_options.add_run_config_entry("memory.enable_memory_arena_shrinkage", "cpu")
         logging.info(f"load_model {model_file_path} uses CPU")
+        return sess_, cpu_run_options
+
+    # https://github.com/microsoft/onnxruntime/issues/9509#issuecomment-951546580
+    # Shrink provider memory after execution.
+    if cuda_device_id is not None:
+        run_options = ort.RunOptions()
+        gpu_mem_limit_mb = int(os.environ.get("DEEPDOC_ONNX_GPU_MEM_LIMIT_MB", "2048"))
+        cuda_provider_options = {
+            "device_id": cuda_device_id,  # Use specific GPU
+            "gpu_mem_limit": gpu_mem_limit_mb * 1024 * 1024,  # Limit gpu memory
+            "arena_extend_strategy": "kNextPowerOfTwo",  # gpu memory allocation strategy
+        }
+        try:
+            sess = ort.InferenceSession(
+                model_file_path,
+                options=options,
+                providers=['CUDAExecutionProvider', 'CPUExecutionProvider'],
+                provider_options=[cuda_provider_options, {}]
+            )
+            run_options.add_run_config_entry("memory.enable_memory_arena_shrinkage", "gpu:" + str(cuda_device_id))
+            logging.info(f"load_model {model_file_path} uses GPU")
+        except Exception as exc:
+            logging.warning("load_model %s GPU unavailable, falling back to CPU: %s", model_file_path, str(exc)[:200])
+            sess, run_options = cpu_session()
+    else:
+        sess, run_options = cpu_session()
     loaded_model = (sess, run_options)
     loaded_models[model_cached_tag] = loaded_model
     return loaded_model

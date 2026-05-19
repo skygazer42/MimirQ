@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-from app.rag.core.logging import get_logger
 import re
 from io import BytesIO
 from pathlib import Path
@@ -10,6 +9,7 @@ from typing import Any
 from PIL import Image as PILImage
 
 from app.core.config import settings
+from app.rag.core.logging import get_logger
 
 _GENERIC_IMAGE_TEXT_RE = re.compile(r"^(image|figure|photo|picture|diagram|chart)\b", re.IGNORECASE)
 _PAGE_ONLY_RE = re.compile(r"^page\s+\d+\s*$", re.IGNORECASE)

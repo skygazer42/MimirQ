@@ -46,6 +46,7 @@ from app.parsing.diagnostics import build_parse_failure_diagnostics
 from app.parsing.enrich.image_caption import add_image_captions
 from app.parsing.factory import parser_factory
 from app.parsing.processors.cross_page_merge import merge_cross_page_items
+from app.parsing.processors.parse_quality_gate import apply_parse_quality_gate_metadata
 from app.parsing.processors.vlm_correction import maybe_correct_markdown_pages
 from app.parsing.quality.competition import compute_competition_matrix_score, select_best_parse_attempt
 from app.parsing.quality.document_quality import score_document_parse_quality
@@ -97,6 +98,8 @@ class ParsingElementOut(BaseModel):
     visual_kind: str | None = None
     text: str | None = None
     confidence: float | None = None
+    source_backend: str | None = None
+    source_element_id: str | None = None
     bbox: ParsingElementBBox | None = None
     attributes: dict[str, Any] | None = None
 
@@ -1256,6 +1259,11 @@ async def parse_workspace_document(
             next_meta["reading_order"] = ro
         if gate is not None:
             next_meta["quality_gate"] = gate.model_dump()
+            gate_evidence = dict(gate.evidence or {})
+            if isinstance(gate_evidence.get("parse_quality"), dict):
+                next_meta["parse_quality"] = dict(gate_evidence.get("parse_quality") or {})
+            if isinstance(gate_evidence.get("text_quality"), dict):
+                next_meta["parsed_text_quality"] = dict(gate_evidence.get("text_quality") or {})
         next_meta["elements"] = list(elements or [])
         next_meta["parsed_at"] = datetime.now(UTC).isoformat()
         next_meta["parse_duration_sec"] = round(float(duration_sec), 3)
@@ -1266,6 +1274,12 @@ async def parse_workspace_document(
                 "max_retries": int(max_retries),
             }
         next_meta.update(artifact_stats)
+        next_meta = apply_parse_quality_gate_metadata(next_meta)
+        if gate is not None:
+            gate_evidence = dict(gate.evidence or {})
+            gate_evidence["parse_quality_gate"] = dict(next_meta.get("parse_quality_gate") or {})
+            gate = ParsingQualityGate(grade=gate.grade, reasons=list(gate.reasons or []), evidence=gate_evidence)
+            next_meta["quality_gate"] = gate.model_dump()
         doc.doc_metadata = _sanitize_storage_value(next_meta)
 
         db.commit()

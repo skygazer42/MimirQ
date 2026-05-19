@@ -12,13 +12,13 @@ small decoder that:
 """
 
 
-from app.rag.core.logging import get_logger
 from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
 from app.core.optional_deps import optional_import
+from app.rag.core.logging import get_logger
 
 logger = get_logger(__name__)
 

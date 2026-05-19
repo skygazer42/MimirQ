@@ -1,0 +1,22 @@
+{
+  "model_name": "UVDoc",
+  "model_type": "preprocessing",
+  "preprocessing_type": "doc_unwarping",
+  "framework": "PaddleOCR",
+  "version": "PP-OCRv5",
+  "description": "Document image geometric distortion correction",
+  "accuracy": "CER: 0.179",
+  "use_case": "Fixes curved/warped documents (book pages, perspective distortion)",
+  "original_format": "PaddlePaddle",
+  "converted_format": "ONNX",
+  "opset_version": 11,
+  "input_shape": "dynamic (batch_size, 3, height, width)",
+  "output_shape": "dynamic (batch_size, 3, height, width)",
+  "source": "https://github.com/PaddlePaddle/PaddleOCR",
+  "usage": {
+    "library": "onnxruntime",
+    "when_to_use": "Fixes curved/warped documents (book pages, perspective distortion)",
+    "optional": true,
+    "improves": "OCR accuracy on rotated or distorted documents"
+  }
+}

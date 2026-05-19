@@ -45,6 +45,7 @@ from app.parsing.processors.parse_cache import (
 from app.parsing.processors.parse_cache import (
     build_parse_cache_key as build_local_parse_cache_key,
 )
+from app.parsing.processors.parse_quality_gate import apply_parse_quality_gate_metadata
 from app.parsing.processors.vlm_correction import apply_vlm_correction_async, should_apply_vlm_correction
 from app.parsing.quality.document_quality import score_document_parse_quality
 from app.parsing.quality.reading_order import score_reading_order
@@ -218,7 +219,8 @@ def _is_table_segment_metadata(meta: dict[str, Any] | None) -> bool:
         return False
     content_type = str(meta.get("content_type") or "").strip().lower()
     doc_type = str(meta.get("doc_type_kwd") or "").strip().lower()
-    return content_type == "table" or doc_type == "table"
+    element_kind = str(meta.get("element_kind") or "").strip().lower()
+    return content_type == "table" or doc_type == "table" or element_kind == "table"
 
 
 def _coerce_float(value: Any) -> float | None:
@@ -311,6 +313,60 @@ def _seal_summary_to_specialty_signals(summary: dict[str, Any] | None) -> dict[s
         "seal_expected": bool(summary.get("detected")),
         "seal_confidence": _coerce_float(summary.get("primary_score")),
         "seal_candidate_count": _coerce_int(summary.get("candidate_count_total")),
+    }
+
+
+def _build_ocr_quality_summary(
+    documents: list[Document] | None,
+    *,
+    low_confidence_threshold: float = 0.7,
+) -> dict[str, Any] | None:
+    confidences: list[float] = []
+    low_spans: list[dict[str, Any]] = []
+
+    def visit(meta: dict[str, Any], text: str) -> None:
+        confidence = _coerce_float(
+            meta.get("confidence")
+            if meta.get("confidence") is not None
+            else meta.get("element_confidence")
+            if meta.get("element_confidence") is not None
+            else meta.get("ocr_confidence")
+        )
+        if confidence is None:
+            return
+        confidence = max(0.0, min(1.0, float(confidence)))
+        confidences.append(confidence)
+        if confidence < float(low_confidence_threshold):
+            low_spans.append(
+                {
+                    "element_id": str(meta.get("id") or meta.get("element_id") or meta.get("source_element_id") or ""),
+                    "text": str(meta.get("text") or text or "")[:160],
+                    "page": meta.get("page") or meta.get("element_page"),
+                    "bbox": meta.get("bbox") if isinstance(meta.get("bbox"), dict) else meta.get("element_bbox"),
+                    "confidence": round(float(confidence), 4),
+                }
+            )
+
+    for doc in documents or []:
+        meta = dict(getattr(doc, "metadata", None) or {})
+        derived = meta.get("derived_elements")
+        if isinstance(derived, list):
+            for item in derived:
+                if isinstance(item, dict):
+                    visit(dict(item), str(item.get("text") or ""))
+        visit(meta, str(getattr(doc, "page_content", "") or ""))
+
+    if not confidences:
+        return None
+    avg = sum(confidences) / max(1, len(confidences))
+    return {
+        "schema": "mimirq.ocr_quality.v1",
+        "confidence_avg": round(float(avg), 4),
+        "confidence_min": round(float(min(confidences)), 4),
+        "span_count": int(len(confidences)),
+        "low_confidence_threshold": float(low_confidence_threshold),
+        "low_confidence_count": int(len(low_spans)),
+        "low_confidence_spans": low_spans[:20],
     }
 
 
@@ -910,6 +966,12 @@ class ParsingStage:
             quality = score_parsed_text_quality(joined).to_dict()
             seal_summary = _build_seal_summary(documents)
             specialty_signals = _seal_summary_to_specialty_signals(seal_summary)
+            ocr_summary = _build_ocr_quality_summary(
+                documents,
+                low_confidence_threshold=float(
+                    getattr(settings, "PARSE_QUALITY_OCR_LOW_CONFIDENCE_THRESHOLD", 0.7) or 0.7
+                ),
+            )
             meta = dict(db_document.doc_metadata or {})
             meta["parsed_text_quality"] = quality
             meta["parse_quality"] = score_document_parse_quality(
@@ -919,6 +981,8 @@ class ParsingStage:
             )
             if seal_summary is not None:
                 meta["seal_summary"] = seal_summary
+            if ocr_summary is not None:
+                meta["ocr"] = ocr_summary
             artifact_stats = compute_parsing_artifact_stats(
                 documents=documents,
                 original_markdown=joined,
@@ -936,6 +1000,7 @@ class ParsingStage:
                 ).to_dict()
             except Exception as exc:
                 logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
+            meta = apply_parse_quality_gate_metadata(meta)
             db_document.doc_metadata = meta
             db.commit()
             db.refresh(db_document)
@@ -2137,6 +2202,7 @@ class DocumentProcessorService:
                             "imported_at": now_iso,
                             "tables": tables_payload,
                         }
+                        next_meta = apply_parse_quality_gate_metadata(next_meta)
                         db_document.doc_metadata = next_meta
                         db.commit()
                         db.refresh(db_document)
@@ -2220,6 +2286,7 @@ class DocumentProcessorService:
                             }
                         else:
                             next_meta.pop("table_store", None)
+                        next_meta = apply_parse_quality_gate_metadata(next_meta)
 
                         if next_meta != (db_document.doc_metadata or {}):
                             db_document.doc_metadata = next_meta
@@ -2651,6 +2718,7 @@ class DocumentProcessorService:
                                     parsed_text_quality=(meta.get("parsed_text_quality") if isinstance(meta.get("parsed_text_quality"), dict) else None),
                                     specialty_signals=specialty_signals,
                                 )
+                            meta = apply_parse_quality_gate_metadata(meta)
                             db_document.doc_metadata = meta
                             db.commit()
                             db.refresh(db_document)
@@ -4269,6 +4337,10 @@ class DocumentProcessorService:
                     "markdown": md,
                     "sheet_name": label,
                     "source_page": (page_i if page_i > 0 else None),
+                    "source_bbox": meta.get("element_bbox") or meta.get("bbox"),
+                    "source_element_id": meta.get("source_element_id") or meta.get("element_id"),
+                    "source_table_shape": meta.get("table_shape"),
+                    "source_table_columns": meta.get("table_columns"),
                 }
             )
             table_index += 1
@@ -4301,24 +4373,32 @@ class DocumentProcessorService:
                 now_iso = dt.datetime.now(dt.UTC).isoformat()
                 tables_payload: list[dict[str, Any]] = []
                 for idx, a in enumerate(assets or []):
-                    source_page = None
+                    source_info: dict[str, Any] = {}
                     if idx < len(table_inputs):
-                        source_page = table_inputs[idx].get("source_page")
-                    tables_payload.append(
-                        {
-                            "table_id": str(getattr(a, "table_id", "")),
-                            "sheet_index": int(getattr(a, "sheet_index", 0) or 0),
-                            "sheet_name": getattr(a, "sheet_name", None),
-                            "row_count": int(getattr(a, "row_count", 0) or 0),
-                            "col_count": int(getattr(a, "col_count", 0) or 0),
-                            "truncated": bool(getattr(a, "truncated", False)),
-                            "columns": list(getattr(a, "columns", None) or []),
-                            "sample_rows": list(getattr(a, "sample_rows", None) or []),
-                            "source_page": source_page,
-                            "routing_kind": "tag_sidecar",
-                            "routing_source": "parser_table_segment",
-                        }
-                    )
+                        source_info = table_inputs[idx]
+                    payload = {
+                        "table_id": str(getattr(a, "table_id", "")),
+                        "sheet_index": int(getattr(a, "sheet_index", 0) or 0),
+                        "sheet_name": getattr(a, "sheet_name", None),
+                        "row_count": int(getattr(a, "row_count", 0) or 0),
+                        "col_count": int(getattr(a, "col_count", 0) or 0),
+                        "truncated": bool(getattr(a, "truncated", False)),
+                        "columns": list(getattr(a, "columns", None) or []),
+                        "sample_rows": list(getattr(a, "sample_rows", None) or []),
+                        "source_page": source_info.get("source_page"),
+                        "routing_kind": "tag_sidecar",
+                        "routing_source": "parser_table_segment",
+                    }
+                    for source_key in (
+                        "source_bbox",
+                        "source_element_id",
+                        "source_table_shape",
+                        "source_table_columns",
+                    ):
+                        value = source_info.get(source_key)
+                        if value not in (None, "", [], {}):
+                            payload[source_key] = value
+                    tables_payload.append(payload)
 
                 source_ext = getattr(db_document, "file_type", None)
                 source_ext = f".{str(source_ext).lower().lstrip('.')}" if source_ext else None
@@ -4341,6 +4421,7 @@ class DocumentProcessorService:
                 existing = next_meta.get("table_store")
                 if isinstance(existing, dict) and str(existing.get("source_ext") or "").lower() in {".pdf"}:
                     next_meta.pop("table_store", None)
+            next_meta = apply_parse_quality_gate_metadata(next_meta)
 
             if next_meta != (db_document.doc_metadata or {}):
                 db_document.doc_metadata = next_meta

@@ -13,12 +13,13 @@ This helper normalizes an extracted directory into a stable layout:
 
 from __future__ import annotations
 
-from app.rag.core.logging import get_logger
 import re
 import shutil
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
+
+from app.rag.core.logging import get_logger
 
 _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
 logger = get_logger(__name__)

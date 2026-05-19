@@ -31,6 +31,8 @@ from PIL import Image
 
 from app.deepdoc.parser.pdf_parser import IntegratedPipelinePdfParser
 
+logger = logging.getLogger(__name__)
+
 
 class DoclingContentType(str, Enum):
     IMAGE = "image"

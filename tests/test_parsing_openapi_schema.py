@@ -11,15 +11,29 @@ def test_parsing_openapi_schema_exposes_typed_elements_pages_field() -> None:
     properties = element_schema.get("properties") or {}
     pages = properties.get("pages") or {}
     visual_kind = properties.get("visual_kind") or {}
+    source_backend = properties.get("source_backend") or {}
+    source_element_id = properties.get("source_element_id") or {}
     pages_any_of = pages.get("anyOf") if isinstance(pages, dict) else None
     pages_array = next((item for item in (pages_any_of or []) if isinstance(item, dict) and item.get("type") == "array"), {})
     visual_kind_any_of = visual_kind.get("anyOf") if isinstance(visual_kind, dict) else None
     visual_kind_string = next((item for item in (visual_kind_any_of or []) if isinstance(item, dict) and item.get("type") == "string"), {})
+    source_backend_any_of = source_backend.get("anyOf") if isinstance(source_backend, dict) else None
+    source_backend_string = next(
+        (item for item in (source_backend_any_of or []) if isinstance(item, dict) and item.get("type") == "string"),
+        {},
+    )
+    source_element_id_any_of = source_element_id.get("anyOf") if isinstance(source_element_id, dict) else None
+    source_element_id_string = next(
+        (item for item in (source_element_id_any_of or []) if isinstance(item, dict) and item.get("type") == "string"),
+        {},
+    )
 
     assert element_schema.get("type") == "object"
     assert pages_array.get("type") == "array"
     assert (pages_array.get("items") or {}).get("type") == "integer"
     assert visual_kind_string.get("type") == "string"
+    assert source_backend_string.get("type") == "string"
+    assert source_element_id_string.get("type") == "string"
 
     response_schema = schemas.get("ParsingContentResponse") or {}
     response_props = response_schema.get("properties") or {}

@@ -10,7 +10,6 @@ This provides three best-effort paths:
 from __future__ import annotations
 
 import asyncio
-from app.rag.core.logging import get_logger
 import math
 import tempfile
 import time
@@ -21,7 +20,9 @@ from typing import Any
 import httpx
 from PIL import Image, ImageDraw
 
+from app.parsing.enrich.watermark_suppressor import suppress_watermark_file
 from app.parsing.preprocess.model_loader import get_preprocess_model_loader
+from app.rag.core.logging import get_logger
 
 _RASTER_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff"}
 logger = get_logger(__name__)
@@ -438,9 +439,29 @@ def cleanup_watermark_document(
     if normalized_backend == "auto":
         if str(model_path or "").strip():
             normalized_backend = "local"
+        elif str(api_url or "").strip():
+            normalized_backend = "http"
+        elif input_path.suffix.lower() in _RASTER_EXTS:
+            normalized_backend = "heuristic"
         else:
             normalized_backend = "http"
         info["backend"] = normalized_backend
+
+    if normalized_backend == "heuristic":
+        if input_path.suffix.lower() not in _RASTER_EXTS:
+            return False, "unsupported_input_type", info
+        try:
+            with Image.open(input_path) as image:
+                boxes = _collect_watermark_mask_boxes(image)
+            info["mask_box_count"] = int(len(boxes))
+            info["mask_reasons"] = [str(item.get("reason") or "") for item in boxes if str(item.get("reason") or "")]
+            if not boxes:
+                return False, "no_mask_boxes", info
+            changed, suppress_meta = suppress_watermark_file(input_path=input_path, output_path=output_path, boxes=boxes)
+            info["suppressor"] = suppress_meta
+        except Exception as exc:  # noqa: BLE001
+            return False, f"heuristic_failed:{exc.__class__.__name__}", info
+        return changed, "watermark_ok" if changed else "watermark_no_change", info
 
     if normalized_backend == "local":
         model_ref = str(model_path or "").strip()

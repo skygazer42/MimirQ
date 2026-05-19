@@ -1,0 +1,18 @@
+{
+  "model_name": "PP-OCRv5_server_det",
+  "model_type": "detection",
+  "framework": "PaddleOCR",
+  "version": "PP-OCRv5",
+  "description": "PP-OCRv5 text detection model (shared across all languages)",
+  "original_format": "PaddlePaddle",
+  "converted_format": "ONNX",
+  "opset_version": 11,
+  "input_shape": "dynamic (batch_size, 3, height, width)",
+  "output_shape": "dynamic",
+  "source": "https://github.com/PaddlePaddle/PaddleOCR",
+  "usage": {
+    "library": "onnxruntime",
+    "preprocessing": "RGB image, normalized to [0, 1]",
+    "postprocessing": "Text box coordinates"
+  }
+}

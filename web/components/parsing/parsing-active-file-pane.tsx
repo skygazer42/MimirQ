@@ -100,7 +100,17 @@ function buildQualityEvidenceSummary(qualityGate: unknown, pdfQuality: unknown):
  const gateEvidence = isRecord(qualityGate) && isRecord(qualityGate.evidence) ? qualityGate.evidence : {}
  const textQuality = isRecord(gateEvidence.text_quality) ? gateEvidence.text_quality : {}
  const parseQuality = isRecord(gateEvidence.parse_quality) ? gateEvidence.parse_quality : {}
+ const parseQualityGate = isRecord(gateEvidence.parse_quality_gate) ? gateEvidence.parse_quality_gate : {}
+ const parseQualityFlags = isRecord(parseQualityGate.flags) ? parseQualityGate.flags : {}
  const fallbackAttempts = Array.isArray(gateEvidence.fallback_attempts) ? gateEvidence.fallback_attempts : []
+ const flagLabels: Record<string, string> = {
+ parse_score_low: '解析分低',
+ ocr_low_confidence: 'OCR低置信',
+ table_structure_low_confidence: '表格结构低置信',
+ reading_order_unstable: '版面顺序不稳',
+ noise_removal_risky: '噪声清理风险',
+ tag_sidecar_recommended: '建议TAG',
+ }
 
  if (isRecord(pdfQuality) && typeof pdfQuality.score === 'number') {
  pieces.push(`pdf_score=${Number(pdfQuality.score).toFixed(3)}`)
@@ -119,6 +129,12 @@ function buildQualityEvidenceSummary(qualityGate: unknown, pdfQuality: unknown):
  if (fallbackBackends.length > 0) {
  pieces.push(`fallback=${fallbackBackends.join('→')}`)
  }
+ }
+ const activeFlags = Object.entries(parseQualityFlags)
+ .filter(([, value]) => value === true)
+ .map(([key]) => flagLabels[key] || key)
+ if (activeFlags.length > 0) {
+ pieces.push(`质量标记=${activeFlags.slice(0, 3).join('、')}`)
  }
 
  return pieces.join(' · ')

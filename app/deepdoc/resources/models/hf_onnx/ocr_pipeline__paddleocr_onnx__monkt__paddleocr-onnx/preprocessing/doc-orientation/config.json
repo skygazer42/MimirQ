@@ -1,0 +1,29 @@
+{
+  "model_name": "PP-LCNet_x1_0_doc_ori",
+  "model_type": "preprocessing",
+  "preprocessing_type": "doc_orientation",
+  "framework": "PaddleOCR",
+  "version": "PP-OCRv5",
+  "description": "Document orientation classification (0°, 90°, 180°, 270°)",
+  "accuracy": "99.06%",
+  "use_case": "Corrects rotated scanned documents before OCR",
+  "original_format": "PaddlePaddle",
+  "converted_format": "ONNX",
+  "opset_version": 11,
+  "input_shape": "dynamic (batch_size, 3, height, width)",
+  "output_shape": "dynamic (batch_size, 4)",
+  "source": "https://github.com/PaddlePaddle/PaddleOCR",
+  "usage": {
+    "library": "onnxruntime",
+    "when_to_use": "Corrects rotated scanned documents before OCR",
+    "optional": true,
+    "improves": "OCR accuracy on rotated or distorted documents"
+  },
+  "num_classes": 4,
+  "categories": [
+    "0°",
+    "90°",
+    "180°",
+    "270°"
+  ]
+}
