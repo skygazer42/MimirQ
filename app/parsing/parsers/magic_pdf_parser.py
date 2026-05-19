@@ -51,6 +51,21 @@ def _is_dir_readable(path: Path) -> bool:
         return False
 
 
+def _resolve_magicpdf_candidate(candidate: Path) -> Path | None:
+    if candidate.name == "models" and _has_required_magicpdf_models(candidate):
+        return candidate
+    if _is_dir_readable(candidate):
+        snapshots = sorted(
+            (p / "models" for p in candidate.glob("*") if (p / "models").is_dir()),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        for models_dir in snapshots:
+            if _has_required_magicpdf_models(models_dir):
+                return models_dir
+    return None
+
+
 def resolve_magicpdf_models_dir(configured: str | None = None) -> Path | None:
     """
     Locate a PDF-Extract-Kit models directory usable by MagicPDF.
@@ -63,7 +78,19 @@ def resolve_magicpdf_models_dir(configured: str | None = None) -> Path | None:
     raw = (configured or os.environ.get("MAGIC_PDF_MODELS_DIR") or "").strip()
     candidates: list[Path] = []
     if raw:
-        candidates.append(Path(raw).expanduser())
+        return _resolve_magicpdf_candidate(Path(raw).expanduser())
+
+    repo_root = Path(__file__).resolve().parents[3]
+    candidates.append(
+        repo_root
+        / "app"
+        / "deepdoc"
+        / "resources"
+        / "models"
+        / "magicpdf"
+        / "PDF-Extract-Kit-1.0"
+        / "models"
+    )
 
     home = Path.home()
     candidates.append(home / ".cache" / "magicpdf" / "models")
@@ -79,17 +106,9 @@ def resolve_magicpdf_models_dir(configured: str | None = None) -> Path | None:
         candidates.append(Path(root))
 
     for candidate in candidates:
-        if candidate.name == "models" and _has_required_magicpdf_models(candidate):
-            return candidate
-        if _is_dir_readable(candidate):
-            snapshots = sorted(
-                (p / "models" for p in candidate.glob("*") if (p / "models").is_dir()),
-                key=lambda p: p.stat().st_mtime,
-                reverse=True,
-            )
-            for models_dir in snapshots:
-                if _has_required_magicpdf_models(models_dir):
-                    return models_dir
+        resolved = _resolve_magicpdf_candidate(candidate)
+        if resolved is not None:
+            return resolved
     return None
 
 
