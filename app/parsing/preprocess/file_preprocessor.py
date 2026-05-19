@@ -13,7 +13,6 @@ Security:
 
 from __future__ import annotations
 
-from app.rag.core.logging import get_logger
 import hashlib
 import os
 import re
@@ -26,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.optional_deps import optional_import
+from app.rag.core.logging import get_logger
 
 logger = get_logger(__name__)
 

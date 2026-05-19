@@ -1,0 +1,27 @@
+{
+  "model_name": "PP-LCNet_x1_0_textline_ori",
+  "model_type": "preprocessing",
+  "preprocessing_type": "textline_orientation",
+  "framework": "PaddleOCR",
+  "version": "PP-OCRv5",
+  "description": "Text line orientation classification (0°, 180°)",
+  "accuracy": "98.85%",
+  "use_case": "Corrects upside-down text lines",
+  "original_format": "PaddlePaddle",
+  "converted_format": "ONNX",
+  "opset_version": 11,
+  "input_shape": "dynamic (batch_size, 3, height, width)",
+  "output_shape": "dynamic (batch_size, 2)",
+  "source": "https://github.com/PaddlePaddle/PaddleOCR",
+  "usage": {
+    "library": "onnxruntime",
+    "when_to_use": "Corrects upside-down text lines",
+    "optional": true,
+    "improves": "OCR accuracy on rotated or distorted documents"
+  },
+  "num_classes": 2,
+  "categories": [
+    "0°",
+    "180°"
+  ]
+}

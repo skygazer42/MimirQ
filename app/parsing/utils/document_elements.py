@@ -52,6 +52,11 @@ def _normalize_string(value: Any) -> str:
     return str(value or "").strip().lower()
 
 
+def _clean_optional_string(value: Any) -> str | None:
+    text = str(value or "").strip()
+    return text or None
+
+
 def _get_metadata(item: Any) -> dict[str, Any]:
     if isinstance(item, Mapping):
         meta = item.get("metadata")
@@ -130,7 +135,9 @@ def _extract_page(meta: Mapping[str, Any]) -> int | None:
 
 
 def _extract_pages(meta: Mapping[str, Any]) -> list[int] | None:
-    raw = meta.get("cross_page_merge_pages")
+    raw = meta.get("pages")
+    if not isinstance(raw, list):
+        raw = meta.get("cross_page_merge_pages")
     if not isinstance(raw, list):
         return None
     pages: list[int] = []
@@ -202,6 +209,8 @@ def _extract_attributes(meta: Mapping[str, Any]) -> dict[str, Any] | None:
             continue
         if key in {"page", "page_number", "page_index"}:
             continue
+        if key in {"source_backend", "source_element_id"}:
+            continue
         safe_value = _json_safe(value)
         if safe_value is not None:
             attrs[str(key)] = safe_value
@@ -264,6 +273,7 @@ def _extract_derived_attributes(meta: Mapping[str, Any]) -> dict[str, Any] | Non
             "kind",
             "text",
             "page",
+            "pages",
             "bbox",
             "confidence",
             "attributes",
@@ -273,6 +283,8 @@ def _extract_derived_attributes(meta: Mapping[str, Any]) -> dict[str, Any] | Non
             "element_page",
             "element_bbox",
             "element_confidence",
+            "source_backend",
+            "source_element_id",
         }:
             continue
         safe_value = _json_safe(value)
@@ -309,6 +321,12 @@ def _normalize_derived_elements(
         if bbox is None:
             bbox = _extract_bbox(raw)
         attributes = _extract_derived_attributes(raw)
+        source_backend = _clean_optional_string(raw.get("source_backend"))
+        if source_backend is None and isinstance(attributes, Mapping):
+            source_backend = _clean_optional_string(attributes.get("source_backend"))
+        source_element_id = _clean_optional_string(raw.get("source_element_id"))
+        if source_element_id is None and isinstance(attributes, Mapping):
+            source_element_id = _clean_optional_string(attributes.get("source_element_id"))
         visual_kind = _normalize_string(raw.get("visual_kind")) or _infer_visual_kind(kind=kind, text=text, attributes=attributes)
         if visual_kind:
             attrs = dict(attributes or {})
@@ -336,6 +354,8 @@ def _normalize_derived_elements(
                 "text": text or None,
                 "bbox": bbox,
                 "confidence": confidence,
+                "source_backend": source_backend,
+                "source_element_id": source_element_id,
                 "attributes": attributes,
             }
         )
@@ -352,6 +372,12 @@ def normalize_document_elements(items: Iterable[Document | Mapping[str, Any]] | 
         pages = _extract_pages(meta)
         bbox = _extract_bbox(meta)
         attributes = _extract_attributes(meta)
+        source_backend = _clean_optional_string(meta.get("source_backend"))
+        if source_backend is None and isinstance(attributes, Mapping):
+            source_backend = _clean_optional_string(attributes.get("source_backend"))
+        source_element_id = _clean_optional_string(meta.get("source_element_id"))
+        if source_element_id is None and isinstance(attributes, Mapping):
+            source_element_id = _clean_optional_string(attributes.get("source_element_id"))
         visual_kind = _infer_visual_kind(kind=kind, text=text, attributes=attributes)
         if visual_kind:
             attrs = dict(attributes or {})
@@ -379,6 +405,8 @@ def normalize_document_elements(items: Iterable[Document | Mapping[str, Any]] | 
                 "text": text or None,
                 "bbox": bbox,
                 "confidence": confidence,
+                "source_backend": source_backend,
+                "source_element_id": source_element_id,
                 "attributes": attributes,
             }
         )

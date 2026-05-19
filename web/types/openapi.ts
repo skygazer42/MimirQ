@@ -508,6 +508,80 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/duplicates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Document Duplicates
+         * @description Find duplicate documents by `documents.metadata.file_sha256` within a dataset.
+         *
+         *     Notes:
+         *     - Requires dataset read permission.
+         *     - Applies document-level ACL filtering for non-owners ("security trimming").
+         *     - Uses Postgres grouping when available to avoid loading all documents into memory.
+         *     - Best-effort and bounded by `max_groups`/`max_docs_per_group`.
+         */
+        get: operations["list_document_duplicates_api_v1_documents_duplicates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Document Folders
+         * @description Build a folder tree derived from `document.metadata.source_path`.
+         *
+         *     Notes:
+         *     - `source_path` is only present when the client uploads with directory-preserving keys.
+         *     - The tree is dataset-scoped for performance and permission clarity.
+         */
+        get: operations["list_document_folders_api_v1_documents_folders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Document Stats
+         * @description Document stats for knowledge-base dashboards.
+         *
+         *     Notes:
+         *     - Enforces the same dataset permission semantics as `list_documents`.
+         *     - Supports lightweight filename search via `q`.
+         */
+        get: operations["get_document_stats_api_v1_documents_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{document_id}/chunks": {
         parameters: {
             query?: never;
@@ -663,6 +737,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Documents
+         * @description List documents.
+         */
+        get: operations["list_documents_api_v1_documents__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/manual": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Document With Manual Chunks
+         * @description Create a document from frontend custom chunks.
+         */
+        post: operations["create_document_with_manual_chunks_api_v1_documents_manual_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Document
+         * @description Document parse preview endpoint.
+         *
+         *     Only parses the document and returns structured segments; does not create
+         *     a document record or persist data. Useful for frontend custom chunking.
+         */
+        post: operations["preview_document_api_v1_documents_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{document_id}": {
         parameters: {
             query?: never;
@@ -682,56 +819,6 @@ export interface paths {
          * @description Delete document.
          */
         delete: operations["delete_document_api_v1_documents__document_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/duplicates": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Document Duplicates
-         * @description Find duplicate documents by `documents.metadata.file_sha256` within a dataset.
-         *
-         *     Notes:
-         *     - Requires dataset read permission.
-         *     - Applies document-level ACL filtering for non-owners ("security trimming").
-         *     - Uses Postgres grouping when available to avoid loading all documents into memory.
-         *     - Best-effort and bounded by `max_groups`/`max_docs_per_group`.
-         */
-        get: operations["list_document_duplicates_api_v1_documents_duplicates_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/folders": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Document Folders
-         * @description Build a folder tree derived from `document.metadata.source_path`.
-         *
-         *     Notes:
-         *     - `source_path` is only present when the client uploads with directory-preserving keys.
-         *     - The tree is dataset-scoped for performance and permission clarity.
-         */
-        get: operations["list_document_folders_api_v1_documents_folders_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -789,46 +876,6 @@ export interface paths {
          *     RBAC: dataset editor/admin (dataset writable) when the document belongs to a dataset.
          */
         patch: operations["patch_document_lifecycle_metadata_api_v1_documents__document_id__lifecycle_metadata_patch"];
-        trace?: never;
-    };
-    "/api/v1/documents/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Documents
-         * @description List documents.
-         */
-        get: operations["list_documents_api_v1_documents__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/manual": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Create Document With Manual Chunks
-         * @description Create a document from frontend custom chunks.
-         */
-        post: operations["create_document_with_manual_chunks_api_v1_documents_manual_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/api/v1/documents/{document_id}/qa/generate": {
@@ -893,29 +940,6 @@ export interface paths {
         patch: operations["patch_document_user_metadata_api_v1_documents__document_id__metadata_patch"];
         trace?: never;
     };
-    "/api/v1/documents/preview": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Preview Document
-         * @description Document parse preview endpoint.
-         *
-         *     Only parses the document and returns structured segments; does not create
-         *     a document record or persist data. Useful for frontend custom chunking.
-         */
-        post: operations["preview_document_api_v1_documents_preview_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/documents/{document_id}/status": {
         parameters: {
             query?: never;
@@ -978,30 +1002,6 @@ export interface paths {
          *     - Use `force=true` to allow retrying completed documents.
          */
         post: operations["retry_document_processing_api_v1_documents__document_id__retry_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/documents/stats": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Document Stats
-         * @description Document stats for knowledge-base dashboards.
-         *
-         *     Notes:
-         *     - Enforces the same dataset permission semantics as `list_documents`.
-         *     - Supports lightweight filename search via `q`.
-         */
-        get: operations["get_document_stats_api_v1_documents_stats_get"];
-        put?: never;
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -6840,6 +6840,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/audit/logs/{log_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Audit Log
+         * @description Delete one audit log row for the current tenant.
+         */
+        delete: operations["delete_audit_log_api_v1_audit_logs__log_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit/logs/bulk-delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Delete Audit Logs
+         * @description Delete selected audit log rows for the current tenant.
+         */
+        post: operations["bulk_delete_audit_logs_api_v1_audit_logs_bulk_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/audit/access-graph/export": {
         parameters: {
             query?: never;
@@ -7030,6 +7070,22 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AuditLogDeleteRequest */
+        AuditLogDeleteRequest: {
+            /** Ids */
+            ids: string[];
+        };
+        /** AuditLogDeleteResponse */
+        AuditLogDeleteResponse: {
+            /** Requested */
+            requested: number;
+            /** Deleted */
+            deleted: number;
+            /** Missing */
+            missing: number;
+            /** Ids */
+            ids: string[];
+        };
         /** AuditLogListResponse */
         AuditLogListResponse: {
             /** Total */
@@ -7083,6 +7139,11 @@ export interface components {
              * @default true
              */
             dry_run: boolean;
+            /**
+             * Scope
+             * @default retention
+             */
+            scope: string;
             /** Retention Days */
             retention_days: number;
             /**
@@ -7096,6 +7157,10 @@ export interface components {
             eligible: number;
             /** Deleted */
             deleted: number;
+            /** Filters */
+            filters?: {
+                [key: string]: unknown;
+            };
         };
         /** AuthResponse */
         AuthResponse: {
@@ -7342,10 +7407,7 @@ export interface components {
         };
         /** Body_import_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_import_post */
         Body_import_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_import_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Replace
@@ -7355,18 +7417,12 @@ export interface components {
         };
         /** Body_import_evidence_items_api_v1_evidence_suites__suite_id__items_import_post */
         Body_import_evidence_items_api_v1_evidence_suites__suite_id__items_import_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
         };
         /** Body_import_governance_profiles_api_v1_pipeline_governance_profiles_import_post */
         Body_import_governance_profiles_api_v1_pipeline_governance_profiles_import_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Overwrite
@@ -7376,10 +7432,7 @@ export interface components {
         };
         /** Body_ingestion_preview_api_v1_pipeline_ingestion_preview_post */
         Body_ingestion_preview_api_v1_pipeline_ingestion_preview_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Dataset Id
@@ -7398,20 +7451,14 @@ export interface components {
         };
         /** Body_parse_preview_api_v1_pipeline_parse_preview_post */
         Body_parse_preview_api_v1_pipeline_parse_preview_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /** Parser Backend */
             parser_backend?: string | null;
         };
         /** Body_preview_chunking_api_v1_documents_chunk_preview_post */
         Body_preview_chunking_api_v1_documents_chunk_preview_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Parser Backend
@@ -7519,10 +7566,7 @@ export interface components {
         };
         /** Body_preview_document_api_v1_documents_preview_post */
         Body_preview_document_api_v1_documents_preview_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Parser Backend
@@ -7563,23 +7607,18 @@ export interface components {
         Body_register_ltr_model_api_v1_ltr_models_register_post: {
             /**
              * Model File
-             * Format: binary
              * @description XGBoost model bytes (JSON)
              */
             model_file: string;
             /**
              * Manifest File
-             * Format: binary
              * @description LTR manifest JSON (validated)
              */
             manifest_file: string;
         };
         /** Body_upload_document_api_v1_documents_upload_post */
         Body_upload_document_api_v1_documents_upload_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Parser Backend
@@ -7655,6 +7694,11 @@ export interface components {
              * @default false
              */
             precheck_first: boolean;
+            /**
+             * Precheck Only
+             * @default false
+             */
+            precheck_only: boolean;
             /** User Metadata Map */
             user_metadata_map?: string | null;
             /**
@@ -7699,10 +7743,7 @@ export interface components {
         };
         /** Body_upload_parsing_document_api_v1_parsing_documents_post */
         Body_upload_parsing_document_api_v1_parsing_documents_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /**
              * Parser Backend
@@ -7712,10 +7753,7 @@ export interface components {
         };
         /** Body_upload_zip_with_images_api_v1_pipeline_upload_zip_with_images_post */
         Body_upload_zip_with_images_api_v1_pipeline_upload_zip_with_images_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
             /** Dataset Id */
             dataset_id: string;
@@ -7897,11 +7935,8 @@ export interface components {
              * @default hybrid
              */
             retrieval_mode: string;
-            /**
-             * Alpha
-             * @default 0.6
-             */
-            alpha: number;
+            /** Alpha */
+            alpha?: number;
             /** Fusion Strategy */
             fusion_strategy?: string | null;
             /** Fusion Budgets */
@@ -9835,6 +9870,7 @@ export interface components {
             /** Default Chunk Strategy */
             default_chunk_strategy?: string | null;
             rag_defaults?: components["schemas"]["DatasetRAGDefaults"] | null;
+            embedding_defaults?: components["schemas"]["DatasetEmbeddingDefaults"] | null;
             /** Default Rag Config Template Id */
             default_rag_config_template_id?: string | null;
             /** Default Rag Config Template Key */
@@ -9870,6 +9906,7 @@ export interface components {
             /** Default Chunk Strategy */
             default_chunk_strategy?: string | null;
             rag_defaults?: components["schemas"]["DatasetRAGDefaults"] | null;
+            embedding_defaults?: components["schemas"]["DatasetEmbeddingDefaults"] | null;
             /** Default Rag Config Template Id */
             default_rag_config_template_id?: string | null;
             /** Default Rag Config Template Key */
@@ -9939,6 +9976,7 @@ export interface components {
             /** Default Chunk Strategy */
             default_chunk_strategy?: string | null;
             rag_defaults?: components["schemas"]["DatasetRAGDefaults"] | null;
+            embedding_defaults?: components["schemas"]["DatasetEmbeddingDefaults"] | null;
             /** Default Rag Config Template Id */
             default_rag_config_template_id?: string | null;
             /** Default Rag Config Template Key */
@@ -9954,6 +9992,21 @@ export interface components {
             chunk_targets_v2?: components["schemas"]["DatasetChunkTargetsV2"] | null;
             pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
             retention_policy?: components["schemas"]["DatasetRetentionPolicy"] | null;
+        };
+        /**
+         * DatasetEmbeddingDefaults
+         * @description Dataset-level embedding defaults.
+         *
+         *     Stored in datasets.metadata.embedding_defaults. API keys intentionally stay
+         *     in system settings; dataset metadata only chooses the embedding space.
+         */
+        DatasetEmbeddingDefaults: {
+            /** Provider */
+            provider?: string | null;
+            /** Model */
+            model?: string | null;
+            /** Api Base */
+            api_base?: string | null;
         };
         /**
          * DatasetGovernanceAuditOut
@@ -10439,6 +10492,7 @@ export interface components {
             /** Default Chunk Strategy */
             default_chunk_strategy?: string | null;
             rag_defaults?: components["schemas"]["DatasetRAGDefaults"] | null;
+            embedding_defaults?: components["schemas"]["DatasetEmbeddingDefaults"] | null;
             /** Default Rag Config Template Id */
             default_rag_config_template_id?: string | null;
             /** Default Rag Config Template Key */
@@ -11891,6 +11945,31 @@ export interface components {
             /** Finished At */
             finished_at?: string | null;
         };
+        /**
+         * DatasetReportDataProvenanceOut
+         * @description Machine-readable proof that report sections come from persisted backend data.
+         */
+        DatasetReportDataProvenanceOut: {
+            /**
+             * Source
+             * @default database
+             */
+            source: string;
+            /**
+             * Mocked
+             * @default false
+             */
+            mocked: boolean;
+            /**
+             * Generated By
+             * @default ReportService.build_dataset_report
+             */
+            generated_by: string;
+            /** Sections */
+            sections?: {
+                [key: string]: string;
+            };
+        };
         /** DatasetReportOut */
         DatasetReportOut: {
             /**
@@ -11907,6 +11986,7 @@ export interface components {
              * Format: date-time
              */
             generated_at: string;
+            data_provenance?: components["schemas"]["DatasetReportDataProvenanceOut"];
             profile: components["schemas"]["DatasetProfileSummary"];
             compliance: components["schemas"]["ComplianceSummary"];
             /** Pipeline Versions */
@@ -12012,6 +12092,7 @@ export interface components {
             /** Default Chunk Strategy */
             default_chunk_strategy?: string | null;
             rag_defaults?: components["schemas"]["DatasetRAGDefaults"] | null;
+            embedding_defaults?: components["schemas"]["DatasetEmbeddingDefaults"] | null;
             /** Default Rag Config Template Id */
             default_rag_config_template_id?: string | null;
             /** Default Rag Config Template Key */
@@ -12462,10 +12543,7 @@ export interface components {
             successful?: components["schemas"]["DocumentBatchUploadSuccess"][];
             /** Failed */
             failed?: components["schemas"]["DocumentBatchUploadFailure"][];
-            /**
-             * Precheck Scan Run Id
-             * Format: uuid
-             */
+            /** Precheck Scan Run Id */
             precheck_scan_run_id?: string | null;
         };
         /**
@@ -17231,7 +17309,7 @@ export interface components {
             api_base?: string;
             /**
              * Model
-             * @default gpt-4o-mini
+             * @default gpt-5.4-mini
              */
             model: string;
             /**
@@ -17734,6 +17812,14 @@ export interface components {
             error?: string | null;
         };
         /**
+         * NavigationConfig
+         * @description Frontend navigation visibility for ordinary tenant members.
+         */
+        NavigationConfig: {
+            /** User Visible Modules */
+            user_visible_modules?: string[];
+        };
+        /**
          * ObservabilityConfig
          * @description Observability/debug config.
          */
@@ -18005,6 +18091,10 @@ export interface components {
             text?: string | null;
             /** Confidence */
             confidence?: number | null;
+            /** Source Backend */
+            source_backend?: string | null;
+            /** Source Element Id */
+            source_element_id?: string | null;
             bbox?: components["schemas"]["ParsingElementBBox"] | null;
             /** Attributes */
             attributes?: {
@@ -18833,6 +18923,16 @@ export interface components {
              * @default false
              */
             enable_reranker: boolean;
+            /**
+             * Reranker Provider
+             * @default llm
+             */
+            reranker_provider: string;
+            /**
+             * Reranker Top N
+             * @default 20
+             */
+            reranker_top_n: number;
         };
         /** RTBFRequest */
         RTBFRequest: {
@@ -19725,11 +19825,8 @@ export interface components {
              * @default hybrid
              */
             retrieval_mode: string;
-            /**
-             * Alpha
-             * @default 0.6
-             */
-            alpha: number;
+            /** Alpha */
+            alpha?: number;
             /**
              * Fusion Strategy
              * @description linear | rrf | budgeted_rrf | weighted
@@ -20176,11 +20273,8 @@ export interface components {
              * @default hybrid
              */
             retrieval_mode: string;
-            /**
-             * Alpha
-             * @default 0.6
-             */
-            alpha: number;
+            /** Alpha */
+            alpha?: number;
             /**
              * Fusion Strategy
              * @description linear | rrf | budgeted_rrf | weighted
@@ -21187,6 +21281,7 @@ export interface components {
             safety: components["schemas"]["SafetyConfig"];
             chat: components["schemas"]["ChatConfig"];
             langgraph: components["schemas"]["LangGraphConfig"];
+            navigation: components["schemas"]["NavigationConfig"];
         };
         /** TableAskRequest */
         TableAskRequest: {
@@ -21364,6 +21459,8 @@ export interface components {
             role: string;
             /** Permissions */
             permissions?: string[];
+            /** Navigation User Visible Modules */
+            navigation_user_visible_modules?: string[];
             /**
              * Is Active
              * @default true
@@ -21857,6 +21954,7 @@ export interface components {
             safety?: components["schemas"]["SafetyConfig"] | null;
             chat?: components["schemas"]["ChatConfig"] | null;
             langgraph?: components["schemas"]["LangGraphConfig"] | null;
+            navigation?: components["schemas"]["NavigationConfig"] | null;
         };
         /**
          * UrlIngestConfig
@@ -21953,6 +22051,12 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: {
+                [key: string]: unknown;
+            };
         };
         /** VectorStatus */
         VectorStatus: {
@@ -23703,6 +23807,226 @@ export interface operations {
             };
         };
     };
+    list_document_duplicates_api_v1_documents_duplicates_get: {
+        parameters: {
+            query: {
+                /** @description Dataset scope for duplicate detection */
+                dataset_id: string;
+                min_count?: number;
+                max_groups?: number;
+                max_docs_per_group?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDuplicateList"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_document_folders_api_v1_documents_folders_get: {
+        parameters: {
+            query: {
+                dataset_id: string;
+                lifecycle?: "active" | "archived" | "disabled" | "all";
+                max_depth?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentFolderTreeResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_stats_api_v1_documents_stats_get: {
+        parameters: {
+            query?: {
+                dataset_id?: string | null;
+                lifecycle?: "active" | "archived" | "disabled" | "all";
+                file_type?: string | null;
+                owner_id?: string | null;
+                q?: string | null;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentStats"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_document_chunks_api_v1_documents__document_id__chunks_get: {
         parameters: {
             query?: {
@@ -24437,6 +24761,230 @@ export interface operations {
             };
         };
     };
+    list_documents_api_v1_documents__get: {
+        parameters: {
+            query?: {
+                skip?: number;
+                limit?: number;
+                status?: string | null;
+                lifecycle?: "active" | "archived" | "disabled" | "all";
+                dataset_id?: string | null;
+                file_type?: string | null;
+                owner_id?: string | null;
+                q?: string | null;
+                source_path_prefix?: string | null;
+                order_by?: "created_at" | "filename" | "file_size";
+                order_dir?: "asc" | "desc";
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentList"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_document_with_manual_chunks_api_v1_documents_manual_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualDocumentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetail"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_document_api_v1_documents_preview_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_preview_document_api_v1_documents_preview_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentParsePreview"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_document_api_v1_documents__document_id__get: {
         parameters: {
             query?: {
@@ -24534,152 +25082,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_document_duplicates_api_v1_documents_duplicates_get: {
-        parameters: {
-            query: {
-                /** @description Dataset scope for duplicate detection */
-                dataset_id: string;
-                min_count?: number;
-                max_groups?: number;
-                max_docs_per_group?: number;
-            };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentDuplicateList"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_document_folders_api_v1_documents_folders_get: {
-        parameters: {
-            query: {
-                dataset_id: string;
-                lifecycle?: "active" | "archived" | "disabled" | "all";
-                max_depth?: number;
-            };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentFolderTreeResponse"];
-                };
             };
             /** @description Bad Request */
             400: {
@@ -24900,158 +25302,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentLifecycleMetadata"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_documents_api_v1_documents__get: {
-        parameters: {
-            query?: {
-                skip?: number;
-                limit?: number;
-                status?: string | null;
-                lifecycle?: "active" | "archived" | "disabled" | "all";
-                dataset_id?: string | null;
-                file_type?: string | null;
-                owner_id?: string | null;
-                q?: string | null;
-                source_path_prefix?: string | null;
-                order_by?: "created_at" | "filename" | "file_size";
-                order_dir?: "asc" | "desc";
-            };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentList"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_document_with_manual_chunks_api_v1_documents_manual_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ManualDocumentCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentDetail"];
                 };
             };
             /** @description Bad Request */
@@ -25322,78 +25572,6 @@ export interface operations {
             };
         };
     };
-    preview_document_api_v1_documents_preview_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_preview_document_api_v1_documents_preview_post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentParsePreview"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     get_document_status_api_v1_documents__document_id__status_get: {
         parameters: {
             query?: never;
@@ -25559,80 +25737,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentStatus"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_document_stats_api_v1_documents_stats_get: {
-        parameters: {
-            query?: {
-                dataset_id?: string | null;
-                lifecycle?: "active" | "archived" | "disabled" | "all";
-                file_type?: string | null;
-                owner_id?: string | null;
-                q?: string | null;
-            };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentStats"];
                 };
             };
             /** @description Bad Request */
@@ -49986,6 +50090,15 @@ export interface operations {
                 max_delete?: number;
                 /** @description Plan only; do not delete rows */
                 dry_run?: boolean;
+                /** @description retention=older than N days; filtered=current explicit filters */
+                purge_scope?: "retention" | "filtered";
+                actor_id?: string | null;
+                action?: string | null;
+                resource_type?: string | null;
+                resource_id?: string | null;
+                request_id?: string | null;
+                since?: string | null;
+                until?: string | null;
             };
             header?: {
                 "x-tenant-id"?: string | null;
@@ -50004,6 +50117,148 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuditLogPurgeResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_audit_log_api_v1_audit_logs__log_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                log_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditLogDeleteResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_delete_audit_logs_api_v1_audit_logs_bulk_delete_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuditLogDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditLogDeleteResponse"];
                 };
             };
             /** @description Bad Request */

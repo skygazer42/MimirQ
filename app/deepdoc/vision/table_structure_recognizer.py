@@ -27,13 +27,10 @@ from .recognizer import Recognizer
 
 def get_default_resource_dir():
     """
-    Return the default resource directory path, assuming this file is in:
-    project_root/some/module/path/tokenizer.py
-    Then the resource dir is: project_root/resources/data_parser/qieci
-    If the directory does not exist, it will be created automatically.
+    Return the repo-bundled table-structure model directory.
     """
     resource_dir = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "../../resources/data_parser/qieci")
+        os.path.join(os.path.dirname(__file__), "../resources/models/table")
     )
     return resource_dir
 

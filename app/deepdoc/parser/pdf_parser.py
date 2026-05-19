@@ -58,6 +58,16 @@ if LOCK_KEY_pdfplumber not in sys.modules:
     sys.modules[LOCK_KEY_pdfplumber] = threading.Lock()
 
 
+def _resolve_ocr_page_concurrency() -> int:
+    raw = os.getenv("DEEPDOC_OCR_PAGE_CONCURRENCY")
+    if raw is not None:
+        try:
+            return max(1, min(16, int(raw)))
+        except ValueError:
+            logging.warning("Invalid DEEPDOC_OCR_PAGE_CONCURRENCY=%r; falling back to serial", raw)
+    return 1
+
+
 def vision_llm_describe_prompt(page=None) -> str:
     prompt_en = """
 INSTRUCTION:
@@ -118,13 +128,10 @@ def vision_llm_describe_cn_prompt(page=None) -> str:
 
 def get_default_resource_dir():
     """
-    Return the default resource directory path, assuming this file is in:
-    project_root/some/module/path/tokenizer.py
-    Then the resource dir is: project_root/resources/data_parser/qieci
-    If the directory does not exist, it will be created automatically.
+    Return the repo-bundled paragraph-concat model directory.
     """
     resource_dir = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "../../resources/data_parser/qieci")
+        os.path.join(os.path.dirname(__file__), "../resources/models/xgboost")
     )
     return resource_dir
 
@@ -241,7 +248,7 @@ class IntegratedPipelinePdfParser:
         ocr_cls, layout_cls, table_cls, _ = _ensure_vision_runtime()
 
         self.ocr = ocr_cls()
-        self.parallel_limiter = None  # Initialize concurrency limiter
+        self.parallel_limiter = self._build_ocr_parallel_limiters()
 
         if hasattr(self, "model_speciess"):
             self.layouter = layout_cls("layout." + self.model_speciess)  # Initialize layout recognizer with specified model
@@ -282,6 +289,23 @@ class IntegratedPipelinePdfParser:
                 self.updown_cnt_mdl = None
         # Set page starting number
         self.page_from = 0
+
+    def _build_ocr_parallel_limiters(self):
+        page_concurrency = _resolve_ocr_page_concurrency()
+        if page_concurrency <= 1:
+            return None
+        detector_count = len(getattr(self.ocr, "text_detector", []) or [])
+        recognizer_count = len(getattr(self.ocr, "text_recognizer", []) or [])
+        device_count = max(1, min(detector_count or 1, recognizer_count or 1))
+        per_device = max(1, int(np.ceil(page_concurrency / device_count)))
+        return [trio.CapacityLimiter(per_device) for _ in range(device_count)]
+
+    def _store_ocr_boxes(self, page_index: int, boxes):
+        if page_index < 0:
+            return
+        while len(self.boxes) <= page_index:
+            self.boxes.append(None)
+        self.boxes[page_index] = boxes
 
     # Calculate character width (right - left) / text length
     def __char_width(self, c):
@@ -511,7 +535,7 @@ class IntegratedPipelinePdfParser:
         start = timer()
         # If no boxes detected, return empty list
         if not bxs:
-            self.boxes.append([])
+            self._store_ocr_boxes(pagenum - 1, [])
             return
 
         # Extract detection box positions and initial text
@@ -583,7 +607,7 @@ class IntegratedPipelinePdfParser:
             self.mean_height[-1] = np.median([b["bottom"] - b["top"] for b in bxs])
 
         # Add current page's boxes to total box collection
-        self.boxes.append(bxs)
+        self._store_ocr_boxes(pagenum - 1, bxs)
 
     def _layouts_rec(self, ZM, drop=True):
         # Layout recognition: identify layout type (text, image, table, etc.) for each box
@@ -1286,6 +1310,7 @@ class IntegratedPipelinePdfParser:
                                        range(page_to - page_from)]  # If failed to extract, using empty list instead.
 
                 self.total_page = len(pdfplumber_pdf.pages)
+                self.boxes = [None for _ in self.page_images]
         except Exception:
             logging.exception("IntegratedPipelinePdfParser __images__")
         finally:
@@ -1357,12 +1382,13 @@ class IntegratedPipelinePdfParser:
                 return chars
 
             if self.parallel_limiter:
+                device_count = max(1, len(self.parallel_limiter))
                 async with trio.open_nursery() as nursery:
                     for i, img in enumerate(self.page_images):
                         chars = __ocr_preprocess()
-
-                        nursery.start_soon(__img_ocr, i, i % PARALLEL_DEVICES, img, chars,
-                                           self.parallel_limiter[i % PARALLEL_DEVICES])
+                        device_id = i % device_count
+                        nursery.start_soon(__img_ocr, i, device_id, img, chars,
+                                           self.parallel_limiter[device_id])
                         await trio.sleep(0.1)
             else:
                 for i, img in enumerate(self.page_images):
@@ -1374,6 +1400,7 @@ class IntegratedPipelinePdfParser:
         trio.run(__img_ocr_launcher)
 
         logging.info(f"__images__ {len(self.page_images)} pages cost {timer() - start}s")
+        self.boxes = [page_boxes or [] for page_boxes in self.boxes]
 
         if not self.is_english and not any(
                 c for c in self.page_chars) and self.boxes:

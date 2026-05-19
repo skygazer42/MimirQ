@@ -12,6 +12,8 @@ export interface ParsingElement {
   visual_kind?: string | null
   text?: string | null
   confidence?: number | null
+  source_backend?: string | null
+  source_element_id?: string | null
   bbox?: {
     x0: number
     y0: number
@@ -157,6 +159,8 @@ const parsingElementSchema = z
     visual_kind: z.string().nullable().optional(),
     text: z.string().nullable().optional(),
     confidence: z.number().nullable().optional(),
+    source_backend: z.string().nullable().optional(),
+    source_element_id: z.string().nullable().optional(),
     bbox: z
       .object({
         x0: z.number().int(),

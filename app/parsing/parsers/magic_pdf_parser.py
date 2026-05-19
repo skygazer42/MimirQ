@@ -38,7 +38,17 @@ MAGIC_PDF_REQUIRED_MODEL_FILES = (
 
 
 def _has_required_magicpdf_models(models_dir: Path) -> bool:
-    return all((models_dir / rel).exists() for rel in MAGIC_PDF_REQUIRED_MODEL_FILES)
+    try:
+        return all((models_dir / rel).exists() for rel in MAGIC_PDF_REQUIRED_MODEL_FILES)
+    except PermissionError:
+        return False
+
+
+def _is_dir_readable(path: Path) -> bool:
+    try:
+        return path.is_dir()
+    except PermissionError:
+        return False
 
 
 def resolve_magicpdf_models_dir(configured: str | None = None) -> Path | None:
@@ -71,7 +81,7 @@ def resolve_magicpdf_models_dir(configured: str | None = None) -> Path | None:
     for candidate in candidates:
         if candidate.name == "models" and _has_required_magicpdf_models(candidate):
             return candidate
-        if candidate.is_dir():
+        if _is_dir_readable(candidate):
             snapshots = sorted(
                 (p / "models" for p in candidate.glob("*") if (p / "models").is_dir()),
                 key=lambda p: p.stat().st_mtime,
