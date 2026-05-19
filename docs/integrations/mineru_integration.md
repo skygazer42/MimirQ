@@ -40,7 +40,13 @@ MINERU_ENABLED=true
 ### 3. 重启后端服务
 
 ```bash
-uvicorn app.main:app --reload
+make backend
+```
+
+如果宿主机文件监听额度较低、热重载失败，可改用：
+
+```bash
+make backend-no-reload
 ```
 
 启动时如果看到以下日志，说明 MinerU 已启用：

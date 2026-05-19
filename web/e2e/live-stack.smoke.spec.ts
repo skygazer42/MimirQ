@@ -14,6 +14,7 @@ type LiveDocument = {
   filename?: string
   name?: string
   status?: string
+  chunk_count?: number
   error_message?: string | null
   processing_progress?: number | null
   current_stage?: string | null
@@ -152,6 +153,38 @@ async function waitForDocumentCompleted(
   return current
 }
 
+async function resolveSearchableDocumentId(
+  request: APIRequestContext,
+  {
+    apiBase,
+    tenantId,
+    userId,
+    preferredDocumentId,
+  }: {
+    apiBase: string
+    tenantId: string
+    userId: string
+    preferredDocumentId?: string
+  }
+): Promise<string> {
+  const items = sortDocumentsByCreatedAtDesc(
+    await listDocuments(request, {
+      apiBase,
+      tenantId,
+      userId,
+      limit: 50,
+    })
+  )
+
+  const preferred = items.find((item) => String(item.id || '').trim() === preferredDocumentId)
+  if (preferred && Number(preferred.chunk_count || 0) > 0) {
+    return String(preferred.id || '').trim()
+  }
+
+  const searchable = items.find((item) => Number(item.chunk_count || 0) > 0)
+  return String(searchable?.id || '').trim()
+}
+
 async function waitForConversationId(page: Page): Promise<string> {
   await expect
     .poll(() => new URL(page.url()).searchParams.get('conversation') || '', {
@@ -231,6 +264,7 @@ test.describe('live stack smoke', () => {
       (await listDocuments(request, { apiBase, tenantId, userId, limit: 50 })).map((item) => String(item.id || '').trim())
     )
     let documentId = ''
+    let searchableDocumentId = ''
 
     await test.step('upload and parse a real document', async () => {
       await page.goto('/parsing', { waitUntil: 'networkidle' })
@@ -262,6 +296,14 @@ test.describe('live stack smoke', () => {
       await uploadedDocument.waitFor({ timeout: 120_000 })
       await uploadedDocument.click()
       await page.getByRole('heading', { name: 'Enterprise Telemetry Sample' }).waitFor({ timeout: 120_000 })
+
+      searchableDocumentId = await resolveSearchableDocumentId(request, {
+        apiBase,
+        tenantId,
+        userId,
+        preferredDocumentId: documentId,
+      })
+      expect(searchableDocumentId).toMatch(/\S/)
     })
 
     await test.step('open the real document viewer and keep state across reload', async () => {
@@ -280,11 +322,11 @@ test.describe('live stack smoke', () => {
       }
     })
 
-    await test.step('send a real chat request for the uploaded content', async () => {
-      await page.goto('/', { waitUntil: 'networkidle' })
+    await test.step('send a real chat request for a searchable document scope', async () => {
+      await page.goto(`/?doc=${encodeURIComponent(searchableDocumentId)}`, { waitUntil: 'networkidle' })
       const input = page.getByPlaceholder('问点什么... (Shift + Enter 换行)')
       await input.waitFor({ timeout: 120_000 })
-      await input.fill('请总结刚上传文档的重点。')
+      await input.fill('请总结当前文档的重点。')
       await input.press('Enter')
       await expect(input).toHaveValue('', { timeout: 30_000 })
 
@@ -298,9 +340,9 @@ test.describe('live stack smoke', () => {
     })
 
     await test.step('run a command-menu handoff into the real chat surface', async () => {
-      const prompt = '请帮我总结当前页面有哪些可继续操作的重点。'
+      const prompt = '请继续提炼当前文档最值得关注的重点。'
 
-      await page.goto('/', { waitUntil: 'networkidle' })
+      await page.goto(`/?doc=${encodeURIComponent(searchableDocumentId)}`, { waitUntil: 'networkidle' })
       await page.getByPlaceholder('问点什么... (Shift + Enter 换行)').waitFor({ timeout: 120_000 })
       await page.getByRole('button', { name: '打开命令搜索' }).click()
 

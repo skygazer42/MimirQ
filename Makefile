@@ -1,4 +1,4 @@
-.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend web test test-web test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build diagnostics db-upgrade db-revision verify enterprise-checks parser-status check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
+.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-web test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build diagnostics db-upgrade db-revision verify enterprise-checks parser-status check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
 
 # Prefer project venv when available so local dev doesn't depend on global tooling.
 PY := python3
@@ -67,7 +67,8 @@ help:
 	@echo "  make ps-retrieval-dev - retrieval-dev docker compose ps"
 	@echo "  make logs      - docker compose logs -f"
 	@echo "  make restart   - docker compose restart mimirq-api"
-	@echo "  make backend   - run backend locally (uvicorn --reload)"
+	@echo "  make backend   - run backend locally from the project venv (uvicorn --reload)"
+	@echo "  make backend-no-reload - run backend locally from the project venv without file watching"
 	@echo "  make web       - run web locally (pnpm dev)"
 	@echo "  make test      - run backend tests (pytest)"
 	@echo "  make test-web  - run frontend unit/integration tests (vitest)"
@@ -209,7 +210,10 @@ restart:
 	$(COMPOSE) restart mimirq-api
 
 backend:
-	uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --reload-dir app --reload-dir scripts --reload-exclude web/node_modules --reload-exclude web/.next --reload-exclude web/.next_build --reload-exclude uploads
+	$(PY) -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --reload-dir app --reload-dir scripts --reload-exclude web/node_modules --reload-exclude web/.next --reload-exclude web/.next_build --reload-exclude uploads
+
+backend-no-reload:
+	$(PY) -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 web:
 	cd web && pnpm dev

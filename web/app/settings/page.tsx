@@ -127,6 +127,82 @@ function SettingsMetricStrip({
   )
 }
 
+function SettingsSaveFeedback({
+  message,
+  updatedKeys,
+}: Readonly<{
+  message: { type: 'success' | 'error'; text: string; detail?: string }
+  updatedKeys: string[]
+}>) {
+  if (message.type === 'error') {
+    return (
+      <Alert
+        variant="destructive"
+        className="rounded-xl border-rose-200/80 bg-rose-50/70 shadow-none"
+      >
+        <XCircle className="size-4" />
+        <div>
+          <AlertTitle>保存失败</AlertTitle>
+          <AlertDescription className="text-foreground/80">
+            {message.text}
+          </AlertDescription>
+        </div>
+      </Alert>
+    )
+  }
+
+  const visibleKeys = updatedKeys.slice(0, 4)
+  const extraCount = Math.max(0, updatedKeys.length - visibleKeys.length)
+
+  return (
+    <div className="rounded-[16px] border border-emerald-200/80 bg-[linear-gradient(135deg,rgba(236,253,245,0.96),rgba(255,255,255,0.96))] px-3.5 py-3 shadow-[0_10px_30px_rgba(16,185,129,0.06)]">
+      <div className="flex items-start gap-3">
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-[11px] border border-emerald-200/80 bg-emerald-100/85 text-emerald-600">
+          <CheckCircle2 className="size-4" />
+        </div>
+        <div className="min-w-0 flex-1 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-[13px] font-semibold leading-none text-slate-950">
+              已保存
+            </p>
+            {message.detail ? (
+              <span className="rounded-full border border-emerald-200/80 bg-white/85 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                部分配置需重启后端
+              </span>
+            ) : null}
+          </div>
+          <p className="text-[12px] leading-5 text-slate-600">{message.text}</p>
+          {message.detail ? (
+            <p className="text-[11px] leading-4 text-slate-500">
+              {message.detail}
+            </p>
+          ) : null}
+          {updatedKeys.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] font-medium text-slate-400">
+                本次更新
+              </span>
+              {visibleKeys.map((key) => (
+                <span
+                  key={key}
+                  className="rounded-full border border-slate-200/80 bg-white/85 px-2 py-0.5 font-mono text-[10px] text-slate-600"
+                >
+                  {key}
+                </span>
+              ))}
+              {extraCount > 0 ? (
+                <span className="rounded-full border border-slate-200/70 bg-slate-100/80 px-2 py-0.5 text-[10px] font-medium text-slate-500">
+                  +{extraCount} 项
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function SettingsToggleIndicator({ checked }: Readonly<{ checked: boolean }>) {
   return (
     <span
@@ -443,39 +519,10 @@ function SettingsPageContent() {
               </Alert>
             ) : null}
             {state.saveMessage ? (
-              <Alert
-                variant={
-                  state.saveMessage.type === 'success'
-                    ? 'success'
-                    : 'destructive'
-                }
-                className="rounded-xl border-border/70 shadow-none"
-              >
-                {state.saveMessage.type === 'success' ? (
-                  <CheckCircle2 className="size-4" />
-                ) : (
-                  <XCircle className="size-4" />
-                )}
-                <div>
-                  <AlertTitle>
-                    {state.saveMessage.type === 'success'
-                      ? '保存成功'
-                      : '保存失败'}
-                  </AlertTitle>
-                  <AlertDescription className="text-foreground/80 space-y-2">
-                    <div>{state.saveMessage.text}</div>
-                    {state.saveMessage.type === 'success' &&
-                    state.lastUpdatedKeys.length > 0 ? (
-                      <div className={systemPageTokens.subtle}>
-                        已更新：{state.lastUpdatedKeys.slice(0, 10).join(', ')}
-                        {state.lastUpdatedKeys.length > 10
-                          ? ` (+${state.lastUpdatedKeys.length - 10})`
-                          : ''}
-                      </div>
-                    ) : null}
-                  </AlertDescription>
-                </div>
-              </Alert>
+              <SettingsSaveFeedback
+                message={state.saveMessage}
+                updatedKeys={state.lastUpdatedKeys}
+              />
             ) : null}
           </div>
         }

@@ -36,6 +36,18 @@ import {
 type SaveMessage = {
   type: 'success' | 'error'
   text: string
+  detail?: string
+}
+
+const SETTINGS_SAVE_SUCCESS_DETAIL =
+  '部分功能开关、服务地址和运行时参数需要重启后端后生效。'
+
+function createSettingsSaveSuccessMessage(): SaveMessage {
+  return {
+    type: 'success',
+    text: '当前修改已写入系统配置。',
+    detail: SETTINGS_SAVE_SUCCESS_DETAIL,
+  }
 }
 
 type RagSettings = NonNullable<SystemSettings['rag']>
@@ -556,7 +568,7 @@ export function useSettingsPageState() {
     setLastUpdatedKeys([])
     try {
       const result = await settingsApi.update(editedSettings)
-      setSaveMessage({ type: 'success', text: result.message })
+      setSaveMessage(createSettingsSaveSuccessMessage())
       setLastUpdatedKeys(result.updated_keys || [])
       await loadSettings()
       refreshCapabilities().catch(() => null)
@@ -783,8 +795,8 @@ export function useSettingsPageState() {
                 },
               }
 
-        const result = await settingsApi.update(payload)
-        setSaveMessage({ type: 'success', text: result.message })
+        await settingsApi.update(payload)
+        setSaveMessage(createSettingsSaveSuccessMessage())
         await loadSettings()
       } catch (error) {
         setSaveMessage({ type: 'error', text: formatApiError(error, '保存失败') })

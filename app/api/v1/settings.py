@@ -1522,7 +1522,7 @@ async def update_settings(
 
         return {
             "success": True,
-            "message": "Configuration saved. Some settings require backend restart to take effect.",
+            "message": "配置已保存，部分设置需要重启后端后生效。",
             "updated_keys": updated_keys
         }
     except HTTPException:

@@ -26,4 +26,13 @@ describe('history route source', () => {
     expect(client).not.toContain('useState<Message[]>(initialMessages)')
     expect(client).toContain('initialMessages')
   })
+
+  it('suppresses hydration drift for relative activity timestamps in the sidebar list', () => {
+    const client = fs.readFileSync(path.resolve(__dirname, 'page-client.tsx'), 'utf8')
+
+    expect(client).toContain('<time')
+    expect(client).toContain('suppressHydrationWarning')
+    expect(client).toContain('dateTime={conversation.last_message_at || conversation.updated_at || conversation.created_at}')
+    expect(client).toContain("formatRelativeTime(conversation.last_message_at || conversation.updated_at, locale, t('justNow'))")
+  })
 })

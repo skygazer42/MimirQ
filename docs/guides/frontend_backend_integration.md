@@ -16,7 +16,23 @@ make up
 - 后端 OpenAPI 文档：`http://localhost:8000/docs`
 - 后端健康检查：`http://localhost:8000/api/v1/health`
 
-## 2. 前端本地开发（Next.js）
+## 2. 后端本地开发（FastAPI）
+
+如果你需要改 Python 代码并立即热更新，先确保已经执行过 `make init`，然后从仓库根目录启动：
+
+```bash
+make backend
+```
+
+这个入口会优先使用项目 `.venv`，避免误用系统全局 `uvicorn`。
+
+如果你的机器文件监听额度较低，或者仓库下 `uploads/` 体量较大导致热重载报 `OS file watch limit reached`，改用：
+
+```bash
+make backend-no-reload
+```
+
+## 3. 前端本地开发（Next.js）
 
 ```bash
 cd web
@@ -26,7 +42,7 @@ pnpm dev
 
 访问：`http://localhost:3000`
 
-## 3. API Base URL / 环境变量
+## 4. API Base URL / 环境变量
 
 前端默认把后端当作 `http://localhost:8000`：
 
@@ -46,7 +62,7 @@ pnpm dev
 NEXT_PUBLIC_API_URL=http://<your-host-ip>:8000
 ```
 
-## 4. CORS（跨域）说明
+## 5. CORS（跨域）说明
 
 后端通过 `CORS_ORIGINS` 控制允许的来源；开发环境会自动扩展 `localhost/127.0.0.1/0.0.0.0` 的同端口别名，减少本地联调摩擦。
 
@@ -55,9 +71,9 @@ NEXT_PUBLIC_API_URL=http://<your-host-ip>:8000
 1. 后端是否启动在你配置的端口（默认 8000）
 2. `CORS_ORIGINS` 是否包含前端来源（默认 3000）
 
-## 5. 联调自检命令（强烈建议）
+## 6. 联调自检命令（强烈建议）
 
-### 5.1 前端一键自检
+### 6.1 前端一键自检
 
 ```bash
 cd web
@@ -66,7 +82,7 @@ pnpm run verify
 
 包含：lint + ui-check + typecheck + tests + api-check。
 
-### 5.2 最快可达性检查：`api-ping`（推荐）
+### 6.2 最快可达性检查：`api-ping`（推荐）
 
 当你怀疑「前端没打到正确的后端 / 后端没起来 / 反向代理返回了 HTML」时，优先跑这个：
 
@@ -93,7 +109,7 @@ pnpm run api-ping
 make api-ping
 ```
 
-### 5.3 前后端路由契约检查（静态）
+### 6.3 前后端路由契约检查（静态）
 
 从仓库根目录：
 
@@ -104,7 +120,7 @@ make api-check
 - `api-contract`: web 中实际调用的路由必须在后端存在
 - `api-coverage`: 后端公开路由必须在 `web/lib/api-client.ts` 中有对应封装
 
-### 5.4 OpenAPI 导出 + 前端类型同步
+### 6.4 OpenAPI 导出 + 前端类型同步
 
 ```bash
 make openapi-check
@@ -115,7 +131,7 @@ make openapi-check
 - `web/openapi.json`
 - `web/types/openapi.ts`
 
-## 6. UI 内置诊断页
+## 7. UI 内置诊断页
 
 前端提供 `/diagnostics` 页面展示：
 

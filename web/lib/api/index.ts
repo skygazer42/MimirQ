@@ -7,6 +7,7 @@ export { connectorApi } from './connectors'
 export { ingestionRunApi } from './connectors'
 export { datasetApi } from './datasets'
 export { datasetCategoryApi } from './datasets'
+export { difyExternalKnowledgeApi } from './dify'
 export { documentApi } from './documents'
 export { evaluationApi } from './evaluation'
 export { evidenceApi } from './evidence'
@@ -34,6 +35,12 @@ export { settingsApi } from './settings'
 export { sseApi } from './streaming'
 export { usageApi } from './usage'
 
+export type {
+  DifyExternalKnowledgeRequest,
+  DifyExternalKnowledgeResponse,
+  DifyExternalKnowledgeRecord,
+  DifyRetrievalSetting,
+} from './dify'
 export type {
   DatasetAnalysisDashboardParams,
   DatasetAnalysisExamplesParams,
