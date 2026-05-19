@@ -15,6 +15,7 @@ from sqlalchemy.sql import func
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.prompt_template import (
+    BuiltinPromptTemplateSyncResponse,
     PromptTemplateCreate,
     PromptTemplateList,
     PromptTemplateNewVersion,
@@ -23,6 +24,7 @@ from app.api.schemas.prompt_template import (
 )
 from app.core.database import get_db
 from app.models.prompt_template import PromptTemplate
+from app.rag.llm.prompts.builtin_library import list_builtin_prompt_templates
 from app.services.dataset_service import DatasetService
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -53,6 +55,79 @@ def _derive_template_key(name: str) -> str:
     while "__" in key:
         key = key.replace("__", "_")
     return key or "template"
+
+
+@router.post(
+    "/builtins/sync",
+    response_model=BuiltinPromptTemplateSyncResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
+async def sync_builtin_prompt_templates(
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> BuiltinPromptTemplateSyncResponse:
+    """Synchronize curated built-in prompt templates into the current tenant."""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    created = 0
+    updated = 0
+    template_keys: list[str] = []
+
+    for builtin in list_builtin_prompt_templates():
+        template_keys.append(builtin.template_key)
+        existing = (
+            db.query(PromptTemplate)
+            .filter(
+                PromptTemplate.tenant_id == tenant_id,
+                PromptTemplate.template_key == builtin.template_key,
+            )
+            .first()
+        )
+        if existing is not None and not bool(getattr(existing, "is_system", False)):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Prompt template key already exists as a user template: {builtin.template_key}",
+            )
+
+        if existing is None:
+            db.add(
+                PromptTemplate(
+                    tenant_id=tenant_id,
+                    template_key=builtin.template_key,
+                    version=builtin.version,
+                    parent_id=None,
+                    ab_experiment_key=None,
+                    ab_variant=None,
+                    ab_weight=1.0,
+                    name=builtin.name,
+                    description=builtin.description,
+                    content=builtin.content,
+                    variables=builtin.variables,
+                    category=builtin.category,
+                    tags=builtin.tags,
+                    is_active=True,
+                    is_system=True,
+                    usage_count=0,
+                )
+            )
+            created += 1
+            continue
+
+        existing.version = builtin.version
+        existing.name = builtin.name
+        existing.description = builtin.description
+        existing.content = builtin.content
+        existing.variables = builtin.variables
+        existing.category = builtin.category
+        existing.tags = builtin.tags
+        existing.is_active = True
+        existing.is_system = True
+        updated += 1
+
+    db.commit()
+    return BuiltinPromptTemplateSyncResponse(created=created, updated=updated, template_keys=template_keys)
 
 
 @router.post("", response_model=PromptTemplateOut, status_code=status.HTTP_201_CREATED, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)

@@ -14,5 +14,8 @@ describe('prompts page prompt management surface', () => {
     expect(src).toContain('setPageSize(Number(value))')
     expect(src).toContain('条/页')
     expect(src).toContain('场景绑定')
+    expect(src).toContain('同步内置模板')
+    expect(src).toContain('handleSyncBuiltins')
+    expect(src).toContain('promptTemplateApi.syncBuiltins()')
   })
 })

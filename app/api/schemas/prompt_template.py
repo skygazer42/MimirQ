@@ -140,3 +140,11 @@ class PromptTemplateList(BaseModel):
 
     total: int = Field(..., description="Total number of templates matching filters")
     items: list[PromptTemplateOut] = Field(..., description="List of prompt templates")
+
+
+class BuiltinPromptTemplateSyncResponse(BaseModel):
+    """Result of synchronizing built-in prompt templates into the current tenant."""
+
+    created: int = Field(..., ge=0, description="Number of built-in templates created")
+    updated: int = Field(..., ge=0, description="Number of existing built-in templates updated")
+    template_keys: list[str] = Field(..., description="Synchronized built-in template keys")

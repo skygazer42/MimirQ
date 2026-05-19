@@ -56,6 +56,12 @@ export interface PromptTemplateNewVersion {
   ab_weight?: number
 }
 
+export interface PromptTemplateBuiltinSyncResponse {
+  created: number
+  updated: number
+  template_keys: string[]
+}
+
 export const promptTemplateApi = {
   async create(params: PromptTemplateCreate): Promise<PromptTemplate> {
     const { data } = await apiClient.post('/prompt-templates', params)
@@ -93,6 +99,11 @@ export const promptTemplateApi = {
 
   async createVersion(templateId: string, params: PromptTemplateNewVersion): Promise<PromptTemplate> {
     const { data } = await apiClient.post(`/prompt-templates/${templateId}/versions`, params)
+    return data
+  },
+
+  async syncBuiltins(): Promise<PromptTemplateBuiltinSyncResponse> {
+    const { data } = await apiClient.post('/prompt-templates/builtins/sync')
     return data
   },
 }

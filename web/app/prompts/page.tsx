@@ -102,6 +102,7 @@ function PromptsPageContent() {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
+  const [syncingBuiltins, setSyncingBuiltins] = useState(false)
 
   // Form state
   const [formData, setFormData] = useState<PromptTemplateCreate>({
@@ -362,6 +363,20 @@ function PromptsPageContent() {
     }
   }
 
+  const handleSyncBuiltins = async () => {
+    setSyncingBuiltins(true)
+    try {
+      const result = await promptTemplateApi.syncBuiltins()
+      toast.success(`内置模板已同步：新增 ${result.created}，更新 ${result.updated}`)
+      await refreshTemplates()
+    } catch (error) {
+      toast.error(formatApiError(error, '同步内置模板失败'))
+      console.error(error)
+    } finally {
+      setSyncingBuiltins(false)
+    }
+  }
+
   return (
     <AppFrame>
       <AnalysisPageShell
@@ -465,6 +480,16 @@ function PromptsPageContent() {
                 >
                   <Plus className="size-4" />
                   创建模板
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleSyncBuiltins}
+                  disabled={syncingBuiltins}
+                  className="h-10 gap-1.5 rounded-lg border-blue-100 bg-blue-50 px-3 text-[13px] font-semibold text-blue-700 hover:bg-blue-100 hover:text-blue-800 disabled:opacity-60"
+                >
+                  <Wand2 className="size-4" />
+                  {syncingBuiltins ? '同步中' : '同步内置模板'}
                 </Button>
                 <Popover>
                   <PopoverTrigger asChild>

@@ -15,9 +15,11 @@ describe('management surface api clients', () => {
   it('posts duplicate and new-version prompt template requests to the expected endpoints', async () => {
     const duplicatePayload = { data: { id: 'dup-1', name: 'Copy' } }
     const versionPayload = { data: { id: 'ver-1', version: 4 } }
+    const syncPayload = { data: { created: 4, updated: 0, template_keys: ['rag_answer_claude_xml_zh'] } }
     const postSpy = vi.spyOn(apiClient, 'post')
     postSpy.mockResolvedValueOnce(duplicatePayload as never)
     postSpy.mockResolvedValueOnce(versionPayload as never)
+    postSpy.mockResolvedValueOnce(syncPayload as never)
 
     await expect(promptTemplateApi.duplicate('tpl-123')).resolves.toEqual(duplicatePayload.data)
     await expect(
@@ -28,6 +30,7 @@ describe('management surface api clients', () => {
         deactivate_previous: true,
       })
     ).resolves.toEqual(versionPayload.data)
+    await expect(promptTemplateApi.syncBuiltins()).resolves.toEqual(syncPayload.data)
 
     expect(postSpy).toHaveBeenNthCalledWith(1, '/prompt-templates/tpl-123/duplicate')
     expect(postSpy).toHaveBeenNthCalledWith(2, '/prompt-templates/tpl-123/versions', {
@@ -36,6 +39,7 @@ describe('management surface api clients', () => {
       is_active: true,
       deactivate_previous: true,
     })
+    expect(postSpy).toHaveBeenNthCalledWith(3, '/prompt-templates/builtins/sync')
   })
 
   it('passes report query params and blob response types through export helpers', async () => {
