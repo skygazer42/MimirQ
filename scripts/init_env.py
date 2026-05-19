@@ -53,10 +53,9 @@ def main() -> int:
         description=(
             "Create local env files from example templates (cross-platform, non-destructive by default).\n"
             "Templates:\n"
-            "  .env.example -> .env (minimal local runtime settings)\n"
+            "  .env.example -> .env (complete local runtime settings)\n"
             "  docker/.env.example -> docker/.env\n"
-            "  web/.env.local.example -> web/.env.local\n"
-            "Advanced optional templates live in config/env/*.env.example."
+            "  web/.env.local.example -> web/.env.local"
         )
     )
     parser.add_argument(

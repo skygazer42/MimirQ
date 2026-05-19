@@ -8,7 +8,7 @@ from typing import Any, Literal
 import yaml
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
-_DEFAULT_MANIFEST_PATH = _REPO_ROOT / "configs" / "parsing_small_models.yaml"
+_DEFAULT_MANIFEST_PATH = _REPO_ROOT / "config" / "parsing_small_models.yaml"
 
 SmallModelKind = Literal["onnx", "hf_transformers"]
 

@@ -92,7 +92,7 @@ MimirQ/
 │   ├── docker-compose.infra.yml
 │   ├── Dockerfile
 │   └── start_backend.sh
-├── config/env/          # 高级环境变量模板（按数据库、RAG、解析、KG 等域拆分）
+├── config/              # 项目级配置清单（如解析小模型 manifest）
 ├── web/                 # Next.js 前端界面
 │   ├── app/             # 页面路由
 │   ├── components/      # UI 组件
@@ -108,7 +108,7 @@ MimirQ/
 
 ## 环境变量配置
 
-根目录 `.env.example` 只保留本地启动最小配置；高级配置按域拆到 `config/env/*.env.example`，按需复制对应键到 `.env` 或部署环境。
+根目录 `.env.example` 是完整环境变量模板；本地启动可复制为 `.env`，部署时按需覆盖其中的数据库、模型、解析、RAG、KG 与可观测性配置。
 
 ### LLM 配置
 
