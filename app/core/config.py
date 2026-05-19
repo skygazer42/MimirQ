@@ -14,6 +14,7 @@ import warnings
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
+from uuid import UUID
 
 from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -783,6 +784,18 @@ class Settings(BaseSettings):
     # Deprovision policy (opt-in): when a user is deactivated via SCIM, revoke group memberships.
     SCIM_DEPROVISION_REVOKE_GROUP_MEMBERSHIPS_ENABLED: bool = False
     SCIM_GROUPS_MUTATION_ENABLED: bool = False
+
+    # Dify External Knowledge API adapter (enterprise; opt-in).
+    #
+    # Dify calls MimirQ for retrieval only. `knowledge_id` can be a dataset UUID,
+    # or it can be mapped to one/more dataset UUIDs through the JSON map.
+    DIFY_EXTERNAL_KNOWLEDGE_ENABLED: bool = False
+    DIFY_EXTERNAL_KNOWLEDGE_API_KEYS: str = ""
+    DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID: str = ""
+    DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID: str = "system:dify"
+    DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON: str = ""
+    DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX: int = 50
+
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     PASSWORD_MIN_LENGTH: int = 8
 
@@ -2157,6 +2170,29 @@ class Settings(BaseSettings):
                         ipaddress.ip_network(cidr, strict=False)
                     except ValueError as exc:
                         raise ValueError(f"Invalid SCIM_IP_ALLOWLIST_CIDRS entry: {cidr}") from exc
+
+        # Security: Dify external knowledge adapter auth guard.
+        if bool(getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", False)):
+            token_raw = str(getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", "") or "").strip()
+            tokens = [p.strip() for p in re.split(r"[,\\s]+", token_raw) if p.strip()]
+            if not tokens:
+                raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_API_KEYS required when DIFY_EXTERNAL_KNOWLEDGE_ENABLED=true")
+            for tok in tokens:
+                if tok.lower().startswith("sha256:"):
+                    digest = tok.split(":", 1)[1].strip()
+                    if not re.fullmatch(r"[0-9a-fA-F]{64}", digest or ""):
+                        raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_API_KEYS sha256 digest must be 64 hex chars")
+
+            tenant_raw = str(getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", "") or "").strip()
+            if tenant_raw:
+                try:
+                    UUID(tenant_raw)
+                except ValueError as exc:
+                    raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID must be a UUID") from exc
+
+            top_k_max = int(getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 50) or 0)
+            if top_k_max < 1 or top_k_max > 200:
+                raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX must be between 1 and 200")
 
         # Security: Validate SECRET_KEY (required for JWT verification)
         if auth_mode == "jwt":

@@ -48,7 +48,7 @@ def _parse_step_heading(line: str) -> tuple[str, str | None] | None:
 
     Returns (num, title).
 
-    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
     s = str(line or "").strip()
     if not s:

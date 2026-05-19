@@ -53,7 +53,7 @@ def _parse_header_line(line: str) -> tuple[str, str] | None:
 
     Returns (key_cf, value) or None.
 
-    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
     s = str(line or "").strip()
     if not s:

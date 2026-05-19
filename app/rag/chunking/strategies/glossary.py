@@ -48,7 +48,7 @@ def _parse_inline_entry(line: str) -> str | None:
       术语：定义...
       Term - definition...
 
-    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
     s = str(line or "").strip()
     if not s:

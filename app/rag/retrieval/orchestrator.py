@@ -16,7 +16,6 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import json
-from app.rag.core.logging import get_logger
 import time
 from pathlib import Path
 from typing import Any
@@ -35,6 +34,7 @@ from app.rag.core.evidence_expectations import (
     normalize_anchor_fields,
 )
 from app.rag.core.hashing import stable_hash
+from app.rag.core.logging import get_logger
 from app.rag.core.query_rewrite_strategy import (
     build_query_rewrite_strategy_spec,
     get_query_rewrite_prompt_template,
@@ -95,6 +95,10 @@ from app.services.router_prometheus_metrics import observe_router_layers
 
 _CHANNEL_BUDGET_POLICY_SCHEMA_V1 = "mimirq.channel_budget_policy.v1"
 logger = get_logger(__name__)
+
+
+def _log_orchestrator_fallback(context: str, exc: BaseException) -> None:
+    logger.debug("retrieval orchestrator fallback failed in %s: %s", context, exc, exc_info=True)
 
 
 def get_rag_engine():  # noqa: ANN201
@@ -208,6 +212,7 @@ def _decompose_query(query_for_retrieval: str, engine: Any) -> tuple[list[str], 
                 if len(sub_questions) >= dq_n:
                     break
     except Exception as exc:  # noqa: BLE001
+        _log_orchestrator_fallback('_decompose_query', exc)
         decompose_elapsed = 0.0
         decompose_parse_meta = {"ok": False, "method": None, "error": str(exc)[:200]}
         sub_questions = []
@@ -278,7 +283,7 @@ def _sanitize_retriever_debug(dbg: dict[str, Any] | None) -> dict[str, Any] | No
                 continue
             try:
                 n = int(div.get(k))  # noqa: PERF401 - tiny dict; clarity > micro-opt
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 continue
             # Defense-in-depth: keep counters sane/bounded for downstream UI.
             if n < 0:
@@ -309,7 +314,7 @@ def _sanitize_retriever_debug(dbg: dict[str, Any] | None) -> dict[str, Any] | No
             if v2 is not None:
                 try:
                     out[key][k2] = int(v2 or 0)
-                except Exception:
+                except (TypeError, ValueError, AttributeError):
                     continue
 
         mf = ep.get("metadata_filter")
@@ -317,7 +322,7 @@ def _sanitize_retriever_debug(dbg: dict[str, Any] | None) -> dict[str, Any] | No
             keys_count = mf.get("keys_count")
             try:
                 keys_count = int(keys_count) if keys_count is not None else None
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 keys_count = None
 
             keys_sample_raw = mf.get("keys_sample")
@@ -337,7 +342,7 @@ def _sanitize_retriever_debug(dbg: dict[str, Any] | None) -> dict[str, Any] | No
                         continue
                     try:
                         ops[ok] = int(ov or 0)
-                    except Exception:
+                    except (TypeError, ValueError, AttributeError):
                         continue
                     if len(ops) >= 30:
                         break
@@ -385,13 +390,13 @@ def _sanitize_retriever_debug(dbg: dict[str, Any] | None) -> dict[str, Any] | No
             if k in gp:
                 try:
                     gp_out[k] = int(gp.get(k) or 0)
-                except Exception:
+                except (TypeError, ValueError, AttributeError):
                     continue
         for k in ("avg_boost", "max_boost"):
             if k in gp:
                 try:
                     gp_out[k] = float(gp.get(k) or 0.0)
-                except Exception:
+                except (TypeError, ValueError, AttributeError):
                     continue
         if gp.get("skip_reason") is not None:
             sr = str(gp.get("skip_reason") or "").strip()
@@ -429,7 +434,7 @@ def _doc_base_score(meta: dict[str, Any]) -> float:
             continue
         try:
             return float(v or 0.0)
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             continue
     return 0.0
 
@@ -576,14 +581,14 @@ def _apply_hierarchy_tree_dedup(
 
     try:
         top_k_i = int(top_k or 0)
-    except Exception:
+    except (TypeError, ValueError, AttributeError):
         top_k_i = 0
     if top_k_i <= 0:
         return primary_list, {"enabled": False, "reason": "top_k_le_0"}
 
     try:
         factor = int(overfetch_factor or 1)
-    except Exception:
+    except (TypeError, ValueError, AttributeError):
         factor = 1
     factor = max(1, factor)
     max_candidates = max(int(top_k_i), int(top_k_i) * int(factor))
@@ -791,7 +796,7 @@ def _diagnose_empty_retrieval(retrieval_per_query: Any) -> dict[str, Any] | None
         raw = ep.get(key)
         try:
             n = int(raw or 0)
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             n = 0
         if n > 0:
             signals[key] = int(n)
@@ -808,7 +813,7 @@ def _diagnose_empty_retrieval(retrieval_per_query: Any) -> dict[str, Any] | None
         v2 = ep.get(k2)
         try:
             diag[k2] = int(v2 or 0) if v2 is not None else None
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             continue
     diag = {k: v for k, v in diag.items() if v is not None}
     return diag or None
@@ -838,7 +843,7 @@ def _extract_parse_quality_score(meta: Any) -> float | None:
             if score > 1.0:
                 score = 1.0
             return float(score)
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             continue
     return None
 
@@ -1039,7 +1044,7 @@ def _safe_post_rerank_pipeline_summary(raw: Any) -> list[dict[str, Any]]:
         return []
     try:
         obj = json.loads(text)
-    except Exception:
+    except (TypeError, ValueError, AttributeError):
         return []
     if not isinstance(obj, list):
         return []
@@ -1054,7 +1059,7 @@ def _safe_post_rerank_pipeline_summary(raw: Any) -> list[dict[str, Any]]:
         top_n_raw = item.get("top_n")
         try:
             top_n = int(top_n_raw) if top_n_raw is not None else 0
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             top_n = 0
         top_n = max(0, top_n)
         out.append({"provider": provider, "top_n": top_n or None})
@@ -1074,7 +1079,7 @@ def _coerce_channel_budgets(raw: Any) -> dict[str, int]:
             continue
         try:
             iv = int(v) if v is not None else 0
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             continue
         out[key] = max(0, int(iv))
     return out
@@ -1091,7 +1096,7 @@ def _coerce_channel_min_scores(raw: Any) -> dict[str, float]:
             continue
         try:
             fv = float(v) if v is not None else 0.0
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             continue
         out[key] = max(0.0, min(1.0, float(fv)))
     return out
@@ -1228,7 +1233,8 @@ def _fetch_document_chunks_for_kg_injection(
             )
             .all()
         )
-    except Exception:
+    except Exception as exc:
+        _log_orchestrator_fallback('_fetch_document_chunks_for_kg_injection', exc)
         return []
 
 
@@ -1239,7 +1245,7 @@ def _resolve_post_rerank_corpus_cache_token(state: dict[str, Any]) -> str | None
         return None
     try:
         tenant_uuid = UUID(str(tenant_id))
-    except Exception:
+    except (TypeError, ValueError, AttributeError):
         return None
 
     dataset_id_raw = state.get("dataset_id")
@@ -1247,7 +1253,7 @@ def _resolve_post_rerank_corpus_cache_token(state: dict[str, Any]) -> str | None
     if dataset_id_raw is not None:
         try:
             dataset_uuid = UUID(str(dataset_id_raw))
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             dataset_uuid = None
 
     document_ids_raw = state.get("document_ids") or []
@@ -1255,7 +1261,7 @@ def _resolve_post_rerank_corpus_cache_token(state: dict[str, Any]) -> str | None
     for raw in document_ids_raw:
         try:
             document_ids.append(UUID(str(raw)))
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             continue
 
     try:
@@ -1265,7 +1271,8 @@ def _resolve_post_rerank_corpus_cache_token(state: dict[str, Any]) -> str | None
             dataset_id=dataset_uuid,
             document_ids=document_ids,
         )
-    except Exception:
+    except Exception as exc:
+        _log_orchestrator_fallback('_resolve_post_rerank_corpus_cache_token', exc)
         return None
 
 
@@ -1391,13 +1398,13 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             rewrite_temperature = float(
                 (settings.QUERY_REWRITE_TEMPERATURE if state.get("query_rewrite_temperature") is None else state.get("query_rewrite_temperature")) or 0.0
             )
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             rewrite_temperature = 0.0
         try:
             rewrite_max_chars = int(
                 (settings.QUERY_REWRITE_MAX_CHARS if state.get("query_rewrite_max_chars") is None else state.get("query_rewrite_max_chars")) or 0
             )
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             rewrite_max_chars = 0
 
     if (
@@ -1423,7 +1430,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             rewritten = (rewritten or "").strip().strip('"')
             if rewritten:
                 query_for_retrieval = rewritten
-        except Exception:
+        except Exception as exc:
+            _log_orchestrator_fallback('run_retrieval', exc)
             query_for_retrieval = question
             rewrite_elapsed = 0.0
 
@@ -1433,6 +1441,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         try:
             temporal_intent_meta = detect_temporal_intent(query_for_retrieval)
         except Exception as exc:  # noqa: BLE001
+            _log_orchestrator_fallback('run_retrieval', exc)
             temporal_intent_meta = {"detected": False, "reason_codes": [], "error": str(exc)[:200]}
 
     # Capture caller intent before any routing/presets apply (kept for trace/metrics).
@@ -1733,6 +1742,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             for k, v in (overrides or {}).items():
                 state[k] = v
         except Exception as exc:  # noqa: BLE001
+            _log_orchestrator_fallback('run_retrieval', exc)
             intent_router_meta = {
                 "enabled": True,
                 "used": False,
@@ -1759,7 +1769,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                     p = Path(policy_path)
                     if p.exists():
                         adaptive_policy = json.loads(p.read_text(encoding="utf-8"))
-                except Exception:
+                except Exception as exc:
+                    _log_orchestrator_fallback('run_retrieval', exc)
                     adaptive_policy = None
         try:
             adaptive_overrides, adaptive_router_meta = route_adaptive_retrieval_overrides(
@@ -1771,6 +1782,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             for k, v in (adaptive_overrides or {}).items():
                 state[k] = v
         except Exception as exc:  # noqa: BLE001
+            _log_orchestrator_fallback('run_retrieval', exc)
             adaptive_router_meta = {
                 "enabled": True,
                 "used": False,
@@ -1852,6 +1864,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                     else:
                         channel_budget_policy_meta["reason"] = "policy_file_missing"
                 except Exception as exc:  # noqa: BLE001
+                    _log_orchestrator_fallback('run_retrieval', exc)
                     channel_budget_policy = None
                     channel_budget_policy_meta["reason"] = f"policy_file_error:{exc.__class__.__name__}"
         if isinstance(channel_budget_policy, dict):
@@ -1981,6 +1994,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         dict_elapsed = time.time() - t0
         dict_used = bool(dict_expansions)
     except Exception as exc:  # noqa: BLE001
+        _log_orchestrator_fallback('run_retrieval', exc)
         dict_elapsed = 0.0
         dict_used = False
         dict_expansions = []
@@ -2061,7 +2075,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                     continue
                 try:
                     w = float(ent.get("weight", 0.0) or 0.0)
-                except Exception:
+                except (TypeError, ValueError, AttributeError):
                     w = 0.0
                 if w < min_weight:
                     continue
@@ -2095,6 +2109,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
 
             kg_query_expansion_used = bool(kg_query_expansion_queries)
     except Exception as exc:  # noqa: BLE001
+        _log_orchestrator_fallback('run_retrieval', exc)
         kg_query_expansion_used = False
         kg_query_expansion_queries = []
         kg_query_expansion_entity_names = []
@@ -2151,6 +2166,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                     if len(multi_queries) >= mq_n:
                         break
         except Exception as exc:  # noqa: BLE001
+            _log_orchestrator_fallback('run_retrieval', exc)
             multi_query_elapsed = 0.0
             multi_query_parse_meta = {"ok": False, "method": None, "error": str(exc)[:200]}
             multi_queries = []
@@ -2182,7 +2198,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             if out_max and len(hyde_text) > out_max:
                 hyde_text = hyde_text[:out_max] + "..."
             hyde_used = bool(hyde_text)
-        except Exception:
+        except Exception as exc:
+            _log_orchestrator_fallback('run_retrieval', exc)
             hyde_text = ""
             hyde_elapsed = 0.0
             hyde_used = False
@@ -2218,6 +2235,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                 step_back_query = ""
                 step_back_parse_meta = {"ok": False, "method": "text", "error": "empty_or_duplicate"}
         except Exception as exc:  # noqa: BLE001
+            _log_orchestrator_fallback('run_retrieval', exc)
             step_back_query = ""
             step_back_elapsed = 0.0
             step_back_parse_meta = {"ok": False, "method": None, "error": str(exc)[:200]}
@@ -2329,6 +2347,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                 dbg = dbg2
             return kind, (docs_i or []), None, time.time() - t0, dbg
         except Exception as exc:  # noqa: BLE001
+            _log_orchestrator_fallback('_invoke_with_timing', exc)
             return kind, [], str(exc)[:200], time.time() - t0, None
 
     start = time.time()
@@ -2367,7 +2386,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                         retrieval_mode=chain_retrieval_mode,
                         query=chained_query,
                     )
-                except Exception:
+                except Exception as exc:
+                    _log_orchestrator_fallback('run_retrieval', exc)
                     chain_citations = []
                 step_summary = summarize_chain_step(chain_citations)
                 prior_findings.append(sub_question if not step_summary else f"{sub_question}: {step_summary}")
@@ -2377,7 +2397,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             decompose_chain_elapsed = time.time() - chain_start
             if decompose_chain_used:
                 retrieval_plan = [item for item in retrieval_plan if item[0] != "subq"]
-        except Exception:
+        except Exception as exc:
+            _log_orchestrator_fallback('run_retrieval', exc)
             decompose_chain_used = False
             decompose_chain_steps = 0
             decompose_chain_elapsed = 0.0
@@ -2407,7 +2428,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     mq_diversify_enabled = bool(getattr(settings, "MULTI_QUERY_DIVERSIFY_ENABLED", False)) and bool(mq_enabled)
     try:
         mq_budget_raw = int(getattr(settings, "MULTI_QUERY_DIVERSIFY_BUDGET", 0) or 0)
-    except Exception:
+    except (TypeError, ValueError, AttributeError):
         mq_budget_raw = 0
     mq_diversify_budget = max(0, min(int(mq_budget_raw or 0), int(top_k or 0)))
     mq_diversify_used = False
@@ -2423,7 +2444,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     if family_aggregation_enabled:
         try:
             family_features = _build_hierarchy_family_features(docs_by_query)
-        except Exception:
+        except Exception as exc:
+            _log_orchestrator_fallback('run_retrieval', exc)
             family_features = {}
 
     docs_refill_pool: list[Document] = docs_by_query[0] if docs_by_query else []
@@ -2439,7 +2461,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                     family_features=family_features,
                     strategy=hierarchy_family_aggregation,
                 )
-            except Exception:
+            except Exception as exc:
+                _log_orchestrator_fallback('run_retrieval', exc)
                 family_aggregation_meta = {"enabled": False, "reason": "exception"}
         if mq_diversify_enabled and mq_diversify_budget > 0:
             mq_lists: list[list[Document]] = []
@@ -2565,6 +2588,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                     "reason": "not_detected",
                 }
         except Exception as exc:  # noqa: BLE001
+            _log_orchestrator_fallback('run_retrieval', exc)
             temporal_recency_meta = {"enabled": True, "used": False, "reason": f"exception:{str(exc)[:160]}"}
 
     if bool(hierarchy_recall_enabled) and bool(hierarchy_tree_dedup) and docs:
@@ -2575,7 +2599,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                 top_k=int(top_k),
                 overfetch_factor=int(hierarchy_overfetch_factor),
             )
-        except Exception:
+        except Exception as exc:
+            _log_orchestrator_fallback('run_retrieval', exc)
             tree_dedup_meta = {"enabled": False, "reason": "exception"}
 
     docs = (docs or [])[: max(0, top_k)]
@@ -2634,7 +2659,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                     continue
                 try:
                     cid = UUID(str(cid_raw))
-                except Exception:
+                except (TypeError, ValueError, AttributeError):
                     continue
                 if cid in seen_chunk_ids:
                     continue
@@ -2643,7 +2668,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                 cid_str = str(cid)
                 try:
                     score_by_chunk[cid_str] = float(ev.get("score", 0.0) or 0.0)
-                except Exception:
+                except (TypeError, ValueError, AttributeError):
                     score_by_chunk[cid_str] = 0.0
 
                 # Stable KG ranking features (optional). These are low-cardinality and do not
@@ -2768,7 +2793,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
 
                         db = SessionLocal()
                         owns_db = True
-                    except Exception:
+                    except Exception as exc:
+                        _log_orchestrator_fallback('run_retrieval', exc)
                         db = None
                         owns_db = False
 
@@ -2793,7 +2819,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                     try:
                         cid = ch.id
                         content = ch.content
-                    except Exception:
+                    except (TypeError, ValueError, AttributeError):
                         continue
                     if cid is None or content is None:
                         continue
@@ -2848,13 +2874,15 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                     for i, d in enumerate(merged):
                         try:
                             index_by_key[_doc_key(d)] = i
-                        except Exception:
+                        except Exception as exc:
+                            _log_orchestrator_fallback('run_retrieval', exc)
                             continue
 
                     for d in kg_docs:
                         try:
                             key = _doc_key(d)
-                        except Exception:
+                        except Exception as exc:
+                            _log_orchestrator_fallback('run_retrieval', exc)
                             continue
                         if key in index_by_key:
                             merged[index_by_key[key]] = d
@@ -2865,6 +2893,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                     docs = merged
                     kg_chunks_injected = len(kg_docs)
     except Exception as exc:  # noqa: BLE001
+        _log_orchestrator_fallback('run_retrieval', exc)
         kg_chunks_injected = 0
         kg_chunk_injection_error = str(exc)[:200]
 
@@ -2885,7 +2914,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                 did = obj.get("id") or meta.get("chunk_id")
                 try:
                     tag_docs.append(Document(page_content=str(content or ""), metadata=meta, id=did))
-                except Exception:
+                except Exception as exc:
+                    _log_orchestrator_fallback('run_retrieval', exc)
                     continue
     if tag_docs:
         docs = tag_docs + (docs or [])
@@ -2906,7 +2936,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             # For injected KG chunks, meta.score is the KG recall score (best-effort).
             try:
                 kg_score = float(meta.get("score") or 0.0)
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 kg_score = 0.0
 
             meta["kg_pagerank"] = float(kg_score)
@@ -2914,14 +2944,14 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             # Prefer KG-provided features when available (e.g., from KG search rerank output).
             try:
                 path_len = int(meta.get("kg_path_length")) if meta.get("kg_path_length") is not None else 1
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 path_len = 1
             path_len = max(1, min(int(path_len), 5))
             meta["kg_path_length"] = int(path_len)
 
             try:
                 shared = int(meta.get("kg_shared_events")) if meta.get("kg_shared_events") is not None else 1
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 shared = 1
             shared = max(0, min(int(shared), 5))
             meta["kg_shared_events"] = int(shared)
@@ -2973,7 +3003,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         post_rerank_score_calibration_alpha = float(
             getattr(settings, "EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ALPHA", 0.7) or 0.7
         )
-    except Exception:
+    except (TypeError, ValueError, AttributeError):
         post_rerank_score_calibration_alpha = 0.7
     post_rerank_score_calibration_alpha = min(1.0, max(0.0, float(post_rerank_score_calibration_alpha)))
     post_rerank_score_calibration_used = False
@@ -3001,13 +3031,13 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                 base_raw = meta.get("score", 0.0)
             try:
                 retrieval_score = float(base_raw or 0.0)
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 retrieval_score = 0.0
 
             rerank_raw = meta.get("rerank_score")
             try:
                 rerank_score = float(rerank_raw) if rerank_raw is not None else None
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 rerank_score = None
 
             rows.append(
@@ -3133,7 +3163,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                         st_top_n = st.get("top_n")
                         try:
                             st_n = int(st_top_n) if st_top_n is not None else 0
-                        except Exception:
+                        except (TypeError, ValueError, AttributeError):
                             st_n = 0
                         if st_n <= 0:
                             st_n = int(prev_n or top_n)
@@ -3178,7 +3208,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                                     post_rerank_cache_hits += 1
                                 else:
                                     post_rerank_cache_misses += 1
-                            except Exception:
+                            except Exception as exc:
+                                _log_orchestrator_fallback('run_retrieval', exc)
                                 cache_key = None
                                 rr = None
 
@@ -3223,7 +3254,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                                     base = meta.get("score", 0.0)
                                 try:
                                     meta["retrieval_score"] = float(base or 0.0)
-                                except Exception:
+                                except (TypeError, ValueError, AttributeError):
                                     meta["retrieval_score"] = 0.0
                                 if rid in rr.score_map:
                                     meta["rerank_score"] = float(rr.score_map[rid])
@@ -3251,7 +3282,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                                     base = meta.get("score", 0.0)
                                 try:
                                     meta["retrieval_score"] = float(base or 0.0)
-                                except Exception:
+                                except (TypeError, ValueError, AttributeError):
                                     meta["retrieval_score"] = 0.0
                                 meta.setdefault("reranker_provider", final_provider)
                                 meta.setdefault("rerank_elapsed_sec", round(float(total_elapsed), 3))
@@ -3331,7 +3362,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                                     post_rerank_cache_hits += 1
                                 else:
                                     post_rerank_cache_misses += 1
-                            except Exception:
+                            except Exception as exc:
+                                _log_orchestrator_fallback('run_retrieval', exc)
                                 cache_key = None
                                 rr = None
 
@@ -3392,6 +3424,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                     elif post_rerank_skip_reason is None:
                         post_rerank_skip_reason = "no_candidates"
     except Exception as exc:  # noqa: BLE001
+        _log_orchestrator_fallback('run_retrieval', exc)
         post_rerank_used = False
         post_rerank_error = str(exc)[:200]
         post_rerank_skip_reason = "error"
@@ -3415,7 +3448,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                 tenant_id_raw = state.get("tenant_id")
                 if tenant_id_raw is not None:
                     tenant_uuid = UUID(str(tenant_id_raw))
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 tenant_uuid = None
 
             from app.rag.retrieval.context_expansion import expand_hierarchy_documents  # noqa: WPS433
@@ -3463,7 +3496,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                     for doc_id_s, keys in by_doc.items():
                         try:
                             doc_uuid = UUID(doc_id_s)
-                        except Exception:
+                        except (TypeError, ValueError, AttributeError):
                             continue
                         keys_list = [k for k in keys if k]
                         if not keys_list:
@@ -3549,6 +3582,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             else:
                 hierarchy_expand_used = False
     except Exception as exc:  # noqa: BLE001
+        _log_orchestrator_fallback('run_retrieval', exc)
         hierarchy_expand_used = False
         hierarchy_expand_error = str(exc)[:200]
         hierarchy_expand_meta = {"enabled": False, "reason": "exception"}
@@ -3681,6 +3715,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                     dbg if isinstance(dbg, dict) else None
                 )
             except Exception as exc:  # noqa: BLE001
+                _log_orchestrator_fallback('run_retrieval', exc)
                 cf_docs = []
                 cf_err = str(exc)[:200]
 
@@ -3711,7 +3746,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                         continue
                     try:
                         seen_keys.add(_doc_key(d))
-                    except Exception:
+                    except Exception as exc:
+                        _log_orchestrator_fallback('run_retrieval', exc)
                         continue
 
                 for d in cf_docs:
@@ -3719,7 +3755,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                         continue
                     try:
                         key = _doc_key(d)
-                    except Exception:
+                    except Exception as exc:
+                        _log_orchestrator_fallback('run_retrieval', exc)
                         key = None
                     if key and key in seen_keys:
                         continue
@@ -3798,6 +3835,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             dbg = getattr(fallback_retriever, "_last_debug_metrics", None)
             hard_fallback_retriever_debug = _sanitize_retriever_debug(dbg if isinstance(dbg, dict) else None)
         except Exception as exc:  # noqa: BLE001
+            _log_orchestrator_fallback('run_retrieval', exc)
             fb_docs = []
             fb_err = str(exc)[:200]
 
@@ -3826,7 +3864,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                 merged_docs.append(d)
                 try:
                     seen_keys.add(_doc_key(d))
-                except Exception:
+                except Exception as exc:
+                    _log_orchestrator_fallback('run_retrieval', exc)
                     continue
 
             for d in fb_docs:
@@ -3834,7 +3873,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                     continue
                 try:
                     key = _doc_key(d)
-                except Exception:
+                except Exception as exc:
+                    _log_orchestrator_fallback('run_retrieval', exc)
                     key = None
                 if key and key in seen_keys:
                     continue
@@ -3866,7 +3906,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             try:
                 start_i = int(start) if start is not None else None
                 end_i = int(end) if end is not None else None
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 start_i = None
                 end_i = None
             if start_i is None or end_i is None or end_i <= start_i:
@@ -3912,7 +3952,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                 continue
             try:
                 before_doc_keys.add(_doc_key(d))
-            except Exception:
+            except Exception as exc:
+                _log_orchestrator_fallback('run_retrieval', exc)
                 continue
         citations_before = list(citations or [])
 
@@ -3930,6 +3971,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             fb_docs = second_pass_retriever.invoke(query_for_retrieval) or []
             fb_docs = engine._annotate_docs_with_role(fb_docs, "must_recall_second_pass")  # type: ignore[attr-defined]
         except Exception as exc:  # noqa: BLE001
+            _log_orchestrator_fallback('run_retrieval', exc)
             fb_docs = []
             must_recall_second_pass_error = str(exc)[:200]
 
@@ -3941,7 +3983,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                     continue
                 try:
                     key = _doc_key(d)
-                except Exception:
+                except Exception as exc:
+                    _log_orchestrator_fallback('run_retrieval', exc)
                     key = None
                 if key and key in seen_keys:
                     continue
@@ -4044,13 +4087,13 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
 
     try:
         parse_quality_low_threshold = float(getattr(settings, "RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD", 0.35) or 0.35)
-    except Exception:
+    except (TypeError, ValueError, AttributeError):
         parse_quality_low_threshold = 0.35
     parse_quality_low_threshold = min(1.0, max(0.0, float(parse_quality_low_threshold)))
 
     try:
         parse_quality_alert_ratio = float(getattr(settings, "RETRIEVAL_PARSE_QUALITY_ALERT_RATIO", 0.5) or 0.5)
-    except Exception:
+    except (TypeError, ValueError, AttributeError):
         parse_quality_alert_ratio = 0.5
     parse_quality_alert_ratio = min(1.0, max(0.0, float(parse_quality_alert_ratio)))
 
@@ -4071,7 +4114,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         parse_risk_hardcase_min_low_ratio = float(
             getattr(settings, "RETRIEVAL_PARSE_RISK_HARDCASE_MIN_LOW_RATIO", 0.5) or 0.5
         )
-    except Exception:
+    except (TypeError, ValueError, AttributeError):
         parse_risk_hardcase_min_low_ratio = 0.5
     parse_risk_hardcase_min_low_ratio = min(1.0, max(0.0, float(parse_risk_hardcase_min_low_ratio)))
 
@@ -4079,7 +4122,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         parse_risk_hardcase_min_considered = int(
             getattr(settings, "RETRIEVAL_PARSE_RISK_HARDCASE_MIN_CONSIDERED", 3) or 3
         )
-    except Exception:
+    except (TypeError, ValueError, AttributeError):
         parse_risk_hardcase_min_considered = 3
     parse_risk_hardcase_min_considered = max(1, int(parse_risk_hardcase_min_considered))
 
@@ -4409,7 +4452,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     if citations:
         try:
             top_rel = max(float((c.get("relevance_score") if c.get("relevance_score") is not None else c.get("retrieval_score")) or 0.0) for c in citations)
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             top_rel = 0.0
 
     if abstain_enabled:
@@ -4497,7 +4540,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         parse_risk_auto_enqueue_min_score = float(
             getattr(settings, "RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_MIN_SCORE", 0.0) or 0.0
         )
-    except Exception:
+    except (TypeError, ValueError, AttributeError):
         parse_risk_auto_enqueue_min_score = 0.0
     parse_risk_auto_enqueue_min_score = min(1.0, max(0.0, float(parse_risk_auto_enqueue_min_score)))
     parse_risk_auto_enqueue_policy = evaluate_parse_risk_auto_enqueue_policy(
@@ -4550,7 +4593,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             applied_rules = list(nq.applied_rules or [])
         query_debug["normalized"] = norm_text
         query_debug["applied_rules"] = applied_rules[:20]
-    except Exception:
+    except Exception as exc:
+        _log_orchestrator_fallback('run_retrieval', exc)
         query_debug["normalized"] = query_for_retrieval
         query_debug["applied_rules"] = []
 
@@ -4596,7 +4640,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             role = str(c.get("retrieval_role") or "main").strip() or "main"
             by_role[role] = by_role.get(role, 0) + 1
         query_debug["contributions"] = [{"retrieval_role": k, "citations": v} for k, v in sorted(by_role.items(), key=lambda kv: (-kv[1], kv[0]))]
-    except Exception:
+    except Exception as exc:
+        _log_orchestrator_fallback('run_retrieval', exc)
         query_debug["contributions"] = []
 
     query_debug["query_for_retrieval"] = query_for_retrieval
@@ -4731,7 +4776,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         for kind, _q, _r in retrieval_plan:
             k = str(kind or "").strip() or "main"
             variants[k] = int(variants.get(k, 0) or 0) + 1
-    except Exception:
+    except (TypeError, ValueError, AttributeError):
         variants = {}
 
     def _trace_per_query_item(item: dict[str, Any]) -> dict[str, Any]:
@@ -4762,7 +4807,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
 
     try:
         per_query_trace = [_trace_per_query_item(it) for it in (retrieval_per_query or []) if isinstance(it, dict)]
-    except Exception:
+    except Exception as exc:
+        _log_orchestrator_fallback('run_retrieval', exc)
         per_query_trace = []
 
     citations_by_role: dict[str, int] = {}
@@ -4772,7 +4818,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                 continue
             role = str(c.get("retrieval_role") or "main").strip().lower() or "main"
             citations_by_role[role] = int(citations_by_role.get(role, 0) or 0) + 1
-    except Exception:
+    except (TypeError, ValueError, AttributeError):
         citations_by_role = {}
 
     chunk_quality_summary = None
@@ -4782,7 +4828,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             max_candidates=min(max(1, int(top_k or 0)), 20),
             max_items=8,
         )
-    except Exception:
+    except Exception as exc:
+        _log_orchestrator_fallback('run_retrieval', exc)
         chunk_quality_summary = None
 
     retrieval_trace: dict[str, Any] = {
@@ -5185,7 +5232,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
 
             try:
                 version = int(tmpl_raw.get("version") or 0)
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 version = 0
             if version > 0:
                 tmpl_fp["version"] = version

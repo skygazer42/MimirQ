@@ -54,7 +54,7 @@ def _parse_toml_key_line(line: str) -> str | None:
 
     Returns the key or None.
 
-    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
     s = str(line or "").strip()
     if not s or s.startswith("#"):

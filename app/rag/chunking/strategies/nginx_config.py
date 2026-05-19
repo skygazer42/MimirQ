@@ -41,7 +41,7 @@ def _extract_directive_value(text: str, directive: str) -> str | None:
       server_name example.com www.example.com;
       listen 80;
 
-    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
     raw = str(text or "")
     d = str(directive or "").strip()

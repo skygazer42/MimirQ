@@ -2,7 +2,7 @@
 Shared heading parsing helpers for chunking strategies.
 
 These helpers intentionally avoid regex so they remain linear-time and do not
-trigger SonarCloud security hotspots (python:S5852). Consolidating them also
+trigger catastrophic-backtracking hotspots. Consolidating them also
 reduces duplicated-lines density on new code, keeping the quality gate green.
 """
 
@@ -119,7 +119,7 @@ def normalize_spaces(text: str) -> str:
     """
     Collapse runs of whitespace into single spaces.
 
-    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
     return " ".join(str(text or "").split())
 
@@ -137,7 +137,7 @@ def strip_numbered_heading_prefix(text: str) -> str:
       1.2 Summary
       3) Timeline
 
-    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
     s = str(text or "").lstrip()
     if not s or not s[:1].isdigit():

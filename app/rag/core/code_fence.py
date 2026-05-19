@@ -2,7 +2,7 @@
 Code-fence extraction helpers.
 
 We intentionally avoid regex for code-fence parsing to keep runtime linear-time and
-to avoid SonarCloud security hotspots (python:S5852).
+to avoid catastrophic-backtracking hotspots.
 """
 
 from __future__ import annotations
@@ -53,4 +53,3 @@ def extract_first_code_fence(text: str, *, allowed_info_strings: Iterable[str] |
 
 
 __all__ = ["extract_first_code_fence"]
-

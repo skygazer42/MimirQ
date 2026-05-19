@@ -165,6 +165,16 @@ export interface NavigationConfig {
   user_visible_modules: string[]
 }
 
+export interface DifyExternalKnowledgeConfig {
+  enabled: boolean
+  api_keys: string
+  tenant_id: string
+  account_id: string
+  knowledge_map_json: string
+  top_k_max: number
+  endpoint_path: string
+}
+
 export interface SystemSettings {
   feature_flags: FeatureFlags
   kg: KGConfig
@@ -186,6 +196,7 @@ export interface SystemSettings {
   chat: ChatConfig
   langgraph: LangGraphConfig
   navigation: NavigationConfig
+  dify_external_knowledge: DifyExternalKnowledgeConfig
 }
 
 export interface ParserBackendStatus {

@@ -75,7 +75,7 @@ def _extract_json_fence(text: str) -> str | None:
       ...
       ```
 
-    Implemented without regex to avoid SonarCloud S5852 hotspots.
+    Implemented without regex to avoid catastrophic-backtracking hotspots.
     """
     raw = text or ""
     if not raw:

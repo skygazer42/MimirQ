@@ -50,7 +50,7 @@ def _parse_diff_header_line(line: str) -> tuple[str, str] | None:
       diff --git a/path b/path
       diff --git "a/path with spaces" "b/path with spaces"
 
-    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
     s = (line or "").strip()
     prefix = "diff --git "

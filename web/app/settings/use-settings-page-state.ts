@@ -11,6 +11,7 @@ import {
   type BackendMeta,
   type CacheConfig,
   type ChatConfig,
+  type DifyExternalKnowledgeConfig,
   type Etl4LlmConfig,
   type FeatureFlags,
   type LangGraphConfig,
@@ -40,6 +41,7 @@ type SaveMessage = {
 type RagSettings = NonNullable<SystemSettings['rag']>
 type UrlIngestSettings = NonNullable<SystemSettings['url_ingest']>
 type GovernanceSettings = NonNullable<SystemSettings['governance']>
+type DifyExternalKnowledgeSettings = NonNullable<SystemSettings['dify_external_knowledge']>
 
 function mergeConfig<T extends object>(current: T, patch: Partial<T>): T {
   return {
@@ -88,6 +90,16 @@ const DEFAULT_LANGGRAPH: LangGraphConfig = {
 
 const DEFAULT_NAVIGATION: NavigationConfig = {
   user_visible_modules: [],
+}
+
+const DEFAULT_DIFY_EXTERNAL_KNOWLEDGE: DifyExternalKnowledgeConfig = {
+  enabled: false,
+  api_keys: '',
+  tenant_id: '',
+  account_id: 'system:dify',
+  knowledge_map_json: '',
+  top_k_max: 50,
+  endpoint_path: '/api/v1/integrations/dify/retrieval',
 }
 
 const DEFAULT_CACHE: CacheConfig = {
@@ -404,6 +416,15 @@ export function useSettingsPageState() {
     () => mergeWithDefaults(DEFAULT_NAVIGATION, settings?.navigation, editedSettings.navigation),
     [settings?.navigation, editedSettings.navigation]
   )
+  const difyExternalKnowledgeMerged = useMemo(
+    () =>
+      mergeWithDefaults(
+        DEFAULT_DIFY_EXTERNAL_KNOWLEDGE,
+        settings?.dify_external_knowledge,
+        editedSettings.dify_external_knowledge
+      ),
+    [settings?.dify_external_knowledge, editedSettings.dify_external_knowledge]
+  )
   const cacheMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_CACHE, settings?.cache, editedSettings.cache),
     [settings?.cache, editedSettings.cache]
@@ -611,6 +632,20 @@ export function useSettingsPageState() {
     }))
   }
 
+  const updateDifyExternalKnowledge = (patch: Partial<DifyExternalKnowledgeSettings>) => {
+    setEditedSettings((prev) => ({
+      ...prev,
+      dify_external_knowledge: mergeConfig(
+        mergeWithDefaults(
+          DEFAULT_DIFY_EXTERNAL_KNOWLEDGE,
+          settings?.dify_external_knowledge,
+          prev.dify_external_knowledge
+        ),
+        patch
+      ),
+    }))
+  }
+
   const updateChat = (patch: Partial<ChatConfig>) => {
     setEditedSettings((prev) => ({
       ...prev,
@@ -786,6 +821,7 @@ export function useSettingsPageState() {
     cacheMerged,
     chatMerged,
     dialogOpen,
+    difyExternalKnowledgeMerged,
     editedFeatureFlags: editedSettings.feature_flags,
     etl4llmMerged,
     formatBytes,
@@ -835,6 +871,7 @@ export function useSettingsPageState() {
     toggleFeature,
     updateCache,
     updateChat,
+    updateDifyExternalKnowledge,
     updateEtl4Llm,
     updateGovernance,
     updateLangGraph,

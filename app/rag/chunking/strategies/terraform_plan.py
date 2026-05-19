@@ -35,7 +35,7 @@ def _parse_change_line(line: str) -> tuple[str, str] | None:
     Parse a change header line like:
       # aws_instance.example will be created
 
-    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
     s = str(line or "").strip()
     if not s:

@@ -44,7 +44,7 @@ def _parse_target_line(line: str) -> str | None:
 
     Returns the target name or None.
 
-    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
     s = str(line or "")
     if not s:

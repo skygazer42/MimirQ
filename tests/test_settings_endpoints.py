@@ -64,6 +64,17 @@ def test_settings_get_includes_url_ingest_and_governance(monkeypatch):  # noqa: 
         "knowledgeGraph,reports,unknownModule",
         raising=False,
     )
+    monkeypatch.setattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", "dify-secret-token", raising=False)
+    monkeypatch.setattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", "00000000-0000-0000-0000-000000000000", raising=False)
+    monkeypatch.setattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+    monkeypatch.setattr(
+        settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        '{"sales-all":["11111111-1111-1111-1111-111111111111"]}',
+        raising=False,
+    )
+    monkeypatch.setattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 25, raising=False)
 
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_get_db
@@ -101,6 +112,15 @@ def test_settings_get_includes_url_ingest_and_governance(monkeypatch):  # noqa: 
 
     navigation = body.get("navigation") or {}
     assert navigation.get("user_visible_modules") == ["knowledgeGraph", "reports"]
+
+    dify = body.get("dify_external_knowledge") or {}
+    assert dify.get("enabled") is True
+    assert dify.get("api_keys") == "dify***oken"
+    assert dify.get("tenant_id") == "00000000-0000-0000-0000-000000000000"
+    assert dify.get("account_id") == "system:dify"
+    assert dify.get("knowledge_map_json") == '{"sales-all":["11111111-1111-1111-1111-111111111111"]}'
+    assert dify.get("top_k_max") == 25
+    assert dify.get("endpoint_path") == "/api/v1/integrations/dify/retrieval"
 
 
 def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN001
@@ -157,6 +177,15 @@ def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN
         "navigation": {
             "user_visible_modules": ["knowledgeGraph", "graphSnapshots", "reports"],
         },
+        "dify_external_knowledge": {
+            "enabled": True,
+            "api_keys": "dify-write-token",
+            "tenant_id": "00000000-0000-0000-0000-000000000000",
+            "account_id": "system:dify",
+            "knowledge_map_json": '{"sales-all":["11111111-1111-1111-1111-111111111111"]}',
+            "top_k_max": 33,
+            "endpoint_path": "/api/v1/integrations/dify/retrieval",
+        },
     }
     res = client.put("/api/v1/settings", json=payload)
     assert res.status_code == 200, res.text
@@ -176,6 +205,12 @@ def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN
     assert "PADDLE_VL_PIPELINE_VERSION" in updated
     assert "PADDLE_VL_MODE" in updated
     assert "NAVIGATION_USER_VISIBLE_MODULES" in updated
+    assert "DIFY_EXTERNAL_KNOWLEDGE_ENABLED" in updated
+    assert "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS" in updated
+    assert "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID" in updated
+    assert "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID" in updated
+    assert "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON" in updated
+    assert "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX" in updated
 
     # Verify env file is written.
     env_text = (tmp_path / "test.env").read_text(encoding="utf-8")
@@ -196,6 +231,12 @@ def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN
     assert "PADDLE_VL_PIPELINE_VERSION=v1.5" in env_text
     assert "PADDLE_VL_MODE=doc_parser" in env_text
     assert "NAVIGATION_USER_VISIBLE_MODULES=knowledgeGraph,graphSnapshots,reports" in env_text
+    assert "DIFY_EXTERNAL_KNOWLEDGE_ENABLED=true" in env_text
+    assert "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS=dify-write-token" in env_text
+    assert "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID=00000000-0000-0000-0000-000000000000" in env_text
+    assert "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID=system:dify" in env_text
+    assert 'DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON={"sales-all":["11111111-1111-1111-1111-111111111111"]}' in env_text
+    assert "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX=33" in env_text
 
     # Verify runtime apply updated in-memory settings (best-effort).
     assert int(settings.CHUNK_MIN_CHARS) == 67
@@ -215,6 +256,12 @@ def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN
     assert str(getattr(settings, "PADDLE_VL_PIPELINE_VERSION", "")) == "v1.5"
     assert str(getattr(settings, "PADDLE_VL_MODE", "")) == "doc_parser"
     assert str(getattr(settings, "NAVIGATION_USER_VISIBLE_MODULES", "")) == "knowledgeGraph,graphSnapshots,reports"
+    assert bool(settings.DIFY_EXTERNAL_KNOWLEDGE_ENABLED) is True
+    assert str(settings.DIFY_EXTERNAL_KNOWLEDGE_API_KEYS) == "dify-write-token"
+    assert str(settings.DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID) == "00000000-0000-0000-0000-000000000000"
+    assert str(settings.DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID) == "system:dify"
+    assert str(settings.DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON) == '{"sales-all":["11111111-1111-1111-1111-111111111111"]}'
+    assert int(settings.DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX) == 33
 
 
 def test_settings_status_probes_paddlevl_health(monkeypatch):  # noqa: ANN001

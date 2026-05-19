@@ -3,7 +3,7 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-describe('api-client Sonar guards', () => {
+describe('api-client source guards', () => {
   it('keeps observability perf-suite defaults on integer literals', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'api/observability.ts'), 'utf8')
 

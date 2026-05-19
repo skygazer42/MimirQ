@@ -48,7 +48,7 @@ def _parse_asciidoc_heading(line: str) -> tuple[int, str] | None:
       = Title
       == Section
 
-    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
     raw = str(line or "").rstrip("\r\n")
     if not raw:

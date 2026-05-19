@@ -127,7 +127,7 @@ def _spawn_background_task(coro: Any) -> None:
     """
     Best-effort fire-and-forget task runner.
 
-    Sonar rule python:S7502: keep a strong reference to background tasks until completion.
+    Keep a strong reference to background tasks until completion.
     """
     try:
         task = asyncio.create_task(coro)

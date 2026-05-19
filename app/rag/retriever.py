@@ -27,9 +27,9 @@ from app.config.rerank_profile import resolve_rerank_search_k
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.stream_events import emit_stream_event
+from app.models.dataset import Dataset as DBDataset
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
-from app.models.dataset import Dataset as DBDataset
 from app.rag.core.filters import match_metadata_filter
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
@@ -57,6 +57,11 @@ from app.storage.vector.factory import get_vector_store
 from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name
 
 logger = get_logger("rag.retriever")
+
+
+def _log_retriever_fallback(context: str, exc: BaseException) -> None:
+    logger.debug("retriever fallback failed in %s: %s", context, exc, exc_info=True)
+
 
 SPARSE_INDEX_DIR_FALLBACK = "./data/sparse_indexes"
 COLBERT_INDEX_DIR_FALLBACK = "./data/colbert_indexes"
@@ -265,7 +270,8 @@ class HybridRetriever(BaseRetriever):
             from app.rag.utils.entity_matcher import extract_partition_keys
 
             return extract_partition_keys(query, candidates)
-        except Exception:
+        except Exception as exc:
+            _log_retriever_fallback('_resolve_entity_partition_keys', exc)
             return []
 
     def _merge_entity_partition_metadata_filter(
@@ -358,7 +364,8 @@ class HybridRetriever(BaseRetriever):
         meta[_RETRIEVAL_QUESTIONS_CHANNEL_KEY] = bool(applied)
         try:
             return doc.model_copy(update={"page_content": retrieval_content, "metadata": meta})
-        except Exception:
+        except Exception as exc:
+            _log_retriever_fallback('_prepare_retrieval_document', exc)
             return Document(page_content=retrieval_content, metadata=meta, id=getattr(doc, "id", None))
 
     def _question_channel_overlap_score(
@@ -432,7 +439,8 @@ class HybridRetriever(BaseRetriever):
             if runtime.dataset_scoped:
                 return runtime
             return replace(runtime, embedding_space_hash=current_embedding_space_hash())
-        except Exception:
+        except Exception as exc:
+            _log_retriever_fallback('_resolve_embedding_runtime', exc)
             runtime = resolve_dataset_embedding_runtime(None)
             return replace(runtime, embedding_space_hash=current_embedding_space_hash())
         finally:
@@ -484,7 +492,7 @@ class HybridRetriever(BaseRetriever):
         if tenant_uuid is None:
             try:
                 tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 tenant_uuid = None
         if tenant_uuid is None:
             return ""
@@ -501,9 +509,10 @@ class HybridRetriever(BaseRetriever):
             updated_at = row[0] if row else None
             try:
                 return updated_at.isoformat() if updated_at is not None else ""
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 return ""
-        except Exception:
+        except Exception as exc:
+            _log_retriever_fallback('_bm25_dataset_cache_version', exc)
             return ""
         finally:
             try:
@@ -550,7 +559,8 @@ class HybridRetriever(BaseRetriever):
                 dataset_id=self.dataset_id,
                 document_ids=document_ids or [],
             )
-        except Exception:
+        except Exception as exc:
+            _log_retriever_fallback('_resolve_candidate_cache_corpus_token', exc)
             return None
         finally:
             try:
@@ -627,7 +637,7 @@ class HybridRetriever(BaseRetriever):
                             continue
                         try:
                             weights[str(k)] = float(w)
-                        except Exception:
+                        except (TypeError, ValueError, AttributeError):
                             continue
                     return SparseVector(weights=weights)
                 return SparseVector(weights={})
@@ -658,9 +668,11 @@ class HybridRetriever(BaseRetriever):
                         version_token=str(version_token or "").strip(),
                     )
                     save_outcome = "ok"
-                except Exception:
+                except Exception as exc:
+                    _log_retriever_fallback('_build_sparse_index', exc)
                     save_outcome = "error"
-        except Exception:
+        except Exception as exc:
+            _log_retriever_fallback('_build_sparse_index', exc)
             build_outcome = "error"
             raise
         finally:
@@ -764,7 +776,8 @@ class HybridRetriever(BaseRetriever):
                         if loaded:
                             sparse_vecs = loaded
                             load_outcome = "hit"
-                    except Exception:
+                    except Exception as exc:
+                        _log_retriever_fallback('_upsert_sparse_index_incremental', exc)
                         sparse_vecs = {}
                         load_outcome = "error"
                 else:
@@ -791,7 +804,7 @@ class HybridRetriever(BaseRetriever):
                             continue
                         try:
                             weights[str(k)] = float(w)
-                        except Exception:
+                        except (TypeError, ValueError, AttributeError):
                             continue
                     return SparseVector(weights=weights)
                 return SparseVector(weights={})
@@ -831,9 +844,11 @@ class HybridRetriever(BaseRetriever):
                         version_token=str(version_token or "").strip(),
                     )
                     save_outcome = "ok"
-                except Exception:
+                except Exception as exc:
+                    _log_retriever_fallback('_upsert_sparse_index_incremental', exc)
                     save_outcome = "error"
-        except Exception:
+        except Exception as exc:
+            _log_retriever_fallback('_upsert_sparse_index_incremental', exc)
             build_outcome = "error"
             raise
         finally:
@@ -880,7 +895,7 @@ class HybridRetriever(BaseRetriever):
         """
         try:
             max_docs = int(getattr(settings, "COLBERT_RETRIEVAL_MAX_DOCS", 0) or 0)
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             max_docs = 0
         if max_docs > 0 and len(docs or []) > max_docs:
             # Enforce a hard memory guard: don't build large matrices by accident.
@@ -974,7 +989,7 @@ class HybridRetriever(BaseRetriever):
 
         try:
             max_docs = int(getattr(settings, "COLBERT_RETRIEVAL_MAX_DOCS", 0) or 0)
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             max_docs = 0
         if max_docs > 0 and len(corpus_docs or []) > max_docs:
             # Keep bounded resource usage by dropping the index for oversized scopes.
@@ -1060,7 +1075,8 @@ class HybridRetriever(BaseRetriever):
             # Re-pack to a stable, deterministic on-disk/in-memory layout.
             doc_ids = sorted(vec_by_id.keys())
             vectors = np.stack([vec_by_id[cid] for cid in doc_ids], axis=0).astype(np.float32, copy=False)
-        except Exception:
+        except Exception as exc:
+            _log_retriever_fallback('_upsert_colbert_index_incremental', exc)
             return
 
         index = ColbertAnnIndex(
@@ -1108,7 +1124,7 @@ class HybridRetriever(BaseRetriever):
     def _bm25_cache_max_tenants(self) -> int:
         try:
             return max(0, int(getattr(settings, "BM25_CACHE_MAX_TENANTS", 0) or 0))
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             return 0
 
     def _touch_bm25_cache(self, tenant_key: str) -> None:
@@ -1174,7 +1190,7 @@ class HybridRetriever(BaseRetriever):
         if tenant_uuid is None:
             try:
                 tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 tenant_uuid = None
         if tenant_uuid is None:
             return False
@@ -1264,7 +1280,7 @@ class HybridRetriever(BaseRetriever):
                         chunk_index,
                         page_number,
                     )
-                except Exception:
+                except (TypeError, ValueError, AttributeError):
                     return (
                         getattr(row, "id", None),
                         getattr(row, "content", None),
@@ -1686,7 +1702,7 @@ class HybridRetriever(BaseRetriever):
         if tenant_uuid is None:
             try:
                 tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 tenant_uuid = None
         if tenant_uuid is None:
             return
@@ -1934,7 +1950,7 @@ class HybridRetriever(BaseRetriever):
         if tenant_uuid is None:
             try:
                 tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 tenant_uuid = None
         if tenant_uuid is None:
             return []
@@ -2097,7 +2113,7 @@ class HybridRetriever(BaseRetriever):
         if tenant_uuid is None:
             try:
                 tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 tenant_uuid = None
         if tenant_uuid is None:
             return []
@@ -2122,7 +2138,7 @@ class HybridRetriever(BaseRetriever):
         # Provider readiness gate with deterministic fallback diagnostics.
         try:
             max_docs = int(getattr(settings, "COLBERT_RETRIEVAL_MAX_DOCS", 0) or 0)
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             max_docs = 0
         requested_provider = str(getattr(settings, "COLBERT_RETRIEVAL_PROVIDER", "deterministic") or "deterministic").strip().lower()
         readiness = resolve_colbert_ann_provider_capability(
@@ -2193,7 +2209,7 @@ class HybridRetriever(BaseRetriever):
                 and str(getattr(index, "corpus_fingerprint", "") or "") == str(expected_fp or "")
                 and dict(getattr(index, "provider_config", {}) or {}) == dict(provider_config)
             )
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             index_ok = False
 
         if not index_ok and bool(getattr(settings, "COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
@@ -2204,7 +2220,8 @@ class HybridRetriever(BaseRetriever):
                     index = loaded
                     self._colbert_index_cache[cache_key] = loaded
                     index_ok = True
-            except Exception:
+            except Exception as exc:
+                _log_retriever_fallback('_search_colbert_ann', exc)
                 index_ok = False
 
         if not index_ok:
@@ -2217,14 +2234,15 @@ class HybridRetriever(BaseRetriever):
                             and str(getattr(index, "corpus_fingerprint", "") or "") == str(expected_fp or "")
                             and dict(getattr(index, "provider_config", {}) or {}) == dict(provider_config)
                         )
-                    except Exception:
+                    except (TypeError, ValueError, AttributeError):
                         index_ok = False
 
                     if not index_ok:
                         self._build_colbert_index(cache_key=cache_key, docs=docs)
                         index = self._colbert_index_cache.get(cache_key)
                         index_ok = index is not None
-            except Exception:
+            except Exception as exc:
+                _log_retriever_fallback('_search_colbert_ann', exc)
                 index_ok = False
                 index = self._colbert_index_cache.get(cache_key)
 
@@ -2242,7 +2260,7 @@ class HybridRetriever(BaseRetriever):
         q_mat = embedder.encode_batch([raw_query])
         try:
             q_vec = q_mat[0]
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             return []
 
         doc_vecs = getattr(index, "vectors", None)
@@ -2313,7 +2331,7 @@ class HybridRetriever(BaseRetriever):
         if tenant_uuid is None:
             try:
                 tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 tenant_uuid = None
         if tenant_uuid is None:
             return []
@@ -2389,7 +2407,8 @@ class HybridRetriever(BaseRetriever):
                             sparse_vecs = loaded
                             self._sparse_doc_vectors[cache_key] = sparse_vecs
                             load_outcome = "hit"
-                    except Exception:
+                    except Exception as exc:
+                        _log_retriever_fallback('_search_sparse', exc)
                         load_outcome = "error"
                         had_index_load_error = True
                     observe_sparse_index_load(provider=provider, outcome=load_outcome)
@@ -2408,7 +2427,8 @@ class HybridRetriever(BaseRetriever):
                                 version_token=sparse_index_version_token,
                             )
                             sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
-                except Exception:
+                except Exception as exc:
+                    _log_retriever_fallback('_search_sparse', exc)
                     had_index_build_error = True
                     sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
 
@@ -2485,7 +2505,8 @@ class HybridRetriever(BaseRetriever):
             candidates_count = len(results)
             outcome = "ok"
             return heapq.nlargest(max(0, int(top_k or 0)), results, key=lambda x: float(x.get("score", 0.0) or 0.0))
-        except Exception:
+        except Exception as exc:
+            _log_retriever_fallback('_search_sparse', exc)
             outcome = "error"
             if reason == "none":
                 reason = "exception"
@@ -2500,7 +2521,7 @@ class HybridRetriever(BaseRetriever):
                     "reason": reason,
                     "candidates": int(candidates_count or 0),
                 }
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 self._last_sparse_provider_status = {}
             observe_sparse_search(
                 provider=provider,
@@ -2541,7 +2562,7 @@ class HybridRetriever(BaseRetriever):
         if tenant_uuid is None:
             try:
                 tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 tenant_uuid = None
         if tenant_uuid is None:
             return []
@@ -2555,7 +2576,7 @@ class HybridRetriever(BaseRetriever):
                 dataset_str = ds_raw.strip()
                 try:
                     dataset_uuid = UUID(dataset_str)
-                except Exception:
+                except (TypeError, ValueError, AttributeError):
                     dataset_uuid = None
 
         # Config knobs (keep safe defaults even if not present in Settings yet).
@@ -2630,7 +2651,7 @@ class HybridRetriever(BaseRetriever):
                             page_number,
                             fts_rank,
                         ) = row
-                    except Exception:
+                    except (TypeError, ValueError, AttributeError):
                         continue
 
                     cid = str(chunk_id)
@@ -2688,7 +2709,7 @@ class HybridRetriever(BaseRetriever):
                                 page_number,
                                 fts_rank,
                             ) = row
-                        except Exception:
+                        except (TypeError, ValueError, AttributeError):
                             continue
 
                         cid = str(chunk_id)
@@ -2724,7 +2745,8 @@ class HybridRetriever(BaseRetriever):
                     try:
                         row = db.execute(text("SELECT 1 FROM pg_extension WHERE extname='pg_trgm' LIMIT 1;")).first()
                         pg_trgm_available = bool(row)
-                    except Exception:
+                    except Exception as exc:
+                        _log_retriever_fallback('_search_lexical_db', exc)
                         pg_trgm_available = False
                     self._lexical_pg_trgm_available = pg_trgm_available
 
@@ -2750,7 +2772,7 @@ class HybridRetriever(BaseRetriever):
                                     page_number,
                                     trgm_sim,
                                 ) = row
-                            except Exception:
+                            except (TypeError, ValueError, AttributeError):
                                 continue
 
                             cid = str(chunk_id)
@@ -2919,7 +2941,7 @@ class HybridRetriever(BaseRetriever):
             # embedding space and the empty-string legacy value.
             try:
                 space = embedding_space
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 space = ""
             if space and "embedding_space_hash" not in vf:
                 vf["embedding_space_hash"] = {"$in": [space, ""]}
@@ -2933,7 +2955,8 @@ class HybridRetriever(BaseRetriever):
                 if str(modality or "").strip().lower() == "image":
                     want_colpali = True
                     colpali_reason = "image_query"
-            except Exception:
+            except Exception as exc:
+                _log_retriever_fallback('_hybrid_search', exc)
                 colpali_reason = "router_exception"
         else:
             colpali_reason = "COLPALI_RETRIEVAL_ENABLED=false"
@@ -3049,7 +3072,8 @@ class HybridRetriever(BaseRetriever):
                     tenant_id=tenant_uuid,
                     document_ids=document_ids,
                 )
-            except Exception:
+            except Exception as exc:
+                _log_retriever_fallback('_hybrid_search', exc)
                 corpus_cache_token = None
 
             if not corpus_cache_token:
@@ -3076,7 +3100,8 @@ class HybridRetriever(BaseRetriever):
                     document_ids=doc_ids,
                 )
                 cached = get_cached_retrieval_candidates(cache_key) if cache_key else None
-            except Exception:
+            except Exception as exc:
+                _log_retriever_fallback('_hybrid_search', exc)
                 cached = None
                 cache_eligible = False
                 cache_meta["skip_reason"] = "lookup_error"
@@ -3111,7 +3136,8 @@ class HybridRetriever(BaseRetriever):
                 )
                 if isinstance(sem_meta, dict):
                     cache_meta["semantic"].update(sem_meta)
-            except Exception:
+            except Exception as exc:
+                _log_retriever_fallback('_hybrid_search', exc)
                 semantic_cached = None
                 cache_meta["semantic"]["skip_reason"] = "lookup_error"
 
@@ -3840,7 +3866,7 @@ class HybridRetriever(BaseRetriever):
                     continue
                 try:
                     chunk_ids.append(UUID(str(cid)))
-                except Exception:
+                except (TypeError, ValueError, AttributeError):
                     continue
 
             chunks_by_id: dict[str, DocumentChunk] = {}
@@ -3865,7 +3891,7 @@ class HybridRetriever(BaseRetriever):
                 try:
                     doc_uuid = UUID(str(doc_id))
                     chunk_idx = int(chunk_index)
-                except Exception:
+                except (TypeError, ValueError, AttributeError):
                     continue
                 missing_pairs.add((doc_uuid, chunk_idx))
 
@@ -3946,7 +3972,8 @@ class HybridRetriever(BaseRetriever):
                                 active_key = f"{doc_id}:{active_hash}"
                         if ready and active_key:
                             doc_active_pipeline_key_by_id[str(doc_id)] = active_key
-            except Exception:
+            except Exception as exc:
+                _log_retriever_fallback('_enrich_results_with_db_metadata', exc)
                 doc_user_by_id = {}
                 doc_dataset_by_id = {}
                 doc_ready_by_id = {}
@@ -3966,7 +3993,8 @@ class HybridRetriever(BaseRetriever):
                             continue
                         try:
                             candidate_doc_ids.add(UUID(str(k)))
-                        except Exception:
+                        except Exception as exc:
+                            _log_retriever_fallback('_enrich_results_with_db_metadata', exc)
                             continue
                     # Reduce work: if we cannot prove a doc is "ready", treat it as non-searchable.
                     ready_doc_ids: set[UUID] = set()
@@ -3975,7 +4003,8 @@ class HybridRetriever(BaseRetriever):
                             continue
                         try:
                             ready_doc_ids.add(UUID(str(doc_id)))
-                        except Exception:
+                        except Exception as exc:
+                            _log_retriever_fallback('_enrich_results_with_db_metadata', exc)
                             continue
                     candidate_doc_ids = candidate_doc_ids & ready_doc_ids if ready_doc_ids else candidate_doc_ids
 
@@ -3996,7 +4025,8 @@ class HybridRetriever(BaseRetriever):
                         allowed_docs_str = {str(did) for did in allowed_ids}
                     else:
                         allowed_docs_str = set()
-                except Exception:
+                except Exception as exc:
+                    _log_retriever_fallback('_enrich_results_with_db_metadata', exc)
                     # Fail closed: if ACL check fails, do not return potentially sensitive chunks.
                     allowed_docs_str = set()
             elif account_id and not tenant_filter:
@@ -4015,7 +4045,7 @@ class HybridRetriever(BaseRetriever):
                     try:
                         doc_uuid = UUID(str(doc_id))
                         chunk_idx = int(chunk_index)
-                    except Exception:
+                    except (TypeError, ValueError, AttributeError):
                         doc_uuid = None
                         chunk_idx = None
                     if doc_uuid is not None and chunk_idx is not None:
@@ -4179,6 +4209,7 @@ class HybridRetriever(BaseRetriever):
                 stats0["output_results"] = len(resolved)
             return resolved
         except Exception as exc:
+            _log_retriever_fallback('_enrich_results_with_db_metadata', exc)
             if stats0 is not None:
                 stats0["exception"] = str(exc)[:200]
             return results
@@ -4219,7 +4250,7 @@ class HybridRetriever(BaseRetriever):
             try:
                 doc_uuid = UUID(str(doc_id)) if doc_id is not None else None
                 idx = int(chunk_index) if chunk_index is not None else None
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 doc_uuid = None
                 idx = None
             pipeline_key = str(meta.get("doc_pipeline_key") or "").strip()
@@ -4301,7 +4332,8 @@ class HybridRetriever(BaseRetriever):
                     if not ck_key or ck_key != desired:
                         continue
                 neighbors_by_pair[(doc_key, int(ck.chunk_index))] = ck
-        except Exception:
+        except Exception as exc:
+            _log_retriever_fallback('_expand_results_with_neighbors', exc)
             return results
         finally:
             try:
@@ -4346,7 +4378,7 @@ class HybridRetriever(BaseRetriever):
         def _score(r: dict[str, Any]) -> float:
             try:
                 return float(r.get("score") or 0.0)
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 return 0.0
 
         stitchable_by_doc: dict[str, list[tuple[int, int, dict[str, Any]]]] = {}
@@ -4359,7 +4391,7 @@ class HybridRetriever(BaseRetriever):
             doc_key = str(doc_id).strip() if doc_id is not None else ""
             try:
                 idx = int(chunk_index) if chunk_index is not None else None
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 idx = None
             if doc_key and idx is not None and idx >= 0:
                 stitchable_by_doc.setdefault(doc_key, []).append((idx, pos, r))
@@ -4480,7 +4512,7 @@ class HybridRetriever(BaseRetriever):
             for it in items:
                 try:
                     best = max(best, float(it.get("score", 0.0) or 0.0))
-                except Exception:
+                except (TypeError, ValueError, AttributeError):
                     continue
             scored_groups.append((best, key))
         scored_groups.sort(key=lambda x: x[0], reverse=True)
@@ -4507,7 +4539,8 @@ class HybridRetriever(BaseRetriever):
             for doc_id, family_key in missing_keys:
                 try:
                     doc_ids.add(UUID(doc_id))
-                except Exception:
+                except Exception as exc:
+                    _log_retriever_fallback('_auto_merge_parent_child', exc)
                     continue
                 if family_key:
                     family_keys.add(family_key)
@@ -4541,7 +4574,8 @@ class HybridRetriever(BaseRetriever):
                             if not ck_key or ck_key != desired:
                                 continue
                         fetched_parents[(str(ck.document_id), family_key)] = ck
-                except Exception:
+                except Exception as exc:
+                    _log_retriever_fallback('_auto_merge_parent_child', exc)
                     fetched_parents = {}
                 finally:
                     try:
@@ -4559,7 +4593,7 @@ class HybridRetriever(BaseRetriever):
                 existing["metadata"] = meta
                 try:
                     existing_score = float(existing.get("score", 0.0) or 0.0)
-                except Exception:
+                except (TypeError, ValueError, AttributeError):
                     existing_score = 0.0
                 existing["score"] = max(existing_score, best_child_score * 0.97)
                 return existing
@@ -4594,7 +4628,7 @@ class HybridRetriever(BaseRetriever):
             for it in child_groups.get(key) or []:
                 try:
                     best = max(best, float(it.get("score", 0.0) or 0.0))
-                except Exception:
+                except (TypeError, ValueError, AttributeError):
                     continue
             best_score_by_group[key] = best
 
@@ -4786,7 +4820,7 @@ class HybridRetriever(BaseRetriever):
                 and len(self.document_ids) > max_doc_ids
             )
             debug["milvus_expr_max_doc_ids"] = int(max_doc_ids)
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             debug["milvus_doc_id_pushdown_skipped"] = None
 
         results = self._hybrid_search(
@@ -4811,7 +4845,7 @@ class HybridRetriever(BaseRetriever):
         debug["hybrid_results"] = len(results or [])
         try:
             debug["channels"] = dict(self._last_channel_metrics or {})
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             debug["channels"] = {}
         try:
             ch = debug.get("channels") or {}
@@ -4828,7 +4862,7 @@ class HybridRetriever(BaseRetriever):
                 "vector_candidates": int(counts_src.get("vector_candidates") or 0),
                 "bm25_candidates": int(counts_src.get("bm25_candidates") or 0),
             }
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             debug["timing"] = {"vector_ms": 0.0, "bm25_ms": 0.0, "fusion_ms": 0.0}
             debug["counts"] = {"vector_candidates": 0, "bm25_candidates": 0}
         # Diversity caps meta is computed inside `_hybrid_search` / `_apply_document_diversity`.
@@ -4997,7 +5031,7 @@ class HybridRetriever(BaseRetriever):
         for did in doc_ids:
             try:
                 doc_uuid_list.append(UUID(str(did)))
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 continue
         if stats is not None:
             stats["candidate_docs"] = len(doc_uuid_list)
@@ -5032,11 +5066,12 @@ class HybridRetriever(BaseRetriever):
                     ts = updated_at or created_at
                     try:
                         ts_sec = float(ts.timestamp()) if ts is not None else None
-                    except Exception:
+                    except Exception as exc:
+                        _log_retriever_fallback('_apply_governance_policy', exc)
                         ts_sec = None
                     try:
                         auth_i = int(auth) if auth is not None else 0
-                    except Exception:
+                    except (TypeError, ValueError, AttributeError):
                         auth_i = 0
                     doc_features[str(did)] = {"authority_level": auth_i, "updated_ts": ts_sec}
 
@@ -5074,12 +5109,13 @@ class HybridRetriever(BaseRetriever):
                             ready = False
                         if str(publication_status or "published").strip().lower() != "published":
                             ready = False
-                    except Exception:
+                    except (TypeError, ValueError, AttributeError):
                         ready = False
                     if not ready:
                         continue
                     superseded_doc_ids.add(str(supersedes_id))
-        except Exception:
+        except Exception as exc:
+            _log_retriever_fallback('_apply_governance_policy', exc)
             # Fail open: governance policy must never break retrieval.
             doc_features = {}
             superseded_doc_ids = set()
@@ -5112,7 +5148,7 @@ class HybridRetriever(BaseRetriever):
             for i, r in enumerate(out):
                 try:
                     base = float(r.get("score") or r.get("retrieval_score") or 0.0)
-                except Exception:
+                except (TypeError, ValueError, AttributeError):
                     base = 0.0
                 did = self._get_doc_id(r)
                 feats = doc_features.get(did) if did else None
@@ -5122,7 +5158,7 @@ class HybridRetriever(BaseRetriever):
                 if prefer_authority and auth_boost_max > 0.0:
                     try:
                         auth = int(feats.get("authority_level") or 0)
-                    except Exception:
+                    except (TypeError, ValueError, AttributeError):
                         auth = 0
                     auth = max(0, min(100, auth))
                     boost += (float(auth) / 100.0) * auth_boost_max
@@ -5131,7 +5167,7 @@ class HybridRetriever(BaseRetriever):
                     ts_sec = feats.get("updated_ts")
                     try:
                         ts_sec_f = float(ts_sec) if ts_sec is not None else None
-                    except Exception:
+                    except (TypeError, ValueError, AttributeError):
                         ts_sec_f = None
                     if ts_sec_f is not None and ts_sec_f > 0:
                         age_days = max(0.0, (now_ts - ts_sec_f) / 86400.0)
@@ -5150,11 +5186,12 @@ class HybridRetriever(BaseRetriever):
             if boosts:
                 try:
                     avg_boost = float(sum(boosts)) / float(len(boosts))
-                except Exception:
+                except Exception as exc:
+                    _log_retriever_fallback('_apply_governance_policy', exc)
                     avg_boost = 0.0
                 try:
                     max_boost = float(max(boosts))
-                except Exception:
+                except (TypeError, ValueError, AttributeError):
                     max_boost = 0.0
 
         if stats is not None:
@@ -5322,7 +5359,7 @@ class HybridRetriever(BaseRetriever):
         if near_enabled:
             try:
                 from app.rag.preprocessing.simhash import hamming_distance64  # noqa: WPS433
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 near_enabled = False
 
         seen_chunk_ids: set[str] = set()
@@ -5371,7 +5408,7 @@ class HybridRetriever(BaseRetriever):
                 if sh_hex:
                     try:
                         sh_int = int(sh_hex, 16) & ((1 << 64) - 1)
-                    except Exception:
+                    except (TypeError, ValueError, AttributeError):
                         sh_int = None
                     if sh_int is not None:
                         compare_simhashes = kept_simhashes
@@ -5444,7 +5481,7 @@ class HybridRetriever(BaseRetriever):
                 return None
             try:
                 page = int(raw)
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 return None
             return (doc_id, page)
 
@@ -5929,7 +5966,7 @@ class HybridRetriever(BaseRetriever):
                         continue
                     try:
                         iv = int(v) if v is not None else 0
-                    except Exception:
+                    except (TypeError, ValueError, AttributeError):
                         continue
                     out0[key] = max(0, iv)
                 return out0
@@ -5944,7 +5981,7 @@ class HybridRetriever(BaseRetriever):
                         continue
                     try:
                         fv = float(v) if v is not None else 0.0
-                    except Exception:
+                    except (TypeError, ValueError, AttributeError):
                         continue
                     out0[key] = max(0.0, min(1.0, fv))
                 return out0
@@ -6160,7 +6197,7 @@ class HybridRetriever(BaseRetriever):
                         continue
                     try:
                         w = float(v)
-                    except Exception:
+                    except (TypeError, ValueError, AttributeError):
                         continue
                     if w <= 0.0:
                         continue
