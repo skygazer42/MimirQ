@@ -121,7 +121,7 @@ function SettingsMetricStrip({
               <Icon className="size-3.5" />
             </div>
             <div className="flex min-w-0 flex-1 items-baseline justify-between gap-2">
-              <p className="truncate text-[11px] font-medium text-slate-500">
+              <p className="truncate text-[11px] font-semibold text-slate-600">
                 {item.label}
               </p>
               <p
@@ -186,13 +186,13 @@ function SettingsSaveFeedback({
           </div>
           <p className="text-[12px] leading-5 text-slate-600">{message.text}</p>
           {message.detail ? (
-            <p className="text-[11px] leading-4 text-slate-500">
+            <p className="text-[11.5px] font-medium leading-[18px] text-slate-600">
               {message.detail}
             </p>
           ) : null}
           {updatedKeys.length > 0 ? (
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[10px] font-medium text-slate-400">
+              <span className="text-[10px] font-semibold text-slate-500">
                 本次更新
               </span>
               {visibleKeys.map((key) => (
@@ -204,7 +204,7 @@ function SettingsSaveFeedback({
                 </span>
               ))}
               {extraCount > 0 ? (
-                <span className="rounded-full border border-slate-200/70 bg-slate-100/80 px-2 py-0.5 text-[10px] font-medium text-slate-500">
+                <span className="rounded-full border border-slate-200/70 bg-slate-100/80 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
                   +{extraCount} 项
                 </span>
               ) : null}
@@ -293,10 +293,10 @@ function EnhancementCard({
           <Icon className="size-3.5" />
         </span>
         <span className="min-w-0">
-          <span className="block text-[12px] font-medium leading-4 text-slate-900">
+          <span className="block text-[12px] font-semibold leading-4 text-slate-950">
             {title}
           </span>
-          <span className="mt-0.5 block truncate text-[10.5px] leading-4 text-slate-500">
+          <span className="mt-0.5 block truncate text-[10.5px] font-medium leading-4 text-slate-600">
             {description}
           </span>
           {tags.length > 0 ? (
@@ -304,7 +304,7 @@ function EnhancementCard({
               {tags.map((tag) => (
                 <span
                   key={tag}
-                  className="rounded-md border border-slate-200 bg-card/80 px-1.5 py-0.5 text-[10px] leading-[14px] text-slate-500"
+                  className="rounded-md border border-slate-200 bg-card/80 px-1.5 py-0.5 text-[10px] font-medium leading-[14px] text-slate-600"
                 >
                   {tag}
                 </span>
@@ -325,10 +325,10 @@ function RetrievalEnhancementSection({ state }: Readonly<{ state: any }>) {
   return (
     <section className="rounded-[16px] border border-slate-200/75 bg-card p-3.5 shadow-sm">
       <div className="mb-2.5">
-        <h2 className="text-[13px] font-medium text-slate-950">
+        <h2 className="text-[13px] font-semibold text-slate-950">
           关键词增强配置
         </h2>
-        <p className="mt-0.5 text-[11px] leading-4 text-slate-500">
+        <p className="mt-0.5 text-[11.5px] font-medium leading-[18px] text-slate-600">
           绑定后端 RAG 与 KG 开关，控制关键词索引和图谱增强是否参与检索。
         </p>
       </div>
@@ -429,7 +429,7 @@ function SettingsSectionFrame({
             >
               {section.label}
             </h2>
-            <p className="mt-0.5 text-[11px] leading-4 text-slate-500">
+            <p className="mt-0.5 text-[11.5px] font-medium leading-[18px] text-slate-600">
               {section.hint}
             </p>
           </div>
@@ -659,10 +659,10 @@ function SettingsContent({
                 onClick={() => scrollTo(sec.id)}
                 className={cn(
                   'relative w-full rounded-[12px] px-3 py-2 text-left transition-colors',
-                  'text-[12px] font-medium leading-[18px]',
+                  'text-[12px] font-semibold leading-[18px]',
                   activeId === sec.id
                     ? 'bg-blue-50/90 text-blue-600 before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[3px] before:rounded-full before:bg-blue-600'
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950'
+                    : 'text-slate-700 hover:bg-slate-50 hover:text-slate-950'
                 )}
               >
                 {sec.label}

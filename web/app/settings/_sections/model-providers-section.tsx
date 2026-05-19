@@ -47,11 +47,11 @@ export function ModelProvidersSection({
               className={cn(systemWorkbenchTokens.panel, 'p-3.5')}
             >
               <div className="mb-3 flex items-start gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/50">
-                  <InfoIcon className="h-4 w-4 text-muted-foreground" />
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-slate-50">
+                  <InfoIcon className="h-4 w-4 text-slate-600" />
                 </div>
                 <div>
-                  <h3 className="text-[13px] font-semibold text-foreground">{info.title}</h3>
+                  <h3 className="text-[13px] font-semibold text-slate-950">{info.title}</h3>
                   <p className={systemPageTokens.subtle}>{info.description}</p>
                 </div>
               </div>

@@ -28,6 +28,15 @@ describe('industry rules workbench source', () => {
     expectSourceToContain(src, '规则候选（待审核）')
     expectSourceToContain(src, '改写预览')
     expectSourceToContain(src, '行业规则库')
+    expectSourceToContain(src, 'size="full"')
+    expectSourceToContain(
+      src,
+      'topClassName="pt-4 md:pt-5 [&>div]:max-w-[1580px]"'
+    )
+    expectSourceToContain(src, 'bodyContainerClassName="max-w-[1580px]"')
+    expectSourceToContain(src, 'flex min-h-[150px] items-center')
+    expectSourceToContain(src, 'grid items-stretch gap-4')
+    expectSourceToContain(src, 'min-h-[calc(100vh-410px)]')
   })
 
   it('loads ruleset and dataset metadata through TanStack Query', () => {

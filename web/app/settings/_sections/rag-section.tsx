@@ -9,9 +9,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { SettingsSwitch } from '@/components/settings/settings-switch'
 import type { SystemSettings } from '@/lib/api'
 import { RERANKER_PROVIDER_OPTIONS } from '@/lib/reranker-provider-options'
-import { HelpCircle, Sliders, ToggleLeft, ToggleRight } from 'lucide-react'
+import { HelpCircle, Sliders } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { systemPageTokens } from '@/components/ui/system-page-tokens'
 
@@ -148,20 +149,13 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
                   </InlineHelp>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() =>
-                  updateRag({ bm25_index_enabled: !isBm25IndexEnabled })
-                }
-                className="shrink-0"
+              <SettingsSwitch
                 aria-label="切换 BM25 检索"
-              >
-                {isBm25IndexEnabled ? (
-                  <ToggleRight className="h-9 w-9 text-primary" />
-                ) : (
-                  <ToggleLeft className="h-9 w-9 text-muted-foreground hover:text-muted-foreground" />
-                )}
-              </button>
+                checked={isBm25IndexEnabled}
+                onCheckedChange={(checked) =>
+                  updateRag({ bm25_index_enabled: checked })
+                }
+              />
             </div>
             <p className="mt-2 text-[11px] text-muted-foreground">
               关闭后将不会使用或构建 BM25 索引
@@ -189,20 +183,13 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
                   </InlineHelp>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() =>
-                  updateRag({ enable_reranker: !isRerankerEnabled })
-                }
-                className="shrink-0"
+              <SettingsSwitch
                 aria-label="切换重排器"
-              >
-                {isRerankerEnabled ? (
-                  <ToggleRight className="h-9 w-9 text-primary" />
-                ) : (
-                  <ToggleLeft className="h-9 w-9 text-muted-foreground hover:text-muted-foreground" />
-                )}
-              </button>
+                checked={isRerankerEnabled}
+                onCheckedChange={(checked) =>
+                  updateRag({ enable_reranker: checked })
+                }
+              />
             </div>
             <p className="mt-2 text-[11px] text-muted-foreground">
               开启后会使用下方重排服务与数量，并同步到实验页面作为默认值
