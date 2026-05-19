@@ -167,7 +167,7 @@ function SettingsSaveFeedback({
             </p>
             {message.detail ? (
               <span className="rounded-full border border-emerald-200/80 bg-white/85 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
-                部分配置需重启后端
+                少量配置需重启服务
               </span>
             ) : null}
           </div>

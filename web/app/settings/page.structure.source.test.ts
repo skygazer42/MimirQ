@@ -28,7 +28,7 @@ describe('settings page structure', () => {
     expect(page).not.toContain('icon={Settings2}')
     expect(page).toContain('data-testid="settings-metric-strip"')
     expect(page).toContain('function SettingsSaveFeedback')
-    expect(page).toContain('部分配置需重启后端')
+    expect(page).toContain('少量配置需重启服务')
     expect(page).not.toContain('Configuration saved')
     expect(page).toContain('flex flex-wrap items-center gap-1.5 rounded-[16px]')
     expect(page).toContain('min-h-9')
@@ -50,7 +50,7 @@ describe('settings page structure', () => {
     expect(page).toContain("state.updateRag({ bm25_index_enabled: !bm25Enabled })")
     expect(page).toContain("state.toggleFeature('kg_enabled')")
     expect(hook).toContain('createSettingsSaveSuccessMessage')
-    expect(hook).toContain('部分功能开关、服务地址和运行时参数需要重启后端后生效。')
+    expect(hook).toContain('大多数修改会影响后续请求；少量启动期能力才需要重启后端。容器部署时通常只需重启后端服务，不需要重建镜像。')
   })
 
   it('does not repeat section titles inside framed settings blocks', () => {
