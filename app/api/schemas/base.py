@@ -1,6 +1,5 @@
 """
 Schema base models.
-
 Provides common base classes for all API schemas, eliminating duplicate Config definitions.
 """
 
