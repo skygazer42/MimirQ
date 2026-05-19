@@ -3,7 +3,7 @@
  */
 'use client'
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { TenantPermissionGate } from '@/components/auth/tenant-permission-gate'
 import { AppFrame } from '@/components/app-frame'
@@ -42,24 +42,37 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { TENANT_PERMISSIONS } from '@/lib/tenant-permissions'
+import { useTenantAccess } from '@/hooks/use-tenant-access'
+import { tenantAccessIsAdmin } from '@/lib/navigation-visibility'
 import { settingsTextTokens, systemPageTokens } from '@/components/ui/system-page-tokens'
 
-const SETTINGS_SECTIONS = [
+type SettingsSectionDefinition = {
+  id: string
+  label: string
+  hint: string
+  adminOnly?: boolean
+}
+
+const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [
   { id: 'sec-models', label: '模型接入', hint: 'LLM / Embedding / Rerank 服务商' },
   { id: 'sec-flags', label: '功能开关', hint: 'RAG/KG 能力开关与依赖提示' },
   { id: 'sec-frontend', label: '前端偏好', hint: '本地浏览器偏好，不直接写后端' },
-  { id: 'sec-navigation', label: '导航权限', hint: '普通用户入口可见性控制' },
+  { id: 'sec-navigation', label: '导航权限', hint: '普通用户入口可见性控制', adminOnly: true },
   { id: 'sec-parsers', label: '解析服务', hint: '外部解析器地址、超时与解析参数' },
   { id: 'sec-status', label: '系统状态', hint: '后端连通性与运行状态' },
   { id: 'sec-ltr', label: 'LTR 模型', hint: '排序模型注册、回滚和启用' },
   { id: 'sec-rag', label: 'RAG 配置', hint: '检索、召回与生成参数' },
-  { id: 'sec-dify', label: 'Dify 接入', hint: '外部知识库访问、API Key 与数据集绑定' },
-  { id: 'sec-url', label: 'URL 采集', hint: '网页采集与清洗策略' },
+  { id: 'sec-dify', label: 'Dify 接入', hint: '外部知识库访问、API Key 与数据集绑定', adminOnly: true },
+  { id: 'sec-url', label: 'URL 采集', hint: '网页采集与清洗策略', adminOnly: true },
   { id: 'sec-governance', label: '数据治理', hint: 'PII、密钥、隔离与清洗策略' },
   { id: 'sec-industry-rules', label: '行业规则', hint: '行业规则包与解析模板' },
-  { id: 'sec-observability', label: '可观测性', hint: '监控、审计和诊断开关' },
+  { id: 'sec-observability', label: '可观测性', hint: '监控、审计和诊断开关', adminOnly: true },
   { id: 'sec-runtime', label: '运行时控制', hint: '聊天、缓存、安全和流程编排' },
 ] as const
+
+const SETTINGS_SECTION_BY_ID = Object.fromEntries(
+  SETTINGS_SECTIONS.map((section) => [section.id, section])
+) as Record<string, SettingsSectionDefinition>
 const SETTINGS_CARD_CLASS =
   'rounded-[16px] border border-slate-200/75 bg-card shadow-sm'
 const SETTINGS_OUTLINE_BUTTON =
@@ -384,8 +397,6 @@ function useSettingsScrollSpy(sectionIds: readonly string[]) {
   return activeId
 }
 
-type SettingsSectionDefinition = (typeof SETTINGS_SECTIONS)[number]
-
 function SettingsSectionFrame({
   section,
   index,
@@ -442,12 +453,25 @@ export default function SettingsPage() {
 
 function SettingsPageContent() {
   const state = useSettingsPageState()
+  const access = useTenantAccess()
+  const isAdmin = tenantAccessIsAdmin(access.data)
+  const visibleSections = useMemo(
+    () => SETTINGS_SECTIONS.filter((section) => !section.adminOnly || isAdmin),
+    [isAdmin]
+  )
+  const visibleSectionIndex = useMemo(
+    () =>
+      Object.fromEntries(
+        visibleSections.map((section, index) => [section.id, index])
+      ) as Record<string, number>,
+    [visibleSections]
+  )
   const { parserBackend, setParserBackend } = useParserBackendPreference()
   const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
   const statusMetricItems: SettingsMetricItem[] = [
     {
       label: '配置分区',
-      value: SETTINGS_SECTIONS.length,
+      value: visibleSections.length,
       icon: LayoutGrid,
       tone: 'blue',
     },
@@ -565,6 +589,9 @@ function SettingsPageContent() {
         ) : (
           <SettingsContent
             state={state}
+            visibleSections={visibleSections}
+            visibleSectionIndex={visibleSectionIndex}
+            isAdmin={isAdmin}
             parserBackend={parserBackend}
             setParserBackend={setParserBackend}
             chunkStrategy={chunkStrategy}
@@ -585,12 +612,15 @@ function SettingsPageContent() {
 
 function SettingsContent({
   state,
+  visibleSections,
+  visibleSectionIndex,
+  isAdmin,
   parserBackend,
   setParserBackend,
   chunkStrategy,
   setChunkStrategy,
 }: any) {
-  const sectionIds = SETTINGS_SECTIONS.map((s) => s.id)
+  const sectionIds = visibleSections.map((s: { id: string }) => s.id)
   const activeId = useSettingsScrollSpy(sectionIds)
 
   const scrollTo = useCallback((id: string) => {
@@ -622,7 +652,7 @@ function SettingsContent({
         )}
       >
         <ul className="space-y-0.5">
-          {SETTINGS_SECTIONS.map((sec) => (
+          {visibleSections.map((sec: { id: string; label: string }) => (
             <li key={sec.id}>
               <button
                 type="button"
@@ -643,7 +673,10 @@ function SettingsContent({
       </nav>
 
       <div className="min-w-0 space-y-4">
-        <SettingsSectionFrame section={SETTINGS_SECTIONS[0]} index={0}>
+        <SettingsSectionFrame
+          section={SETTINGS_SECTION_BY_ID['sec-models']}
+          index={visibleSectionIndex['sec-models']}
+        >
           <ModelProvidersSection
             groupedProviders={state.groupedProviders}
             onConfigure={state.handleConfigure}
@@ -651,8 +684,8 @@ function SettingsContent({
         </SettingsSectionFrame>
 
         <SettingsSectionFrame
-          section={SETTINGS_SECTIONS[1]}
-          index={1}
+          section={SETTINGS_SECTION_BY_ID['sec-flags']}
+          index={visibleSectionIndex['sec-flags']}
           className="[&>div:last-child]:space-y-3"
         >
           <RetrievalEnhancementSection state={state} />
@@ -663,7 +696,10 @@ function SettingsContent({
           />
         </SettingsSectionFrame>
 
-        <SettingsSectionFrame section={SETTINGS_SECTIONS[2]} index={2}>
+        <SettingsSectionFrame
+          section={SETTINGS_SECTION_BY_ID['sec-frontend']}
+          index={visibleSectionIndex['sec-frontend']}
+        >
           <FrontendPreferencesSection
             parserBackend={parserBackend}
             setParserBackend={setParserBackend}
@@ -672,16 +708,21 @@ function SettingsContent({
           />
         </SettingsSectionFrame>
 
-        <SettingsSectionFrame section={SETTINGS_SECTIONS[3]} index={3}>
-          <NavigationVisibilitySection
-            navigation={state.navigationMerged}
-            updateNavigation={state.updateNavigation}
-          />
-        </SettingsSectionFrame>
+        {isAdmin ? (
+          <SettingsSectionFrame
+            section={SETTINGS_SECTION_BY_ID['sec-navigation']}
+            index={visibleSectionIndex['sec-navigation']}
+          >
+            <NavigationVisibilitySection
+              navigation={state.navigationMerged}
+              updateNavigation={state.updateNavigation}
+            />
+          </SettingsSectionFrame>
+        ) : null}
 
         <SettingsSectionFrame
-          section={SETTINGS_SECTIONS[4]}
-          index={4}
+          section={SETTINGS_SECTION_BY_ID['sec-parsers']}
+          index={visibleSectionIndex['sec-parsers']}
           className="[&>div:last-child]:space-y-4"
         >
           <ParserServicesSection
@@ -698,7 +739,10 @@ function SettingsContent({
           />
         </SettingsSectionFrame>
 
-        <SettingsSectionFrame section={SETTINGS_SECTIONS[5]} index={5}>
+        <SettingsSectionFrame
+          section={SETTINGS_SECTION_BY_ID['sec-status']}
+          index={visibleSectionIndex['sec-status']}
+        >
           {state.status ? (
             <SystemStatusSection
               status={state.status}
@@ -707,7 +751,10 @@ function SettingsContent({
           ) : null}
         </SettingsSectionFrame>
 
-        <SettingsSectionFrame section={SETTINGS_SECTIONS[6]} index={6}>
+        <SettingsSectionFrame
+          section={SETTINGS_SECTION_BY_ID['sec-ltr']}
+          index={visibleSectionIndex['sec-ltr']}
+        >
           <LtrModelRegistrySection
             ltrError={state.ltrError}
             ltrMessage={state.ltrMessage}
@@ -729,25 +776,41 @@ function SettingsContent({
           />
         </SettingsSectionFrame>
 
-        <SettingsSectionFrame section={SETTINGS_SECTIONS[7]} index={7}>
+        <SettingsSectionFrame
+          section={SETTINGS_SECTION_BY_ID['sec-rag']}
+          index={visibleSectionIndex['sec-rag']}
+        >
           <RagSection rag={state.ragMerged} updateRag={state.updateRag} />
         </SettingsSectionFrame>
 
-        <SettingsSectionFrame section={SETTINGS_SECTIONS[8]} index={8}>
-          <DifyIntegrationSection
-            difyExternalKnowledge={state.difyExternalKnowledgeMerged}
-            updateDifyExternalKnowledge={state.updateDifyExternalKnowledge}
-          />
-        </SettingsSectionFrame>
+        {isAdmin ? (
+          <SettingsSectionFrame
+            section={SETTINGS_SECTION_BY_ID['sec-dify']}
+            index={visibleSectionIndex['sec-dify']}
+          >
+            <DifyIntegrationSection
+              difyExternalKnowledge={state.difyExternalKnowledgeMerged}
+              updateDifyExternalKnowledge={state.updateDifyExternalKnowledge}
+            />
+          </SettingsSectionFrame>
+        ) : null}
 
-        <SettingsSectionFrame section={SETTINGS_SECTIONS[9]} index={9}>
-          <UrlIngestSection
-            urlIngest={state.urlIngestMerged}
-            updateUrlIngest={state.updateUrlIngest}
-          />
-        </SettingsSectionFrame>
+        {isAdmin ? (
+          <SettingsSectionFrame
+            section={SETTINGS_SECTION_BY_ID['sec-url']}
+            index={visibleSectionIndex['sec-url']}
+          >
+            <UrlIngestSection
+              urlIngest={state.urlIngestMerged}
+              updateUrlIngest={state.updateUrlIngest}
+            />
+          </SettingsSectionFrame>
+        ) : null}
 
-        <SettingsSectionFrame section={SETTINGS_SECTIONS[10]} index={10}>
+        <SettingsSectionFrame
+          section={SETTINGS_SECTION_BY_ID['sec-governance']}
+          index={visibleSectionIndex['sec-governance']}
+        >
           <GovernanceSection
             isGovernanceEnabled={state.isGovernanceEnabled}
             isPiiAnonymizeEnabled={state.isPiiAnonymizeEnabled}
@@ -757,18 +820,29 @@ function SettingsContent({
           />
         </SettingsSectionFrame>
 
-        <SettingsSectionFrame section={SETTINGS_SECTIONS[11]} index={11}>
+        <SettingsSectionFrame
+          section={SETTINGS_SECTION_BY_ID['sec-industry-rules']}
+          index={visibleSectionIndex['sec-industry-rules']}
+        >
           <IndustryRulesSection />
         </SettingsSectionFrame>
 
-        <SettingsSectionFrame section={SETTINGS_SECTIONS[12]} index={12}>
-          <ObservabilitySection
-            observability={state.observabilityMerged}
-            updateObservability={state.updateObservability}
-          />
-        </SettingsSectionFrame>
+        {isAdmin ? (
+          <SettingsSectionFrame
+            section={SETTINGS_SECTION_BY_ID['sec-observability']}
+            index={visibleSectionIndex['sec-observability']}
+          >
+            <ObservabilitySection
+              observability={state.observabilityMerged}
+              updateObservability={state.updateObservability}
+            />
+          </SettingsSectionFrame>
+        ) : null}
 
-        <SettingsSectionFrame section={SETTINGS_SECTIONS[13]} index={13}>
+        <SettingsSectionFrame
+          section={SETTINGS_SECTION_BY_ID['sec-runtime']}
+          index={visibleSectionIndex['sec-runtime']}
+        >
           <RuntimeControlsSection
             chat={state.chatMerged}
             updateChat={state.updateChat}
