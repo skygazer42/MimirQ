@@ -13,6 +13,14 @@ def test_factory_resolve_backend_magicpdf_requires_enabled(monkeypatch: pytest.M
 
 def test_factory_resolve_backend_magicpdf_accepts_alias(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(settings, "MAGIC_PDF_ENABLED", True)
+    monkeypatch.setattr(ParserFactory, "_magicpdf_runtime_ready", staticmethod(lambda: True))
     factory = ParserFactory()
     assert factory.resolve_backend(".pdf", "magic-pdf") == "magicpdf"
 
+
+def test_factory_resolve_backend_magicpdf_requires_models(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(settings, "MAGIC_PDF_ENABLED", True)
+    monkeypatch.setattr(ParserFactory, "_magicpdf_runtime_ready", staticmethod(lambda: False))
+    factory = ParserFactory()
+    with pytest.raises(ValueError, match="PDF-Extract-Kit models"):
+        factory.resolve_backend(".pdf", "magicpdf")

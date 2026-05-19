@@ -10,6 +10,7 @@ from pathlib import Path
 
 from app.core.config import settings
 from app.parsing.backends import normalize_parser_backend
+from app.parsing.parsers.magic_pdf_parser import resolve_magicpdf_models_dir
 from app.parsing.utils.cli import resolve_cli_command
 
 
@@ -67,7 +68,10 @@ def choose_pdf_backend(quality: dict | None, requested: str | None) -> str:
         if not bool(getattr(settings, "MAGIC_PDF_ENABLED", False)):
             return False
         cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
-        return bool(resolve_cli_command(cli))
+        return bool(
+            resolve_cli_command(cli)
+            and resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", ""))
+        )
 
     requested_norm = normalize_parser_backend(requested)
     if requested_norm and requested_norm != "auto":

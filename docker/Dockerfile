@@ -45,6 +45,20 @@ RUN --mount=type=cache,target=/root/.cache/pip \
         if [ "$attempt" = "3" ]; then exit 1; fi; \
         sleep "$((attempt * 10))"; \
     done \
+    # MagicPDF is used only through its CLI subprocess. Install the CLI without
+    # letting upstream pins downgrade the main FastAPI runtime's pydantic /
+    # PyMuPDF / transformers versions; add the runtime extras that the CLI
+    # imports for local CPU parsing and reuse the existing CPU torch wheels.
+    && /opt/venv/bin/pip install --retries 5 --timeout 120 --no-deps \
+        magic-pdf==1.3.12 \
+    && /opt/venv/bin/pip install --retries 5 --timeout 120 \
+        Brotli==1.2.0 \
+        boto3==1.43.10 \
+        fast-langdetect==0.2.5 \
+        loguru==0.7.3 \
+        ultralytics==8.4.51 \
+        doclayout-yolo==0.0.4 \
+        rapid-table==3.0.2 \
     && apt-get purge -y --auto-remove build-essential \
     && rm -rf /var/lib/apt/lists/*
 
@@ -87,8 +101,13 @@ COPY . .
 # 创建必要的目录
 RUN mkdir -p uploads logs vector_faiss vector_chroma chroma_db /data/uploads \
     /opt/venv/lib/python3.11/site-packages/rapidocr/models \
+    /opt/venv/lib/python3.11/site-packages/rapid_table/models \
     && adduser --disabled-password --gecos "" --home /app appuser \
-    && chown -R appuser:appuser /app /data /opt/venv/lib/python3.11/site-packages/rapidocr/models
+    && chown -R appuser:appuser \
+        /app \
+        /data \
+        /opt/venv/lib/python3.11/site-packages/rapidocr/models \
+        /opt/venv/lib/python3.11/site-packages/rapid_table/models
 
 USER appuser
 

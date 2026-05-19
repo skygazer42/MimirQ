@@ -2447,13 +2447,17 @@ class DocumentProcessorService:
                             min_content_chars=min_chars,
                             min_parse_score=min_parse_score,
                         ):
+                            from app.parsing.parsers.magic_pdf_parser import resolve_magicpdf_models_dir
                             from app.parsing.utils.cli import resolve_cli_command
 
                             def _magicpdf_available() -> bool:
                                 if not bool(getattr(settings, "MAGIC_PDF_ENABLED", False)):
                                     return False
                                 cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
-                                return bool(resolve_cli_command(cli))
+                                return bool(
+                                    resolve_cli_command(cli)
+                                    and resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", ""))
+                                )
 
                             candidates: list[str] = []
                             current = str(parsed.resolved_backend or "").strip().lower()

@@ -132,6 +132,7 @@ export function ParserServicesSection({
                 }
               />
             </div>
+
           </div>
 
           <div className="flex items-center justify-between border-t border-border/70 pt-3">
@@ -412,6 +413,7 @@ export function ParserServicesSection({
                 }
               />
             </div>
+
           </div>
 
           <div className="flex items-center justify-between border-t border-border/70 pt-3">
@@ -499,6 +501,35 @@ export function ParserServicesSection({
                   })
                 }
               />
+            </div>
+
+            <div className="space-y-2 lg:col-span-2">
+              <div className={FIELD_LABEL}>模型目录（models-dir，可选）</div>
+              <Input
+                className={DENSE_INPUT}
+                value={magicPdf.models_dir}
+                onChange={(event) =>
+                  updateMagicPDF({ models_dir: event.target.value })
+                }
+                placeholder="/opt/mimirq-model-cache/.../PDF-Extract-Kit-1.0/.../models"
+              />
+              <div className={FIELD_HINT}>
+                留空时后端会自动查找 Docker 挂载的 MinerU / PDF-Extract-Kit 模型缓存。
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className={FIELD_LABEL}>设备模式</div>
+              <select
+                className={DENSE_SELECT}
+                value={magicPdf.device_mode || 'cpu'}
+                onChange={(event) =>
+                  updateMagicPDF({ device_mode: event.target.value })
+                }
+              >
+                <option value="cpu">CPU</option>
+                <option value="cuda">CUDA / GPU</option>
+              </select>
             </div>
           </div>
 

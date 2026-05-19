@@ -23,10 +23,73 @@ from app.rag.core.logging import get_logger
 
 logger = get_logger("parsing.magicpdf")
 
+MAGIC_PDF_MODEL_ROOT_CANDIDATES = (
+    "/opt/mimirq-model-cache/huggingface/hub/models--opendatalab--PDF-Extract-Kit-1.0/snapshots",
+    "/opt/mimirq-model-cache/huggingface/models--opendatalab--PDF-Extract-Kit-1.0/snapshots",
+    "/root/.cache/huggingface/hub/models--opendatalab--PDF-Extract-Kit-1.0/snapshots",
+)
+MAGIC_PDF_REQUIRED_MODEL_FILES = (
+    "Layout/YOLO/doclayout_yolo_docstructbench_imgsz1280_2501.pt",
+    # MagicPDF 1.3.x switches CPU OCR to ch_lite, which expects the v3 detector
+    # even when newer PDF-Extract-Kit snapshots already contain v5 OCR weights.
+    "OCR/paddleocr_torch/ch_PP-OCRv3_det_infer.pth",
+    "OCR/paddleocr_torch/ch_PP-OCRv5_rec_infer.pth",
+)
+
+
+def _has_required_magicpdf_models(models_dir: Path) -> bool:
+    return all((models_dir / rel).exists() for rel in MAGIC_PDF_REQUIRED_MODEL_FILES)
+
+
+def resolve_magicpdf_models_dir(configured: str | None = None) -> Path | None:
+    """
+    Locate a PDF-Extract-Kit models directory usable by MagicPDF.
+
+    MinerU local deployments already cache PDF-Extract-Kit under the shared
+    Hugging Face cache. The API/worker containers mount that cache read-only
+    and this resolver picks a snapshot containing the MagicPDF 1.3.x local
+    model files instead of creating an empty ~/.cache/magicpdf/models directory.
+    """
+    raw = (configured or os.environ.get("MAGIC_PDF_MODELS_DIR") or "").strip()
+    candidates: list[Path] = []
+    if raw:
+        candidates.append(Path(raw).expanduser())
+
+    home = Path.home()
+    candidates.append(home / ".cache" / "magicpdf" / "models")
+    candidates.append(
+        home
+        / ".cache"
+        / "huggingface"
+        / "hub"
+        / "models--opendatalab--PDF-Extract-Kit-1.0"
+        / "snapshots"
+    )
+    for root in MAGIC_PDF_MODEL_ROOT_CANDIDATES:
+        candidates.append(Path(root))
+
+    for candidate in candidates:
+        if candidate.name == "models" and _has_required_magicpdf_models(candidate):
+            return candidate
+        if candidate.is_dir():
+            snapshots = sorted(
+                (p / "models" for p in candidate.glob("*") if (p / "models").is_dir()),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            for models_dir in snapshots:
+                if _has_required_magicpdf_models(models_dir):
+                    return models_dir
+    return None
+
 
 class MagicPDFParser:
     def __init__(self) -> None:
         self._cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
+
+    @staticmethod
+    def required_model_files() -> tuple[str, ...]:
+        return MAGIC_PDF_REQUIRED_MODEL_FILES
 
     def _ensure_cli(self) -> str:
         resolved = resolve_cli_command(self._cli) if self._cli else None
@@ -74,8 +137,17 @@ class MagicPDFParser:
         if cfg_path.exists():
             return cfg_path
 
-        models_dir = Path.home() / ".cache" / "magicpdf" / "models"
-        models_dir.mkdir(parents=True, exist_ok=True)
+        models_dir = resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", ""))
+        if models_dir is None:
+            expected = ", ".join(MAGIC_PDF_REQUIRED_MODEL_FILES)
+            raise RuntimeError(
+                "MagicPDF local models not found. Mount a PDF-Extract-Kit model cache "
+                "or set MAGIC_PDF_MODELS_DIR to a directory containing: "
+                f"{expected}"
+            )
+        device_mode = (getattr(settings, "MAGIC_PDF_DEVICE_MODE", "") or "cpu").strip().lower()
+        if device_mode not in {"cpu", "cuda"}:
+            device_mode = "cpu"
 
         cfg = {
             "bucket_info": {"[default]": ["", "", ""]},
@@ -83,7 +155,7 @@ class MagicPDFParser:
                 "display": {"left": "$$", "right": "$$"},
                 "inline": {"left": "$", "right": "$"},
             },
-            "device-mode": "cpu",
+            "device-mode": device_mode,
             "models-dir": str(models_dir),
             # Prefer the lightweight YOLO layout model (weights live in the PDF-Extract-Kit pipeline).
             "layout-config": {"model": "doclayout_yolo"},
@@ -91,6 +163,11 @@ class MagicPDFParser:
             # version coupling issues with `transformers` generation APIs. Enable explicitly
             # via MAGIC_PDF_FORMULA_ENABLED=true when the runtime has the required deps.
             "formula-config": {"enable": bool(getattr(settings, "MAGIC_PDF_FORMULA_ENABLED", False))},
+            # Keep table recognition off by default for the local fallback. The
+            # dedicated Docling/ETL4LLM/Marker paths cover table-heavy documents
+            # and avoid forcing extra MagicPDF table weights for basic local
+            # availability checks.
+            "table-config": {"enable": False},
         }
         cfg_path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
         return cfg_path
@@ -141,6 +218,7 @@ class MagicPDFParser:
         logger.info("[magicpdf] parsing %s (method=%s)", file_path.name, method)
         env = os.environ.copy()
         env["MINERU_TOOLS_CONFIG_JSON"] = str(self._ensure_tools_config(artifact_root))
+        env.setdefault("YOLO_CONFIG_DIR", str(artifact_root / ".ultralytics"))
         stdout_text = ""
         try:
             proc = subprocess.run(

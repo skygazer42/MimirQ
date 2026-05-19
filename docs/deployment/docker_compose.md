@@ -7,6 +7,10 @@
 - `docker/docker-compose.infra.yml`：仅基础设施（暴露端口，便于本地后端调试）
 - `docker/docker-compose.parsers.yml`：可选外部解析服务（Marker/PaddleOCR-VL/olmOCR/Qianfan-OCR/MinerU/ETL4LLM），用 `-f` 叠加并通过 `--profile` 按需启用
 
+主栈的 `mimirq-api` 与 `mimirq-worker` 会只读挂载 `mineru_cache` 到
+`/opt/mimirq-model-cache`，用于复用 MinerU / PDF-Extract-Kit 模型缓存。MagicPDF 本地解析
+依赖这个挂载或显式 `MAGIC_PDF_MODELS_DIR`；未找到模型时会在诊断中显示 `missing models`。
+
 另外，前端服务 `web` 放在 `docker/docker-compose.web.yml`，默认不启动；需要时用 `-f` 叠加即可（或直接 `make up-web`）。
 
 ---
@@ -39,6 +43,20 @@ LLM_MODEL_HEAVY=qwen3-max
 `.env` 提交到仓库。
 
 根目录 `.env.example` 是本地启动最小模板；解析、RAG、KG、可观测性等高级项见 `config/env/*.env.example`。
+
+### 解析器 / KG 关键依赖
+
+以下能力不是“打开开关就一定可用”，需要对应容器、凭证或模型缓存同时满足：
+
+| 能力 | 必要配置 | Docker 验证建议 |
+| --- | --- | --- |
+| KG 知识抽取 | `KG_ENABLED=true`、可用 `LLM_API_KEY/LLM_API_BASE/LLM_MODEL`、主栈 Milvus；如需事件/实体向量，保持 `EVENT_VECTOR_ENABLED=true` / `ENTITY_VECTOR_ENABLED=true` | 上传时传 `kg_enabled=true`，等待 `/api/v1/kg/stats?document_ids=...` 出现 events/entities，并检查 Milvus `kg_events` / `kg_entities` collection 有数据 |
+| LlamaIndex 分块 | `LLAMA_INDEX_ENABLED=true`，上传/工作台选择 `chunk_strategy=llama_index` | 用真实上传或 `/documents/preview` 验证 chunk 不因 metadata 过长失败 |
+| MagicPDF 本地解析 | `MAGIC_PDF_ENABLED=true`、`magic-pdf` CLI、PDF-Extract-Kit 模型缓存（默认复用 `/opt/mimirq-model-cache`） | `scripts/check_parsers.py` 应显示 `magicpdf ... configured (models: ...)`，再做真实 PDF 预览/上传 |
+| MinerU 本地 | `MINERU_LOCAL_SERVER_URL=http://mimirq-mineru:8000`，`--profile mineru` 启动本地服务 | 先单独启动 `mimirq-mineru`，健康后再跑 `parser_backend=mineru` 预览 |
+| MinerU 在线 API | `MINERU_API_TOKEN`；如需强制在线路径，不能同时配置 `MINERU_LOCAL_SERVER_URL` | 临时清空本地 URL 后用 `parser_backend=mineru` 做预览；注意外部 API token/额度/队列状态 |
+| ETL4LLM / Marker / PaddleOCR-VL | 分别配置 `*_API_URL`，并按需启动 `docker/docker-compose.parsers.yml` 对应 profile | 显存紧张时分批启动，测完一个 profile 就 `docker compose ... stop <service>` |
+| TextIn xParse | `TEXTIN_ENABLED=true`、`TEXTIN_API_URL`、`TEXTIN_APP_ID`、`TEXTIN_SECRET_CODE` | 只有 APP ID/Secret 都存在时才做真实 `parser_backend=textin` 预览；缺凭证时诊断会显示 missing |
 
 前端（Docker）可选配置（`docker/docker-compose.web.yml` 使用）：
 

@@ -503,6 +503,12 @@ class MilvusAdapter:
                 )
                 raise
 
+        try:
+            self._store.col.flush()
+        except MilvusException:
+            logger.exception("Failed to flush vector writes collection=%s", self.collection_name)
+            raise
+
         return pks
 
     def delete(self, ids: list[str]) -> None:

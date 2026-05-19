@@ -74,9 +74,25 @@ def _mineru_status(
     return "configured"
 
 
+def _magicpdf_status(
+    *,
+    enabled: bool,
+    cli_path: str | None,
+    models_dir: Path | None,
+) -> str:
+    if not enabled:
+        return "disabled"
+    if not cli_path:
+        return _MISSING_CLI
+    if not models_dir:
+        return "missing models"
+    return f"configured (models: {models_dir})"
+
+
 def main() -> int:
     from app.core.config import settings
     from app.core.jwt_inspect import format_unix_ts_utc, try_get_jwt_exp
+    from app.parsing.parsers.magic_pdf_parser import resolve_magicpdf_models_dir
     from app.parsing.utils.cli import resolve_cli_command
 
     rows: list[tuple[str, str, str]] = []
@@ -201,13 +217,17 @@ def main() -> int:
         rows.append(("rapidocr", "off", "disabled"))
 
     cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
-    cli_ok = bool(resolve_cli_command(cli))
-    magicpdf_configured = bool(getattr(settings, "MAGIC_PDF_ENABLED", False) and cli_ok)
+    cli_path = resolve_cli_command(cli)
+    magicpdf_models_dir = resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", ""))
     rows.append(
         (
             "magicpdf",
             "on" if getattr(settings, "MAGIC_PDF_ENABLED", False) else "off",
-            _configured_status(bool(getattr(settings, "MAGIC_PDF_ENABLED", False)), magicpdf_configured, _MISSING_CLI),
+            _magicpdf_status(
+                enabled=bool(getattr(settings, "MAGIC_PDF_ENABLED", False)),
+                cli_path=str(cli_path) if cli_path else None,
+                models_dir=magicpdf_models_dir,
+            ),
         )
     )
 

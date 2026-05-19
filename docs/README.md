@@ -31,6 +31,7 @@
 - [guides/qianfan_ocr_guide.md](./guides/qianfan_ocr_guide.md)：Qianfan-OCR（外部服务）解析器集成。
 - [guides/mineru_guide.md](./guides/mineru_guide.md)：MinerU（本地/在线）解析器集成（含本地 FastAPI）。
 - [guides/textin_guide.md](./guides/textin_guide.md)：TextIn xParse（外部 API）解析器集成。
+- [guides/magicpdf_guide.md](./guides/magicpdf_guide.md)：MagicPDF（本地 magic-pdf CLI + PDF-Extract-Kit 模型缓存）解析器集成。
 
 ## 集成与架构迁移
 - [integrations/mineru_integration.md](./integrations/mineru_integration.md)：MinerU 在线解析的配置与使用。

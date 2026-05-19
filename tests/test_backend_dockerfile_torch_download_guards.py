@@ -42,9 +42,16 @@ def test_backend_dockerfile_retries_cached_requirements_install() -> None:
 
 def test_backend_dockerfile_allows_runtime_rapidocr_model_cache() -> None:
     dockerfile = _read("docker/Dockerfile")
+    chown_section = dockerfile.split("chown -R appuser:appuser", 1)[1]
 
     assert "/opt/venv/lib/python3.11/site-packages/rapidocr/models" in dockerfile
-    assert (
-        "chown -R appuser:appuser /app /data /opt/venv/lib/python3.11/site-packages/rapidocr/models"
-        in dockerfile
-    )
+    assert "/app" in chown_section
+    assert "/data" in chown_section
+    assert "/opt/venv/lib/python3.11/site-packages/rapidocr/models" in chown_section
+
+
+def test_backend_dockerfile_allows_runtime_rapid_table_model_cache_for_magicpdf() -> None:
+    dockerfile = _read("docker/Dockerfile")
+
+    assert "/opt/venv/lib/python3.11/site-packages/rapid_table/models" in dockerfile
+    assert "/opt/venv/lib/python3.11/site-packages/rapid_table/models" in dockerfile.split("chown -R appuser:appuser", 1)[1]

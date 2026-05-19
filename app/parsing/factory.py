@@ -199,6 +199,7 @@ class ParserFactory:
             logger.debug("[pdf] PaddleOCR-VL parser available (requires selection)")
         if bool(getattr(settings, "GLM_OCR_ENABLED", False)) and bool((getattr(settings, "GLM_OCR_API_URL", "") or "").strip()):
             logger.debug("[pdf] GLM-OCR parser available (requires selection)")
+
         if bool(getattr(settings, "OLMOCR_ENABLED", False)) and bool((getattr(settings, "OLMOCR_API_URL", "") or "").strip()):
             logger.debug("[pdf] olmOCR parser available (requires selection)")
         if bool(getattr(settings, "QIANFAN_OCR_ENABLED", False)) and bool((getattr(settings, "QIANFAN_OCR_API_URL", "") or "").strip()):
@@ -240,6 +241,23 @@ class ParserFactory:
         }
         for ext in sorted(self.PLAIN_TEXT_EXTENSIONS):
             self.parsers.setdefault(ext, TextParser())
+
+    @staticmethod
+    def _magicpdf_runtime_ready() -> bool:
+        if not bool(getattr(settings, "MAGIC_PDF_ENABLED", False)):
+            return False
+        try:
+            from app.parsing.parsers.magic_pdf_parser import resolve_magicpdf_models_dir
+            from app.parsing.utils.cli import resolve_cli_command
+
+            cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
+            return bool(
+                resolve_cli_command(cli)
+                and resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", ""))
+            )
+        except Exception as exc:
+            logger.debug("MagicPDF runtime availability check failed: %s", exc)
+            return False
 
     def resolve_backend(self, file_ext: str, parser_backend: str | None) -> str:
         """
@@ -354,7 +372,7 @@ class ParserFactory:
                 return "markitdown"
             if settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL):
                 return "mineru"
-            if getattr(settings, "MAGIC_PDF_ENABLED", False):
+            if self._magicpdf_runtime_ready():
                 return "magicpdf"
             return "basic"
 
@@ -470,7 +488,13 @@ class ParserFactory:
             if not getattr(settings, "MAGIC_PDF_ENABLED", False):
                 raise ValueError(
                     "MagicPDF parser is not enabled. "
-                    "Please set MAGIC_PDF_ENABLED=True and install magic-pdf."
+                    "Please set MAGIC_PDF_ENABLED=True."
+                )
+            if not self._magicpdf_runtime_ready():
+                raise ValueError(
+                    "MagicPDF parser is not available. "
+                    "Install the magic-pdf CLI and mount PDF-Extract-Kit models "
+                    "(or set MAGIC_PDF_MODELS_DIR)."
                 )
             return "magicpdf"
 

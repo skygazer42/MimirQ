@@ -86,6 +86,23 @@ def test_search_nodes_no_access_returns_empty(monkeypatch: pytest.MonkeyPatch):
     )
     assert out == []
 
+
+def test_search_nodes_avoids_distinct_on_json_entity_rows():
+    """
+    PostgreSQL cannot SELECT DISTINCT full KgEntity rows because KgEntity.vector
+    and KgEntity.extra_data are JSON columns without equality operators. The
+    graph search endpoint should dedupe by entity id first, then load entities.
+    """
+
+    import inspect
+
+    from app.rag.kg.api.routes import search_kg_graph_nodes
+
+    src = inspect.getsource(search_kg_graph_nodes)
+    assert ".distinct()" not in src
+    assert "group_by(KgEntity.id)" in src
+    assert "func.max(KgEntity.updated_at)" in src
+
 @pytest.mark.asyncio
 async def test_kg_search_no_accessible_documents_returns_empty(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.rag.kg.api.routes as routes_mod

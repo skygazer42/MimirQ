@@ -1128,7 +1128,7 @@ def search_kg_graph_nodes(
         db=db,
     )
 
-    from sqlalchemy import or_
+    from sqlalchemy import func, or_
 
     from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
 
@@ -1153,7 +1153,7 @@ def search_kg_graph_nodes(
 
     if mode in {"all", "entity"}:
         ent_q = (
-            db.query(KgEntity)
+            db.query(KgEntity.id, func.max(KgEntity.updated_at).label("last_seen"))
             .join(KgEventEntity, KgEventEntity.entity_id == KgEntity.id)
             .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
             .filter(
@@ -1167,8 +1167,26 @@ def search_kg_graph_nodes(
             )
         )
         ent_q = _apply_event_pipeline_scope(ent_q, pipeline_hash=pipeline_hash)
-        ents = ent_q.distinct().order_by(KgEntity.updated_at.desc()).limit(int(limit)).all()
-        for ent in ents:
+        ent_rows = (
+            ent_q.group_by(KgEntity.id)
+            .order_by(func.max(KgEntity.updated_at).desc())
+            .limit(int(limit))
+            .all()
+        )
+        entity_ids = [row[0] for row in ent_rows if row and row[0]]
+        if entity_ids:
+            ents_by_id = {
+                ent.id: ent
+                for ent in db.query(KgEntity)
+                .filter(KgEntity.tenant_id == tenant_id, KgEntity.id.in_(entity_ids))
+                .all()
+            }
+        else:
+            ents_by_id = {}
+        for entity_id in entity_ids:
+            ent = ents_by_id.get(entity_id)
+            if ent is None:
+                continue
             nodes.append(
                 KGGraphNode(
                     id=str(ent.id),
