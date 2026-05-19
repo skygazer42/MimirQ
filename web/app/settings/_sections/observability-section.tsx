@@ -44,10 +44,10 @@ export function ObservabilitySection({
                 用于排查“某个工具为什么慢、为什么失败”。会记录调用耗时、是否成功，以及常用入参字段名；需要时可附带截断后的结果摘要。
               </div>
               <div className="mt-1 flex flex-wrap gap-1">
-                <span className="rounded-md border border-slate-200 bg-background/85 px-1.5 py-0.5 text-[10px] text-slate-500">
+                <span className="rounded-md border border-slate-200 bg-background/85 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
                   配置键：tool_call_log
                 </span>
-                <span className="rounded-md border border-slate-200 bg-background/85 px-1.5 py-0.5 text-[10px] text-slate-500">
+                <span className="rounded-md border border-slate-200 bg-background/85 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
                   适合排查工具失败
                 </span>
               </div>
@@ -69,7 +69,7 @@ export function ObservabilitySection({
                   onChange={(event) => updateObservability({ tool_call_log_include_preview: event.target.checked })}
                   className="h-3.5 w-3.5 accent-primary"
                 />
-                <span className="text-[11px] font-medium text-slate-600">记录结果摘要</span>
+                <span className="text-[11px] font-semibold text-slate-700">记录结果摘要</span>
               </label>
               <div>
                 <div className={cn(settingsTextTokens.fieldLabel, 'mb-1')}>结果摘要最大字符数</div>
@@ -101,10 +101,10 @@ export function ObservabilitySection({
                 用于排查“一次任务卡在哪一步”。会记录总耗时、步骤节点和成功/失败，必要时可把运行路径一起带上。
               </div>
               <div className="mt-1 flex flex-wrap gap-1">
-                <span className="rounded-md border border-slate-200 bg-background/85 px-1.5 py-0.5 text-[10px] text-slate-500">
+                <span className="rounded-md border border-slate-200 bg-background/85 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
                   配置键：agent_log
                 </span>
-                <span className="rounded-md border border-slate-200 bg-background/85 px-1.5 py-0.5 text-[10px] text-slate-500">
+                <span className="rounded-md border border-slate-200 bg-background/85 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
                   适合排查流程卡点
                 </span>
               </div>
@@ -128,7 +128,7 @@ export function ObservabilitySection({
                   }
                   className="h-3.5 w-3.5 accent-primary"
                 />
-                <span className="text-[11px] font-medium text-slate-600">记录步骤路径</span>
+                <span className="text-[11px] font-semibold text-slate-700">记录步骤路径</span>
               </label>
               <div>
                 <div className={cn(settingsTextTokens.fieldLabel, 'mb-1')}>错误摘要最大字符数</div>
@@ -160,10 +160,10 @@ export function ObservabilitySection({
                 用于观察检索和生成是否稳定。会把每次问答的关键指标写入日志文件，适合做趋势分析、问题复盘和离线审计。
               </div>
               <div className="mt-1 flex flex-wrap gap-1">
-                <span className="rounded-md border border-slate-200 bg-background/85 px-1.5 py-0.5 text-[10px] text-slate-500">
+                <span className="rounded-md border border-slate-200 bg-background/85 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
                   配置键：metrics_log
                 </span>
-                <span className="rounded-md border border-slate-200 bg-background/85 px-1.5 py-0.5 text-[10px] text-slate-500">
+                <span className="rounded-md border border-slate-200 bg-background/85 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
                   日志文件：logs/rag_metrics.jsonl
                 </span>
               </div>
@@ -185,7 +185,7 @@ export function ObservabilitySection({
                   onChange={(event) => updateObservability({ metrics_log_include_text: event.target.checked })}
                   className="h-3.5 w-3.5 accent-primary"
                 />
-                <span className="text-[11px] font-medium text-slate-600">写入问题与答案原文</span>
+                <span className="text-[11px] font-semibold text-slate-700">写入问题与答案原文</span>
               </label>
             </div>
           ) : null}

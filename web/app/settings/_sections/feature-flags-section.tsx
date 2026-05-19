@@ -179,11 +179,11 @@ export function FeatureFlagsSection({
     <section className="rounded-[16px] border border-slate-200/75 bg-card p-3.5 shadow-sm">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="flex items-center gap-2 text-[13px] font-medium text-slate-950">
+          <h2 className="flex items-center gap-2 text-[13px] font-semibold text-slate-950">
             <Zap className="h-3.5 w-3.5 text-orange-500" />
             功能开关
           </h2>
-          <p className="mt-0.5 text-[11px] leading-4 text-slate-500">
+          <p className="mt-0.5 text-[11.5px] font-medium leading-[18px] text-slate-600">
             按需启用各项能力模块，保存后会影响后续请求；外部解析器仍需对应服务已启动。
           </p>
         </div>
@@ -234,7 +234,7 @@ export function FeatureFlagsSection({
                   <div className="min-w-0">
                     <h3
                       className={cn(
-                        'text-[12px] font-medium leading-[15px] transition-colors',
+                        'text-[12px] font-semibold leading-[15px] transition-colors',
                         isEnabled ? 'text-slate-950' : 'text-slate-700'
                       )}
                     >
@@ -253,7 +253,7 @@ export function FeatureFlagsSection({
                         {feature.dependencies.map((dependency) => (
                           <span
                             key={dependency}
-                            className="rounded-md border border-slate-200 bg-card/75 px-1.5 py-0.5 text-[10px] leading-[14px] text-slate-500"
+                            className="rounded-md border border-slate-200 bg-card/75 px-1.5 py-0.5 text-[10px] font-medium leading-[14px] text-slate-600"
                           >
                             需要: {dependency}
                           </span>
@@ -264,15 +264,19 @@ export function FeatureFlagsSection({
                 </div>
                 <div
                   className={cn(
-                    'mt-0.5 flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors',
-                    isEnabled ? 'bg-blue-600' : 'bg-slate-300'
+                    'mt-0.5 flex h-6 w-11 shrink-0 items-center rounded-full border p-0.5 transition-[background-color,border-color,box-shadow]',
+                    isEnabled
+                      ? 'border-blue-500 bg-blue-600 shadow-[0_8px_18px_rgba(37,99,235,0.18)]'
+                      : 'border-slate-300 bg-white shadow-inner'
                   )}
                   aria-hidden="true"
                 >
                   <span
                     className={cn(
-                      'size-4 rounded-full bg-card shadow-sm transition-transform',
-                      isEnabled && 'translate-x-4'
+                      'size-4 rounded-full shadow-sm transition-[transform,background-color]',
+                      isEnabled
+                        ? 'translate-x-5 bg-white'
+                        : 'translate-x-0 bg-slate-400'
                     )}
                   />
                 </div>

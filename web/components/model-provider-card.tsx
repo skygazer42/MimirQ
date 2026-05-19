@@ -34,10 +34,10 @@ export function ModelProviderCard({ provider, onConfigure }: Readonly<ModelProvi
           </div>
 
           <div className="min-w-0">
-            <h3 className="truncate text-[13px] font-semibold leading-5 text-foreground">
+            <h3 className="truncate text-[13px] font-semibold leading-5 text-slate-950">
               {provider.name}
             </h3>
-            <p className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-muted-foreground">
+            <p className="mt-0.5 line-clamp-2 text-[11px] font-medium leading-4 text-slate-600">
               {provider.description}
             </p>
           </div>
@@ -66,13 +66,13 @@ export function ModelProviderCard({ provider, onConfigure }: Readonly<ModelProvi
         {provider.models.slice(0, 3).map((model) => (
           <span
             key={model.id}
-            className="inline-flex items-center rounded-md border border-border/60 bg-muted/35 px-1.5 py-0.5 text-[11px] leading-4 text-muted-foreground"
+            className="inline-flex items-center rounded-md border border-slate-200/80 bg-slate-50/80 px-1.5 py-0.5 text-[11px] font-medium leading-4 text-slate-700"
           >
             {model.displayName}
           </span>
         ))}
         {provider.models.length > 3 && (
-          <span className="inline-flex items-center rounded-md border border-border/60 bg-muted/35 px-1.5 py-0.5 text-[11px] leading-4 text-muted-foreground/70">
+          <span className="inline-flex items-center rounded-md border border-slate-200/80 bg-slate-50/80 px-1.5 py-0.5 text-[11px] font-medium leading-4 text-slate-600">
             +{provider.models.length - 3}
           </span>
         )}
@@ -83,7 +83,7 @@ export function ModelProviderCard({ provider, onConfigure }: Readonly<ModelProvi
         <span
           className={cn(
             'flex items-center gap-1 font-semibold transition-colors motion-reduce:transition-none',
-            provider.isConfigured ? 'text-primary' : 'text-muted-foreground group-hover:text-primary'
+            provider.isConfigured ? 'text-primary' : 'text-slate-600 group-hover:text-primary'
           )}
         >
           <Settings className="size-3.5" />

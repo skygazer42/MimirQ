@@ -198,7 +198,7 @@ export function IndustryRulesSection() {
                     key={item.name}
                     type="button"
                     className={cn(
-                      'rounded-full border px-2 py-0.5 text-[11px] transition-colors',
+                      'rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors',
                       item.name === trimmedRulesetName
                         ? 'border-blue-200 bg-blue-50 text-blue-700'
                         : 'border-border/60 bg-background/70 text-slate-500 hover:border-blue-200 hover:text-blue-700'
@@ -256,7 +256,7 @@ export function IndustryRulesSection() {
                     <CheckCircle2 className={cn('h-3.5 w-3.5', previewResult.changed ? 'text-emerald-500' : 'text-slate-400')} />
                     {previewResult.changed ? '已命中行业术语' : '未产生改写'}
                   </div>
-                  <span className="rounded-full border border-border/60 bg-muted/30 px-2 py-0.5 text-[10px] text-slate-500">
+                  <span className="rounded-full border border-border/60 bg-muted/30 px-2 py-0.5 text-[10px] font-medium text-slate-600">
                     {previewResult.ruleset}
                   </span>
                 </div>
@@ -361,7 +361,7 @@ function RuleMetric({ label, value }: Readonly<{ label: string; value: number | 
   return (
     <div className="rounded-lg border border-blue-100/70 bg-white/75 px-2 py-1.5">
       <div className="text-[14px] font-semibold text-slate-900">{value}</div>
-      <div className="text-[10px] text-slate-500">{label}</div>
+      <div className="text-[10px] font-medium text-slate-600">{label}</div>
     </div>
   )
 }
@@ -377,7 +377,7 @@ function PreviewText({
 }>) {
   return (
     <div className={cn('rounded-md border px-2 py-1.5', accent ? 'border-blue-100 bg-blue-50/60' : 'border-border/60 bg-muted/20')}>
-      <div className="mb-0.5 text-[10px] font-medium text-slate-500">{label}</div>
+      <div className="mb-0.5 text-[10px] font-semibold text-slate-600">{label}</div>
       <div className="break-words text-[11px] leading-4 text-slate-700">{value}</div>
     </div>
   )
@@ -411,7 +411,7 @@ function JsonField({
           <Label className={cn(settingsTextTokens.panelTitle, 'flex items-center gap-1.5')}>
             {icon}
             {label}
-            <span className="rounded-full border border-border/60 bg-background px-1.5 py-0.5 text-[10px] font-normal text-slate-500">
+            <span className="rounded-full border border-border/60 bg-background px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
               JSON
             </span>
           </Label>

@@ -205,7 +205,7 @@ export function LtrModelRegistrySection({
           {ltrModels.length === 0 ? (
             <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/55 p-5 text-center">
               <div className="text-[13px] font-semibold text-foreground">暂无模型版本</div>
-              <div className="mt-0.5 text-[11px] text-muted-foreground">
+              <div className="mt-0.5 text-[11px] font-medium text-slate-600">
                 上传模型与清单后，可在这里激活或回滚。
               </div>
             </div>
@@ -243,7 +243,7 @@ export function LtrModelRegistrySection({
                               已激活
                             </span>
                           ) : (
-                            <span className="inline-flex items-center rounded-full border border-border/70 bg-muted/45 px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                            <span className="inline-flex items-center rounded-full border border-border/70 bg-muted/45 px-1.5 py-0.5 text-[11px] font-medium text-slate-600">
                               待用
                             </span>
                           )}
@@ -254,7 +254,7 @@ export function LtrModelRegistrySection({
                         <td className="px-2.5 py-1.5 font-mono text-[11px] tabular-nums">
                           <span title={model.model_sha256}>{shortId(model.model_sha256, 12)}</span>
                         </td>
-                        <td className="px-2.5 py-1.5 text-[11px] text-muted-foreground">
+                        <td className="px-2.5 py-1.5 text-[11px] font-medium text-slate-600">
                           <div className="tabular-nums">v{model.feature_spec_version}</div>
                           <div className="max-w-[15rem] truncate" title={model.feature_schema || ''}>
                             {model.feature_schema || '-'}

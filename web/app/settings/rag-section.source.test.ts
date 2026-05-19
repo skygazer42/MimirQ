@@ -12,6 +12,7 @@ describe('settings RAG section', () => {
     const section = read('./_sections/rag-section.tsx')
 
     expect(section).toContain("import { RERANKER_PROVIDER_OPTIONS } from '@/lib/reranker-provider-options'")
+    expect(section).toContain("import { SettingsSwitch } from '@/components/settings/settings-switch'")
     expect(section).toContain('const rerankerProviderValue = rag.reranker_provider ||')
     expect(section).toContain('const rerankerProviderLabel = getRerankerProviderLabel(rerankerProviderValue)')
     expect(section).toContain('value={rerankerProviderValue}')
@@ -29,6 +30,10 @@ describe('settings RAG section', () => {
     expect(section).toContain('group-hover/help:block')
     expect(section).toContain('启用关键词通道，对精确词匹配召回更友好')
     expect(section).toContain('用重排序模型对候选片段二次排序')
+    expect(section).toContain('checked={isRerankerEnabled}')
+    expect(section).toContain('onCheckedChange={(checked) =>')
+    expect(section).not.toContain('ToggleLeft')
+    expect(section).not.toContain('ToggleRight')
     expect(section).not.toContain('需要先在“重排序模型”里配置 Provider')
   })
 })

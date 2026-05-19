@@ -3,7 +3,7 @@
 import type { ComponentType } from 'react'
 import { Eye, EyeOff, GitCompare, Hash, HelpCircle, LineChart, Network, ScrollText, SlidersHorizontal, Wand2, Braces } from 'lucide-react'
 
-import { Switch } from '@/components/ui/switch'
+import { SettingsSwitch } from '@/components/settings/settings-switch'
 import {
   type AdminControlledNavigationModule,
   normalizeNavigationModules,
@@ -118,7 +118,7 @@ export function NavigationVisibilitySection({
     <section>
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="flex items-center gap-2 text-[13px] font-medium text-slate-950">
+          <h2 className="flex items-center gap-2 text-[13px] font-semibold text-slate-950">
             <Eye className="h-3.5 w-3.5 text-blue-600" />
             普通用户入口显示
             <span className="group/nav-entry-help relative inline-flex">
@@ -135,7 +135,7 @@ export function NavigationVisibilitySection({
             </span>
           </h2>
         </div>
-        <div className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[11px] font-medium text-blue-600">
+        <div className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
           后端 /settings
         </div>
       </div>
@@ -148,11 +148,11 @@ export function NavigationVisibilitySection({
             ) : (
               <EyeOff className="size-4 text-slate-500" />
             )}
-            <span className="text-[12px] font-medium text-slate-800">
+            <span className="text-[12px] font-semibold text-slate-900">
               普通用户已开放 {visibleModules.length} 个高级入口
             </span>
           </div>
-          <span className="text-[11px] text-slate-500">
+          <span className="text-[11px] font-medium text-slate-600">
             接口权限仍由后端 RBAC / 路由鉴权控制
           </span>
         </div>
@@ -165,7 +165,7 @@ export function NavigationVisibilitySection({
             >
               <div className="mb-2.5">
                 <div className="text-[12px] font-semibold text-slate-950">{group.title}</div>
-                <div className="mt-0.5 text-[10.5px] leading-4 text-slate-500">{group.description}</div>
+                <div className="mt-0.5 text-[10.5px] font-medium leading-4 text-slate-600">{group.description}</div>
               </div>
               <div className="space-y-2">
                 {group.items.map((item) => {
@@ -191,17 +191,16 @@ export function NavigationVisibilitySection({
                           <Icon className="size-3.5" />
                         </span>
                         <div className="min-w-0">
-                          <div className="text-[12px] font-medium text-slate-900">{item.label}</div>
-                          <div className="truncate text-[10.5px] leading-4 text-slate-500">
+                          <div className="text-[12px] font-semibold text-slate-950">{item.label}</div>
+                          <div className="truncate text-[10.5px] font-medium leading-4 text-slate-600">
                             {item.description}
                           </div>
                         </div>
                       </div>
-                      <Switch
+                      <SettingsSwitch
                         aria-label={`普通用户显示${item.label}`}
                         checked={checked}
                         onCheckedChange={(next) => setModuleVisible(item.key, next)}
-                        className="data-[state=checked]:bg-blue-600 data-[state=unchecked]:bg-slate-300"
                       />
                     </div>
                   )

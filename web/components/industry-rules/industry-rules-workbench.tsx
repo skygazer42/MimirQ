@@ -204,6 +204,12 @@ function selectedMapValues(selected: Record<string, boolean>): string[] {
 }
 
 const INDUSTRY_RULES_DATASET_PARAMS = { limit: 200 } as const
+const WORKBENCH_PANEL =
+  'rounded-[14px] border border-slate-200/85 bg-white/90 shadow-[0_10px_28px_rgba(15,23,42,0.045)]'
+const DENSE_FIELD =
+  'h-9 rounded-lg border-slate-200 bg-white text-[13px] font-medium text-slate-800 shadow-none focus-visible:ring-blue-500/20'
+const DENSE_BUTTON =
+  'h-8 rounded-lg border-slate-200 bg-white px-2.5 text-[12px] font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700'
 
 export function IndustryRulesWorkbench() {
   const [selectedRuleset, setSelectedRuleset] = useState('')
@@ -504,169 +510,210 @@ export function IndustryRulesWorkbench() {
 
   return (
     <PageScaffold
-      title="行业规则库"
-      description="术语、问题模式与意图分类是垂直 RAG 的可运营护城河。这里把 ruleset 编辑、候选审核和改写预览收敛到同一个工作台。"
-      icon={ShieldCheck}
-      iconColor="text-blue-600"
-      badge="Ruleset CMS"
+      title=""
+      showHeader={false}
       compact={false}
+      size="full"
       top={
-        <div className="rounded-2xl border border-slate-200 bg-card p-4 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
-          <div className="grid gap-3 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="industry-rules-ruleset">规则集</Label>
-                <Select
-                  value={selectedRuleset}
-                  onValueChange={setSelectedRuleset}
-                  disabled={loadingMeta || loadingRuleset}
-                >
-                  <SelectTrigger
-                    id="industry-rules-ruleset"
-                    className="h-10 rounded-xl border-slate-200 bg-card"
-                  >
-                    <SelectValue
-                      placeholder={
-                        loadingMeta ? '加载规则集中...' : '选择规则集'
-                      }
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {rulesets.map((item) => (
-                      <SelectItem key={item.name} value={item.name}>
-                        {item.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="industry-rules-dataset">候选来源数据集</Label>
-                <Select
-                  value={selectedDatasetId}
-                  onValueChange={setSelectedDatasetId}
-                  disabled={loadingMeta}
-                >
-                  <SelectTrigger
-                    id="industry-rules-dataset"
-                    className="h-10 rounded-xl border-slate-200 bg-card"
-                  >
-                    <SelectValue
-                      placeholder={
-                        loadingMeta ? '加载数据集中...' : '选择数据集'
-                      }
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {datasets.map((item) => (
-                      <SelectItem key={String(item.id)} value={String(item.id)}>
-                        {item.name || item.id}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+        <div className="space-y-3">
+          <div className="relative flex min-h-[150px] items-center overflow-hidden rounded-[16px] border border-blue-100/80 bg-[linear-gradient(105deg,#ffffff_0%,#f8fbff_45%,#dbeafe_100%)] px-5 py-5 shadow-[0_14px_36px_rgba(15,23,42,0.06)]">
+            <div className="pointer-events-none absolute inset-y-0 right-0 hidden w-[460px] overflow-hidden lg:block">
+              <div className="absolute right-[-80px] top-[-80px] h-[260px] w-[430px] rotate-[-16deg] rounded-[42px] border border-white/70 bg-white/35" />
+              <div className="absolute right-[48px] top-[22px] h-[118px] w-[210px] rotate-[-16deg] rounded-[30px] bg-blue-100/70 shadow-[0_18px_42px_rgba(37,99,235,0.18)]" />
+              <div className="absolute right-[132px] top-[24px] flex h-[84px] w-[96px] rotate-[-16deg] items-center justify-center rounded-[24px] border border-blue-200/70 bg-white/85 shadow-[0_18px_32px_rgba(37,99,235,0.2)]">
+                <ShieldCheck className="h-11 w-11 rotate-[16deg] text-blue-600" />
               </div>
             </div>
+            <div className="relative flex max-w-[760px] items-center gap-4">
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-[16px] border border-blue-100 bg-blue-50/80 text-blue-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
+                <ShieldCheck className="h-8 w-8" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-[30px] font-semibold leading-tight tracking-[-0.035em] text-slate-950">
+                    行业规则库
+                  </h1>
+                  <span className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-700">
+                    Ruleset CMS
+                  </span>
+                </div>
+                <p className="mt-2 max-w-[640px] text-[13px] font-medium leading-6 text-slate-600">
+                  维护术语、问题模式和意图分类，先预览查询改写效果，再把候选规则审核入库。
+                </p>
+              </div>
+            </div>
+          </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-              <div className="text-[12px] font-medium uppercase tracking-[0.12em] text-slate-500">
-                规则集概览
+          <div className={cn(WORKBENCH_PANEL, 'flex min-h-[150px] items-center p-4')}>
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_1px_minmax(360px,0.82fr)]">
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="industry-rules-ruleset" className="text-[12px] font-semibold text-slate-700">
+                    规则集
+                  </Label>
+                  <Select
+                    value={selectedRuleset}
+                    onValueChange={setSelectedRuleset}
+                    disabled={loadingMeta || loadingRuleset}
+                  >
+                    <SelectTrigger
+                      id="industry-rules-ruleset"
+                      className={DENSE_FIELD}
+                    >
+                      <SelectValue
+                        placeholder={
+                          loadingMeta ? '加载规则集中...' : '选择规则集'
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {rulesets.map((item) => (
+                        <SelectItem key={item.name} value={item.name}>
+                          {item.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="industry-rules-dataset" className="text-[12px] font-semibold text-slate-700">
+                    候选来源数据集
+                  </Label>
+                  <Select
+                    value={selectedDatasetId}
+                    onValueChange={setSelectedDatasetId}
+                    disabled={loadingMeta}
+                  >
+                    <SelectTrigger
+                      id="industry-rules-dataset"
+                      className={DENSE_FIELD}
+                    >
+                      <SelectValue
+                        placeholder={
+                          loadingMeta ? '加载数据集中...' : '选择数据集'
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {datasets.map((item) => (
+                        <SelectItem key={String(item.id)} value={String(item.id)}>
+                          {item.name || item.id}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Badge variant="outline">
-                  术语{' '}
-                  {selectedRulesetSummary?.glossary_count ??
-                    glossaryEntries.length}
-                </Badge>
-                <Badge variant="outline">
-                  模式{' '}
-                  {selectedRulesetSummary?.pattern_count ??
-                    patternEntries.length}
-                </Badge>
-                <Badge variant="outline">
-                  意图{' '}
-                  {selectedRulesetSummary?.intent_count ?? intentEntries.length}
-                </Badge>
-                <Badge variant="outline">
-                  候选 {visibleGlossarySuggestions.length}
-                </Badge>
-                {selectedDataset ? (
-                  <Badge variant="outline">
-                    数据集 {selectedDataset.name || selectedDataset.id}
+
+              <div className="hidden bg-slate-200 xl:block" />
+
+              <div className="space-y-3">
+                <div className="text-[12px] font-semibold text-slate-800">
+                  规则集概览
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="outline" className="bg-white font-semibold">
+                    术语{' '}
+                    {selectedRulesetSummary?.glossary_count ??
+                      glossaryEntries.length}
                   </Badge>
-                ) : null}
-              </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Button
-                  variant="outline"
-                  className="h-9 rounded-xl border-slate-200 bg-card"
-                  disabled={loadingMeta || loadingRuleset}
-                  onClick={refreshMeta}
-                >
-                  {loadingMeta ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4" />
-                  )}
-                  刷新
-                </Button>
-                <Button
-                  variant="outline"
-                  className="h-9 rounded-xl border-slate-200 bg-card"
-                  disabled={!selectedRuleset.trim()}
-                  onClick={exportCurrentRuleset}
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  导出当前规则集
-                </Button>
+                  <Badge variant="outline" className="bg-white font-semibold">
+                    模式{' '}
+                    {selectedRulesetSummary?.pattern_count ??
+                      patternEntries.length}
+                  </Badge>
+                  <Badge variant="outline" className="bg-white font-semibold">
+                    意图{' '}
+                    {selectedRulesetSummary?.intent_count ?? intentEntries.length}
+                  </Badge>
+                  <Badge variant="outline" className="bg-white font-semibold">
+                    候选 {visibleGlossarySuggestions.length}
+                  </Badge>
+                  {selectedDataset ? (
+                    <Badge variant="outline" className="bg-white font-semibold">
+                      数据集 {selectedDataset.name || selectedDataset.id}
+                    </Badge>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    className={DENSE_BUTTON}
+                    disabled={loadingMeta || loadingRuleset}
+                    onClick={refreshMeta}
+                  >
+                    {loadingMeta ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                    刷新
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className={DENSE_BUTTON}
+                    disabled={!selectedRuleset.trim()}
+                    onClick={exportCurrentRuleset}
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    导出当前规则集
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
         </div>
       }
+      topClassName="pt-4 md:pt-5 [&>div]:max-w-[1580px]"
       bodyContainerClassName="max-w-[1580px]"
+      bodyClassName="pt-0"
     >
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_360px]">
-        <div className="min-w-0 rounded-2xl border border-slate-200 bg-card shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
-          <Tabs defaultValue="glossary">
+      <div className="grid items-stretch gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <div
+          className={cn(
+            WORKBENCH_PANEL,
+            'flex min-h-[calc(100vh-410px)] min-w-0 flex-col overflow-hidden'
+          )}
+        >
+          <Tabs defaultValue="glossary" className="flex h-full flex-col">
             <div className="border-b border-slate-200 px-4">
-              <TabsList className="h-12 gap-6 rounded-none bg-transparent p-0">
+              <TabsList className="h-11 gap-6 rounded-none bg-transparent p-0">
                 <TabsTrigger
                   value="glossary"
-                  className="h-12 rounded-none border-b-2 border-transparent px-0 text-[13px] data-[state=active]:border-blue-600 data-[state=active]:bg-transparent"
+                  className="h-11 rounded-none border-b-2 border-transparent px-0 text-[13px] font-semibold data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-700"
                 >
                   术语
                 </TabsTrigger>
                 <TabsTrigger
                   value="patterns"
-                  className="h-12 rounded-none border-b-2 border-transparent px-0 text-[13px] data-[state=active]:border-blue-600 data-[state=active]:bg-transparent"
+                  className="h-11 rounded-none border-b-2 border-transparent px-0 text-[13px] font-semibold data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-700"
                 >
                   问题模式
                 </TabsTrigger>
                 <TabsTrigger
                   value="intents"
-                  className="h-12 rounded-none border-b-2 border-transparent px-0 text-[13px] data-[state=active]:border-blue-600 data-[state=active]:bg-transparent"
+                  className="h-11 rounded-none border-b-2 border-transparent px-0 text-[13px] font-semibold data-[state=active]:border-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-700"
                 >
                   意图分类
                 </TabsTrigger>
               </TabsList>
             </div>
 
-            <TabsContent value="glossary" className="m-0 p-4">
+            <TabsContent value="glossary" className="m-0 flex flex-1 flex-col p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <div className="flex min-w-[260px] items-center gap-2 rounded-xl border border-slate-200 bg-card px-3">
-                  <Search className="h-4 w-4 text-slate-400" />
+                <div className="flex min-w-[260px] items-center gap-2 rounded-lg border border-slate-200 bg-white px-3">
+                  <Search className="h-4 w-4 text-slate-500" />
                   <Input
                     value={searchValue}
                     onChange={(event) => setSearchValue(event.target.value)}
                     placeholder="搜索术语或别名"
-                    className="h-10 border-0 px-0 shadow-none focus-visible:ring-2 focus-visible:ring-ring/30"
+                    className="h-9 border-0 px-0 text-[13px] font-medium shadow-none focus-visible:ring-2 focus-visible:ring-blue-500/20"
                   />
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"
-                    className="h-9 rounded-xl border-slate-200 bg-card"
+                    className={DENSE_BUTTON}
                     onClick={() =>
                       setGlossaryEntries((prev) => [
                         ...prev,
@@ -682,7 +729,7 @@ export function IndustryRulesWorkbench() {
                     新增术语
                   </Button>
                   <Button
-                    className="h-9 rounded-xl bg-slate-950 px-4 text-info-foreground hover:bg-slate-800"
+                    className="h-8 rounded-lg bg-blue-600 px-3 text-[12px] font-semibold text-white hover:bg-blue-700"
                     disabled={savingGlossary}
                     onClick={() => detachPromise(saveGlossary())}
                   >
@@ -696,14 +743,14 @@ export function IndustryRulesWorkbench() {
                 </div>
               </div>
 
-              <div className="overflow-hidden rounded-2xl border border-slate-200">
+              <div className="flex-1 overflow-hidden rounded-[12px] border border-slate-200">
                 <table className="w-full text-left text-sm">
-                  <thead className="bg-slate-50 text-[12px] text-slate-500">
+                  <thead className="bg-slate-50 text-[12px] font-semibold text-slate-600">
                     <tr>
-                      <th className="px-4 py-3 font-medium">Term</th>
-                      <th className="px-4 py-3 font-medium">Aliases</th>
-                      <th className="px-4 py-3 font-medium">来源</th>
-                      <th className="px-4 py-3 font-medium text-right">操作</th>
+                      <th className="px-4 py-3">术语</th>
+                      <th className="px-4 py-3">别名</th>
+                      <th className="px-4 py-3">来源</th>
+                      <th className="px-4 py-3 text-right">操作</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -721,7 +768,7 @@ export function IndustryRulesWorkbench() {
                               })
                             }
                             placeholder="术语"
-                            className="h-9 rounded-xl border-slate-200"
+                            className={DENSE_FIELD}
                           />
                         </td>
                         <td className="px-4 py-3">
@@ -733,10 +780,10 @@ export function IndustryRulesWorkbench() {
                               })
                             }
                             placeholder="别名，逗号分隔"
-                            className="h-9 rounded-xl border-slate-200"
+                            className={DENSE_FIELD}
                           />
                         </td>
-                        <td className="px-4 py-3 text-[12px] text-slate-500">
+                        <td className="px-4 py-3 text-[12px] font-medium text-slate-600">
                           规则库
                         </td>
                         <td className="px-4 py-3 text-right">
@@ -771,15 +818,15 @@ export function IndustryRulesWorkbench() {
               </div>
             </TabsContent>
 
-            <TabsContent value="patterns" className="m-0 p-4">
+            <TabsContent value="patterns" className="m-0 flex flex-1 flex-col p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <div className="text-[13px] text-slate-500">
-                  Marker、澄清 followup 与启用状态直接映射到 `patterns.yaml`。
+                <div className="text-[13px] font-medium text-slate-600">
+                  维护触发词、澄清话术与启用状态。
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"
-                    className="h-9 rounded-xl border-slate-200 bg-card"
+                    className={DENSE_BUTTON}
                     onClick={() =>
                       setPatternEntries((prev) => [
                         ...prev,
@@ -796,7 +843,7 @@ export function IndustryRulesWorkbench() {
                     新增模式
                   </Button>
                   <Button
-                    className="h-9 rounded-xl bg-slate-950 px-4 text-info-foreground hover:bg-slate-800"
+                    className="h-8 rounded-lg bg-blue-600 px-3 text-[12px] font-semibold text-white hover:bg-blue-700"
                     disabled={savingPatterns}
                     onClick={() => detachPromise(savePatterns())}
                   >
@@ -814,7 +861,7 @@ export function IndustryRulesWorkbench() {
                 {patternEntries.map((entry) => (
                   <div
                     key={entry.id}
-                    className="rounded-2xl border border-slate-200 p-4"
+                    className="rounded-[12px] border border-slate-200 bg-white p-3"
                   >
                     <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_120px_56px]">
                       <Input
@@ -825,7 +872,7 @@ export function IndustryRulesWorkbench() {
                           })
                         }
                         placeholder="Marker，逗号分隔"
-                        className="h-10 rounded-xl border-slate-200"
+                        className={DENSE_FIELD}
                       />
                       <Input
                         value={entry.followup}
@@ -834,10 +881,10 @@ export function IndustryRulesWorkbench() {
                             followup: event.target.value,
                           })
                         }
-                        placeholder="澄清话术 / followup"
-                        className="h-10 rounded-xl border-slate-200"
+                        placeholder="澄清话术"
+                        className={DENSE_FIELD}
                       />
-                      <label className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm text-slate-600">
+                      <label className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 text-[13px] font-medium text-slate-600">
                         <Checkbox
                           checked={entry.enabled}
                           onCheckedChange={(value) =>
@@ -851,7 +898,7 @@ export function IndustryRulesWorkbench() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-10 w-10 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                        className="h-9 w-9 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
                         aria-label="删除问题模式"
                         onClick={() =>
                           setPatternEntries((prev) =>
@@ -872,15 +919,15 @@ export function IndustryRulesWorkbench() {
               </div>
             </TabsContent>
 
-            <TabsContent value="intents" className="m-0 p-4">
+            <TabsContent value="intents" className="m-0 flex flex-1 flex-col p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <div className="text-[13px] text-slate-500">
-                  Intent 名称、关键词与路由策略直接映射到 `intents.yaml`。
+                <div className="text-[13px] font-medium text-slate-600">
+                  维护意图名称、关键词与路由策略。
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"
-                    className="h-9 rounded-xl border-slate-200 bg-card"
+                    className={DENSE_BUTTON}
                     onClick={() =>
                       setIntentEntries((prev) => [
                         ...prev,
@@ -897,7 +944,7 @@ export function IndustryRulesWorkbench() {
                     新增意图
                   </Button>
                   <Button
-                    className="h-9 rounded-xl bg-slate-950 px-4 text-info-foreground hover:bg-slate-800"
+                    className="h-8 rounded-lg bg-blue-600 px-3 text-[12px] font-semibold text-white hover:bg-blue-700"
                     disabled={savingIntents}
                     onClick={() => detachPromise(saveIntents())}
                   >
@@ -915,7 +962,7 @@ export function IndustryRulesWorkbench() {
                 {intentEntries.map((entry) => (
                   <div
                     key={entry.id}
-                    className="rounded-2xl border border-slate-200 p-4"
+                    className="rounded-[12px] border border-slate-200 bg-white p-3"
                   >
                     <div className="grid gap-3 lg:grid-cols-[180px_minmax(0,1fr)_180px_56px]">
                       <Input
@@ -923,8 +970,8 @@ export function IndustryRulesWorkbench() {
                         onChange={(event) =>
                           setIntentEntry(entry.id, { name: event.target.value })
                         }
-                        placeholder="Intent 名称"
-                        className="h-10 rounded-xl border-slate-200"
+                        placeholder="意图名称"
+                        className={DENSE_FIELD}
                       />
                       <Input
                         value={entry.keywordsText}
@@ -933,8 +980,8 @@ export function IndustryRulesWorkbench() {
                             keywordsText: event.target.value,
                           })
                         }
-                        placeholder="Keywords，逗号分隔"
-                        className="h-10 rounded-xl border-slate-200"
+                        placeholder="关键词，逗号分隔"
+                        className={DENSE_FIELD}
                       />
                       <Input
                         value={entry.route}
@@ -943,13 +990,13 @@ export function IndustryRulesWorkbench() {
                             route: event.target.value,
                           })
                         }
-                        placeholder="route"
-                        className="h-10 rounded-xl border-slate-200"
+                        placeholder="路由"
+                        className={DENSE_FIELD}
                       />
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-10 w-10 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                        className="h-9 w-9 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
                         aria-label="删除意图"
                         onClick={() =>
                           setIntentEntries((prev) =>
@@ -972,47 +1019,48 @@ export function IndustryRulesWorkbench() {
           </Tabs>
         </div>
 
-        <aside className="space-y-4">
-          <div className="rounded-2xl border border-slate-200 bg-card p-4 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
+        <aside className="flex h-full flex-col gap-4">
+          <div className={cn(WORKBENCH_PANEL, 'flex-1 p-4')}>
             <div className="flex items-center gap-2 text-[15px] font-semibold text-slate-950">
               <Sparkles className="h-4 w-4 text-blue-600" />
               改写预览
             </div>
-            <p className="mt-1 text-[12px] leading-5 text-slate-500">
-              使用当前已保存的 ruleset 调
-              `preview-rewrite`。未保存的本地编辑不会反映到这里。
+            <p className="mt-1 text-[12px] font-medium leading-5 text-slate-600">
+              使用已保存规则测试问题改写；未保存的本地编辑不会参与预览。
             </p>
             <div className="mt-3 space-y-2">
-              <Label htmlFor="industry-rules-preview-query">输入 Query</Label>
+              <Label htmlFor="industry-rules-preview-query" className="text-[12px] font-semibold text-slate-700">
+                输入问题
+              </Label>
               <Input
                 id="industry-rules-preview-query"
                 value={previewQuery}
                 onChange={(event) => setPreviewQuery(event.target.value)}
-                placeholder="输入要测试的 query…"
-                className="h-10 rounded-xl border-slate-200"
+                placeholder="输入要测试的问题"
+                className={DENSE_FIELD}
               />
             </div>
-            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+            <div className="mt-4 rounded-[12px] border border-slate-200 bg-slate-50/70 p-3">
               {previewing ? (
-                <div className="flex items-center gap-2 text-[13px] text-slate-500">
+                <div className="flex items-center gap-2 text-[13px] font-medium text-slate-600">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   正在计算改写预览…
                 </div>
               ) : preview ? (
                 <div className="space-y-3 text-[13px]">
                   <div>
-                    <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-slate-500">
-                      Input
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                      输入
                     </div>
-                    <div className="mt-1 text-slate-900">
+                    <div className="mt-1 font-medium text-slate-900">
                       {preview.originalQuery}
                     </div>
                   </div>
                   <div>
-                    <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-slate-500">
-                      Output
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                      输出
                     </div>
-                    <div className="mt-1 rounded-xl border border-blue-100 bg-card px-3 py-2 text-slate-900">
+                    <div className="mt-1 rounded-lg border border-blue-100 bg-white px-3 py-2 font-medium text-slate-900">
                       {preview.expandedQuery}
                     </div>
                   </div>
@@ -1028,19 +1076,19 @@ export function IndustryRulesWorkbench() {
                       {preview.changed ? '已命中规则并改写' : '未触发改写'}
                     </Badge>
                     <Badge variant="outline">
-                      Ruleset {selectedRuleset || '-'}
+                      规则集 {selectedRuleset || '-'}
                     </Badge>
                   </div>
                 </div>
               ) : (
-                <div className="text-[13px] text-slate-500">
-                  输入 query 后这里会展示改写结果。
+                <div className="text-[13px] font-medium text-slate-600">
+                  输入问题后这里会展示改写结果。
                 </div>
               )}
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-card p-4 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
+          <div className={cn(WORKBENCH_PANEL, 'p-4')}>
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 text-[15px] font-semibold text-slate-950">
                 <Database className="h-4 w-4 text-blue-600" />
@@ -1048,7 +1096,7 @@ export function IndustryRulesWorkbench() {
               </div>
               <Button
                 variant="outline"
-                className="h-8 rounded-lg border-slate-200 bg-card px-2.5 text-[12px]"
+                className={DENSE_BUTTON}
                 disabled={
                   !selectedDatasetId.trim() ||
                   !selectedRuleset.trim() ||
@@ -1068,7 +1116,7 @@ export function IndustryRulesWorkbench() {
                 刷新
               </Button>
             </div>
-            <p className="mt-1 text-[12px] leading-5 text-slate-500">
+            <p className="mt-1 text-[12px] font-medium leading-5 text-slate-600">
               选择数据集查看术语挖掘候选。接受会先进入当前规则表，再由“保存术语”统一落库。
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
@@ -1081,12 +1129,12 @@ export function IndustryRulesWorkbench() {
               </Badge>
             </div>
             <div className="mt-3 flex items-center justify-between gap-2">
-              <div className="text-[12px] text-slate-500">
+              <div className="text-[12px] font-medium text-slate-600">
                 已选 {selectedSuggestionCount} 条
               </div>
               <Button
                 variant="outline"
-                className="h-8 rounded-lg border-slate-200 bg-card px-2.5 text-[12px]"
+                className={DENSE_BUTTON}
                 disabled={!selectedSuggestionCount}
                 onClick={acceptSelectedSuggestions}
               >
@@ -1098,7 +1146,7 @@ export function IndustryRulesWorkbench() {
               {visibleGlossarySuggestions.map((entry) => (
                 <div
                   key={entry.token}
-                  className="rounded-xl border border-slate-200 p-3"
+                  className="rounded-[12px] border border-slate-200 bg-white p-3"
                 >
                   <div className="flex items-start gap-2">
                     <Checkbox
@@ -1117,15 +1165,15 @@ export function IndustryRulesWorkbench() {
                         </div>
                         <Badge variant="outline">{entry.count} 次</Badge>
                       </div>
-                      <div className="mt-1 text-[11px] text-slate-500">
-                        source: {entry.source}
+                      <div className="mt-1 text-[11px] font-medium text-slate-600">
+                        来源：{entry.source}
                       </div>
                     </div>
                   </div>
                   <div className="mt-3 flex gap-2">
                     <Button
                       variant="outline"
-                      className="h-8 flex-1 rounded-lg border-slate-200 bg-card px-2.5 text-[12px]"
+                      className="h-8 flex-1 rounded-lg border-slate-200 bg-white px-2.5 text-[12px] font-semibold hover:bg-blue-50 hover:text-blue-700"
                       onClick={() => addGlossarySuggestion(entry.token)}
                     >
                       <Check className="h-3.5 w-3.5" />
@@ -1133,7 +1181,7 @@ export function IndustryRulesWorkbench() {
                     </Button>
                     <Button
                       variant="ghost"
-                      className="h-8 rounded-lg px-2.5 text-[12px] text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                      className="h-8 rounded-lg px-2.5 text-[12px] font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                       onClick={() =>
                         setDismissedSuggestionTokens((prev) => ({
                           ...prev,
@@ -1148,7 +1196,7 @@ export function IndustryRulesWorkbench() {
                 </div>
               ))}
               {!visibleGlossarySuggestions.length ? (
-                <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-10 text-center text-[13px] text-slate-500">
+                <div className="rounded-[12px] border border-dashed border-slate-200 px-4 py-10 text-center text-[13px] font-medium text-slate-600">
                   当前数据集暂无新的术语候选，或候选已被处理。
                 </div>
               ) : null}
@@ -1156,14 +1204,14 @@ export function IndustryRulesWorkbench() {
           </div>
 
           {result ? (
-            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-[13px]">
-              <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-slate-500">
+            <div className="rounded-[12px] border border-slate-200 bg-slate-50/70 p-4 text-[13px]">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
                 最近操作
               </div>
               <div className="mt-2 font-semibold text-slate-950">
                 {result.title}
               </div>
-              <div className="mt-1 text-slate-500">{result.detail}</div>
+              <div className="mt-1 font-medium text-slate-600">{result.detail}</div>
             </div>
           ) : null}
         </aside>

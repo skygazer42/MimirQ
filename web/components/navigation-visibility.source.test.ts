@@ -75,6 +75,7 @@ describe('admin controlled navigation visibility wiring', () => {
     expect(section).toContain('group-hover/nav-entry-help:block')
     expect(section).toContain('md:left-full')
     expect(section).toContain('md:-translate-y-1/2')
+    expect(section).toContain('SettingsSwitch')
     expect(section).toContain('后端 /settings')
     expect(section).not.toContain('localStorage')
   })

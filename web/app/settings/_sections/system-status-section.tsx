@@ -76,7 +76,7 @@ export function SystemStatusSection({
       {backendMeta ? (
         <div className="rounded-lg border border-border/70 bg-card p-4 shadow-none">
           <div className={cn('mb-2', systemPageTokens.microLabel, 'text-foreground/80')}>后端信息</div>
-          <div className="space-y-1.5 text-[11px] text-muted-foreground">
+          <div className="space-y-1.5 text-[11px] font-medium text-slate-700">
             <div>
               API: {backendMeta.name} ({backendMeta.api_version})
               {backendMeta.build?.sha ? ` @ ${backendMeta.build.sha.slice(0, 7)}` : ''}
@@ -113,7 +113,7 @@ export function SystemStatusSection({
                   'rounded-full border px-2 py-0.5 text-[11px] font-mono',
                   info.available
                     ? 'border-success/20 bg-success/10 text-success'
-                    : 'border-border bg-muted text-muted-foreground'
+                    : 'border-border bg-muted text-slate-600'
                 )}
               >
                 {key} {info.available ? '可用' : '不可用'}

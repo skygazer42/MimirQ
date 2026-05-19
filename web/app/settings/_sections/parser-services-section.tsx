@@ -29,13 +29,13 @@ type ParserServicesSectionProps = {
 }
 
 const SECTION_TITLE =
-  'mb-2 flex items-center gap-2 text-[13px] font-medium text-slate-950'
+  'mb-2 flex items-center gap-2 text-[13px] font-semibold text-slate-950'
 const CARD = cn(
   systemWorkbenchTokens.panel,
   'space-y-3 rounded-[16px] border border-slate-200/75 bg-card p-3 shadow-sm'
 )
 const GRID = 'grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3'
-const FIELD_LABEL = 'text-[11px] font-medium text-muted-foreground'
+const FIELD_LABEL = 'text-[11px] font-semibold text-slate-600'
 const FIELD_HINT = systemPageTokens.subtle
 const DENSE_INPUT = 'h-8 rounded-md border-border/70 bg-background text-[12px]'
 const DENSE_SELECT =
