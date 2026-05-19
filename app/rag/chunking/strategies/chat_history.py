@@ -103,7 +103,7 @@ def _parse_speaker_and_rest(s: str, start: int) -> tuple[str, int] | None:
 
 def _parse_message_start(line: str) -> tuple[str, str | None] | None:
     """
-    Detect chat message boundaries. Implemented without regex to avoid Sonar S5852 hotspots.
+    Detect chat message boundaries. Implemented without regex to avoid backtracking hotspots.
     Returns (speaker, ts) where ts is a best-effort timestamp string.
     """
     raw = line or ""

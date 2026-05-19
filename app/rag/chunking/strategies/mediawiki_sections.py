@@ -52,7 +52,7 @@ def _parse_wiki_heading(line: str) -> tuple[int, str] | None:
       == Heading ==
       === Subheading ===
 
-    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
     raw = str(line or "").rstrip("\r\n")
     if not raw:

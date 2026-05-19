@@ -93,6 +93,11 @@ from app.types.pipeline import PipelineEffective
 
 logger = get_logger("parsing.document_processor")
 
+
+def _log_processor_fallback(context: str, exc: BaseException) -> None:
+    logger.debug("processor fallback failed in %s: %s", context, exc, exc_info=True)
+
+
 MIMIRQ_PARSE_DIRNAME = '.mimirq_parse'
 REDACTED_MASK = '[REDACTED]'
 SECRET_MASK = '[SECRET]'
@@ -231,7 +236,7 @@ def _coerce_float(value: Any) -> float | None:
         if number != number:
             return None
         return float(number)
-    except Exception:
+    except (TypeError, ValueError, AttributeError):
         return None
 
 
@@ -240,7 +245,7 @@ def _coerce_int(value: Any) -> int | None:
         if value is None or isinstance(value, bool):
             return None
         return int(value)
-    except Exception:
+    except (TypeError, ValueError, AttributeError):
         return None
 
 
@@ -507,7 +512,7 @@ def _rebase_chunk_offsets_by_page_index(
         meta = dict(getattr(doc, "metadata", None) or {})
         try:
             page_index = int(meta.get("page_index") or (i + 1))
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             page_index = i + 1
         page_start[page_index] = cursor
         cursor += len(doc.page_content or "")
@@ -520,7 +525,7 @@ def _rebase_chunk_offsets_by_page_index(
         page_index_raw = meta.get("page_index")
         try:
             page_index = int(page_index_raw) if page_index_raw is not None else None
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             page_index = None
         base = page_start.get(page_index, 0) if page_index is not None else 0
 
@@ -529,11 +534,11 @@ def _rebase_chunk_offsets_by_page_index(
 
         try:
             start_i = int(local_start) if local_start is not None else None
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             start_i = None
         try:
             end_i = int(local_end) if local_end is not None else None
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             end_i = None
 
         if start_i is not None:
@@ -579,7 +584,7 @@ def _merge_small_chunks_by_min_chars(
         meta = dict(getattr(doc, "metadata", None) or {})
         try:
             page_index = int(meta.get("page_index") or (i + 1))
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             page_index = i + 1
         page_text[page_index] = doc.page_content or ""
         page_base[page_index] = cursor
@@ -592,7 +597,7 @@ def _merge_small_chunks_by_min_chars(
         raw = meta.get("page_index")
         try:
             return int(raw) if raw is not None else None
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             return None
 
     def _chunk_mergeable(c: Document) -> bool:
@@ -611,7 +616,7 @@ def _merge_small_chunks_by_min_chars(
         try:
             s = int(start_local) if start_local is not None else None
             e = int(end_local) if end_local is not None else None
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             s = None
             e = None
 
@@ -620,7 +625,7 @@ def _merge_small_chunks_by_min_chars(
             try:
                 sg = int(meta.get("start_char")) if meta.get("start_char") is not None else None
                 eg = int(meta.get("end_char")) if meta.get("end_char") is not None else None
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 sg = None
                 eg = None
             if sg is None or eg is None:
@@ -821,7 +826,7 @@ class ParsingStage:
                     q0 = m0.get("pdf_quality") if isinstance(m0, dict) else None
                     if isinstance(q0, dict) and q0.get("score") is not None:
                         cached_quality = dict(q0)
-                except Exception:
+                except (TypeError, ValueError, AttributeError):
                     cached_quality = None
                 effective_parser_backend, pdf_quality = route_pdf_backend(
                     file_path,
@@ -888,7 +893,8 @@ class ParsingStage:
                             db.refresh(db_document)
                         except Exception as exc:
                             logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
-        except Exception:
+        except Exception as exc:
+            _log_processor_fallback('run', exc)
             parse_cache_hit = False
 
         if not parse_cache_hit:
@@ -1165,7 +1171,8 @@ class InlineAssetStage:
                             derived.append(item)
                         if derived:
                             next_meta["derived_elements"] = derived
-                except Exception:
+                except Exception as exc:
+                    _log_processor_fallback('run', exc)
                     # Never fail ingest due to optional enrichment.
                     pass
 
@@ -1209,7 +1216,8 @@ class InlineAssetStage:
                         next_content, added = add_image_captions(next_content)
                         captions_added_total += int(added or 0)
                         caption_backend = "heuristic"
-                except Exception:
+                except Exception as exc:
+                    _log_processor_fallback('run', exc)
                     # Never fail ingest due to optional captioning.
                     pass
 
@@ -1352,12 +1360,12 @@ class ChunkingStage:
             if isinstance(v, (int, float)):
                 try:
                     return int(v)
-                except Exception:
+                except (TypeError, ValueError, AttributeError):
                     return None
             if isinstance(v, str):
                 try:
                     return int(float(v.strip()))
-                except Exception:
+                except (TypeError, ValueError, AttributeError):
                     return None
             return None
 
@@ -1369,12 +1377,12 @@ class ChunkingStage:
             if isinstance(v, (int, float)):
                 try:
                     return float(v)
-                except Exception:
+                except (TypeError, ValueError, AttributeError):
                     return None
             if isinstance(v, str):
                 try:
                     return float(v.strip())
-                except Exception:
+                except (TypeError, ValueError, AttributeError):
                     return None
             return None
 
@@ -1555,7 +1563,8 @@ class ChunkAssetStage:
                 if bool(image_caption_enabled):
                     try:
                         caption = derive_image_caption(chunk.page_content or "", meta)
-                    except Exception:
+                    except Exception as exc:
+                        _log_processor_fallback('run', exc)
                         caption = ""
                 need_image_inspection = (
                     not str(meta.get("visual_kind") or "").strip()
@@ -1568,7 +1577,8 @@ class ChunkAssetStage:
                         if img is not None:
                             try:
                                 code_info = decode_image_codes(img)
-                            except Exception:
+                            except Exception as exc:
+                                _log_processor_fallback('run', exc)
                                 code_info = {}
                             if isinstance(code_info, dict):
                                 image_code_text = str(code_info.get("text") or "").strip()
@@ -1583,7 +1593,8 @@ class ChunkAssetStage:
                             if not str(meta.get("visual_kind") or "").strip():
                                 try:
                                     visual_kind = str(infer_visual_kind_from_pixels(img) or "").strip().lower()
-                                except Exception:
+                                except Exception as exc:
+                                    _log_processor_fallback('run', exc)
                                     visual_kind = ""
                                 if visual_kind:
                                     meta["visual_kind"] = visual_kind
@@ -1591,7 +1602,8 @@ class ChunkAssetStage:
                                 ocr_text = ocr_image(img, _max_chars=int(image_ocr_max_chars))
                                 if ocr_remaining is not None:
                                     ocr_remaining -= 1
-                    except Exception:
+                    except Exception as exc:
+                        _log_processor_fallback('run', exc)
                         ocr_text = ""
                     finally:
                         if should_close and img is not None:
@@ -1613,7 +1625,8 @@ class ChunkAssetStage:
                             secrets_mode=str(secrets_mode or "mask"),
                             secrets_mask=str(secrets_mask or SECRET_MASK),
                         )
-                    except Exception:
+                    except Exception as exc:
+                        _log_processor_fallback('run', exc)
                         # Fail-closed when redaction is enabled: do not emit raw caption.
                         if bool(pii_anonymize) or bool(secrets_redact):
                             caption = str(pii_mask or REDACTED_MASK) if bool(pii_anonymize) else str(secrets_mask or SECRET_MASK)
@@ -1635,7 +1648,8 @@ class ChunkAssetStage:
                             meta["image_ocr_pii_hits"] = {str(k): int(v) for k, v in pii_hits.items() if int(v or 0) > 0}
                         if sec_hits:
                             meta["image_ocr_secrets_hits"] = {str(k): int(v) for k, v in sec_hits.items() if int(v or 0) > 0}
-                    except Exception:
+                    except Exception as exc:
+                        _log_processor_fallback('run', exc)
                         # Fail-closed when redaction is enabled: do not emit raw OCR.
                         if bool(pii_anonymize) or bool(secrets_redact):
                             ocr_text = str(pii_mask or REDACTED_MASK) if bool(pii_anonymize) else str(secrets_mask or SECRET_MASK)
@@ -1686,7 +1700,8 @@ class ChunkAssetStage:
                 try:
                     meta["simhash64"] = simhash64_hex(simhash64(content_norm))
                     meta.setdefault("simhash_algo", "simhash64_sha1")
-                except Exception:
+                except Exception as exc:
+                    _log_processor_fallback('run', exc)
                     # Best-effort only.
                     pass
             chunk.metadata = meta
@@ -1940,7 +1955,7 @@ class DocumentProcessorService:
                     if not key:
                         return
                     ms = int(round(float(elapsed_ms)))
-                except Exception:
+                except (TypeError, ValueError, AttributeError):
                     return
                 if ms < 0:
                     ms = 0
@@ -2028,6 +2043,7 @@ class DocumentProcessorService:
                         preprocessed_temp_path = out_path
                         file_path = out_path
             except Exception as exc:  # noqa: BLE001
+                _log_processor_fallback('process_document', exc)
                 # Fail closed: when preprocessing is enabled, it is part of ingestion correctness.
                 raise RuntimeError(f"preprocess_failed: {str(exc)[:200]}") from exc
 
@@ -2059,7 +2075,8 @@ class DocumentProcessorService:
                                             db.refresh(db_document)
                                     except Exception as exc:
                                         logger.debug("Ignoring non-critical processor cleanup failure: %s", exc)
-                                except Exception:
+                                except Exception as exc:
+                                    _log_processor_fallback('process_document', exc)
                                     pdf_quality = None
                             result = preprocess_image_document(
                                 input_path=file_path,
@@ -2081,6 +2098,7 @@ class DocumentProcessorService:
                             preprocessed_temp_path = out_path
                             file_path = out_path
             except Exception as exc:  # noqa: BLE001
+                _log_processor_fallback('process_document', exc)
                 raise RuntimeError(f"image_preprocess_failed: {str(exc)[:200]}") from exc
 
             # Structured Table Store (TAG): optionally import table-like documents and skip chunk/vector ingestion.
@@ -2109,7 +2127,8 @@ class DocumentProcessorService:
                         col_threshold=int(getattr(pipeline_effective, "table_store_auto_col_threshold", 0) or 0),
                         sheet_threshold=int(getattr(pipeline_effective, "table_store_auto_sheet_threshold", 0) or 0),
                     )
-                except Exception:
+                except Exception as exc:
+                    _log_processor_fallback('process_document', exc)
                     table_decision = None
 
                 # Persist routing decision for audit/debug (best-effort; never fail ingestion).
@@ -2410,7 +2429,8 @@ class DocumentProcessorService:
                                 documents=[Document(page_content=resume_md, metadata={"page": 1})],
                             )
                             resumed_from_checkpoint = True
-            except Exception:
+            except Exception as exc:
+                _log_processor_fallback('process_document', exc)
                 resumed_from_checkpoint = False
 
             if not resumed_from_checkpoint:
@@ -2454,7 +2474,8 @@ class DocumentProcessorService:
                             db_document.doc_metadata = meta_hit
                             db.commit()
                             db.refresh(db_document)
-                except Exception:
+                except Exception as exc:
+                    _log_processor_fallback('process_document', exc)
                     resumed_from_parse_cache = False
 
             if not resumed_from_checkpoint and not resumed_from_parse_cache:
@@ -2582,6 +2603,7 @@ class DocumentProcessorService:
                                             html_xpath=None,
                                         )
                                 except Exception as exc:  # noqa: BLE001
+                                    _log_processor_fallback('process_document', exc)
                                     attempts.append(
                                         {
                                             "from": current,
@@ -4325,7 +4347,7 @@ class DocumentProcessorService:
             try:
                 if page is not None:
                     page_i = int(page)
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 page_i = 0
 
             label = f"Table {table_index + 1}"
@@ -4464,7 +4486,7 @@ class DocumentProcessorService:
                         page = meta.get("page")
                         try:
                             page = int(page) if page is not None else None
-                        except Exception:
+                        except (TypeError, ValueError, AttributeError):
                             page = None
                         excluded_samples.append(
                             {
@@ -4525,7 +4547,8 @@ class DocumentProcessorService:
 
             try:
                 shutil.rmtree(path, ignore_errors=True)
-            except Exception:
+            except Exception as exc:
+                _log_processor_fallback('_cleanup_parser_artifacts', exc)
                 # Best-effort only.
                 pass
 
@@ -4654,7 +4677,7 @@ class DocumentProcessorService:
         if original_chars > 0 and cleaned_chars >= 0:
             try:
                 ratio = float((original_chars - cleaned_chars) / float(original_chars))
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 ratio = 0.0
             ratio = max(0.0, min(1.0, ratio))
             reduction_pct = int(round(ratio * 100.0))
@@ -4685,7 +4708,7 @@ class DocumentProcessorService:
                 if isinstance(raw, bool):
                     return 0
                 return int(raw)  # type: ignore[arg-type]
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 return 0
 
         # Fast path: consume per-item governance_quality metrics when present (already computed by governance stage).
@@ -4706,11 +4729,13 @@ class DocumentProcessorService:
             text = d.page_content or ""
             try:
                 dm = drop_if_low_density(text, threshold=-1.0).metrics or {}
-            except Exception:
+            except Exception as exc:
+                _log_processor_fallback('_build_governance_audit_metadata_patch', exc)
                 dm = {}
             try:
                 om = drop_if_outline_only(text, min_content_chars=0, max_heading_ratio=2.0).metrics or {}
-            except Exception:
+            except Exception as exc:
+                _log_processor_fallback('_build_governance_audit_metadata_patch', exc)
                 om = {}
 
             chars_non_space += _safe_int(dm.get("chars_non_space"))
@@ -4793,7 +4818,7 @@ class DocumentProcessorService:
         for k, raw in effects_map.items():
             try:
                 n = int(raw or 0)
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 n = 0
             if n > 0:
                 metadata[k] = n
@@ -4809,7 +4834,7 @@ class DocumentProcessorService:
                     continue
                 try:
                     out[key] = int(lv or 0)
-                except Exception:
+                except (TypeError, ValueError, AttributeError):
                     out[key] = 0
             if any(v > 0 for v in out.values()):
                 # Keep small; caller can still use governance_enrichment.language for a canonical single value.
@@ -5087,7 +5112,7 @@ class DocumentProcessorService:
                 continue
             try:
                 s = int(raw_s)
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 continue
             raw_e = meta.get("end_char")
             if raw_e is None:
@@ -5095,7 +5120,7 @@ class DocumentProcessorService:
             else:
                 try:
                     e = int(raw_e)
-                except Exception:
+                except (TypeError, ValueError, AttributeError):
                     e = s + len(c.page_content or "")
             if e <= s:
                 continue
@@ -5138,7 +5163,8 @@ class DocumentProcessorService:
             gate = gate_raw if isinstance(gate_raw, dict) else None
             recs = [str(x) for x in (recs_raw or []) if str(x or "").strip()]
             patches = [p for p in (patches_raw or []) if isinstance(p, dict)]
-        except Exception:
+        except Exception as exc:
+            _log_processor_fallback('_record_chunking_stats_metadata', exc)
             gate = None
 
         if stats:
@@ -5341,14 +5367,16 @@ class DocumentProcessorService:
                     if base_dir_resolved:
                         try:
                             path_obj.relative_to(base_dir_resolved)
-                        except Exception:
+                        except Exception as exc:
+                            _log_processor_fallback('_upload_inline_images_to_minio', exc)
                             continue
                     if not path_obj.exists() or not path_obj.is_file():
                         continue
                     try:
                         if path_obj.stat().st_size > max_image_bytes:
                             continue
-                    except Exception:
+                    except Exception as exc:
+                        _log_processor_fallback('_upload_inline_images_to_minio', exc)
                         continue
                     binary = path_obj.read_bytes()
                 if len(binary) > max_image_bytes:
@@ -5508,7 +5536,8 @@ class DocumentProcessorService:
                         if max_bytes > 0:
                             try:
                                 size = int(candidate.stat().st_size)
-                            except Exception:
+                            except Exception as exc:
+                                _log_processor_fallback('_extract_and_upload_image_to_minio', exc)
                                 size = 0
                             if size > max_bytes:
                                 metadata.pop("image_path", None)
@@ -5526,7 +5555,8 @@ class DocumentProcessorService:
                             found_key = "image_path"
                     else:
                         metadata.pop("image_path", None)
-                except Exception:
+                except Exception as exc:
+                    _log_processor_fallback('_extract_and_upload_image_to_minio', exc)
                     # Unsafe or unreadable path; drop it to avoid leaking arbitrary filesystem paths.
                     metadata.pop("image_path", None)
 
@@ -5636,7 +5666,8 @@ class DocumentProcessorService:
 
         try:
             binary = base64.b64decode(b64_data)
-        except Exception:
+        except Exception as exc:
+            _log_processor_fallback('_extract_and_save_image', exc)
             return None
 
         image_id = hashlib.sha256(binary).hexdigest()[:32]

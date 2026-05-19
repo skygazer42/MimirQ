@@ -6,6 +6,7 @@ Supports reading and updating .env configuration.
 import contextlib
 import importlib.util
 import ipaddress
+import json
 import os
 import tempfile
 import threading
@@ -433,6 +434,18 @@ class NavigationConfig(BaseModel):
         return normalize_navigation_modules(value, reject_unknown=True)
 
 
+class DifyExternalKnowledgeConfig(BaseModel):
+    """Dify External Knowledge API adapter settings."""
+
+    enabled: bool = False
+    api_keys: str = ""
+    tenant_id: str = ""
+    account_id: str = "system:dify"
+    knowledge_map_json: str = ""
+    top_k_max: int = Field(default=50, ge=1, le=200)
+    endpoint_path: str = "/api/v1/integrations/dify/retrieval"
+
+
 class SystemSettings(BaseModel):
     """Full system config."""
     feature_flags: FeatureFlags
@@ -455,6 +468,7 @@ class SystemSettings(BaseModel):
     chat: ChatConfig
     langgraph: LangGraphConfig
     navigation: NavigationConfig
+    dify_external_knowledge: DifyExternalKnowledgeConfig
 
 
 class UpdateSettingsRequest(BaseModel):
@@ -479,6 +493,7 @@ class UpdateSettingsRequest(BaseModel):
     chat: ChatConfig | None = None
     langgraph: LangGraphConfig | None = None
     navigation: NavigationConfig | None = None
+    dify_external_knowledge: DifyExternalKnowledgeConfig | None = None
 
 
 def _parse_bool(value: Any) -> bool:
@@ -771,6 +786,23 @@ def _apply_runtime_settings(env_vars: dict[str, str], updated_keys: list[str]) -
     if "NAVIGATION_USER_VISIBLE_MODULES" in updated_keys and "NAVIGATION_USER_VISIBLE_MODULES" in env_vars:
         settings.NAVIGATION_USER_VISIBLE_MODULES = env_vars["NAVIGATION_USER_VISIBLE_MODULES"]
 
+    # Dify External Knowledge adapter
+    if "DIFY_EXTERNAL_KNOWLEDGE_ENABLED" in updated_keys and "DIFY_EXTERNAL_KNOWLEDGE_ENABLED" in env_vars:
+        settings.DIFY_EXTERNAL_KNOWLEDGE_ENABLED = _parse_bool(env_vars["DIFY_EXTERNAL_KNOWLEDGE_ENABLED"])
+    if "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS" in updated_keys and "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS" in env_vars:
+        settings.DIFY_EXTERNAL_KNOWLEDGE_API_KEYS = env_vars["DIFY_EXTERNAL_KNOWLEDGE_API_KEYS"]
+    if "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID" in updated_keys and "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID" in env_vars:
+        settings.DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID = env_vars["DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID"]
+    if "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID" in updated_keys and "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID" in env_vars:
+        settings.DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID = env_vars["DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID"]
+    if "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON" in updated_keys and "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON" in env_vars:
+        settings.DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON = env_vars["DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON"]
+    if "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX" in updated_keys and "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX" in env_vars:
+        settings.DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX = _parse_int(
+            env_vars["DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX"],
+            default=int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 50) or 50),
+        )
+
 
 def read_env_file() -> dict[str, str]:
     """Read .env file."""
@@ -1006,6 +1038,15 @@ async def get_settings(
             user_visible_modules=normalize_navigation_modules(
                 getattr(settings, "NAVIGATION_USER_VISIBLE_MODULES", "") or ""
             ),
+        ),
+        dify_external_knowledge=DifyExternalKnowledgeConfig(
+            enabled=bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", False)),
+            api_keys=mask_secret(str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", "") or "")),
+            tenant_id=str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", "") or ""),
+            account_id=str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "") or "system:dify"),
+            knowledge_map_json=str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", "") or ""),
+            top_k_max=int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 50) or 50),
+            endpoint_path="/api/v1/integrations/dify/retrieval",
         ),
     )
 
@@ -1389,6 +1430,57 @@ async def update_settings(
             )
             updated_keys.append("NAVIGATION_USER_VISIBLE_MODULES")
 
+        # Update Dify external knowledge adapter.
+        if request.dify_external_knowledge:
+            df = request.dify_external_knowledge
+            env_vars["DIFY_EXTERNAL_KNOWLEDGE_ENABLED"] = str(bool(df.enabled)).lower()
+            updated_keys.append("DIFY_EXTERNAL_KNOWLEDGE_ENABLED")
+
+            if df.api_keys and "***" not in df.api_keys:
+                env_vars["DIFY_EXTERNAL_KNOWLEDGE_API_KEYS"] = _sanitize_env_value(
+                    "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS",
+                    df.api_keys,
+                )
+                updated_keys.append("DIFY_EXTERNAL_KNOWLEDGE_API_KEYS")
+
+            tenant_id_text = _sanitize_env_value("DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", df.tenant_id or "")
+            if tenant_id_text:
+                try:
+                    UUID(tenant_id_text)
+                except ValueError as exc:
+                    raise HTTPException(status_code=400, detail="Invalid DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID") from exc
+            env_vars["DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID"] = tenant_id_text
+            env_vars["DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID"] = _sanitize_env_value(
+                "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID",
+                df.account_id or "system:dify",
+            )
+
+            knowledge_map_json = _sanitize_env_value(
+                "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+                df.knowledge_map_json or "",
+            )
+            if knowledge_map_json:
+                try:
+                    parsed_knowledge_map = json.loads(knowledge_map_json)
+                except json.JSONDecodeError as exc:
+                    raise HTTPException(status_code=400, detail="Invalid DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON") from exc
+                if not isinstance(parsed_knowledge_map, dict):
+                    raise HTTPException(status_code=400, detail="DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON must be a JSON object")
+            env_vars["DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON"] = knowledge_map_json
+
+            top_k_max = int(df.top_k_max or 50)
+            if top_k_max < 1 or top_k_max > 200:
+                raise HTTPException(status_code=400, detail="DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX must be between 1 and 200")
+            env_vars["DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX"] = str(top_k_max)
+            updated_keys.extend(
+                [
+                    "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID",
+                    "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID",
+                    "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+                    "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX",
+                ]
+            )
+
         write_env_file(env_vars)
         with contextlib.suppress(Exception):
             # Best-effort, PII-minimal audit record (no secret values).
@@ -1433,6 +1525,8 @@ async def update_settings(
             "message": "Configuration saved. Some settings require backend restart to take effect.",
             "updated_keys": updated_keys
         }
+    except HTTPException:
+        raise
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Failed to save configuration: {str(e)}") from e
     finally:
@@ -1470,8 +1564,8 @@ async def get_system_status(
             return False, "not installed"
         return True, "ok"
 
-    from app.parsing.utils.cli import resolve_cli_command
     from app.parsing.parsers.magic_pdf_parser import resolve_magicpdf_models_dir
+    from app.parsing.utils.cli import resolve_cli_command
 
     def _configured_message(enabled: bool, configured: bool, missing_message: str) -> str:
         if enabled and configured:

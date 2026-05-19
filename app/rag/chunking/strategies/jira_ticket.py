@@ -49,7 +49,7 @@ _FIELD_KEY_ALLOWED = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01
 
 
 def _norm(s: str) -> str:
-    # Faster and avoids regex hotspots in Sonar.
+    # Faster and avoids regex backtracking hotspots.
     return " ".join((s or "").strip().split()).lower()
 
 

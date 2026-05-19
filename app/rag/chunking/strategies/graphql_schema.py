@@ -54,7 +54,7 @@ def _parse_def_line(line: str) -> tuple[str, str | None] | None:
     """
     Parse a top-level GraphQL definition line.
 
-    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
     raw = str(line or "").strip()
     if not raw or raw.startswith("#"):

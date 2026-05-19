@@ -32,7 +32,7 @@ def _parse_sheet_header(line: str) -> str | None:
     Parse a sheet header line like:
       ## Sheet: Name
 
-    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
     s = str(line or "").strip()
     if not s.startswith("##"):

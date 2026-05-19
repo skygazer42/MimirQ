@@ -108,7 +108,7 @@ def _strip_leading_number_prefix(line: str) -> str:
       1 Introduction
       1.2.3 Methods
 
-    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
     s = str(line or "").lstrip()
     if not s or not s[:1].isdigit():

@@ -73,7 +73,7 @@ def _split_release_token(text: str) -> tuple[str, str] | None:
       v1.2.3
       Unreleased
 
-    We intentionally avoid regex here to prevent SonarCloud security hotspots (python:S5852).
+    We intentionally avoid regex here to prevent catastrophic-backtracking hotspots.
     """
     s = (text or "").strip()
     if not s:

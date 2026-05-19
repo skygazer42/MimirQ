@@ -207,7 +207,7 @@ python -m ruff check \
 
 pnpm --dir web exec vitest run \
   components/parsing/parsing-active-file-pane.source.test.ts \
-  components/parsing/parsing-sonar.source.test.ts
+  components/parsing/parsing-source-guards.source.test.ts
 
 pnpm --dir web exec tsc --noEmit --pretty false
 ```

@@ -4,7 +4,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 describe('quality checker source', () => {
-  it('uses codePoint helpers and extracted issue collectors instead of inline Sonar hotspots', () => {
+  it('uses codePoint helpers and extracted issue collectors instead of inline parsing hotspots', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'quality-checker.tsx'), 'utf8')
 
     expect(src).toContain('function getLeadingCodePoint(')

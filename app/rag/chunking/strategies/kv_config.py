@@ -54,7 +54,7 @@ def _parse_kv_line(line: str) -> str | None:
 
     Returns the key or None.
 
-    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
     raw = str(line or "").rstrip("\r\n")
     if not raw:

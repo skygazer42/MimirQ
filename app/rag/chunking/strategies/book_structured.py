@@ -88,7 +88,7 @@ def _parse_en_num_section(s: str, start: int) -> tuple[str, int] | None:
 
 def _parse_en_heading(line: str) -> tuple[str, int, str] | None:
     """
-    Parse book-ish headings without regex to avoid Sonar S5852 hotspots.
+    Parse book-ish headings without regex to avoid backtracking hotspots.
     Returns (kind, level, number).
     """
     s = (line or "").strip()

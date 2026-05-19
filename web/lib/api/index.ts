@@ -76,6 +76,7 @@ export type { RtbfCascadeResponse, RtbfRequest, RtbfStatusResponse } from './rtb
 export type {
   CacheConfig,
   ChatConfig,
+  DifyExternalKnowledgeConfig,
   Etl4LlmConfig,
   FeatureFlags,
   KGConfig,

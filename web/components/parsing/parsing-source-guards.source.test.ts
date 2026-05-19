@@ -3,7 +3,7 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-describe('parsing sonar source guards', () => {
+describe('parsing source guards', () => {
   it('avoids object stringification and nested quality-gate ternaries in the active file pane', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'parsing-active-file-pane.tsx'), 'utf8')
 

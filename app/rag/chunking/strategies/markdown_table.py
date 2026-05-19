@@ -45,7 +45,7 @@ def _looks_like_align_row(line: str) -> bool:
     Detect a Markdown table alignment row like:
       | --- | :---: | ---: |
 
-    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
     s = str(line or "").strip()
     if not s or "|" not in s:

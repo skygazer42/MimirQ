@@ -64,7 +64,7 @@ def _split_prefixed_field(line: str, *, prefixes: tuple[str, ...], require_value
       问：...
       A: ...
 
-    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
     s = str(line or "").lstrip()
     if not s:

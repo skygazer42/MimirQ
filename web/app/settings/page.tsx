@@ -13,6 +13,7 @@ import { PageScaffold } from '@/components/ui/page-scaffold'
 import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { FeatureFlagsSection } from './_sections/feature-flags-section'
+import { DifyIntegrationSection } from './_sections/dify-integration-section'
 import { FrontendPreferencesSection } from './_sections/frontend-preferences-section'
 import { GovernanceSection } from './_sections/governance-section'
 import { IndustryRulesSection } from './_sections/industry-rules-section'
@@ -52,6 +53,7 @@ const SETTINGS_SECTIONS = [
   { id: 'sec-status', label: '系统状态', hint: '后端连通性与运行状态' },
   { id: 'sec-ltr', label: 'LTR 模型', hint: '排序模型注册、回滚和启用' },
   { id: 'sec-rag', label: 'RAG 配置', hint: '检索、召回与生成参数' },
+  { id: 'sec-dify', label: 'Dify 接入', hint: '外部知识库访问、API Key 与数据集绑定' },
   { id: 'sec-url', label: 'URL 采集', hint: '网页采集与清洗策略' },
   { id: 'sec-governance', label: '数据治理', hint: 'PII、密钥、隔离与清洗策略' },
   { id: 'sec-industry-rules', label: '行业规则', hint: '行业规则包与解析模板' },
@@ -685,13 +687,20 @@ function SettingsContent({
         </SettingsSectionFrame>
 
         <SettingsSectionFrame section={SETTINGS_SECTIONS[8]} index={8}>
+          <DifyIntegrationSection
+            difyExternalKnowledge={state.difyExternalKnowledgeMerged}
+            updateDifyExternalKnowledge={state.updateDifyExternalKnowledge}
+          />
+        </SettingsSectionFrame>
+
+        <SettingsSectionFrame section={SETTINGS_SECTIONS[9]} index={9}>
           <UrlIngestSection
             urlIngest={state.urlIngestMerged}
             updateUrlIngest={state.updateUrlIngest}
           />
         </SettingsSectionFrame>
 
-        <SettingsSectionFrame section={SETTINGS_SECTIONS[9]} index={9}>
+        <SettingsSectionFrame section={SETTINGS_SECTIONS[10]} index={10}>
           <GovernanceSection
             isGovernanceEnabled={state.isGovernanceEnabled}
             isPiiAnonymizeEnabled={state.isPiiAnonymizeEnabled}
@@ -701,18 +710,18 @@ function SettingsContent({
           />
         </SettingsSectionFrame>
 
-        <SettingsSectionFrame section={SETTINGS_SECTIONS[10]} index={10}>
+        <SettingsSectionFrame section={SETTINGS_SECTIONS[11]} index={11}>
           <IndustryRulesSection />
         </SettingsSectionFrame>
 
-        <SettingsSectionFrame section={SETTINGS_SECTIONS[11]} index={11}>
+        <SettingsSectionFrame section={SETTINGS_SECTIONS[12]} index={12}>
           <ObservabilitySection
             observability={state.observabilityMerged}
             updateObservability={state.updateObservability}
           />
         </SettingsSectionFrame>
 
-        <SettingsSectionFrame section={SETTINGS_SECTIONS[12]} index={12}>
+        <SettingsSectionFrame section={SETTINGS_SECTIONS[13]} index={13}>
           <RuntimeControlsSection
             chat={state.chatMerged}
             updateChat={state.updateChat}

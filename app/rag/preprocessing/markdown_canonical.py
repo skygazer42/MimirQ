@@ -44,7 +44,7 @@ def _split_blockquote_lead(line: str) -> tuple[str, str]:
     Equivalent to matching a repeating pattern like:
       [ \\t]*> [ \\t]* > [ \\t]* > ...
 
-    Implemented without regex so it stays linear-time and avoids Sonar S5852 hotspots.
+    Implemented without regex so it stays linear-time and avoids backtracking hotspots.
     """
     s = line or ""
     if not s:
