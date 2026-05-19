@@ -18,6 +18,8 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.status import HTTP_429_TOO_MANY_REQUESTS
 
+from app.core.config import settings
+from app.core.jwt_verify import decode_access_token
 from app.rag.core.logging import get_logger
 
 logger = get_logger("api.rate_limit")
@@ -277,8 +279,6 @@ async def get_client_key(request: Request) -> str:
             token = auth[7:].strip()
             if token:
                 try:
-                    from app.core.jwt_verify import decode_access_token
-
                     payload = await decode_access_token(token)
                     user_id = (payload.get("sub") or "").strip()
 
@@ -308,7 +308,6 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         exclude_prefixes: list[str] | None = None,
     ) -> None:
         super().__init__(app)
-        from app.core.config import settings
 
         use_redis = bool(getattr(settings, "RATE_LIMIT_REDIS_ENABLED", False)) and bool(getattr(settings, "REDIS_URL", ""))
         if use_redis:
