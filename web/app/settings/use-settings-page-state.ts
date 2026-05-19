@@ -40,7 +40,7 @@ type SaveMessage = {
 }
 
 const SETTINGS_SAVE_SUCCESS_DETAIL =
-  '部分功能开关、服务地址和运行时参数需要重启后端后生效。'
+  '大多数修改会影响后续请求；少量启动期能力才需要重启后端。容器部署时通常只需重启后端服务，不需要重建镜像。'
 
 function createSettingsSaveSuccessMessage(): SaveMessage {
   return {

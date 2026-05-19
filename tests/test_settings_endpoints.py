@@ -191,7 +191,7 @@ def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN
     assert res.status_code == 200, res.text
     body = res.json()
     assert body.get("success") is True
-    assert body.get("message") == "配置已保存，部分设置需要重启后端后生效。"
+    assert body.get("message") == "配置已保存，大多数修改会影响后续请求；外部解析器仍需对应服务已启动。"
 
     updated = set(body.get("updated_keys") or [])
     assert "CHUNK_MIN_CHARS" in updated

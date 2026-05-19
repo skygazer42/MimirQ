@@ -184,12 +184,12 @@ export function FeatureFlagsSection({
             功能开关
           </h2>
           <p className="mt-0.5 text-[11px] leading-4 text-slate-500">
-            按需启用各项能力模块，依赖项会在下方标签提示。
+            按需启用各项能力模块，保存后会影响后续请求；外部解析器仍需对应服务已启动。
           </p>
         </div>
-        <div className="inline-flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-50/70 px-2.5 py-1 text-[11px] font-medium text-orange-600">
+        <div className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50/70 px-2.5 py-1 text-[11px] font-medium text-blue-600">
           <AlertCircle className="h-3 w-3" />
-          <span>更改后需重启后端生效</span>
+          <span>保存后影响后续请求</span>
         </div>
       </div>
 
