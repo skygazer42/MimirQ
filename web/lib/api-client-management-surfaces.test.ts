@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { auditApi } from './api/audit'
 import { apiClient } from './api/core'
+import { difyExternalKnowledgeApi } from './api/dify'
 import { promptTemplateApi } from './api/prompts'
 import { reportApi } from './api/reports'
 import { settingsApi } from './api/settings'
@@ -109,6 +110,47 @@ describe('management surface api clients', () => {
       api_key: 'sk-test',
       api_base: 'https://example.com',
       model: 'gpt-test',
+    })
+  })
+
+  it('posts external knowledge retrieval payloads to the dify integration endpoint', async () => {
+    const postSpy = vi.spyOn(apiClient, 'post')
+    postSpy.mockResolvedValueOnce({
+      data: {
+        records: [
+          {
+            content: 'chunk text',
+            score: 0.91,
+            title: 'Doc A',
+            metadata: { dataset_id: 'ds-1' },
+          },
+        ],
+      },
+    } as never)
+
+    await expect(
+      difyExternalKnowledgeApi.retrieve({
+        knowledge_id: 'sales-all',
+        query: '报价口径',
+        retrieval_setting: { top_k: 4, score_threshold: 0.3 },
+        metadata_condition: { filter: { lifecycle: { $eq: 'active' } } },
+      })
+    ).resolves.toEqual({
+      records: [
+        {
+          content: 'chunk text',
+          score: 0.91,
+          title: 'Doc A',
+          metadata: { dataset_id: 'ds-1' },
+        },
+      ],
+    })
+
+    expect(postSpy).toHaveBeenCalledWith('/integrations/dify/retrieval', {
+      knowledge_id: 'sales-all',
+      query: '报价口径',
+      retrieval_setting: { top_k: 4, score_threshold: 0.3 },
+      metadata_condition: { filter: { lifecycle: { $eq: 'active' } } },
     })
   })
 

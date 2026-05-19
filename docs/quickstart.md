@@ -61,6 +61,18 @@ make up-web
 ```
 
 > 本地源码运行后端需要 Python 3.11+（项目包含 `match/case` 等语法与依赖约束）。如果你只想快速跑起来，优先使用 Docker。
+>
+> 如果你要本地源码调后端，请直接使用项目虚拟环境入口，不要调用系统全局 `uvicorn`：
+>
+> ```bash
+> make backend
+> ```
+>
+> 若宿主机文件监听额度较低、`uploads/` 又比较大，优先改用：
+>
+> ```bash
+> make backend-no-reload
+> ```
 
 #### retrieval-dev 资源与时延预期（经验值）
 

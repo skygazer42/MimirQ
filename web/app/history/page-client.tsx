@@ -768,9 +768,13 @@ function ConversationItem({
           )}>
             {conversation.title || t('untitledConversation')}
           </span>
-          <span className="text-[9px] font-medium uppercase  text-muted-foreground/30 pt-1.5 tabular-nums group-hover:text-muted-foreground/50 transition-colors shrink-0">
+          <time
+            suppressHydrationWarning
+            dateTime={conversation.last_message_at || conversation.updated_at || conversation.created_at}
+            className="text-[9px] font-medium uppercase  text-muted-foreground/30 pt-1.5 tabular-nums group-hover:text-muted-foreground/50 transition-colors shrink-0"
+          >
             {formatRelativeTime(conversation.last_message_at || conversation.updated_at, locale, t('justNow'))}
-          </span>
+          </time>
         </div>
         <div className="flex items-center gap-2 text-[11px] font-normal text-muted-foreground/40 tabular-nums">
           <span className="shrink-0">{t('messageCount', { count: conversation.message_count })}</span>

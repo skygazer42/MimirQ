@@ -23,9 +23,13 @@ describe('settings page structure', () => {
 
   it('keeps the settings shell aligned with the compact system-dashboard reference', () => {
     const page = read('./page.tsx')
+    const hook = read('./use-settings-page-state.ts')
 
     expect(page).not.toContain('icon={Settings2}')
     expect(page).toContain('data-testid="settings-metric-strip"')
+    expect(page).toContain('function SettingsSaveFeedback')
+    expect(page).toContain('部分配置需重启后端')
+    expect(page).not.toContain('Configuration saved')
     expect(page).toContain('flex flex-wrap items-center gap-1.5 rounded-[16px]')
     expect(page).toContain('min-h-9')
     expect(page).not.toContain('min-h-[68px]')
@@ -45,6 +49,8 @@ describe('settings page structure', () => {
     expect(page).toContain('关键词增强配置')
     expect(page).toContain("state.updateRag({ bm25_index_enabled: !bm25Enabled })")
     expect(page).toContain("state.toggleFeature('kg_enabled')")
+    expect(hook).toContain('createSettingsSaveSuccessMessage')
+    expect(hook).toContain('部分功能开关、服务地址和运行时参数需要重启后端后生效。')
   })
 
   it('does not repeat section titles inside framed settings blocks', () => {

@@ -47,7 +47,13 @@ MagicPDF 1.3.x 本地 CPU 解析至少需要模型目录中存在：
 4. 重启后端
 
 ```bash
-uvicorn app.main:app --reload
+make backend
+```
+
+如果宿主机文件监听额度较低、`uploads/` 目录较大导致热重载失败，可改用：
+
+```bash
+make backend-no-reload
 ```
 
 ## 诊断与验证
