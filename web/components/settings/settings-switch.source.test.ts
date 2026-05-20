@@ -4,14 +4,75 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 describe('settings switch', () => {
-  it('uses distinct checked and unchecked colors for settings toggles', () => {
+  it('uses distinct checked and unchecked states for settings toggles', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'settings-switch.tsx'), 'utf8')
 
-    expect(src).toContain('data-[state=checked]:border-blue-500')
-    expect(src).toContain('data-[state=checked]:bg-blue-600')
-    expect(src).toContain('data-[state=unchecked]:border-slate-300')
-    expect(src).toContain('data-[state=unchecked]:bg-white')
-    expect(src).toContain('data-[state=checked]:[&>span]:bg-white')
-    expect(src).toContain('data-[state=unchecked]:[&>span]:bg-slate-400')
+    expect(src).toContain('w-20')
+    expect(src).toContain("before:content-['停用']")
+    expect(src).toContain("after:content-['启用']")
+    expect(src).toContain('data-[switch-state=checked]:before:text-slate-400')
+    expect(src).toContain('data-[switch-state=checked]:after:text-white')
+    expect(src).toContain('data-[switch-state=checked]:bg-sky-50')
+    expect(src).toContain('data-[switch-state=unchecked]:border-slate-300')
+    expect(src).toContain('data-[switch-state=unchecked]:bg-slate-100')
+    expect(src).toContain('data-[switch-state=unchecked]:before:text-slate-700')
+    expect(src).toContain('data-[switch-state=unchecked]:after:text-slate-400')
+    expect(src).toContain('data-[switch-state=checked]:[&>span]:bg-gradient-to-r')
+    expect(src).toContain('data-[switch-state=unchecked]:[&>span]:bg-white')
+    expect(src).toContain('data-switch-state=')
+    expect(src).toContain('SettingsSwitchIndicator')
+  })
+
+  it('keeps settings overview cards on the shared switch indicator', () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, '../../app/settings/page.tsx'),
+      'utf8'
+    )
+
+    expect(src).toContain('SettingsSwitchIndicator')
+    expect(src).not.toContain('function SettingsToggleIndicator')
+    expect(src).not.toContain("'flex h-5 w-9 shrink-0 items-center rounded-full")
+  })
+
+  it('keeps settings sections off native checkbox toggles', () => {
+    const settingsDir = path.resolve(__dirname, '../../app/settings')
+    const filesToCheck = [
+      '_sections/rag-section.tsx',
+      '_sections/governance-section.tsx',
+      '_sections/url-ingest-section.tsx',
+      '_sections/navigation-visibility-section.tsx',
+      '_sections/runtime-controls-section.tsx',
+      '_sections/observability-section.tsx',
+      '_sections/dify-integration-section.tsx',
+      '_sections/parser-services-section.tsx',
+    ]
+
+    for (const file of filesToCheck) {
+      const src = fs.readFileSync(path.join(settingsDir, file), 'utf8')
+      expect(src, file).not.toContain('type="checkbox"')
+      expect(src, file).not.toContain("type='checkbox'")
+    }
+  })
+
+  it('keeps parser service toggles on the shared settings switch', () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, '../../app/settings/_sections/parser-services-section.tsx'),
+      'utf8'
+    )
+
+    expect(src).toContain("import { SettingsSwitch } from '@/components/settings/settings-switch'")
+    expect(src).toContain('<SettingsSwitch')
+    expect(src).not.toContain('已开启')
+    expect(src).not.toContain('已关闭')
+  })
+
+  it('keeps pipeline toggles at readable settings switch size', () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, '../pipeline-options-panel.tsx'),
+      'utf8'
+    )
+
+    expect(src).not.toContain('scale-75')
+    expect(src).not.toContain('scale-90')
   })
 })

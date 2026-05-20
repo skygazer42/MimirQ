@@ -18,6 +18,7 @@ import {
   type LTRModelInfo,
   type MagicPDFConfig,
   type MarkerConfig,
+  type MinerUConfig,
   type NavigationConfig,
   type ObservabilityConfig,
   type PaddleVLConfig,
@@ -40,12 +41,12 @@ type SaveMessage = {
 }
 
 const SETTINGS_SAVE_SUCCESS_DETAIL =
-  '大多数修改会影响后续请求；少量启动期能力才需要重启后端。容器部署时通常只需重启后端服务，不需要重建镜像。'
+  '大多数修改会影响后续请求；少量启动期能力才需要重启后端容器部署时通常只需重启后端服务，不需要重建镜像'
 
 function createSettingsSaveSuccessMessage(): SaveMessage {
   return {
     type: 'success',
-    text: '当前修改已写入系统配置。',
+    text: '当前修改已写入系统配置',
     detail: SETTINGS_SAVE_SUCCESS_DETAIL,
   }
 }
@@ -148,6 +149,8 @@ const DEFAULT_RAG: RagSettings = {
   enable_reranker: false,
   reranker_provider: 'llm',
   reranker_top_n: 20,
+  show_image_in_answer: true,
+  image_append_max: 3,
 }
 
 const DEFAULT_URL_INGEST: UrlIngestSettings = {
@@ -174,6 +177,15 @@ const DEFAULT_MAGICPDF: MagicPDFConfig = {
   models_dir: '',
   device_mode: 'cpu',
   keep_artifacts: false,
+}
+
+const DEFAULT_MINERU: MinerUConfig = {
+  api_token: '',
+  api_base: 'https://mineru.net/api/v4',
+  model_version: 'vlm',
+  backend: 'pipeline',
+  local_server_url: '',
+  vl_server: '',
 }
 
 const DEFAULT_ETL4LLM: Etl4LlmConfig = {
@@ -461,6 +473,10 @@ export function useSettingsPageState() {
     () => mergeWithDefaults(DEFAULT_MAGICPDF, settings?.magicpdf, editedSettings.magicpdf),
     [settings?.magicpdf, editedSettings.magicpdf]
   )
+  const mineruMerged = useMemo(
+    () => mergeWithDefaults(DEFAULT_MINERU, settings?.mineru, editedSettings.mineru),
+    [settings?.mineru, editedSettings.mineru]
+  )
 
   const isGovernanceEnabled = governanceMerged.enabled
   const isPiiAnonymizeEnabled = governanceMerged.pii_anonymize
@@ -682,6 +698,16 @@ export function useSettingsPageState() {
     }))
   }
 
+  const updateMinerU = (patch: Partial<MinerUConfig>) => {
+    setEditedSettings((prev) => ({
+      ...prev,
+      mineru: mergeConfig(
+        mergeWithDefaults(DEFAULT_MINERU, settings?.mineru, prev.mineru),
+        patch
+      ),
+    }))
+  }
+
   const updateEtl4Llm = (patch: Partial<Etl4LlmConfig>) => {
     setEditedSettings((prev) => ({
       ...prev,
@@ -862,6 +888,7 @@ export function useSettingsPageState() {
     ltrUploading,
     magicPdfMerged,
     markerMerged,
+    mineruMerged,
     navigationMerged,
     observabilityMerged,
     paddleVlMerged,
@@ -890,6 +917,7 @@ export function useSettingsPageState() {
     updateNavigation,
     updateMagicPDF,
     updateMarker,
+    updateMinerU,
     updateObservability,
     updatePaddleVL,
     updateTextIn,

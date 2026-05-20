@@ -62,7 +62,6 @@ type SlashCommandId =
   | "reports"
   | "observability"
   | "governance"
-  | "accessReview"
 
 type SlashCommand = {
   id: SlashCommandId
@@ -108,7 +107,6 @@ type ModuleWorkbenchId =
   | "reports"
   | "observability"
   | "governance"
-  | "accessReview"
 
 type ModuleWorkbenchItem = {
   id: ModuleWorkbenchId
@@ -436,7 +434,6 @@ export function CommandMenu() {
         { id: "reports", shortcut: "/reports", icon: FileText, visibilityKey: 'reports' },
         { id: "observability", shortcut: "/observability", icon: Activity, visibilityKey: undefined },
         { id: "governance", shortcut: "/governance", icon: Database, visibilityKey: undefined },
-        { id: "accessReview", shortcut: "/access", icon: Settings, visibilityKey: undefined },
       ] as const).map(({ id, shortcut, icon, visibilityKey }) => ({
         id,
         visibilityKey,
@@ -556,7 +553,7 @@ export function CommandMenu() {
             return
           }
 
-          router.push("/access-review")
+          return
         },
       })),
     [currentViewPrompt.description, currentViewPrompt.prompt, hasResumeTarget, pathname, resumeLastDocumentContext, router, t]
@@ -601,7 +598,6 @@ export function CommandMenu() {
         { id: "reports", icon: FileText, visibilityKey: 'reports', run: () => router.push("/reports") },
         { id: "observability", icon: Activity, visibilityKey: undefined, run: () => router.push("/observability") },
         { id: "governance", icon: Database, visibilityKey: undefined, run: () => router.push("/data-governance") },
-        { id: "accessReview", icon: Settings, visibilityKey: undefined, run: () => router.push("/access-review") },
       ] as const)
         .filter((item) => canShowNavigationModule(item.visibilityKey))
         .map(({ id, icon, visibilityKey, run }) => ({

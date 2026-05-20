@@ -90,6 +90,7 @@ export type {
   LangGraphConfig,
   MagicPDFConfig,
   MarkerConfig,
+  MinerUConfig,
   NavigationConfig,
   ObservabilityConfig,
   PaddleVLConfig,

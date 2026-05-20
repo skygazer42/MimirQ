@@ -17,7 +17,6 @@ describe('tenant permission gate source', () => {
       ['app/diagnostics/page.tsx', 'OBSERVABILITY_READ'],
       ['app/usage/page.tsx', 'USAGE_READ'],
       ['app/audit/page.tsx', 'AUDIT_READ'],
-      ['app/access-review/page.tsx', 'AUDIT_READ'],
       ['app/settings/page.tsx', 'SETTINGS_READ'],
       ['app/settings/rbac/page.tsx', 'SETTINGS_READ'],
       ['app/settings/groups/page.tsx', 'SETTINGS_READ'],

@@ -19,7 +19,7 @@ export function ModelProviderCard({ provider, onConfigure }: Readonly<ModelProvi
     <button
       type="button"
       className={cn(
-        'group relative flex h-full w-full flex-col rounded-lg border bg-card p-3.5 text-left shadow-none transition-colors duration-150 motion-reduce:transition-none focus-ring',
+        'group relative flex h-full w-full flex-col rounded-lg border bg-card p-3.5 text-left text-[12px] leading-4 text-slate-700 shadow-none transition-colors duration-150 motion-reduce:transition-none focus-ring',
         provider.isConfigured
           ? 'border-primary/25 ring-1 ring-primary/10 hover:border-primary/35 hover:shadow-strong'
           : 'border-border/70 hover:border-primary/25'

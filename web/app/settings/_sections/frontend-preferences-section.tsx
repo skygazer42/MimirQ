@@ -38,7 +38,7 @@ export function FrontendPreferencesSection({
                   <HelpCircle className="h-3.5 w-3.5" />
                 </button>
                 <span className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 hidden w-[min(320px,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-blue-100 bg-white px-3 py-2 text-[11px] font-medium leading-relaxed text-slate-600 shadow-[0_14px_34px_rgba(15,23,42,0.14)] group-hover/frontend-local-help:block group-focus-within/frontend-local-help:block md:left-full md:top-1/2 md:mt-0 md:ml-2 md:-translate-x-0 md:-translate-y-1/2">
-                  这些偏好仅保存在当前浏览器，用于新上传和预览流程，不会写入后端配置。
+                  这些偏好仅保存在当前浏览器，用于新上传和预览流程，不会写入后端配置
                 </span>
               </span>
             </div>

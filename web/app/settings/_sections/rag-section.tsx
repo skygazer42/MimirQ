@@ -54,6 +54,7 @@ function InlineHelp({
 export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
   const isBm25IndexEnabled = rag.bm25_index_enabled
   const isRerankerEnabled = rag.enable_reranker
+  const showImageInAnswer = rag.show_image_in_answer
   const rerankerProviderValue = rag.reranker_provider || DEFAULT_RERANKER_PROVIDER
   const rerankerProviderLabel = getRerankerProviderLabel(rerankerProviderValue)
 
@@ -145,7 +146,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
                 <div className="mt-1 text-[11px] text-muted-foreground">
                   启用关键词通道，对精确词匹配召回更友好
                   <InlineHelp label="BM25 检索模式说明">
-                    这里对应 hybrid / keyword 模式；适合标题、术语、编号和精确关键词匹配。
+                    这里对应 hybrid / keyword 模式；适合标题、术语、编号和精确关键词匹配
                   </InlineHelp>
                 </div>
               </div>
@@ -160,7 +161,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
             <p className="mt-2 text-[11px] text-muted-foreground">
               关闭后将不会使用或构建 BM25 索引
               <InlineHelp label="关闭 BM25 的影响">
-                更省内存和 CPU，但可能降低关键词类问题的召回质量。
+                更省内存和 CPU，但可能降低关键词类问题的召回质量
               </InlineHelp>
             </p>
           </div>
@@ -173,13 +174,13 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
                 >
                   启用重排序
                   <InlineHelp label="Reranker 说明">
-                    Reranker 会对候选片段二次排序，适合提升复杂问题的答案质量。
+                    Reranker 会对候选片段二次排序，适合提升复杂问题的答案质量
                   </InlineHelp>
                 </div>
                 <div className="mt-1 text-[11px] text-muted-foreground">
                   用重排序模型对候选片段二次排序
                   <InlineHelp label="重排序成本说明">
-                    通常可提升答案质量，但会增加检索链路延迟和模型调用成本。
+                    通常可提升答案质量，但会增加检索链路延迟和模型调用成本
                   </InlineHelp>
                 </div>
               </div>
@@ -194,6 +195,50 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
             <p className="mt-2 text-[11px] text-muted-foreground">
               开启后会使用下方重排服务与数量，并同步到实验页面作为默认值
             </p>
+          </div>
+
+          <div className="rounded-[13px] border border-blue-100/80 bg-blue-50/45 p-3">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className={cn(systemPageTokens.microLabel, 'text-foreground')}>
+                  回答附图
+                  <InlineHelp label="回答附图说明">
+                    召回结果命中图片证据时，在答案末尾附上图片引用，便于用户核对图表、截图和版面证据
+                  </InlineHelp>
+                </div>
+                <div className="mt-1 text-[11px] text-muted-foreground">
+                  只影响问答结果展示，不改变解析、切块或向量索引
+                </div>
+              </div>
+              <SettingsSwitch
+                aria-label="切换回答附图"
+                checked={showImageInAnswer}
+                onCheckedChange={(checked) =>
+                  updateRag({ show_image_in_answer: checked })
+                }
+              />
+            </div>
+            <div className="mt-3 flex items-center gap-2">
+              <span className={cn(systemPageTokens.microLabel, 'shrink-0 text-foreground/75')}>
+                最多附图
+              </span>
+              <Input
+                type="number"
+                min={0}
+                max={10}
+                value={rag.image_append_max}
+                disabled={!showImageInAnswer}
+                onChange={(event) =>
+                  updateRag({
+                    image_append_max: Math.max(
+                      0,
+                      Math.min(10, Number.parseInt(event.target.value || '0', 10))
+                    ),
+                  })
+                }
+                className="h-8 rounded-[11px] border-border/70 bg-card text-[12px] disabled:opacity-60"
+              />
+            </div>
           </div>
 
           <div>
@@ -228,7 +273,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
             <p className="mt-1.5 text-[11px] text-muted-foreground">
               保存后作为默认重排服务，实验页只做临时覆盖
               <InlineHelp label="重排服务后端字段">
-                对应后端 RERANKER_PROVIDER；主界面只显示中文服务名称。
+                对应后端 RERANKER_PROVIDER；主界面只显示中文服务名称
               </InlineHelp>
             </p>
           </div>
@@ -265,7 +310,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
             <p className="mt-1.5 text-[11px] text-muted-foreground">
               保存后作为默认重排数量，建议保持 10-50
               <InlineHelp label="重排数量后端字段">
-                对应后端 RERANKER_TOP_N。
+                对应后端 RERANKER_TOP_N
               </InlineHelp>
             </p>
           </div>
@@ -332,7 +377,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
             <p className="mt-1.5 text-[11px] text-muted-foreground">
               相邻分块的重叠字符数
               <InlineHelp label="分块重叠说明">
-                chunk 是写入索引的文本片段；增加重叠可提高上下文连续性，但会增加索引体积。
+                chunk 是写入索引的文本片段；增加重叠可提高上下文连续性，但会增加索引体积
               </InlineHelp>
             </p>
           </div>
@@ -368,7 +413,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
             <p className="mt-1.5 text-[11px] text-muted-foreground">
               入库时丢弃过短分块
               <InlineHelp label="最小分块长度说明">
-                0 表示关闭；图片和表格分块会尽量保留，避免误删结构化内容。
+                0 表示关闭；图片和表格分块会尽量保留，避免误删结构化内容
               </InlineHelp>
             </p>
           </div>

@@ -667,6 +667,13 @@ def get_agentic_runner(*, engine: RAGEngine | None = None) -> AgenticRAGRunner:
                 _AGENTIC_RUNNER = AgenticRAGRunner(engine=get_rag_engine())
     return _AGENTIC_RUNNER
 
+
+def reset_agentic_runner() -> None:
+    global _AGENTIC_RUNNER
+    with _AGENTIC_LOCK:
+        _AGENTIC_RUNNER = None
+
+
 __all__ = [
     "AgenticPlanStep",
     "AgenticToolInvocation",
@@ -674,4 +681,5 @@ __all__ = [
     "get_agentic_runner",
     "get_agentic_tool_registry",
     "get_multi_agent_runner",
+    "reset_agentic_runner",
 ]

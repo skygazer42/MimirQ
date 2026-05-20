@@ -15,9 +15,7 @@ describe('governance admin copy source', () => {
     expect(auditPage).toContain("t('emptyState.title')")
 
     const accessReview = read('access-review/page.tsx')
-    expect(accessReview).toContain("const t = useTranslations('AccessReviewPage')")
-    expect(accessReview).toContain("t('title')")
-    expect(accessReview).toContain("t('actions.export')")
-    expect(accessReview).toContain("t('export.formatLabel')")
+    expect(accessReview).toContain("router.replace('/audit')")
+    expect(accessReview).not.toContain("useTranslations('AccessReviewPage')")
   })
 })

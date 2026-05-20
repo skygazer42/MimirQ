@@ -21,6 +21,13 @@ describe('api-errors', () => {
     expect(extractBackendMessage({ detail: 'd' })).toBe('d')
   })
 
+  it('extractBackendMessage parses JSON error strings returned by text downloads', () => {
+    const raw = '{"error":"HTTP_ERROR","message":"SAML not configured","request_id":"rid-json"}'
+
+    expect(extractBackendMessage(raw)).toBe('SAML not configured')
+    expect(extractBackendRequestId(raw)).toBe('rid-json')
+  })
+
   it('extractBackendMessage handles FastAPI validation detail array', () => {
     expect(extractBackendMessage({ detail: [{ loc: ['x'], msg: 'bad' }] })).toBe('Validation error')
   })
@@ -62,6 +69,22 @@ describe('api-errors', () => {
     expect(info.message).toBe('boom')
   })
 
+  it('toApiErrorInfo avoids raw JSON when text response downloads fail', () => {
+    const info = toApiErrorInfo(
+      {
+        response: {
+          status: 400,
+          data: '{"error":"HTTP_ERROR","message":"SAML not configured","request_id":"rid-json"}',
+        },
+      },
+      'fallback'
+    )
+
+    expect(info.status).toBe(400)
+    expect(info.requestId).toBe('rid-json')
+    expect(info.message).toBe('SAML not configured')
+  })
+
   it('toApiErrorInfo makes browser network failures actionable', () => {
     const info = toApiErrorInfo(
       { message: 'Network Error', config: { headers: { 'X-Request-ID': 'rid-network' } } },
@@ -70,6 +93,21 @@ describe('api-errors', () => {
     expect(info.requestId).toBe('rid-network')
     expect(info.message).toContain('无法连接后端 API')
     expect(info.message).toContain('NEXT_PUBLIC_API_URL')
+  })
+
+  it('toApiErrorInfo distinguishes request timeouts from backend connectivity failures', () => {
+    const info = toApiErrorInfo(
+      {
+        code: 'ECONNABORTED',
+        message: 'timeout of 60000ms exceeded',
+        config: { headers: { 'X-Request-ID': 'rid-timeout' } },
+      },
+      '批量删除审计日志失败'
+    )
+
+    expect(info.requestId).toBe('rid-timeout')
+    expect(info.message).toContain('请求超时')
+    expect(info.message).not.toContain('无法连接后端 API')
   })
 
   it('toApiErrorInfo formats 429 with retry_after_sec + scope + limit', () => {

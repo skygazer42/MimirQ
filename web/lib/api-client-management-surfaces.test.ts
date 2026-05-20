@@ -7,6 +7,7 @@ import { promptTemplateApi } from './api/prompts'
 import { reportApi } from './api/reports'
 import { settingsApi } from './api/settings'
 import { usageApi } from './api/usage'
+import { API_LONG_TIMEOUT_MS } from './env'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -254,8 +255,30 @@ describe('management surface api clients', () => {
     await expect(auditApi.bulkDeleteLogs(['log-1', 'log-2'])).resolves.toMatchObject({ deleted: 2 })
 
     expect(deleteSpy).toHaveBeenCalledWith('/audit/logs/log%2F1')
-    expect(postSpy).toHaveBeenCalledWith('/audit/logs/bulk-delete', {
-      ids: ['log-1', 'log-2'],
+    expect(postSpy).toHaveBeenCalledWith(
+      '/audit/logs/bulk-delete',
+      {
+        ids: ['log-1', 'log-2'],
+      },
+      { timeout: API_LONG_TIMEOUT_MS }
+    )
+  })
+
+  it('chunks audit bulk delete requests at the backend request limit', async () => {
+    const ids = Array.from({ length: 501 }, (_, index) => `00000000-0000-0000-0000-${String(index).padStart(12, '0')}`)
+    const postSpy = vi.spyOn(apiClient, 'post')
+    postSpy
+      .mockResolvedValueOnce({ data: { requested: 500, deleted: 499, missing: 1, ids: ids.slice(0, 500) } } as never)
+      .mockResolvedValueOnce({ data: { requested: 1, deleted: 1, missing: 0, ids: ids.slice(500) } } as never)
+
+    await expect(auditApi.bulkDeleteLogs(ids)).resolves.toMatchObject({
+      requested: 501,
+      deleted: 500,
+      missing: 1,
     })
+
+    expect(postSpy).toHaveBeenCalledTimes(2)
+    expect(postSpy).toHaveBeenNthCalledWith(1, '/audit/logs/bulk-delete', { ids: ids.slice(0, 500) }, { timeout: API_LONG_TIMEOUT_MS })
+    expect(postSpy).toHaveBeenNthCalledWith(2, '/audit/logs/bulk-delete', { ids: ids.slice(500) }, { timeout: API_LONG_TIMEOUT_MS })
   })
 })

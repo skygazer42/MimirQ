@@ -101,6 +101,7 @@ class RAGState(TypedDict, total=False):
     multi_query_temperature: float | None
     multi_query_max_chars: int | None
     enable_hyde: bool | None
+    enable_query_decomposition: bool | None
     enable_hierarchy_recall: bool | None
     hierarchy_family_collapse: bool | None
     hierarchy_family_aggregation: str | None
@@ -127,6 +128,7 @@ class RAGState(TypedDict, total=False):
     reranker_provider: str | None
     reranker_top_n: int
     metadata_filter: dict[str, Any] | None
+    max_tokens: int | None
     format_instructions: str
     structured_output: bool
     structured_preset: str | None
@@ -508,6 +510,10 @@ def _generate_node(state: RAGState) -> RAGState:
 
     engine = get_rag_engine()
     llm, route, reason = engine._select_llm(state["question"], state.get("history"))  # type: ignore[attr-defined]
+    llm_model_used = getattr(llm, "model_name", None) or getattr(llm, "model", None)
+    generation_max_tokens = max(0, int(state.get("max_tokens") or 0))
+    if generation_max_tokens > 0:
+        llm = llm.bind(max_tokens=generation_max_tokens)
     prompt_obj = engine.prompt_template
     prompt_content = state.get("prompt_template_content")
     if prompt_content:
@@ -847,17 +853,18 @@ def _generate_node(state: RAGState) -> RAGState:
     base += float(metrics.get("decompose_elapsed_sec", 0.0) or 0.0)
     metrics["elapsed_sec"] = round(base, 3)
     metrics["model_route"] = route
-    metrics["model_used"] = getattr(llm, "model_name", None) or getattr(llm, "model", None)
+    metrics["model_used"] = llm_model_used
     metrics["llm_max_retries"] = settings.LLM_MAX_RETRIES
+    metrics["generation_max_tokens"] = generation_max_tokens or None
     metrics["prompt_template_id"] = state.get("prompt_template_id")
     metrics["prompt_template_key"] = state.get("prompt_template_key")
     metrics["prompt_ab_experiment_key"] = state.get("prompt_ab_experiment_key")
     metrics["prompt_ab_variant"] = state.get("prompt_ab_variant")
     return {
         **state,
-        "answer": answer,
-        "route": route,
-        "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
+            "answer": answer,
+            "route": route,
+            "model_used": llm_model_used,
         "routing_reason": reason,
         "metrics": metrics,
         "followup_questions": list(followup_questions or []),
@@ -1322,6 +1329,7 @@ class RagStateBuildOptions:
     multi_query_temperature: float | None = None
     multi_query_max_chars: int | None = None
     enable_hyde: bool | None = None
+    enable_query_decomposition: bool | None = None
     enable_hierarchy_recall: bool | None = None
     hierarchy_family_collapse: bool | None = None
     hierarchy_family_aggregation: str | None = None
@@ -1348,6 +1356,7 @@ class RagStateBuildOptions:
     reranker_provider: str | None = settings.RERANKER_PROVIDER
     reranker_top_n: int = settings.RERANKER_TOP_N
     metadata_filter: dict[str, Any] | None = None
+    max_tokens: int | None = None
     structured_output: bool = False
     structured_preset: str | None = None
     visible_evidence_only: bool = False
@@ -1404,6 +1413,7 @@ def build_rag_state(
     multi_query_temperature = resolved.multi_query_temperature
     multi_query_max_chars = resolved.multi_query_max_chars
     enable_hyde = resolved.enable_hyde
+    enable_query_decomposition = resolved.enable_query_decomposition
     enable_hierarchy_recall = resolved.enable_hierarchy_recall
     hierarchy_family_collapse = resolved.hierarchy_family_collapse
     hierarchy_family_aggregation = resolved.hierarchy_family_aggregation
@@ -1430,6 +1440,7 @@ def build_rag_state(
     reranker_provider = resolved.reranker_provider
     reranker_top_n = resolved.reranker_top_n
     metadata_filter = resolved.metadata_filter
+    max_tokens = resolved.max_tokens
     structured_output = resolved.structured_output
     structured_preset = resolved.structured_preset
     visible_evidence_only = resolved.visible_evidence_only
@@ -1568,6 +1579,7 @@ def build_rag_state(
         "multi_query_temperature": multi_query_temperature,
         "multi_query_max_chars": multi_query_max_chars,
         "enable_hyde": enable_hyde,
+        "enable_query_decomposition": enable_query_decomposition,
         "enable_hierarchy_recall": enable_hierarchy_recall,
         "hierarchy_family_collapse": hierarchy_family_collapse,
         "hierarchy_family_aggregation": hierarchy_family_aggregation,
@@ -1594,6 +1606,7 @@ def build_rag_state(
         "sparse_retrieval_enabled": sparse_retrieval_enabled,
         "sparse_retrieval_provider": sparse_retrieval_provider,
         "metadata_filter": metadata_filter,
+        "max_tokens": max_tokens,
         "format_instructions": format_instructions,
         "structured_output": bool(structured_output),
         "structured_preset": structured_preset,

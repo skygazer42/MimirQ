@@ -269,9 +269,9 @@ test.describe('management surfaces smoke', () => {
     await expect(page.getByRole('button', { name: /smoke\.audit\.view/ })).toBeVisible()
   })
 
-  test('loads access-review page with mocked access graph metrics', async ({ page }) => {
+  test('redirects the retired access-review page to audit logs', async ({ page }) => {
     await page.goto('/access-review')
-    await expect(page.getByRole('heading', { name: '访问审查' })).toBeVisible({ timeout: 60_000 })
-    await expect(page.getByText('组数量').first().locator('..')).toContainText('4')
+    await expect(page).toHaveURL(/\/audit/)
+    await expect(page.getByRole('heading', { name: '审计日志' })).toBeVisible({ timeout: 60_000 })
   })
 })

@@ -251,11 +251,19 @@ export const parsingApi = {
 
   async parse(
     documentId: string,
-    options?: { parser_backend?: string; image_caption_enabled?: boolean; signal?: AbortSignal }
+    options?: {
+      parser_backend?: string
+      image_caption_enabled?: boolean
+      image_ocr_enabled?: boolean
+      vlm_correction_enabled?: boolean
+      signal?: AbortSignal
+    }
   ): Promise<ParsingContentResponse> {
     const params: Record<string, any> = {}
     if (options?.parser_backend) params.parser_backend = options.parser_backend
-    if (options?.image_caption_enabled) params.image_caption_enabled = true
+    if (typeof options?.image_caption_enabled === 'boolean') params.image_caption_enabled = options.image_caption_enabled
+    if (typeof options?.image_ocr_enabled === 'boolean') params.image_ocr_enabled = options.image_ocr_enabled
+    if (typeof options?.vlm_correction_enabled === 'boolean') params.vlm_correction_enabled = options.vlm_correction_enabled
 
     const data = await openapiRequest({
       path: '/api/v1/parsing/documents/{document_id}/parse',

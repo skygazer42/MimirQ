@@ -4,6 +4,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import Image from 'next/image'
 import { useTranslations } from 'next-intl'
 import {
   Activity,
@@ -121,7 +122,6 @@ const menuSections: MenuSection[] = [
       { icon: Activity, labelKey: 'items.diagnostics', href: '/diagnostics', requiredPermission: TENANT_PERMISSIONS.OBSERVABILITY_READ },
       { icon: Coins, labelKey: 'items.usage', href: '/usage', requiredPermission: TENANT_PERMISSIONS.USAGE_READ },
       { icon: ShieldCheck, labelKey: 'items.audit', href: '/audit', requiredPermission: TENANT_PERMISSIONS.AUDIT_READ },
-      { icon: ShieldCheck, labelKey: 'items.accessReview', href: '/access-review', requiredPermission: TENANT_PERMISSIONS.AUDIT_READ },
       { icon: User, labelKey: 'items.members', href: '/settings/rbac', requiredPermission: TENANT_PERMISSIONS.SETTINGS_READ },
       { icon: Users, labelKey: 'items.groups', href: '/settings/groups', requiredPermission: TENANT_PERMISSIONS.SETTINGS_READ },
       { icon: Settings, labelKey: 'items.settings', href: '/settings', requiredPermission: TENANT_PERMISSIONS.SETTINGS_READ },
@@ -529,8 +529,17 @@ export function Navbar({
         {/* Logo 区域 */}
         <div className="h-14 px-5 border-b border-sidebar-border/50 flex items-center gap-3">
           <Link href="/" className="flex items-center gap-3 group rounded-xl focus-ring">
-            <div className="size-8 rounded-lg bg-foreground text-background flex items-center justify-center">
-              <span className="font-bold text-lg">M</span>
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-white shadow-[0_8px_22px_-18px_rgba(15,23,42,0.65)] ring-1 ring-slate-200/70 transition-transform duration-200 group-hover:scale-[1.03] motion-reduce:transition-none">
+              <Image
+                src="/brand/mimirq-mark.png"
+                alt=""
+                aria-hidden="true"
+                width={40}
+                height={40}
+                priority
+                unoptimized
+                className="size-[34px] rounded-lg object-contain"
+              />
             </div>
             <div className="flex flex-col">
               <span className="font-semibold text-foreground leading-none">MimirQ</span>
@@ -685,8 +694,16 @@ export function Navbar({
             >
               <div className="relative w-10 h-10 flex-shrink-0">
                 <div className="absolute inset-0 rounded-xl border border-border bg-muted/50 shadow-sm group-hover:border-[#CAF0F8]/70 group-hover:bg-[#CAF0F8]/45 transition-colors duration-200" />
-                <div className="absolute inset-0 flex items-center justify-center text-muted-foreground group-hover:text-foreground transition-colors">
-                  <User className="size-5" />
+                <div className="absolute inset-0 flex items-center justify-center transition-transform duration-200 group-hover:scale-[1.03] motion-reduce:transition-none">
+                  <Image
+                    src="/brand/mimirq-mark-badge.png"
+                    alt=""
+                    aria-hidden="true"
+                    width={40}
+                    height={40}
+                    unoptimized
+                    className="size-[38px] rounded-[10px] object-contain"
+                  />
                 </div>
                 {isAuthenticated && (
                   <div className="absolute -right-0.5 -bottom-0.5 size-3 bg-success border-2 border-background rounded-full" />

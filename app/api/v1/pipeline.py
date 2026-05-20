@@ -77,6 +77,7 @@ from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerE
 from app.parsing.utils.cli import resolve_cli_command
 from app.parsing.utils.zip_processor import zip_image_processor
 from app.rag.chunking import chunker_factory, hierarchical_chunk_markdown
+from app.rag.chunking.recommendations import decorate_chunk_strategy_note
 from app.rag.core.errors import ConfigError
 from app.rag.llm.factory import create_llm_client
 from app.rag.llm.models import LLMMessage, LLMRole
@@ -1433,6 +1434,7 @@ async def get_pipeline_capabilities(
             available = True
             notes = "Alias of markdown_header."
 
+        notes = decorate_chunk_strategy_note(s, notes)
         chunk_strategies.append(ChunkStrategyInfo(name=s, available=bool(available), notes=notes))
 
     return PipelineCapabilitiesResponse(

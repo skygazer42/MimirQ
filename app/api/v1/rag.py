@@ -171,6 +171,10 @@ class RetrievePreviewRequest(BaseModel):
     rag_config_template_key: str | None = None  # Optional: select latest active template by key.
     rag_config_ab_experiment_key: str | None = None  # Optional: stable A/B split for templates.
     rag_config: ChatRAGConfig = Field(default_factory=ChatRAGConfig)
+    include_structure_trace: bool = Field(
+        default=False,
+        description="Attach bounded document-structure trace for visual tree debugging. Disabled by default to keep retrieval preview latency predictable.",
+    )
 
 
 class RetrievePreviewResponse(BaseModel):
@@ -507,6 +511,7 @@ async def retrieve_preview(
         multi_query_temperature=effective_rag_config.multi_query_temperature,
         multi_query_max_chars=effective_rag_config.multi_query_max_chars,
         enable_hyde=effective_rag_config.enable_hyde,
+        enable_query_decomposition=effective_rag_config.enable_query_decomposition,
         enable_hierarchy_recall=effective_rag_config.enable_hierarchy_recall,
         hierarchy_family_collapse=effective_rag_config.hierarchy_family_collapse,
         hierarchy_family_aggregation=effective_rag_config.hierarchy_family_aggregation,
@@ -583,14 +588,17 @@ async def retrieve_preview(
             )
         except Exception:
             structure_dataset_id = None
-    _attach_document_structure_trace(
-        metrics=metrics,
-        db=db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        dataset_id=structure_dataset_id,
-        citations=[c for c in citations if isinstance(c, dict)],
-    )
+    if bool(body.include_structure_trace):
+        _attach_document_structure_trace(
+            metrics=metrics,
+            db=db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_id=structure_dataset_id,
+            citations=[c for c in citations if isinstance(c, dict)],
+            max_documents=3,
+            max_nodes=40,
+        )
 
     return RetrievePreviewResponse(
         query_for_retrieval=query_for_retrieval,
@@ -619,6 +627,7 @@ async def tree_search_preview(
             dataset_id=body.dataset_id,
             document_ids=body.document_ids,
             rag_config=body.rag_config,
+            include_structure_trace=False,
         ),
         tenant_id=tenant_id,
         account_id=account_id,
@@ -919,6 +928,7 @@ async def retrieve_evidence(
         multi_query_temperature=effective_rag_config.multi_query_temperature,
         multi_query_max_chars=effective_rag_config.multi_query_max_chars,
         enable_hyde=effective_rag_config.enable_hyde,
+        enable_query_decomposition=effective_rag_config.enable_query_decomposition,
         enable_hierarchy_recall=effective_rag_config.enable_hierarchy_recall,
         hierarchy_family_collapse=effective_rag_config.hierarchy_family_collapse,
         hierarchy_family_aggregation=effective_rag_config.hierarchy_family_aggregation,
@@ -1355,6 +1365,7 @@ async def prompt_preview(
         multi_query_temperature=effective_rag_config.multi_query_temperature,
         multi_query_max_chars=effective_rag_config.multi_query_max_chars,
         enable_hyde=effective_rag_config.enable_hyde,
+        enable_query_decomposition=effective_rag_config.enable_query_decomposition,
         enable_hierarchy_recall=effective_rag_config.enable_hierarchy_recall,
         hierarchy_family_collapse=effective_rag_config.hierarchy_family_collapse,
         hierarchy_family_aggregation=effective_rag_config.hierarchy_family_aggregation,

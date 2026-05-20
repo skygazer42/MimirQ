@@ -2885,6 +2885,10 @@ class HybridRetriever(BaseRetriever):
                 partition_keys=partition_keys,
                 entity_candidates=entity_candidates,
             )
+        # Only user/request filters should trigger filter-overfetch. The dataset
+        # boundary is injected below as a normal scope and should not make every
+        # dataset-scoped retrieval pay the open-scope 4x candidate cost.
+        metadata_filter_requested = bool(isinstance(full_metadata_filter, dict) and full_metadata_filter)
         # Dataset scope is a first-class retrieval boundary. Push it down via metadata_filter so:
         # - vector backends can apply it in their scalar expr/where clauses (when supported)
         # - BM25 can filter early and avoid "top_k filled by other datasets" trimming losses
@@ -4740,6 +4744,11 @@ class HybridRetriever(BaseRetriever):
         # - metadata filtering (post-enrichment, especially for dotted `document_user.*` keys)
         # Over-fetch to keep enough final results after trimming.
         search_k = requested_k
+        metadata_filter_requested = bool(
+            self.metadata_filter_enabled
+            and isinstance(self.metadata_filter, dict)
+            and self.metadata_filter
+        )
         if bool(self.enable_reranker):
             search_k = resolve_rerank_search_k(
                 requested_k=search_k,
@@ -4748,11 +4757,14 @@ class HybridRetriever(BaseRetriever):
         if hierarchy_family_collapse_enabled and hierarchy_overfetch_factor > 1:
             search_k = max(search_k, requested_k * hierarchy_overfetch_factor)
         overfetch_enabled = False
+        overfetch_reasons: list[str] = []
         if not (self.document_ids or []):
-            if self.tenant_id and (self.account_id or "").strip():
+            if self.dataset_id is None and self.tenant_id and (self.account_id or "").strip():
                 overfetch_enabled = True
-            if self.metadata_filter_enabled and isinstance(self.metadata_filter, dict) and self.metadata_filter:
+                overfetch_reasons.append("open_scope_acl")
+            if metadata_filter_requested:
                 overfetch_enabled = True
+                overfetch_reasons.append("metadata_filter")
 
         if overfetch_enabled:
             mult = max(1, int(getattr(settings, "RETRIEVAL_OVERFETCH_MULTIPLIER", 1) or 1))
@@ -4780,6 +4792,7 @@ class HybridRetriever(BaseRetriever):
             "search_k": int(search_k),
             "fetch_k": int(fetch_k),
             "overfetch_enabled": bool(search_k > requested_k),
+            "overfetch_reasons": overfetch_reasons,
             "retrieval_profile": str(self.retrieval_profile or "").strip().lower() or None,
             "rerank_profile": str(getattr(settings, "RERANK_PROFILE", "") or "").strip().lower() or None,
             "hierarchy_family_collapse_enabled": bool(hierarchy_family_collapse_enabled),

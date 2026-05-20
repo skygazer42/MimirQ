@@ -148,7 +148,31 @@ class RecallSearcher:
                         confidence=float((hit or {}).get("similarity", 1.0) or 1.0),
                         relation="query->entity:alias",
                         metadata={"method": "alias_match", "step": "step0"},
+                            )
+
+            if not raw_entities and not alias_hits:
+                try:
+                    lexical_entities = entity_repo.search_lexical(
+                        query=str(config.query or ""),
+                        tenant_id=tenant_id,
+                        k=max_entities,
+                        document_ids=config.document_ids,
+                        dataset_id=config.dataset_id,
+                        account_id=config.account_id,
                     )
+                except Exception:
+                    lexical_entities = []
+                if lexical_entities:
+                    raw_entities.extend(lexical_entities)
+                    for hit in lexical_entities[: max(1, int(max_entities))]:
+                        tracker.add_clue(
+                            stage="recall",
+                            from_node=Tracker.build_query_node(config),
+                            to_node=Tracker.build_entity_node(hit),
+                            confidence=float((hit or {}).get("similarity", 0.0) or 0.0),
+                            relation="query->entity:lexical",
+                            metadata={"method": "lexical_match", "step": "step1-fallback"},
+                        )
 
             # === Optional Step1b: graph embeddings (node2vec-like) for entity recall ===
             #
@@ -634,6 +658,18 @@ class RecallSearcher:
                     )
                 except Exception:
                     content_results = []
+            if not content_results and not query_vec:
+                try:
+                    content_results = event_repo.search_events_lexical(
+                        query=str(config.query or ""),
+                        tenant_id=tenant_id,
+                        k=config.recall.vector_candidates,
+                        document_ids=config.document_ids,
+                        dataset_id=config.dataset_id,
+                        account_id=config.account_id,
+                    )
+                except Exception:
+                    content_results = []
             event_query_related = [
                 item
                 for item in content_results
@@ -648,7 +684,7 @@ class RecallSearcher:
                     to_node=Tracker.build_event_node({"id": ev["event_id"], "title": ev.get("title")}),
                     confidence=ev.get("similarity", 0.0),
                     relation="query->event",
-                    metadata={"method": "vector_search", "step": "step3"},
+                    metadata={"method": str(ev.get("method") or "vector_search"), "step": "step3"},
                 )
 
             # === Step4: merge events ===

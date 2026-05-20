@@ -1,4 +1,5 @@
 import re
+import time
 import warnings
 from pathlib import Path
 from threading import Lock
@@ -38,6 +39,20 @@ from app.parsing.models.table_transformer_onnx import predict_table_structure_de
 from app.parsing.utils.block_schema import POSITION_TAG_RE, build_block_element, parse_position_tags
 
 _HEADING_LEVEL_RE = re.compile(r"(\d+)")
+
+
+def _elapsed_ms_since(start: float) -> int:
+    return max(0, int(round((time.perf_counter() - start) * 1000.0)))
+
+
+def _raw_item_count(value: Any) -> int:
+    if isinstance(value, list):
+        return len(value)
+    if value is None:
+        return 0
+    if isinstance(value, str):
+        return 1 if value.strip() else 0
+    return 1
 
 
 def _looks_like_heading_style(style_name: str) -> bool:
@@ -92,6 +107,69 @@ class DeepDocParser:
 
             self._docx_parser = DeepDocDocxParser()
         return self._docx_parser
+
+    @staticmethod
+    def _small_model_summary(runtime_metadata: dict[str, Any]) -> dict[str, Any]:
+        available_tasks: list[str] = []
+        unavailable_tasks: list[str] = []
+        for task, item in runtime_metadata.items():
+            if isinstance(item, dict) and bool(item.get("available")):
+                available_tasks.append(str(task))
+            else:
+                unavailable_tasks.append(str(task))
+        return {
+            "task_count": len(runtime_metadata),
+            "available_count": len(available_tasks),
+            "unavailable_count": len(unavailable_tasks),
+            "unavailable_tasks": unavailable_tasks,
+        }
+
+    @classmethod
+    def _build_deepdoc_profile(
+        cls,
+        *,
+        file_type: str,
+        stages_ms: dict[str, int],
+        runtime_metadata: dict[str, Any],
+        document_count: int,
+        section_count: int,
+        media_count: int,
+        total_pages: Any = None,
+        ocr_recognition: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        profile: dict[str, Any] = {
+            "schema": "mimirq.deepdoc_profile.v1",
+            "engine": "deepdoc",
+            "file_type": file_type,
+            "stages_ms": dict(stages_ms),
+            "document_count": int(max(0, document_count)),
+            "section_count": int(max(0, section_count)),
+            "media_count": int(max(0, media_count)),
+            "small_model_summary": cls._small_model_summary(runtime_metadata),
+        }
+        try:
+            pages = int(total_pages)
+        except (TypeError, ValueError):
+            pages = 0
+        if pages > 0:
+            profile["total_pages"] = pages
+        if isinstance(ocr_recognition, dict) and ocr_recognition:
+            profile["ocr_recognition"] = dict(ocr_recognition)
+        return profile
+
+    @staticmethod
+    def _attach_deepdoc_profile(documents: list[Document], profile: dict[str, Any]) -> list[Document]:
+        for doc in documents:
+            meta = dict(doc.metadata or {})
+            meta["deepdoc_profile"] = dict(profile)
+            doc.metadata = meta
+        return documents
+
+    @staticmethod
+    def _ocr_recognition_profile_from_parser(parser: Any) -> dict[str, Any] | None:
+        ocr = getattr(parser, "ocr", None)
+        profile = getattr(ocr, "last_recognition_profile", None)
+        return dict(profile) if isinstance(profile, dict) and profile else None
 
     def _small_model_runtime_metadata(self) -> dict[str, Any]:
         out: dict[str, Any] = {}
@@ -226,13 +304,19 @@ class DeepDocParser:
         ext = file_path.suffix.lower()
 
         if ext == ".docx":
+            stages_ms: dict[str, int] = {}
             with self._lock:
+                stage_t0 = time.perf_counter()
                 parser = self._ensure_docx_parser()
+                stages_ms["ensure_parser"] = _elapsed_ms_since(stage_t0)
                 try:
+                    stage_t0 = time.perf_counter()
                     sections, tables = parser(str(file_path))
+                    stages_ms["parse_core"] = _elapsed_ms_since(stage_t0)
                 except Exception as exc:  # pragma: no cover - passthrough
                     raise RuntimeError(f"DeepDoc failed to parse {file_path}") from exc
 
+            postprocess_t0 = time.perf_counter()
             parts: list[str] = []
             if isinstance(sections, list):
                 for item in sections:
@@ -266,40 +350,58 @@ class DeepDocParser:
                             parts.append(text)
 
             merged_text = "\n\n".join(parts).strip()
-            return [
+            stages_ms["postprocess"] = _elapsed_ms_since(postprocess_t0)
+            runtime_metadata = self._small_model_runtime_metadata()
+            docs = [
                 Document(
                     page_content=merged_text,
                     metadata={
                         "source": file_path.name,
                         "file_type": "docx",
                         "parser_backend": "deepdoc",
-                        "small_model_runtime": self._small_model_runtime_metadata(),
+                        "small_model_runtime": runtime_metadata,
                     },
                 )
             ]
+            profile = self._build_deepdoc_profile(
+                file_type="docx",
+                stages_ms=stages_ms,
+                runtime_metadata=runtime_metadata,
+                document_count=len(docs),
+                section_count=_raw_item_count(sections),
+                media_count=_raw_item_count(tables),
+            )
+            return self._attach_deepdoc_profile(docs, profile)
 
         if ext != ".pdf":
             raise ValueError(f"DeepDoc parser supports only .pdf/.docx, got: {ext or '(no ext)'}")
 
+        stages_ms: dict[str, int] = {}
         with self._lock:
+            stage_t0 = time.perf_counter()
             parser = self._ensure_pdf_parser()
+            stages_ms["ensure_parser"] = _elapsed_ms_since(stage_t0)
             try:
+                stage_t0 = time.perf_counter()
                 sections, media = parser(
                     str(file_path),
                     need_image=True,
                     zoomin=3,
                     return_html=True,
                 )
+                stages_ms["parse_core"] = _elapsed_ms_since(stage_t0)
             except Exception as exc:  # pragma: no cover - passthrough
                 raise RuntimeError(f"DeepDoc failed to parse {file_path}") from exc
 
             total_pages = getattr(parser, "total_page", None)
 
+        postprocess_t0 = time.perf_counter()
+        runtime_metadata = self._small_model_runtime_metadata()
         base_meta = {
             "source": file_path.name,
             "file_type": "pdf",
             "parser_backend": "deepdoc",
-            "small_model_runtime": self._small_model_runtime_metadata(),
+            "small_model_runtime": runtime_metadata,
         }
         if total_pages:
             base_meta["total_pages"] = total_pages
@@ -592,4 +694,15 @@ class DeepDocParser:
         if not docs:
             docs.append(Document(page_content="", metadata=dict(base_meta)))
 
-        return docs
+        stages_ms["postprocess"] = _elapsed_ms_since(postprocess_t0)
+        profile = self._build_deepdoc_profile(
+            file_type="pdf",
+            stages_ms=stages_ms,
+            runtime_metadata=runtime_metadata,
+            document_count=len(docs),
+            section_count=len(section_records),
+            media_count=_raw_item_count(media),
+            total_pages=total_pages,
+            ocr_recognition=self._ocr_recognition_profile_from_parser(parser),
+        )
+        return self._attach_deepdoc_profile(docs, profile)

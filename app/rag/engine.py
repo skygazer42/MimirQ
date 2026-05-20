@@ -3,6 +3,7 @@ RAG Conversation Engine
 """
 
 import asyncio
+import hashlib
 import json
 import re
 import threading
@@ -224,9 +225,15 @@ class RAGEngine:
         self.models: dict[str, Any] = {}
         self.models["default"] = self._build_llm(ChatOpenAI, default_model_name)
         if settings.ENABLE_DYNAMIC_MODEL_ROUTING:
-            if settings.LLM_MODEL_FAST:
+            if self._is_route_model_compatible(
+                route_model_name=settings.LLM_MODEL_FAST,
+                default_model_name=default_model_name,
+            ):
                 self.models["fast"] = self._build_llm(ChatOpenAI, settings.LLM_MODEL_FAST or default_model_name)
-            if settings.LLM_MODEL_HEAVY:
+            if self._is_route_model_compatible(
+                route_model_name=settings.LLM_MODEL_HEAVY,
+                default_model_name=default_model_name,
+            ):
                 self.models["heavy"] = self._build_llm(ChatOpenAI, settings.LLM_MODEL_HEAVY or default_model_name)
 
         # Prompt templates (support chat history).
@@ -369,6 +376,33 @@ Requirements:
             http_async_client=self.http_async_client,
             streaming=True,
         )
+
+    @staticmethod
+    def _is_route_model_compatible(
+        *,
+        route_model_name: str | None,
+        default_model_name: str,
+    ) -> bool:
+        """Avoid routing to stale fast/heavy model aliases after provider changes."""
+        route_model = str(route_model_name or "").strip()
+        default_model = str(default_model_name or "").strip()
+        if not route_model:
+            return False
+        if not default_model or route_model == default_model:
+            return True
+
+        # OpenAI-compatible providers use very different model-id namespaces.
+        # If the primary model changed from a plain provider alias
+        # (e.g. qwen3.6-plus) to a registry path (e.g. deepseek-ai/DeepSeek-V3),
+        # the previous fast/heavy aliases are almost certainly stale and should
+        # not be selected automatically.
+        if ("/" in route_model) != ("/" in default_model):
+            return False
+
+        api_base = str(getattr(settings, "LLM_API_BASE", "") or "").casefold()
+        if "siliconflow" in api_base and "/" not in route_model:
+            return False
+        return True
 
     @staticmethod
     def _model_name_for_route(*, llm: Any, model_route: str) -> str:
@@ -801,6 +835,7 @@ Requirements:
         multi_query_temperature = rag_config.multi_query_temperature
         multi_query_max_chars = rag_config.multi_query_max_chars
         enable_hyde = rag_config.enable_hyde
+        enable_query_decomposition = rag_config.enable_query_decomposition
         enable_hierarchy_recall = rag_config.enable_hierarchy_recall
         hierarchy_family_collapse = rag_config.hierarchy_family_collapse
         hierarchy_family_aggregation = rag_config.hierarchy_family_aggregation
@@ -820,6 +855,7 @@ Requirements:
         enable_reranker = rag_config.enable_reranker
         reranker_provider = rag_config.reranker_provider
         reranker_top_n = rag_config.reranker_top_n
+        generation_max_tokens = max(0, int(getattr(rag_config, "max_tokens", 0) or 0))
 
         structured_output = response_options.structured_output
         structured_preset = response_options.structured_preset
@@ -945,6 +981,9 @@ Requirements:
                 model_route=model_route,
                 structured_output=bool(structured_output),
             )
+            base_llm_model_name = getattr(llm, "model_name", None) or getattr(llm, "model", None)
+            if generation_max_tokens > 0:
+                llm = llm.bind(max_tokens=generation_max_tokens)
             if request_llm_meta.get("structured_temperature_override_applied"):
                 routing_reason = (
                     f"{routing_reason}; structured_temperature={request_llm_meta.get('structured_temperature')}"
@@ -1575,8 +1614,13 @@ Requirements:
             dq_n = max(0, min(int(settings.QUERY_DECOMPOSITION_MAX_SUBQUESTIONS or 0), 8))
             dq_min_chars = max(0, int(settings.QUERY_DECOMPOSITION_MIN_CHARS or 0))
             dq_max_chars = max(0, int(settings.QUERY_DECOMPOSITION_MAX_CHARS or 0))
-            if (
+            dq_enabled = (
                 bool(settings.ENABLE_QUERY_DECOMPOSITION)
+                if enable_query_decomposition is None
+                else bool(enable_query_decomposition)
+            )
+            if (
+                dq_enabled
                 and dq_n > 0
                 and len(query_for_retrieval) >= dq_min_chars
                 and (dq_max_chars <= 0 or len(query_for_retrieval) <= dq_max_chars)
@@ -3232,7 +3276,7 @@ Requirements:
                     "hyde_used": bool(hyde_used),
                     "hyde_elapsed_sec": round(hyde_elapsed, 3),
                     "hyde_model_used": hyde_model_used,
-                    "decompose_enabled": bool(settings.ENABLE_QUERY_DECOMPOSITION),
+                    "decompose_enabled": bool(dq_enabled),
                     "decompose_used": bool(decompose_used),
                     "decompose_count": len(sub_questions),
                     "decompose_elapsed_sec": round(decompose_elapsed, 3),
@@ -3493,8 +3537,7 @@ Requirements:
                     llm_invocation_meta = {}
             llm_model_used = (
                 str(llm_invocation_meta.get("selected_model") or "").strip()
-                or getattr(llm, "model_name", None)
-                or getattr(llm, "model", None)
+                or base_llm_model_name
             )
 
             if claim_check_applied:
@@ -3958,6 +4001,7 @@ Requirements:
                         "elapsed_sec": round(t_total, 3),
                         "retrieval_elapsed_sec": round(retrieval_elapsed, 3),
                         "generation_elapsed_sec": round(generation_elapsed, 3),
+                        "generation_max_tokens": generation_max_tokens or None,
                         "retrieval_mode": mode_used,
                         "retrieval_mode_requested": mode_req,
                         "retrieval_mode_auto_routed": bool(mode_auto),
@@ -4146,7 +4190,7 @@ Requirements:
                         "hyde_used": bool(hyde_used),
                         "hyde_elapsed_sec": round(hyde_elapsed, 3),
                         "hyde_model_used": hyde_model_used,
-                        "decompose_enabled": bool(settings.ENABLE_QUERY_DECOMPOSITION),
+                        "decompose_enabled": bool(dq_enabled),
                         "decompose_used": bool(decompose_used),
                         "decompose_count": len(sub_questions),
                         "decompose_elapsed_sec": round(decompose_elapsed, 3),
@@ -4206,22 +4250,59 @@ Requirements:
 
 
 _rag_engine_instance: RAGEngine | None = None
+_rag_engine_settings_signature_value: str | None = None
 _rag_engine_lock: threading.Lock = threading.Lock()
+
+
+def _rag_engine_settings_signature() -> str:
+    """Return a PII-safe signature for runtime settings captured by RAGEngine."""
+    api_key = str(getattr(settings, "LLM_API_KEY", "") or "").strip()
+    api_key_hash = hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:12] if api_key else ""
+    payload = {
+        "llm_api_base": str(getattr(settings, "LLM_API_BASE", "") or "").strip(),
+        "llm_model": str(getattr(settings, "LLM_MODEL", "") or "").strip(),
+        "llm_model_fast": str(getattr(settings, "LLM_MODEL_FAST", "") or "").strip(),
+        "llm_model_heavy": str(getattr(settings, "LLM_MODEL_HEAVY", "") or "").strip(),
+        "llm_api_key_hash": api_key_hash,
+        "llm_temperature": float(getattr(settings, "LLM_TEMPERATURE", 0.0) or 0.0),
+        "llm_timeout": float(getattr(settings, "LLM_TIMEOUT", 0.0) or 0.0),
+        "llm_max_retries": int(getattr(settings, "LLM_MAX_RETRIES", 0) or 0),
+        "llm_pooled_async_http_client": bool(getattr(settings, "LLM_USE_POOLED_ASYNC_HTTP_CLIENT", False)),
+        "llm_fallback_enabled": bool(getattr(settings, "LLM_FALLBACK_ENABLED", False)),
+        "llm_fallback_models": str(getattr(settings, "LLM_FALLBACK_MODELS", "") or "").strip(),
+        "llm_mock_enabled": bool(getattr(settings, "LLM_MOCK_ENABLED", False)),
+        "llm_mock_response": str(getattr(settings, "LLM_MOCK_RESPONSE", "") or ""),
+        "dynamic_model_routing": bool(getattr(settings, "ENABLE_DYNAMIC_MODEL_ROUTING", False)),
+    }
+    return hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
 
 
 def get_rag_engine() -> RAGEngine:
     """Lazily initialize the simple RAG engine (thread-safe)."""
-    global _rag_engine_instance
-    if _rag_engine_instance is None:
+    global _rag_engine_instance, _rag_engine_settings_signature_value
+    current_signature = _rag_engine_settings_signature()
+    if _rag_engine_instance is None or _rag_engine_settings_signature_value != current_signature:
         with _rag_engine_lock:
             # Double-check locking pattern
-            if _rag_engine_instance is None:
+            if _rag_engine_instance is None or _rag_engine_settings_signature_value != current_signature:
                 _rag_engine_instance = RAGEngine()
+                _rag_engine_settings_signature_value = current_signature
     return _rag_engine_instance
 
 
 def reset_rag_engine() -> None:
     """Reset the cached RAG engine so new settings take effect."""
-    global _rag_engine_instance
+    global _rag_engine_instance, _rag_engine_settings_signature_value
     with _rag_engine_lock:
         _rag_engine_instance = None
+        _rag_engine_settings_signature_value = None
+    try:
+        from app.rag.agents.multi_agent import reset_multi_agent_runner
+        from app.rag.agents.rag_agent import reset_agentic_runner
+
+        reset_multi_agent_runner()
+        reset_agentic_runner()
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Ignoring agent runner reset failure: %s", str(exc)[:160])

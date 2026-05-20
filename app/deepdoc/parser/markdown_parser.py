@@ -22,7 +22,10 @@ class IntegratedPipelineMarkdownParser:
     def __init__(self, chunk_token_num=128):
         self.chunk_token_num = int(chunk_token_num)
 
-    def extract_tables_and_remainder(self, markdown_text):
+    def extract_tables_and_remainder(self, markdown_text, separate_tables=True):
+        if not bool(separate_tables):
+            return markdown_text, []
+
         tables = []
         remainder = markdown_text
         if "|" in markdown_text:  # for optimize performance

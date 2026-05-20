@@ -3,7 +3,7 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any, cast
 
-from app.core.regex_runtime import safe_subn as safe_regex_subn
+from app.core.regex_runtime import RegexSubstitutionTimeoutError, safe_subn as safe_regex_subn
 from app.rag.preprocessing.normalization import normalize_text
 from app.rag.preprocessing.segmentation import limit_blank_lines
 
@@ -22,6 +22,7 @@ class CleaningResult:
     changed: bool
     # Per-regex-rule substitution counts (aligned with the input `rules` order).
     rule_hits: list[int] = field(default_factory=list)
+    stats: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -289,17 +290,29 @@ def clean_markdown(
 
     applied = 0
     rule_hits: list[int] = []
+    regex_timeout_rules: list[dict[str, Any]] = []
     if rules:
         for idx, rule in enumerate(rules):
-            # Bubble up RegexSubstitutionTimeoutError; caller decides how to surface.
-            text2, n = safe_regex_subn(
-                pattern=rule.pattern,
-                repl=rule.repl,
-                text=text,
-                flags=rule.flags,
-                timeout_ms=regex_timeout_ms,
-                rule_index=int(idx),
-            )
+            try:
+                text2, n = safe_regex_subn(
+                    pattern=rule.pattern,
+                    repl=rule.repl,
+                    text=text,
+                    flags=rule.flags,
+                    timeout_ms=regex_timeout_ms,
+                    rule_index=int(idx),
+                )
+            except RegexSubstitutionTimeoutError as exc:
+                detail = exc.to_detail()
+                regex_timeout_rules.append(
+                    {
+                        "rule_index": int(detail.get("rule_index") or idx),
+                        "timeout_ms": int(detail.get("timeout_ms") or regex_timeout_ms or 0),
+                        "pattern": str(detail.get("pattern") or ""),
+                    }
+                )
+                rule_hits.append(0)
+                continue
             rule_hits.append(int(n or 0))
             if text2 != text:
                 applied += 1
@@ -330,7 +343,17 @@ def clean_markdown(
     if collapse_blank_lines:
         text = limit_blank_lines(text, max_blank_lines=max_blank_lines)
 
-    return CleaningResult(markdown=text, applied_rules=applied, changed=(text != original), rule_hits=rule_hits)
+    stats: dict[str, Any] = {
+        "regex_timeout_count": len(regex_timeout_rules),
+        "regex_timeout_rules": regex_timeout_rules,
+    }
+    return CleaningResult(
+        markdown=text,
+        applied_rules=applied,
+        changed=(text != original),
+        rule_hits=rule_hits,
+        stats=stats,
+    )
 
 
 def build_common_line_signatures(

@@ -45,6 +45,22 @@ ENV_FILE = Path(__file__).parent.parent.parent.parent / ".env"
 _ENV_UPDATE_LOCK = threading.Lock()
 _MISSING_API_URL_MESSAGE = "missing api_url"
 _CONFIGURED_HEALTH_UNREACHABLE_MESSAGE = "configured (health_unreachable)"
+_MINERU_BACKENDS = {"pipeline", "vlm-http-client"}
+
+
+def _normalize_mineru_backend(value: Any) -> str:
+    backend = str(value or "pipeline").strip().lower().replace("_", "-")
+    aliases = {
+        "": "pipeline",
+        "auto": "pipeline",
+        "vlm": "vlm-http-client",
+        "vlm-http": "vlm-http-client",
+        "vlm-httpclient": "vlm-http-client",
+    }
+    backend = aliases.get(backend, backend)
+    if backend not in _MINERU_BACKENDS:
+        raise ValueError("MinerU backend must be pipeline or vlm-http-client")
+    return backend
 
 
 @contextlib.contextmanager
@@ -256,6 +272,8 @@ class RAGConfig(BaseModel):
     enable_reranker: bool = False
     reranker_provider: str = "llm"
     reranker_top_n: int = Field(default=20, ge=1, le=200)
+    show_image_in_answer: bool = True
+    image_append_max: int = Field(default=3, ge=0, le=10)
 
     @field_validator("reranker_provider", mode="before")
     @classmethod
@@ -368,6 +386,14 @@ class MinerUConfig(BaseModel):
     api_token: str = ""
     api_base: str = "https://mineru.net/api/v4"
     model_version: str = "vlm"
+    backend: str = "pipeline"
+    local_server_url: str = ""
+    vl_server: str = ""
+
+    @field_validator("backend", mode="before")
+    @classmethod
+    def _normalize_backend(cls, value):  # noqa: ANN001
+        return _normalize_mineru_backend(value)
 
 
 class MagicPDFConfig(BaseModel):
@@ -628,6 +654,13 @@ def _apply_runtime_settings(env_vars: dict[str, str], updated_keys: list[str]) -
         settings.RERANKER_PROVIDER = env_vars["RERANKER_PROVIDER"]
     if "RERANKER_TOP_N" in updated_keys and "RERANKER_TOP_N" in env_vars:
         settings.RERANKER_TOP_N = _parse_int(env_vars["RERANKER_TOP_N"], default=settings.RERANKER_TOP_N)
+    if "SHOW_IMAGE_IN_ANSWER" in updated_keys and "SHOW_IMAGE_IN_ANSWER" in env_vars:
+        settings.SHOW_IMAGE_IN_ANSWER = _parse_bool(env_vars["SHOW_IMAGE_IN_ANSWER"])
+    if "IMAGE_APPEND_MAX" in updated_keys and "IMAGE_APPEND_MAX" in env_vars:
+        settings.IMAGE_APPEND_MAX = _parse_int(
+            env_vars["IMAGE_APPEND_MAX"],
+            default=int(getattr(settings, "IMAGE_APPEND_MAX", 3) or 3),
+        )
 
     # Cache / performance (best-effort).
     if "UPLOAD_DEDUP_ENABLED" in updated_keys and "UPLOAD_DEDUP_ENABLED" in env_vars:
@@ -681,6 +714,12 @@ def _apply_runtime_settings(env_vars: dict[str, str], updated_keys: list[str]) -
         settings.MINERU_API_BASE = env_vars["MINERU_API_BASE"]
     if "MINERU_MODEL_VERSION" in updated_keys and "MINERU_MODEL_VERSION" in env_vars:
         settings.MINERU_MODEL_VERSION = env_vars["MINERU_MODEL_VERSION"]
+    if "MINERU_BACKEND" in updated_keys and "MINERU_BACKEND" in env_vars:
+        settings.MINERU_BACKEND = _normalize_mineru_backend(env_vars["MINERU_BACKEND"])
+    if "MINERU_LOCAL_SERVER_URL" in updated_keys and "MINERU_LOCAL_SERVER_URL" in env_vars:
+        settings.MINERU_LOCAL_SERVER_URL = env_vars["MINERU_LOCAL_SERVER_URL"]
+    if "MINERU_VL_SERVER" in updated_keys and "MINERU_VL_SERVER" in env_vars:
+        settings.MINERU_VL_SERVER = env_vars["MINERU_VL_SERVER"]
 
     # ETL4LLM
     if "ETL4LLM_API_URL" in updated_keys and "ETL4LLM_API_URL" in env_vars:
@@ -944,6 +983,8 @@ async def get_settings(
             enable_reranker=bool(getattr(settings, "ENABLE_RERANKER", False)),
             reranker_provider=str(getattr(settings, "RERANKER_PROVIDER", "llm") or "llm"),
             reranker_top_n=int(getattr(settings, "RERANKER_TOP_N", 20) or 20),
+            show_image_in_answer=bool(getattr(settings, "SHOW_IMAGE_IN_ANSWER", True)),
+            image_append_max=int(getattr(settings, "IMAGE_APPEND_MAX", 3) or 0),
         ),
         cache=CacheConfig(
             upload_dedup_enabled=bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False)),
@@ -969,6 +1010,9 @@ async def get_settings(
             api_token=mask_secret(settings.MINERU_API_TOKEN),
             api_base=settings.MINERU_API_BASE,
             model_version=settings.MINERU_MODEL_VERSION,
+            backend=_normalize_mineru_backend(getattr(settings, "MINERU_BACKEND", "pipeline")),
+            local_server_url=str(getattr(settings, "MINERU_LOCAL_SERVER_URL", "") or ""),
+            vl_server=str(getattr(settings, "MINERU_VL_SERVER", "") or ""),
         ),
         etl4llm=Etl4LlmConfig(
             api_url=getattr(settings, "ETL4LLM_API_URL", "") or "",
@@ -1185,6 +1229,10 @@ async def update_settings(
             env_vars["ENABLE_RERANKER"] = str(bool(getattr(rag, "enable_reranker", False))).lower()
             env_vars["RERANKER_PROVIDER"] = _sanitize_env_value("RERANKER_PROVIDER", rag.reranker_provider)
             env_vars["RERANKER_TOP_N"] = str(int(getattr(rag, "reranker_top_n", 20) or 20))
+            env_vars["SHOW_IMAGE_IN_ANSWER"] = str(bool(getattr(rag, "show_image_in_answer", True))).lower()
+            env_vars["IMAGE_APPEND_MAX"] = str(
+                max(0, min(10, int(getattr(rag, "image_append_max", 3) or 0)))
+            )
             updated_keys.extend(
                 [
                     "CHUNK_SIZE",
@@ -1198,6 +1246,8 @@ async def update_settings(
                     "ENABLE_RERANKER",
                     "RERANKER_PROVIDER",
                     "RERANKER_TOP_N",
+                    "SHOW_IMAGE_IN_ANSWER",
+                    "IMAGE_APPEND_MAX",
                 ]
             )
 
@@ -1263,7 +1313,20 @@ async def update_settings(
                 updated_keys.append("MINERU_API_TOKEN")
             env_vars["MINERU_API_BASE"] = _sanitize_env_value("MINERU_API_BASE", mn.api_base)
             env_vars["MINERU_MODEL_VERSION"] = _sanitize_env_value("MINERU_MODEL_VERSION", mn.model_version)
-            updated_keys.extend(["MINERU_API_BASE", "MINERU_MODEL_VERSION"])
+            env_vars["MINERU_BACKEND"] = _normalize_mineru_backend(mn.backend)
+            env_vars["MINERU_LOCAL_SERVER_URL"] = _sanitize_env_value(
+                "MINERU_LOCAL_SERVER_URL", mn.local_server_url
+            )
+            env_vars["MINERU_VL_SERVER"] = _sanitize_env_value("MINERU_VL_SERVER", mn.vl_server)
+            updated_keys.extend(
+                [
+                    "MINERU_API_BASE",
+                    "MINERU_MODEL_VERSION",
+                    "MINERU_BACKEND",
+                    "MINERU_LOCAL_SERVER_URL",
+                    "MINERU_VL_SERVER",
+                ]
+            )
 
         # Update ETL4LLM config.
         if request.etl4llm:
@@ -1839,22 +1902,24 @@ async def test_llm_connection(
     timeout = float(request.timeout) if request.timeout else 20.0
 
     try:
-        async with httpx.AsyncClient(trust_env=trust_env, timeout=timeout) as http_async_client:
-            llm = ChatOpenAI(
-                model=request.model,
-                api_key=request.api_key,
-                base_url=normalize_openai_compatible_base_url(request.api_base),
-                temperature=float(request.temperature or 0.0),
-                streaming=False,
-                timeout=timeout,
-                max_retries=int(request.max_retries or 1),
-                http_async_client=http_async_client,
-            )
-            resp = await llm.ainvoke([HumanMessage(content="Say 1")])
-            content = (getattr(resp, "content", "") or "").strip()
-            if not content:
-                return {"success": False, "message": "Empty response"}
-            return {"success": True, "message": content[:200]}
+        with httpx.Client(trust_env=trust_env, timeout=timeout) as http_client:
+            async with httpx.AsyncClient(trust_env=trust_env, timeout=timeout) as http_async_client:
+                llm = ChatOpenAI(
+                    model=request.model,
+                    api_key=request.api_key,
+                    base_url=normalize_openai_compatible_base_url(request.api_base),
+                    temperature=float(request.temperature or 0.0),
+                    streaming=False,
+                    timeout=timeout,
+                    max_retries=int(request.max_retries or 1),
+                    http_client=http_client,
+                    http_async_client=http_async_client,
+                )
+                resp = await llm.ainvoke([HumanMessage(content="Say 1")])
+                content = (getattr(resp, "content", "") or "").strip()
+                if not content:
+                    return {"success": False, "message": "Empty response"}
+                return {"success": True, "message": content[:200]}
     except Exception as exc:
         msg = str(exc)
         logger.warning("LLM test failed: %s", msg[:200])

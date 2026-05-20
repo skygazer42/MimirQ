@@ -174,3 +174,70 @@ def test_langgraph_query_decomposition_heuristic_fallback_populates_subq_kinds(
 
     per_query = metrics.get("retrieval_per_query") or []
     assert any((x or {}).get("kind") == "subq" for x in (per_query or []))
+
+
+def test_langgraph_query_decomposition_request_override_disables_global_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.rag.engine as engine_mod
+    import app.rag.pipelines.langgraph as lg_mod
+    import app.rag.retrieval.orchestrator as orch_mod
+    from app.core.config import settings
+
+    engine_mod.reset_rag_engine()
+
+    monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_HYDE", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_QUERY_DECOMPOSITION", True, raising=False)
+    monkeypatch.setattr(settings, "QUERY_DECOMPOSITION_MAX_SUBQUESTIONS", 3, raising=False)
+    monkeypatch.setattr(settings, "QUERY_DECOMPOSITION_MIN_CHARS", 0, raising=False)
+    monkeypatch.setattr(settings, "QUERY_DECOMPOSITION_MAX_CHARS", 400, raising=False)
+
+    from langchain_core.documents import Document
+
+    class _AnyDocRetriever:
+        _last_debug_metrics = {}
+        invoked: list[str] = []
+
+        def model_copy(self, **_kwargs):  # noqa: ANN001, ANN002, ANN003
+            return self
+
+        def invoke(self, q):  # noqa: ANN001
+            self.invoked.append(str(q or ""))
+            return [
+                Document(
+                    page_content="alpha beta gamma",
+                    metadata={"source": "doc.txt", "score": 0.9},
+                    id=str(uuid.uuid4()),
+                )
+            ]
+
+    retriever = _AnyDocRetriever()
+    monkeypatch.setattr(orch_mod, "hybrid_retriever", retriever, raising=True)
+
+    state = lg_mod.build_rag_state(
+        question="Explain rate limits, and list retry headers; also show examples.",
+        history=None,
+        structured_output=False,
+        structured_preset=None,
+        top_k=1,
+        score_threshold=0.0,
+        retrieval_mode="vector",
+        enable_query_decomposition=False,
+        tenant_id=uuid.uuid4(),
+        account_id="u",
+        dataset_id=None,
+        document_ids=None,
+        metadata_filter=None,
+        enable_reranker=False,
+        reranker_provider="none",
+    )
+
+    out = lg_mod._retrieve_node(state)  # type: ignore[arg-type]
+    metrics = out.get("metrics") or {}
+
+    assert metrics.get("decompose_enabled") is False
+    assert metrics.get("decompose_used") is False
+    assert len(retriever.invoked) == 1
+    assert retriever.invoked[0] == "Explain rate limits, and list retry headers; also show examples."

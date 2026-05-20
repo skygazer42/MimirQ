@@ -280,7 +280,7 @@ function SettingsGroupDetailPageContent() {
     <AppFrame>
       <PageScaffold
         title={title}
-        description="编辑组信息，并维护组成员（user_id）。"
+        description="编辑组信息，并维护组成员（user_id）"
         icon={Users}
         iconColor="text-indigo-600 dark:text-indigo-400"
         size="6xl"
@@ -329,11 +329,11 @@ function SettingsGroupDetailPageContent() {
                   placeholder="例如：研发 / 法务 / 财务"
                   disabled={loadingGroup}
                 />
-                <div className="text-xs text-muted-foreground">必填，最长 255 字符；名称在租户（tenant）内唯一。</div>
+                <div className="text-xs text-muted-foreground">必填，最长 255 字符；名称在租户（tenant）内唯一</div>
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="group-external-id">外部组 ID（external_id，可选）</Label>
+                <Label htmlFor="group-external-id">外部组 ID</Label>
                 <Input
                   id="group-external-id"
                   value={externalIdDraft}
@@ -343,7 +343,7 @@ function SettingsGroupDetailPageContent() {
                   disabled={loadingGroup}
                 />
                 <div className="text-xs text-muted-foreground">
-                  用于对齐外部身份提供方（IdP）/跨域身份管理（SCIM）的组标识（group）；留空表示不绑定。
+                  用于对齐外部身份提供方（IdP）/跨域身份管理（SCIM）的组标识（group）；留空表示不绑定
                 </div>
               </div>
 
@@ -398,7 +398,7 @@ function SettingsGroupDetailPageContent() {
                       <DialogHeader>
                         <DialogTitle>添加成员</DialogTitle>
                         <DialogDescription className="text-sm">
-                          输入成员 ID（user_id，每行一个或逗号分隔）。后端会失败关闭（fail-closed）：仅允许添加当前租户（tenant）已存在的成员。
+                          输入成员 ID（user_id，每行一个或逗号分隔）后端会失败关闭（fail-closed）：仅允许添加当前租户（tenant）已存在的成员
                         </DialogDescription>
                       </DialogHeader>
 
@@ -411,7 +411,7 @@ function SettingsGroupDetailPageContent() {
                           placeholder="alice\nbob\ncharlie"
                           className="font-mono text-sm"
                         />
-                        <div className="text-xs text-muted-foreground">最多 200 个；单个成员 ID 最长 255 字符；重复会自动去重。</div>
+                        <div className="text-xs text-muted-foreground">最多 200 个；单个成员 ID 最长 255 字符；重复会自动去重</div>
                       </div>
 
                       <DialogFooter className="mt-4">
@@ -468,7 +468,7 @@ function SettingsGroupDetailPageContent() {
                               <AlertDialogHeader>
                                 <AlertDialogTitle>移除成员？</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                  将把 <span className="font-mono">{uid}</span> 从该组移除。
+                                  将把 <span className="font-mono">{uid}</span> 从该组移除
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
@@ -491,7 +491,7 @@ function SettingsGroupDetailPageContent() {
               </div>
 
               <div className="mt-3 text-xs text-muted-foreground">
-                提示：成员使用租户成员 ID（tenant user_id）；添加时会校验租户成员关系（tenant membership，不存在则报错）。
+                提示：成员使用租户成员 ID（tenant user_id）；添加时会校验租户成员关系（tenant membership，不存在则报错）
               </div>
             </CardContent>
           </Card>

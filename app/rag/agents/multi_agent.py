@@ -403,4 +403,10 @@ def get_multi_agent_runner(*, engine: RAGEngine | None = None) -> MultiAgentRAGR
     return _MULTI_AGENT_RUNNER
 
 
-__all__ = ["MultiAgentPlanStep", "MultiAgentRAGRunner", "get_multi_agent_runner"]
+def reset_multi_agent_runner() -> None:
+    global _MULTI_AGENT_RUNNER
+    with _MULTI_AGENT_LOCK:
+        _MULTI_AGENT_RUNNER = None
+
+
+__all__ = ["MultiAgentPlanStep", "MultiAgentRAGRunner", "get_multi_agent_runner", "reset_multi_agent_runner"]

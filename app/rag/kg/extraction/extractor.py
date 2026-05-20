@@ -356,6 +356,7 @@ class EventExtractor:
             retry_chunk_ids: set[object] = set()
             retry_attempts_total = 0
             llm_called_chunk_ids: set[object] = set()
+            failure_messages: list[str] = []
 
             prompt_selector_expected = {
                 "kg_prompt_template_id": _normalize_prompt_selector_value(chosen_template_id),
@@ -508,6 +509,7 @@ class EventExtractor:
                             retry_attempts_total += int(attempt)
                         failed_chunks += 1
                         failed_chunk_ids.add(chunk.id)
+                        failure_messages.append(str(last_exc)[:300] if last_exc else "unknown_error")
                         logger.warning(
                             "KG extract failed for chunk %s after %s attempts: %s",
                             getattr(chunk, "id", ""),
@@ -953,6 +955,17 @@ class EventExtractor:
                 )
 
             if not events_to_index:
+                if (
+                    failed_chunks > 0
+                    and not processed_events
+                    and llm_called_chunk_ids
+                    and len(failed_chunk_ids) >= len(llm_called_chunk_ids)
+                ):
+                    unique_errors = list(dict.fromkeys(msg for msg in failure_messages if msg))
+                    detail = "; ".join(unique_errors)[:500] if unique_errors else "unknown_error"
+                    raise RuntimeError(
+                        f"KG extraction failed for all attempted chunks ({failed_chunks}); {detail}"
+                    )
                 kept_on_failure: list[KgSourceEvent] = []
                 if replace_existing and failed_chunk_ids:
                     if existing_events_by_chunk:

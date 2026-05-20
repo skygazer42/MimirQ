@@ -1,7 +1,7 @@
 /**
  * 设置 - 租户组
  *
- * 用于列表/创建/删除组（group），服务于基于组的访问控制（ACL）。
+ * 用于列表/创建/删除组（group），服务于基于组的访问控制（ACL）
  */
 'use client'
 
@@ -287,7 +287,7 @@ function SettingsGroupsPageContent() {
     <AppFrame>
       <PageScaffold
         title="组管理"
-        description="管理和组织目录，用于数据库/文档访问控制与企业身份同步（开放ID连接 OIDC / 跨域身份管理 SCIM）。"
+        description="管理组织目录、成员归属和访问范围"
         iconImage="group-management"
         icon={Users}
         iconColor="text-indigo-600 dark:text-indigo-400"
@@ -337,8 +337,7 @@ function SettingsGroupsPageContent() {
                 <DialogHeader>
                   <DialogTitle>新建组</DialogTitle>
                   <DialogDescription className="text-sm">
-                    建议使用稳定命名；如需与外部身份提供方（IdP）对齐，可填写外部组
-                    ID（`external_id`）。
+                    建议使用稳定命名；需要对接企业身份目录时填写外部组 ID
                   </DialogDescription>
                 </DialogHeader>
 
@@ -367,8 +366,7 @@ function SettingsGroupsPageContent() {
                       autoComplete="off"
                     />
                     <div className="text-xs leading-relaxed text-slate-500">
-                      该字段用于开放ID连接组声明（OIDC groups claim）/
-                      跨域身份管理（SCIM）同步；留空不影响访问控制列表（ACL）使用。
+                      用于企业身份同步；留空不影响组权限
                     </div>
                   </div>
                 </div>
@@ -411,7 +409,7 @@ function SettingsGroupsPageContent() {
                   </h2>
                   <p className="mt-1 text-[13px] text-slate-500">
                     管理组目录与外部身份映射，支持按名称、外部组 ID 或组 ID
-                    过滤。
+                    过滤
                   </p>
                 </div>
               </div>
@@ -459,7 +457,7 @@ function SettingsGroupsPageContent() {
                 <span className="text-slate-400">↕</span>
               </div>
               <div className="col-span-3 flex items-center gap-2">
-                外部组 ID（EXTERNAL_ID）
+                外部组 ID
                 <span className="text-slate-400">↕</span>
               </div>
               <div className="col-span-3">组 ID</div>
@@ -525,9 +523,9 @@ function SettingsGroupsPageContent() {
                               <AlertDialogDescription>
                                 将删除组{' '}
                                 <span className="font-mono">{g.name}</span>（
-                                {gid.slice(0, 8)}…）。此操作不可撤销。
+                                {gid.slice(0, 8)}…）此操作不可撤销
                                 <div className="mt-2 text-xs text-muted-foreground">
-                                  注意：若该组被用于数据集/文档允许列表（allowlist），删除前请先移除引用。
+                                  注意：若该组被用于数据集/文档允许列表（allowlist），删除前请先移除引用
                                 </div>
                               </AlertDialogDescription>
                             </AlertDialogHeader>
@@ -564,7 +562,7 @@ function SettingsGroupsPageContent() {
                     暂无组
                   </h3>
                   <p className="mt-2.5 max-w-md text-[13px] leading-6 text-slate-500">
-                    还没有创建任何组，或您没有查看权限。
+                    还没有创建任何组，或您没有查看权限
                   </p>
                   <Button
                     className={cn(PRIMARY_BUTTON, 'mt-5')}

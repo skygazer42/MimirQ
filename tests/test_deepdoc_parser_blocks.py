@@ -23,6 +23,22 @@ class _StructuredPdfParser:
         )
 
 
+class _ProfiledPdfParser(_StructuredPdfParser):
+    def __init__(self) -> None:
+        self.ocr = type(
+            "FakeOcr",
+            (),
+            {
+                "last_recognition_profile": {
+                    "schema": "mimirq.deepdoc_ocr_recognition_profile.v1",
+                    "image_count": 4,
+                    "batch_count": 3,
+                    "bucket_count": 3,
+                }
+            },
+        )()
+
+
 class _TwoColumnPdfParser:
     total_page = 1
 
@@ -197,6 +213,42 @@ def test_deepdoc_parser_exposes_pdf_sections_as_structured_block_graph(tmp_path)
     assert section_elements[2]["source_backend"] == "deepdoc"
     assert section_elements[2]["source_element_id"] == "section:2"
     assert section_elements[3]["pages"] == [1, 2]
+
+
+def test_deepdoc_parser_records_runtime_profile_metadata(tmp_path):
+    parser = DeepDocParser()
+    parser._pdf_parser = _StructuredPdfParser()
+
+    docs = parser.parse(tmp_path / "contract.pdf")
+
+    profiles = [doc.metadata.get("deepdoc_profile") for doc in docs]
+    assert all(isinstance(profile, dict) for profile in profiles)
+
+    profile = profiles[0]
+    assert profile["schema"] == "mimirq.deepdoc_profile.v1"
+    assert profile["engine"] == "deepdoc"
+    assert profile["file_type"] == "pdf"
+    assert profile["total_pages"] == 2
+    assert profile["document_count"] == len(docs)
+    assert profile["section_count"] == 4
+    assert profile["media_count"] == 1
+
+    stages = profile["stages_ms"]
+    assert {"ensure_parser", "parse_core", "postprocess"}.issubset(stages)
+    assert all(isinstance(value, int) and value >= 0 for value in stages.values())
+    assert profiles[1] == profile
+
+
+def test_deepdoc_parser_exposes_ocr_recognition_profile_metadata(tmp_path):
+    parser = DeepDocParser()
+    parser._pdf_parser = _ProfiledPdfParser()
+
+    docs = parser.parse(tmp_path / "contract.pdf")
+
+    profile = docs[0].metadata["deepdoc_profile"]
+    assert profile["ocr_recognition"]["schema"] == "mimirq.deepdoc_ocr_recognition_profile.v1"
+    assert profile["ocr_recognition"]["batch_count"] == 3
+    assert docs[1].metadata["deepdoc_profile"]["ocr_recognition"] == profile["ocr_recognition"]
 
 
 def test_deepdoc_parser_marks_media_docs_with_native_block_metadata(tmp_path):

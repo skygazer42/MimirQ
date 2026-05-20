@@ -26,6 +26,14 @@ class TenantMemberListResponse(BaseModel):
     items: list[TenantMemberOut] = Field(default_factory=list)
 
 
+class TenantMemberDeleteResponse(BaseModel):
+    user_id: str
+    removed: bool = True
+    revoked_group_memberships: int = 0
+    revoked_dataset_permissions: int = 0
+    revoked_document_permissions: int = 0
+
+
 class TenantAccessOut(BaseModel):
     tenant_id: UUID
     account_id: str

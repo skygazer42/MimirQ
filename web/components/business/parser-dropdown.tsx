@@ -181,7 +181,7 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  {loading ? '正在加载后端解析器能力…' : '无法获取后端解析器能力，部分选项可能不可用。'}
+                  {loading ? '正在加载后端解析器能力…' : '无法获取后端解析器能力，部分选项可能不可用'}
                 </div>
                 {error ? (
                   <button

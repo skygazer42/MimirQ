@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { CheckCircle2, Layers, Network, ShieldCheck, Sparkles, ChevronDown, type LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
-import { Switch } from '@/components/ui/switch'
+import { SettingsSwitch } from '@/components/settings/settings-switch'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
@@ -657,6 +657,10 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
   )
   const jsonButtonClass =
     'h-7 rounded-lg border-border/50 bg-background/60 px-2 text-[10.5px] text-foreground/70 shadow-none hover:bg-muted/45 hover:text-foreground'
+  const numberFieldLabelClass =
+    'flex items-center justify-between gap-2 text-[11px] font-medium leading-4 text-muted-foreground'
+  const numberFieldLabelTextClass =
+    'min-w-0 flex-1 truncate text-[11px] font-medium leading-4 text-muted-foreground'
 
   return (
     <div className={pipelinePanelClass}>
@@ -670,7 +674,8 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
               开启后可配置详细的处理流程
             </p>
           </div>
-          <Switch
+          <SettingsSwitch
+            aria-label="切换自定义管线"
             checked={enabled}
             onCheckedChange={(value) => setEnabled(value === true)}
           />
@@ -682,7 +687,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
           <div className="min-w-0">
             <div className={cn("font-semibold tracking-[-0.01em] text-foreground/85", titleClasses)}>索引模式（成本/质量）</div>
             <p className={cn("mt-0.5 text-muted-foreground/80", descClasses)}>
-              {compact ? 'Economical / High-quality presets' : '先预览改动再应用；你仍可继续逐项微调。'}
+              {compact ? 'Economical / High-quality presets' : '先预览改动再应用；你仍可继续逐项微调'}
             </p>
           </div>
           <Select
@@ -810,7 +815,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
               <DialogHeader>
                 <DialogTitle>导入管线 JSON</DialogTitle>
                 <DialogDescription>
-                  粘贴管线 JSON（支持 <span className="font-mono">{'{enabled, options}'}</span> 或仅 <span className="font-mono">options</span>）。
+                  粘贴管线 JSON（支持 <span className="font-mono">{'{enabled, options}'}</span> 或仅 <span className="font-mono">options</span>）
                 </DialogDescription>
               </DialogHeader>
 
@@ -870,12 +875,13 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                           {item.hint}
                         </p>
                       </div>
-                                <Switch
-                                  checked={checked}
-                                  onCheckedChange={(value) => handleChecked(item.key, value)}
-                                  disabled={disabled}
-                                  className="scale-90 origin-right"
-                                />
+                      <SettingsSwitch
+                        aria-label={`切换${item.label}`}
+                        checked={checked}
+                        onCheckedChange={(value) => handleChecked(item.key, value)}
+                        disabled={disabled}
+                        className="shrink-0"
+                      />
                     </div>
                   )
                 })}
@@ -908,11 +914,12 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                                     {item.hint}
                                   </p>
                                 </div>
-                                <Switch
+                                <SettingsSwitch
+                                  aria-label={`切换${item.label}`}
                                   checked={checked}
                                   onCheckedChange={(value) => handleChecked(item.key, value)}
                                   disabled={disabled}
-                                  className="scale-75 origin-right"
+                                  className="shrink-0"
                                 />
                               </div>
                             )
@@ -950,11 +957,12 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                               移除 utm_* / gclid / fbclid 等
                             </p>
                           </div>
-                          <Switch
+                          <SettingsSwitch
+                            aria-label="切换去追踪参数"
                             checked={!!options.governance_normalize_urls_strip_tracking}
                             onCheckedChange={(value) => handleChecked('governance_normalize_urls_strip_tracking', value)}
                             disabled={governanceDisabled}
-                            className="scale-75 origin-right"
+                            className="shrink-0"
                           />
                         </div>
                       )}
@@ -1089,8 +1097,8 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                           const shouldHideDepends = dependsOn ? !options[dependsOn] : false
                           if (shouldHide || shouldHideLowDensity || shouldHideDepends) return null
                           return (
-                            <label key={item.key} className="flex items-center justify-between gap-2">
-                              <span className={cn("text-xs text-muted-foreground truncate flex-1", compact && "text-[11px]")} title={item.hint}>{item.label}</span>
+                            <label key={item.key} className={numberFieldLabelClass}>
+                              <span className={numberFieldLabelTextClass} title={item.hint}>{item.label}</span>
                               <Input
                                 type="number"
                                 value={typeof value === 'number' ? value : ''}
@@ -1126,11 +1134,12 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                                     {item.hint}
                                   </p>
                                 </div>
-                                <Switch
+                                <SettingsSwitch
+                                  aria-label={`切换${item.label}`}
                                   checked={checked}
                                   onCheckedChange={(value) => handleChecked(item.key, value)}
                                   disabled={pipelineDisabled}
-                                  className="scale-75 origin-right"
+                                  className="shrink-0"
                                 />
                               </div>
                             )
@@ -1144,8 +1153,8 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                             const shouldHide = dependsOn ? !options[dependsOn] : false
                             if (shouldHide) return null
                             return (
-                              <label key={item.key} className="flex items-center justify-between gap-2">
-                                <span className={cn("text-xs text-muted-foreground truncate flex-1", compact && "text-[11px]")} title={item.hint}>{item.label}</span>
+                              <label key={item.key} className={numberFieldLabelClass}>
+                                <span className={numberFieldLabelTextClass} title={item.hint}>{item.label}</span>
                                 <Input
                                   type="number"
                                   value={typeof value === 'number' ? value : ''}
@@ -1188,7 +1197,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                             </div>
                           ) : (
                             <div className={cn("text-[11px] text-muted-foreground leading-relaxed", compact && "text-[9px]")}>
-                              仅允许小型 JSON 对象（primitive values），后端会做同样的安全校验；显式参数将覆盖数据集/默认值。
+                              仅允许小型 JSON 对象（primitive values），后端会做同样的安全校验；显式参数将覆盖数据集/默认值
                             </div>
                           )}
                         </div>

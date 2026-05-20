@@ -29,6 +29,8 @@ describe('ParsingSidebarPane density', () => {
     expect(src).toContain("label: '表格'")
     expect(src).toContain("label: '其他'")
     expect(src).toContain('fileItems={sidebarFileItems}')
+    expect(src).toContain("t('sidebar.imageOcrTitle')")
+    expect(src).toContain("t('sidebar.vlmCorrectionTitle')")
     expect(src).not.toContain('libraryFileListContent')
     expect(src).not.toContain('rounded-2xl border border-border/60 bg-card p-2')
   })

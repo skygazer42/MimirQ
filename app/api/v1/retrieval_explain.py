@@ -159,6 +159,7 @@ async def explain_retrieval(
         multi_query_temperature=effective_rag_config.multi_query_temperature,
         multi_query_max_chars=effective_rag_config.multi_query_max_chars,
         enable_hyde=effective_rag_config.enable_hyde,
+        enable_query_decomposition=effective_rag_config.enable_query_decomposition,
         enable_hierarchy_recall=effective_rag_config.enable_hierarchy_recall,
         hierarchy_family_collapse=effective_rag_config.hierarchy_family_collapse,
         hierarchy_family_aggregation=effective_rag_config.hierarchy_family_aggregation,

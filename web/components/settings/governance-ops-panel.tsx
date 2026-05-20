@@ -49,8 +49,8 @@ export function GovernanceOpsPanel() {
             数据集复核运维
           </div>
           <p className="mt-1 text-xs leading-5 text-slate-500">
-            待复核/过期文档是按数据集查询，已自动绑定首个可用数据集，可按需切换。
-            切块预设删除不按数据集筛选，放在高级维护里单独确认。
+            待复核/过期文档是按数据集查询，已自动绑定首个可用数据集，可按需切换
+            切块预设删除不按数据集筛选，放在高级维护里单独确认
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -97,14 +97,14 @@ export function GovernanceOpsPanel() {
       <DangerZonePanel
         className="mt-3"
         title="切块预设删除"
-        impact="不按上方数据集筛选；删除前请确认没有数据集或入库策略继续引用该预设。"
+        impact="不按上方数据集筛选；删除前请确认没有数据集或入库策略继续引用该预设"
         badge="高级维护"
         compact
         tone="neutral"
         icon="help"
       >
         <p className="text-xs leading-5 text-slate-500">
-          这里不跟上方数据集巡检联动；删除前请确认没有数据集或入库策略继续引用该预设。
+          这里不跟上方数据集巡检联动；删除前请确认没有数据集或入库策略继续引用该预设
         </p>
         <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
           <Field label="切块预设 ID">
@@ -112,7 +112,7 @@ export function GovernanceOpsPanel() {
           </Field>
           <ConfirmDialog
             title="删除切块预设？"
-            description={`将删除切块预设 ID=${presetId.trim() || '-'}。如果数据集仍引用该预设，后续策略可能需要重新配置。`}
+            description={`将删除切块预设 ID=${presetId.trim() || '-'}如果数据集仍引用该预设，后续策略可能需要重新配置`}
             confirmLabel="确认删除"
             onConfirm={() => runAction('delete-preset', '删除切块预设', async () => {
               await chunkPresetApi.delete(presetId.trim())
@@ -127,7 +127,7 @@ export function GovernanceOpsPanel() {
         </div>
       </DangerZonePanel>
 
-      <OperationResultPanel className="mt-3" title="治理运维结果" result={result} emptyMessage="选择绑定数据集后查询待复核文档；原始响应默认收起。" />
+      <OperationResultPanel className="mt-3" title="治理运维结果" result={result} emptyMessage="选择绑定数据集后查询待复核文档；原始响应默认收起" />
     </Panel>
   )
 }

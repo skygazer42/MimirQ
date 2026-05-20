@@ -120,3 +120,68 @@ async def test_kg_extract_retries_transient_failures(monkeypatch):
 
     assert out == []
     assert calls["count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_kg_extract_raises_when_all_attempted_chunks_fail(monkeypatch):
+    from app.core import config as config_mod
+
+    monkeypatch.setattr(config_mod.settings, "KG_EXTRACT_CHUNK_MAX_RETRIES", 0, raising=False)
+    monkeypatch.setattr(config_mod.settings, "KG_EXTRACT_MAX_CONCURRENCY", 1, raising=False)
+    monkeypatch.setattr(config_mod.settings, "KG_EXTRACT_SKIP_UNCHANGED_CHUNKS", False, raising=False)
+
+    import app.rag.kg.extraction.extractor as extractor_mod
+    from app.rag.kg.extraction.config import ExtractConfig
+    from app.rag.kg.extraction.processor import EventProcessor
+
+    monkeypatch.setattr(extractor_mod, "SessionLocal", lambda: _Session(), raising=True)
+
+    async def _fake_create_llm_client(*_a, **_k):  # noqa: ANN001, ANN002, ANN003
+        await yield_control()
+        return object()
+
+    monkeypatch.setattr(extractor_mod, "create_llm_client", _fake_create_llm_client, raising=True)
+
+    async def _always_fails(self, sections, batch_index, **_kwargs):  # noqa: ANN001
+        await yield_control()
+        raise RuntimeError("provider down")
+
+    monkeypatch.setattr(EventProcessor, "extract_from_sections", _always_fails, raising=True)
+
+    tenant_id = UUID(int=1)
+    doc_id = UUID(int=2)
+    chunk_id = UUID(int=3)
+    chunk = _Chunk(tenant_id=tenant_id, document_id=doc_id, chunk_id=chunk_id, content="hello world")
+
+    cfg = ExtractConfig(chunk_ids=[chunk_id], tenant_id=tenant_id, replace_existing=False, prune_orphan_entities=False)
+    extractor = extractor_mod.EventExtractor()
+
+    with pytest.raises(RuntimeError, match="failed for all attempted chunks"):
+        await extractor.extract(cfg, chunks=[chunk])
+
+
+@pytest.mark.asyncio
+async def test_heuristic_kg_extractor_builds_entity_event_from_real_text():
+    from app.rag.kg.extraction.heuristic_extractor import HeuristicExtractor
+
+    tenant_id = UUID(int=1)
+    doc_id = UUID(int=2)
+    chunk_id = UUID(int=3)
+    chunk = _Chunk(
+        tenant_id=tenant_id,
+        document_id=doc_id,
+        chunk_id=chunk_id,
+        content=(
+            "# QUIC and HTTP/3 operations\n"
+            "RFC 9000 defines QUIC, a UDP-based multiplexed and secure transport. "
+            "FastAPI and HTTPX are used in the MimirQ readiness workflow."
+        ),
+    )
+
+    events = await HeuristicExtractor().extract_from_sections([chunk], 1, max_events=2, max_entities_per_event=8)
+
+    assert events
+    names = {entity["normalized_name"] for entity in events[0]["entities"]}
+    assert "quic" in names
+    assert "rfc 9000" in names
+    assert "fastapi" in names

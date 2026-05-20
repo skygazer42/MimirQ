@@ -47,6 +47,8 @@ def test_settings_get_includes_url_ingest_and_governance(monkeypatch):  # noqa: 
     monkeypatch.setattr(settings, "ENABLE_RERANKER", True, raising=False)
     monkeypatch.setattr(settings, "RERANKER_PROVIDER", "cross_encoder", raising=False)
     monkeypatch.setattr(settings, "RERANKER_TOP_N", 24, raising=False)
+    monkeypatch.setattr(settings, "SHOW_IMAGE_IN_ANSWER", False, raising=False)
+    monkeypatch.setattr(settings, "IMAGE_APPEND_MAX", 2, raising=False)
 
     monkeypatch.setattr(settings, "URL_INGEST_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "URL_INGEST_MAX_BYTES", 1234, raising=False)
@@ -75,6 +77,12 @@ def test_settings_get_includes_url_ingest_and_governance(monkeypatch):  # noqa: 
         raising=False,
     )
     monkeypatch.setattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 25, raising=False)
+    monkeypatch.setattr(settings, "MINERU_API_TOKEN", "mineru-online-token", raising=False)
+    monkeypatch.setattr(settings, "MINERU_API_BASE", "https://mineru.example/api/v4", raising=False)
+    monkeypatch.setattr(settings, "MINERU_MODEL_VERSION", "vlm", raising=False)
+    monkeypatch.setattr(settings, "MINERU_BACKEND", "vlm-http-client", raising=False)
+    monkeypatch.setattr(settings, "MINERU_LOCAL_SERVER_URL", "http://mineru.local:30001", raising=False)
+    monkeypatch.setattr(settings, "MINERU_VL_SERVER", "http://mineru-vl.local:30002", raising=False)
 
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_get_db
@@ -92,6 +100,8 @@ def test_settings_get_includes_url_ingest_and_governance(monkeypatch):  # noqa: 
     assert (body.get("rag") or {}).get("enable_reranker") is True
     assert (body.get("rag") or {}).get("reranker_provider") == "cross_encoder"
     assert (body.get("rag") or {}).get("reranker_top_n") == 24
+    assert (body.get("rag") or {}).get("show_image_in_answer") is False
+    assert (body.get("rag") or {}).get("image_append_max") == 2
 
     url_ingest = body.get("url_ingest") or {}
     assert url_ingest.get("enabled") is True
@@ -121,6 +131,14 @@ def test_settings_get_includes_url_ingest_and_governance(monkeypatch):  # noqa: 
     assert dify.get("knowledge_map_json") == '{"sales-all":["11111111-1111-1111-1111-111111111111"]}'
     assert dify.get("top_k_max") == 25
     assert dify.get("endpoint_path") == "/api/v1/integrations/dify/retrieval"
+
+    mineru = body.get("mineru") or {}
+    assert mineru.get("api_token") == "mine***oken"
+    assert mineru.get("api_base") == "https://mineru.example/api/v4"
+    assert mineru.get("model_version") == "vlm"
+    assert mineru.get("backend") == "vlm-http-client"
+    assert mineru.get("local_server_url") == "http://mineru.local:30001"
+    assert mineru.get("vl_server") == "http://mineru-vl.local:30002"
 
 
 def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN001
@@ -154,6 +172,8 @@ def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN
             "enable_reranker": True,
             "reranker_provider": "cross_encoder",
             "reranker_top_n": 24,
+            "show_image_in_answer": True,
+            "image_append_max": 4,
         },
         "url_ingest": {
             "enabled": True,
@@ -186,6 +206,14 @@ def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN
             "top_k_max": 33,
             "endpoint_path": "/api/v1/integrations/dify/retrieval",
         },
+        "mineru": {
+            "api_token": "mineru-write-token",
+            "api_base": "https://mineru.example/api/v4",
+            "model_version": "vlm",
+            "backend": "vlm-http-client",
+            "local_server_url": "http://mineru.local:30001",
+            "vl_server": "http://mineru-vl.local:30002",
+        },
     }
     res = client.put("/api/v1/settings", json=payload)
     assert res.status_code == 200, res.text
@@ -199,6 +227,8 @@ def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN
     assert "ENABLE_RERANKER" in updated
     assert "RERANKER_PROVIDER" in updated
     assert "RERANKER_TOP_N" in updated
+    assert "SHOW_IMAGE_IN_ANSWER" in updated
+    assert "IMAGE_APPEND_MAX" in updated
     assert "URL_INGEST_ENABLED" in updated
     assert "GOVERNANCE_ENABLED" in updated
     assert "PADDLE_VL_API_URL" in updated
@@ -212,6 +242,12 @@ def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN
     assert "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID" in updated
     assert "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON" in updated
     assert "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX" in updated
+    assert "MINERU_API_TOKEN" in updated
+    assert "MINERU_API_BASE" in updated
+    assert "MINERU_MODEL_VERSION" in updated
+    assert "MINERU_BACKEND" in updated
+    assert "MINERU_LOCAL_SERVER_URL" in updated
+    assert "MINERU_VL_SERVER" in updated
 
     # Verify env file is written.
     env_text = (tmp_path / "test.env").read_text(encoding="utf-8")
@@ -220,6 +256,8 @@ def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN
     assert "ENABLE_RERANKER=true" in env_text
     assert "RERANKER_PROVIDER=cross_encoder" in env_text
     assert "RERANKER_TOP_N=24" in env_text
+    assert "SHOW_IMAGE_IN_ANSWER=true" in env_text
+    assert "IMAGE_APPEND_MAX=4" in env_text
     assert "URL_INGEST_ENABLED=true" in env_text
     assert "URL_INGEST_MAX_BYTES=1000" in env_text
     assert "URL_INGEST_TIMEOUT_SEC=7.5" in env_text
@@ -238,6 +276,12 @@ def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN
     assert "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID=system:dify" in env_text
     assert 'DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON={"sales-all":["11111111-1111-1111-1111-111111111111"]}' in env_text
     assert "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX=33" in env_text
+    assert "MINERU_API_TOKEN=mineru-write-token" in env_text
+    assert "MINERU_API_BASE=https://mineru.example/api/v4" in env_text
+    assert "MINERU_MODEL_VERSION=vlm" in env_text
+    assert "MINERU_BACKEND=vlm-http-client" in env_text
+    assert "MINERU_LOCAL_SERVER_URL=http://mineru.local:30001" in env_text
+    assert "MINERU_VL_SERVER=http://mineru-vl.local:30002" in env_text
 
     # Verify runtime apply updated in-memory settings (best-effort).
     assert int(settings.CHUNK_MIN_CHARS) == 67
@@ -245,6 +289,8 @@ def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN
     assert bool(settings.ENABLE_RERANKER) is True
     assert str(settings.RERANKER_PROVIDER) == "cross_encoder"
     assert int(settings.RERANKER_TOP_N) == 24
+    assert bool(settings.SHOW_IMAGE_IN_ANSWER) is True
+    assert int(settings.IMAGE_APPEND_MAX) == 4
     assert bool(settings.URL_INGEST_ENABLED) is True
     assert int(settings.URL_INGEST_MAX_BYTES) == 1000
     assert abs(float(settings.URL_INGEST_TIMEOUT_SEC) - 7.5) < 1e-6
@@ -263,6 +309,12 @@ def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN
     assert str(settings.DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID) == "system:dify"
     assert str(settings.DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON) == '{"sales-all":["11111111-1111-1111-1111-111111111111"]}'
     assert int(settings.DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX) == 33
+    assert str(settings.MINERU_API_TOKEN) == "mineru-write-token"
+    assert str(settings.MINERU_API_BASE) == "https://mineru.example/api/v4"
+    assert str(settings.MINERU_MODEL_VERSION) == "vlm"
+    assert str(settings.MINERU_BACKEND) == "vlm-http-client"
+    assert str(settings.MINERU_LOCAL_SERVER_URL) == "http://mineru.local:30001"
+    assert str(settings.MINERU_VL_SERVER) == "http://mineru-vl.local:30002"
 
 
 def test_settings_status_probes_paddlevl_health(monkeypatch):  # noqa: ANN001

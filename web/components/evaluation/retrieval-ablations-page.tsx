@@ -1451,12 +1451,12 @@ export function RetrievalAblationsPage() {
                   </AblationSection>
                 </div>
 
-                <div className="shrink-0 border-t border-sky-100/90 bg-primary/[0.06] px-5 py-3.5 shadow-none">
+                <div className="shrink-0 border-t border-sky-100/90 bg-sky-50/55 px-5 py-3.5 shadow-none">
                   <div className="text-[11px] tracking-[0.08em] text-muted-foreground">
                     运行入口
                   </div>
                   <Button
-                    className="mt-2 h-10 w-full gap-2 rounded-lg bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--info)))] text-primary-foreground shadow-[0_8px_24px_hsl(var(--primary)/0.24)] hover:opacity-90"
+                    className="mt-2 h-10 w-full gap-2 rounded-lg border border-sky-200 bg-sky-50 text-sky-700 shadow-[0_8px_18px_rgba(14,116,144,0.10)] transition-colors hover:border-sky-300 hover:bg-sky-100 hover:text-sky-800"
                     onClick={() => detachPromise(runAblation())}
                   >
                     <PlayCircle className="h-4 w-4" />

@@ -1,5 +1,7 @@
 'use client'
 
+import { SettingsSwitchIndicator } from '@/components/settings/settings-switch'
+import { systemPageTokens } from '@/components/ui/system-page-tokens'
 import { cn } from '@/lib/utils'
 import type { FeatureFlags } from '@/lib/api'
 import {
@@ -15,7 +17,6 @@ import {
   Zap,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { systemPageTokens } from '@/components/ui/system-page-tokens'
 
 type FeatureFlagDescriptor = {
   key: keyof FeatureFlags
@@ -108,11 +109,11 @@ const FEATURE_FLAGS_CONFIG: FeatureFlagDescriptor[] = [
   },
   {
     key: 'mineru_enabled',
-    name: 'MinerU 在线接口（API）',
-    description: '使用 MinerU 在线接口（API）进行文档解析',
+    name: 'MinerU 解析',
+    description: '启用 MinerU 本地服务或在线 API 进行复杂 PDF 解析',
     icon: CloudCog,
     color: 'cyan',
-    dependencies: ['MinerU API 令牌（API Token）'],
+    dependencies: ['本地 MinerU 服务地址或 API 令牌'],
   },
   {
     key: 'magicpdf_enabled',
@@ -184,7 +185,7 @@ export function FeatureFlagsSection({
             功能开关
           </h2>
           <p className="mt-0.5 text-[11.5px] font-medium leading-[18px] text-slate-600">
-            按需启用各项能力模块，保存后会影响后续请求；外部解析器仍需对应服务已启动。
+            按需启用各项能力模块，保存后会影响后续请求；外部解析器仍需对应服务已启动
           </p>
         </div>
         <div className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50/70 px-2.5 py-1 text-[11px] font-medium text-blue-600">
@@ -262,24 +263,7 @@ export function FeatureFlagsSection({
                     ) : null}
                   </div>
                 </div>
-                <div
-                  className={cn(
-                    'mt-0.5 flex h-6 w-11 shrink-0 items-center rounded-full border p-0.5 transition-[background-color,border-color,box-shadow]',
-                    isEnabled
-                      ? 'border-blue-500 bg-blue-600 shadow-[0_8px_18px_rgba(37,99,235,0.18)]'
-                      : 'border-slate-300 bg-white shadow-inner'
-                  )}
-                  aria-hidden="true"
-                >
-                  <span
-                    className={cn(
-                      'size-4 rounded-full shadow-sm transition-[transform,background-color]',
-                      isEnabled
-                        ? 'translate-x-5 bg-white'
-                        : 'translate-x-0 bg-slate-400'
-                    )}
-                  />
-                </div>
+                <SettingsSwitchIndicator checked={isEnabled} className="mt-0.5" />
               </div>
             </button>
           )

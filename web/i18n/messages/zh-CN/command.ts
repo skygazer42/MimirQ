@@ -191,11 +191,6 @@ CommandMenu: {
           description: '进入数据治理工作台，处理画像、规则与质量治理任务。',
           keywords: ['governance', 'data governance', 'policy', 'compliance', '数据治理', '治理', '规则', '合规', '画像'],
         },
-        accessReview: {
-          label: '打开访问审查',
-          description: '进入访问审查工作台，快速检查权限分配和高风险访问。',
-          keywords: ['access review', 'rbac', 'permission', 'admin', 'access', '访问审查', '权限', '角色', '管理员'],
-        },
       },
     },
     viewerShortcuts: {
@@ -255,11 +250,6 @@ CommandMenu: {
         label: '数据治理',
         description: '处理治理规则、画像与合规策略。',
         keywords: ['governance', 'policy', 'compliance', '数据治理', '治理', '规则', '合规', '画像'],
-      },
-      accessReview: {
-        label: '访问审查',
-        description: '复核权限分配与高风险访问行为。',
-        keywords: ['access review', 'rbac', 'permission', 'admin', '访问审查', '权限', '角色'],
       },
     },
     navigation: {

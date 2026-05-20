@@ -1,3 +1,5 @@
+import type { ChunkStrategyInfo } from '@/types'
+
 export interface ChunkStrategyOption {
   value: string
   label: string
@@ -666,3 +668,169 @@ export const INGESTION_FALLBACK_CHUNK_STRATEGY_VALUES = [
   'langchain_recursive',
   ...getStrategiesByGroup('integrated').map((option) => option.value),
 ]
+
+export type ChunkStrategyRecommendation =
+  | 'mainstream'
+  | 'specialized'
+  | 'experimental'
+  | 'optional'
+  | 'integrated'
+
+export interface ChunkStrategyCatalogItem extends ChunkStrategyOption {
+  available?: boolean
+  notes?: string | null
+  recommendation: ChunkStrategyRecommendation
+  recommendationLabel: string
+}
+
+const MAINSTREAM_STRATEGIES = new Set([
+  'auto',
+  'langchain_recursive',
+  'semantic_sentence',
+  'parent_child',
+  'markdown',
+  'markdown_header',
+  'markdown_hierarchy',
+  'text_hierarchy',
+  'markdown_table',
+  'csv_rows',
+  'spreadsheet_sheet',
+  'smart_code',
+  'json',
+  'html_sections',
+  'qa_pairs',
+  'api_reference',
+  'openapi_spec',
+  'sql_schema',
+  'jira_ticket',
+  'laws_structured',
+  'paper',
+])
+
+const EXPERIMENTAL_STRATEGIES = new Set([
+  'agentic_chunker',
+  'late_chunking',
+  'late_chunking_jina',
+  'proposition',
+  'raptor',
+])
+
+const OPTIONAL_STRATEGIES = new Set(['llama_index', 'llama_index_hierarchical'])
+
+const INTEGRATED_STRATEGIES = new Set(
+  CHUNK_STRATEGY_OPTIONS.filter((option) => option.group === 'integrated').map((option) => option.value)
+)
+
+const NOTE_PREFIX_TO_RECOMMENDATION: Array<{
+  prefix: string
+  recommendation: ChunkStrategyRecommendation
+}> = [
+  { prefix: '[Mainstream RAG recommended]', recommendation: 'mainstream' },
+  { prefix: '[Specialized document strategy]', recommendation: 'specialized' },
+  { prefix: '[Experimental or corpus-specific]', recommendation: 'experimental' },
+  { prefix: '[Optional dependency]', recommendation: 'optional' },
+  { prefix: '[Integrated parse+chunk preset]', recommendation: 'integrated' },
+]
+
+const RECOMMENDATION_LABELS: Record<ChunkStrategyRecommendation, string> = {
+  mainstream: '主流推荐',
+  specialized: '专项适配',
+  experimental: '实验性',
+  optional: '按需启用',
+  integrated: '集成预设',
+}
+
+const RECOMMENDATION_ORDER: Record<ChunkStrategyRecommendation, number> = {
+  mainstream: 0,
+  specialized: 1,
+  experimental: 2,
+  optional: 3,
+  integrated: 4,
+}
+
+function humanizeChunkStrategyValue(value: string) {
+  return value
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function stripRecommendationPrefix(notes?: string | null) {
+  const source = String(notes || '').trim()
+  if (!source) return ''
+  for (const item of NOTE_PREFIX_TO_RECOMMENDATION) {
+    if (source.startsWith(item.prefix)) {
+      return source.slice(item.prefix.length).trim()
+    }
+  }
+  return source
+}
+
+export function getChunkStrategyRecommendation(
+  value: string,
+  notes?: string | null
+): ChunkStrategyRecommendation {
+  const normalized = String(value || '').trim().toLowerCase()
+  const source = String(notes || '').trim()
+  for (const item of NOTE_PREFIX_TO_RECOMMENDATION) {
+    if (source.startsWith(item.prefix)) {
+      return item.recommendation
+    }
+  }
+  if (INTEGRATED_STRATEGIES.has(normalized)) return 'integrated'
+  if (OPTIONAL_STRATEGIES.has(normalized)) return 'optional'
+  if (EXPERIMENTAL_STRATEGIES.has(normalized)) return 'experimental'
+  if (MAINSTREAM_STRATEGIES.has(normalized)) return 'mainstream'
+  return 'specialized'
+}
+
+export function getChunkStrategyRecommendationLabel(recommendation: ChunkStrategyRecommendation) {
+  return RECOMMENDATION_LABELS[recommendation]
+}
+
+export function buildChunkStrategyCatalog(
+  capabilities?: ChunkStrategyInfo[] | null
+): ChunkStrategyCatalogItem[] {
+  const baseMap = new Map(CHUNK_STRATEGY_OPTIONS.map((option) => [option.value, option]))
+  const capabilityMap = new Map(
+    (capabilities || [])
+      .map((item) => ({
+        ...item,
+        name: String(item.name || '').trim().toLowerCase(),
+      }))
+      .filter((item) => item.name)
+      .map((item) => [item.name, item] as const)
+  )
+
+  const names = new Set<string>([
+    ...Array.from(baseMap.keys()),
+    ...Array.from(capabilityMap.keys()),
+  ])
+
+  return Array.from(names)
+    .map((name) => {
+      const base = baseMap.get(name)
+      const capability = capabilityMap.get(name)
+      const recommendation = getChunkStrategyRecommendation(name, capability?.notes)
+      const strippedNotes = stripRecommendationPrefix(capability?.notes)
+      return {
+        value: name,
+        label: base?.label || humanizeChunkStrategyValue(name),
+        description: base?.description || strippedNotes || `${humanizeChunkStrategyValue(name)} 切块策略`,
+        icon: base?.icon || (recommendation === 'integrated' ? 'integrated' : 'recursive'),
+        badge: base?.badge,
+        group: base?.group,
+        disabled: base?.disabled,
+        available: capability?.available,
+        notes: capability?.notes,
+        recommendation,
+        recommendationLabel: getChunkStrategyRecommendationLabel(recommendation),
+      } satisfies ChunkStrategyCatalogItem
+    })
+    .sort((a, b) => {
+      const rec = RECOMMENDATION_ORDER[a.recommendation] - RECOMMENDATION_ORDER[b.recommendation]
+      if (rec !== 0) return rec
+      return a.label.localeCompare(b.label, 'zh-CN')
+    })
+}

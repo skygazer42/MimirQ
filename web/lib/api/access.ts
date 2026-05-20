@@ -26,6 +26,14 @@ export interface TenantMemberListResponse {
   items: TenantMember[]
 }
 
+export interface TenantMemberDeleteResponse {
+  user_id: string
+  removed: boolean
+  revoked_group_memberships: number
+  revoked_dataset_permissions: number
+  revoked_document_permissions: number
+}
+
 export const rbacApi = {
   async getCurrentTenantAccess(): Promise<TenantAccess> {
     const { data } = await apiClient.get('/rbac/me')
@@ -39,6 +47,11 @@ export const rbacApi = {
 
   async patchTenantMemberRole(userId: string, payload: { role: string }): Promise<TenantMember> {
     const { data } = await apiClient.patch(`/rbac/members/${encodeURIComponent(userId)}`, payload)
+    return data
+  },
+
+  async removeTenantMember(userId: string): Promise<TenantMemberDeleteResponse> {
+    const { data } = await apiClient.delete(`/rbac/members/${encodeURIComponent(userId)}`)
     return data
   },
 }

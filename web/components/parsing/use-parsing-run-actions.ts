@@ -34,6 +34,7 @@ type UseParsingRunActionsOptions = {
   fileIdSetRef: MutableRef<Set<string>>
   filesRef: MutableRef<ParsedFile[]>
   imageCaptionEnabled: boolean
+  imageOcrEnabled: boolean
   mapBackendStatusToLibraryStatus: (status?: string) => FileStatus
   parseControllersRef: MutableRef<Map<string, AbortController>>
   parseProgressIntervalsRef: MutableRef<Map<string, ReturnType<typeof setInterval>>>
@@ -46,6 +47,7 @@ type UseParsingRunActionsOptions = {
   updateParsedFile: (id: string, updates: Partial<Omit<ParsedFileData, 'id'>>) => Promise<void>
   upsertParsedFile: (file: ParsedFileData) => void
   visibleQueueFiles: ParsedFile[]
+  vlmCorrectionEnabled: boolean
 }
 
 function getMarkdownStats(markdownContent: string, apiStats: Record<string, unknown> | undefined, blockCount: number) {
@@ -75,6 +77,7 @@ export function useParsingRunActions({
   fileIdSetRef,
   filesRef,
   imageCaptionEnabled,
+  imageOcrEnabled,
   mapBackendStatusToLibraryStatus,
   parseControllersRef,
   parseProgressIntervalsRef,
@@ -87,6 +90,7 @@ export function useParsingRunActions({
   updateParsedFile,
   upsertParsedFile,
   visibleQueueFiles,
+  vlmCorrectionEnabled,
 }: Readonly<UseParsingRunActionsOptions>) {
   const t = useTranslations('ParsingWorkbench')
 
@@ -191,6 +195,8 @@ export function useParsingRunActions({
         const data = await parsingApi.parse(libraryId, {
           parser_backend: requestedBackend,
           image_caption_enabled: imageCaptionEnabled,
+          image_ocr_enabled: imageOcrEnabled,
+          vlm_correction_enabled: vlmCorrectionEnabled,
           signal: controller.signal,
         })
 
@@ -315,6 +321,7 @@ export function useParsingRunActions({
       fileIdSetRef,
       filesRef,
       imageCaptionEnabled,
+      imageOcrEnabled,
       mapBackendStatusToLibraryStatus,
       parseControllersRef,
       parseProgressIntervalsRef,
@@ -326,6 +333,7 @@ export function useParsingRunActions({
       t,
       updateParsedFile,
       upsertParsedFile,
+      vlmCorrectionEnabled,
     ]
   )
 

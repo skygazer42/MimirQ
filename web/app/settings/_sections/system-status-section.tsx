@@ -2,7 +2,7 @@
 
 import type { BackendMeta, SystemStatus } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { CheckCircle2, XCircle } from 'lucide-react'
+import { CheckCircle2, Server, XCircle } from 'lucide-react'
 import { systemPageTokens } from '@/components/ui/system-page-tokens'
 
 type SystemStatusSectionProps = {
@@ -44,10 +44,33 @@ function StatusCard({
   )
 }
 
+function formatParserName(key: string): string {
+  const labels: Record<string, string> = {
+    basic: '基础解析',
+    markitdown: 'MarkItDown',
+    pandoc: 'Pandoc',
+    libreoffice: 'LibreOffice',
+    deepdoc: 'DeepDoc',
+    deepseek_ocr: 'DeepSeek OCR',
+    qianfan_ocr: '千帆 OCR',
+    etl4llm: 'ETL4LLM',
+    marker: 'Marker',
+    paddle_vl: 'PaddleOCR-VL',
+    textin: 'TextIn',
+    olmocr: 'OLMOCR',
+    docling: 'Docling',
+    mineru: 'MinerU',
+    magicpdf: 'MagicPDF',
+  }
+  return labels[key] || key
+}
+
 export function SystemStatusSection({
   status,
   backendMeta,
 }: Readonly<SystemStatusSectionProps>) {
+  const parserEntries = Object.entries(status.parsers || {})
+
   return (
     <section className="space-y-3">
       <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
@@ -73,50 +96,51 @@ export function SystemStatusSection({
         />
       </div>
 
-      {backendMeta ? (
-        <div className="rounded-lg border border-border/70 bg-card p-4 shadow-none">
-          <div className={cn('mb-2', systemPageTokens.microLabel, 'text-foreground/80')}>后端信息</div>
-          <div className="space-y-1.5 text-[11px] font-medium text-slate-700">
-            <div>
-              API: {backendMeta.name} ({backendMeta.api_version})
-              {backendMeta.build?.sha ? ` @ ${backendMeta.build.sha.slice(0, 7)}` : ''}
+      {backendMeta || parserEntries.length ? (
+        <div className="rounded-lg border border-border/70 bg-card p-3.5 shadow-none">
+          <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className={cn(systemPageTokens.microLabel, 'flex items-center gap-1.5 text-foreground/80')}>
+                <Server className="h-3.5 w-3.5 text-blue-500" />
+                运行能力
+              </div>
+              <div className="mt-1 text-[11px] font-medium leading-5 text-slate-600">
+                API、运行环境与解析器可用性汇总
+              </div>
             </div>
-            {backendMeta.features ? (
-              <div className="flex flex-wrap gap-2">
-                <span className="rounded-full border border-border bg-muted px-2 py-0.5 font-mono">
-                  鉴权模式（auth_mode）={backendMeta.features.auth_mode || '-'}
-                </span>
-                <span className="rounded-full border border-border bg-muted px-2 py-0.5 font-mono">
-                  向量后端（vector_backend）={backendMeta.features.vector_backend || '-'}
-                </span>
-                {typeof backendMeta.features.task_queue_enabled === 'boolean' ? (
-                  <span className="rounded-full border border-border bg-muted px-2 py-0.5 font-mono">
-                    任务队列（task_queue_enabled）={backendMeta.features.task_queue_enabled ? '开' : '关'}
-                  </span>
-                ) : null}
+            {backendMeta ? (
+              <div className="text-right text-[11px] font-medium leading-5 text-slate-600">
+                <div className="text-slate-900">
+                  {backendMeta.name} · {backendMeta.api_version}
+                  {backendMeta.build?.sha ? ` · ${backendMeta.build.sha.slice(0, 7)}` : ''}
+                </div>
+                {backendMeta.runtime?.python ? <div>Python {backendMeta.runtime.python}</div> : null}
               </div>
             ) : null}
-            {backendMeta.runtime?.python ? <div>运行时: Python {backendMeta.runtime.python}</div> : null}
           </div>
-        </div>
-      ) : null}
 
-      {status.parsers ? (
-        <div className="rounded-lg border border-border/70 bg-card p-4 shadow-none">
-          <div className={cn('mb-2', systemPageTokens.microLabel, 'text-foreground/80')}>解析器状态</div>
-          <div className="flex flex-wrap gap-2">
-            {Object.entries(status.parsers).map(([key, info]) => (
+          <div className="flex flex-wrap gap-1.5 border-t border-slate-100 pt-3">
+            {parserEntries.map(([key, info]) => (
               <span
                 key={key}
-                title={info.message}
+                title={info.message || formatParserName(key)}
                 className={cn(
-                  'rounded-full border px-2 py-0.5 text-[11px] font-mono',
+                  'inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold',
                   info.available
-                    ? 'border-success/20 bg-success/10 text-success'
-                    : 'border-border bg-muted text-slate-600'
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                    : 'border-slate-200 bg-slate-50 text-slate-500'
                 )}
               >
-                {key} {info.available ? '可用' : '不可用'}
+                <span
+                  className={cn(
+                    'size-1.5 rounded-full',
+                    info.available ? 'bg-emerald-500' : 'bg-slate-300'
+                  )}
+                />
+                {formatParserName(key)}
+                <span className="font-medium opacity-75">
+                  {info.available ? '可用' : '未启用'}
+                </span>
               </span>
             ))}
           </div>

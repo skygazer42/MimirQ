@@ -69,7 +69,9 @@ class MinerUParser(BaseAdvancedParser):
             filepath=str(file_path),
             binary=binary,
             callback=callback,
-            backend=os.environ.get("MINERU_BACKEND", "pipeline"),
+            backend=os.environ.get("MINERU_BACKEND")
+            or getattr(settings, "MINERU_BACKEND", "pipeline")
+            or "pipeline",
             server_url=self._server_url,
             delete_output=True,
             **kwargs

@@ -661,12 +661,32 @@ class MilvusVectorStore:
         self._embedding_provider = (settings.EMBEDDING_PROVIDER or "local").lower()
         self._embedding_model = None
         self._store = None
+        self._embedding_space_hash = ""
+
+    @staticmethod
+    def _current_embedding_space_hash() -> str:
+        try:
+            from app.rag.embedding.utils import current_embedding_space_hash
+
+            return str(current_embedding_space_hash() or "").strip()
+        except Exception:
+            return ""
 
     def _init_embedding_model(self):
         """Initialize embedding model."""
         return _init_embedding_model()
 
     def _ensure_store(self):
+        current_space = self._current_embedding_space_hash()
+        if self._store is not None and self._embedding_space_hash and current_space != self._embedding_space_hash:
+            logger.info(
+                "Embedding space changed; rebuilding Milvus vector store adapter (%s -> %s)",
+                self._embedding_space_hash,
+                current_space,
+            )
+            self._store = None
+            self._embedding_model = None
+
         if self._store is not None:
             return
 
@@ -686,6 +706,7 @@ class MilvusVectorStore:
             text_field="content",
             vector_field="embedding",
         )
+        self._embedding_space_hash = current_space
 
     def _build_expr(
         self,

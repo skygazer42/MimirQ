@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import numpy as np
+
 
 def test_deepdoc_load_model_uses_cpu_when_onnxruntime_has_no_cuda_provider(
     tmp_path: Path,
@@ -231,3 +233,45 @@ def test_deepdoc_load_model_falls_back_to_cpu_when_cuda_session_fails(
 
     assert providers_seen == [["CUDAExecutionProvider", "CPUExecutionProvider"], ["CPUExecutionProvider"]]
     assert run_options.entries["memory.enable_memory_arena_shrinkage"] == "cpu"
+
+
+def test_deepdoc_text_recognizer_batches_by_width_bucket(monkeypatch) -> None:
+    from app.deepdoc.vision import ocr
+
+    monkeypatch.setenv("DEEPDOC_OCR_REC_BATCH_SIZE", "8")
+    monkeypatch.setenv("DEEPDOC_OCR_REC_WIDTH_BUCKET_RATIO", "1.0")
+
+    recognizer = object.__new__(ocr.TextRecognizer)
+    recognizer.rec_image_shape = [3, 48, 320]
+    recognizer.rec_batch_num = 16
+    recognizer.input_tensor = SimpleNamespace(name="image", shape=[None, 3, 48, "dynamic"])
+    recognizer.run_options = None
+    run_batch_sizes: list[int] = []
+
+    class FakePredictor:
+        def run(self, _names, input_dict, _run_options=None):  # noqa: ANN001, ANN202
+            batch = input_dict["image"]
+            run_batch_sizes.append(int(batch.shape[0]))
+            return [np.zeros((batch.shape[0], 1), dtype=np.float32)]
+
+    recognizer.predictor = FakePredictor()
+    recognizer.postprocess_op = lambda preds: [(f"text-{idx}", 0.99) for idx in range(int(preds.shape[0]))]
+
+    images = [
+        np.zeros((48, 320, 3), dtype=np.uint8),
+        np.zeros((48, 700, 3), dtype=np.uint8),
+        np.zeros((48, 710, 3), dtype=np.uint8),
+        np.zeros((48, 1300, 3), dtype=np.uint8),
+    ]
+
+    results, elapsed = recognizer(images)
+
+    assert len(results) == 4
+    assert elapsed >= 0
+    assert run_batch_sizes == [1, 2, 1]
+    assert recognizer.last_profile["schema"] == "mimirq.deepdoc_ocr_recognition_profile.v1"
+    assert recognizer.last_profile["image_count"] == 4
+    assert recognizer.last_profile["batch_size"] == 8
+    assert recognizer.last_profile["bucket_count"] == 3
+    assert recognizer.last_profile["batch_count"] == 3
+    assert all(isinstance(batch["elapsed_ms"], int) for batch in recognizer.last_profile["batches"])

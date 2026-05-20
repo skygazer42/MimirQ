@@ -202,7 +202,6 @@ Navbar: {
       diagnostics: '诊断',
       usage: '用量/配额',
       audit: '审计日志',
-      accessReview: '访问审查',
       members: '成员权限',
       groups: '组管理',
       settings: '设置',

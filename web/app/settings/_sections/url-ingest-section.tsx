@@ -37,7 +37,7 @@ export function UrlIngestSection({
     <section>
       <DangerZonePanel
         title="网页采集外联"
-        impact="服务端外联抓取，存在 SSRF 与资源消耗风险；建议默认关闭或配置允许列表。"
+        impact="服务端外联抓取，存在 SSRF 与资源消耗风险；建议默认关闭或配置允许列表"
         badge="SSRF 风险"
         compact
         tone="neutral"
@@ -48,7 +48,7 @@ export function UrlIngestSection({
             <div>
               <div className={settingsTextTokens.panelTitle}>网页采集入口</div>
               <div className={cn(settingsTextTokens.helpText, 'mt-0.5')}>
-                允许通过网页地址拉取内容并写入知识库；知识库页面的网页采集会依赖此开关。
+                允许通过网页地址拉取内容并写入知识库；知识库页面的网页采集会依赖此开关
               </div>
             </div>
             {isUrlIngestEnabled ? (
@@ -71,7 +71,7 @@ export function UrlIngestSection({
                   <AlertDialogHeader>
                     <AlertDialogTitle>启用网页采集？</AlertDialogTitle>
                     <AlertDialogDescription>
-                      启用后端网页采集会让服务端对外发起网络请求，存在服务端请求伪造风险。生产环境建议保持关闭，或配置出口防火墙与允许列表。
+                      启用后端网页采集会让服务端对外发起网络请求，存在服务端请求伪造风险生产环境建议保持关闭，或配置出口防火墙与允许列表
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -149,7 +149,7 @@ export function UrlIngestSection({
                     <AlertDialogHeader>
                       <AlertDialogTitle>允许访问内网/私网 IP？</AlertDialogTitle>
                       <AlertDialogDescription>
-                        风险极高：可能访问到内网服务（强烈不建议）。确认开启后，后端网页采集可能访问内网/私网地址。
+                        风险极高：可能访问到内网服务（强烈不建议）确认开启后，后端网页采集可能访问内网/私网地址
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -190,7 +190,7 @@ export function UrlIngestSection({
                     <AlertDialogHeader>
                       <AlertDialogTitle>跟随重定向？</AlertDialogTitle>
                       <AlertDialogDescription>
-                        开启后，网页采集可能跟随重定向到内网地址或大文件，存在服务端请求伪造和资源消耗风险。确认开启吗？
+                        开启后，网页采集可能跟随重定向到内网地址或大文件，存在服务端请求伪造和资源消耗风险确认开启吗？
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

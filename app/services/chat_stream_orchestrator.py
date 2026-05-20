@@ -10,12 +10,19 @@ from app.core.config import settings
 from app.core.env import is_production_env
 from app.rag.core.logging import get_logger
 from app.rag.engine import get_rag_engine
+from app.services.chat_execution_runtime import (
+    execute_extractive_fallback_once,
+    is_model_provider_unavailable_circuit_open,
+    is_model_provider_unavailable_error,
+    mark_model_provider_unavailable,
+    preflight_model_provider_fast,
+)
 from app.services.chat_runtime import (
     ChatStreamPersistInput,
     format_stream_error_message,
     prepare_stream_chat_runtime,
 )
-from app.services.chat_stream_common import stream_cached_chat_events
+from app.services.chat_stream_common import stream_cached_chat_events, stream_materialized_chat_events
 from app.services.chat_stream_graph import stream_graph_chat_session_events
 from app.services.chat_stream_langchain import stream_langchain_chat_session_events
 from app.services.metrics_logger import set_metrics_context
@@ -144,6 +151,97 @@ async def stream_chat_sse_events(
             yield f"data: {json.dumps(cached_event, ensure_ascii=False)}\n\n"
         return
 
+    async def _stream_extractive_fallback(
+        *,
+        reason: str,
+        original_error: BaseException | None = None,
+        provider_error: str | None = None,
+    ) -> AsyncIterator[str]:
+        chat_result = execute_extractive_fallback_once(
+            db=db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            request=request,
+            doc_ids_to_use=doc_ids_to_use,
+            history_for_llm=history_for_llm,
+            scope_dataset_id=scope_dataset_id,
+            dataset_id_used=dataset_id_used,
+            effective_rag_config=effective_rag_config,
+            original_error=original_error,
+            reason=reason,
+        )
+        fallback_metrics = dict(chat_result.metrics or {})
+        if provider_error:
+            fallback_metrics["generation_fallback_error"] = provider_error
+        fallback_metrics.setdefault("generation_fallback_used", True)
+        cancel_on_disconnect = bool(getattr(settings, "CHAT_STREAM_CANCEL_ON_DISCONNECT", True))
+        disconnect_check = http_request.is_disconnected if cancel_on_disconnect else None
+        async for fallback_event in stream_materialized_chat_events(
+            request_id=str(request_id),
+            start_message="模型服务不可用，已切换为引用抽取摘要…",
+            disconnect_check=disconnect_check,
+            content=chat_result.content,
+            citations=chat_result.citations,
+            metrics=fallback_metrics,
+            dataset_id_used=dataset_id_used,
+            dataset_rag_defaults_applied_fields=dataset_rag_defaults_applied_fields,
+            dataset_rag_config_template_defaults_applied_fields=dataset_rag_config_template_defaults_applied_fields,
+            rag_config_template_meta=rag_config_template_meta,
+            dataset_prompt_defaults_applied_fields=dataset_prompt_defaults_applied_fields,
+            tenant_qps_meta=tenant_qps_meta,
+            quota_meta=quota_meta,
+            retrieval_mode_default=effective_rag_config.retrieval_mode,
+            vector_backend_default=settings.VECTOR_BACKEND,
+            request_structured_output=bool(request.structured_output),
+            structured_data=chat_result.structured_data,
+            structured_preset=request.structured_preset,
+            db=db,
+            persist_in_background=persist_in_background,
+            spawn_background_task=spawn_background_task,
+            persist_options=ChatStreamPersistInput(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                account_id=account_id,
+                assistant_message_id=assistant_message_id,
+                request_id=str(request_id),
+                question=request.message,
+                document_count=len(doc_ids_to_use),
+                content=chat_result.content,
+                citations=chat_result.citations,
+                metrics=fallback_metrics,
+                dataset_id_used=dataset_id_used,
+                cache_hit=False,
+                cache_key=None,
+                cache_eligible=False,
+                structured_data=chat_result.structured_data,
+                ip=client_ip,
+                user_agent=user_agent,
+                enable_summary_memory=enable_summary_memory,
+                enable_structured_memory=enable_structured_memory,
+            ),
+        ):
+            yield f"data: {json.dumps(fallback_event, ensure_ascii=False)}\n\n"
+
+    answer_mode = str(getattr(effective_rag_config, "answer_mode", "llm") or "llm")
+    if answer_mode == "extractive":
+        async for fallback_chunk in _stream_extractive_fallback(reason="explicit_extractive_answer_mode"):
+            yield fallback_chunk
+        return
+
+    if is_model_provider_unavailable_circuit_open():
+        async for fallback_chunk in _stream_extractive_fallback(reason="model_provider_circuit_open"):
+            yield fallback_chunk
+        return
+
+    provider_available, provider_error = await preflight_model_provider_fast()
+    if not provider_available:
+        async for fallback_chunk in _stream_extractive_fallback(
+            reason="model_provider_preflight_failed",
+            provider_error=provider_error,
+        ):
+            yield fallback_chunk
+        return
+
     if effective_rag_config.use_graph:
         try:
             async for graph_event in stream_graph_chat_session_events(
@@ -199,6 +297,14 @@ async def stream_chat_sse_events(
                 yield f"data: {json.dumps(graph_event, ensure_ascii=False)}\n\n"
             return
         except Exception as exc:  # noqa: BLE001
+            if is_model_provider_unavailable_error(exc):
+                mark_model_provider_unavailable()
+                async for fallback_chunk in _stream_extractive_fallback(
+                    reason="model_provider_stream_error",
+                    original_error=exc,
+                ):
+                    yield fallback_chunk
+                return
             logger.error("LangGraph stream error: %s", str(exc)[:200])
             error_event = {
                 "type": "error",
@@ -275,6 +381,14 @@ async def stream_chat_sse_events(
         ):
             yield stream_chunk
     except Exception as exc:  # noqa: BLE001
+        if is_model_provider_unavailable_error(exc):
+            mark_model_provider_unavailable()
+            async for fallback_chunk in _stream_extractive_fallback(
+                reason="model_provider_stream_error",
+                original_error=exc,
+            ):
+                yield fallback_chunk
+            return
         logger.error("Chat stream error: %s", str(exc)[:200])
         detail = format_stream_error_message(exc)
         message = "An error occurred during chat processing"

@@ -319,6 +319,14 @@ describe('ParsingPage workbench scaffold', () => {
       hookSrc,
       "globalThis.window.localStorage.getItem('mimirq_parsing_image_caption_enabled')"
     )
+    expectSourceToContain(
+      hookSrc,
+      "globalThis.window.localStorage.getItem('mimirq_parsing_image_ocr_enabled')"
+    )
+    expectSourceToContain(
+      hookSrc,
+      "globalThis.window.localStorage.getItem('mimirq_parsing_vlm_correction_enabled')"
+    )
   })
 
   it('keeps the optional library browser extracted even though the desktop sidebar now uses a unified file tree', () => {

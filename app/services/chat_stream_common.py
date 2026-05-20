@@ -81,9 +81,10 @@ def log_chat_stream_completion_metrics(
     )
 
 
-async def stream_cached_chat_events(
+async def stream_materialized_chat_events(
     *,
     request_id: str,
+    start_message: str,
     disconnect_check: Callable[[], Awaitable[bool]] | None,
     content: str,
     citations: list[dict[str, Any]] | list | None,
@@ -111,7 +112,7 @@ async def stream_cached_chat_events(
                 return
 
     citations_list = citations if isinstance(citations, list) else []
-    yield {"request_id": str(request_id), "type": "event", "data": {"message": "缓存命中，直接返回…"}}
+    yield {"request_id": str(request_id), "type": "event", "data": {"message": start_message}}
     yield {"request_id": str(request_id), "type": "citations", "data": citations_list}
 
     answer_text = content or ""
@@ -174,3 +175,54 @@ async def stream_cached_chat_events(
             structured_data=structured_data,
         ),
     )
+
+
+async def stream_cached_chat_events(
+    *,
+    request_id: str,
+    disconnect_check: Callable[[], Awaitable[bool]] | None,
+    content: str,
+    citations: list[dict[str, Any]] | list | None,
+    metrics: dict[str, Any],
+    dataset_id_used: UUID | None,
+    dataset_rag_defaults_applied_fields: list[str] | None = None,
+    dataset_rag_config_template_defaults_applied_fields: list[str] | None = None,
+    rag_config_template_meta: dict[str, Any] | None = None,
+    dataset_prompt_defaults_applied_fields: list[str] | None = None,
+    tenant_qps_meta: dict[str, Any] | None = None,
+    quota_meta: dict[str, Any] | None = None,
+    retrieval_mode_default: str | None = None,
+    vector_backend_default: str | None = None,
+    request_structured_output: bool = False,
+    structured_data: object | None = None,
+    structured_preset: str | None = None,
+    db: Session,
+    persist_in_background: bool,
+    spawn_background_task: Callable[[Any], None],
+    persist_options: ChatStreamPersistInput,
+) -> AsyncIterator[dict[str, Any]]:
+    async for event in stream_materialized_chat_events(
+        request_id=request_id,
+        start_message="缓存命中，直接返回…",
+        disconnect_check=disconnect_check,
+        content=content,
+        citations=citations,
+        metrics=metrics,
+        dataset_id_used=dataset_id_used,
+        dataset_rag_defaults_applied_fields=dataset_rag_defaults_applied_fields,
+        dataset_rag_config_template_defaults_applied_fields=dataset_rag_config_template_defaults_applied_fields,
+        rag_config_template_meta=rag_config_template_meta,
+        dataset_prompt_defaults_applied_fields=dataset_prompt_defaults_applied_fields,
+        tenant_qps_meta=tenant_qps_meta,
+        quota_meta=quota_meta,
+        retrieval_mode_default=retrieval_mode_default,
+        vector_backend_default=vector_backend_default,
+        request_structured_output=request_structured_output,
+        structured_data=structured_data,
+        structured_preset=structured_preset,
+        db=db,
+        persist_in_background=persist_in_background,
+        spawn_background_task=spawn_background_task,
+        persist_options=persist_options,
+    ):
+        yield event

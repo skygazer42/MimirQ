@@ -18933,6 +18933,16 @@ export interface components {
              * @default 20
              */
             reranker_top_n: number;
+            /**
+             * Show Image In Answer
+             * @default true
+             */
+            show_image_in_answer: boolean;
+            /**
+             * Image Append Max
+             * @default 3
+             */
+            image_append_max: number;
         };
         /** RTBFRequest */
         RTBFRequest: {
