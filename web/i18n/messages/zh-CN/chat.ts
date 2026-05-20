@@ -70,7 +70,7 @@ Chat: {
     composerHelpText:
       '输入 <slash>/</slash> 打开快捷指令 · <enter>Enter</enter> 发送 · <shiftEnter>Shift + Enter</shiftEnter> 换行',
     greetings: {
-      lateNight: '夜深了',
+      lateNight: '晚上好',
       morning: '早上好',
       noon: '中午好',
       afternoon: '下午好',
@@ -78,7 +78,7 @@ Chat: {
     },
     explorer: '探索者',
     welcomeLead:
-      '我是 MimirQ，你的智能知识中枢。先选一个示例问题热身，或者直接在下方输入具体问题，我会结合你的知识库给出可追溯的回答。',
+      '我是 MimirQ，你的智能知识中枢。提出一个问题或需求，或从下方快速入口开始探索知识与数据。',
     quickStart: {
       title: '快速开始',
       description: '点击任意问题直接填入输入框，再按 Enter 发送。',
@@ -188,7 +188,7 @@ Navbar: {
       chunkPreview: '切块预览',
       datasets: '数据集',
       knowledgeBase: '知识库',
-      ingestion: '入库预检',
+      ingestion: '入库平台',
       quarantine: '隔离队列',
       feedback: '反馈质检',
       ragVisualization: 'RAG 可视化',

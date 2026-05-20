@@ -6,14 +6,14 @@
 import { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffect } from 'react'
 import Image from 'next/image'
 import { useTranslations } from 'next-intl'
-import { Send, StopCircle, Sparkles, Database, Wand2, Settings2, Bot, Mic, ArrowDown, Zap, Layers, ShieldCheck, Route, type LucideIcon } from 'lucide-react'
+import { Send, StopCircle, Sparkles, Database, Wand2, Settings2, Mic, ArrowDown, Route, Keyboard, Palette, FileUp, Globe2, type LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQuery } from '@tanstack/react-query'
 import { useChat } from '@/hooks/use-chat'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
-import { datasetApi, documentApi, promptTemplateApi, settingsApi } from '@/lib/api'
+import { datasetApi, promptTemplateApi, settingsApi } from '@/lib/api'
 import { ChatMessageItem } from '@/components/chat/message-item'
 import {
   Select,
@@ -38,13 +38,13 @@ import { useRouter } from '@/i18n/navigation'
 import { coerceOneOf } from '@/lib/one-of'
 import { queryKeys } from '@/lib/query-keys'
 import { useDocumentView } from '@/store/document-view'
+import { useCommandMenuState } from '@/store/command-menu'
 
 const SELECT_DEFAULT_VALUE = '__mimirq_default__'
 const DEFAULT_VISIBLE_MESSAGES = 80
 const LOAD_MORE_STEP = 40
 const METADATA_FILTER_MODE_VALUES = ['all', 'exclude_qa', 'qa_only', 'custom'] as const
 const CHAT_DATASET_LIST_PARAMS = { limit: 200 }
-const CHAT_DOCUMENT_STATS_PARAMS = { limit: 1, status: 'completed' as const }
 const CHAT_PROMPT_TEMPLATE_PARAMS = { is_active: true, limit: 50 }
 
 function escapeAttributeSelector(value: string): string {
@@ -70,6 +70,7 @@ export function ChatArea({
   const router = useRouter()
   const t = useTranslations('Chat')
   const activeDocumentId = useDocumentView((state) => state.documentId)
+  const setCommandMenuOpen = useCommandMenuState((state) => state.setOpen)
   const summaryMemoryId = 'chat-enable-summary-memory'
   const [inputValue, setInputValue] = useState(() => (initialPrompt || '').trim())
   const [promptTemplateId, setPromptTemplateId] = useState<string>('')
@@ -137,12 +138,6 @@ export function ChatArea({
     staleTime: 60_000,
   })
 
-  const documentStatsQuery = useQuery({
-    queryKey: queryKeys.documents.list(CHAT_DOCUMENT_STATS_PARAMS),
-    queryFn: () => documentApi.list(CHAT_DOCUMENT_STATS_PARAMS),
-    staleTime: 30_000,
-  })
-
   const promptTemplatesQuery = useQuery({
     queryKey: queryKeys.prompts.list(CHAT_PROMPT_TEMPLATE_PARAMS),
     queryFn: async () => {
@@ -158,15 +153,6 @@ export function ChatArea({
   )
   const promptTemplates = useMemo(() => promptTemplatesQuery.data || [], [promptTemplatesQuery.data])
   const datasetsLoading = datasetsQuery.isLoading
-  const welcomeStats = useMemo(
-    () => ({
-      datasets: datasetsQuery.data ? Number(datasetsQuery.data.total || 0) : null,
-      documents: documentStatsQuery.data ? Number(documentStatsQuery.data.total || 0) : null,
-      loading: datasetsQuery.isLoading || documentStatsQuery.isLoading,
-    }),
-    [datasetsQuery.data, datasetsQuery.isLoading, documentStatsQuery.data, documentStatsQuery.isLoading]
-  )
-
   const focusMessageById = useCallback((messageId: string) => {
     const container = scrollContainerRef.current
     if (!container) return false
@@ -605,10 +591,37 @@ export function ChatArea({
 
   return (
     <div className="flex-1 min-h-0 flex flex-col bg-background relative transition-colors duration-200 motion-reduce:transition-none">
+      {isWelcomeState ? (
+        <div className="pointer-events-none absolute right-5 top-5 z-30 hidden items-center gap-2 md:flex">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="pointer-events-auto h-9 gap-1.5 rounded-full border border-border/60 bg-card/80 px-3 text-xs font-semibold text-muted-foreground shadow-sm backdrop-blur hover:border-primary/20 hover:bg-card hover:text-foreground"
+            onClick={() => setCommandMenuOpen(true)}
+          >
+            <Keyboard className="size-3.5" />
+            快捷键
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="pointer-events-auto h-9 gap-1.5 rounded-full border border-border/60 bg-card/80 px-3 text-xs font-semibold text-muted-foreground shadow-sm backdrop-blur hover:border-primary/20 hover:bg-card hover:text-foreground"
+            onClick={() => setCommandMenuOpen(true)}
+          >
+            <Palette className="size-3.5" />
+            个性化
+          </Button>
+        </div>
+      ) : null}
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto overscroll-contain px-4 pb-4 scroll-smooth no-scrollbar md:px-6"
+        className={cn(
+          'flex-1 overflow-y-auto overscroll-contain px-4 pb-4 scroll-smooth no-scrollbar md:px-6',
+          isWelcomeState && 'overflow-hidden'
+        )}
         role="log"
         aria-live="polite"
         aria-busy={isLoading}
@@ -620,13 +633,8 @@ export function ChatArea({
           )}
         >
           {isWelcomeState && (
-            <div className="flex-1 flex items-center justify-center">
-              <WelcomeScreen
-                onSelectPrompt={handlePrefillInput}
-                onOpenKnowledge={() => router.push('/knowledge')}
-                promptTemplateCount={promptTemplates.length}
-                stats={welcomeStats}
-              />
+            <div className="flex-1 flex justify-center">
+              <WelcomeScreen />
             </div>
           )}
 
@@ -694,15 +702,26 @@ export function ChatArea({
         </div>
       )}
 
-      <div className="px-4 pt-2 z-10 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] md:px-6">
+      <div
+        className={cn(
+          'z-10 md:px-6',
+          isWelcomeState
+            ? 'absolute inset-x-0 top-[388px] px-4'
+            : 'px-4 pt-2 pb-[calc(env(safe-area-inset-bottom)+1.5rem)]'
+        )}
+      >
         <div
           className={cn(
-            'mx-auto w-full space-y-4',
-            isWelcomeState ? 'max-w-6xl' : 'max-w-[44rem]'
+            'mx-auto w-full',
+            isWelcomeState ? 'max-w-[1040px]' : 'max-w-[44rem] space-y-4'
           )}
         >
-
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-border/60 bg-background/80 px-3 py-2 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/70">
+          <div
+            className={cn(
+              'flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-border/60 bg-background/80 px-3 py-2 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/70',
+              isWelcomeState && 'hidden'
+            )}
+          >
             <div className="flex min-w-0 items-center gap-2">
               <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm">
                 <Sparkles className="size-3.5 text-primary" />
@@ -1001,84 +1020,162 @@ export function ChatArea({
               </PopoverContent>
             </Popover>
           </div>
-        </div>
+          </div>
 
-	          <div className={cn(
-	            "relative group rounded-xl bg-card border border-border/30 transition-colors duration-150",
-	            "shadow-soft hover:shadow-strong",
-	            "focus-within:ring-0 focus-within:border-primary/50 focus-within:shadow-[0_0_0_3px_hsl(var(--primary)/0.06)]"
-	          )}>
+          <div
+            className={cn(
+              'relative group bg-card transition-colors duration-150',
+              isWelcomeState
+                ? 'rounded-[28px] border border-border/70 bg-card/90 px-3 pb-3 pt-2 shadow-[0_22px_56px_-34px_rgba(15,23,42,0.46)] backdrop-blur-xl focus-within:border-primary/25'
+                : 'rounded-xl border border-border/30 shadow-soft hover:shadow-strong focus-within:ring-0 focus-within:border-primary/50 focus-within:shadow-[0_0_0_3px_hsl(var(--primary)/0.06)]'
+            )}
+          >
             <Label htmlFor="chat-composer" className="sr-only">
-                {t('messageInput')}
-              </Label>
-	            <textarea
-	              id="chat-composer"
-	              ref={textareaRef}
-	              value={inputValue}
-	              onChange={(e) => setInputValue(e.target.value)}
-	              onKeyDown={handleKeyDown}
+              {t('messageInput')}
+            </Label>
+            {isWelcomeState ? (
+              <div className="pointer-events-none absolute left-5 top-4 z-10 flex size-8 items-center justify-center rounded-full bg-muted/70 text-muted-foreground">
+                <Sparkles className="size-4" />
+              </div>
+            ) : null}
+            <textarea
+              id="chat-composer"
+              ref={textareaRef}
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={handleKeyDown}
               onKeyUp={handleKeyUp}
-	              placeholder={t('composerPlaceholder')}
-	              autoFocus
-	              className="w-full px-6 pt-4 pb-14 pr-20 resize-none outline-none rounded-xl max-h-[200px] bg-transparent text-sm leading-relaxed placeholder:text-muted-foreground/40 no-scrollbar text-foreground"
-	              rows={1}
-	            />
+              placeholder={t('composerPlaceholder')}
+              autoFocus
+              className={cn(
+                'w-full resize-none outline-none max-h-[200px] bg-transparent text-sm leading-relaxed placeholder:text-muted-foreground/40 no-scrollbar text-foreground',
+                isWelcomeState
+                  ? 'min-h-[70px] rounded-[22px] px-12 pb-4 pt-4 pr-24'
+                  : 'rounded-xl px-6 pt-4 pb-14 pr-20'
+              )}
+              rows={1}
+            />
 
-            <div className="absolute right-2 bottom-2 flex items-center gap-2">
-	              <Magnetic strength={0.4}>
-	                <Button
-	                  size="icon"
-	                  variant="ghost"
-	                  onClick={() => setVoiceModeOpen(true)}
-	                  className="rounded-full h-10 w-10 text-muted-foreground hover:text-foreground hover:bg-muted"
-	                  title={t('voiceMode')}
-	                  aria-label={t('voiceMode')}
-	                >
-	                  <Mic className="size-5" />
-	                </Button>
-	              </Magnetic>
+            <div className={cn('absolute flex items-center gap-2', isWelcomeState ? 'right-4 top-4' : 'right-2 bottom-2')}>
+              <Magnetic strength={0.4}>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => setVoiceModeOpen(true)}
+                  className={cn(
+                    'rounded-full text-muted-foreground hover:text-foreground hover:bg-muted',
+                    isWelcomeState ? 'size-9' : 'h-10 w-10'
+                  )}
+                  title={t('voiceMode')}
+                  aria-label={t('voiceMode')}
+                >
+                  <Mic className={cn(isWelcomeState ? 'size-4' : 'size-5')} />
+                </Button>
+              </Magnetic>
 
               {isLoading ? (
                 <Magnetic strength={0.2}>
-	                  <Button
-	                    size="icon"
-	                    onClick={stopGeneration}
-	                    className="rounded-full h-9 w-9 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive shadow-sm"
-	                    title={t('stopGeneration')}
-	                    aria-label={t('stopGeneration')}
-	                  >
-	                    <StopCircle className="size-4" />
-	                  </Button>
+                  <Button
+                    size="icon"
+                    onClick={stopGeneration}
+                    className={cn(
+                      'rounded-full bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive shadow-sm',
+                      isWelcomeState ? 'size-10' : 'h-9 w-9'
+                    )}
+                    title={t('stopGeneration')}
+                    aria-label={t('stopGeneration')}
+                  >
+                    <StopCircle className="size-4" />
+                  </Button>
                 </Magnetic>
               ) : (
                 <Magnetic strength={0.5}>
-	                  <Button
-	                    size="icon"
-	                    onClick={handleSend}
-	                    disabled={!inputValue.trim() || !hasChatScope}
-	                    className={cn(
-                      "rounded-full size-9 shadow-sm transition-colors transition-shadow transition-transform duration-200 motion-reduce:transition-none",
+                  <Button
+                    size="icon"
+                    onClick={handleSend}
+                    disabled={!inputValue.trim() || !hasChatScope}
+                    className={cn(
+                      'rounded-full shadow-sm transition-colors transition-shadow transition-transform duration-200 motion-reduce:transition-none',
+                      isWelcomeState ? 'size-10' : 'size-9',
                       inputValue.trim() && hasChatScope
-                        ? "bg-foreground text-background hover:bg-foreground/90"
-                        : "bg-muted/50 text-muted-foreground/50 cursor-not-allowed"
+                        ? 'bg-foreground text-background hover:bg-foreground/90'
+                        : 'bg-muted/50 text-muted-foreground/50 cursor-not-allowed'
                     )}
                     title={hasChatScope ? t('send') : (datasetsLoading ? t('datasetScopeLoading') : t('datasetScopeRequired'))}
                     aria-label={t('send')}
                   >
-	                    <Send className="size-4" />
-	                  </Button>
+                    <Send className="size-4" />
+                  </Button>
                 </Magnetic>
               )}
             </div>
+
+            {isWelcomeState ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/45 px-1 pt-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-9 gap-1.5 rounded-full border border-border/60 bg-background/80 px-3 text-xs font-semibold text-foreground shadow-sm hover:border-primary/25 hover:bg-primary/5"
+                    onClick={() => setCommandMenuOpen(true)}
+                  >
+                    <Sparkles className="size-3.5" />
+                    深度思考 (R1)
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-9 gap-1.5 rounded-full border border-border/60 bg-background/80 px-3 text-xs font-semibold text-foreground shadow-sm hover:border-primary/25 hover:bg-primary/5"
+                    onClick={() => setCommandMenuOpen(true)}
+                  >
+                    <Globe2 className="size-3.5" />
+                    联网搜索
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-9 gap-1.5 rounded-full border border-border/60 bg-background/80 px-3 text-xs font-semibold text-foreground shadow-sm hover:border-primary/25 hover:bg-primary/5"
+                    onClick={() => router.push('/parsing')}
+                  >
+                    <FileUp className="size-3.5" />
+                    上传文件
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-9 gap-1.5 rounded-full border border-border/60 bg-background/80 px-3 text-xs font-semibold text-foreground shadow-sm hover:border-primary/25 hover:bg-primary/5"
+                    onClick={() => setCommandMenuOpen(true)}
+                  >
+                    <Settings2 className="size-3.5" />
+                    工具
+                  </Button>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="h-9 rounded-full bg-muted px-4 text-xs font-bold text-foreground shadow-sm hover:bg-primary/10 hover:text-primary"
+                  onClick={() => setShowRagSettings(true)}
+                >
+                  RAG 检索
+                </Button>
+              </div>
+            ) : null}
           </div>
 
-          <p className="text-[11px] text-center text-muted-foreground/75">
-            {t.rich('composerHelpText', {
-              slash: (chunks) => <span className="font-mono text-foreground/80">{chunks}</span>,
-              enter: (chunks) => <span className="font-medium text-foreground/80">{chunks}</span>,
-              shiftEnter: (chunks) => <span className="font-medium text-foreground/80">{chunks}</span>,
-            })}
-          </p>
+          {!isWelcomeState ? (
+            <p className="text-[11px] text-center text-muted-foreground/75">
+              {t.rich('composerHelpText', {
+                slash: (chunks) => <span className="font-mono text-foreground/80">{chunks}</span>,
+                enter: (chunks) => <span className="font-medium text-foreground/80">{chunks}</span>,
+                shiftEnter: (chunks) => <span className="font-medium text-foreground/80">{chunks}</span>,
+              })}
+            </p>
+          ) : null}
         </div>
       </div>
 
@@ -1113,20 +1210,7 @@ export function ChatArea({
   )
 }
 
-function WelcomeScreen({
-  onSelectPrompt,
-  promptTemplateCount,
-  stats,
-}: Readonly<{
-  onSelectPrompt: (prompt: string) => void
-  onOpenKnowledge: () => void
-  promptTemplateCount: number
-  stats: {
-    datasets: number | null
-    documents: number | null
-    loading: boolean
-  }
-}>) {
+function WelcomeScreen() {
   const t = useTranslations('Chat')
   const hour = new Date().getHours()
   const greeting = (() => {
@@ -1137,39 +1221,9 @@ function WelcomeScreen({
     return t('greetings.evening')
   })()
 
-  const quickStartPrompts = useMemo(
-    () => [
-      {
-        icon: Sparkles,
-        title: t('quickStartExamples.productManual.title'),
-        prompt: t('quickStartExamples.productManual.prompt'),
-      },
-      {
-        icon: Database,
-        title: t('quickStartExamples.metrics.title'),
-        prompt: t('quickStartExamples.metrics.prompt'),
-      },
-      {
-        icon: Wand2,
-        title: t('quickStartExamples.comparePlans.title'),
-        prompt: t('quickStartExamples.comparePlans.prompt'),
-      },
-      {
-        icon: Bot,
-        title: t('quickStartExamples.actionItems.title'),
-        prompt: t('quickStartExamples.actionItems.prompt'),
-      },
-    ],
-    [t]
-  )
-
-  const documentCount = Number(stats.documents || 0)
-  const datasetCount = Number(stats.datasets || 0)
-
   return (
-    <div className="flex flex-col items-center justify-center min-h-full px-4 py-12 md:px-8 max-w-5xl mx-auto space-y-12">
-      {/* Centered Brand Area */}
-      <div className="flex flex-col items-center text-center space-y-6 animate-fade-in-up">
+    <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col items-center px-4 pb-8 pt-10 md:px-8 md:pt-20">
+      <div className="flex flex-col items-center text-center space-y-4 animate-fade-in-up">
         <div className="flex w-full justify-center">
           <Image
             src="/brand/mimirq-wordmark.png"
@@ -1178,78 +1232,16 @@ function WelcomeScreen({
             height={181}
             priority
             unoptimized
-            className="h-auto w-[min(78vw,440px)] select-none object-contain"
+            className="h-auto w-[min(62vw,320px)] select-none object-contain"
           />
         </div>
         <div className="space-y-3">
-          <h2 className="text-4xl md:text-5xl font-bold leading-tight text-foreground">
+          <h2 className="text-[2.45rem] font-bold leading-tight tracking-[-0.035em] text-foreground md:text-5xl">
             {greeting}，<span className="text-primary">{t('explorer')}</span>
           </h2>
-          <p className="max-w-2xl text-pretty text-base font-medium leading-7 text-muted-foreground/90 md:text-lg">
+          <p className="max-w-2xl text-pretty text-base font-medium leading-7 text-muted-foreground/90">
             {t('welcomeLead')}
           </p>
-        </div>
-      </div>
-
-      {/* Quick Start Grid */}
-      <div className="w-full space-y-6 animate-fade-in-up [animation-delay:150ms]">
-        <div className="flex items-center justify-between px-2">
-          <h3 className="flex items-center gap-2 text-sm font-bold uppercase text-muted-foreground/60">
-            <Zap className="size-3.5 text-primary" />
-            {t('quickStart.title')}
-          </h3>
-          <div className="flex items-center gap-3 text-xs text-muted-foreground font-medium">
-             <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-border/60 bg-muted/30">
-               <Database className="size-3" />
-               {documentCount} 份文档
-             </span>
-             <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-border/60 bg-muted/30">
-               <Layers className="size-3" />
-               {datasetCount} 个知识库
-             </span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {quickStartPrompts.map((item) => (
-            <button
-              key={item.title}
-              onClick={() => onSelectPrompt(item.prompt)}
-              className="flex items-start gap-4 p-5 text-left rounded-3xl border border-border/60 bg-card hover:border-primary/40 hover:bg-muted/30 transition-all duration-200 group shadow-subtle hover:shadow-soft"
-            >
-              <div className="size-10 flex items-center justify-center rounded-2xl bg-muted group-hover:bg-primary/10 group-hover:text-primary transition-colors shrink-0">
-                <item.icon className="size-5" />
-              </div>
-              <div className="min-w-0 pt-0.5">
-                <div className="text-[15px] font-bold text-foreground leading-tight">{item.title}</div>
-                <div className="mt-1.5 text-xs text-muted-foreground line-clamp-2 leading-relaxed font-medium">
-                  {item.prompt}
-                </div>
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Footer Meta Tips */}
-      <div className="w-full pt-4 border-t border-border/40 grid grid-cols-1 md:grid-cols-2 gap-8 text-muted-foreground/70 animate-fade-in-up [animation-delay:300ms]">
-        <div className="flex gap-3">
-          <div className="size-8 flex items-center justify-center rounded-lg bg-muted shrink-0">
-            <Wand2 className="size-4" />
-          </div>
-          <div className="text-xs font-medium">
-            <span className="text-foreground/80 font-bold block mb-1">{promptTemplateCount} 个模板可用</span>
-            {t('promptTemplatesAvailableDescription')}
-          </div>
-        </div>
-        <div className="flex gap-3">
-          <div className="size-8 flex items-center justify-center rounded-lg bg-muted shrink-0">
-            <ShieldCheck className="size-4" />
-          </div>
-          <div className="text-xs font-medium">
-            <span className="text-foreground/80 font-bold block mb-1">{t('firstUseAdviceTitle')}</span>
-            {t('firstUseAdviceDescription')}
-          </div>
         </div>
       </div>
     </div>

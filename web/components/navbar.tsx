@@ -129,8 +129,8 @@ const menuSections: MenuSection[] = [
   },
 ]
 
-const DEFAULT_OPEN_SECTIONS = new Set<SectionId>(['core', 'knowledge'])
-const OPEN_SECTIONS_STORAGE_KEY = 'mimirq_navbar_open_sections_v1'
+const DEFAULT_OPEN_SECTIONS = new Set<SectionId>(['core', 'knowledge', 'ingestion', 'analysis'])
+const OPEN_SECTIONS_STORAGE_KEY = 'mimirq_navbar_open_sections_v2'
 
 function isActiveRoute(pathname: string, href: string) {
   if (href === '/') return pathname === '/'
@@ -598,7 +598,7 @@ export function Navbar({
         {/* 导航菜单 */}
         {/* Allow internal scroll so items are never clipped on short viewports. */}
         <div className="flex-1 min-h-0 px-3 py-2 overflow-y-auto overscroll-contain no-scrollbar">
-          <div className="space-y-4">
+          <div className="space-y-3">
             {visibleMenuSections.map((section, index) => {
               const isOpen = openSections[section.id] ?? false
               const hasActiveItem = sectionHasActiveRoute(activeHref, section.items)
@@ -607,12 +607,12 @@ export function Navbar({
               return (
                 <section
                   key={section.id}
-                  className={cn('space-y-1.5', index > 0 ? 'border-t border-sidebar-border/50 pt-3' : '')}
+                  className={cn('space-y-1', index > 0 ? 'border-t border-sidebar-border/50 pt-2' : '')}
                 >
                   <button
                     type="button"
                     className={cn(
-                      'flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left transition-colors duration-200 focus-ring',
+                      'flex w-full items-center justify-between gap-3 rounded-xl px-3 py-1.5 text-left transition-colors duration-200 focus-ring',
                       hasActiveItem ? 'text-foreground' : 'text-muted-foreground/70 hover:bg-foreground/[0.04] hover:text-foreground'
                     )}
                     onClick={() => toggleSection(section.id)}
@@ -648,7 +648,7 @@ export function Navbar({
                                 onClick={closeSidebarOnMobile}
                                 aria-current={isActive ? 'page' : undefined}
                                 className={cn(
-                                  'relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors duration-200 group focus-ring',
+                                  'relative flex items-center gap-3 px-3 py-2 rounded-lg transition-colors duration-200 group focus-ring',
                                   'before:pointer-events-none before:absolute before:left-1 before:top-2 before:bottom-2 before:w-[2.5px] before:rounded-full before:bg-transparent',
                                   isActive
                                     ? 'text-foreground font-medium before:bg-foreground/80'
@@ -676,7 +676,7 @@ export function Navbar({
         </div>
 
         {/* 底部信息 */}
-        <div className="p-4 border-t border-sidebar-border/50 bg-transparent">
+        <div className="p-3 border-t border-sidebar-border/50 bg-transparent">
           <div className="flex items-center gap-2">
             <button
               type="button"
