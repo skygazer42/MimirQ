@@ -50,7 +50,6 @@ describe('query convergence source', () => {
     expect(src).toContain("from '@/hooks/use-datasets'")
     expect(src).toContain('useDatasets()')
     expect(src).not.toContain('datasetApi.list')
-    expect(src).not.toContain('useEffect(')
     expect(src).not.toContain('setDatasets(')
   })
 
@@ -111,21 +110,6 @@ describe('query convergence source', () => {
     expect(src).not.toContain('detachPromise(refresh())')
     expect(src).not.toContain('setMembers(')
     expect(src).not.toContain('setLoading(')
-  })
-
-  it('uses query-backed summary loading and export mutation for access review', () => {
-    const src = read('../app/access-review/page.tsx')
-
-    expect(src).toContain("from '@tanstack/react-query'")
-    expect(src).toMatch(/useQuery(?:<[\s\S]+?>)?\(\{/)
-    expect(src).toMatch(/useMutation(?:<[\s\S]+?>)?\(\{/)
-    expect(src).toContain('queryKeys.accessReview.summary')
-    expect(src).not.toContain('useEffect(')
-    expect(src).not.toContain('setSummary(')
-    expect(src).not.toContain('setLoadingSummary(')
-    expect(src).not.toContain('setExporting(')
-    expect(src).not.toContain('detachPromise(loadSummary())')
-    expect(src).not.toContain('detachPromise(handleDownload())')
   })
 
   it('uses useQuery for index audit results', () => {

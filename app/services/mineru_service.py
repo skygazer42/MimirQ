@@ -39,6 +39,22 @@ logger = get_logger("services.mineru")
 OCTET_STREAM = "application/octet-stream"
 
 
+def _normalize_local_backend(value: Any) -> str:
+    backend = str(value or "pipeline").strip().lower().replace("_", "-")
+    aliases = {
+        "": "pipeline",
+        "auto": "pipeline",
+        "vlm": "vlm-http-client",
+        "vlm-http": "vlm-http-client",
+        "vlm-httpclient": "vlm-http-client",
+    }
+    backend = aliases.get(backend, backend)
+    if backend not in {"pipeline", "vlm-http-client"}:
+        logger.warning("Unsupported MinerU backend %r; falling back to pipeline.", value)
+        return "pipeline"
+    return backend
+
+
 class MinerUService:
     """MinerU parsing service."""
 
@@ -47,6 +63,7 @@ class MinerUService:
         self.api_token = ""
         self.model_version = "vlm"
         self.local_server_url: str | None = None
+        self.local_backend = "pipeline"
         self.enabled = False
 
         # Best-effort JWT expiry diagnostics (MinerU online API token may expire).
@@ -66,6 +83,7 @@ class MinerUService:
         self.api_base = (getattr(settings, "MINERU_API_BASE", "") or "").strip().rstrip("/") or "https://mineru.net/api/v4"
         self.api_token = (getattr(settings, "MINERU_API_TOKEN", "") or "").strip()
         self.model_version = (getattr(settings, "MINERU_MODEL_VERSION", "") or "").strip() or "vlm"
+        self.local_backend = _normalize_local_backend(getattr(settings, "MINERU_BACKEND", "pipeline"))
 
         local_url = (getattr(settings, "MINERU_LOCAL_SERVER_URL", "") or "").strip()
         self.local_server_url = local_url.rstrip("/") if local_url else None
@@ -913,12 +931,11 @@ class MinerUService:
 
         parse_endpoint = f"{self.local_server_url}/file_parse"
         params = params or {}
+        backend = _normalize_local_backend(params.get("backend") or self.local_backend)
 
         data: dict[str, Any] = {
             "lang_list": params.get("lang_list", ["ch"]),
-            # Use a backend that works with a single MinerU API service by default.
-            # Users can override via `params["backend"]` (e.g. "vlm-http-client" with MINERU_VL_SERVER).
-            "backend": params.get("backend", "pipeline"),
+            "backend": backend,
             "parse_method": params.get("parse_method", "auto"),
             "return_md": True,
             "response_format_zip": True,

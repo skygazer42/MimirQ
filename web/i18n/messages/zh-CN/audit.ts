@@ -1,7 +1,7 @@
 const auditMessages = {
 AuditPage: {
     title: '审计日志',
-    description: '关键操作留痕（仅管理员）',
+    description: '关键操作留痕',
     strip: {
       total: '总事件',
       currentPage: '当前页',
@@ -13,10 +13,10 @@ AuditPage: {
     },
     presets: {
       quick: '快速筛选',
-      accessReviewDaily: '访问审查（日常）',
-      indexAuditDaily: '索引审计（日常）',
-      evidenceDriftDaily: '证据策略（日常）',
-      accessGraphExport: '访问回溯（导出）',
+      accessReviewDaily: '访问审查',
+      indexAuditDaily: '索引审计',
+      evidenceDriftDaily: '证据策略',
+      accessGraphExport: '访问回溯',
     },
     filters: {
       action: '动作',
@@ -44,7 +44,7 @@ AuditPage: {
       dryRun: '仅预演',
       gzip: 'gzip',
       includeSensitive: '包含敏感字段',
-      advanced: '高级筛选（可选）',
+      advanced: '高级筛选',
       operationResult: '审计操作结果',
       resultEmpty: '导出或清理后，这里展示执行摘要；原始响应默认收起。',
     },
@@ -83,71 +83,6 @@ AuditPage: {
       loadLogs: '加载审计日志失败',
     },
   },
-AccessReviewPage: {
-    title: '访问审查',
-    description: '权限图谱汇总与导出（仅管理员，默认隐私安全）',
-    strip: {
-      groups: '组数量',
-      datasets: '数据集',
-      docs: '文档',
-      format: '导出格式',
-      status: '导出状态',
-      idle: '空闲',
-      processing: '进行中 · {pages} 页',
-    },
-    actions: {
-      refresh: '刷新',
-      export: '下载图谱',
-    },
-    summary: {
-      heading: '汇总',
-      description: '用于日常访问审查与排查“为什么某个用户被拒绝”（目录/组/白名单维度），不包含文档内容。',
-      generatedAt: '生成时间：{timestamp}',
-      stats: {
-        groups: '组数量',
-        members: '组成员数',
-        datasets: '数据集数量',
-        docs: '文档数',
-        datasetMemberWhitelist: '数据集成员白名单',
-        datasetOwnerWhitelist: '数据集拥有者白名单',
-        docOwnerWhitelist: '文档拥有者白名单',
-      },
-    },
-    stats: {
-      datasetDistribution: '数据集权限分布',
-      documentDistribution: '文档访问模式分布',
-      dimension: '维度',
-      count: '数量',
-    },
-    export: {
-      heading: '导出（访问图谱）',
-      description: '建议优先使用 NDJSON（便于分页与流式处理）。浏览器下载会自动解压 gzip 编码，因此 "gzip" 主要用于网络传输节省带宽。',
-      formatLabel: '格式',
-      formatPlaceholder: '选择格式',
-      formatOptions: {
-        ndjson: 'NDJSON（推荐）',
-        json: 'JSON',
-      },
-      limitLabel: '每页条数 (LIMIT)',
-      gzipLabel: 'gzip 传输',
-      gzipDescription: '仅影响传输编码，不保证保存为 .gz',
-      includeSensitiveLabel: '包含敏感字段（谨慎）',
-      includeSensitiveDescription: '开启后可能包含组名 / external_id / 用户 ID 等字段，仅建议用于审计导出与合规流程。',
-    },
-    toasts: {
-      downloadJson: 'JSON 导出完成',
-      downloadPages: 'NDJSON 导出完成，共 {pages} 页',
-    },
-    warnings: {
-      reachedPageLimit: '已达到最大页数限制 ({maxPages})',
-      reachedByteLimit: '已达到最大字节数限制',
-    },
-    errors: {
-      loadSummary: '加载访问审查汇总失败',
-      loadSummaryFallback: '无法加载汇总数据。',
-      export: '导出访问图谱失败',
-    },
-  }
 } as const
 
 export default auditMessages

@@ -34,6 +34,19 @@ function safeJson(value: unknown): string | undefined {
   }
 }
 
+function parseJsonObjectString(value: string): ErrorResponseLike | undefined {
+  const trimmed = value.trim()
+  if (!trimmed || !trimmed.startsWith('{')) return undefined
+  try {
+    const parsed = JSON.parse(trimmed)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as ErrorResponseLike)
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
 function asFiniteNumber(value: unknown): number | undefined {
   if (typeof value === 'number') return Number.isFinite(value) ? value : undefined
   if (typeof value !== 'string') return undefined
@@ -62,6 +75,11 @@ export function extractRateLimitDetail(data: unknown): { retryAfterSec?: number;
 }
 
 export function extractBackendRequestId(data: unknown): string | undefined {
+  if (typeof data === 'string') {
+    const parsed = parseJsonObjectString(data)
+    return parsed ? extractBackendRequestId(parsed) : undefined
+  }
+
   if (!data || typeof data !== 'object') return undefined
   const maybe = (data as ErrorResponseLike).request_id
   return asNonEmptyString(maybe)
@@ -73,6 +91,10 @@ export function extractBackendMessage(data: unknown): string | undefined {
     if (looksLikeHtmlDocument(data)) {
       return 'Backend returned HTML (可能 API 地址配错了；请检查 NEXT_PUBLIC_API_URL / 反向代理配置)'
     }
+
+    const parsed = parseJsonObjectString(data)
+    if (parsed) return extractBackendMessage(parsed)
+
     return asNonEmptyString(data)
   }
 
@@ -200,6 +222,17 @@ export function toApiErrorInfo(err: unknown, fallbackMessage: string): ApiErrorI
   let message = extractBackendMessage(data) || (maybeError?.message && String(maybeError.message)) || fallbackMessage
   const requestId = extractAxiosRequestId(err)
   const normalizedMessage = String(message || '').trim().toLowerCase()
+  const code = String(maybeError?.code || '').trim().toUpperCase()
+
+  if (
+    !axiosResponse &&
+    (code === 'ECONNABORTED' ||
+      code === 'ETIMEDOUT' ||
+      normalizedMessage.includes('timeout') ||
+      normalizedMessage.includes('exceeded'))
+  ) {
+    message = `${fallbackMessage}：请求超时，后端可能仍在处理。请稍后刷新列表确认结果，或缩小本次操作范围后重试`
+  }
 
   if (!axiosResponse && (normalizedMessage === 'network error' || normalizedMessage === 'failed to fetch')) {
     message = `${fallbackMessage}：无法连接后端 API，请确认后端服务已启动，或检查 NEXT_PUBLIC_API_URL / 反向代理配置`

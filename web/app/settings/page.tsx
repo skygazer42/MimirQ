@@ -27,6 +27,7 @@ import { RuntimeControlsSection } from './_sections/runtime-controls-section'
 import { SystemStatusSection } from './_sections/system-status-section'
 import { UrlIngestSection } from './_sections/url-ingest-section'
 import { useSettingsPageState } from './use-settings-page-state'
+import { SettingsSwitchIndicator } from '@/components/settings/settings-switch'
 import {
   CheckCircle2,
   Clock,
@@ -54,20 +55,20 @@ type SettingsSectionDefinition = {
 }
 
 const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [
+  { id: 'sec-status', label: '系统状态', hint: '后端连通性与运行状态' },
   { id: 'sec-models', label: '模型接入', hint: 'LLM / Embedding / Rerank 服务商' },
   { id: 'sec-flags', label: '功能开关', hint: 'RAG/KG 能力开关与依赖提示' },
   { id: 'sec-frontend', label: '前端偏好', hint: '本地浏览器偏好，不直接写后端' },
   { id: 'sec-navigation', label: '导航权限', hint: '普通用户入口可见性控制', adminOnly: true },
-  { id: 'sec-parsers', label: '解析服务', hint: '外部解析器地址、超时与解析参数' },
-  { id: 'sec-status', label: '系统状态', hint: '后端连通性与运行状态' },
-  { id: 'sec-ltr', label: 'LTR 模型', hint: '排序模型注册、回滚和启用' },
+  { id: 'sec-parsers', label: '高级解析', hint: '高级解析器地址、超时与解析参数' },
   { id: 'sec-rag', label: 'RAG 配置', hint: '检索、召回与生成参数' },
+  { id: 'sec-ltr', label: 'LTR 模型', hint: '排序模型注册、回滚和启用' },
   { id: 'sec-dify', label: 'Dify 接入', hint: '外部知识库访问、API Key 与数据集绑定', adminOnly: true },
   { id: 'sec-url', label: 'URL 采集', hint: '网页采集与清洗策略', adminOnly: true },
   { id: 'sec-governance', label: '数据治理', hint: 'PII、密钥、隔离与清洗策略' },
   { id: 'sec-industry-rules', label: '行业规则', hint: '行业规则包与解析模板' },
   { id: 'sec-observability', label: '可观测性', hint: '监控、审计和诊断开关', adminOnly: true },
-  { id: 'sec-runtime', label: '运行时控制', hint: '聊天、缓存、安全和流程编排' },
+  { id: 'sec-runtime', label: '运行控制', hint: '聊天、缓存、安全和流程编排' },
 ] as const
 
 const SETTINGS_SECTION_BY_ID = Object.fromEntries(
@@ -216,25 +217,6 @@ function SettingsSaveFeedback({
   )
 }
 
-function SettingsToggleIndicator({ checked }: Readonly<{ checked: boolean }>) {
-  return (
-    <span
-      className={cn(
-        'flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors',
-        checked ? 'bg-blue-600' : 'bg-slate-300'
-      )}
-      aria-hidden="true"
-    >
-      <span
-        className={cn(
-          'size-4 rounded-full bg-card shadow-sm transition-transform',
-          checked && 'translate-x-4'
-        )}
-      />
-    </span>
-  )
-}
-
 type EnhancementCardProps = {
   title: string
   description: string
@@ -313,7 +295,7 @@ function EnhancementCard({
           ) : null}
         </span>
       </span>
-      <SettingsToggleIndicator checked={checked} />
+      <SettingsSwitchIndicator checked={checked} />
     </button>
   )
 }
@@ -329,7 +311,7 @@ function RetrievalEnhancementSection({ state }: Readonly<{ state: any }>) {
           关键词增强配置
         </h2>
         <p className="mt-0.5 text-[11.5px] font-medium leading-[18px] text-slate-600">
-          绑定后端 RAG 与 KG 开关，控制关键词索引和图谱增强是否参与检索。
+          绑定后端 RAG 与 KG 开关，控制关键词索引和图谱增强是否参与检索
         </p>
       </div>
       <div className="grid grid-cols-1 gap-2.5 xl:grid-cols-2">
@@ -413,11 +395,12 @@ function SettingsSectionFrame({
       id={section.id}
       aria-labelledby={`${section.id}-title`}
       className={cn(
-        'scroll-mt-24 overflow-hidden rounded-[20px] border border-slate-200/70 bg-white/78 shadow-[0_14px_34px_rgba(15,23,42,0.035)]',
+        'relative scroll-mt-24 overflow-visible rounded-[20px] border border-slate-200/70 bg-white/78 shadow-[0_14px_34px_rgba(15,23,42,0.035)]',
+        'before:absolute before:-left-3 before:top-4 before:bottom-4 before:w-px before:rounded-full before:bg-gradient-to-b before:from-transparent before:via-blue-200/80 before:to-transparent',
         className
       )}
     >
-      <div className="border-b border-slate-100 bg-gradient-to-r from-slate-50/95 via-white to-blue-50/45 px-4 py-3">
+      <div className="rounded-t-[20px] border-b border-slate-100 bg-gradient-to-r from-slate-50/95 via-white to-blue-50/45 px-4 py-3 ring-1 ring-inset ring-white/70">
         <div className="flex min-w-0 items-center gap-3">
           <span className="flex h-7 w-9 shrink-0 items-center justify-center rounded-[12px] border border-blue-100 bg-blue-50 text-[11px] font-black text-blue-600">
             {String(index + 1).padStart(2, '0')}
@@ -435,7 +418,7 @@ function SettingsSectionFrame({
           </div>
         </div>
       </div>
-      <div className="space-y-3 p-3.5">{children}</div>
+      <div className="space-y-3 border-t border-white/70 p-3.5">{children}</div>
     </section>
   )
 }
@@ -518,7 +501,7 @@ function SettingsPageContent() {
         title="设置与配置"
         badge="系统配置"
         iconImage="settings"
-        description="统一管理功能开关、模型接入、检索增强生成参数（RAG）与运行时控制。"
+        description="统一管理功能开关、模型接入、检索增强生成参数（RAG）与运行控制"
         size="full"
         compact
         density="system-dense"
@@ -672,7 +655,19 @@ function SettingsContent({
         </ul>
       </nav>
 
-      <div className="min-w-0 space-y-4">
+      <div className="min-w-0 space-y-6">
+        <SettingsSectionFrame
+          section={SETTINGS_SECTION_BY_ID['sec-status']}
+          index={visibleSectionIndex['sec-status']}
+        >
+          {state.status ? (
+            <SystemStatusSection
+              status={state.status}
+              backendMeta={state.backendMeta}
+            />
+          ) : null}
+        </SettingsSectionFrame>
+
         <SettingsSectionFrame
           section={SETTINGS_SECTION_BY_ID['sec-models']}
           index={visibleSectionIndex['sec-models']}
@@ -726,11 +721,13 @@ function SettingsContent({
           className="[&>div:last-child]:space-y-4"
         >
           <ParserServicesSection
+            mineru={state.mineruMerged}
             etl4llm={state.etl4llmMerged}
             marker={state.markerMerged}
             paddleVl={state.paddleVlMerged}
             textIn={state.textInMerged}
             magicPdf={state.magicPdfMerged}
+            updateMinerU={state.updateMinerU}
             updateEtl4Llm={state.updateEtl4Llm}
             updateMarker={state.updateMarker}
             updatePaddleVL={state.updatePaddleVL}
@@ -740,15 +737,10 @@ function SettingsContent({
         </SettingsSectionFrame>
 
         <SettingsSectionFrame
-          section={SETTINGS_SECTION_BY_ID['sec-status']}
-          index={visibleSectionIndex['sec-status']}
+          section={SETTINGS_SECTION_BY_ID['sec-rag']}
+          index={visibleSectionIndex['sec-rag']}
         >
-          {state.status ? (
-            <SystemStatusSection
-              status={state.status}
-              backendMeta={state.backendMeta}
-            />
-          ) : null}
+          <RagSection rag={state.ragMerged} updateRag={state.updateRag} />
         </SettingsSectionFrame>
 
         <SettingsSectionFrame
@@ -774,13 +766,6 @@ function SettingsContent({
             formatTime={state.formatTime}
             shortId={state.shortId}
           />
-        </SettingsSectionFrame>
-
-        <SettingsSectionFrame
-          section={SETTINGS_SECTION_BY_ID['sec-rag']}
-          index={visibleSectionIndex['sec-rag']}
-        >
-          <RagSection rag={state.ragMerged} updateRag={state.updateRag} />
         </SettingsSectionFrame>
 
         {isAdmin ? (

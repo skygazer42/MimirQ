@@ -49,6 +49,8 @@ export function useParsingPageState({ files, setFiles }: Readonly<UseParsingPage
   const [hoveredBlockId, setHoveredBlockId] = useState<string | null>(null)
   const { parserBackend, setParserBackend } = useParserBackendPreference()
   const [imageCaptionEnabled, setImageCaptionEnabled] = useState(false)
+  const [imageOcrEnabled, setImageOcrEnabled] = useState(false)
+  const [vlmCorrectionEnabled, setVlmCorrectionEnabled] = useState(false)
 
   const cancelParse = useCallback((fileId: string) => {
     const controller = parseControllersRef.current.get(fileId)
@@ -90,6 +92,10 @@ export function useParsingPageState({ files, setFiles }: Readonly<UseParsingPage
     if (globalThis.window === undefined) return
     const stored = globalThis.window.localStorage.getItem('mimirq_parsing_image_caption_enabled')
     if (stored === 'true') setImageCaptionEnabled(true)
+    const imageOcrStored = globalThis.window.localStorage.getItem('mimirq_parsing_image_ocr_enabled')
+    if (imageOcrStored === 'true') setImageOcrEnabled(true)
+    const vlmCorrectionStored = globalThis.window.localStorage.getItem('mimirq_parsing_vlm_correction_enabled')
+    if (vlmCorrectionStored === 'true') setVlmCorrectionEnabled(true)
   }, [])
 
   useEffect(() => {
@@ -99,6 +105,22 @@ export function useParsingPageState({ files, setFiles }: Readonly<UseParsingPage
       imageCaptionEnabled ? 'true' : 'false'
     )
   }, [imageCaptionEnabled])
+
+  useEffect(() => {
+    if (globalThis.window === undefined) return
+    globalThis.window.localStorage.setItem(
+      'mimirq_parsing_image_ocr_enabled',
+      imageOcrEnabled ? 'true' : 'false'
+    )
+  }, [imageOcrEnabled])
+
+  useEffect(() => {
+    if (globalThis.window === undefined) return
+    globalThis.window.localStorage.setItem(
+      'mimirq_parsing_vlm_correction_enabled',
+      vlmCorrectionEnabled ? 'true' : 'false'
+    )
+  }, [vlmCorrectionEnabled])
 
   const setQueueFileParserBackend = useCallback(
     (params: { fileId: string; filename: string; backend: string }) => {
@@ -140,6 +162,7 @@ export function useParsingPageState({ files, setFiles }: Readonly<UseParsingPage
     folderInputRef,
     hoveredBlockId,
     imageCaptionEnabled,
+    imageOcrEnabled,
     inspectorOpen,
     isEditing,
     isQueueRehydrating,
@@ -155,6 +178,7 @@ export function useParsingPageState({ files, setFiles }: Readonly<UseParsingPage
     rehydratedFolderIdsRef,
     rightPanelMode,
     selectedDatasetId,
+    vlmCorrectionEnabled,
     setActiveBlockId,
     setActiveFileId,
     setActiveLibraryFileId,
@@ -166,6 +190,7 @@ export function useParsingPageState({ files, setFiles }: Readonly<UseParsingPage
     setEditedContent,
     setHoveredBlockId,
     setImageCaptionEnabled,
+    setImageOcrEnabled,
     setInspectorOpen,
     setIsEditing,
     setIsQueueRehydrating,
@@ -177,6 +202,7 @@ export function useParsingPageState({ files, setFiles }: Readonly<UseParsingPage
     setQueueOpen,
     setRightPanelMode,
     setSelectedDatasetId,
+    setVlmCorrectionEnabled,
     consumeUploadTargetFolderId,
     uploadTargetFolderIdRef,
   }

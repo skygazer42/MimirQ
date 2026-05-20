@@ -585,6 +585,7 @@ class Settings(BaseSettings):
     MINERU_API_TOKEN: str = ""
     MINERU_API_BASE: str = "https://mineru.net/api/v4"
     MINERU_MODEL_VERSION: str = "vlm"
+    MINERU_BACKEND: str = "pipeline"
     MINERU_ENABLED: bool = False
     # MinerU local ZIP mode (Markdown + images)
     MINERU_LOCAL_SERVER_URL: str = ""

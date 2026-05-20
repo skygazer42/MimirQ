@@ -9,5 +9,6 @@ describe('settings group detail page source', () => {
 
     expect(src).toContain('aria-label={removing ? `正在移除成员 ${uid}` : `移除成员 ${uid}`}')
     expect(src).toContain('<Trash2 className="h-4 w-4" />')
+    expect(src).not.toContain('可选')
   })
 })

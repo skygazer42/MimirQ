@@ -3296,6 +3296,7 @@ async def run_kg_extraction_for_document(
     prune_orphan_entities: Annotated[bool | None, Query(description="Prune entities with no remaining event links")] = None,
     extract_relations: Annotated[bool | None, Query(description="Extract entity relations (triples) (override settings)")] = None,
     extract_skills: Annotated[bool | None, Query(description="Extract Skill/SOP entities (override settings)")] = None,
+    extraction_backend: Annotated[str | None, Query(description="Extraction backend override: llm, gliner, hybrid, heuristic")] = None,
     prompt_template_id: Annotated[UUID | None, Query()] = None,
     prompt_template_key: Annotated[str | None, Query()] = None,
     prompt_ab_experiment_key: Annotated[str | None, Query()] = None,
@@ -3448,6 +3449,7 @@ async def run_kg_extraction_for_document(
             ab_user_key=account_id,
             extract_relations=eff_extract_relations,
             extract_skills=eff_extract_skills,
+            extraction_backend=(str(extraction_backend).strip() if isinstance(extraction_backend, str) else None),
             replace_existing=eff_replace_existing,
             prune_orphan_entities=eff_prune_orphans,
         )

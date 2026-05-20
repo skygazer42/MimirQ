@@ -109,13 +109,13 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   'audit.logs.purge': '审计日志清理',
   'audit.logs.retention': '审计保留策略',
   'compliance.access_graph.export': '访问回溯导出',
-  'compliance.access_review.daily': '访问审查（日常）',
+  'compliance.access_review.daily': '访问审查',
   'dataset.retention.sweep': '数据集保留清理',
   'document.version.retention_delete': '文档版本保留删除',
   'evaluations.regression_runs.retention': '评测运行保留清理',
-  'evidence.drift_audit.daily': '证据策略（日常）',
+  'evidence.drift_audit.daily': '证据策略',
   'knowledge.assets.retention': '知识资产保留清理',
-  'observability.index_audit.daily': '索引审计（日常）',
+  'observability.index_audit.daily': '索引审计',
 }
 
 const AUDIT_TERM_LABELS: Record<string, string> = {

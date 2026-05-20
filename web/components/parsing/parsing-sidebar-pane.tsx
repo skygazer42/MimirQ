@@ -54,6 +54,8 @@ type ParsingSidebarPaneProps = {
   parseableCount: number
   parserBackend: string
   imageCaptionEnabled: boolean
+  imageOcrEnabled: boolean
+  vlmCorrectionEnabled: boolean
   isLibraryLoaded: boolean
   sidebarFileItems: DocumentTreeFileItem[]
   fileAccept: string
@@ -69,6 +71,8 @@ type ParsingSidebarPaneProps = {
   onParseAllPending: () => void
   onParserBackendChange: (backend: string) => void
   onImageCaptionEnabledChange: (enabled: boolean) => void
+  onImageOcrEnabledChange: (enabled: boolean) => void
+  onVlmCorrectionEnabledChange: (enabled: boolean) => void
   onFolderDragOver: (
     event: React.DragEvent<HTMLElement>,
     folderId: string
@@ -122,6 +126,8 @@ export function ParsingSidebarPane({
   parseableCount,
   parserBackend,
   imageCaptionEnabled,
+  imageOcrEnabled,
+  vlmCorrectionEnabled,
   isLibraryLoaded,
   sidebarFileItems,
   fileAccept,
@@ -137,6 +143,8 @@ export function ParsingSidebarPane({
   onParseAllPending,
   onParserBackendChange,
   onImageCaptionEnabledChange,
+  onImageOcrEnabledChange,
+  onVlmCorrectionEnabledChange,
   onFolderDragOver,
   onFolderDragLeave,
   onFolderDrop,
@@ -272,6 +280,36 @@ export function ParsingSidebarPane({
                   <Switch
                     checked={imageCaptionEnabled}
                     onCheckedChange={onImageCaptionEnabledChange}
+                  />
+                </div>
+
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium">
+                      {t('sidebar.imageOcrTitle')}
+                    </div>
+                    <div className="mt-1 text-xs leading-snug text-muted-foreground">
+                      {t('sidebar.imageOcrDescription')}
+                    </div>
+                  </div>
+                  <Switch
+                    checked={imageOcrEnabled}
+                    onCheckedChange={onImageOcrEnabledChange}
+                  />
+                </div>
+
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium">
+                      {t('sidebar.vlmCorrectionTitle')}
+                    </div>
+                    <div className="mt-1 text-xs leading-snug text-muted-foreground">
+                      {t('sidebar.vlmCorrectionDescription')}
+                    </div>
+                  </div>
+                  <Switch
+                    checked={vlmCorrectionEnabled}
+                    onCheckedChange={onVlmCorrectionEnabledChange}
                   />
                 </div>
               </div>

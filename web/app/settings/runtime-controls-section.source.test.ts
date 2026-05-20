@@ -11,7 +11,8 @@ describe('settings runtime controls section', () => {
     )
 
     expect(src).toContain('DangerZonePanel')
-    expect(src).toContain('运行时控制')
+    expect(src).toContain('运行控制')
+    expect(src).not.toContain('title="运行时控制"')
     expect(src).toContain('高影响配置')
     expect(src).toContain('compact')
     expect(src).toContain('tone="neutral"')

@@ -6,9 +6,11 @@ import {
   ChevronLeft,
   ChevronRight,
   ListChecks,
+  Loader2,
   RefreshCw,
   Search,
   ShieldCheck,
+  Trash2,
   UserCog,
   UserPlus,
   Users,
@@ -23,6 +25,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PageScaffold } from '@/components/ui/page-scaffold'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import {
   Select,
   SelectContent,
@@ -38,6 +41,7 @@ import { queryKeys } from '@/lib/query-keys'
 import { EmptyState } from '@/components/ui/empty-state'
 import { SamlOpsPanel } from '@/components/settings/saml-ops-panel'
 import { ScimProvisioningPanel } from '@/components/settings/scim-provisioning-panel'
+import { useTenantAccess } from '@/hooks/use-tenant-access'
 
 const ROLE_OPTIONS = [
   {
@@ -136,8 +140,10 @@ export default function SettingsRbacPage() {
 
 function SettingsRbacPageContent() {
   const queryClient = useQueryClient()
+  const tenantAccessQuery = useTenantAccess()
   const [roleDraft, setRoleDraft] = useState<Record<string, string>>({})
   const [savingIds, setSavingIds] = useState<Record<string, boolean>>({})
+  const [removingIds, setRemovingIds] = useState<Record<string, boolean>>({})
   const [query, setQuery] = useState('')
   const [roleFilter, setRoleFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -166,6 +172,7 @@ function SettingsRbacPageContent() {
     () => membersQuery.data?.items || [],
     [membersQuery.data?.items]
   )
+  const currentAccountId = String(tenantAccessQuery.data?.account_id || '').trim()
   const totalMembers = Number(membersQuery.data?.total ?? members.length)
   const loading = membersQuery.isFetching
 
@@ -273,11 +280,55 @@ function SettingsRbacPageContent() {
     saveRoleMutation.mutate({ uid, desired: desired || 'viewer' })
   }
 
+  const removeMemberMutation = useMutation({
+    mutationFn: async (uid: string) => rbacApi.removeTenantMember(uid),
+    onMutate: (uid) => {
+      setRemovingIds((prev) => ({ ...prev, [uid]: true }))
+    },
+    onSuccess: (_result, uid) => {
+      queryClient.setQueryData<RbacMembersSnapshot>(
+        queryKeys.rbac.members(RBAC_MEMBERS_PARAMS),
+        (prev) => {
+          const previousItems = Array.isArray(prev?.items) ? prev.items : []
+          const nextItems = previousItems.filter(
+            (member) => String(member.user_id || '') !== uid
+          )
+          return {
+            items: nextItems,
+            total: Math.max(0, Number(prev?.total ?? previousItems.length) - 1),
+          }
+        }
+      )
+      setRoleDraft((prev) => {
+        const next = { ...prev }
+        delete next[uid]
+        return next
+      })
+      toast.success(`已移除成员：${uid}`)
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.rbac.members(RBAC_MEMBERS_PARAMS),
+      })
+    },
+    onError: (err: unknown) => {
+      toast.error(formatApiError(err, '移除成员失败'))
+    },
+    onSettled: (_data, _error, uid) => {
+      if (!uid) return
+      setRemovingIds((prev) => ({ ...prev, [uid]: false }))
+    },
+  })
+
+  function removeMember(userId: string): void {
+    const uid = String(userId || '').trim()
+    if (!uid) return
+    removeMemberMutation.mutate(uid)
+  }
+
   return (
     <AppFrame>
       <PageScaffold
-        title="成员权限（RBAC）"
-        description="基于角色的访问控制（RBAC）管理用户成员角色、控制和管理与系统的访问权限。"
+        title="成员权限"
+        description="管理成员角色、访问范围和权限状态"
         iconImage="members-rbac"
         icon={ShieldCheck}
         iconColor="text-blue-600"
@@ -292,21 +343,21 @@ function SettingsRbacPageContent() {
               icon={Users}
               label="总成员"
               value={String(totalMembers || members.length)}
-              detail="所有成员总数"
+              detail="可管理成员"
               tone="blue"
             />
             <StatCard
               icon={UserCog}
               label="管理员"
               value={String(adminCount)}
-              detail="拥有管理权限"
+              detail="高权限成员"
               tone="green"
             />
             <StatCard
               icon={UserPlus}
               label="未分配角色"
               value={String(unassignedCount)}
-              detail="需要补齐角色"
+              detail="待补齐角色"
               tone="orange"
             />
             <StatCard
@@ -315,7 +366,7 @@ function SettingsRbacPageContent() {
               value={loading ? '加载中' : '已就绪'}
               detail={
                 currentUserCount
-                  ? `当前用户 ${currentUserCount}`
+                  ? `当前登录账号 ${currentUserCount}`
                   : '成员列表状态'
               }
               tone={loading ? 'orange' : 'purple'}
@@ -341,15 +392,6 @@ function SettingsRbacPageContent() {
               />
               刷新
             </Button>
-            <Button
-              size="sm"
-              className="h-9 gap-2 rounded-lg bg-blue-600 px-3 text-[12px] font-semibold text-info-foreground shadow-sm hover:bg-blue-700"
-              disabled
-              title="后端当前未提供手动新增成员接口，成员通过登录或 SCIM 同步创建。"
-            >
-              <UserPlus className="size-4" />
-              添加成员
-            </Button>
           </div>
         }
       >
@@ -365,7 +407,7 @@ function SettingsRbacPageContent() {
                     成员管理
                   </h2>
                   <p className="mt-0.5 text-[12px] text-slate-500">
-                    角色修改直接写入 RBAC 后端；成员创建由登录或 SCIM 同步完成。
+                    调整角色、移除成员，并同步当前访问控制状态
                   </p>
                 </div>
               </div>
@@ -483,7 +525,18 @@ function SettingsRbacPageContent() {
                             ? String(roleDraft[uid] || m.role || 'viewer')
                             : String(m.role || 'viewer')
                           const saving = uid ? Boolean(savingIds[uid]) : false
+                          const removing = uid ? Boolean(removingIds[uid]) : false
                           const display = userDisplay(uid)
+                          const isSelf = Boolean(uid) && (
+                            uid === currentAccountId ||
+                            (!currentAccountId && m.is_current)
+                          )
+                          const canRemove = Boolean(uid) && !isSelf
+                          const removeDescription = canRemove
+                            ? `将把 ${display.primary} 从当前租户移除，并撤销组和显式访问授权`
+                            : isSelf
+                              ? '不能移除当前用户。请切换到其他管理员账号后再操作'
+                              : '缺少成员 ID，无法移除'
                           return (
                             <tr
                               key={key}
@@ -564,12 +617,12 @@ function SettingsRbacPageContent() {
                                 <Badge
                                   className={cn(
                                     'rounded-full border px-2 py-0.5 text-[11px] font-semibold shadow-none',
-                                    m.is_current
+                                    isSelf
                                       ? 'border-blue-100 bg-blue-50 text-blue-700'
                                       : 'border-emerald-100 bg-emerald-50 text-emerald-700'
                                   )}
                                 >
-                                  {m.is_current ? '当前用户' : '已同步'}
+                                  {isSelf ? '当前用户' : '已同步'}
                                 </Badge>
                               </td>
                               <td className="px-4 py-2 text-[12px] text-slate-500">
@@ -580,11 +633,33 @@ function SettingsRbacPageContent() {
                                   <Button
                                     size="sm"
                                     className="h-8 rounded-lg bg-slate-950 px-3 text-[12px] font-semibold text-info-foreground hover:bg-slate-800"
-                                    disabled={!uid || saving}
+                                    disabled={!uid || saving || removing}
                                     onClick={() => saveRole(uid)}
                                   >
                                     {saving ? '保存中' : '保存'}
                                   </Button>
+                                  <ConfirmDialog
+                                    title="移除成员？"
+                                    description={removeDescription}
+                                    confirmLabel="确认移除"
+                                    confirmDisabled={!canRemove || removing}
+                                    onConfirm={() => removeMember(uid)}
+                                  >
+                                    <Button
+                                      variant="outline"
+                                      size="icon"
+                                      className="h-8 w-8 rounded-lg border-rose-100 bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700 disabled:opacity-50"
+                                      disabled={!uid || removing}
+                                      title={isSelf ? '查看不能移除当前用户的原因' : '移除成员'}
+                                      aria-label={isSelf ? '不能移除当前用户' : `移除成员 ${display.primary}`}
+                                    >
+                                      {removing ? (
+                                        <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
+                                      ) : (
+                                        <Trash2 className="size-3.5" />
+                                      )}
+                                    </Button>
+                                  </ConfirmDialog>
                                 </div>
                               </td>
                             </tr>
@@ -601,7 +676,7 @@ function SettingsRbacPageContent() {
                               <EmptyState
                                 icon={Users}
                                 title="暂无成员"
-                                description="还没有添加任何成员，或您没有查看权限。"
+                                description="还没有添加任何成员，或您没有查看权限"
                                 className="rounded-none border-0 shadow-none"
                               />
                             )}
@@ -701,23 +776,23 @@ function StatCard({
     <div
       className={cn(
         CARD_CLASS,
-        'flex min-h-[82px] items-center gap-4 px-5 py-3'
+        'flex min-h-[58px] items-center gap-3 px-4 py-2.5'
       )}
     >
       <div
         className={cn(
-          'flex size-10 shrink-0 items-center justify-center rounded-xl',
+          'flex size-8 shrink-0 items-center justify-center rounded-lg',
           toneClass
         )}
       >
-        <Icon className="size-5" />
+        <Icon className="size-4" />
       </div>
       <div className="min-w-0">
-        <p className="text-[12px] font-semibold text-slate-500">{label}</p>
-        <p className="mt-1 text-[22px] font-semibold leading-none tracking-[-0.03em] text-slate-950">
+        <p className="text-[11px] font-semibold text-slate-500">{label}</p>
+        <p className="mt-0.5 text-[18px] font-semibold leading-none tracking-[-0.03em] text-slate-950">
           {value}
         </p>
-        <p className="mt-1.5 truncate text-[11px] font-medium text-slate-400">
+        <p className="mt-1 truncate text-[10px] font-medium text-slate-400">
           {detail}
         </p>
       </div>

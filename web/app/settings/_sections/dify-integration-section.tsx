@@ -105,7 +105,7 @@ export function DifyIntegrationSection({
   try {
     knowledgeMap = parseKnowledgeMap(difyExternalKnowledge.knowledge_map_json || '')
   } catch {
-    knowledgeMapError = '当前绑定配置不是有效 JSON，可重新生成绑定覆盖。'
+    knowledgeMapError = '当前绑定配置不是有效 JSON，可重新生成绑定覆盖'
   }
 
   const selectedDatasets = useMemo(
@@ -129,7 +129,7 @@ export function DifyIntegrationSection({
         setDatasets(items)
         setSelectedDatasetIds((prev) => prev.filter((id) => items.some((dataset) => dataset.id === id)))
       } catch {
-        if (!cancelled) setDatasetsError('数据集加载失败，请刷新后重试。')
+        if (!cancelled) setDatasetsError('数据集加载失败，请刷新后重试')
       } finally {
         if (!cancelled) setDatasetsLoading(false)
       }
@@ -188,7 +188,7 @@ export function DifyIntegrationSection({
                   Dify 外部知识库
                 </h3>
                 <p className={cn(settingsTextTokens.helpText, 'mt-0.5')}>
-                  MimirQ 负责真实召回，Dify 只传 knowledge_id；这里把 knowledge_id 自动绑定到一个或多个数据集。
+                  MimirQ 负责真实召回，Dify 只传 knowledge_id；这里把 knowledge_id 自动绑定到一个或多个数据集
                 </p>
               </div>
             </div>
@@ -250,7 +250,7 @@ export function DifyIntegrationSection({
             <div>
               <div className={settingsTextTokens.panelTitle}>选择数据集生成绑定</div>
               <div className={cn(settingsTextTokens.helpText, 'mt-0.5')}>
-                选择一个或多个数据集后生成 Dify 侧可填写的 knowledge_id。
+                选择一个或多个数据集后生成 Dify 侧可填写的 knowledge_id
               </div>
             </div>
             <div className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600">
@@ -272,7 +272,7 @@ export function DifyIntegrationSection({
             ) : null}
             {!datasetsLoading && datasets.length === 0 && !datasetsError ? (
               <div className="col-span-full rounded-[12px] border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] text-slate-500">
-                暂无可绑定数据集。
+                暂无可绑定数据集
               </div>
             ) : null}
             {datasets.map((dataset) => {
@@ -333,7 +333,7 @@ export function DifyIntegrationSection({
             <div>
               <div className={settingsTextTokens.panelTitle}>当前绑定</div>
               <div className={cn(settingsTextTokens.helpText, 'mt-0.5')}>
-                Dify 请求里的 knowledge_id 会按这里路由到数据集。
+                Dify 请求里的 knowledge_id 会按这里路由到数据集
               </div>
             </div>
             <div className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-500">
@@ -350,7 +350,7 @@ export function DifyIntegrationSection({
           <div className="space-y-2">
             {Object.entries(knowledgeMap).length === 0 ? (
               <div className="rounded-[13px] border border-dashed border-slate-200 bg-slate-50/80 px-3 py-5 text-center text-[12px] text-slate-500">
-                暂无绑定。选择数据集后生成一个 knowledge_id。
+                暂无绑定选择数据集后生成一个 knowledge_id
               </div>
             ) : null}
             {Object.entries(knowledgeMap).map(([bindingId, datasetIds]) => (
@@ -387,7 +387,7 @@ export function DifyIntegrationSection({
           </div>
 
           <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-1">
-            <label className="block">
+            <label className="block text-[11px] leading-4 text-slate-600">
               <span className={settingsTextTokens.fieldLabel}>服务账号</span>
               <Input
                 value={difyExternalKnowledge.account_id || 'system:dify'}
@@ -395,7 +395,7 @@ export function DifyIntegrationSection({
                 onChange={(event) => updateDifyExternalKnowledge({ account_id: event.target.value })}
               />
             </label>
-            <label className="block">
+            <label className="block text-[11px] leading-4 text-slate-600">
               <span className={settingsTextTokens.fieldLabel}>最大返回条数</span>
               <Input
                 type="number"

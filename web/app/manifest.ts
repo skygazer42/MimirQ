@@ -11,14 +11,14 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: '#0f172a',
     icons: [
       {
-        src: '/icon.svg',
-        sizes: 'any',
-        type: 'image/svg+xml',
+        src: '/brand/mimirq-mark-badge.png',
+        sizes: '512x512',
+        type: 'image/png',
       },
       {
-        src: '/favicon-light.svg',
-        sizes: 'any',
-        type: 'image/svg+xml',
+        src: '/brand/mimirq-mark.png',
+        sizes: '512x512',
+        type: 'image/png',
       },
     ],
   }

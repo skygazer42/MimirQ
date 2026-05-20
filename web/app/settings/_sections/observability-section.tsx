@@ -41,14 +41,14 @@ export function ObservabilitySection({
                 工具调用记录
               </div>
               <div className={cn(settingsTextTokens.helpText, 'mt-0.5')}>
-                用于排查“某个工具为什么慢、为什么失败”。会记录调用耗时、是否成功，以及常用入参字段名；需要时可附带截断后的结果摘要。
+                用于排查“某个工具为什么慢、为什么失败”会记录调用耗时、是否成功，以及常用入参字段名；需要时可附带截断后的结果摘要
               </div>
               <div className="mt-1 flex flex-wrap gap-1">
                 <span className="rounded-md border border-slate-200 bg-background/85 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
-                  配置键：tool_call_log
+                  适合排查工具失败
                 </span>
                 <span className="rounded-md border border-slate-200 bg-background/85 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
-                  适合排查工具失败
+                  低频开启
                 </span>
               </div>
             </div>
@@ -56,21 +56,22 @@ export function ObservabilitySection({
               checked={isToolCallLogEnabled}
               onCheckedChange={(checked) => updateObservability({ tool_call_log_enabled: checked })}
               className="shrink-0"
-              aria-label="切换工具调用日志（observability.tool_call_log_enabled）"
+              aria-label="切换工具调用记录"
             />
           </div>
 
           {isToolCallLogEnabled ? (
             <div className="grid grid-cols-1 gap-3 pt-1 md:grid-cols-3">
-              <label className="flex items-center gap-2 rounded-md border border-border/70 bg-background/70 px-2.5 py-2">
-                <input
-                  type="checkbox"
-                  checked={observability.tool_call_log_include_preview ?? false}
-                  onChange={(event) => updateObservability({ tool_call_log_include_preview: event.target.checked })}
-                  className="h-3.5 w-3.5 accent-primary"
-                />
+              <div className="flex items-center justify-between gap-3 rounded-md border border-border/70 bg-background/70 px-2.5 py-2">
                 <span className="text-[11px] font-semibold text-slate-700">记录结果摘要</span>
-              </label>
+                <SettingsSwitch
+                  checked={observability.tool_call_log_include_preview ?? false}
+                  onCheckedChange={(checked) =>
+                    updateObservability({ tool_call_log_include_preview: checked })
+                  }
+                  aria-label="切换工具调用结果摘要记录"
+                />
+              </div>
               <div>
                 <div className={cn(settingsTextTokens.fieldLabel, 'mb-1')}>结果摘要最大字符数</div>
                 <Input
@@ -98,14 +99,14 @@ export function ObservabilitySection({
                 工作流运行记录
               </div>
               <div className={cn(settingsTextTokens.helpText, 'mt-0.5')}>
-                用于排查“一次任务卡在哪一步”。会记录总耗时、步骤节点和成功/失败，必要时可把运行路径一起带上。
+                用于排查“一次任务卡在哪一步”会记录总耗时、步骤节点和成功/失败，必要时可把运行路径一起带上
               </div>
               <div className="mt-1 flex flex-wrap gap-1">
                 <span className="rounded-md border border-slate-200 bg-background/85 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
-                  配置键：agent_log
+                  适合排查流程卡点
                 </span>
                 <span className="rounded-md border border-slate-200 bg-background/85 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
-                  适合排查流程卡点
+                  记录运行路径
                 </span>
               </div>
             </div>
@@ -113,23 +114,22 @@ export function ObservabilitySection({
               checked={isAgentLogEnabled}
               onCheckedChange={(checked) => updateObservability({ agent_log_enabled: checked })}
               className="shrink-0"
-              aria-label="切换工作流生命周期日志（observability.agent_log_enabled）"
+              aria-label="切换工作流运行记录"
             />
           </div>
 
           {isAgentLogEnabled ? (
             <div className="grid grid-cols-1 gap-3 pt-1 md:grid-cols-3">
-              <label className="flex items-center gap-2 rounded-md border border-border/70 bg-background/70 px-2.5 py-2">
-                <input
-                  type="checkbox"
-                  checked={observability.agent_log_include_execution_path ?? false}
-                  onChange={(event) =>
-                    updateObservability({ agent_log_include_execution_path: event.target.checked })
-                  }
-                  className="h-3.5 w-3.5 accent-primary"
-                />
+              <div className="flex items-center justify-between gap-3 rounded-md border border-border/70 bg-background/70 px-2.5 py-2">
                 <span className="text-[11px] font-semibold text-slate-700">记录步骤路径</span>
-              </label>
+                <SettingsSwitch
+                  checked={observability.agent_log_include_execution_path ?? false}
+                  onCheckedChange={(checked) =>
+                    updateObservability({ agent_log_include_execution_path: checked })
+                  }
+                  aria-label="切换工作流步骤路径记录"
+                />
+              </div>
               <div>
                 <div className={cn(settingsTextTokens.fieldLabel, 'mb-1')}>错误摘要最大字符数</div>
                 <Input
@@ -157,11 +157,11 @@ export function ObservabilitySection({
                 RAG 过程指标
               </div>
               <div className={cn(settingsTextTokens.helpText, 'mt-0.5')}>
-                用于观察检索和生成是否稳定。会把每次问答的关键指标写入日志文件，适合做趋势分析、问题复盘和离线审计。
+                用于观察检索和生成是否稳定会把每次问答的关键指标写入日志文件，适合做趋势分析、问题复盘和离线审计
               </div>
               <div className="mt-1 flex flex-wrap gap-1">
                 <span className="rounded-md border border-slate-200 bg-background/85 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
-                  配置键：metrics_log
+                  适合趋势分析
                 </span>
                 <span className="rounded-md border border-slate-200 bg-background/85 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
                   日志文件：logs/rag_metrics.jsonl
@@ -172,21 +172,20 @@ export function ObservabilitySection({
               checked={isMetricsLogEnabled}
               onCheckedChange={(checked) => updateObservability({ metrics_log_enabled: checked })}
               className="shrink-0"
-              aria-label="切换 RAG 指标日志（observability.metrics_log_enabled）"
+              aria-label="切换 RAG 过程指标记录"
             />
           </div>
 
           {isMetricsLogEnabled ? (
             <div className="grid grid-cols-1 gap-3 pt-1 md:grid-cols-3">
-              <label className="flex items-center gap-2 rounded-md border border-border/70 bg-background/70 px-2.5 py-2">
-                <input
-                  type="checkbox"
-                  checked={observability.metrics_log_include_text ?? false}
-                  onChange={(event) => updateObservability({ metrics_log_include_text: event.target.checked })}
-                  className="h-3.5 w-3.5 accent-primary"
-                />
+              <div className="flex items-center justify-between gap-3 rounded-md border border-border/70 bg-background/70 px-2.5 py-2">
                 <span className="text-[11px] font-semibold text-slate-700">写入问题与答案原文</span>
-              </label>
+                <SettingsSwitch
+                  checked={observability.metrics_log_include_text ?? false}
+                  onCheckedChange={(checked) => updateObservability({ metrics_log_include_text: checked })}
+                  aria-label="切换 RAG 指标原文写入"
+                />
+              </div>
             </div>
           ) : null}
         </div>

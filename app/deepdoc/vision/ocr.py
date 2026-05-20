@@ -34,6 +34,24 @@ loaded_models = {}
 PARALLEL_DEVICES = 1
 
 
+def _env_int(name: str, default: int, *, min_value: int = 1, max_value: int = 1024) -> int:
+    raw = os.environ.get(name)
+    try:
+        value = int(str(raw).strip()) if raw is not None else int(default)
+    except (TypeError, ValueError):
+        value = int(default)
+    return max(min_value, min(max_value, value))
+
+
+def _env_float(name: str, default: float, *, min_value: float = 0.0, max_value: float = 1000.0) -> float:
+    raw = os.environ.get(name)
+    try:
+        value = float(str(raw).strip()) if raw is not None else float(default)
+    except (TypeError, ValueError):
+        value = float(default)
+    return max(min_value, min(max_value, value))
+
+
 def get_default_resource_dir():
     """
     Return the repo-bundled OCR resource directory.
@@ -180,7 +198,14 @@ def load_model(model_dir, nm, device_id: int | None = None):
 class TextRecognizer:
     def __init__(self, model_dir, device_id: int | None = None):
         self.rec_image_shape = [int(v) for v in "3, 48, 320".split(",")]
-        self.rec_batch_num = 16
+        self.rec_batch_num = _env_int("DEEPDOC_OCR_REC_BATCH_SIZE", 16, min_value=1, max_value=256)
+        self.rec_width_bucket_ratio = _env_float(
+            "DEEPDOC_OCR_REC_WIDTH_BUCKET_RATIO",
+            1.0,
+            min_value=0.0,
+            max_value=32.0,
+        )
+        self.last_profile: dict[str, object] = {}
         postprocess_params = {
             'name': 'CTCLabelDecode',
             "character_dict_path": os.path.join(model_dir, "ocr.res"),
@@ -401,30 +426,66 @@ class TextRecognizer:
 
         return img
 
+    def _effective_width_ratio(self, img) -> float:
+        _imgC, imgH, imgW = self.rec_image_shape[:3]
+        base_ratio = imgW / float(imgH or 1)
+        h, w = img.shape[:2]
+        return max(base_ratio, w / float(h or 1))
+
+    @staticmethod
+    def _width_bucket_key(width_ratio: float, bucket_ratio: float) -> float:
+        if bucket_ratio <= 0:
+            return width_ratio
+        return math.ceil(width_ratio / bucket_ratio) * bucket_ratio
+
+    def _recognition_batches(self, img_list, batch_num: int, bucket_ratio: float):
+        indexed: list[tuple[int, float, float]] = []
+        for index, img in enumerate(img_list):
+            ratio = self._effective_width_ratio(img)
+            indexed.append((index, ratio, self._width_bucket_key(ratio, bucket_ratio)))
+        indexed.sort(key=lambda item: (item[2], item[1], item[0]))
+
+        current_bucket: float | None = None
+        current: list[tuple[int, float, float]] = []
+        for item in indexed:
+            bucket = item[2]
+            if current and bucket != current_bucket:
+                for start in range(0, len(current), batch_num):
+                    yield current[start: start + batch_num]
+                current = []
+            current_bucket = bucket
+            current.append(item)
+        if current:
+            for start in range(0, len(current), batch_num):
+                yield current[start: start + batch_num]
+
     def __call__(self, img_list):
         img_num = len(img_list)
-        # Calculate the aspect ratio of all text bars
-        width_list = []
-        for img in img_list:
-            width_list.append(img.shape[1] / float(img.shape[0]))
-        # Sorting can speed up the recognition process
-        indices = np.argsort(np.array(width_list))
         rec_res = [['', 0.0]] * img_num
-        batch_num = self.rec_batch_num
-        st = time.time()
+        batch_num = _env_int(
+            "DEEPDOC_OCR_REC_BATCH_SIZE",
+            int(getattr(self, "rec_batch_num", 16) or 16),
+            min_value=1,
+            max_value=256,
+        )
+        bucket_ratio = _env_float(
+            "DEEPDOC_OCR_REC_WIDTH_BUCKET_RATIO",
+            float(getattr(self, "rec_width_bucket_ratio", 1.0) or 1.0),
+            min_value=0.0,
+            max_value=32.0,
+        )
+        st = time.perf_counter()
+        batch_profiles = []
+        bucket_keys: set[float] = set()
 
-        for beg_img_no in range(0, img_num, batch_num):
-            end_img_no = min(img_num, beg_img_no + batch_num)
+        for batch in self._recognition_batches(img_list, batch_num, bucket_ratio):
             norm_img_batch = []
-            _imgC, imgH, imgW = self.rec_image_shape[:3]
-            max_wh_ratio = imgW / imgH
-            # max_wh_ratio = 0
-            for ino in range(beg_img_no, end_img_no):
-                h, w = img_list[indices[ino]].shape[0:2]
-                wh_ratio = w * 1.0 / h
-                max_wh_ratio = max(max_wh_ratio, wh_ratio)
-            for ino in range(beg_img_no, end_img_no):
-                norm_img = self.resize_norm_img(img_list[indices[ino]],
+            batch_started = time.perf_counter()
+            max_wh_ratio = max(item[1] for item in batch)
+            bucket_key = batch[0][2] if batch else 0.0
+            bucket_keys.add(bucket_key)
+            for original_index, _ratio, _bucket in batch:
+                norm_img = self.resize_norm_img(img_list[original_index],
                                                 max_wh_ratio)
                 norm_img = norm_img[np.newaxis, :]
                 norm_img_batch.append(norm_img)
@@ -444,9 +505,29 @@ class TextRecognizer:
             preds = outputs[0]
             rec_result = self.postprocess_op(preds)
             for rno in range(len(rec_result)):
-                rec_res[indices[beg_img_no + rno]] = rec_result[rno]
+                rec_res[batch[rno][0]] = rec_result[rno]
+            batch_profiles.append(
+                {
+                    "bucket": round(float(bucket_key), 4),
+                    "size": len(batch),
+                    "max_width_ratio": round(float(max_wh_ratio), 4),
+                    "padded_width": int(norm_img_batch.shape[-1]),
+                    "elapsed_ms": max(0, int(round((time.perf_counter() - batch_started) * 1000.0))),
+                }
+            )
 
-        return rec_res, time.time() - st
+        elapsed = time.perf_counter() - st
+        self.last_profile = {
+            "schema": "mimirq.deepdoc_ocr_recognition_profile.v1",
+            "image_count": int(img_num),
+            "batch_size": int(batch_num),
+            "bucket_ratio": float(bucket_ratio),
+            "bucket_count": len(bucket_keys),
+            "batch_count": len(batch_profiles),
+            "elapsed_ms": max(0, int(round(elapsed * 1000.0))),
+            "batches": batch_profiles,
+        }
+        return rec_res, elapsed
 
 
 class TextDetector:
@@ -608,6 +689,7 @@ class OCR:
 
         self.drop_score = 0.5
         self.crop_image_res_index = 0
+        self.last_recognition_profile: dict[str, object] = {}
 
     def get_rotate_crop_image(self, img, points):
         '''
@@ -702,7 +784,10 @@ class OCR:
     def recognize_batch(self, img_list, device_id: int | None = None):
         if device_id is None:
             device_id = 0
-        rec_res, _elapse = self.text_recognizer[device_id](img_list)
+        recognizer = self.text_recognizer[device_id]
+        rec_res, _elapse = recognizer(img_list)
+        profile = getattr(recognizer, "last_profile", None)
+        self.last_recognition_profile = dict(profile) if isinstance(profile, dict) else {}
         texts = []
         for i in range(len(rec_res)):
             text, score = rec_res[i]
@@ -738,7 +823,10 @@ class OCR:
             img_crop = self.get_rotate_crop_image(ori_im, tmp_box)
             img_crop_list.append(img_crop)
 
-        rec_res, elapse = self.text_recognizer[device_id](img_crop_list)
+        recognizer = self.text_recognizer[device_id]
+        rec_res, elapse = recognizer(img_crop_list)
+        profile = getattr(recognizer, "last_profile", None)
+        self.last_recognition_profile = dict(profile) if isinstance(profile, dict) else {}
 
         time_dict['rec'] = elapse
 

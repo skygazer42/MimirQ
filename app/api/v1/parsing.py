@@ -44,6 +44,7 @@ from app.models.document import DocumentParsedContent
 from app.parsing.artifact_stats import compute_parsing_artifact_stats
 from app.parsing.diagnostics import build_parse_failure_diagnostics
 from app.parsing.enrich.image_caption import add_image_captions
+from app.parsing.enrich.image_ocr import add_image_ocr_blocks
 from app.parsing.factory import parser_factory
 from app.parsing.processors.cross_page_merge import merge_cross_page_items
 from app.parsing.processors.parse_quality_gate import apply_parse_quality_gate_metadata
@@ -271,6 +272,54 @@ def _extract_markdown_pair_from_documents(documents: list[dict[str, Any]] | None
         cleaned = _strip_storage_nul_chars(_strip_position_tags(original).strip())
 
     return original, cleaned
+
+
+def _should_inline_preview_parse(file_ext: str) -> bool:
+    if not bool(getattr(settings, "PREVIEW_INLINE_TEXT_PARSE_ENABLED", True)):
+        return False
+    ext = str(file_ext or "").strip().lower()
+    return ext == ".md" or ext in parser_factory.PLAIN_TEXT_EXTENSIONS
+
+
+def _serialize_inline_parse_documents(documents: list[Any]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for doc in documents or []:
+        metadata = getattr(doc, "metadata", None) or {}
+        out.append(
+            {
+                "page_content": str(getattr(doc, "page_content", "") or ""),
+                "metadata": _sanitize_storage_value(metadata if isinstance(metadata, dict) else {}),
+                "id": str(getattr(doc, "id", "") or "") or None,
+            }
+        )
+    return out
+
+
+def _parse_inline_text_preview(
+    *,
+    source_path: Path,
+    resolved_backend: str,
+    tenant_id: UUID,
+    document_id: UUID,
+    requested_backend: str,
+) -> dict[str, Any]:
+    documents, inline_backend, provenance = parser_factory.parse_with_provenance(
+        source_path,
+        parser_backend=resolved_backend,
+        tenant_id=str(tenant_id),
+        document_id=str(document_id),
+    )
+    if isinstance(provenance, dict):
+        provenance = dict(provenance)
+        provenance.setdefault("payload_requested_backend", str(requested_backend or ""))
+        provenance.setdefault("effective_backend", str(resolved_backend or ""))
+        provenance.setdefault("execution_mode", "inline_text_preview")
+    return {
+        "resolved_backend": inline_backend,
+        "pdf_quality": None,
+        "documents": _serialize_inline_parse_documents(documents),
+        "provenance": _sanitize_storage_value(provenance),
+    }
 
 
 def _grade_max(a: str, b: str) -> str:
@@ -730,6 +779,8 @@ async def parse_workspace_document(
     request: Request,
     parser_backend: str | None = None,
     image_caption_enabled: Annotated[bool, Query()] = False,
+    image_ocr_enabled: Annotated[bool, Query()] = False,
+    vlm_correction_enabled: Annotated[bool | None, Query()] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -816,18 +867,27 @@ async def parse_workspace_document(
     try:
         t0 = time.perf_counter()
 
-        parsed = await run_subprocess_worker(
-            tenant_id=tenant_id,
-            payload={
-                "action": "parse_documents",
-                "tenant_id": str(tenant_id),
-                "file_path": str(source_path),
-                "parser_backend": resolved_backend,
-                "mode": "preview",
-            },
-            disconnect_check=request.is_disconnected,
-            timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
-        )
+        if _should_inline_preview_parse(file_ext):
+            parsed = _parse_inline_text_preview(
+                source_path=source_path,
+                resolved_backend=resolved_backend,
+                tenant_id=tenant_id,
+                document_id=doc.id,
+                requested_backend=requested_backend,
+            )
+        else:
+            parsed = await run_subprocess_worker(
+                tenant_id=tenant_id,
+                payload={
+                    "action": "parse_documents",
+                    "tenant_id": str(tenant_id),
+                    "file_path": str(source_path),
+                    "parser_backend": resolved_backend,
+                    "mode": "preview",
+                },
+                disconnect_check=request.is_disconnected,
+                timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
+            )
         resolved_backend = str(parsed.get("resolved_backend") or resolved_backend)
         parse_provenance = parsed.get("provenance") if isinstance(parsed.get("provenance"), dict) else None
         if requested_backend not in {"", "auto"} and resolved_backend != requested_backend:
@@ -1129,7 +1189,12 @@ async def parse_workspace_document(
 
         # Opt4: parse-then-correct (workspace preview; best-effort; off by default).
         vlm_audit = None
-        if file_ext == ".pdf" and bool(getattr(settings, "VLM_CORRECTION_ENABLED", False)):
+        vlm_correction_requested = (
+            bool(getattr(settings, "VLM_CORRECTION_ENABLED", False))
+            if vlm_correction_enabled is None
+            else bool(vlm_correction_enabled)
+        )
+        if file_ext == ".pdf" and vlm_correction_requested:
             try:
                 pages = [
                     _strip_position_tags(str(it.get("page_content") or "") if isinstance(it, dict) else "")
@@ -1197,6 +1262,22 @@ async def parse_workspace_document(
             except Exception:
                 captions_added = 0
 
+        image_ocr_added = 0
+        image_ocr_audit = None
+        if bool(image_ocr_enabled):
+            try:
+                markdown, image_ocr_added, audit = add_image_ocr_blocks(
+                    markdown,
+                    origin_path=source_path,
+                    max_images=max(0, int(getattr(settings, "IMAGE_OCR_MAX_IMAGES", 20) or 20)),
+                    max_ocr_chars=max(0, int(getattr(settings, "IMAGE_OCR_MAX_CHARS", 2000) or 2000)),
+                )
+                image_ocr_audit = audit.to_dict()
+                markdown = _strip_storage_nul_chars(markdown)
+            except Exception:
+                image_ocr_added = 0
+                image_ocr_audit = None
+
         original_markdown = _strip_storage_nul_chars(original_markdown)
         markdown = _strip_storage_nul_chars(markdown)
         elements = _sanitize_storage_value(elements)
@@ -1243,6 +1324,12 @@ async def parse_workspace_document(
         next_meta["image_caption_enabled"] = bool(image_caption_enabled)
         if bool(image_caption_enabled):
             next_meta["image_captions_added"] = int(captions_added)
+        next_meta["image_ocr_enabled"] = bool(image_ocr_enabled)
+        if bool(image_ocr_enabled):
+            next_meta["image_ocr_added"] = int(image_ocr_added)
+            if isinstance(image_ocr_audit, dict) and image_ocr_audit:
+                next_meta["image_ocr"] = {"schema": "mimirq.image_ocr.v1", **image_ocr_audit}
+        next_meta["vlm_correction_enabled"] = bool(vlm_correction_requested)
         if isinstance(pdf_quality, dict) and pdf_quality:
             next_meta["pdf_quality"] = dict(pdf_quality)
         if isinstance(cross_page_merge_stats, dict) and cross_page_merge_stats:

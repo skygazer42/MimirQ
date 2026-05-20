@@ -88,10 +88,23 @@ GOVERNANCE_RULE_PACKS: dict[str, list[RegexRule]] = {
         RegexRule(pattern=r"(?m)^\s*(?:\u5728\u770b|\u70b9\u8d5e|\u8f6c\u53d1|\u5206\u4eab(?:\u5230)?\u670b\u53cb\u5708)\s*$", repl="", flags=0),
     ],
     "pdf_header_footer_cn": [
-        # Chinese page number footers (conservative full-line matches).
-        RegexRule(pattern=r"(?m)^[ \t]*\u7b2c[ \t]*\d+[ \t]*\u9875[ \t]*(?:/|\u5171)[ \t]*\d+[ \t]*\u9875[ \t]*$", repl="", flags=0),
-        RegexRule(pattern=r"(?m)^[ \t]*\u7b2c[ \t]*\d+[ \t]*\u9875[ \t]*\u5171[ \t]*\d+[ \t]*\u9875[ \t]*$", repl="", flags=0),
-        RegexRule(pattern=r"(?m)^[ \t]*\u7b2c[ \t]*\d+[ \t]*/[ \t]*\d+[ \t]*\u9875[ \t]*$", repl="", flags=0),
+        # Chinese page header/footer lines that include a title/company prefix.
+        # Plain "第 N 页" forms are already covered by DEFAULT_MARKDOWN_RULES.
+        RegexRule(
+            pattern=r"(?m)^[ \t]*[\u4e00-\u9fffA-Za-z0-9（）()《》·._/\\ -]{2,80}[ \t]+第[ \t]*\d+[ \t]*页(?:[ \t]*/[ \t]*(?:\u5171[ \t]*)?\d+[ \t]*页)?[ \t]*$",
+            repl="",
+            flags=0,
+        ),
+        RegexRule(
+            pattern=r"(?m)^[ \t]*[\u4e00-\u9fffA-Za-z0-9（）()《》·._/\\ -]{2,80}[ \t]+第[ \t]*\d+[ \t]*页[ \t]*$",
+            repl="",
+            flags=0,
+        ),
+        RegexRule(
+            pattern=r"(?m)^[ \t]*[\u4e00-\u9fffA-Za-z0-9（）()《》·._/\\ -]{2,80}[ \t]*[|｜][ \t]*第[ \t]*\d+[ \t]*页(?:[ \t]*/[ \t]*\u5171?[ \t]*\d+[ \t]*页)?[ \t]*$",
+            repl="",
+            flags=0,
+        ),
     ],
     "notion_export_noise": [
         # Notion markdown export noise (best-effort, line-oriented).

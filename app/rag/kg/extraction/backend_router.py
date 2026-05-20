@@ -8,7 +8,7 @@ from app.rag.kg.utils import get_logger
 
 logger = get_logger("kg.extract.backend_router")
 
-_VALID_BACKENDS = {"llm", "gliner", "hybrid"}
+_VALID_BACKENDS = {"llm", "gliner", "hybrid", "heuristic"}
 
 
 @dataclass(slots=True)
@@ -30,6 +30,11 @@ def resolve_extraction_backend(*, llm_processor: Any, requested_backend: str | N
     backend = _normalized_backend(requested_backend)
     if backend == "llm":
         return ExtractionBackendSelection(backend="llm", processor=llm_processor)
+
+    if backend == "heuristic":
+        from app.rag.kg.extraction.heuristic_extractor import HeuristicExtractor
+
+        return ExtractionBackendSelection(backend="heuristic", processor=HeuristicExtractor())
 
     from app.rag.kg.extraction.gliner_extractor import GLiNERExtractor
     from app.rag.kg.extraction.hybrid_extractor import HybridExtractor

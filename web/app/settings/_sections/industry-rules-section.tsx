@@ -118,35 +118,28 @@ export function IndustryRulesSection() {
   const actionButtonClass = 'h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold'
 
   return (
-    <section className="space-y-2.5">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className={cn(settingsTextTokens.sectionTitle, 'flex items-center gap-1.5')}>
-          <Sparkles className={settingsTextTokens.sectionIcon} />
-          行业规则与查询改写
-        </h2>
-        <div className="flex items-center gap-2">
-          <Button asChild variant="outline" className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold">
-            <Link href="/governance/industry-rules">
-              打开完整工作台
-              <ExternalLink className="h-3.5 w-3.5" />
-            </Link>
-          </Button>
-          <div className={settingsTextTokens.sectionBadge}>
-            后端规则接口
-          </div>
-        </div>
-      </div>
-
+    <section>
       <div className={cn(systemWorkbenchTokens.panel, 'space-y-3.5 p-3.5')}>
         <div className="rounded-lg border border-blue-100/80 bg-gradient-to-br from-blue-50/60 via-background to-cyan-50/35 p-3">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
-              <div className={cn(settingsTextTokens.panelTitle, 'flex items-center gap-1.5')}>
-                <WandSparkles className="h-4 w-4 text-blue-500" />
-                查询改写规则
+              <div className="flex flex-wrap items-center gap-2">
+                <div className={cn(settingsTextTokens.panelTitle, 'flex items-center gap-1.5')}>
+                  <WandSparkles className="h-4 w-4 text-blue-500" />
+                  查询改写规则
+                </div>
+                <div className={settingsTextTokens.sectionBadge}>
+                  后端规则接口
+                </div>
+                <Button asChild variant="outline" className="h-7 gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold">
+                  <Link href="/governance/industry-rules">
+                    打开完整工作台
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </Link>
+                </Button>
               </div>
               <p className={cn(settingsTextTokens.helpText, 'mt-1 max-w-2xl')}>
-                维护行业术语、匹配规则和意图规则，用来把用户问题补全成更适合检索的表达。保存前可以先运行预览，确认改写结果。
+                维护行业术语、匹配规则和意图规则，用来把用户问题补全成更适合检索的表达保存前可以先运行预览，确认改写结果
               </p>
             </div>
             <div className="grid grid-cols-3 gap-1.5 text-center sm:min-w-[270px]">
@@ -351,7 +344,7 @@ export function IndustryRulesSection() {
           />
         </div>
 
-        <OperationResultPanel title="执行结果" result={result} emptyMessage="载入规则、运行预览或保存后，这里会保留本次接口结果。" />
+        <OperationResultPanel title="执行结果" result={result} emptyMessage="载入规则、运行预览或保存后，这里会保留本次接口结果" />
       </div>
     </section>
   )

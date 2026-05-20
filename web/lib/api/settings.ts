@@ -59,6 +59,8 @@ export interface RAGConfig {
   enable_reranker: boolean
   reranker_provider: string
   reranker_top_n: number
+  show_image_in_answer: boolean
+  image_append_max: number
 }
 
 export interface CacheConfig {
@@ -88,6 +90,9 @@ export interface MinerUConfig {
   api_token: string
   api_base: string
   model_version: string
+  backend: string
+  local_server_url: string
+  vl_server: string
 }
 
 export interface Etl4LlmConfig {

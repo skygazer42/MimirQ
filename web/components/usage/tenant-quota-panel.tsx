@@ -56,6 +56,13 @@ function formatBytes(value: number | null | undefined) {
   return `${size >= 10 || index === 0 ? size.toFixed(0) : size.toFixed(1)} ${units[index]}`
 }
 
+function disabledQuotaText(label = '后端未启用该配额') {
+  return {
+    primary: '',
+    secondary: label,
+  }
+}
+
 type QuotaCardProps = {
   icon: ComponentType<{ className?: string }>
   title: string
@@ -82,17 +89,17 @@ function QuotaCard({
       : 'border-slate-100 bg-slate-50 text-slate-500'
 
   return (
-    <div className="rounded-xl border border-slate-200/70 bg-card px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.02)]">
+    <div className="rounded-xl border border-slate-200/70 bg-card px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.02)]">
       <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className={cn('flex size-9 items-center justify-center rounded-xl border', tone)}>
-            <Icon className="size-4" />
+        <div className="flex min-w-0 items-center gap-2.5">
+          <div className={cn('flex size-8 items-center justify-center rounded-lg border', tone)}>
+            <Icon className="size-3.5" />
           </div>
           <div className="min-w-0">
             <p className="truncate text-[12px] font-semibold text-slate-800">
               {title}
             </p>
-            <p className="mt-0.5 truncate text-[11px] text-slate-400">
+            <p className="mt-0.5 truncate text-[10px] text-slate-400">
               {secondary}
             </p>
           </div>
@@ -110,15 +117,21 @@ function QuotaCard({
           {exceeded ? '已超额' : enabled ? '已启用' : '未启用'}
         </span>
       </div>
-      <div className="mt-3 flex items-end justify-between gap-3">
-        <p className="text-[18px] font-semibold tabular-nums text-slate-950">
-          {primary}
-        </p>
-        <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-slate-400">
+      <div className="mt-2 flex min-h-5 items-end justify-between gap-3">
+        {enabled ? (
+          <p className="text-[17px] font-semibold tabular-nums text-slate-950">
+            {primary}
+          </p>
+        ) : (
+          <p className="text-[10px] font-medium text-slate-400">
+            等待后端开启
+          </p>
+        )}
+        <p className="text-[9px] font-medium uppercase tracking-[0.12em] text-slate-300">
           租户
         </p>
       </div>
-      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100">
+      <div className="mt-2 h-1 overflow-hidden rounded-full bg-slate-100">
         <div
           className={cn(
             'h-full rounded-full',
@@ -140,6 +153,30 @@ export function TenantQuotaPanel() {
   const payload = quotaQuery.data ?? null
   const json = useMemo(() => prettyJson(payload), [payload])
   const lines = useMemo(() => json.split('\n'), [json])
+  const documentQuotaText = payload?.documents.enabled
+    ? {
+        primary: `${formatNumber(payload.documents.used)} / ${formatNumber(payload.documents.limit)}`,
+        secondary: `剩余 ${formatNumber(payload.documents.remaining)} 个文档`,
+      }
+    : disabledQuotaText()
+  const storageQuotaText = payload?.storage.enabled
+    ? {
+        primary: `${formatBytes(payload.storage.used_bytes)} / ${formatBytes(payload.storage.limit_bytes)}`,
+        secondary: `剩余 ${formatBytes(payload.storage.remaining_bytes)}`,
+      }
+    : disabledQuotaText()
+  const embeddingQuotaText = payload?.embedding_chars.enabled
+    ? {
+        primary: `${formatNumber(payload.embedding_chars.used_chars)} / ${formatNumber(payload.embedding_chars.limit_chars)}`,
+        secondary: `${payload.embedding_chars.window_hours}h 窗口 · ${payload.embedding_chars.mode}`,
+      }
+    : disabledQuotaText('后端未启用字符配额')
+  const qpsQuotaText = payload?.qps.enabled
+    ? {
+        primary: `${formatNumber(payload.qps.rps)} rps`,
+        secondary: `burst ${formatNumber(payload.qps.burst)} · ${payload.qps.scopes?.join(' / ') || 'chat / retrieval'}`,
+      }
+    : disabledQuotaText('后端未启用租户限流')
 
   async function refreshQuota() {
     const result = await quotaQuery.refetch()
@@ -159,11 +196,11 @@ export function TenantQuotaPanel() {
     >
       <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="text-[17px] font-medium tracking-[-0.01em] text-slate-950">
+          <h2 className="text-[17px] font-semibold tracking-[-0.01em] text-slate-950">
             租户级配额状态
           </h2>
           <p className="mt-1 text-[13px] leading-5 text-slate-500">
-            从后端配置读取文档、存储、Embedding 字符与 QPS 限额；当前按租户生效，不按数据集或用户拆分。
+            由后端配额配置控制，当前按租户生效，不按数据集或用户拆分。
           </p>
         </div>
         <Button
@@ -185,39 +222,39 @@ export function TenantQuotaPanel() {
       <div className="border-t border-slate-200 px-5 pb-5 pt-4">
         {payload ? (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <QuotaCard
-              icon={FileText}
-              title="文档数配额"
-              enabled={payload.documents.enabled}
-              exceeded={payload.documents.exceeded}
-              primary={`${formatNumber(payload.documents.used)} / ${formatNumber(payload.documents.limit)}`}
-              secondary={`剩余 ${formatNumber(payload.documents.remaining)} 个文档`}
+	            <QuotaCard
+	              icon={FileText}
+	              title="文档数配额"
+	              enabled={payload.documents.enabled}
+	              exceeded={payload.documents.exceeded}
+	              primary={documentQuotaText.primary}
+	              secondary={documentQuotaText.secondary}
               progress={
                 payload.documents.enabled
                   ? (payload.documents.used / Math.max(1, payload.documents.limit)) * 100
                   : 0
               }
             />
-            <QuotaCard
-              icon={Database}
-              title="存储配额"
-              enabled={payload.storage.enabled}
-              exceeded={payload.storage.exceeded}
-              primary={`${formatBytes(payload.storage.used_bytes)} / ${formatBytes(payload.storage.limit_bytes)}`}
-              secondary={`剩余 ${formatBytes(payload.storage.remaining_bytes)}`}
+	            <QuotaCard
+	              icon={Database}
+	              title="存储配额"
+	              enabled={payload.storage.enabled}
+	              exceeded={payload.storage.exceeded}
+	              primary={storageQuotaText.primary}
+	              secondary={storageQuotaText.secondary}
               progress={
                 payload.storage.enabled
                   ? (payload.storage.used_bytes / Math.max(1, payload.storage.limit_bytes)) * 100
                   : 0
               }
             />
-            <QuotaCard
-              icon={TextCursorInput}
-              title="Embedding 字符"
-              enabled={payload.embedding_chars.enabled}
-              exceeded={payload.embedding_chars.exceeded}
-              primary={`${formatNumber(payload.embedding_chars.used_chars)} / ${formatNumber(payload.embedding_chars.limit_chars)}`}
-              secondary={`${payload.embedding_chars.window_hours}h 窗口 · ${payload.embedding_chars.mode}`}
+	            <QuotaCard
+	              icon={TextCursorInput}
+	              title="Embedding 字符"
+	              enabled={payload.embedding_chars.enabled}
+	              exceeded={payload.embedding_chars.exceeded}
+	              primary={embeddingQuotaText.primary}
+	              secondary={embeddingQuotaText.secondary}
               progress={
                 payload.embedding_chars.enabled
                   ? (payload.embedding_chars.used_chars /
@@ -226,12 +263,12 @@ export function TenantQuotaPanel() {
                   : 0
               }
             />
-            <QuotaCard
-              icon={Gauge}
-              title="QPS 限流"
-              enabled={payload.qps.enabled}
-              primary={`${formatNumber(payload.qps.rps)} rps`}
-              secondary={`burst ${formatNumber(payload.qps.burst)} · ${payload.qps.scopes?.join(' / ') || 'chat / retrieval'}`}
+	            <QuotaCard
+	              icon={Gauge}
+	              title="QPS 限流"
+	              enabled={payload.qps.enabled}
+	              primary={qpsQuotaText.primary}
+	              secondary={qpsQuotaText.secondary}
               progress={payload.qps.enabled ? 100 : 0}
             />
           </div>

@@ -84,7 +84,7 @@ function formatRtbfRaw(value: unknown): string | null {
 function rtbfNoteCopy(value: string): string {
   if (!value) return ''
   if (value.includes('status persistence is not enabled')) {
-    return '当前后端未启用状态持久化，只返回受理状态；完整执行结果以请求返回为准。'
+    return '当前后端未启用状态持久化，只返回受理状态；完整执行结果以请求返回为准'
   }
   return value
 }
@@ -94,7 +94,7 @@ function buildRtbfResultView(value: unknown): RtbfResultView {
   if (!record) {
     return {
       title: '尚未调用 RTBF 接口',
-      description: '默认会绑定当前账号。需要处理其他用户时，从成员列表选择；只有列表里找不到时才手动输入账号 ID。',
+      description: '默认会绑定当前账号需要处理其他用户时，从成员列表选择；只有列表里找不到时才手动输入账号 ID',
       tone: 'idle',
       badge: '默认自动绑定',
       metrics: [
@@ -122,8 +122,8 @@ function buildRtbfResultView(value: unknown): RtbfResultView {
   const isStatusOnly = Boolean(ticketId && status && !('eligible' in record))
   const title = errors > 0 ? 'RTBF 执行存在错误' : isStatusOnly ? `状态查询：${statusLabel}` : dryRun ? '安全预演完成' : '级联删除已执行'
   const description = note || message || (dryRun
-    ? `本次只评估影响范围，命中 ${eligible} 个候选文档，未执行删除。`
-    : `本次已执行级联删除，删除 ${deleted}/${eligible} 个候选文档。`)
+    ? `本次只评估影响范围，命中 ${eligible} 个候选文档，未执行删除`
+    : `本次已执行级联删除，删除 ${deleted}/${eligible} 个候选文档`)
 
   if (isStatusOnly) {
     return {
@@ -217,7 +217,7 @@ function RtbfResultSummary({ value }: Readonly<{ value: unknown }>) {
           </pre>
         ) : (
           <div className="mt-2 rounded-md border border-dashed border-border/60 bg-background/70 px-2 py-1.5 text-[11px] text-slate-500">
-            暂无后端响应。提交请求或查询状态后，这里会保留原始材料。
+            暂无后端响应提交请求或查询状态后，这里会保留原始材料
           </div>
         )}
       </details>
@@ -320,7 +320,7 @@ export function GovernanceSection({
             <div>
               <AlertTitle className="text-xs">默认治理规则</AlertTitle>
               <AlertDescription className={settingsTextTokens.helpText}>
-                这些开关会影响“入库前清洗/脱敏”，用于没有单独配置数据集或文档级管线时的默认行为。
+                这些开关会影响“入库前清洗/脱敏”，用于没有单独配置数据集或文档级管线时的默认行为
               </AlertDescription>
             </div>
           </Alert>
@@ -391,7 +391,7 @@ export function GovernanceSection({
 
         <DangerZonePanel
           title="个人数据删除闭环（RTBF）"
-          impact="会按账号级联影响文档、分块、向量、图谱和缓存；默认只做安全预演，确认范围后才执行删除。"
+          impact="会按账号级联影响文档、分块、向量、图谱和缓存；默认只做安全预演，确认范围后才执行删除"
           badge="默认收起"
           compact
           tone="neutral"
@@ -410,7 +410,7 @@ export function GovernanceSection({
               aria-pressed={rtbfDryRun}
             >
               <div className="text-[12px] font-medium">安全预演</div>
-              <div className="mt-0.5 text-[11px] leading-4 opacity-80">推荐先点这个，只返回命中文档和影响范围，不删除数据。</div>
+              <div className="mt-0.5 text-[11px] leading-4 opacity-80">推荐先点这个，只返回命中文档和影响范围，不删除数据</div>
             </button>
             <button
               type="button"
@@ -424,7 +424,7 @@ export function GovernanceSection({
               aria-pressed={!rtbfDryRun}
             >
               <div className="text-[12px] font-medium">执行删除</div>
-              <div className="mt-0.5 text-[11px] leading-4 opacity-80">只在预演结果确认后使用，会调用后端级联删除并刷新相关缓存。</div>
+              <div className="mt-0.5 text-[11px] leading-4 opacity-80">只在预演结果确认后使用，会调用后端级联删除并刷新相关缓存</div>
             </button>
           </div>
 
@@ -476,7 +476,7 @@ export function GovernanceSection({
                 </Select>
                 <div className={cn('rounded-lg border border-border/60 bg-muted/10 px-2.5 py-2', settingsTextTokens.microText)}>
                   将提交：<span className="font-mono text-slate-700">{rtbfAccountId.trim() || '等待自动绑定'}</span>
-                  {membersQuery.isError ? '。成员列表加载失败时仍可使用手动输入。' : '。下拉会优先使用当前账号，也可切换到其他租户成员。'}
+                  {membersQuery.isError ? '成员列表加载失败时仍可使用手动输入' : '下拉会优先使用当前账号，也可切换到其他租户成员'}
                 </div>
               </div>
               <div className="space-y-1.5 md:col-span-2">
@@ -491,7 +491,7 @@ export function GovernanceSection({
                   placeholder="例如 user-123 / acct-1 / 用户 UUID"
                 />
                 <div className={settingsTextTokens.microText}>
-                  后端会按文档归属账号和生命周期负责人匹配；如果填写用户 UUID，也会一并匹配。建议从成员权限或审计日志复制，不要填昵称。
+                  后端会按文档归属账号和生命周期负责人匹配；如果填写用户 UUID，也会一并匹配建议从成员权限或审计日志复制，不要填昵称
                 </div>
               </div>
               <div className="space-y-1.5">
@@ -502,7 +502,7 @@ export function GovernanceSection({
                   className="h-8 rounded-md border-border/70 bg-background text-[12px]"
                   inputMode="numeric"
                 />
-                <div className={settingsTextTokens.microText}>保护阈值，后端允许 1-1000。</div>
+                <div className={settingsTextTokens.microText}>保护阈值，后端允许 1-1000</div>
               </div>
               <div className="space-y-1.5">
                 <div className={FIELD_LABEL}>失败重试</div>
@@ -512,7 +512,7 @@ export function GovernanceSection({
                   className="h-8 rounded-md border-border/70 bg-background text-[12px]"
                   inputMode="numeric"
                 />
-                <div className={settingsTextTokens.microText}>删除失败时重试，后端允许 0-10。</div>
+                <div className={settingsTextTokens.microText}>删除失败时重试，后端允许 0-10</div>
               </div>
               <div className="space-y-1.5 md:col-span-2">
                 <div className={FIELD_LABEL}>状态查询工单</div>
@@ -525,7 +525,7 @@ export function GovernanceSection({
               </div>
               <div className="flex flex-col gap-2 md:col-span-2">
                 <div className={cn('rounded-lg border border-dashed border-border/70 bg-muted/15 px-2.5 py-2', settingsTextTokens.helpText)}>
-                  操作顺序：确认目标账号 → 点“开始安全预演” → 看候选文档数量 → 确认无误后切换“执行删除”。
+                  操作顺序：确认目标账号 → 点“开始安全预演” → 看候选文档数量 → 确认无误后切换“执行删除”
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button

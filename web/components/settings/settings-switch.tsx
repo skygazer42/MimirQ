@@ -3,16 +3,63 @@
 import { Switch, type SwitchProps } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 
+type SettingsSwitchIndicatorProps = {
+  readonly checked: boolean
+  readonly className?: string
+}
+
+const SETTINGS_SWITCH_TRACK =
+  'relative inline-flex h-[1.875rem] w-20 shrink-0 items-center overflow-hidden rounded-full border shadow-sm transition-[background-color,border-color,box-shadow,transform] duration-150'
+
+const SETTINGS_SWITCH_STATE =
+  "[--switch-translate-checked:2.5rem] [--switch-translate-unchecked:0.25rem] before:pointer-events-none before:absolute before:left-2.5 before:top-1/2 before:z-20 before:-translate-y-1/2 before:text-[10px] before:font-semibold before:leading-none before:tracking-[0.04em] before:content-['停用'] before:transition-colors before:duration-150 after:pointer-events-none after:absolute after:right-2.5 after:top-1/2 after:z-20 after:-translate-y-1/2 after:text-[10px] after:font-semibold after:leading-none after:tracking-[0.04em] after:content-['启用'] after:transition-colors after:duration-150 data-[switch-state=checked]:before:text-slate-400 data-[switch-state=checked]:after:text-white data-[switch-state=unchecked]:before:text-slate-700 data-[switch-state=unchecked]:after:text-slate-400"
+
+const SETTINGS_SWITCH_TONE =
+  'bg-slate-100/90 ring-1 ring-slate-200/70 data-[switch-state=checked]:border-blue-300 data-[switch-state=checked]:bg-sky-50 data-[switch-state=checked]:shadow-[0_8px_18px_rgba(37,99,235,0.12)] data-[switch-state=unchecked]:border-slate-300 data-[switch-state=unchecked]:bg-slate-100 data-[switch-state=unchecked]:shadow-inner hover:data-[switch-state=checked]:border-blue-400 hover:data-[switch-state=unchecked]:border-slate-400'
+
+const SETTINGS_SWITCH_THUMB =
+  '[&>span]:relative [&>span]:z-10 [&>span]:h-[1.375rem] [&>span]:w-9 [&>span]:rounded-full [&>span]:border [&>span]:transition-transform data-[switch-state=checked]:[&>span]:border-blue-500 data-[switch-state=checked]:[&>span]:bg-gradient-to-r data-[switch-state=checked]:[&>span]:from-blue-600 data-[switch-state=checked]:[&>span]:to-sky-500 data-[switch-state=checked]:[&>span]:shadow-[0_6px_14px_rgba(37,99,235,0.28)] data-[switch-state=unchecked]:[&>span]:border-white data-[switch-state=unchecked]:[&>span]:bg-white data-[switch-state=unchecked]:[&>span]:shadow-[0_4px_10px_rgba(15,23,42,0.12)]'
+
+export function SettingsSwitchIndicator({
+  checked,
+  className,
+}: Readonly<SettingsSwitchIndicatorProps>) {
+  return (
+    <span
+      aria-hidden="true"
+      data-state={checked ? 'checked' : 'unchecked'}
+      data-switch-state={checked ? 'checked' : 'unchecked'}
+      className={cn(
+        SETTINGS_SWITCH_TRACK,
+        SETTINGS_SWITCH_STATE,
+        SETTINGS_SWITCH_TONE,
+        SETTINGS_SWITCH_THUMB,
+        'pointer-events-none',
+        className
+      )}
+    >
+      <span
+        data-state={checked ? 'checked' : 'unchecked'}
+        data-switch-state={checked ? 'checked' : 'unchecked'}
+        className={cn(
+          'pointer-events-none block h-5 w-5 rounded-full bg-background shadow-md ring-0 transition-all duration-150',
+          checked
+            ? 'translate-x-[var(--switch-translate-checked,2.5rem)] scale-[1.02]'
+            : 'translate-x-[var(--switch-translate-unchecked,0.25rem)]'
+        )}
+      />
+    </span>
+  )
+}
+
 export function SettingsSwitch({ className, ...props }: Readonly<SwitchProps>) {
   return (
     <Switch
       className={cn(
-        'h-6 w-11 border shadow-sm transition-[background-color,border-color,box-shadow]',
-        'data-[state=checked]:border-blue-500 data-[state=checked]:bg-blue-600 data-[state=checked]:shadow-[0_8px_18px_rgba(37,99,235,0.22)]',
-        'data-[state=unchecked]:border-slate-300 data-[state=unchecked]:bg-white data-[state=unchecked]:shadow-inner',
-        'hover:data-[state=checked]:border-blue-600 hover:data-[state=checked]:bg-blue-700',
-        'hover:data-[state=unchecked]:border-slate-400 hover:data-[state=unchecked]:bg-slate-50',
-        'data-[state=checked]:[&>span]:bg-white data-[state=unchecked]:[&>span]:bg-slate-400',
+        SETTINGS_SWITCH_TRACK,
+        SETTINGS_SWITCH_STATE,
+        SETTINGS_SWITCH_TONE,
+        SETTINGS_SWITCH_THUMB,
         className
       )}
       {...props}

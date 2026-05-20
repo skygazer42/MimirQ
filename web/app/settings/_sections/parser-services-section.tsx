@@ -1,10 +1,12 @@
 'use client'
 
+import { SettingsSwitch } from '@/components/settings/settings-switch'
 import { Input } from '@/components/ui/input'
 import type {
   Etl4LlmConfig,
   MagicPDFConfig,
   MarkerConfig,
+  MinerUConfig,
   PaddleVLConfig,
   TextInConfig,
 } from '@/lib/api'
@@ -16,11 +18,13 @@ import {
 } from '@/components/ui/system-page-tokens'
 
 type ParserServicesSectionProps = {
+  mineru: MinerUConfig
   etl4llm: Etl4LlmConfig
   marker: MarkerConfig
   paddleVl: PaddleVLConfig
   textIn: TextInConfig
   magicPdf: MagicPDFConfig
+  updateMinerU: (patch: Partial<MinerUConfig>) => void
   updateEtl4Llm: (patch: Partial<Etl4LlmConfig>) => void
   updateMarker: (patch: Partial<MarkerConfig>) => void
   updatePaddleVL: (patch: Partial<PaddleVLConfig>) => void
@@ -44,42 +48,167 @@ const DENSE_SELECT =
 function TogglePill({
   enabled,
   onClick,
-  accentClassName,
+  label,
 }: Readonly<{
   enabled: boolean
   onClick: () => void
-  accentClassName: string
+  label: string
 }>) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'h-7 rounded-full border px-2.5 text-[11px] font-semibold leading-none',
-        enabled
-          ? accentClassName
-          : 'border-border bg-muted text-muted-foreground'
-      )}
-    >
-      {enabled ? '已开启' : '已关闭'}
-    </button>
+    <SettingsSwitch
+      checked={enabled}
+      onCheckedChange={onClick}
+      aria-label={label}
+      className="shrink-0"
+    />
   )
 }
 
 export function ParserServicesSection({
+  mineru,
   etl4llm,
   marker,
   paddleVl,
   textIn,
   magicPdf,
+  updateMinerU,
   updateEtl4Llm,
   updateMarker,
   updatePaddleVL,
   updateTextIn,
   updateMagicPDF,
 }: Readonly<ParserServicesSectionProps>) {
+  const mineruBackend = mineru.backend || 'pipeline'
+
   return (
     <>
+      <section>
+        <h2 className={SECTION_TITLE}>
+          <ScanLine className="h-4 w-4 text-blue-600" />
+          MinerU 配置
+        </h2>
+
+        <div className={CARD}>
+          <div className="rounded-[14px] border border-blue-100/80 bg-blue-50/35 px-3 py-2.5">
+            <div className="text-[12px] font-semibold text-slate-900">本地部署优先</div>
+            <div className={cn(FIELD_HINT, 'mt-0.5')}>
+              配置本地 MinerU 服务地址后，解析会走本地 ZIP 模式；未配置时再使用在线 API 令牌
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(220px,1fr)]">
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <div className={FIELD_LABEL}>本地 MinerU API 地址</div>
+                <Input
+                  className={DENSE_INPUT}
+                  value={mineru.local_server_url}
+                  onChange={(event) =>
+                    updateMinerU({ local_server_url: event.target.value })
+                  }
+                  placeholder="http://localhost:30001"
+                />
+                <div className={FIELD_HINT}>
+                  本地部署入口，解析会优先发送到这个服务
+                </div>
+              </div>
+
+              <details
+                open={mineruBackend === 'vlm-http-client'}
+                className="group rounded-[14px] border border-dashed border-slate-200/80 bg-slate-50/60 px-3 py-2"
+              >
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[12px] font-semibold text-slate-700">
+                  <span>VLM HTTP 后端</span>
+                  <span className="text-[11px] font-medium text-slate-500">
+                    {mineruBackend === 'vlm-http-client'
+                      ? '当前会使用'
+                      : '默认不会使用'}
+                  </span>
+                </summary>
+                <div className="mt-3 space-y-2">
+                  <div className={FIELD_LABEL}>VLM 模型服务地址</div>
+                  <Input
+                    className={DENSE_INPUT}
+                    value={mineru.vl_server}
+                    onChange={(event) =>
+                      updateMinerU({ vl_server: event.target.value })
+                    }
+                    placeholder="http://localhost:30002"
+                  />
+                  <div className={FIELD_HINT}>
+                    切到 VLM HTTP 模式时需要填写，供本地 MinerU 调用模型服务
+                  </div>
+                </div>
+              </details>
+            </div>
+
+            <div className="space-y-2">
+              <div className={FIELD_LABEL}>本地后端模式</div>
+              <select
+                value={mineruBackend}
+                onChange={(event) =>
+                  updateMinerU({ backend: event.target.value })
+                }
+                className={DENSE_SELECT}
+              >
+                <option value="pipeline">Pipeline</option>
+                <option value="vlm-http-client">VLM HTTP</option>
+              </select>
+              <div className={FIELD_HINT}>
+                Pipeline 只使用本地 API；VLM HTTP 会额外传入下方模型服务地址
+              </div>
+            </div>
+          </div>
+
+          <div className={GRID}>
+            <div className="space-y-2 lg:col-span-2">
+              <div className={FIELD_LABEL}>在线 API 地址</div>
+              <Input
+                className={DENSE_INPUT}
+                value={mineru.api_base}
+                onChange={(event) =>
+                  updateMinerU({ api_base: event.target.value })
+                }
+                placeholder="https://mineru.net/api/v4"
+              />
+              <div className={FIELD_HINT}>
+                未配置本地服务时，在线 MinerU 会使用这个 API 地址
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className={FIELD_LABEL}>模型版本</div>
+              <select
+                value={mineru.model_version}
+                onChange={(event) =>
+                  updateMinerU({ model_version: event.target.value })
+                }
+                className={DENSE_SELECT}
+              >
+                <option value="vlm">VLM</option>
+                <option value="pipeline">Pipeline</option>
+              </select>
+            </div>
+
+            <div className="space-y-2 lg:col-span-3">
+              <div className={FIELD_LABEL}>在线 API 令牌</div>
+              <Input
+                className={DENSE_INPUT}
+                type="password"
+                value={mineru.api_token}
+                onChange={(event) =>
+                  updateMinerU({ api_token: event.target.value })
+                }
+                placeholder="本地服务已配置时可留空"
+              />
+              <div className={FIELD_HINT}>
+                只用于在线 MinerU，本地部署时可留空
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section>
         <h2 className={SECTION_TITLE}>
           <LayoutGrid className="h-4 w-4 text-success" />
@@ -89,7 +218,7 @@ export function ParserServicesSection({
         <div className={CARD}>
           <div className={GRID}>
             <div className="space-y-2 lg:col-span-2">
-              <div className={FIELD_LABEL}>服务地址（API URL）</div>
+              <div className={FIELD_LABEL}>服务地址</div>
               <Input
                 className={DENSE_INPUT}
                 value={etl4llm.api_url}
@@ -99,7 +228,7 @@ export function ParserServicesSection({
                 placeholder="http://localhost:10001/v1/etl4llm/predict"
               />
               <div className={FIELD_HINT}>
-                启用后会写入 `ETL4LLM_API_URL`，并用于解析器 `etl4llm`。
+                ETL4LLM 解析服务入口
               </div>
             </div>
 
@@ -145,7 +274,7 @@ export function ParserServicesSection({
             <TogglePill
               enabled={etl4llm.force_ocr}
               onClick={() => updateEtl4Llm({ force_ocr: !etl4llm.force_ocr })}
-              accentClassName="border-success/20 bg-success/10 text-success"
+              label="切换强制 OCR"
             />
           </div>
 
@@ -161,7 +290,7 @@ export function ParserServicesSection({
               onClick={() =>
                 updateEtl4Llm({ extract_images: !etl4llm.extract_images })
               }
-              accentClassName="border-success/20 bg-success/10 text-success"
+              label="切换提取图片"
             />
           </div>
 
@@ -177,7 +306,7 @@ export function ParserServicesSection({
               onClick={() =>
                 updateEtl4Llm({ enable_formula: !etl4llm.enable_formula })
               }
-              accentClassName="border-success/20 bg-success/10 text-success"
+              label="切换公式识别"
             />
           </div>
 
@@ -195,7 +324,7 @@ export function ParserServicesSection({
                   filter_page_header_footer: !etl4llm.filter_page_header_footer,
                 })
               }
-              accentClassName="border-success/20 bg-success/10 text-success"
+              label="切换过滤页眉页脚"
             />
           </div>
         </div>
@@ -210,7 +339,7 @@ export function ParserServicesSection({
         <div className={CARD}>
           <div className={GRID}>
             <div className="space-y-2 lg:col-span-2">
-              <div className={FIELD_LABEL}>服务地址（API URL）</div>
+              <div className={FIELD_LABEL}>服务地址</div>
               <Input
                 className={DENSE_INPUT}
                 value={marker.api_url}
@@ -220,7 +349,7 @@ export function ParserServicesSection({
                 placeholder="http://localhost:2080/convert"
               />
               <div className={FIELD_HINT}>
-                启用后会写入 `MARKER_API_URL`，并用于解析器 `marker`。
+                Marker 解析服务入口
               </div>
             </div>
 
@@ -253,7 +382,7 @@ export function ParserServicesSection({
         <div className={CARD}>
           <div className={GRID}>
             <div className="space-y-2 lg:col-span-2">
-              <div className={FIELD_LABEL}>服务地址（API URL）</div>
+              <div className={FIELD_LABEL}>服务地址</div>
               <Input
                 className={DENSE_INPUT}
                 value={paddleVl.api_url}
@@ -263,8 +392,7 @@ export function ParserServicesSection({
                 placeholder="http://localhost:9030/convert"
               />
               <div className={FIELD_HINT}>
-                启用后会写入 `PADDLE_VL_API_URL`，并用于解析器
-                `paddle_vl`（别名：paddle-vl / paddleocr-vl）。
+                PaddleOCR-VL 解析服务入口
               </div>
             </div>
 
@@ -307,7 +435,7 @@ export function ParserServicesSection({
                 placeholder="https://api.textin.com/ai/service/v1/pdf_to_markdown"
               />
               <div className={FIELD_HINT}>
-                启用后会写入 `TEXTIN_API_URL`，并用于解析器 `textin`。
+                TextIn 文档解析服务入口
               </div>
             </div>
 
@@ -430,7 +558,7 @@ export function ParserServicesSection({
                   apply_document_tree: !textIn.apply_document_tree,
                 })
               }
-              accentClassName="border-info/20 bg-info/10 text-info"
+              label="切换应用文档树"
             />
           </div>
 
@@ -446,7 +574,7 @@ export function ParserServicesSection({
               onClick={() =>
                 updateTextIn({ markdown_details: !textIn.markdown_details })
               }
-              accentClassName="border-info/20 bg-info/10 text-info"
+              label="切换 Markdown 细节增强"
             />
           </div>
         </div>
@@ -476,7 +604,7 @@ export function ParserServicesSection({
             </div>
 
             <div className="space-y-2">
-              <div className={FIELD_LABEL}>语言（lang，可选）</div>
+              <div className={FIELD_LABEL}>文档语言</div>
               <Input
                 className={DENSE_INPUT}
                 value={magicPdf.lang}
@@ -504,7 +632,7 @@ export function ParserServicesSection({
             </div>
 
             <div className="space-y-2 lg:col-span-2">
-              <div className={FIELD_LABEL}>模型目录（models-dir，可选）</div>
+              <div className={FIELD_LABEL}>模型目录</div>
               <Input
                 className={DENSE_INPUT}
                 value={magicPdf.models_dir}
@@ -514,7 +642,7 @@ export function ParserServicesSection({
                 placeholder="/opt/mimirq-model-cache/.../PDF-Extract-Kit-1.0/.../models"
               />
               <div className={FIELD_HINT}>
-                留空时后端会自动查找 Docker 挂载的 MinerU / PDF-Extract-Kit 模型缓存。
+                留空时后端会自动查找 Docker 挂载的 MinerU / PDF-Extract-Kit 模型缓存
               </div>
             </div>
 
@@ -547,7 +675,7 @@ export function ParserServicesSection({
               onClick={() =>
                 updateMagicPDF({ keep_artifacts: !magicPdf.keep_artifacts })
               }
-              accentClassName="border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700 dark:border-fuchsia-500/30 dark:bg-fuchsia-500/10 dark:text-fuchsia-300"
+              label="切换保留解析产物"
             />
           </div>
         </div>

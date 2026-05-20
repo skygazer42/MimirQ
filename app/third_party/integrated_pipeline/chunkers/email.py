@@ -94,9 +94,11 @@ def chunk(
 
     _add_content(msg, msg.get_content_type())
 
-    sections = TxtParser.parser_txt("\n".join(text_txt)) + [
-        (line, "") for line in HtmlParser.parser_txt("\n".join(html_txt), chunk_token_num=parser_config["chunk_token_num"]) if line
-    ]
+    html_sections = []
+    if any(str(line or "").strip() for line in html_txt):
+        html_sections = [(line, "") for line in HtmlParser.parser_txt("\n".join(html_txt)) if line]
+
+    sections = TxtParser.parser_txt("\n".join(text_txt)) + html_sections
 
     st = timer()
     chunks = naive_merge(

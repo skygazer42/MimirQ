@@ -4,6 +4,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffect } from 'react'
+import Image from 'next/image'
 import { useTranslations } from 'next-intl'
 import { Send, StopCircle, Sparkles, Database, Wand2, Settings2, Bot, Mic, ArrowDown, Zap, Layers, ShieldCheck, Route, type LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
@@ -11,7 +12,6 @@ import { useQuery } from '@tanstack/react-query'
 import { useChat } from '@/hooks/use-chat'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-import { PageTitleIcon } from '@/components/ui/page-title-icon'
 import { cn } from '@/lib/utils'
 import { datasetApi, documentApi, promptTemplateApi, settingsApi } from '@/lib/api'
 import { ChatMessageItem } from '@/components/chat/message-item'
@@ -1170,8 +1170,16 @@ function WelcomeScreen({
     <div className="flex flex-col items-center justify-center min-h-full px-4 py-12 md:px-8 max-w-5xl mx-auto space-y-12">
       {/* Centered Brand Area */}
       <div className="flex flex-col items-center text-center space-y-6 animate-fade-in-up">
-        <div className="flex size-16 items-center justify-center rounded-2xl bg-foreground text-background shadow-strong">
-          <PageTitleIcon name="chat" className="size-12" />
+        <div className="flex w-full justify-center">
+          <Image
+            src="/brand/mimirq-wordmark.png"
+            alt="MimirQ"
+            width={543}
+            height={181}
+            priority
+            unoptimized
+            className="h-auto w-[min(78vw,440px)] select-none object-contain"
+          />
         </div>
         <div className="space-y-3">
           <h2 className="text-4xl md:text-5xl font-bold leading-tight text-foreground">

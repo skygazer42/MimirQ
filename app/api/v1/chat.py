@@ -39,10 +39,25 @@ from app.services.chat_conversation_titles import (
     apply_auto_conversation_title as _apply_auto_conversation_title,  # noqa: F401
 )
 from app.services.chat_execution_runtime import (
+    execute_extractive_fallback_once as _execute_extractive_fallback_once,
+)
+from app.services.chat_execution_runtime import (
     execute_graph_chat_once as _execute_graph_chat_once,
 )
 from app.services.chat_execution_runtime import (
     execute_langchain_chat_once as _execute_langchain_chat_once,
+)
+from app.services.chat_execution_runtime import (
+    is_model_provider_unavailable_error as _is_model_provider_unavailable_error,
+)
+from app.services.chat_execution_runtime import (
+    is_model_provider_unavailable_circuit_open as _is_model_provider_unavailable_circuit_open,
+)
+from app.services.chat_execution_runtime import (
+    mark_model_provider_unavailable as _mark_model_provider_unavailable,
+)
+from app.services.chat_execution_runtime import (
+    preflight_model_provider_fast as _preflight_model_provider_fast,
 )
 from app.services.chat_persistence import (
     finalize_chat_response_sync as _finalize_chat_response_sync,
@@ -303,52 +318,121 @@ async def chat(
 
     try:
         if not cache_hit and not singleflight_hit:
-            if effective_rag_config.use_graph:
-                graph_result = _execute_graph_chat_once(
+            if getattr(effective_rag_config, "answer_mode", "llm") == "extractive":
+                chat_result = _execute_extractive_fallback_once(
                     db=db,
                     tenant_id=tenant_id,
                     account_id=account_id,
                     request=request,
-                    conversation_id=conversation_id,
-                    request_id=str(request_id),
                     doc_ids_to_use=doc_ids_to_use,
                     history_for_llm=history_for_llm,
                     scope_dataset_id=scope_dataset_id,
                     dataset_id_used=dataset_id_used,
                     effective_rag_config=effective_rag_config,
-                    effective_prompt_template_id=effective_prompt_template_id,
-                    effective_prompt_template_key=effective_prompt_template_key,
-                    effective_prompt_ab_experiment_key=effective_prompt_ab_experiment_key,
-                    rag_config_template_meta=rag_config_template_meta,
+                    reason="explicit_extractive_answer_mode",
                 )
-                citations_data = graph_result.citations
-                full_response = graph_result.content
-                metrics_data = dict(graph_result.metrics or {})
-                structured_data = graph_result.structured_data
+            elif _is_model_provider_unavailable_circuit_open():
+                chat_result = _execute_extractive_fallback_once(
+                    db=db,
+                    tenant_id=tenant_id,
+                    account_id=account_id,
+                    request=request,
+                    doc_ids_to_use=doc_ids_to_use,
+                    history_for_llm=history_for_llm,
+                    scope_dataset_id=scope_dataset_id,
+                    dataset_id_used=dataset_id_used,
+                    effective_rag_config=effective_rag_config,
+                    reason="model_provider_circuit_open",
+                )
             else:
-                engine = get_rag_engine()
-                langchain_result = await _execute_langchain_chat_once(
-                    engine=engine,
-                    db=db,
-                    tenant_id=tenant_id,
-                    account_id=account_id,
-                    request=request,
-                    conversation_id=conversation_id,
-                    request_id=str(request_id),
-                    doc_ids_to_use=doc_ids_to_use,
-                    history_for_llm=history_for_llm,
-                    scope_dataset_id=scope_dataset_id,
-                    dataset_id_used=dataset_id_used,
-                    effective_rag_config=effective_rag_config,
-                    effective_prompt_template_id=effective_prompt_template_id,
-                    effective_prompt_template_key=effective_prompt_template_key,
-                    effective_prompt_ab_experiment_key=effective_prompt_ab_experiment_key,
-                    rag_config_template_meta=rag_config_template_meta,
-                )
-                citations_data = langchain_result.citations
-                full_response = langchain_result.content
-                metrics_data = dict(langchain_result.metrics or {})
-                structured_data = langchain_result.structured_data
+                provider_available, provider_error = await _preflight_model_provider_fast()
+                if not provider_available:
+                    chat_result = _execute_extractive_fallback_once(
+                        db=db,
+                        tenant_id=tenant_id,
+                        account_id=account_id,
+                        request=request,
+                        doc_ids_to_use=doc_ids_to_use,
+                        history_for_llm=history_for_llm,
+                        scope_dataset_id=scope_dataset_id,
+                        dataset_id_used=dataset_id_used,
+                        effective_rag_config=effective_rag_config,
+                        reason="model_provider_preflight_failed",
+                    )
+                    if provider_error:
+                        metrics_data = dict(chat_result.metrics or {})
+                        metrics_data["generation_fallback_error"] = provider_error
+                        chat_result = type(chat_result)(
+                            content=chat_result.content,
+                            citations=chat_result.citations,
+                            metrics=metrics_data,
+                            structured_data=chat_result.structured_data,
+                        )
+                else:
+                    try:
+                        if effective_rag_config.use_graph:
+                            chat_result = _execute_graph_chat_once(
+                                db=db,
+                                tenant_id=tenant_id,
+                                account_id=account_id,
+                                request=request,
+                                conversation_id=conversation_id,
+                                request_id=str(request_id),
+                                doc_ids_to_use=doc_ids_to_use,
+                                history_for_llm=history_for_llm,
+                                scope_dataset_id=scope_dataset_id,
+                                dataset_id_used=dataset_id_used,
+                                effective_rag_config=effective_rag_config,
+                                effective_prompt_template_id=effective_prompt_template_id,
+                                effective_prompt_template_key=effective_prompt_template_key,
+                                effective_prompt_ab_experiment_key=effective_prompt_ab_experiment_key,
+                                rag_config_template_meta=rag_config_template_meta,
+                            )
+                        else:
+                            engine = get_rag_engine()
+                            chat_result = await _execute_langchain_chat_once(
+                                engine=engine,
+                                db=db,
+                                tenant_id=tenant_id,
+                                account_id=account_id,
+                                request=request,
+                                conversation_id=conversation_id,
+                                request_id=str(request_id),
+                                doc_ids_to_use=doc_ids_to_use,
+                                history_for_llm=history_for_llm,
+                                scope_dataset_id=scope_dataset_id,
+                                dataset_id_used=dataset_id_used,
+                                effective_rag_config=effective_rag_config,
+                                effective_prompt_template_id=effective_prompt_template_id,
+                                effective_prompt_template_key=effective_prompt_template_key,
+                                effective_prompt_ab_experiment_key=effective_prompt_ab_experiment_key,
+                                rag_config_template_meta=rag_config_template_meta,
+                            )
+                    except Exception as exc:
+                        if not _is_model_provider_unavailable_error(exc):
+                            raise
+                        _mark_model_provider_unavailable()
+                        chat_result = _execute_extractive_fallback_once(
+                            db=db,
+                            tenant_id=tenant_id,
+                            account_id=account_id,
+                            request=request,
+                            doc_ids_to_use=doc_ids_to_use,
+                            history_for_llm=history_for_llm,
+                            scope_dataset_id=scope_dataset_id,
+                            dataset_id_used=dataset_id_used,
+                            effective_rag_config=effective_rag_config,
+                            original_error=exc,
+                        )
+                    citations_data = chat_result.citations
+                    full_response = chat_result.content
+                    metrics_data = dict(chat_result.metrics or {})
+                    structured_data = chat_result.structured_data
+            if chat_result is not None:
+                citations_data = chat_result.citations
+                full_response = chat_result.content
+                metrics_data = dict(chat_result.metrics or {})
+                structured_data = chat_result.structured_data
 
         metrics_data = _annotate_chat_cache_metrics(
             metrics_data,

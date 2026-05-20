@@ -226,3 +226,48 @@ async def test_retrieve_preview_explicit_query_image_injects_image_docs(monkeypa
     assert (captured_state.get("multimodal_router") or {}).get("modality") == "image"
     assert (res.metrics.get("multimodal_router") or {}).get("reasons") == ["explicit_query_image"]
     assert (res.metrics.get("image") or {}).get("query_source") == "query_image"
+
+
+@pytest.mark.asyncio
+async def test_retrieve_preview_passes_query_decomposition_override_into_rag_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.rag as rag_api
+    from app.api.schemas.chat import ChatRAGConfig
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True, raising=False)
+    monkeypatch.setattr(settings, "CHAT_ALLOW_OPEN_SCOPE", True, raising=False)
+    monkeypatch.setattr(rag_api.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+
+    captured: dict = {}
+
+    def _build_rag_state(**kwargs):  # noqa: ANN003
+        captured.update(kwargs)
+        return dict(kwargs)
+
+    def _run_retrieval(state):  # noqa: ANN001
+        return {
+            "citations": [],
+            "metrics": {"decompose_enabled": bool(state.get("enable_query_decomposition"))},
+            "query_for_retrieval": state.get("question") or "",
+        }
+
+    import app.rag.pipelines.langgraph as lg_mod
+    import app.rag.retrieval.orchestrator as orch_mod
+
+    monkeypatch.setattr(lg_mod, "build_rag_state", _build_rag_state, raising=True)
+    monkeypatch.setattr(orch_mod, "run_retrieval", _run_retrieval, raising=True)
+
+    body = rag_api.RetrievePreviewRequest(
+        query="q",
+        rag_config=ChatRAGConfig(enable_query_decomposition=False),
+    )
+    await rag_api.retrieve_preview(
+        body=body,
+        tenant_id=uuid.uuid4(),
+        account_id="u",
+        db=None,
+    )
+
+    assert captured.get("enable_query_decomposition") is False

@@ -141,6 +141,7 @@ export default function ParsingPage() {
     fileIdSetRef: pageState.fileIdSetRef,
     filesRef: pageState.filesRef,
     imageCaptionEnabled: pageState.imageCaptionEnabled,
+    imageOcrEnabled: pageState.imageOcrEnabled,
     mapBackendStatusToLibraryStatus,
     parseControllersRef: pageState.parseControllersRef,
     parseProgressIntervalsRef: pageState.parseProgressIntervalsRef,
@@ -153,6 +154,7 @@ export default function ParsingPage() {
     updateParsedFile,
     upsertParsedFile,
     visibleQueueFiles: viewState.visibleQueueFiles,
+    vlmCorrectionEnabled: pageState.vlmCorrectionEnabled,
   })
 
   const editorActions = useParsingEditorActions({
@@ -221,6 +223,7 @@ export default function ParsingPage() {
       handleSubmitToGovernance={editorActions.handleSubmitToGovernance}
       hoveredBlockId={pageState.hoveredBlockId}
       imageCaptionEnabled={pageState.imageCaptionEnabled}
+      imageOcrEnabled={pageState.imageOcrEnabled}
       inspectorOpen={pageState.inspectorOpen}
       isEditing={pageState.isEditing}
       isLibraryLoaded={isLibraryLoaded}
@@ -249,6 +252,7 @@ export default function ParsingPage() {
       setEditedContent={pageState.setEditedContent}
       setHoveredBlockId={pageState.setHoveredBlockId}
       setImageCaptionEnabled={pageState.setImageCaptionEnabled}
+      setImageOcrEnabled={pageState.setImageOcrEnabled}
       setInspectorOpen={pageState.setInspectorOpen}
       setIsSidebarCollapsed={pageState.setIsSidebarCollapsed}
       setParserBackend={pageState.setParserBackend}
@@ -257,6 +261,7 @@ export default function ParsingPage() {
       setQueueFileParserBackend={pageState.setQueueFileParserBackend}
       setQueueOpen={pageState.setQueueOpen}
       setRightPanelMode={pageState.setRightPanelMode}
+      setVlmCorrectionEnabled={pageState.setVlmCorrectionEnabled}
       selectedGovernanceFileIds={selectedGovernanceFileIds}
       selectedDatasetId={pageState.selectedDatasetId}
       onSubmitSelectedToGovernance={editorActions.handleSubmitSelectedToGovernance}
@@ -271,6 +276,7 @@ export default function ParsingPage() {
       updateParsedFile={updateParsedFile}
       visibleLibraryOnlyFiles={viewState.visibleLibraryOnlyFiles}
       visibleQueueFiles={viewState.visibleQueueFiles}
+      vlmCorrectionEnabled={pageState.vlmCorrectionEnabled}
     />
   )
 }

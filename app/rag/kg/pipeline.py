@@ -118,6 +118,7 @@ async def extract_events(
     ab_user_key: str | None = None,
     extract_relations: bool | None = None,
     extract_skills: bool | None = None,
+    extraction_backend: str | None = None,
     replace_existing: bool | None = None,
     prune_orphan_entities: bool | None = None,
 ):
@@ -133,6 +134,7 @@ async def extract_events(
         ab_user_key=ab_user_key,
         extract_relations=extract_relations,
         extract_skills=extract_skills,
+        extraction_backend=extraction_backend,
         replace_existing=replace_existing,
         prune_orphan_entities=prune_orphan_entities,
     )

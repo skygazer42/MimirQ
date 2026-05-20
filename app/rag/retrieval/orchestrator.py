@@ -155,7 +155,12 @@ def _build_history_text(history: list[dict[str, str]] | None) -> str:
     return format_history_text(history, window=settings.CHAT_HISTORY_WINDOW)
 
 
-def _decompose_query(query_for_retrieval: str, engine: Any) -> tuple[list[str], float, str | None, dict[str, Any]]:
+def _decompose_query(
+    query_for_retrieval: str,
+    engine: Any,
+    *,
+    enabled: bool | None = None,
+) -> tuple[list[str], float, str | None, dict[str, Any]]:
     decompose_elapsed = 0.0
     decompose_model_used = None
     decompose_parse_meta: dict[str, Any] = {"ok": False, "method": None, "error": None}
@@ -164,8 +169,9 @@ def _decompose_query(query_for_retrieval: str, engine: Any) -> tuple[list[str], 
     dq_n = max(0, min(int(settings.QUERY_DECOMPOSITION_MAX_SUBQUESTIONS or 0), 8))
     dq_min_chars = max(0, int(settings.QUERY_DECOMPOSITION_MIN_CHARS or 0))
     dq_max_chars = max(0, int(settings.QUERY_DECOMPOSITION_MAX_CHARS or 0))
+    dq_enabled = bool(settings.ENABLE_QUERY_DECOMPOSITION) if enabled is None else bool(enabled)
     if not (
-        bool(settings.ENABLE_QUERY_DECOMPOSITION)
+        dq_enabled
         and dq_n > 0
         and len(query_for_retrieval) >= dq_min_chars
         and (dq_max_chars <= 0 or len(query_for_retrieval) <= dq_max_chars)
@@ -244,6 +250,7 @@ def _sanitize_retriever_debug(dbg: dict[str, Any] | None) -> dict[str, Any] | No
         "search_k",
         "fetch_k",
         "overfetch_enabled",
+        "overfetch_reasons",
         "overfetch_multiplier",
         "overfetch_cap_k",
         "milvus_doc_id_pushdown_skipped",
@@ -2247,7 +2254,12 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     decompose_parse_meta: dict[str, Any] = {"ok": False, "method": None, "error": None}
     sub_questions: list[str] = []
 
-    decompose_result = _decompose_query(query_for_retrieval, engine)
+    decompose_enabled = (
+        bool(settings.ENABLE_QUERY_DECOMPOSITION)
+        if state.get("enable_query_decomposition") is None
+        else bool(state.get("enable_query_decomposition"))
+    )
+    decompose_result = _decompose_query(query_for_retrieval, engine, enabled=decompose_enabled)
     if isinstance(decompose_result, tuple) and len(decompose_result) == 4:
         sub_questions, decompose_elapsed, decompose_model_used, decompose_parse_meta = decompose_result
     elif isinstance(decompose_result, list):
@@ -4400,7 +4412,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     metrics["hyde_elapsed_sec"] = round(hyde_elapsed, 3)
     metrics["hyde_model_used"] = hyde_model_used
 
-    metrics["decompose_enabled"] = bool(settings.ENABLE_QUERY_DECOMPOSITION)
+    metrics["decompose_enabled"] = bool(decompose_enabled)
     metrics["decompose_used"] = bool(decompose_used)
     metrics["decompose_count"] = len(sub_questions)
     metrics["decompose_elapsed_sec"] = round(decompose_elapsed, 3)

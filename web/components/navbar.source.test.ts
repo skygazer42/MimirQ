@@ -14,7 +14,6 @@ describe('navbar source', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'navbar.tsx'), 'utf8')
     const webRoot = path.resolve(__dirname, '..')
     const wrapperPaths = [
-      'app/[locale]/access-review/page.tsx',
       'app/[locale]/audit/page.tsx',
       'app/[locale]/auth/page.tsx',
       'app/[locale]/chunk-preview/page.tsx',

@@ -22,9 +22,10 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [
-      { url: "/favicon-light.svg", media: "(prefers-color-scheme: light)" },
-      { url: "/favicon-dark.svg", media: "(prefers-color-scheme: dark)" },
+      { url: "/brand/mimirq-mark-badge.png", sizes: "512x512", type: "image/png", media: "(prefers-color-scheme: light)" },
+      { url: "/brand/mimirq-mark-badge.png", sizes: "512x512", type: "image/png", media: "(prefers-color-scheme: dark)" },
     ],
+    apple: [{ url: "/brand/mimirq-mark-badge.png", sizes: "512x512", type: "image/png" }],
   },
 }
 

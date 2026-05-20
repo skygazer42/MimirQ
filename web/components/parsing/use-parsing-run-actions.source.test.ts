@@ -16,4 +16,13 @@ describe('useParsingRunActions source', () => {
 
     expect(src).toContain('elements: data.elements || []')
   })
+
+  it('sends optional image OCR and VLM correction switches with parse requests', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'use-parsing-run-actions.ts'), 'utf8')
+
+    expect(src).toContain('imageOcrEnabled: boolean')
+    expect(src).toContain('vlmCorrectionEnabled: boolean')
+    expect(src).toContain('image_ocr_enabled: imageOcrEnabled')
+    expect(src).toContain('vlm_correction_enabled: vlmCorrectionEnabled')
+  })
 })

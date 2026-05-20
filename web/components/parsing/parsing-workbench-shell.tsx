@@ -113,6 +113,7 @@ type ParsingWorkbenchShellProps = {
   handleSubmitToGovernance: () => void
   hoveredBlockId: string | null
   imageCaptionEnabled: boolean
+  imageOcrEnabled: boolean
   inspectorOpen: boolean
   isEditing: boolean
   isLibraryLoaded: boolean
@@ -144,6 +145,7 @@ type ParsingWorkbenchShellProps = {
   setEditedContent: (value: string) => void
   setHoveredBlockId: (blockId: string | null) => void
   setImageCaptionEnabled: (enabled: boolean) => void
+  setImageOcrEnabled: (enabled: boolean) => void
   setInspectorOpen: (open: boolean) => void
   setIsSidebarCollapsed: (collapsed: boolean) => void
   setParserBackend: (backend: string) => void
@@ -158,6 +160,7 @@ type ParsingWorkbenchShellProps = {
   setRightPanelMode: (mode: 'blocks' | 'markdown') => void
   selectedGovernanceFileIds: ReadonlySet<string>
   selectedDatasetId: string | null
+  setVlmCorrectionEnabled: (enabled: boolean) => void
   onSubmitSelectedToGovernance: () => void
   onToggleGovernanceFileSelection: (fileId: string) => void
   onDatasetScopeChange: (datasetId: string | null) => void
@@ -168,6 +171,7 @@ type ParsingWorkbenchShellProps = {
   ) => void
   visibleLibraryOnlyFiles: ParsedFileData[]
   visibleQueueFiles: ParsedFile[]
+  vlmCorrectionEnabled: boolean
 }
 
 type DatasetScopeOption = {
@@ -963,6 +967,7 @@ export function ParsingWorkbenchShell({
   handleSubmitToGovernance,
   hoveredBlockId,
   imageCaptionEnabled,
+  imageOcrEnabled,
   inspectorOpen,
   isEditing,
   isLibraryLoaded,
@@ -991,6 +996,7 @@ export function ParsingWorkbenchShell({
   setEditedContent,
   setHoveredBlockId,
   setImageCaptionEnabled,
+  setImageOcrEnabled,
   setInspectorOpen,
   setIsSidebarCollapsed,
   setParserBackend,
@@ -999,6 +1005,7 @@ export function ParsingWorkbenchShell({
   setQueueOpen,
   setQueueFileParserBackend,
   setRightPanelMode,
+  setVlmCorrectionEnabled,
   selectedGovernanceFileIds,
   selectedDatasetId,
   onSubmitSelectedToGovernance,
@@ -1008,6 +1015,7 @@ export function ParsingWorkbenchShell({
   updateParsedFile,
   visibleLibraryOnlyFiles,
   visibleQueueFiles,
+  vlmCorrectionEnabled,
 }: Readonly<ParsingWorkbenchShellProps>) {
   const t = useTranslations('ParsingWorkbench')
   const bumpPdfPreviewResetToken = () =>
@@ -1245,6 +1253,8 @@ export function ParsingWorkbenchShell({
               parseableCount={parseableCount}
               parserBackend={parserBackend}
               imageCaptionEnabled={imageCaptionEnabled}
+              imageOcrEnabled={imageOcrEnabled}
+              vlmCorrectionEnabled={vlmCorrectionEnabled}
               isLibraryLoaded={isLibraryLoaded}
               sidebarFileItems={sidebarFileItems}
               onToggleGovernanceFileSelection={onToggleGovernanceFileSelection}
@@ -1261,6 +1271,8 @@ export function ParsingWorkbenchShell({
               onParseAllPending={() => detachPromise(parseAllPending())}
               onParserBackendChange={setParserBackend}
               onImageCaptionEnabledChange={setImageCaptionEnabled}
+              onImageOcrEnabledChange={setImageOcrEnabled}
+              onVlmCorrectionEnabledChange={setVlmCorrectionEnabled}
               onFolderDragOver={handleFolderDragOver}
               onFolderDragLeave={handleFolderDragLeave}
               onFolderDrop={handleFolderDrop}

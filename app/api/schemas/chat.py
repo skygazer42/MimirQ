@@ -177,6 +177,7 @@ class ChatRAGConfig(BaseModel):
     multi_query_temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     multi_query_max_chars: int | None = Field(default=None, ge=0, le=2000)
     enable_hyde: bool | None = None
+    enable_query_decomposition: bool | None = None
 
     # Optional hierarchy-aware recall overlay.
     enable_hierarchy_recall: bool | None = None
@@ -190,6 +191,13 @@ class ChatRAGConfig(BaseModel):
     top_k: int = Field(default_factory=lambda: settings.RETRIEVAL_TOP_K, ge=1, le=100)
     score_threshold: float = Field(default_factory=lambda: settings.SIMILARITY_THRESHOLD, ge=0.0, le=1.0)
     max_tokens: int = Field(default=2000, ge=1, le=200_000)
+    answer_mode: Literal["llm", "extractive"] = Field(
+        default="llm",
+        description=(
+            "Answer generation mode. 'llm' uses the configured model provider; "
+            "'extractive' returns a citation-grounded retrieval summary without calling an LLM."
+        ),
+    )
 
     retrieval_mode: str = Field(default="hybrid")  # hybrid | vector | keyword | mmr | auto
     alpha: float = Field(default_factory=lambda: settings.RETRIEVAL_DEFAULT_ALPHA, ge=0.0, le=1.0)

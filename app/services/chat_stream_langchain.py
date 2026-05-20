@@ -108,6 +108,11 @@ async def stream_langchain_chat_session_events(
         if event.get("type") == "citations":
             citations_data = event.get("data") or []
 
+        if event.get("type") == "error":
+            data = event.get("data") if isinstance(event.get("data"), dict) else {}
+            message = str(data.get("message") or data.get("error") or "Chat stream error")
+            raise RuntimeError(message)
+
         if event.get("type") == "done":
             if isinstance(event.get("data"), dict):
                 event["data"]["assistant_message_id"] = str(
@@ -277,6 +282,7 @@ async def produce_langchain_stream_events(
             enable_reranker=effective_rag_config.enable_reranker,
             reranker_provider=effective_rag_config.reranker_provider,
             reranker_top_n=effective_rag_config.reranker_top_n,
+            max_tokens=effective_rag_config.max_tokens,
             structured_preset=request.structured_preset,
             visible_evidence_only=effective_rag_config.visible_evidence_only,
             prompt_template_id=effective_prompt_template_id,

@@ -104,7 +104,7 @@ export function LtrModelRegistrySection({
                 注册入口
               </div>
               <div className={cn(systemPageTokens.subtle, 'mt-2 text-pretty')}>
-                上传 XGBoost 模型和清单文件，后端会校验 sha256 与特征结构。
+                上传 XGBoost 模型和清单文件，后端会校验 sha256 与特征结构
               </div>
             </div>
           </div>
@@ -157,7 +157,7 @@ export function LtrModelRegistrySection({
             <div>
               <div className={systemPageTokens.heading}>模型版本</div>
               <div className={cn(systemPageTokens.subtle, 'mt-0.5')}>
-                激活后用于线上重排序；失败时关闭 LTR 流程。
+                激活后用于线上重排序；失败时关闭 LTR 流程
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -188,7 +188,7 @@ export function LtrModelRegistrySection({
                   <AlertDialogHeader>
                     <AlertDialogTitle>回滚 LTR 模型？</AlertDialogTitle>
                     <AlertDialogDescription className="text-pretty">
-                      这会将当前激活模型切换回上一版本（仅支持一步回滚）。如果没有上一版本，会返回错误。
+                      这会将当前激活模型切换回上一版本（仅支持一步回滚）如果没有上一版本，会返回错误
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -206,7 +206,7 @@ export function LtrModelRegistrySection({
             <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/55 p-5 text-center">
               <div className="text-[13px] font-semibold text-foreground">暂无模型版本</div>
               <div className="mt-0.5 text-[11px] font-medium text-slate-600">
-                上传模型与清单后，可在这里激活或回滚。
+                上传模型与清单后，可在这里激活或回滚
               </div>
             </div>
           ) : (
@@ -299,7 +299,7 @@ export function LtrModelRegistrySection({
                                 <AlertDialogHeader>
                                   <AlertDialogTitle>激活该 LTR 模型？</AlertDialogTitle>
                                   <AlertDialogDescription className="text-pretty">
-                                    将切换当前在线重排序模型到该版本。你可以使用“回滚”退回到上一版本。
+                                    将切换当前在线重排序模型到该版本你可以使用“回滚”退回到上一版本
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <div className="space-y-1 rounded-lg border border-border bg-muted/30 p-3 text-xs">

@@ -34,6 +34,7 @@ class KGEngine:
         ab_user_key: str | None = None,
         extract_relations: bool | None = None,
         extract_skills: bool | None = None,
+        extraction_backend: str | None = None,
         replace_existing: bool | None = None,
         prune_orphan_entities: bool | None = None,
     ):
@@ -54,6 +55,7 @@ class KGEngine:
             prompt_template_key=prompt_template_key,
             prompt_ab_experiment_key=prompt_ab_experiment_key,
             ab_user_key=ab_user_key,
+            extraction_backend=extraction_backend,
         )
         return await self.extractor.extract(
             config,

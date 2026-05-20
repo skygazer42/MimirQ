@@ -1,12 +1,27 @@
 import type { AuditLogListResponse } from '@/types'
 
 import { apiClient } from '@/lib/api/core'
+import { API_LONG_TIMEOUT_MS } from '@/lib/env'
 
 export type AuditLogDeleteResponse = {
   requested: number
   deleted: number
   missing: number
   ids: string[]
+}
+
+const AUDIT_BULK_DELETE_CHUNK_SIZE = 500
+
+function mergeAuditDeleteResponses(responses: AuditLogDeleteResponse[]): AuditLogDeleteResponse {
+  return responses.reduce<AuditLogDeleteResponse>(
+    (acc, item) => ({
+      requested: acc.requested + Number(item.requested || 0),
+      deleted: acc.deleted + Number(item.deleted || 0),
+      missing: acc.missing + Number(item.missing || 0),
+      ids: [...acc.ids, ...(Array.isArray(item.ids) ? item.ids : [])],
+    }),
+    { requested: 0, deleted: 0, missing: 0, ids: [] }
+  )
 }
 
 export const auditApi = {
@@ -66,8 +81,21 @@ export const auditApi = {
   },
 
   async bulkDeleteLogs(ids: string[]): Promise<AuditLogDeleteResponse> {
-    const { data } = await apiClient.post('/audit/logs/bulk-delete', { ids })
-    return data
+    const chunks: string[][] = []
+    for (let index = 0; index < ids.length; index += AUDIT_BULK_DELETE_CHUNK_SIZE) {
+      chunks.push(ids.slice(index, index + AUDIT_BULK_DELETE_CHUNK_SIZE))
+    }
+
+    const responses: AuditLogDeleteResponse[] = []
+    for (const chunk of chunks) {
+      const { data } = await apiClient.post(
+        '/audit/logs/bulk-delete',
+        { ids: chunk },
+        { timeout: API_LONG_TIMEOUT_MS }
+      )
+      responses.push(data)
+    }
+    return mergeAuditDeleteResponses(responses)
   },
 
   async exportAccessGraph(params: {
