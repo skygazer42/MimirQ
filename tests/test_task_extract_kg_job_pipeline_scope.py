@@ -154,3 +154,42 @@ async def test_extract_kg_job_can_override_pipeline_hash(monkeypatch: pytest.Mon
     assert out.get("ok") is True
     assert out.get("event_count") == 1
     assert called.get("chunk_ids") == [str(UUID(int=11))]
+
+
+@pytest.mark.asyncio
+async def test_extract_kg_job_uses_configured_concurrency_retry_defer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.tasks.jobs as jobs_mod
+
+    tenant_calls: list[int] = []
+    dataset_calls: list[int] = []
+
+    async def _fake_tenant_acquire(_redis, **kwargs):  # noqa: ANN001
+        await yield_control()
+        tenant_calls.append(int(kwargs.get("retry_defer_sec") or 0))
+        return None
+
+    async def _fake_dataset_acquire(_redis, **kwargs):  # noqa: ANN001
+        await yield_control()
+        dataset_calls.append(int(kwargs.get("retry_defer_sec") or 0))
+        return None
+
+    doc = _FakeDoc(doc_metadata={"active_pipeline_hash": "ph-active"}, dataset_id=UUID(int=4))
+    db = _FakeSession(doc, [])
+
+    monkeypatch.setattr(jobs_mod, "SessionLocal", lambda: db, raising=True)
+    monkeypatch.setattr(jobs_mod, "tenant_acquire", _fake_tenant_acquire, raising=True)
+    monkeypatch.setattr(jobs_mod, "dataset_acquire", _fake_dataset_acquire, raising=True)
+    monkeypatch.setattr(jobs_mod.settings, "TASK_KG_RETRY_DEFER_SEC", 11, raising=False)
+
+    out = await jobs_mod.extract_kg_job(
+        ctx={"redis": object()},
+        tenant_id=str(UUID(int=3)),
+        document_id=str(UUID(int=2)),
+        requested_by="u",
+    )
+
+    assert out.get("reason") == "no_chunks"
+    assert tenant_calls == [11]
+    assert dataset_calls == [11]

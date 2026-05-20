@@ -246,7 +246,7 @@ class LLMReranker(DocumentReranker):
 
         self._prompt = ChatPromptTemplate.from_template(
             """You are a "retrieval result reranker". Given query and candidate passages, output strict JSON array:
-[{"id": "...", "score": 0.0}]
+[{{"id": "...", "score": 0.0}}]
 
 Requirements:
 1) score ranges 0~1, higher means more relevant;

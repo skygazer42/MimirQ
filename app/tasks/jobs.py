@@ -952,6 +952,7 @@ async def extract_kg_job(
     dataset_sem_key = None
     lock_key = None
     lock_val = None
+    kg_retry_defer_sec = max(2, int(getattr(settings, "TASK_KG_RETRY_DEFER_SEC", 30) or 30))
     try:
         try:
             redis = ctx.get("redis") if isinstance(ctx, dict) else None
@@ -965,6 +966,7 @@ async def extract_kg_job(
                 kind="kg",
                 limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_KG", 0) or 0),
                 ttl_sec=120,
+                retry_defer_sec=kg_retry_defer_sec,
             )
 
         doc = db.query(DBDocument).filter(DBDocument.id == did, DBDocument.tenant_id == tid).first()
@@ -1004,6 +1006,7 @@ async def extract_kg_job(
                 kind="kg",
                 limit=int(getattr(settings, "TASK_DATASET_MAX_CONCURRENCY_KG", 0) or 0),
                 ttl_sec=120,
+                retry_defer_sec=kg_retry_defer_sec,
             )
 
         # Versioning: default to the active pipeline version so extraction doesn't mix
