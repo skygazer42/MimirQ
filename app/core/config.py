@@ -178,6 +178,9 @@ class Settings(BaseSettings):
     # Per-dataset concurrency limit (within a tenant) to avoid single dataset starvation (0 = unlimited).
     TASK_DATASET_MAX_CONCURRENCY_DOC: int = 0
     TASK_DATASET_MAX_CONCURRENCY_KG: int = 0
+    # When KG jobs back off on semaphore contention, wait long enough for the
+    # in-flight extraction to finish before burning through arq's small retry budget.
+    TASK_KG_RETRY_DEFER_SEC: int = 30
     # API-side queue observability poll interval (seconds).
     # Used only when PROMETHEUS_ENABLED=true to keep gauges fresh for scraping.
     TASK_QUEUE_OBSERVABILITY_POLL_INTERVAL_SEC: float = 10.0
