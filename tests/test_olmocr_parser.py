@@ -49,3 +49,23 @@ def test_olmocr_parser_retries_localhost_when_service_alias_times_out(monkeypatc
         "http://mimirq-olmocr:2085/convert",
         "http://127.0.0.1:2085/convert",
     ]
+
+
+def test_olmocr_parser_retries_service_alias_when_localhost_times_out(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(settings, "OLMOCR_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "OLMOCR_API_URL", "http://127.0.0.1:2085/convert", raising=False)
+    monkeypatch.setattr(settings, "OLMOCR_TIMEOUT_SEC", 3, raising=False)
+
+    parser = OlmocrParser()
+    parser._session = _TimeoutThenJsonSession()
+
+    pdf_path = tmp_path / "input.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 fake\n")
+
+    docs = parser.parse(pdf_path)
+
+    assert docs and docs[0].page_content == "# olmocr ok"
+    assert parser._session.calls == [
+        "http://127.0.0.1:2085/convert",
+        "http://mimirq-olmocr:2085/convert",
+    ]

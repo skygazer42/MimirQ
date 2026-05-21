@@ -2,13 +2,25 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from app.core.config import settings
 from app.parsing.parsers.marker_parser import MarkerParser
 
 
 class _DummyResponse:
-    def __init__(self, status_code: int) -> None:
+    def __init__(
+        self,
+        status_code: int,
+        *,
+        headers: dict[str, str] | None = None,
+        text: str = "",
+        content: bytes = b"",
+    ) -> None:
         self.status_code = status_code
+        self.headers = headers or {}
+        self.text = text
+        self.content = content
 
 
 class _DummySession:
@@ -70,3 +82,19 @@ def test_marker_parser_extracts_output_field_from_json_payload() -> None:
     assert MarkerParser._extract_markdown_from_json(
         {"format": "markdown", "output": "## marker markdown"}
     ) == "## marker markdown"
+
+
+def test_marker_parser_rejects_empty_markdown_response(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "MARKER_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "MARKER_API_URL", "http://marker.local:2080/marker/upload", raising=False)
+
+    parser = MarkerParser()
+    parser._session = _DummySession(
+        [_DummyResponse(200, headers={"content-type": "application/json"}, text='{"markdown": ""}', content=b'{"markdown": ""}')]
+    )
+
+    pdf_path = tmp_path / "sample.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4\n%marker-test\n")
+
+    with pytest.raises(RuntimeError, match="empty Markdown"):
+        parser.parse(pdf_path)

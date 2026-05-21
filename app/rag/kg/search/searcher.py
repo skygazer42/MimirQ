@@ -175,6 +175,7 @@ class KGSearcher:
         recall_elapsed = time.perf_counter() - t0
         if metrics_enabled:
             rel_dbg = getattr(recall_result, "relation_debug", None) or {}
+            serving_dbg = getattr(recall_result, "serving_layer", None) or {}
             log_metrics(
                 {
                     "event": "kg.search.recall",
@@ -189,6 +190,9 @@ class KGSearcher:
                     "relation_edges_fetched": int(rel_dbg.get("edges_fetched", 0) or 0),
                     "relation_edges_used": int(rel_dbg.get("edges_used", 0) or 0),
                     "relation_neighbors_selected": int(rel_dbg.get("neighbors_selected", 0) or 0),
+                    "serving_layer_enabled": bool(serving_dbg.get("enabled", False)),
+                    "serving_layer_kept": int(serving_dbg.get("kept", 0) or 0),
+                    "serving_layer_dropped": int(serving_dbg.get("dropped", 0) or 0),
                     "elapsed_sec": round(float(recall_elapsed), 3),
                 }
             )
@@ -260,6 +264,8 @@ class KGSearcher:
             stats.setdefault("query_mode_confidence", str(config.query_mode_confidence or ""))
         if getattr(recall_result, "relation_debug", None):
             stats.setdefault("relation_expansion", getattr(recall_result, "relation_debug", {}) or {})
+        if getattr(recall_result, "serving_layer", None):
+            stats.setdefault("serving_layer", getattr(recall_result, "serving_layer", {}) or {})
         if skip_expand:
             stats.setdefault("expand_skipped", True)
             stats.setdefault("expand_skipped_reason", str(expand_skipped_reason or ""))

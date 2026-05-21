@@ -3,15 +3,19 @@ from __future__ import annotations
 from urllib.parse import urlsplit, urlunsplit
 
 DOCKER_LOCALHOST_FALLBACK = "127.0.0.1"
+LOCALHOST_NAMES = {"127.0.0.1", "localhost"}
 
 
 def build_docker_service_url_candidates(raw_url: str, *, service_hostnames: set[str]) -> list[str]:
     """
     Build candidate URLs for parser sidecars.
 
-    Some heavyweight parser containers are easiest to colocate with the backend
-    by sharing the backend container's network namespace. In that setup,
-    dockerized backend code should call them through `127.0.0.1:<same-port>`.
+    Parser sidecars have used two deployment shapes:
+    - separate containers on the compose network, reachable by service hostname;
+    - containers sharing the API network namespace, reachable by 127.0.0.1.
+
+    Keep both candidates so an env file from one shape does not silently break
+    the other during Docker rebuild/restart workflows.
     """
     raw = (raw_url or "").strip()
     if not raw:
@@ -24,13 +28,21 @@ def build_docker_service_url_candidates(raw_url: str, *, service_hostnames: set[
         return candidates
 
     hostname = (parts.hostname or "").strip().lower()
-    if hostname not in {name.strip().lower() for name in service_hostnames if name.strip()}:
+    normalized_services = sorted({name.strip().lower() for name in service_hostnames if name.strip()})
+    if not normalized_services:
         return candidates
 
-    gateway_netloc = DOCKER_LOCALHOST_FALLBACK
-    if parts.port:
-        gateway_netloc = f"{gateway_netloc}:{parts.port}"
-    fallback = urlunsplit((parts.scheme, gateway_netloc, parts.path, parts.query, parts.fragment))
-    if fallback and fallback not in candidates:
-        candidates.append(fallback)
+    def _append_candidate(netloc_host: str) -> None:
+        netloc = netloc_host
+        if parts.port:
+            netloc = f"{netloc}:{parts.port}"
+        fallback = urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+        if fallback and fallback not in candidates:
+            candidates.append(fallback)
+
+    if hostname in normalized_services:
+        _append_candidate(DOCKER_LOCALHOST_FALLBACK)
+    elif hostname in LOCALHOST_NAMES:
+        for service in normalized_services:
+            _append_candidate(service)
     return candidates

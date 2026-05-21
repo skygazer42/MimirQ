@@ -26,6 +26,107 @@ class RecallResult:
     # Stable per-event hop/path-length estimates for downstream ranking signals.
     event_hops: dict[str, int] = field(default_factory=dict)
     relation_debug: dict[str, Any] = field(default_factory=dict)
+    serving_layer: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ServingLayerBudgetResult:
+    event_ids: list[str]
+    kept: int
+    dropped: int
+    dropped_by_score: int = 0
+    dropped_by_chunk: int = 0
+    dropped_by_document: int = 0
+    reason: str = "applied"
+
+
+def _event_id(value: Any) -> str:
+    return str(getattr(value, "id", "") or "").strip()
+
+
+def _scope_key(value: Any, field_name: str, *, fallback: str) -> str:
+    raw = getattr(value, field_name, None)
+    key = str(raw or "").strip()
+    return key or fallback
+
+
+def apply_serving_layer_budget(
+    events: list[Any],
+    event_scores: dict[str, float],
+    *,
+    enabled: bool,
+    max_events_per_chunk: int,
+    max_events_per_document: int,
+    min_score: float,
+    bypass: bool,
+) -> ServingLayerBudgetResult:
+    """
+    Keep online KG search on a high-value serving subset.
+
+    Full KG extraction/storage remains unchanged. This budget only trims the
+    recall candidates that continue into expand/rerank, which prevents one long
+    document or noisy chunk from dominating normal RAG latency.
+    """
+    event_list = [event for event in (events or []) if _event_id(event)]
+    if not event_list:
+        return ServingLayerBudgetResult(event_ids=[], kept=0, dropped=0, reason="empty")
+
+    event_list.sort(key=lambda ev: (-float(event_scores.get(_event_id(ev), 0.0) or 0.0), _event_id(ev)))
+    if not enabled:
+        event_ids = [_event_id(ev) for ev in event_list]
+        return ServingLayerBudgetResult(event_ids=event_ids, kept=len(event_ids), dropped=0, reason="disabled")
+    if bypass:
+        event_ids = [_event_id(ev) for ev in event_list]
+        return ServingLayerBudgetResult(event_ids=event_ids, kept=len(event_ids), dropped=0, reason="bypassed")
+
+    per_chunk_limit = max(0, int(max_events_per_chunk or 0))
+    per_doc_limit = max(0, int(max_events_per_document or 0))
+    score_floor = max(0.0, float(min_score or 0.0))
+
+    kept_ids: list[str] = []
+    chunk_counts: dict[str, int] = {}
+    doc_counts: dict[str, int] = {}
+    dropped_by_score = 0
+    dropped_by_chunk = 0
+    dropped_by_document = 0
+
+    for event in event_list:
+        eid = _event_id(event)
+        score = float(event_scores.get(eid, 0.0) or 0.0)
+        if score < score_floor:
+            dropped_by_score += 1
+            continue
+
+        chunk_key = _scope_key(event, "chunk_id", fallback=f"event:{eid}")
+        if per_chunk_limit and int(chunk_counts.get(chunk_key, 0) or 0) >= per_chunk_limit:
+            dropped_by_chunk += 1
+            continue
+
+        doc_key = _scope_key(event, "document_id", fallback=f"event:{eid}")
+        if per_doc_limit and int(doc_counts.get(doc_key, 0) or 0) >= per_doc_limit:
+            dropped_by_document += 1
+            continue
+
+        kept_ids.append(eid)
+        chunk_counts[chunk_key] = int(chunk_counts.get(chunk_key, 0) or 0) + 1
+        doc_counts[doc_key] = int(doc_counts.get(doc_key, 0) or 0) + 1
+
+    dropped = dropped_by_score + dropped_by_chunk + dropped_by_document
+    return ServingLayerBudgetResult(
+        event_ids=kept_ids,
+        kept=len(kept_ids),
+        dropped=dropped,
+        dropped_by_score=dropped_by_score,
+        dropped_by_chunk=dropped_by_chunk,
+        dropped_by_document=dropped_by_document,
+    )
+
+
+def _should_bypass_serving_layer(*, mode: str, reason_codes: list[str]) -> bool:
+    reasons = {str(item or "").strip() for item in (reason_codes or []) if str(item or "").strip()}
+    if str(mode or "").strip().lower() == "drift":
+        return True
+    return bool({"global_pattern", "drift_pattern"} & reasons)
 
 
 class RecallSearcher:
@@ -46,6 +147,7 @@ class RecallSearcher:
                 event_scores={},
                 event_hops={},
                 relation_debug={"enabled": False, "reason": "empty_document_scope"},
+                serving_layer={"enabled": False, "reason": "empty_document_scope"},
             )
         session = get_session()
         try:
@@ -67,6 +169,17 @@ class RecallSearcher:
             max_candidates = max(0, int(getattr(settings, "KG_SEARCH_MAX_RERANK_CANDIDATES", 0) or 0))
             if max_candidates > 0:
                 max_events = min(max_events, max_candidates)
+            target_max_events = max(1, int(max_events or 1))
+            serving_enabled = bool(getattr(settings, "KG_SEARCH_SERVING_LAYER_ENABLED", True))
+            serving_candidate_multiplier = max(
+                1, int(getattr(settings, "KG_SEARCH_SERVING_CANDIDATE_MULTIPLIER", 3) or 3)
+            )
+            candidate_max_events = target_max_events
+            if serving_enabled:
+                candidate_max_events = target_max_events * serving_candidate_multiplier
+                if max_candidates > 0:
+                    candidate_max_events = min(candidate_max_events, max_candidates)
+                candidate_max_events = max(target_max_events, candidate_max_events)
             max_entities = int(mode_overrides.get("max_entities") or config.recall.max_entities)
             final_entity_count = int(mode_overrides.get("final_entity_count") or config.recall.final_entity_count)
             entity_weight_threshold = float(
@@ -713,7 +826,7 @@ class RecallSearcher:
                     + list(event_ids_from_relation_entities)
                     + [e["event_id"] for e in event_query_related]
                 )
-            )[:max_events]
+            )[:candidate_max_events]
 
             # === Step5/6: compute event-key weights & event scores ===
             events_detail = event_repo.get_events_by_ids(
@@ -743,7 +856,21 @@ class RecallSearcher:
 
             # sort events by score and trim
             merged_event_ids.sort(key=lambda eid: event_scores.get(str(eid), 0.0), reverse=True)
-            merged_event_ids = merged_event_ids[:max_events]
+            events_by_id = {str(ev.id): ev for ev in events_detail}
+            serving_result = apply_serving_layer_budget(
+                [events_by_id[eid] for eid in merged_event_ids if eid in events_by_id],
+                event_scores,
+                enabled=serving_enabled,
+                max_events_per_chunk=int(getattr(settings, "KG_SEARCH_SERVING_MAX_EVENTS_PER_CHUNK", 2) or 0),
+                max_events_per_document=int(getattr(settings, "KG_SEARCH_SERVING_MAX_EVENTS_PER_DOCUMENT", 80) or 0),
+                min_score=float(getattr(settings, "KG_SEARCH_SERVING_MIN_SCORE", 0.0) or 0.0),
+                bypass=_should_bypass_serving_layer(
+                    mode=str(mode_norm),
+                    reason_codes=[str(x) for x in (mode_overrides.get("reason_codes") or []) if str(x).strip()],
+                ),
+            )
+            merged_event_ids = serving_result.event_ids[:target_max_events]
+            event_scores = {eid: float(event_scores.get(eid, 0.0) or 0.0) for eid in merged_event_ids}
             event_hops = {eid: int(event_hops.get(eid, 1) or 1) for eid in merged_event_ids}
 
             # === Step7: backprop key weights from events ===
@@ -778,6 +905,19 @@ class RecallSearcher:
                 event_scores=event_scores,
                 event_hops=event_hops,
                 relation_debug=relation_debug,
+                serving_layer={
+                    "enabled": bool(serving_enabled),
+                    "reason": str(serving_result.reason),
+                    "candidate_events": int(len(events_detail)),
+                    "kept": int(serving_result.kept),
+                    "returned": int(len(merged_event_ids)),
+                    "dropped": int(serving_result.dropped),
+                    "dropped_by_score": int(serving_result.dropped_by_score),
+                    "dropped_by_chunk": int(serving_result.dropped_by_chunk),
+                    "dropped_by_document": int(serving_result.dropped_by_document),
+                    "max_events": int(target_max_events),
+                    "candidate_multiplier": int(serving_candidate_multiplier),
+                },
             )
         finally:
             session.close()

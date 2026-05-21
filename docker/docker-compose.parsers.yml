@@ -50,13 +50,13 @@ services:
       - marker_cache:/root/.cache
 
   # PaddleOCR-VL parser service (optional; heavyweight).
-  # Then set `PADDLE_VL_ENABLED=true` and `PADDLE_VL_API_URL=http://127.0.0.1:9030/convert` in the root .env.
+  # Then set `PADDLE_VL_ENABLED=true` and `PADDLE_VL_API_URL=http://mimirq-paddlevl:9030/convert` in the root .env.
   mimirq-paddlevl:
     profiles: ["paddlevl"]
     build:
       context: ./paddlevl
     restart: unless-stopped
-    network_mode: "service:mimirq-api"
+    hostname: mimirq-paddlevl
     gpus: all
     environment:
       TZ: Asia/Shanghai
@@ -71,6 +71,10 @@ services:
       PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: ${PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK:-True}
     volumes:
       - paddlevl_cache:/root/.paddleocr
+    networks:
+      default:
+        aliases:
+          - mimirq-paddlevl
     healthcheck:
       test:
         [
@@ -116,13 +120,13 @@ services:
       retries: 10
 
   # olmOCR PDF -> Markdown parser service (optional; heavyweight; requires GPU).
-  # Then set `OLMOCR_ENABLED=true` and `OLMOCR_API_URL=http://127.0.0.1:2085/convert` in the root .env.
+  # Then set `OLMOCR_ENABLED=true` and `OLMOCR_API_URL=http://mimirq-olmocr:2085/convert` in the root .env.
   mimirq-olmocr:
     profiles: ["olmocr"]
     build:
       context: ./olmocr
     restart: unless-stopped
-    network_mode: "service:mimirq-api"
+    hostname: mimirq-olmocr
     gpus: all
     environment:
       TZ: Asia/Shanghai
@@ -137,6 +141,10 @@ services:
       OLMOCR_MODEL: ${OLMOCR_MODEL:-}
     volumes:
       - olmocr_cache:/root/.cache
+    networks:
+      default:
+        aliases:
+          - mimirq-olmocr
     healthcheck:
       test:
         [

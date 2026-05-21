@@ -11,6 +11,7 @@ import os
 import socket
 
 from arq.connections import RedisSettings
+from arq.worker import func
 
 from app.core.config import settings
 from app.rag.core.logging import get_logger
@@ -108,8 +109,14 @@ class WorkerSettings:
     redis_settings = _build_worker_redis_settings()
     queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
     functions = [
-        process_document_job,
-        extract_kg_job,
+        func(
+            process_document_job,
+            max_tries=int(getattr(settings, "TASK_DOCUMENT_JOB_MAX_TRIES", 80) or 80),
+        ),
+        func(
+            extract_kg_job,
+            max_tries=int(getattr(settings, "TASK_KG_JOB_MAX_TRIES", 80) or 80),
+        ),
         rebuild_indexes_job,
         dataset_profile_scan_job,
         dataset_precheck_scan_job,
