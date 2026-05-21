@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { EmptyState } from '@/components/ui/empty-state'
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialog, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import {
@@ -275,6 +275,9 @@ export default function DatasetsPage() {
   const [pageSize, setPageSize] = useState(20)
   const [currentPage, setCurrentPage] = useState(1)
   const [deleteTarget, setDeleteTarget] = useState<Dataset | null>(null)
+  const [deleteIncludingDocuments, setDeleteIncludingDocuments] = useState(false)
+  const [deleteDocumentCountHint, setDeleteDocumentCountHint] = useState<number | null>(null)
+  const [deletePending, setDeletePending] = useState(false)
   const [statsByDatasetId, setStatsByDatasetId] = useState<Record<string, DatasetIngestionStats>>({})
 
   const [createOpen, setCreateOpen] = useState(false)
@@ -436,6 +439,9 @@ export default function DatasetsPage() {
   const selectedDatasetStatus = selectedDataset ? getDatasetOperationalStatus(selectedDataset, selectedDatasetStats) : 'active'
   const selectedStatusBadge = getDatasetStatusBadgeConfig(selectedDatasetStatus)
   const selectedStatusIcon = getDatasetStatusIconConfig(selectedDatasetStatus)
+  const deleteTargetStats = deleteTarget ? statsByDatasetId[deleteTarget.id] : undefined
+  const deleteTargetDocumentCount = Math.max(0, Number(deleteDocumentCountHint ?? deleteTargetStats?.total_documents ?? 0))
+  const deleteRequiresDocumentPurge = deleteTargetDocumentCount > 0
   const collectionFilterLabel = {
     all: '全部数据集',
     active: '活跃集合',
@@ -515,19 +521,46 @@ export default function DatasetsPage() {
 
   const handleDelete = async () => {
     if (!deleteTarget?.id) return
+    const datasetId = deleteTarget.id
+    const shouldPurgeDocuments = deleteRequiresDocumentPurge && deleteIncludingDocuments
+    let shouldCloseDialog = true
+    setDeletePending(true)
     try {
-      await datasetApi.delete(deleteTarget.id)
-      toast.success('已删除数据集')
+      if (shouldPurgeDocuments) {
+        const purgeResult = await datasetApi.purge(datasetId, {
+          dry_run: false,
+          max_delete: Math.min(Math.max(deleteTargetDocumentCount, 1), 10000),
+        })
+        const blocked = Number(purgeResult?.denied || 0) + Number(purgeResult?.conflicts || 0) + Number(purgeResult?.errors || 0)
+        if (blocked > 0) {
+          throw new Error(`清空文档未完成：${blocked} 个文档需要人工处理`)
+        }
+      }
+
+      await datasetApi.delete(datasetId)
+      toast.success(shouldPurgeDocuments ? '已删除数据集及关联文档' : '已删除数据集')
       updateDatasetListCache((current) => ({
         ...current,
-        items: (current.items || []).filter((x) => x.id !== deleteTarget.id),
+        items: (current.items || []).filter((x) => x.id !== datasetId),
         total: Math.max(0, Number(current.total || 0) - 1),
       }))
       await refreshDatasets()
     } catch (e: any) {
-      toast.error(formatApiError(e, '删除失败'))
+      const message = formatApiError(e, '删除失败')
+      const isNonEmptyDataset = /Dataset is not empty|still reference this dataset|数据集内仍有/.test(message)
+      if (isNonEmptyDataset) {
+        shouldCloseDialog = false
+        const countHint = Number(message.match(/\d+/)?.[0] || 1)
+        setDeleteDocumentCountHint(Number.isFinite(countHint) && countHint > 0 ? countHint : 1)
+      }
+      toast.error(isNonEmptyDataset ? '数据集内仍有文档，请勾选“同时删除文档和索引”后再删除。' : message)
     } finally {
-      setDeleteTarget(null)
+      setDeletePending(false)
+      if (shouldCloseDialog) {
+        setDeleteTarget(null)
+        setDeleteIncludingDocuments(false)
+        setDeleteDocumentCountHint(null)
+      }
     }
   }
 
@@ -960,7 +993,18 @@ export default function DatasetsPage() {
                         <Button variant="ghost" size="icon" aria-label="编辑数据集" title="编辑数据集" className="size-7 rounded-full border border-slate-200/80 bg-slate-50 text-slate-500 transition-all duration-200 hover:border-slate-300 hover:bg-card hover:text-foreground active:scale-[0.96]" onClick={() => openEdit(selectedDataset)}>
                           <Pencil className="size-3" />
                         </Button>
-                        <Button variant="ghost" size="icon" aria-label="删除数据集" title="删除数据集" className="size-7 rounded-full border border-destructive/20 bg-red-50 text-destructive/70 transition-all duration-200 hover:border-destructive/30 hover:bg-red-100 active:scale-[0.96]" onClick={() => setDeleteTarget(selectedDataset)}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="删除数据集"
+                          title="删除数据集"
+                          className="size-7 rounded-full border border-destructive/20 bg-red-50 text-destructive/70 transition-all duration-200 hover:border-destructive/30 hover:bg-red-100 active:scale-[0.96]"
+                          onClick={() => {
+                            setDeleteIncludingDocuments(false)
+                            setDeleteDocumentCountHint(null)
+                            setDeleteTarget(selectedDataset)
+                          }}
+                        >
                           <Trash2 className="size-3" />
                         </Button>
                       </div>
@@ -1155,7 +1199,16 @@ export default function DatasetsPage() {
       </PageScaffold>
 
       {/* Delete confirmation */}
-      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (open) return
+          if (deletePending) return
+          setDeleteTarget(null)
+          setDeleteIncludingDocuments(false)
+          setDeleteDocumentCountHint(null)
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>删除数据集？</AlertDialogTitle>
@@ -1163,9 +1216,41 @@ export default function DatasetsPage() {
               你将删除 <span className="font-medium">{deleteTarget?.name}</span>。此操作不可撤销。
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {deleteRequiresDocumentPurge ? (
+            <div className="rounded-2xl border border-amber-200/80 bg-amber-50/80 p-3 text-sm text-amber-950">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-600" />
+                <div className="min-w-0">
+                  <div className="font-semibold">该数据集还有 {deleteTargetDocumentCount} 个文档</div>
+                  <p className="mt-1 text-xs leading-relaxed text-amber-800/80">
+                    直接删除会被后端拦截。勾选后会先清空文档、分块和索引，再删除数据集记录。
+                  </p>
+                </div>
+              </div>
+              <label className="mt-3 flex cursor-pointer items-center gap-2 rounded-xl border border-amber-200/70 bg-white/70 px-3 py-2 text-xs font-medium text-amber-950">
+                <Checkbox
+                  checked={deleteIncludingDocuments}
+                  onCheckedChange={(checked) => setDeleteIncludingDocuments(checked === true)}
+                />
+                同时删除文档和索引
+              </label>
+            </div>
+          ) : null}
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>删除</AlertDialogAction>
+            <AlertDialogCancel disabled={deletePending}>取消</AlertDialogCancel>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleDelete}
+              disabled={deletePending || (deleteRequiresDocumentPurge && !deleteIncludingDocuments)}
+            >
+              {deletePending ? (
+                <>
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                  删除中
+                </>
+              ) : '删除'}
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
