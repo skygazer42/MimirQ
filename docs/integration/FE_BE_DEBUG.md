@@ -52,7 +52,7 @@
 > 不要把 `NEXT_PUBLIC_API_URL` 配成 `http://mimirq-api:8000`（这是 Docker 内部 DNS，浏览器不认识）。
 
 ### Docker 前端（SSR）需要容器内地址时
-在 `docker/.env` 配：
+在 `.env` 配：
 - `API_INTERNAL_URL_DOCKER=http://mimirq-api:8000`
 
 对应代码逻辑见：`web/lib/env.ts`
@@ -63,7 +63,7 @@
 
 ### ① 前端提示“网络错误/无法连接后端”
 - 后端没起：先测 `http://localhost:8000/api/v1/health/ready`
-- 端口不对：检查 `docker/.env` 里的 `BACKEND_PORT`（若你改过）
+- 端口不对：检查 `.env` 里的 `BACKEND_PORT`（若你改过）
 - 前端 API URL 不对：检查 `NEXT_PUBLIC_API_URL`
 
 ### ② CORS 报错

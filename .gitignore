@@ -95,7 +95,6 @@ docs/api/site/openapi.json
 # Docker
 docker/.env
 docker/.env.*
-!docker/.env.example
 
 # Retrieval index caches (generated artifacts; keep out of git)
 data/sparse_indexes/

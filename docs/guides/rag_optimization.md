@@ -2,7 +2,7 @@
 
 This guide summarizes the most impactful knobs for improving retrieval quality and answer grounding in MimirQ.
 
-> All settings are defined in `app/core/config.py` and can be set via `.env` / `docker/.env`.
+> All settings are defined in `app/core/config.py` and can be set via `.env`.
 
 ## Recommended Order (Do This First)
 

@@ -54,7 +54,6 @@ def main() -> int:
             "Create local env files from example templates (cross-platform, non-destructive by default).\n"
             "Templates:\n"
             "  .env.example -> .env (complete local runtime settings)\n"
-            "  docker/.env.example -> docker/.env\n"
             "  web/.env.local.example -> web/.env.local"
         )
     )
@@ -79,7 +78,6 @@ def main() -> int:
 
     pairs: list[tuple[Path, Path]] = [
         (repo_root / ".env.example", repo_root / ".env"),
-        (repo_root / "docker" / ".env.example", repo_root / "docker" / ".env"),
         (repo_root / "web" / ".env.local.example", repo_root / "web" / ".env.local"),
     ]
 

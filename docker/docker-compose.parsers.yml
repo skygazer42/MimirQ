@@ -12,7 +12,7 @@
 
 services:
   # ETL4LLM (Bisheng Unstructured) parser service (optional).
-  # Then set `ETL4LLM_ENABLED=true` and `ETL4LLM_API_URL=http://mimirq-etl4llm:10001/v1/etl4llm/predict` in docker/.env.
+  # Then set `ETL4LLM_ENABLED=true` and `ETL4LLM_API_URL=http://mimirq-etl4llm:10001/v1/etl4llm/predict` in the root .env.
   mimirq-etl4llm:
     profiles: ["etl4llm"]
     image: dataelement/bisheng-unstructured:v0.0.3.14
@@ -31,7 +31,7 @@ services:
       retries: 3
 
   # Marker PDF -> Markdown parser service (optional; heavyweight).
-  # Then set `MARKER_ENABLED=true` and `MARKER_API_URL=http://mimirq-marker:2080/convert` in docker/.env.
+  # Then set `MARKER_ENABLED=true` and `MARKER_API_URL=http://mimirq-marker:2080/convert` in the root .env.
   mimirq-marker:
     profiles: ["marker"]
     build:
@@ -50,7 +50,7 @@ services:
       - marker_cache:/root/.cache
 
   # PaddleOCR-VL parser service (optional; heavyweight).
-  # Then set `PADDLE_VL_ENABLED=true` and `PADDLE_VL_API_URL=http://127.0.0.1:9030/convert` in docker/.env.
+  # Then set `PADDLE_VL_ENABLED=true` and `PADDLE_VL_API_URL=http://127.0.0.1:9030/convert` in the root .env.
   mimirq-paddlevl:
     profiles: ["paddlevl"]
     build:
@@ -83,7 +83,7 @@ services:
       retries: 3
 
   # MinerU local FastAPI service (optional; heavy; typically requires GPU).
-  # Then set `MINERU_ENABLED=true` and `MINERU_LOCAL_SERVER_URL=http://mimirq-mineru:8000` in docker/.env.
+  # Then set `MINERU_ENABLED=true` and `MINERU_LOCAL_SERVER_URL=http://mimirq-mineru:8000` in the root .env.
   mimirq-mineru:
     profiles: ["mineru"]
     build:
@@ -115,7 +115,7 @@ services:
       retries: 10
 
   # olmOCR PDF -> Markdown parser service (optional; heavyweight; requires GPU).
-  # Then set `OLMOCR_ENABLED=true` and `OLMOCR_API_URL=http://127.0.0.1:2085/convert` in docker/.env.
+  # Then set `OLMOCR_ENABLED=true` and `OLMOCR_API_URL=http://127.0.0.1:2085/convert` in the root .env.
   mimirq-olmocr:
     profiles: ["olmocr"]
     build:
@@ -149,7 +149,7 @@ services:
       retries: 3
 
   # Qianfan-OCR wrapper service (optional; calls an OpenAI-compatible vision endpoint).
-  # Then set `QIANFAN_OCR_ENABLED=true` and `QIANFAN_OCR_API_URL=http://mimirq-qianfanocr:2090/convert` in docker/.env.
+  # Then set `QIANFAN_OCR_ENABLED=true` and `QIANFAN_OCR_API_URL=http://mimirq-qianfanocr:2090/convert` in the root .env.
   mimirq-qianfanocr:
     profiles: ["qianfanocr"]
     build:

@@ -7,7 +7,7 @@ MimirQ 支持将 **Marker** 作为可选 PDF 高级解析后端，通过 **独�
 1. 启动 Marker 服务（独立容器/独立机器均可），并确认其提供一个“上传 PDF → 返回 Markdown/ZIP”的 HTTP 接口。
    - 使用本项目 Docker Compose：`make up-marker`（等价于 `docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile marker up -d --build`）
 
-2. 配置后端环境变量（`.env` 或 `docker/.env`）：
+2. 配置后端环境变量（`.env`）：
 
 ```bash
 MARKER_ENABLED=true

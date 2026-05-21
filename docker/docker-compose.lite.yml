@@ -82,7 +82,7 @@ services:
       mimirq-redis:
         condition: service_healthy
     env_file:
-      - .env
+      - ../.env
     environment:
       <<: *backend_env
     volumes:
@@ -104,7 +104,7 @@ services:
       mimirq-postgres:
         condition: service_healthy
     env_file:
-      - .env
+      - ../.env
     environment:
       <<: *backend_env
     volumes:

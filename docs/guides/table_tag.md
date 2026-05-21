@@ -86,7 +86,7 @@ MimirQ 会对这些表格做 best-effort：
 
 ## 开关与安全边界
 
-在后端 `.env` 中配置（参考 `.env.example` / `docker/.env.example`）：
+在后端 `.env` 中配置（参考 `.env.example` / `.env.example`）：
 
 - `TABLE_STORE_ENABLED=true`：启用表格入库到 Table Store
 - `TABLE_STORE_MAX_SHEETS=50`：最多导入的 Sheet 数（防止极端 Excel 占用资源；0 不限制）

@@ -130,7 +130,6 @@ def main() -> int:
 
     env_files = [
         repo_root / ".env",
-        repo_root / "docker/.env",
         repo_root / "web/.env.local",
     ]
     missing_env: list[Path] = []

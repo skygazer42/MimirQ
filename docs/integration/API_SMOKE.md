@@ -9,7 +9,7 @@
 
 ## 一键跑通（Docker 后端）
 
-0) 准备 `docker/.env`（可从 `docker/.env.example` 复制并按需修改）
+0) 准备 `.env`（可从 `.env.example` 复制并按需修改）
 
 1) 启动后端（含依赖）
 
@@ -50,7 +50,7 @@ make api-check
 
 ## 关于 LLM/Embedding
 
-当前默认栈不再包含本地 `mock-openai`。要跑通涉及 Chat / RAG / Embedding 的接口，请在 `docker/.env` 中配置可用的：
+当前默认栈不再包含本地 `mock-openai`。要跑通涉及 Chat / RAG / Embedding 的接口，请在 `.env` 中配置可用的：
 
 - `LLM_API_BASE` / `LLM_API_KEY`
 - 以及必要时的 `EMBEDDING_*`

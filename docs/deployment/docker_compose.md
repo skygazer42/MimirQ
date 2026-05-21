@@ -18,13 +18,11 @@
 ## 1) 环境准备
 
 ```bash
-cd docker
 cp .env.example .env
-cd ..
 cp web/.env.local.example web/.env.local
 ```
 
-编辑 `docker/.env`，至少配置：
+编辑 `.env`，至少配置：
 
 - `LLM_API_KEY`（以及可选的 `LLM_API_BASE/LLM_MODEL`）
 - 若启用生产 JWT：`AUTH_MODE=jwt` + `SECRET_KEY`（长度 >= 32）
@@ -105,7 +103,7 @@ make up-web
 
 ## 3) 生产模式（推荐）
 
-生产部署仍使用 `docker/docker-compose.yml`，建议在 `docker/.env` 中设置：
+生产部署仍使用 `docker/docker-compose.yml`，建议在 `.env` 中设置：
 - `ENV=production`
 - `AUTH_MODE=jwt`
 - `SECRET_KEY`（长度 >= 32）

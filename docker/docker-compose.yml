@@ -172,7 +172,7 @@ services:
       mimirq-redis:
         condition: service_healthy
     env_file:
-      - .env
+      - ../.env
     environment:
       <<: *backend_env
     volumes:
@@ -198,7 +198,7 @@ services:
       mimirq-milvus:
         condition: service_healthy
     env_file:
-      - .env
+      - ../.env
     environment:
       <<: *backend_env
     volumes:

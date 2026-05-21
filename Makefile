@@ -26,18 +26,18 @@ ifeq ($(OS),Windows_NT)
 COMPILEALL_VERIFY := $(PY) -m compileall -q app
 endif
 
-COMPOSE := docker compose -f docker/docker-compose.yml
-COMPOSE_INFRA := docker compose -f docker/docker-compose.infra.yml
-COMPOSE_PARSERS := docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml
-COMPOSE_INFRA_PARSERS := docker compose -f docker/docker-compose.infra.yml -f docker/docker-compose.parsers.yml
-COMPOSE_WEB := docker compose -f docker/docker-compose.yml -f docker/docker-compose.web.yml
-COMPOSE_LITE := docker compose -f docker/docker-compose.lite.yml
-COMPOSE_RETRIEVAL_DEV := docker compose -f docker/docker-compose.retrieval-dev.yml
+COMPOSE := docker compose --env-file .env -f docker/docker-compose.yml
+COMPOSE_INFRA := docker compose --env-file .env -f docker/docker-compose.infra.yml
+COMPOSE_PARSERS := docker compose --env-file .env -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml
+COMPOSE_INFRA_PARSERS := docker compose --env-file .env -f docker/docker-compose.infra.yml -f docker/docker-compose.parsers.yml
+COMPOSE_WEB := docker compose --env-file .env -f docker/docker-compose.yml -f docker/docker-compose.web.yml
+COMPOSE_LITE := docker compose --env-file .env -f docker/docker-compose.lite.yml
+COMPOSE_RETRIEVAL_DEV := docker compose --env-file .env -f docker/docker-compose.retrieval-dev.yml
 QUERYSET_HEALTH_POLICY ?= ci/queryset_health_policy.v1.json
 
 help:
 	@echo "MimirQ dev commands (run from repo root):"
-	@echo "  make init      - create local env files if missing (docker/.env, web/.env.local, .env)"
+	@echo "  make init      - create local env files if missing (.env, web/.env.local)"
 	@echo "  make up        - docker compose up (build + detach)"
 	@echo "  make up-web    - docker compose up + frontend (extra compose file)"
 	@echo "  make up-lite   - docker compose up (lite: no milvus/minio; chroma by default)"
@@ -48,9 +48,9 @@ help:
 	@echo "  make up-mineru - docker compose up + MinerU local API (profile mineru)"
 	@echo "  make up-olmocr - docker compose up + olmOCR parser (profile olmocr)"
 	@echo "  make up-qianfanocr - docker compose up + Qianfan-OCR parser (profile qianfanocr)"
-	@echo "  make up-dev    - alias of up (set UVICORN_RELOAD in docker/.env)"
+	@echo "  make up-dev    - alias of up (set UVICORN_RELOAD in .env)"
 	@echo "  make up-dev-web - alias of up-web"
-	@echo "  make up-prod   - alias of up (set ENV=production/AUTH_MODE/SECRET_KEY in docker/.env)"
+	@echo "  make up-prod   - alias of up (set ENV=production/AUTH_MODE/SECRET_KEY in .env)"
 	@echo "  make up-prod-web - alias of up-web"
 	@echo "  make infra-up  - start infra only (ports exposed)"
 	@echo "  make infra-up-etl4llm - infra-up + ETL4LLM parser (profile etl4llm)"
