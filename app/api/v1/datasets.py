@@ -1460,7 +1460,7 @@ def delete_dataset(
     if doc_count > 0:
         raise HTTPException(
             status_code=409,
-            detail=f"Dataset is not empty: {doc_count} documents still reference this dataset. Delete documents first.",
+            detail=f"数据集内仍有 {doc_count} 个文档，请先清空文档后再删除数据集。",
         )
 
     # Prevent deleting while long-running dataset scans are still active.
