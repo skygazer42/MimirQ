@@ -3,10 +3,12 @@ from __future__ import annotations
 import pytest
 
 
-def test_settings_uses_shared_openai_base_constant() -> None:
+def test_settings_uses_shared_openai_base_constant(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.core.constants import DEFAULT_OPENAI_API_BASE
     from app.core.config import Settings
 
+    monkeypatch.delenv("LLM_API_BASE", raising=False)
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
     cfg = Settings()
     assert cfg.LLM_API_BASE == DEFAULT_OPENAI_API_BASE
 

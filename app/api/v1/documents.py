@@ -186,6 +186,7 @@ from app.services.dataset_precheck_scan_runner import run_dataset_precheck_scan
 from app.services.dataset_service import EDIT_ROLES, DatasetService
 from app.services.document_permission_service import DocumentGroupPermissionService
 from app.services.document_preview_utils import (
+    _compute_chunk_preview_quality,
     _materialize_extracted_images_for_preview,
     _materialize_local_images_for_preview,
 )
@@ -213,6 +214,7 @@ logger = get_logger("api.documents")
 __all__ = [
     "DBDatasetPrecheckScanRun",
     "SessionLocal",
+    "_compute_chunk_preview_quality",
     "_materialize_extracted_images_for_preview",
     "_materialize_local_images_for_preview",
     "_rewrite_preview_images_to_minio",

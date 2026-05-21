@@ -867,7 +867,8 @@ async def parse_workspace_document(
     try:
         t0 = time.perf_counter()
 
-        if _should_inline_preview_parse(file_ext):
+        optional_image_enrichment = bool(image_caption_enabled) or bool(image_ocr_enabled)
+        if _should_inline_preview_parse(file_ext) and not optional_image_enrichment:
             parsed = _parse_inline_text_preview(
                 source_path=source_path,
                 resolved_backend=resolved_backend,

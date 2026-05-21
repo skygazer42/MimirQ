@@ -960,6 +960,7 @@ class EventExtractor:
                     and not processed_events
                     and llm_called_chunk_ids
                     and len(failed_chunk_ids) >= len(llm_called_chunk_ids)
+                    and not timeout_chunk_ids
                 ):
                     unique_errors = list(dict.fromkeys(msg for msg in failure_messages if msg))
                     detail = "; ".join(unique_errors)[:500] if unique_errors else "unknown_error"
