@@ -431,6 +431,7 @@ def cleanup_watermark_document(
     timeout_sec: float = 120.0,
 ) -> tuple[bool, str, dict[str, Any]]:
     normalized_backend = str(backend or "auto").strip().lower() or "auto"
+    auto_selected = normalized_backend == "auto"
     info: dict[str, Any] = {"backend": normalized_backend}
 
     if normalized_backend == "skip":
@@ -460,6 +461,8 @@ def cleanup_watermark_document(
             changed, suppress_meta = suppress_watermark_file(input_path=input_path, output_path=output_path, boxes=boxes)
             info["suppressor"] = suppress_meta
         except Exception as exc:  # noqa: BLE001
+            if auto_selected and not str(api_url or "").strip():
+                return False, "missing_api_url", info
             return False, f"heuristic_failed:{exc.__class__.__name__}", info
         return changed, "watermark_ok" if changed else "watermark_no_change", info
 

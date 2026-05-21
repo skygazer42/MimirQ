@@ -15,7 +15,6 @@
 #
 
 import contextlib
-import logging
 import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -29,9 +28,10 @@ import pdfplumber
 from docling.document_converter import DocumentConverter
 from PIL import Image
 
+from app.rag.core.logging import get_logger
 from app.deepdoc.parser.pdf_parser import IntegratedPipelinePdfParser
 
-logger = logging.getLogger(__name__)
+logger = get_logger("deepdoc.parser.docling")
 
 
 class DoclingContentType(str, Enum):
@@ -191,7 +191,7 @@ class JsonReportProcessor:
 
 class DoclingParser(IntegratedPipelinePdfParser):
     def __init__(self):
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = get_logger("deepdoc.parser.docling.DoclingParser")
         self.page_images: list[Image.Image] = []
         self.page_from = 0
         self.page_to = 10_000

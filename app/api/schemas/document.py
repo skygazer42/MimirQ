@@ -635,6 +635,16 @@ class DocumentDetail(OrmModel):
     # the API handler explicitly sets `chunks_loaded` on the ORM instance.
     chunks: list[DocumentChunkSchema] | None = Field(default=None, validation_alias="chunks_loaded")
 
+    @field_validator("processing_attempts", mode="before")
+    @classmethod
+    def _coerce_processing_attempts(cls, v: object) -> int:
+        if v is None:
+            return 0
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return 0
+
     @model_validator(mode="after")
     def _populate_governance(self) -> "DocumentDetail":
         meta = self.metadata or {}
