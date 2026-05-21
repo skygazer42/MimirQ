@@ -27,7 +27,7 @@ docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml
 
 ### 2) 配置后端环境变量
 
-后端跑在 Docker（推荐）：在 `docker/.env` 中设置：
+后端跑在 Docker（推荐）：在 `.env` 中设置：
 
 ```env
 MINERU_ENABLED=true
@@ -94,7 +94,7 @@ MINERU_MODEL_SOURCE=local
 
 ## 在线 MinerU（mineru.net）
 
-在 `.env` / `docker/.env` 中配置：
+在 `.env` 中配置：
 
 ```env
 MINERU_ENABLED=true

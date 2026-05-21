@@ -213,7 +213,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--base-url",
         default="",
-        help="Override backend base URL (default: inferred from docker/.env BACKEND_PORT).",
+        help="Override backend base URL (default: inferred from root .env BACKEND_PORT).",
     )
     parser.add_argument(
         "--timeout-sec",
@@ -245,7 +245,7 @@ def main(argv: list[str] | None = None) -> int:
             report["errors"].append({"kind": "docker_ps_ports", **ports_error})
 
     if not bool(args.skip_health):
-        env = _read_env_file(repo_root / "docker" / ".env")
+        env = _read_env_file(repo_root / ".env")
         backend_port = _coerce_int(env.get("BACKEND_PORT"), default=8000)
         base_url = str(args.base_url).strip() or f"http://localhost:{backend_port}"
         report["health"] = _check_backend_ready(url=f"{base_url}/api/v1/health/ready", timeout_sec=float(args.timeout_sec))

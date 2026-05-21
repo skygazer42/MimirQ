@@ -21,7 +21,7 @@ MimirQ 支持将 **Qianfan-OCR** 作为可选 PDF OCR 解析后端，通过 **�
 docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile qianfanocr up -d --build
 ```
 
-2. 配置包装服务上游（写在 `docker/.env`）：
+2. 配置包装服务上游（写在 `.env`）：
 
 ```bash
 # 上游 OpenAI-compatible 视觉推理地址（示例）
@@ -30,7 +30,7 @@ QIANFAN_OCR_SERVER_API_KEY=
 QIANFAN_OCR_MODEL=baidu/Qianfan-OCR
 ```
 
-3. 配置 MimirQ 后端解析器（`.env` 或 `docker/.env`）：
+3. 配置 MimirQ 后端解析器（`.env`）：
 
 ```bash
 QIANFAN_OCR_ENABLED=true
@@ -58,7 +58,7 @@ QIANFAN_OCR_LAYOUT_TRIGGER=
 
 - 为避免模型版本差异导致行为不一致，默认不强制注入固定 token。
 
-## 服务侧可选参数（`docker/.env`）
+## 服务侧可选参数（`.env`）
 
 ```bash
 QIANFAN_OCR_MAX_CONCURRENT_JOBS=1

@@ -10,7 +10,7 @@ cd MimirQ
 
 ### 2. 配置模型 API Key
 
-初始化并编辑 `docker/.env` 文件，填入你的模型配置（OpenAI-compatible）：
+初始化并编辑 `.env` 文件，填入你的模型配置（OpenAI-compatible）：
 
 ```env
 LLM_API_KEY=sk-your-api-key-here
@@ -20,9 +20,8 @@ LLM_API_KEY=sk-your-api-key-here
 ```
 
 > 小贴士：可以先运行 `make init`，它会在缺失时自动从模板创建：
-> - `docker/.env`（来自 `docker/.env.example`）
+> - `.env`（来自 `.env.example`）
 > - `web/.env.local`（来自 `web/.env.local.example`）
-> - `.env`（来自根目录最小 `.env.example`，用于本地运行后端时读取）
 >
 > 根目录 `.env.example` 已包含解析、RAG、KG、可观测性等环境变量；本地按需复制到 `.env` 后修改即可。
 
@@ -47,11 +46,9 @@ make up-retrieval-dev
 make ps-retrieval-dev
 make api-ping
 
-# 或直接使用 docker compose
-cd docker
-docker compose up -d --build
-docker compose ps
-cd ..
+# 或直接使用 docker compose（从仓库根目录执行）
+docker compose --env-file .env -f docker/docker-compose.yml up -d --build
+docker compose --env-file .env -f docker/docker-compose.yml ps
 
 # (可选) 启动前端（两种方式二选一）
 # 1) Docker（生产构建；推荐用于“一键部署”）
@@ -92,7 +89,7 @@ MimirQ 已内置 `etl4llm` 解析器（并兼容 `bisheng` / `bisheng-unstructur
 make up-etl4llm
 ```
 
-然后在 `docker/.env` 里配置：
+然后在 `.env` 里配置：
 ```env
 ETL4LLM_ENABLED=true
 ETL4LLM_API_URL=http://mimirq-etl4llm:10001/v1/etl4llm/predict
@@ -106,7 +103,7 @@ Marker 建议以独立容器/服务运行（重依赖不进入 MimirQ 主镜像�
 make up-marker
 ```
 
-然后在 `docker/.env` 里配置：
+然后在 `.env` 里配置：
 ```env
 MARKER_ENABLED=true
 MARKER_API_URL=http://mimirq-marker:2080/convert
@@ -120,7 +117,7 @@ PaddleOCR-VL 建议以独立容器/服务运行（重依赖不进入 MimirQ 主�
 make up-paddlevl
 ```
 
-然后在 `docker/.env` 里配置：
+然后在 `.env` 里配置：
 ```env
 PADDLE_VL_ENABLED=true
 PADDLE_VL_API_URL=http://127.0.0.1:9030/convert
@@ -135,7 +132,7 @@ Qianfan-OCR 建议以独立容器/服务运行，MimirQ 通过包装服务调用
 make up-qianfanocr
 ```
 
-然后在 `docker/.env` 里配置：
+然后在 `.env` 里配置：
 ```env
 QIANFAN_OCR_ENABLED=true
 QIANFAN_OCR_API_URL=http://mimirq-qianfanocr:2090/convert
@@ -149,7 +146,7 @@ QIANFAN_OCR_MODEL=baidu/Qianfan-OCR
 TextIn xParse 通过官方 API 直接返回 Markdown/结构化结果，适合把 PDF / Office / 图片等
 文档解析能力接入到 MimirQ，而无需自建重型 OCR/版面服务。
 
-然后在 `.env` / `docker/.env` 里配置：
+然后在 `.env` 里配置：
 
 ```env
 TEXTIN_ENABLED=true
@@ -177,7 +174,7 @@ MinerU 建议以独立容器运行（依赖/模型较重），MimirQ 通过 HTTP
 make up-mineru
 ```
 
-然后在 `docker/.env` 里配置（后端跑在 Docker 时）：
+然后在 `.env` 里配置（后端跑在 Docker 时）：
 ```env
 MINERU_ENABLED=true
 MINERU_MODEL_SOURCE=local
@@ -219,7 +216,7 @@ MagicPDF 只有在状态为 `configured (models: ...)` 时才会被自动路由/
 
 适用于：`doc/docx/ppt/pptx/xls/xlsx/html/htm`（图片/表格保真更好）。
 
-在 `docker/.env` 里配置：
+在 `.env` 里配置：
 ```env
 PANDOC_ENABLED=true
 # 旧格式（.doc/.ppt/.xls）需要 LibreOffice 辅助转换

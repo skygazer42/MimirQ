@@ -9,7 +9,7 @@ PDF / Office / 图片等文件转成 Markdown 或结构化结果。
 
 ## 启用方式
 
-在 `.env` 或 `docker/.env` 中配置：
+在 `.env` 中配置：
 
 ```env
 TEXTIN_ENABLED=true
@@ -26,7 +26,7 @@ TEXTIN_DPI=144
 TEXTIN_PAGE_COUNT=0
 ```
 
-如果是 Docker Compose 部署，修改 `docker/.env` 后需要重建/重启后端容器让
+如果是 Docker Compose 部署，修改 `.env` 后需要重建/重启后端容器让
 API/worker 读取新配置：
 
 ```bash

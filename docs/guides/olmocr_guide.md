@@ -16,7 +16,7 @@ MimirQ 支持将 **olmOCR** 作为可选 PDF OCR 解析后端，通过 **独立�
 1. 启动 olmOCR 服务（独立容器/独立机器均可），并确认其提供一个“上传 PDF → 返回 Markdown”的 HTTP 接口（示例：`/convert`）。
    - 使用本项目 Docker Compose：`make up-olmocr`（等价于 `docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile olmocr up -d --build`）
 
-2. 配置后端环境变量（`.env` 或 `docker/.env`）：
+2. 配置后端环境变量（`.env`）：
 
 ```bash
 OLMOCR_ENABLED=true
@@ -34,7 +34,7 @@ OLMOCR_TIMEOUT_SEC=1800
 
 ## 服务侧配置（可选）
 
-`docker/docker-compose.parsers.yml` 的 `olmocr` profile 支持以下可选环境变量（写在 `docker/.env`）：
+`docker/docker-compose.parsers.yml` 的 `olmocr` profile 支持以下可选环境变量（写在 `.env`）：
 
 ```bash
 # 服务侧并发（单卡建议 1）
