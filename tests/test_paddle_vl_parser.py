@@ -170,3 +170,24 @@ def test_paddle_vl_parser_retries_localhost_when_service_alias_times_out(monkeyp
         "http://mimirq-paddlevl:9030/convert",
         "http://127.0.0.1:9030/convert",
     ]
+
+
+def test_paddle_vl_parser_retries_service_alias_when_localhost_times_out(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(settings, "PADDLE_VL_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "PADDLE_VL_API_URL", "http://127.0.0.1:9030/convert", raising=False)
+    monkeypatch.setattr(settings, "PADDLE_VL_TIMEOUT_SEC", 3, raising=False)
+    monkeypatch.setattr(settings, "MINIO_ENABLED", False, raising=False)
+
+    parser = PaddleVLParser()
+    parser._session = _TimeoutThenZipSession(_read_fixture_zip("paddlevl_doc_parser_output.zip"))
+
+    pdf_path = tmp_path / "input.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 fake\n")
+
+    docs = parser.parse(pdf_path)
+
+    assert docs and "Parsed" in (docs[0].page_content or "")
+    assert parser._session.calls == [
+        "http://127.0.0.1:9030/convert",
+        "http://mimirq-paddlevl:9030/convert",
+    ]

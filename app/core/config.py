@@ -170,6 +170,10 @@ class Settings(BaseSettings):
     TASK_JOB_TIMEOUT_SEC: int = 60 * 30
     # Default retry count (network/external API jitter).
     TASK_JOB_MAX_TRIES: int = 3
+    # Document jobs can wait behind large PDF/OCR work; keep them queued instead of
+    # exhausting the generic retry budget while a per-tenant semaphore is held.
+    TASK_DOCUMENT_JOB_MAX_TRIES: int = 80
+    TASK_DOCUMENT_RETRY_DEFER_SEC: int = 30
     # Per-tenant concurrency limit to avoid one tenant exhausting workers (0 = unlimited).
     TASK_TENANT_MAX_CONCURRENCY_DOC: int = 2
     TASK_TENANT_MAX_CONCURRENCY_KG: int = 1
@@ -180,6 +184,7 @@ class Settings(BaseSettings):
     TASK_DATASET_MAX_CONCURRENCY_KG: int = 0
     # When KG jobs back off on semaphore contention, wait long enough for the
     # in-flight extraction to finish before burning through arq's small retry budget.
+    TASK_KG_JOB_MAX_TRIES: int = 80
     TASK_KG_RETRY_DEFER_SEC: int = 30
     # API-side queue observability poll interval (seconds).
     # Used only when PROMETHEUS_ENABLED=true to keep gauges fresh for scraping.
@@ -1896,9 +1901,16 @@ class Settings(BaseSettings):
     KG_SEARCH_QUERY_MODE_CLASSIFIER_ENABLED: bool = True
     KG_SEARCH_QUERY_MODE_LOCAL_MAX_EVENTS: int = 40
     KG_SEARCH_QUERY_MODE_GLOBAL_MIN_EVENTS: int = 120
-    KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS: int = 80
+    KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS: int = 40
     KG_SEARCH_QUERY_MODE_DRIFT_MIN_EVENTS: int = 140
     KG_SEARCH_QUERY_MODE_LOCAL_ENTITY_WEIGHT_BONUS: float = 0.05
+    # KG serving-layer budget: full KG remains stored, but normal online RAG only
+    # sends a high-value subset into expand/rerank.
+    KG_SEARCH_SERVING_LAYER_ENABLED: bool = True
+    KG_SEARCH_SERVING_MAX_EVENTS_PER_CHUNK: int = 2
+    KG_SEARCH_SERVING_MAX_EVENTS_PER_DOCUMENT: int = 80
+    KG_SEARCH_SERVING_MIN_SCORE: float = 0.0
+    KG_SEARCH_SERVING_CANDIDATE_MULTIPLIER: int = 3
     # KG global-search (GraphRAG-like) community detection + community/global summaries.
     #
     # Important:
@@ -2555,6 +2567,17 @@ class Settings(BaseSettings):
             raise ValueError("KG_SEARCH_QUERY_MODE_LOCAL_ENTITY_WEIGHT_BONUS must be between 0 and 1")
         if self.KG_SEARCH_QUERY_MODE_LOCAL_ENTITY_WEIGHT_BONUS != local_entity_weight_bonus:
             self.KG_SEARCH_QUERY_MODE_LOCAL_ENTITY_WEIGHT_BONUS = local_entity_weight_bonus
+        if int(getattr(self, "KG_SEARCH_SERVING_MAX_EVENTS_PER_CHUNK", 0) or 0) < 0:
+            raise ValueError("KG_SEARCH_SERVING_MAX_EVENTS_PER_CHUNK must be >= 0")
+        if int(getattr(self, "KG_SEARCH_SERVING_MAX_EVENTS_PER_DOCUMENT", 0) or 0) < 0:
+            raise ValueError("KG_SEARCH_SERVING_MAX_EVENTS_PER_DOCUMENT must be >= 0")
+        kg_serving_min_score = float(getattr(self, "KG_SEARCH_SERVING_MIN_SCORE", 0.0) or 0.0)
+        if not (0.0 <= kg_serving_min_score <= 1.0):
+            raise ValueError("KG_SEARCH_SERVING_MIN_SCORE must be between 0 and 1")
+        if self.KG_SEARCH_SERVING_MIN_SCORE != kg_serving_min_score:
+            self.KG_SEARCH_SERVING_MIN_SCORE = kg_serving_min_score
+        if int(getattr(self, "KG_SEARCH_SERVING_CANDIDATE_MULTIPLIER", 0) or 0) < 1:
+            raise ValueError("KG_SEARCH_SERVING_CANDIDATE_MULTIPLIER must be >= 1")
         if int(getattr(self, "VECTOR_WRITE_BATCH_SIZE", 0) or 0) < 1:
             raise ValueError("VECTOR_WRITE_BATCH_SIZE must be >= 1")
         if int(getattr(self, "VECTOR_WRITE_BATCH_MAX_CHARS", 0) or 0) < 0:

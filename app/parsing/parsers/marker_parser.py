@@ -188,6 +188,9 @@ class MarkerParser:
             else:
                 markdown_text = resp.text or ""
 
+        if not str(markdown_text or "").strip():
+            raise RuntimeError("Marker API returned empty Markdown.")
+
         metadata: dict[str, Any] = {
             "source": str(file_path.name),
             "file_type": "pdf",

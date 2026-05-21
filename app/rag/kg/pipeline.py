@@ -223,6 +223,21 @@ async def kg_search(
                         "KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS": int(
                             getattr(settings, "KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS", 0) or 0
                         ),
+                        "KG_SEARCH_SERVING_LAYER_ENABLED": bool(
+                            getattr(settings, "KG_SEARCH_SERVING_LAYER_ENABLED", True)
+                        ),
+                        "KG_SEARCH_SERVING_MAX_EVENTS_PER_CHUNK": int(
+                            getattr(settings, "KG_SEARCH_SERVING_MAX_EVENTS_PER_CHUNK", 0) or 0
+                        ),
+                        "KG_SEARCH_SERVING_MAX_EVENTS_PER_DOCUMENT": int(
+                            getattr(settings, "KG_SEARCH_SERVING_MAX_EVENTS_PER_DOCUMENT", 0) or 0
+                        ),
+                        "KG_SEARCH_SERVING_MIN_SCORE": float(
+                            getattr(settings, "KG_SEARCH_SERVING_MIN_SCORE", 0.0) or 0.0
+                        ),
+                        "KG_SEARCH_SERVING_CANDIDATE_MULTIPLIER": int(
+                            getattr(settings, "KG_SEARCH_SERVING_CANDIDATE_MULTIPLIER", 0) or 0
+                        ),
                     },
                 )
                 cached, _age_ms = kg_search_cache.get(cache_key, ttl_sec=ttl_sec)

@@ -112,6 +112,45 @@ async def _job_result(
     return payload
 
 
+def _current_job_try(ctx) -> int:  # noqa: ANN001
+    if not isinstance(ctx, dict):
+        return 1
+    try:
+        return max(1, int(ctx.get("job_try") or 1))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _document_job_max_tries() -> int:
+    return max(1, int(getattr(settings, "TASK_DOCUMENT_JOB_MAX_TRIES", 80) or 80))
+
+
+def _kg_job_max_tries() -> int:
+    return max(1, int(getattr(settings, "TASK_KG_JOB_MAX_TRIES", 80) or 80))
+
+
+async def _mark_document_failed_on_exhausted_retry(
+    *,
+    ctx,  # noqa: ANN001
+    db,
+    tenant_id: UUID,
+    document_id: UUID,
+    reason: str,
+) -> bool:
+    if _current_job_try(ctx) < _document_job_max_tries():
+        return False
+    await document_processor._update_status(
+        db,
+        tenant_id,
+        document_id,
+        "failed",
+        0,
+        "failed",
+        error_message=reason,
+    )
+    return True
+
+
 async def ping_job(ctx) -> dict:  # noqa: ANN001
     """Queue healthcheck job (for E2E benchmark)."""
     t0 = time.perf_counter()
@@ -427,24 +466,56 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
         lock_val = make_lock_value(requested_by)
         lock_ttl = 60 * 40  # 40 min
         if redis is not None:
+            job_try = _current_job_try(ctx)
+            max_doc_tries = _document_job_max_tries()
+            retry_defer_sec = int(getattr(settings, "TASK_DOCUMENT_RETRY_DEFER_SEC", 30) or 30)
+            tenant_limit = int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_DOC", 0) or 0)
+            dataset_limit = int(getattr(settings, "TASK_DATASET_MAX_CONCURRENCY_DOC", 0) or 0)
+            # On the final attempt, run the job even if the semaphore is saturated;
+            # otherwise arq records "max retries exceeded" before the function can
+            # update the document status.
+            if job_try >= max_doc_tries:
+                tenant_limit = 0
+                dataset_limit = 0
             # Per-tenant concurrency limit (doc).
             sem_key = await tenant_acquire(
                 redis,
                 tenant_id=tenant_id,
                 kind="doc",
-                limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_DOC", 0) or 0),
+                limit=tenant_limit,
                 ttl_sec=120,
+                retry_defer_sec=retry_defer_sec,
             )
             dataset_sem_key = await dataset_acquire(
                 redis,
                 tenant_id=tenant_id,
                 dataset_id=str(doc.dataset_id) if doc.dataset_id else "",
                 kind="doc",
-                limit=int(getattr(settings, "TASK_DATASET_MAX_CONCURRENCY_DOC", 0) or 0),
+                limit=dataset_limit,
                 ttl_sec=120,
+                retry_defer_sec=retry_defer_sec,
             )
             acquired = await acquire_lock(redis, key=lock_key, value=lock_val, ttl_sec=lock_ttl)
             if not acquired:
+                exhausted = await _mark_document_failed_on_exhausted_retry(
+                    ctx=ctx,
+                    db=db,
+                    tenant_id=tid,
+                    document_id=did,
+                    reason="document_processing_lock_timeout",
+                )
+                if exhausted:
+                    return await _job_result(
+                        ctx,
+                        job_name="process_document_job",
+                        ok=False,
+                        started_at=t0,
+                        reason="document_processing_lock_timeout",
+                        progress=_job_progress(stage="failed", done=0, total=1),
+                        tenant_id=tenant_id,
+                        document_id=document_id,
+                        pipeline_hash=pipeline_hash,
+                    )
                 logger.info("Skip document job due to active lock: %s", lock_key)
                 return await _job_result(
                     ctx,
@@ -960,11 +1031,16 @@ async def extract_kg_job(
             redis = None
 
         if redis is not None:
+            kg_limit = int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_KG", 0) or 0)
+            if _current_job_try(ctx) >= _kg_job_max_tries():
+                # Let the final attempt run instead of letting arq fail the job
+                # before the function has a chance to produce a structured result.
+                kg_limit = 0
             sem_key = await tenant_acquire(
                 redis,
                 tenant_id=tenant_id,
                 kind="kg",
-                limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_KG", 0) or 0),
+                limit=kg_limit,
                 ttl_sec=120,
                 retry_defer_sec=kg_retry_defer_sec,
             )
@@ -999,12 +1075,15 @@ async def extract_kg_job(
             )
 
         if redis is not None:
+            dataset_kg_limit = int(getattr(settings, "TASK_DATASET_MAX_CONCURRENCY_KG", 0) or 0)
+            if _current_job_try(ctx) >= _kg_job_max_tries():
+                dataset_kg_limit = 0
             dataset_sem_key = await dataset_acquire(
                 redis,
                 tenant_id=tenant_id,
                 dataset_id=str(doc.dataset_id) if doc.dataset_id else "",
                 kind="kg",
-                limit=int(getattr(settings, "TASK_DATASET_MAX_CONCURRENCY_KG", 0) or 0),
+                limit=dataset_kg_limit,
                 ttl_sec=120,
                 retry_defer_sec=kg_retry_defer_sec,
             )

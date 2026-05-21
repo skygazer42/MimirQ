@@ -3,18 +3,18 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.rag.chunking.strategy_matrix import run_chunk_strategy_matrix
+from app.rag.chunking.strategy_matrix import run_chunk_strategy_matrix  # noqa: E402
 
 
 def _now_id() -> str:
-    return datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    return datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
 
 
 def _to_markdown(results: list[dict[str, object]]) -> str:
@@ -36,7 +36,7 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     results = run_chunk_strategy_matrix()
     payload = {
-        "generated_at": datetime.now(UTC).isoformat(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "results": results,
         "failures": [row for row in results if row.get("status") not in {"passed", "unavailable"}],
     }
