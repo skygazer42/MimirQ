@@ -241,16 +241,18 @@ export function Navbar({
   const backendReady = useBackendReady()
   const tenantAccess = useTenantAccess()
   const navigationTenantAccess = hasHydratedNavigationAccess ? tenantAccess.data : undefined
+  const allowDevNavigation = hasHydratedNavigationAccess && isDevMode
   const commandMenuOpen = useCommandMenuState((state) => state.open)
   const setCommandMenuOpen = useCommandMenuState((state) => state.setOpen)
   const canAccessPermission = useCallback(
-    (permission?: TenantPermission) => !permission || tenantAccessAllows(navigationTenantAccess, permission),
-    [navigationTenantAccess]
+    (permission?: TenantPermission) =>
+      !permission || allowDevNavigation || tenantAccessAllows(navigationTenantAccess, permission),
+    [allowDevNavigation, navigationTenantAccess]
   )
   const canShowNavigationModule = useCallback(
     (moduleKey?: AdminControlledNavigationModule) =>
-      canShowAdminControlledNavigationModule(navigationTenantAccess, moduleKey),
-    [navigationTenantAccess]
+      !moduleKey || allowDevNavigation || canShowAdminControlledNavigationModule(navigationTenantAccess, moduleKey),
+    [allowDevNavigation, navigationTenantAccess]
   )
   const visibleMenuSections = useMemo(
     () =>

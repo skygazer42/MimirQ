@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { User, Mail, Lock, Sparkles, ArrowRight, Loader2, Copy } from 'lucide-react'
+import Image from 'next/image'
+import { User, Mail, Lock, ArrowRight, Loader2, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -74,8 +75,16 @@ export default function AuthPage() {
             <div className="relative z-10 w-full max-w-md p-6">
                 {/* Logo / Brand */}
                 <div className="flex flex-col items-center mb-8 space-y-4">
-                    <div className="size-16 rounded-xl border border-border bg-card shadow-soft flex items-center justify-center">
-                      <Sparkles className="size-8 text-primary" aria-hidden="true" />
+                    <div className="flex size-20 items-center justify-center rounded-2xl border border-[#CAF0F8]/70 bg-white/85 shadow-[0_18px_48px_rgba(8,47,73,0.10)] backdrop-blur">
+                      <Image
+                        src="/brand/mimirq-mark-badge.png"
+                        alt="MimirQ"
+                        width={64}
+                        height={64}
+                        priority
+                        unoptimized
+                        className="size-14 select-none object-contain"
+                      />
                     </div>
                     <div className="text-center">
                         <h1 className="text-balance text-3xl font-semibold text-foreground">
@@ -144,9 +153,6 @@ export default function AuthPage() {
                             </div>
                         </div>
                     )}
-                    <p className="mb-6 text-xs leading-5 text-muted-foreground">
-                      Enterprise SSO supports OIDC here and IdP-initiated SAML when configured by your administrator.
-                    </p>
                     {/* Tab Switcher */}
                     <div className="flex p-1 bg-background/40 rounded-xl mb-8 border border-border/50">
                         <button

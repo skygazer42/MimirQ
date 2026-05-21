@@ -26,12 +26,25 @@ const PRESET_COLORS = [
   { name: "Yellow", value: "#ca8a04" },
 ]
 
-export function ThemeCustomizer() {
+type ThemeCustomizerProps = {
+  trigger?: React.ReactNode
+}
+
+export function ThemeCustomizer({ trigger }: Readonly<ThemeCustomizerProps> = {}) {
   const [mounted, setMounted] = React.useState(false)
   const t = useTranslations('CommonUi')
   const { theme, setTheme } = useTheme()
   const [color, setColor] = React.useState(PRESET_COLORS[0].value)
   const [surfaceTheme, setSurfaceTheme] = React.useState<SurfaceThemeKey>('ocean')
+  const triggerNode = trigger ?? (
+    <IconButton
+      label={t('themeCustomizer.openLabel')}
+      variant="outline"
+      className="fixed bottom-4 right-4 z-50 size-12 rounded-full border-primary/20 bg-background/80 backdrop-blur-md shadow-lg hover:border-primary transition-colors duration-200 motion-reduce:transition-none supports-[padding:env(safe-area-inset-bottom)]:bottom-[calc(env(safe-area-inset-bottom)+1rem)] supports-[padding:env(safe-area-inset-right)]:right-[calc(env(safe-area-inset-right)+1rem)]"
+    >
+      <Settings2 className="size-6 text-primary" />
+    </IconButton>
+  )
 
   React.useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -88,13 +101,7 @@ export function ThemeCustomizer() {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <IconButton
-          label={t('themeCustomizer.openLabel')}
-          variant="outline"
-          className="fixed bottom-4 right-4 z-50 size-12 rounded-full border-primary/20 bg-background/80 backdrop-blur-md shadow-lg hover:border-primary transition-colors duration-200 motion-reduce:transition-none supports-[padding:env(safe-area-inset-bottom)]:bottom-[calc(env(safe-area-inset-bottom)+1rem)] supports-[padding:env(safe-area-inset-right)]:right-[calc(env(safe-area-inset-right)+1rem)]"
-        >
-          <Settings2 className="size-6 text-primary" />
-        </IconButton>
+        {triggerNode}
       </PopoverTrigger>
       <PopoverContent className="w-80 p-4" align="end" sideOffset={10}>
         <div className="space-y-4">

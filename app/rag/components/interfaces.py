@@ -38,12 +38,13 @@ class Citation(TypedDict, total=False):
 
 
 class PipelineResult(TypedDict, total=False):
-    answer: str
-    citations: list[Citation]
-    model_used: str | None
-    route: str | None
-    routing_reason: str | None
-    metrics: dict[str, Any]
+    """Represents the output of a RAG pipeline execution."""
+    answer: str  # The generated answer to the user's question.
+    citations: list[Citation]  # List of source citations used to generate the answer.
+    model_used: str | None  # The LLM model identifier used for generation.
+    route: str | None  # The routing strategy or path taken (e.g., 'vector', 'keyword').
+    routing_reason: str | None  # Explanation for why a specific route was chosen.
+    metrics: dict[str, Any]  # Additional performance or diagnostic metrics.
 
 
 class StreamEvent(TypedDict):

@@ -7,8 +7,8 @@ describe('tenant permission gate source', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'tenant-permission-gate.tsx'), 'utf8')
 
     expect(src).toContain('const [hasHydrated, setHasHydrated] = useState(false)')
-    expect(src).toContain('const allowed = hasHydrated && tenantAccessAllows(access.data, permission)')
-    expect(src).toContain('if (!hasHydrated || access.isLoading)')
+    expect(src).toContain('const allowed = hasHydrated && (isDevMode || tenantAccessAllows(access.data, permission))')
+    expect(src).toContain('if (!hasHydrated || (!isDevMode && access.isLoading))')
   })
 
   it('guards privileged system routes before rendering their page clients', () => {

@@ -6,7 +6,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffect } from 'react'
 import Image from 'next/image'
 import { useTranslations } from 'next-intl'
-import { Send, StopCircle, Sparkles, Database, Wand2, Settings2, Mic, ArrowDown, Route, Keyboard, Palette, FileUp, Globe2, type LucideIcon } from 'lucide-react'
+import { Send, StopCircle, Sparkles, Database, Wand2, Settings2, Mic, ArrowDown, Route, Keyboard, Palette, type LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQuery } from '@tanstack/react-query'
 import { useChat } from '@/hooks/use-chat'
@@ -38,7 +38,7 @@ import { useRouter } from '@/i18n/navigation'
 import { coerceOneOf } from '@/lib/one-of'
 import { queryKeys } from '@/lib/query-keys'
 import { useDocumentView } from '@/store/document-view'
-import { useCommandMenuState } from '@/store/command-menu'
+import { ThemeCustomizer } from '@/components/theme-customizer'
 
 const SELECT_DEFAULT_VALUE = '__mimirq_default__'
 const DEFAULT_VISIBLE_MESSAGES = 80
@@ -70,12 +70,12 @@ export function ChatArea({
   const router = useRouter()
   const t = useTranslations('Chat')
   const activeDocumentId = useDocumentView((state) => state.documentId)
-  const setCommandMenuOpen = useCommandMenuState((state) => state.setOpen)
   const summaryMemoryId = 'chat-enable-summary-memory'
   const [inputValue, setInputValue] = useState(() => (initialPrompt || '').trim())
   const [promptTemplateId, setPromptTemplateId] = useState<string>('')
   const [selectedDatasetId, setSelectedDatasetId] = useState('')
   const [showRagSettings, setShowRagSettings] = useState(Boolean(initialOpenRagSettings))
+  const [deepReasoningEnabled, setDeepReasoningEnabled] = useState(false)
   const [hasSystemRagDefaults, setHasSystemRagDefaults] = useState(false)
   const [ragConfigDirty, setRagConfigDirty] = useState(false)
   const [ragConfig, setRagConfig] = useState<{
@@ -345,12 +345,27 @@ export function ChatArea({
   }, [])
 
   const effectiveChatRagConfig = useMemo(() => {
-    if (ragConfigDirty || hasSystemRagDefaults) return ragConfig
-    return {
+    const baseConfig = ragConfigDirty || hasSystemRagDefaults ? ragConfig : {
       enable_multi_query: ragConfig.enable_multi_query,
       enable_hyde: ragConfig.enable_hyde,
     }
-  }, [hasSystemRagDefaults, ragConfig, ragConfigDirty])
+
+    if (!deepReasoningEnabled) return baseConfig
+
+    const topK = Number.isFinite(ragConfig.top_k) ? ragConfig.top_k : 5
+    return {
+      ...baseConfig,
+      top_k: Math.max(topK, 8),
+      retrieval_mode: 'hybrid',
+      enable_multi_query: true,
+      multi_query_count: 3,
+      enable_hyde: true,
+    }
+  }, [deepReasoningEnabled, hasSystemRagDefaults, ragConfig, ragConfigDirty])
+
+  const openCommandMenu = useCallback((query = '') => {
+    globalEventBus.emit('command-menu:set-open', { open: true, query })
+  }, [])
 
   const {
     messages,
@@ -598,21 +613,24 @@ export function ChatArea({
             variant="ghost"
             size="sm"
             className="pointer-events-auto h-9 gap-1.5 rounded-full border border-border/60 bg-card/80 px-3 text-xs font-semibold text-muted-foreground shadow-sm backdrop-blur hover:border-primary/20 hover:bg-card hover:text-foreground"
-            onClick={() => setCommandMenuOpen(true)}
+            onClick={() => openCommandMenu('')}
           >
             <Keyboard className="size-3.5" />
             快捷键
           </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="pointer-events-auto h-9 gap-1.5 rounded-full border border-border/60 bg-card/80 px-3 text-xs font-semibold text-muted-foreground shadow-sm backdrop-blur hover:border-primary/20 hover:bg-card hover:text-foreground"
-            onClick={() => setCommandMenuOpen(true)}
-          >
-            <Palette className="size-3.5" />
-            个性化
-          </Button>
+          <ThemeCustomizer
+            trigger={
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="pointer-events-auto h-9 gap-1.5 rounded-full border border-border/60 bg-card/80 px-3 text-xs font-semibold text-muted-foreground shadow-sm backdrop-blur hover:border-primary/20 hover:bg-card hover:text-foreground"
+              >
+                <Palette className="size-3.5" />
+                个性化
+              </Button>
+            }
+          />
         </div>
       ) : null}
       <div
@@ -706,7 +724,7 @@ export function ChatArea({
         className={cn(
           'z-10 md:px-6',
           isWelcomeState
-            ? 'absolute inset-x-0 top-[388px] px-4'
+            ? 'absolute inset-x-0 top-[438px] px-4'
             : 'px-4 pt-2 pb-[calc(env(safe-area-inset-bottom)+1.5rem)]'
         )}
       >
@@ -1117,8 +1135,15 @@ export function ChatArea({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-9 gap-1.5 rounded-full border border-border/60 bg-background/80 px-3 text-xs font-semibold text-foreground shadow-sm hover:border-primary/25 hover:bg-primary/5"
-                    onClick={() => setCommandMenuOpen(true)}
+                    aria-pressed={deepReasoningEnabled}
+                    title="启用后会提高召回强度：多查询、假设性答案扩展与更高 Top K"
+                    className={cn(
+                      'h-9 gap-1.5 rounded-full border px-3 text-xs font-semibold shadow-sm transition-colors',
+                      deepReasoningEnabled
+                        ? 'border-primary/35 bg-primary/10 text-primary hover:bg-primary/15'
+                        : 'border-border/60 bg-background/80 text-foreground hover:border-primary/25 hover:bg-primary/5'
+                    )}
+                    onClick={() => setDeepReasoningEnabled((enabled) => !enabled)}
                   >
                     <Sparkles className="size-3.5" />
                     深度思考 (R1)
@@ -1128,27 +1153,7 @@ export function ChatArea({
                     variant="ghost"
                     size="sm"
                     className="h-9 gap-1.5 rounded-full border border-border/60 bg-background/80 px-3 text-xs font-semibold text-foreground shadow-sm hover:border-primary/25 hover:bg-primary/5"
-                    onClick={() => setCommandMenuOpen(true)}
-                  >
-                    <Globe2 className="size-3.5" />
-                    联网搜索
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-9 gap-1.5 rounded-full border border-border/60 bg-background/80 px-3 text-xs font-semibold text-foreground shadow-sm hover:border-primary/25 hover:bg-primary/5"
-                    onClick={() => router.push('/parsing')}
-                  >
-                    <FileUp className="size-3.5" />
-                    上传文件
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-9 gap-1.5 rounded-full border border-border/60 bg-background/80 px-3 text-xs font-semibold text-foreground shadow-sm hover:border-primary/25 hover:bg-primary/5"
-                    onClick={() => setCommandMenuOpen(true)}
+                    onClick={() => openCommandMenu('/')}
                   >
                     <Settings2 className="size-3.5" />
                     工具
@@ -1211,18 +1216,8 @@ export function ChatArea({
 }
 
 function WelcomeScreen() {
-  const t = useTranslations('Chat')
-  const hour = new Date().getHours()
-  const greeting = (() => {
-    if (hour < 5) return t('greetings.lateNight')
-    if (hour < 11) return t('greetings.morning')
-    if (hour < 13) return t('greetings.noon')
-    if (hour < 18) return t('greetings.afternoon')
-    return t('greetings.evening')
-  })()
-
   return (
-    <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col items-center px-4 pb-8 pt-10 md:px-8 md:pt-20">
+    <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col items-center px-4 pb-8 pt-32 md:px-8 md:pt-48">
       <div className="flex flex-col items-center text-center space-y-4 animate-fade-in-up">
         <div className="flex w-full justify-center">
           <Image
@@ -1232,16 +1227,8 @@ function WelcomeScreen() {
             height={181}
             priority
             unoptimized
-            className="h-auto w-[min(62vw,320px)] select-none object-contain"
+            className="h-auto w-[min(76vw,560px)] select-none object-contain"
           />
-        </div>
-        <div className="space-y-3">
-          <h2 className="text-[2.45rem] font-bold leading-tight tracking-[-0.035em] text-foreground md:text-5xl">
-            {greeting}，<span className="text-primary">{t('explorer')}</span>
-          </h2>
-          <p className="max-w-2xl text-pretty text-base font-medium leading-7 text-muted-foreground/90">
-            {t('welcomeLead')}
-          </p>
         </div>
       </div>
     </div>
