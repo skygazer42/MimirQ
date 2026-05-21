@@ -7,6 +7,7 @@ import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
 import { PageLoading } from '@/components/ui/page-loading'
 import { PageScaffold } from '@/components/ui/page-scaffold'
+import { useAuth } from '@/hooks/use-auth'
 import { useTenantAccess } from '@/hooks/use-tenant-access'
 import { tenantAccessAllows, type TenantPermission } from '@/lib/tenant-permissions'
 
@@ -18,14 +19,15 @@ type TenantPermissionGateProps = {
 
 export function TenantPermissionGate({ permission, pageName, children }: Readonly<TenantPermissionGateProps>) {
   const [hasHydrated, setHasHydrated] = useState(false)
+  const { isDevMode } = useAuth()
   const access = useTenantAccess()
-  const allowed = hasHydrated && tenantAccessAllows(access.data, permission)
+  const allowed = hasHydrated && (isDevMode || tenantAccessAllows(access.data, permission))
 
   useEffect(() => {
     setHasHydrated(true)
   }, [])
 
-  if (!hasHydrated || access.isLoading) {
+  if (!hasHydrated || (!isDevMode && access.isLoading)) {
     return (
       <AppFrame>
         <PageLoading

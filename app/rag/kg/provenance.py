@@ -16,19 +16,16 @@ def _safe_uuid_str(value: Any) -> str | None:
         return None
     if isinstance(value, UUID):
         return str(value)
-    try:
-        return str(UUID(str(value)))
-    except Exception:
-        return None
+
+    return str(UUID(str(value)))
+
 
 
 def _safe_int(value: Any) -> int | None:
     if value is None:
         return None
-    try:
-        return int(value)
-    except Exception:
-        return None
+    return int(value)
+
 
 
 def _safe_str(value: Any, *, max_len: int) -> str | None:

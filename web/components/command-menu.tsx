@@ -305,6 +305,9 @@ export function CommandMenu() {
   React.useEffect(() => {
     const offSetOpen = globalEventBus.on("command-menu:set-open", (payload) => {
       if (typeof payload?.open === "boolean") {
+        if (typeof payload.query === "string") {
+          setQuery(payload.query)
+        }
         setOpen(payload.open)
       }
     })

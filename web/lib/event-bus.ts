@@ -2,7 +2,7 @@ type AppEventMap = {
   'chat:send': string
   'chat:submit': string
   'chat:focus-message': { messageId: string; documentId?: string | null; chunkId?: string | null }
-  'command-menu:set-open': { open: boolean }
+  'command-menu:set-open': { open: boolean; query?: string }
   'command-menu:toggle': undefined
   'ingestion:retry-all-failed': undefined
   'ingestion:cancel-all-active': undefined
