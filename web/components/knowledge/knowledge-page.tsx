@@ -1094,7 +1094,11 @@ export default function KnowledgePage() {
           'bg-[#F5FAFF]/70 pt-3 dark:bg-background/20',
           documentsEmptySurface ? 'flex-none overflow-visible pb-2' : undefined
         )}
+        mainPaneClassName={cn(
+          activeTab === 'documents' ? 'rounded-none border-0 bg-transparent shadow-none' : undefined
+        )}
         mainPaneBodyClassName={cn(
+          activeTab === 'documents' ? 'overflow-hidden bg-transparent p-0' : undefined,
           activeTab === 'settings' ? 'overflow-hidden p-0' : undefined,
           documentsEmptySurface ? 'flex-none overflow-visible pb-2' : undefined
         )}

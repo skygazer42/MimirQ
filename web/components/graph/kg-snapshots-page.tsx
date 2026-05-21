@@ -16,11 +16,9 @@ import {
   FileJson,
   FolderOpen,
   GitCompare,
-  Hand,
   Hash,
   Layers,
   Link2,
-  Maximize2,
   Network,
   PanelLeftClose,
   PanelLeftOpen,
@@ -28,15 +26,12 @@ import {
   Search,
   ShieldAlert,
   ShieldCheck,
-  SlidersHorizontal,
   Sparkles,
   Star,
   Table2,
   Trash2,
   User,
   X,
-  ZoomIn,
-  ZoomOut,
 } from 'lucide-react'
 import {
   startTransition,
@@ -71,12 +66,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { formatApiError } from '@/lib/api-errors'
 import { datasetApi } from '@/lib/api/datasets'
+import { documentApi } from '@/lib/api/documents'
 import { kgApi } from '@/lib/api/graph'
 import { metaApi } from '@/lib/api/meta'
+import { reportApi } from '@/lib/api/reports'
 import { sanitizeFilename } from '@/lib/sanitize'
 import { cn, detachPromise } from '@/lib/utils'
 import type {
   Dataset,
+  Document,
   KGGraphLink,
   KGGraphNode,
   KGGraphResponse,
@@ -118,6 +116,13 @@ type JsonTokenKind =
   | 'null'
   | 'punctuation'
 type AuditSeverity = 'healthy' | 'notice' | 'warning'
+
+type PipelineCandidate = {
+  hash: string
+  documents: number
+  source: 'report' | 'documents'
+  active: boolean
+}
 
 type DiffCell = {
   lineNumber: number | null
@@ -232,6 +237,50 @@ function getNodeMetaValue(node: KGGraphNode, ...keys: string[]): unknown {
     if (metaValue != null && metaValue !== '') return metaValue
   }
   return undefined
+}
+
+function getDocumentMetaValue(document: Document, ...keys: string[]): unknown {
+  const meta = document.metadata && typeof document.metadata === 'object' ? document.metadata : {}
+  for (const key of keys) {
+    const direct = (document as Record<string, unknown>)[key]
+    if (direct != null && direct !== '') return direct
+    const metaValue = (meta as Record<string, unknown>)[key]
+    if (metaValue != null && metaValue !== '') return metaValue
+  }
+  return undefined
+}
+
+function compactHashLabel(hash: string): string {
+  const value = String(hash || '').trim()
+  if (value.length <= 18) return value
+  return `${value.slice(0, 10)}…${value.slice(-6)}`
+}
+
+function mergePipelineCandidate(
+  map: Map<string, PipelineCandidate>,
+  candidate: PipelineCandidate
+) {
+  const hash = candidate.hash.trim()
+  if (!hash) return
+  const current = map.get(hash)
+  if (!current) {
+    map.set(hash, { ...candidate, hash })
+    return
+  }
+  map.set(hash, {
+    hash,
+    source: current.source === 'report' ? current.source : candidate.source,
+    documents: Math.max(current.documents, candidate.documents),
+    active: current.active || candidate.active,
+  })
+}
+
+function sortPipelineCandidates(candidates: PipelineCandidate[]): PipelineCandidate[] {
+  return [...candidates].sort((a, b) => {
+    if (a.active !== b.active) return a.active ? -1 : 1
+    if (a.documents !== b.documents) return b.documents - a.documents
+    return a.hash.localeCompare(b.hash)
+  })
 }
 
 function getNodeType(node: KGGraphNode): string {
@@ -382,6 +431,57 @@ function buildSnapshotStudioGraphFromKgGraph(graph: KGGraphResponse | null): {
   }
 
   return { nodes, links }
+}
+
+function clampPercent(value: number, min = 7, max = 93): number {
+  return Math.min(max, Math.max(min, Math.round(value * 10) / 10))
+}
+
+function layoutSnapshotStudioNodes(
+  nodes: SnapshotStudioNode[],
+  layout: string
+): SnapshotStudioNode[] {
+  const total = nodes.length
+  if (total === 0 || layout === 'radial') return nodes
+
+  if (layout === 'layered') {
+    const groups = new Map<string, SnapshotStudioNode[]>()
+    for (const node of nodes) {
+      const group = groups.get(node.type) ?? []
+      group.push(node)
+      groups.set(node.type, group)
+    }
+
+    const orderedGroups = Array.from(groups.values()).sort(
+      (a, b) => b.length - a.length
+    )
+    const columnCount = Math.max(1, orderedGroups.length)
+    const xStep = columnCount > 1 ? 76 / (columnCount - 1) : 0
+
+    return orderedGroups.flatMap((group, columnIndex) => {
+      const x = columnCount > 1 ? 12 + columnIndex * xStep : 50
+      const yStep = 70 / Math.max(group.length, 1)
+      return group.map((node, rowIndex) => ({
+        ...node,
+        x: clampPercent(x),
+        y: clampPercent(15 + rowIndex * yStep + yStep / 2),
+      }))
+    })
+  }
+
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5))
+  const radiusX = total > 120 ? 40 : 36
+  const radiusY = total > 120 ? 32 : 29
+
+  return nodes.map((node, index) => {
+    const radius = Math.sqrt((index + 0.5) / total)
+    const angle = index * goldenAngle
+    return {
+      ...node,
+      x: clampPercent(50 + Math.cos(angle) * radius * radiusX),
+      y: clampPercent(50 + Math.sin(angle) * radius * radiusY),
+    }
+  })
 }
 
 function splitCodeLines(value: string): string[] {
@@ -707,10 +807,10 @@ function SnapshotStudioToolbar({
     'h-8 rounded-xl border border-border/70 bg-card px-2 text-[11.5px] font-medium text-foreground shadow-sm outline-none transition-colors hover:bg-muted/30 focus:ring-2 focus:ring-primary/20'
 
   return (
-    <div className="shrink-0 border-b border-border/70 bg-background/92 px-4 py-3 backdrop-blur">
-      <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-          <div className="relative min-w-[210px] flex-[1_1_240px] sm:max-w-[320px]">
+    <div className="shrink-0 border-b border-border/70 bg-background/92 px-4 py-2.5 backdrop-blur">
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto no-scrollbar">
+          <div className="relative w-[220px] shrink-0">
             <Search
               className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70"
               aria-hidden="true"
@@ -765,7 +865,7 @@ function SnapshotStudioToolbar({
           </select>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+        <div className="flex shrink-0 items-center gap-2">
           <div className="grid h-8 shrink-0 grid-cols-3 gap-1 rounded-xl border border-border/70 bg-card p-1 shadow-sm">
             {[
               {
@@ -804,7 +904,7 @@ function SnapshotStudioToolbar({
           </div>
 
           <Button
-            className="h-8 shrink-0 gap-1.5 rounded-xl bg-foreground px-3 text-[11.5px] font-semibold text-background hover:bg-foreground/90"
+            className="h-8 shrink-0 gap-1.5 rounded-xl bg-slate-900 px-3 text-[11.5px] font-semibold text-white shadow-sm hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
             onClick={onDiffClick}
             disabled={isRunning}
           >
@@ -856,6 +956,7 @@ function SnapshotStudioToolbar({
 function SnapshotGraphCanvas({
   nodes,
   links,
+  layout,
   selectedNodeId,
   searchValue,
   nodeType,
@@ -868,6 +969,7 @@ function SnapshotGraphCanvas({
 }: Readonly<{
   nodes: SnapshotStudioNode[]
   links: SnapshotStudioLink[]
+  layout: string
   selectedNodeId: string
   searchValue: string
   nodeType: string
@@ -879,13 +981,17 @@ function SnapshotGraphCanvas({
   onSelectNode: (nodeId: string) => void
 }>) {
   const normalizedSearch = searchValue.trim().toLowerCase()
+  const displayNodes = useMemo(
+    () => layoutSnapshotStudioNodes(nodes, layout),
+    [layout, nodes]
+  )
   const nodeById = useMemo(
-    () => new Map(nodes.map((node) => [node.id, node])),
-    [nodes]
+    () => new Map(displayNodes.map((node) => [node.id, node])),
+    [displayNodes]
   )
   const filteredNodeIds = useMemo(() => {
     const ids = new Set<string>()
-    for (const node of nodes) {
+    for (const node of displayNodes) {
       const matchesType = nodeType === 'all' || node.type === nodeType
       const matchesSearch =
         !normalizedSearch ||
@@ -895,7 +1001,7 @@ function SnapshotGraphCanvas({
       if (matchesType && matchesSearch) ids.add(node.id)
     }
     return ids
-  }, [nodeType, nodes, normalizedSearch])
+  }, [displayNodes, nodeType, normalizedSearch])
   const filteredLinks = useMemo(() => {
     return links.filter((link) => {
       const matchesRelation =
@@ -908,6 +1014,20 @@ function SnapshotGraphCanvas({
   const hasFilter =
     Boolean(normalizedSearch) || nodeType !== 'all' || relationType !== 'all'
   const isEmpty = nodes.length === 0
+  const isDenseGraph = nodes.length > 64 || filteredLinks.length > 96
+  const mediumGraph = nodes.length > 36 || filteredLinks.length > 56
+  const prominentNodeIds = useMemo(() => {
+    const sorted = [...displayNodes].sort((a, b) => {
+      const bScore = b.relations.length * 2 + b.occurrences
+      const aScore = a.relations.length * 2 + a.occurrences
+      return bScore - aScore
+    })
+    return new Set(
+      sorted
+        .slice(0, isDenseGraph ? 8 : mediumGraph ? 14 : 28)
+        .map((node) => node.id)
+    )
+  }, [displayNodes, isDenseGraph, mediumGraph])
   const legendRows = useMemo(() => {
     const colorByTone: Record<SnapshotStudioNode['tone'], string> = {
       blue: 'bg-blue-500',
@@ -919,11 +1039,11 @@ function SnapshotGraphCanvas({
       teal: 'bg-teal-500',
     }
     const seen = new Map<string, string>()
-    for (const node of nodes) {
+    for (const node of displayNodes) {
       if (!seen.has(node.type)) seen.set(node.type, colorByTone[node.tone])
     }
     return Array.from(seen.entries()).slice(0, 8)
-  }, [nodes])
+  }, [displayNodes])
 
   return (
     <div
@@ -1009,7 +1129,7 @@ function SnapshotGraphCanvas({
           if (!source || !target) return null
           const sourceVisible = filteredNodeIds.has(source.id)
           const targetVisible = filteredNodeIds.has(target.id)
-          const opacity =
+          const baseOpacity =
             hasFilter && (!sourceVisible || !targetVisible)
               ? 0.08
               : link.strength === 'strong'
@@ -1017,46 +1137,69 @@ function SnapshotGraphCanvas({
                 : link.strength === 'medium'
                   ? 0.38
                   : 0.24
+          const opacity = isDenseGraph
+            ? baseOpacity * 0.52
+            : mediumGraph
+              ? baseOpacity * 0.72
+              : baseOpacity
           const midX = (source.x + target.x) / 2
           const midY = (source.y + target.y) / 2
           const curve = source.x < target.x ? -6 : 6
+          const showLinkLabel =
+            !isDenseGraph || hasFilter || link.strength === 'strong'
           return (
             <g key={`${link.source}:${link.target}:${link.label}`}>
               <path
                 d={`M ${source.x} ${source.y} C ${midX} ${midY + curve}, ${midX} ${midY - curve}, ${target.x} ${target.y}`}
                 fill="none"
                 stroke="rgb(148 163 184)"
-                strokeWidth={link.strength === 'strong' ? 0.36 : 0.24}
+                strokeWidth={
+                  isDenseGraph
+                    ? 0.16
+                    : link.strength === 'strong'
+                      ? 0.36
+                      : 0.24
+                }
                 strokeDasharray={
                   link.strength === 'weak' ? '1.1 1.1' : undefined
                 }
                 opacity={opacity}
                 markerEnd="url(#snapshot-arrow)"
               />
-              <text
-                x={midX}
-                y={midY - 1.2}
-                textAnchor="middle"
-                className="fill-slate-400 text-[1.55px] font-normal tracking-[0.03em]"
-                opacity={Math.max(opacity * 0.9, 0.16)}
-              >
-                {link.label}
-              </text>
+              {showLinkLabel ? (
+                <text
+                  x={midX}
+                  y={midY - 1.2}
+                  textAnchor="middle"
+                  className="fill-slate-400 text-[1.55px] font-normal tracking-[0.03em]"
+                  opacity={Math.max(opacity * 0.9, 0.16)}
+                >
+                  {link.label}
+                </text>
+              ) : null}
             </g>
           )
         })}
       </svg>
 
-      {nodes.map((node) => {
+      {displayNodes.map((node) => {
         const selected = selectedNodeId === node.id
         const matches = filteredNodeIds.has(node.id)
         const muted = hasFilter && !matches
+        const showNodeLabel =
+          selected ||
+          (!mediumGraph && matches) ||
+          (isDenseGraph
+            ? prominentNodeIds.has(node.id)
+            : prominentNodeIds.has(node.id) && !muted) ||
+          (hasFilter && matches && normalizedSearch)
         return (
           <button
             key={node.id}
             type="button"
             className={cn(
-              'absolute z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-2 text-center transition-all duration-200',
+              'absolute z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center text-center transition-all duration-200',
+              isDenseGraph ? 'gap-1' : 'gap-1.5',
               muted ? 'scale-95 opacity-25' : 'opacity-100 hover:scale-105'
             )}
             style={{ left: `${node.x}%`, top: `${node.y}%` }}
@@ -1065,62 +1208,32 @@ function SnapshotGraphCanvas({
           >
             <span
               className={cn(
-                'flex h-14 w-14 items-center justify-center rounded-full text-info-foreground shadow-strong shadow-slate-900/10',
+                'flex items-center justify-center rounded-full text-info-foreground shadow-strong shadow-slate-900/10',
+                isDenseGraph
+                  ? 'h-7 w-7'
+                  : mediumGraph
+                    ? 'h-10 w-10'
+                    : 'h-14 w-14',
                 snapshotToneClassName(node.tone, selected)
               )}
             >
               {node.icon}
             </span>
-            <span className="rounded-full bg-background/78 px-2 py-0.5 text-[12px] font-semibold text-foreground shadow-sm backdrop-blur">
-              {node.label}
-            </span>
+            {showNodeLabel ? (
+              <span
+                className={cn(
+                  'max-w-[132px] rounded-full bg-background/82 px-2 py-0.5 font-semibold text-foreground shadow-sm backdrop-blur',
+                  isDenseGraph ? 'text-[10px]' : 'text-[12px]'
+                )}
+              >
+                <span className="block truncate">{node.label}</span>
+              </span>
+            ) : null}
           </button>
         )
       })}
 
-      <div className="absolute right-6 top-[52%] z-20 flex -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/90 shadow-lg backdrop-blur">
-        {[
-          {
-            label: '拖动画布',
-            icon: <Hand className="h-4 w-4" aria-hidden="true" />,
-          },
-          {
-            label: '框选',
-            icon: <Maximize2 className="h-4 w-4" aria-hidden="true" />,
-          },
-          {
-            label: '放大',
-            icon: <ZoomIn className="h-4 w-4" aria-hidden="true" />,
-          },
-          {
-            label: '缩小',
-            icon: <ZoomOut className="h-4 w-4" aria-hidden="true" />,
-          },
-          {
-            label: '重置',
-            icon: <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />,
-          },
-        ].map((item) => (
-          <button
-            key={item.label}
-            type="button"
-            title={item.label}
-            className="flex h-11 w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
-          >
-            {item.icon}
-          </button>
-        ))}
-      </div>
-
-      <button
-        type="button"
-        title="导出当前视图"
-        className="absolute bottom-7 right-6 z-20 flex h-11 w-11 items-center justify-center rounded-2xl border border-border/70 bg-card/90 text-muted-foreground shadow-lg backdrop-blur transition-colors hover:text-foreground"
-      >
-        <Download className="h-4 w-4" aria-hidden="true" />
-      </button>
-
-      <div className="absolute bottom-7 left-1/2 z-20 flex -translate-x-1/2 items-center gap-5 rounded-2xl border border-border/70 bg-card/92 px-5 py-2.5 text-[12px] text-muted-foreground shadow-lg backdrop-blur">
+      <div className="absolute bottom-5 left-7 z-20 flex max-w-[calc(100%-3.5rem)] flex-wrap items-center gap-3 rounded-2xl border border-border/70 bg-card/92 px-4 py-2.5 text-[12px] text-muted-foreground shadow-lg backdrop-blur">
         <span className="font-medium text-foreground">图例:</span>
         {legendRows.length ? (
           legendRows.map(([label, color]) => (
@@ -1132,7 +1245,7 @@ function SnapshotGraphCanvas({
         ) : (
           <span>暂无类型</span>
         )}
-        <span className="ml-4 inline-flex items-center gap-2">
+        <span className="inline-flex items-center gap-2">
           关系强度:
           <span className="h-px w-10 bg-slate-300" aria-hidden />
           弱
@@ -1151,7 +1264,7 @@ function SnapshotNodeDetailsRail({
   diffOverview: Array<{ label: string; value: number; tone: string }>
 }>) {
   return (
-    <aside className="hidden min-h-0 w-[332px] shrink-0 flex-col border-l border-border/70 bg-background xl:flex">
+    <aside className="hidden min-h-0 w-[300px] shrink-0 flex-col border-l border-border/70 bg-background xl:flex">
       <div className="flex shrink-0 items-center justify-between border-b border-border/70 px-4 py-4">
         <div className="text-[14px] font-semibold text-foreground">
           节点详情
@@ -2252,6 +2365,10 @@ export function KGSnapshotsPage() {
   const [datasets, setDatasets] = useState<Dataset[]>([])
   const [datasetsLoading, setDatasetsLoading] = useState(false)
   const [selectedDatasetId, setSelectedDatasetId] = useState(datasetIdFromUrl)
+  const [pipelineCandidates, setPipelineCandidates] = useState<PipelineCandidate[]>([])
+  const [pipelineCandidatesLoading, setPipelineCandidatesLoading] = useState(false)
+  const [pipelineCandidatesError, setPipelineCandidatesError] = useState<string | null>(null)
+  const [advancedHashOpen, setAdvancedHashOpen] = useState(false)
   const [liveGraph, setLiveGraph] = useState<KGGraphResponse | null>(null)
   const [liveGraphLoading, setLiveGraphLoading] = useState(false)
   const [liveGraphError, setLiveGraphError] = useState<string | null>(null)
@@ -2298,6 +2415,11 @@ export function KGSnapshotsPage() {
 
   useEffect(() => {
     setSelectedDatasetId(datasetIdFromUrl)
+    setPipelineHashA('')
+    setPipelineHashB('')
+    setSnapA(null)
+    setSnapB(null)
+    setDiff(null)
   }, [datasetIdFromUrl])
 
   useEffect(() => {
@@ -2320,6 +2442,95 @@ export function KGSnapshotsPage() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const selectedDataset = selectedDatasetId.trim()
+    setPipelineCandidatesLoading(true)
+    setPipelineCandidatesError(null)
+    ;(async () => {
+      const candidateMap = new Map<string, PipelineCandidate>()
+      try {
+        if (selectedDataset) {
+          const report = await reportApi.getDatasetReport(selectedDataset).catch(() => null)
+          for (const version of report?.pipeline_versions ?? []) {
+            mergePipelineCandidate(candidateMap, {
+              hash: String(version.pipeline_hash || '').trim(),
+              documents: Number(version.documents ?? 0) || 0,
+              source: 'report',
+              active: String(version.pipeline_hash || '').trim() === String(report?.pipeline_hash || '').trim(),
+            })
+          }
+          const reportHash = String(report?.pipeline_hash || '').trim()
+          if (reportHash) {
+            mergePipelineCandidate(candidateMap, {
+              hash: reportHash,
+              documents: Number((report as any)?.profile?.document_count ?? 0) || 0,
+              source: 'report',
+              active: true,
+            })
+          }
+        }
+
+        const documents = await documentApi
+          .list({
+            skip: 0,
+            limit: 200,
+            dataset_id: selectedDataset || null,
+            order_by: 'created_at',
+            order_dir: 'desc',
+          })
+          .catch(() => null)
+
+        for (const document of documents?.items ?? []) {
+          const activeHash = String(
+            getDocumentMetaValue(document, 'active_pipeline_hash') || ''
+          ).trim()
+          const currentHash = String(
+            getDocumentMetaValue(document, 'pipeline_hash') || ''
+          ).trim()
+          if (activeHash) {
+            mergePipelineCandidate(candidateMap, {
+              hash: activeHash,
+              documents: 1,
+              source: 'documents',
+              active: true,
+            })
+          }
+          if (currentHash) {
+            mergePipelineCandidate(candidateMap, {
+              hash: currentHash,
+              documents: 1,
+              source: 'documents',
+              active: currentHash === activeHash,
+            })
+          }
+        }
+
+        if (!cancelled) {
+          const next = sortPipelineCandidates(Array.from(candidateMap.values()))
+          setPipelineCandidates(next)
+          setPipelineHashB((current) =>
+            current.trim() ? current : next[0]?.hash ?? ''
+          )
+          setPipelineHashA((current) =>
+            current.trim() ? current : next[1]?.hash ?? ''
+          )
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setPipelineCandidates([])
+          setPipelineCandidatesError(formatApiError(err, '快照候选加载失败'))
+        }
+      } finally {
+        if (!cancelled) setPipelineCandidatesLoading(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedDatasetId])
 
   const snapAJson = useMemo(
     () => prettyJson(snapA ?? { hint: '点击左侧“导出 A”生成快照。' }),
@@ -2347,9 +2558,7 @@ export function KGSnapshotsPage() {
   async function runExport(which: 'a' | 'b'): Promise<void> {
     const pipelineHash = (which === 'a' ? pipelineHashA : pipelineHashB).trim()
     if (!pipelineHash) {
-      toast.error(
-        which === 'a' ? '请输入 pipeline_hash A' : '请输入 pipeline_hash B'
-      )
+      toast.error(which === 'a' ? '请选择快照 A' : '请选择快照 B')
       return
     }
 
@@ -2380,7 +2589,7 @@ export function KGSnapshotsPage() {
     const a = pipelineHashA.trim()
     const b = pipelineHashB.trim()
     if (!a || !b) {
-      toast.error('请输入 pipeline_hash A / B')
+      toast.error('请选择快照 A / B')
       return
     }
     if (a === b) {
@@ -2427,7 +2636,7 @@ export function KGSnapshotsPage() {
     const a = pipelineHashA.trim()
     const b = pipelineHashB.trim()
     if (!a || !b) {
-      toast.error('请输入 pipeline_hash A / B')
+      toast.error('请选择快照 A / B')
       return
     }
     if (a === b) {
@@ -2620,7 +2829,7 @@ export function KGSnapshotsPage() {
           <div className="px-4 py-3 md:px-6">
             <PageHeader
               title="图谱快照"
-              description="对比流水线哈希生成的轻量图谱快照，并在评估面板快速判断波动强度。"
+              description="对比同一数据集不同入库/治理版本生成的图谱快照，并快速判断结构波动。"
               iconImage="kg-snapshot"
               icon={GitCompare}
               iconColor="text-info"
@@ -2698,7 +2907,7 @@ export function KGSnapshotsPage() {
               'shrink-0 border-r border-border/70 bg-background transition-[width,opacity] duration-200',
               leftSidebarCollapsed
                 ? 'w-0 overflow-hidden border-r-0 opacity-0'
-                : 'w-[304px] opacity-100',
+                : 'w-[288px] opacity-100',
               'flex min-h-0 flex-col'
             )}
           >
@@ -2777,10 +2986,35 @@ export function KGSnapshotsPage() {
                 <div className="space-y-3">
                   <WorkspaceSection
                     icon={<Hash className="h-3.5 w-3.5" />}
-                    label="对比参数"
-                    hint="流水线哈希"
+                    label="快照版本"
+                    hint={selectedDatasetId ? '已绑定数据集' : '全局候选'}
                   >
-                    <div className="space-y-3">
+                    <div className="space-y-2.5">
+                      <div className="rounded-lg border border-info/14 bg-info/5 px-3 py-2 text-[11px] leading-5 text-muted-foreground">
+                        选择数据集后会从后端报告和文档元数据读取可对比版本；一般选最新版本作为 B，旧版本作为 A。
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 text-[11px]">
+                        <span className="text-muted-foreground">
+                          {pipelineCandidatesLoading
+                            ? '正在读取候选版本'
+                            : pipelineCandidatesError
+                              ? pipelineCandidatesError
+                              : pipelineCandidates.length
+                                ? `已发现 ${pipelineCandidates.length} 个版本`
+                                : '暂无可选版本'}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-[11px] text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                          onClick={() => setAdvancedHashOpen((value) => !value)}
+                        >
+                          {advancedHashOpen ? '收起手填' : '手动填写'}
+                        </Button>
+                      </div>
+
                       <div className="space-y-1.5">
                         <Label
                           htmlFor="pipeline-hash-a"
@@ -2791,13 +3025,27 @@ export function KGSnapshotsPage() {
                           </span>
                           快照 A
                         </Label>
-                        <Input
+                        <select
                           id="pipeline-hash-a"
-                          placeholder="输入 A 快照哈希"
                           value={pipelineHashA}
                           onChange={(e) => setPipelineHashA(e.target.value)}
-                          className={formInputClassName}
-                        />
+                          className="h-10 w-full rounded-lg border border-border/70 bg-card px-3 text-xs font-medium text-foreground shadow-none outline-none transition-colors hover:bg-muted/20 focus:ring-2 focus:ring-primary/20"
+                        >
+                          <option value="">
+                            {pipelineCandidatesLoading ? '正在加载版本…' : '选择旧版本'}
+                          </option>
+                          {pipelineHashA &&
+                          !pipelineCandidates.some((item) => item.hash === pipelineHashA) ? (
+                            <option value={pipelineHashA}>
+                              手动版本 · {compactHashLabel(pipelineHashA)}
+                            </option>
+                          ) : null}
+                          {pipelineCandidates.map((item) => (
+                            <option key={`a:${item.hash}`} value={item.hash}>
+                              {item.active ? '当前' : '历史'} · {compactHashLabel(item.hash)} · {item.documents} 文档
+                            </option>
+                          ))}
+                        </select>
                       </div>
 
                       <div className="space-y-1.5">
@@ -2810,14 +3058,47 @@ export function KGSnapshotsPage() {
                           </span>
                           快照 B
                         </Label>
-                        <Input
+                        <select
                           id="pipeline-hash-b"
-                          placeholder="输入 B 快照哈希"
                           value={pipelineHashB}
                           onChange={(e) => setPipelineHashB(e.target.value)}
-                          className={formInputClassName}
-                        />
+                          className="h-10 w-full rounded-lg border border-border/70 bg-card px-3 text-xs font-medium text-foreground shadow-none outline-none transition-colors hover:bg-muted/20 focus:ring-2 focus:ring-primary/20"
+                        >
+                          <option value="">
+                            {pipelineCandidatesLoading ? '正在加载版本…' : '选择当前版本'}
+                          </option>
+                          {pipelineHashB &&
+                          !pipelineCandidates.some((item) => item.hash === pipelineHashB) ? (
+                            <option value={pipelineHashB}>
+                              手动版本 · {compactHashLabel(pipelineHashB)}
+                            </option>
+                          ) : null}
+                          {pipelineCandidates.map((item) => (
+                            <option key={`b:${item.hash}`} value={item.hash}>
+                              {item.active ? '当前' : '历史'} · {compactHashLabel(item.hash)} · {item.documents} 文档
+                            </option>
+                          ))}
+                        </select>
                       </div>
+
+                      {advancedHashOpen ? (
+                        <div className="space-y-2 rounded-lg border border-dashed border-border/70 bg-muted/20 p-2.5">
+                          <Input
+                            aria-label="手动填写快照 A 哈希"
+                            placeholder="手动填写快照 A 哈希"
+                            value={pipelineHashA}
+                            onChange={(e) => setPipelineHashA(e.target.value)}
+                            className={formInputClassName}
+                          />
+                          <Input
+                            aria-label="手动填写快照 B 哈希"
+                            placeholder="手动填写快照 B 哈希"
+                            value={pipelineHashB}
+                            onChange={(e) => setPipelineHashB(e.target.value)}
+                            className={formInputClassName}
+                          />
+                        </div>
+                      ) : null}
                     </div>
                   </WorkspaceSection>
 
@@ -2836,9 +3117,14 @@ export function KGSnapshotsPage() {
                       <select
                         id="snapshot-dataset"
                         value={selectedDatasetId}
-                        onChange={(event) =>
+                        onChange={(event) => {
                           setSelectedDatasetId(event.target.value)
-                        }
+                          setPipelineHashA('')
+                          setPipelineHashB('')
+                          setSnapA(null)
+                          setSnapB(null)
+                          setDiff(null)
+                        }}
                         className="h-10 w-full rounded-lg border border-border/70 bg-card px-3 text-xs font-medium text-foreground shadow-none outline-none transition-colors hover:bg-muted/20 focus:ring-2 focus:ring-primary/20"
                       >
                         <option value="">
@@ -2998,6 +3284,7 @@ export function KGSnapshotsPage() {
                     <SnapshotGraphCanvas
                       nodes={studioGraph.nodes}
                       links={studioGraph.links}
+                      layout={studioLayout}
                       selectedNodeId={selectedStudioNode?.id ?? ''}
                       searchValue={studioSearch}
                       nodeType={studioNodeType}

@@ -2,10 +2,11 @@
 
 import type { ChangeEventHandler, RefObject } from 'react'
 
-import { BarChart3, FileCode, FileText, Filter, Network, RefreshCw, Share2, Upload, Link as LinkIcon } from 'lucide-react'
+import { BarChart3, FileCode, FileText, Filter, MoreHorizontal, Network, RefreshCw, Share2, Upload, Link as LinkIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { PageTitleIcon } from '@/components/ui/page-title-icon'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
@@ -142,34 +143,52 @@ export function GraphPageHeader({
   onFileUpload,
 }: GraphPageHeaderProps) {
   return (
-    <header className="absolute top-0 left-0 right-0 z-20 flex h-16 items-center justify-between border-b border-border/60 bg-[linear-gradient(135deg,hsl(var(--card)/0.98),hsl(var(--muted)/0.34))] px-6 shadow-[0_18px_46px_-40px_rgba(15,23,42,0.46)] pointer-events-none">
+    <header className="absolute top-0 left-0 right-0 z-20 flex h-16 items-center gap-3 border-b border-border/60 bg-[linear-gradient(135deg,hsl(var(--card)/0.98),hsl(var(--muted)/0.34))] px-4 shadow-[0_18px_46px_-40px_rgba(15,23,42,0.46)] pointer-events-none lg:px-6">
       <div
         className="pointer-events-none absolute inset-y-3 left-0 w-1 rounded-r-full bg-[linear-gradient(180deg,hsl(var(--info)),hsl(var(--primary)))]"
         aria-hidden="true"
       />
-      <div className="flex items-center gap-3 pointer-events-auto">
-        <div className="flex items-center gap-3">
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-[15px] border border-info/18 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.10))] text-info shadow-[inset_0_1px_0_hsl(var(--background)),0_14px_30px_-24px_hsl(var(--info)/0.75)]">
-            <PageTitleIcon name="knowledge-graph" className="size-7" />
-          </div>
-          <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-foreground">
-            <span className="bg-[linear-gradient(90deg,hsl(var(--foreground)),hsl(var(--info))_92%)] bg-clip-text text-transparent">
-              知识图谱
-            </span>
-          </h1>
-          <span className="rounded-full border border-blue-500/25 bg-blue-500/10 px-2.5 py-1 text-[11px] font-semibold text-blue-600 shadow-sm dark:text-blue-300">
-            {viewMode === '3d' ? '3D 图谱' : '2D 图谱'}
-          </span>
+      <div className="pointer-events-auto flex shrink-0 items-center gap-2.5">
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-[15px] border border-info/18 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.10))] text-info shadow-[inset_0_1px_0_hsl(var(--background)),0_14px_30px_-24px_hsl(var(--info)/0.75)]">
+          <PageTitleIcon name="knowledge-graph" className="size-7" />
         </div>
+        <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-foreground">
+          <span className="bg-[linear-gradient(90deg,hsl(var(--foreground)),hsl(var(--info))_92%)] bg-clip-text text-transparent">
+            知识图谱
+          </span>
+        </h1>
+        <span className="shrink-0 rounded-full border border-blue-500/25 bg-blue-500/10 px-2.5 py-1 text-[11px] font-semibold text-blue-600 shadow-sm dark:text-blue-300">
+          {viewMode === '3d' ? '3D 图谱' : '2D 图谱'}
+        </span>
       </div>
 
-      <GraphSearchOverlay
-        open={searchOpen}
-        inputRef={searchInputRef}
-        searchTerm={searchTerm}
-        highlightedMatchCount={highlightedMatchCount}
-        onSearchTermChange={onSearchTermChange}
-      />
+      <div className="pointer-events-auto hidden min-w-0 shrink-0 items-center gap-2 xl:flex">
+        {fileName ? (
+          <div className="flex max-w-[150px] items-center gap-2 rounded-full border border-border bg-muted/50 px-3 py-1.5 text-xs font-medium text-muted-foreground">
+            <FileCode className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <span className="truncate">{fileName}</span>
+          </div>
+        ) : null}
+
+        {dataSource === 'live' && kgStats ? (
+          <div className="flex items-center gap-2 rounded-full border border-border bg-muted/50 px-3 py-1.5 text-xs font-medium text-muted-foreground">
+            <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="font-mono">
+              E:{kgStats.events} N:{kgStats.entities} L:{kgStats.links}
+            </span>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="pointer-events-auto flex min-w-[300px] flex-1 justify-center">
+        <GraphSearchOverlay
+          open={searchOpen}
+          inputRef={searchInputRef}
+          searchTerm={searchTerm}
+          highlightedMatchCount={highlightedMatchCount}
+          onSearchTermChange={onSearchTermChange}
+        />
+      </div>
 
       <GraphStatusBanners
         isPathMode={isPathMode}
@@ -185,30 +204,14 @@ export function GraphPageHeader({
         onExitExplainMode={onExitExplainMode}
       />
 
-      <div className="flex items-center gap-3 pointer-events-auto">
-        {fileName ? (
-          <div className="hidden items-center gap-2 rounded-full border border-border bg-muted/50 px-3 py-1.5 text-xs font-medium text-muted-foreground md:flex">
-            <FileCode className="w-3.5 h-3.5 text-muted-foreground" />
-            <span className="max-w-[150px] truncate">{fileName}</span>
-          </div>
-        ) : null}
-
-        {dataSource === 'live' && kgStats ? (
-          <div className="hidden items-center gap-2 rounded-full border border-border bg-muted/50 px-3 py-1.5 text-xs font-medium text-muted-foreground lg:flex">
-            <BarChart3 className="w-3.5 h-3.5 text-muted-foreground" />
-            <span className="font-mono">
-              E:{kgStats.events} N:{kgStats.entities} L:{kgStats.links}
-            </span>
-          </div>
-        ) : null}
-
+      <div className="pointer-events-auto ml-auto flex shrink-0 items-center gap-2">
         {dataSource === 'live' ? (
           <>
-            <div className="hidden items-center gap-2 xl:flex">
-              <div className="flex items-center gap-3 rounded-lg border border-border/60 bg-background/76 px-3 py-1.5 shadow-none">
-                <div className="flex items-center gap-2 text-xs font-medium text-foreground/88">
+            <div className="hidden shrink-0 items-center gap-2 2xl:flex">
+              <div className="flex items-center gap-2 rounded-full border border-border/60 bg-background/76 px-2.5 py-1.5 shadow-none">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-foreground/88">
                   <LinkIcon className={cn('h-3.5 w-3.5', includeEntityLinks ? 'text-info' : 'text-muted-foreground')} />
-                  <span>实体连线</span>
+                  <span>实体</span>
                 </div>
                 <Switch
                   checked={includeEntityLinks}
@@ -217,10 +220,10 @@ export function GraphPageHeader({
                   className="scale-[0.82] data-[state=checked]:bg-info"
                 />
               </div>
-              <div className="flex items-center gap-3 rounded-lg border border-border/60 bg-background/76 px-3 py-1.5 shadow-none">
-                <div className="flex items-center gap-2 text-xs font-medium text-foreground/88">
+              <div className="flex items-center gap-2 rounded-full border border-border/60 bg-background/76 px-2.5 py-1.5 shadow-none">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-foreground/88">
                   <Network className={cn('h-3.5 w-3.5', includeRelationLinks ? 'text-teal-600 dark:text-teal-300' : 'text-muted-foreground')} />
-                  <span>关系连线</span>
+                  <span>关系</span>
                 </div>
                 <Switch
                   checked={includeRelationLinks}
@@ -237,8 +240,7 @@ export function GraphPageHeader({
                     variant="ghost"
                     size="sm"
                     onClick={onCycleMinSharedEvents}
-                    className="text-muted-foreground hover:text-info hover:bg-info/10"
-                    title="共现阈值（点击循环）"
+                    className="shrink-0 text-muted-foreground hover:text-info hover:bg-info/10"
                   >
                     <Filter className="w-4 h-4 mr-2" />
                     Co≥{minSharedEvents}
@@ -249,79 +251,124 @@ export function GraphPageHeader({
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onExportGraphML}
-              disabled={isLoading}
-              className="text-muted-foreground hover:text-info hover:bg-info/10"
-              title="导出 GraphML"
-            >
-              <FileCode className="w-4 h-4 mr-2" />
-              导出
-            </Button>
           </>
         ) : null}
 
-        {graphNodeCount > 0 || activeGraphFilterCount > 0 ? (
-          <GraphFiltersPopover
-            open={filtersOpen}
-            onOpenChange={onFiltersOpenChange}
-            activeGraphFilterCount={activeGraphFilterCount}
-            graphNodeCount={graphNodeCount}
-            graphLinkCount={graphLinkCount}
-            entityTypeQuery={entityTypeQuery}
-            onEntityTypeQueryChange={onEntityTypeQueryChange}
-            entityTypeFilters={entityTypeFilters}
-            filteredEntityTypes={filteredEntityTypes}
-            onEntityTypeCheckedChange={onEntityTypeCheckedChange}
-            onResetEntityTypeFilters={onResetEntityTypeFilters}
-            predicateQuery={predicateQuery}
-            onPredicateQueryChange={onPredicateQueryChange}
-            predicateFilters={predicateFilters}
-            filteredPredicates={filteredPredicates}
-            onPredicateCheckedChange={onPredicateCheckedChange}
-            onResetPredicateFilters={onResetPredicateFilters}
-            confidenceBucketFilters={confidenceBucketFilters}
-            onResetConfidenceBuckets={onResetConfidenceBuckets}
-            onToggleConfidenceBucket={onToggleConfidenceBucket}
-            onResetGraphFilters={onResetGraphFilters}
-          />
-        ) : null}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0 gap-2 border-border/60 bg-background/78 text-foreground/88 shadow-none hover:bg-background hover:text-foreground active:bg-background"
+            >
+              <MoreHorizontal className="h-4 w-4" />
+              图谱工具
+              {activeGraphFilterCount > 0 ? (
+                <span className="ml-0.5 rounded-full bg-info/12 px-1.5 py-0.5 text-[10px] font-semibold text-info">
+                  {activeGraphFilterCount}
+                </span>
+              ) : null}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-[360px] p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-foreground">图谱工具</div>
+                <div className="mt-0.5 text-[11px] text-muted-foreground">
+                  导出、筛选、刷新和文件导入统一收纳
+                </div>
+              </div>
+              <div className="rounded-full border border-border/60 bg-muted/45 px-2.5 py-1 text-[11px] font-mono text-muted-foreground">
+                {graphNodeCount}N / {graphLinkCount}L
+              </div>
+            </div>
 
-        <div className="mx-1 hidden h-6 w-px bg-muted sm:block" />
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {dataSource === 'live' ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onExportGraphML}
+                  disabled={isLoading}
+                  className="justify-start gap-2 border-border/60 bg-background/70 text-muted-foreground shadow-none hover:bg-info/10 hover:text-info"
+                >
+                  <FileCode className="h-4 w-4" />
+                  导出
+                </Button>
+              ) : null}
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onOpenGraphPicker}
-          className="gap-2 border-border/60 bg-background/70 text-foreground/85 shadow-none hover:bg-background/70 hover:text-foreground/85 active:bg-background/70"
-        >
-          <Share2 className="w-4 h-4" />
-          {dataSource === 'live' ? '切换图谱' : '选择图谱'}
-        </Button>
+              {graphNodeCount > 0 || activeGraphFilterCount > 0 ? (
+                <div className="[&>button]:h-9 [&>button]:w-full [&>button]:justify-start [&>button]:gap-2 [&>button]:rounded-md [&>button]:border [&>button]:border-border/60 [&>button]:bg-background/70 [&>button]:px-3 [&>button]:shadow-none">
+                  <GraphFiltersPopover
+                    open={filtersOpen}
+                    onOpenChange={onFiltersOpenChange}
+                    activeGraphFilterCount={activeGraphFilterCount}
+                    graphNodeCount={graphNodeCount}
+                    graphLinkCount={graphLinkCount}
+                    entityTypeQuery={entityTypeQuery}
+                    onEntityTypeQueryChange={onEntityTypeQueryChange}
+                    entityTypeFilters={entityTypeFilters}
+                    filteredEntityTypes={filteredEntityTypes}
+                    onEntityTypeCheckedChange={onEntityTypeCheckedChange}
+                    onResetEntityTypeFilters={onResetEntityTypeFilters}
+                    predicateQuery={predicateQuery}
+                    onPredicateQueryChange={onPredicateQueryChange}
+                    predicateFilters={predicateFilters}
+                    filteredPredicates={filteredPredicates}
+                    onPredicateCheckedChange={onPredicateCheckedChange}
+                    onResetPredicateFilters={onResetPredicateFilters}
+                    confidenceBucketFilters={confidenceBucketFilters}
+                    onResetConfidenceBuckets={onResetConfidenceBuckets}
+                    onToggleConfidenceBucket={onToggleConfidenceBucket}
+                    onResetGraphFilters={onResetGraphFilters}
+                  />
+                </div>
+              ) : null}
 
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onRefreshLiveData}
-          disabled={isLoading}
-          className="text-muted-foreground hover:text-sky-600 dark:hover:text-sky-300 hover:bg-sky-500/10 dark:hover:bg-sky-500/20"
-        >
-          <RefreshCw className={cn('w-4 h-4 mr-2', isLoading && 'animate-spin motion-reduce:animate-none')} />
-          {isLoading ? '加载中...' : '刷新'}
-        </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onOpenGraphPicker}
+                className="justify-start gap-2 border-border/60 bg-background/70 text-muted-foreground shadow-none hover:bg-muted/60 hover:text-foreground"
+              >
+                <Share2 className="h-4 w-4" />
+                {dataSource === 'live' ? '切换图谱' : '选择图谱'}
+              </Button>
 
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onTriggerTraceUpload}
-          className="text-muted-foreground hover:text-teal-600 dark:hover:text-teal-300 hover:bg-teal-500/10 dark:hover:bg-teal-500/20"
-          title="导入 RAG trace JSON（回放检索路径）"
-        >
-          <FileText className="w-4 h-4 mr-2" />
-          Trace
-        </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onRefreshLiveData}
+                disabled={isLoading}
+                className="justify-start gap-2 border-border/60 bg-background/70 text-muted-foreground shadow-none hover:bg-sky-500/10 hover:text-sky-600 dark:hover:text-sky-300"
+              >
+                <RefreshCw className={cn('h-4 w-4', isLoading && 'animate-spin motion-reduce:animate-none')} />
+                {isLoading ? '加载中' : '刷新'}
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onTriggerTraceUpload}
+                className="justify-start gap-2 border-border/60 bg-background/70 text-muted-foreground shadow-none hover:bg-teal-500/10 hover:text-teal-600 dark:hover:text-teal-300"
+                title="导入 RAG trace JSON（回放检索路径）"
+              >
+                <FileText className="h-4 w-4" />
+                Trace
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                className={cn('justify-start gap-2', graphmlImportButtonClass)}
+                onClick={onTriggerFileUpload}
+              >
+                <Upload className="h-4 w-4" />
+                GraphML
+              </Button>
+            </div>
+          </PopoverContent>
+        </Popover>
         <input
           ref={traceFileInputRef}
           type="file"
@@ -329,11 +376,6 @@ export function GraphPageHeader({
           className="hidden"
           onChange={onTraceFileUpload}
         />
-
-        <Button variant="outline" size="sm" className={`gap-2 ${graphmlImportButtonClass}`} onClick={onTriggerFileUpload}>
-          <Upload className="w-4 h-4" />
-          GraphML
-        </Button>
         <input
           ref={fileInputRef}
           type="file"

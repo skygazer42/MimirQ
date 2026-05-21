@@ -9,6 +9,13 @@ import {
   Folder,
   Upload,
   FileIcon,
+  FileText,
+  FileSpreadsheet,
+  FileType,
+  FileCode2,
+  FileArchive,
+  FileJson,
+  FileImage,
   Trash2,
   Check,
   AlertCircle,
@@ -55,6 +62,11 @@ type SidebarVariant = 'panel' | 'dialog' | 'pane'
 type SidebarProps = Readonly<{ variant?: SidebarVariant }>
 type HistogramDatum = { label: string; min: number | null; max: number | null; count: number }
 type AccentTone = 'sky' | 'amber' | 'emerald' | 'violet' | 'cyan'
+type FileVisual = {
+  icon: LucideIcon
+  shellClassName: string
+  iconClassName: string
+}
 
 const SIDEBAR_TONE_STYLES: Record<AccentTone, { chip: string; icon: string; note: string; panel: string }> = {
   sky: {
@@ -92,6 +104,74 @@ const SIDEBAR_TONE_STYLES: Record<AccentTone, { chip: string; icon: string; note
     panel:
       'border-info/25 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.08))] dark:border-info/30 dark:bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.12))]',
   },
+}
+
+function getFileVisual(file: { displayName?: string; originalFileType?: string } | null | undefined): FileVisual {
+  const rawType = String(file?.originalFileType || '').toLowerCase().replace(/^\./, '')
+  const name = String(file?.displayName || '').toLowerCase()
+  const ext = rawType || name.match(/\.([a-z0-9]+)(?:$|\?)/)?.[1] || ''
+
+  if (ext === 'pdf') {
+    return {
+      icon: FileText,
+      shellClassName: 'border-red-200/80 bg-red-50 text-red-600',
+      iconClassName: 'text-red-600',
+    }
+  }
+  if (['doc', 'docx', 'rtf'].includes(ext)) {
+    return {
+      icon: FileType,
+      shellClassName: 'border-blue-200/80 bg-blue-50 text-blue-600',
+      iconClassName: 'text-blue-600',
+    }
+  }
+  if (['xls', 'xlsx', 'csv', 'tsv'].includes(ext)) {
+    return {
+      icon: FileSpreadsheet,
+      shellClassName: 'border-emerald-200/80 bg-emerald-50 text-emerald-600',
+      iconClassName: 'text-emerald-600',
+    }
+  }
+  if (['md', 'markdown', 'txt'].includes(ext)) {
+    return {
+      icon: FileText,
+      shellClassName: 'border-sky-200/80 bg-sky-50 text-sky-600',
+      iconClassName: 'text-sky-600',
+    }
+  }
+  if (['html', 'htm', 'xml'].includes(ext)) {
+    return {
+      icon: FileCode2,
+      shellClassName: 'border-orange-200/80 bg-orange-50 text-orange-600',
+      iconClassName: 'text-orange-600',
+    }
+  }
+  if (['json', 'jsonl'].includes(ext)) {
+    return {
+      icon: FileJson,
+      shellClassName: 'border-violet-200/80 bg-violet-50 text-violet-600',
+      iconClassName: 'text-violet-600',
+    }
+  }
+  if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'tiff'].includes(ext)) {
+    return {
+      icon: FileImage,
+      shellClassName: 'border-cyan-200/80 bg-cyan-50 text-cyan-600',
+      iconClassName: 'text-cyan-600',
+    }
+  }
+  if (['zip', 'tar', 'gz', '7z', 'rar'].includes(ext)) {
+    return {
+      icon: FileArchive,
+      shellClassName: 'border-amber-200/80 bg-amber-50 text-amber-700',
+      iconClassName: 'text-amber-700',
+    }
+  }
+  return {
+    icon: FileIcon,
+    shellClassName: 'border-border/55 bg-background/75 text-muted-foreground',
+    iconClassName: 'text-muted-foreground',
+  }
 }
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -712,6 +792,8 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 fileSizeLabel,
                 fileSourceLabel,
               ].filter(Boolean).join(' · ')
+              const fileVisual = getFileVisual(f)
+              const FileVisualIcon = fileVisual.icon
               return (
                 <div
                   key={f.id}
@@ -733,10 +815,12 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     <span
                       className={cn(
                         'grid h-7 w-7 shrink-0 place-items-center rounded-lg border',
-                        isActive ? 'border-primary/25 bg-primary/10 text-primary' : 'border-border/55 bg-background/75 text-muted-foreground'
+                        isActive
+                          ? 'border-primary/25 bg-primary/10 text-primary'
+                          : fileVisual.shellClassName
                       )}
                     >
-                      <FileIcon className="h-3.5 w-3.5" />
+                      <FileVisualIcon className={cn('h-3.5 w-3.5', isActive ? 'text-primary' : fileVisual.iconClassName)} />
                     </span>
                     <span className="min-w-0">
                       <span className="flex min-w-0 items-center gap-1">
