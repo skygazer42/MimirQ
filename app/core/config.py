@@ -1896,6 +1896,7 @@ class Settings(BaseSettings):
     KG_SEARCH_QUERY_MODE_CLASSIFIER_ENABLED: bool = True
     KG_SEARCH_QUERY_MODE_LOCAL_MAX_EVENTS: int = 40
     KG_SEARCH_QUERY_MODE_GLOBAL_MIN_EVENTS: int = 120
+    KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS: int = 80
     KG_SEARCH_QUERY_MODE_DRIFT_MIN_EVENTS: int = 140
     KG_SEARCH_QUERY_MODE_LOCAL_ENTITY_WEIGHT_BONUS: float = 0.05
     # KG global-search (GraphRAG-like) community detection + community/global summaries.
@@ -2545,6 +2546,8 @@ class Settings(BaseSettings):
             raise ValueError("KG_SEARCH_QUERY_MODE_LOCAL_MAX_EVENTS must be >= 1")
         if int(getattr(self, "KG_SEARCH_QUERY_MODE_GLOBAL_MIN_EVENTS", 0) or 0) < 1:
             raise ValueError("KG_SEARCH_QUERY_MODE_GLOBAL_MIN_EVENTS must be >= 1")
+        if int(getattr(self, "KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS", 0) or 0) < 1:
+            raise ValueError("KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS must be >= 1")
         if int(getattr(self, "KG_SEARCH_QUERY_MODE_DRIFT_MIN_EVENTS", 0) or 0) < 1:
             raise ValueError("KG_SEARCH_QUERY_MODE_DRIFT_MIN_EVENTS must be >= 1")
         local_entity_weight_bonus = float(getattr(self, "KG_SEARCH_QUERY_MODE_LOCAL_ENTITY_WEIGHT_BONUS", 0.05) or 0.05)

@@ -9,7 +9,7 @@ from app.core.config import settings
 from app.rag.kg.community import build_community_reports, lazy_summarize
 from app.rag.kg.search.cache import build_kg_community_summary_cache_key, kg_community_summary_cache
 from app.rag.kg.search.config import ReturnType, SearchConfig
-from app.rag.kg.search.expand import ExpandSearcher
+from app.rag.kg.search.expand import ExpandResult, ExpandSearcher
 from app.rag.kg.search.path_verbalizer import attach_path_renderings
 from app.rag.kg.search.recall import RecallSearcher
 from app.rag.llm.factory import create_llm_client
@@ -42,6 +42,36 @@ class KGSearcher:
             return False, ["missing_global_pattern"]
 
         return True, ["enabled"]
+
+    def _should_skip_expand_for_latency(
+        self,
+        *,
+        config: SearchConfig,
+        query_mode: str,
+        recalled_event_count: int,
+    ) -> tuple[bool, str]:
+        """
+        Keep fallback global searches responsive.
+
+        Queries can resolve to "global" simply because the caller selected a dataset
+        without document ids. Unless the query contains an explicit overview/global
+        intent, those searches should behave like factoid KG recall and avoid a
+        multi-hop expansion fan-out.
+        """
+        if str(query_mode or "").strip().lower() != "global":
+            return False, ""
+        if bool(getattr(config.expand, "enabled", True)) is False:
+            return False, ""
+        if config.relation_expansion_enabled is True:
+            return False, ""
+        if int(recalled_event_count or 0) < int(getattr(config.rerank, "max_results", 10) or 10):
+            return False, ""
+
+        confidence = str(getattr(config, "query_mode_confidence", "") or "").strip().lower()
+        reasons = {str(x).strip() for x in (getattr(config, "query_mode_reason_codes", []) or []) if str(x).strip()}
+        if confidence == "low" and "global_pattern" not in reasons and "drift_pattern" not in reasons:
+            return True, "low_confidence_global_budget"
+        return False, ""
 
     async def _apply_lazy_community_summaries(
         self,
@@ -163,9 +193,23 @@ class KGSearcher:
                 }
             )
 
-        # expand (currently passthrough)
+        # expand
         t0 = time.perf_counter()
-        expand_result = await self.expand_searcher.expand(config, recall_result)
+        skip_expand, expand_skipped_reason = self._should_skip_expand_for_latency(
+            config=config,
+            query_mode=query_mode,
+            recalled_event_count=len(recall_result.event_ids or []),
+        )
+        if skip_expand:
+            expand_result = ExpandResult(
+                key_final=list(recall_result.key_final or []),
+                event_ids=list(recall_result.event_ids or []),
+                clues=list(recall_result.clues or []),
+                event_scores=dict(recall_result.event_scores or {}),
+                event_hops=dict(getattr(recall_result, "event_hops", {}) or {}),
+            )
+        else:
+            expand_result = await self.expand_searcher.expand(config, recall_result)
         expand_elapsed = time.perf_counter() - t0
         if metrics_enabled:
             log_metrics(
@@ -181,6 +225,8 @@ class KGSearcher:
                     "key_final": int(len(expand_result.key_final or [])),
                     "event_ids": int(len(expand_result.event_ids or [])),
                     "clues": int(len(expand_result.clues or [])),
+                    "skipped": bool(skip_expand),
+                    "skipped_reason": str(expand_skipped_reason or ""),
                     "elapsed_sec": round(float(expand_elapsed), 3),
                 }
             )
@@ -214,6 +260,9 @@ class KGSearcher:
             stats.setdefault("query_mode_confidence", str(config.query_mode_confidence or ""))
         if getattr(recall_result, "relation_debug", None):
             stats.setdefault("relation_expansion", getattr(recall_result, "relation_debug", {}) or {})
+        if skip_expand:
+            stats.setdefault("expand_skipped", True)
+            stats.setdefault("expand_skipped_reason", str(expand_skipped_reason or ""))
         stats.setdefault(
             "timing_sec",
             {

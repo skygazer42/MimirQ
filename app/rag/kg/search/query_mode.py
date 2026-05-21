@@ -91,6 +91,8 @@ def build_mode_aware_recall_overrides(
     max_entities: int,
     final_entity_count: int,
     entity_weight_threshold: float,
+    query_mode_confidence: str | None = None,
+    query_mode_reason_codes: list[str] | None = None,
 ) -> dict[str, Any]:
     mode_norm = normalize_kg_query_mode(mode, default="global")
 
@@ -98,6 +100,8 @@ def build_mode_aware_recall_overrides(
     max_entities_out = max(1, int(max_entities or 1))
     final_entity_count_out = max(1, int(final_entity_count or 1))
     entity_weight_threshold_out = min(1.0, max(0.0, float(entity_weight_threshold or 0.0)))
+    confidence = str(query_mode_confidence or "").strip().lower()
+    input_reasons = {str(x).strip() for x in (query_mode_reason_codes or []) if str(x).strip()}
     reason_codes: list[str] = []
 
     if mode_norm == "local":
@@ -110,13 +114,28 @@ def build_mode_aware_recall_overrides(
         entity_weight_threshold_out = min(1.0, entity_weight_threshold_out + max(0.0, bonus))
         reason_codes.append("local_focus_budget")
     elif mode_norm == "global":
-        max_events_out = max(
-            int(max_events_out),
-            max(1, int(getattr(settings, "KG_SEARCH_QUERY_MODE_GLOBAL_MIN_EVENTS", 120) or 120)),
+        is_low_confidence_fallback = (
+            confidence == "low"
+            and "global_pattern" not in input_reasons
+            and "drift_pattern" not in input_reasons
         )
-        max_entities_out = max(max_entities_out, 40)
-        final_entity_count_out = max(final_entity_count_out, 25)
-        reason_codes.append("global_coverage_budget")
+        if is_low_confidence_fallback:
+            # Dataset-scoped factoid queries often resolve to "global" only because no
+            # document ids were supplied. Keep those searches responsive; explicit
+            # overview/global-pattern queries still use the broader coverage budget.
+            max_events_out = min(
+                int(max_events_out),
+                max(1, int(getattr(settings, "KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS", 80) or 80)),
+            )
+            reason_codes.append("low_confidence_global_budget")
+        else:
+            max_events_out = max(
+                int(max_events_out),
+                max(1, int(getattr(settings, "KG_SEARCH_QUERY_MODE_GLOBAL_MIN_EVENTS", 120) or 120)),
+            )
+            max_entities_out = max(max_entities_out, 40)
+            final_entity_count_out = max(final_entity_count_out, 25)
+            reason_codes.append("global_coverage_budget")
     elif mode_norm == "drift":
         max_events_out = max(
             int(max_events_out),

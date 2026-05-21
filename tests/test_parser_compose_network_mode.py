@@ -17,3 +17,11 @@ def test_gpu_parser_services_share_api_network_namespace() -> None:
 
     assert paddlevl.get('network_mode') == 'service:mimirq-api'
     assert olmocr.get('network_mode') == 'service:mimirq-api'
+
+
+def test_paddlevl_service_exposes_pipeline_timeout() -> None:
+    services = (_load_doc('docker/docker-compose.parsers.yml').get('services') or {})
+    paddlevl = services['mimirq-paddlevl']
+
+    env = paddlevl.get('environment') or {}
+    assert 'PADDLEOCR_PIPELINE_TIMEOUT_SEC' in env

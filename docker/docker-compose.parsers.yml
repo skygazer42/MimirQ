@@ -65,6 +65,7 @@ services:
       # Service-side options (PaddleOCR doc_parser / PaddleOCR-VL pipeline).
       PADDLEOCR_PIPELINE_VERSION: ${PADDLEOCR_PIPELINE_VERSION:-v1.5}
       PADDLEOCR_DEVICE: ${PADDLEOCR_DEVICE:-gpu:0}
+      PADDLEOCR_PIPELINE_TIMEOUT_SEC: ${PADDLEOCR_PIPELINE_TIMEOUT_SEC:-1800}
       # Skip startup connectivity probes against upstream model mirrors; the
       # runtime convert endpoint will still surface real download/model errors.
       PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: ${PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK:-True}

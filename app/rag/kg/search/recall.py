@@ -60,6 +60,8 @@ class RecallSearcher:
                 max_entities=int(config.recall.max_entities),
                 final_entity_count=int(config.recall.final_entity_count),
                 entity_weight_threshold=float(config.recall.entity_weight_threshold),
+                query_mode_confidence=getattr(config, "query_mode_confidence", None),
+                query_mode_reason_codes=list(getattr(config, "query_mode_reason_codes", []) or []),
             )
             max_events = int(mode_overrides.get("max_events") or config.recall.max_events)
             max_candidates = max(0, int(getattr(settings, "KG_SEARCH_MAX_RERANK_CANDIDATES", 0) or 0))
