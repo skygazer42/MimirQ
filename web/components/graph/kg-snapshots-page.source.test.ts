@@ -8,7 +8,7 @@ describe('KG snapshots page layout', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'kg-snapshots-page.tsx'), 'utf8')
 
     expect(src).toContain('title="图谱快照"')
-    expect(src).toContain('轻量图谱快照')
+    expect(src).toContain('不同入库/治理版本生成的图谱快照')
     expect(src).toContain('工作台')
     expect(src).toContain('评估')
     expect(src).not.toContain('title="KG Snapshots"')
@@ -22,11 +22,17 @@ describe('KG snapshots page layout', () => {
     expect(src).not.toContain('左右分屏对比')
   })
 
-  it('keeps the left parameter sidebar and sticky compare actions', () => {
+  it('keeps dataset-bound snapshot version selection and sticky compare actions', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'kg-snapshots-page.tsx'), 'utf8')
 
-    expect(src).toContain('对比参数')
-    expect(src).toContain('流水线哈希')
+    expect(src).toContain('快照版本')
+    expect(src).toContain('已绑定数据集')
+    expect(src).toContain('reportApi.getDatasetReport')
+    expect(src).toContain('const documents = await documentApi')
+    expect(src).toContain('已发现 ${pipelineCandidates.length} 个版本')
+    expect(src).toContain('手动填写')
+    expect(src).toContain('选择旧版本')
+    expect(src).toContain('选择当前版本')
     expect(src).toContain('快照 B')
     expect(src).toContain('作用范围')
     expect(src).toContain('数据集绑定')
@@ -46,13 +52,14 @@ describe('KG snapshots page layout', () => {
     expect(src).not.toContain('text-[2.2px] font-medium')
   })
 
-  it('lets the snapshot toolbar wrap instead of forcing filter and view controls into one line', () => {
+  it('keeps the snapshot toolbar in one compact row without wrapping filter controls', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'kg-snapshots-page.tsx'), 'utf8')
 
-    expect(src).toContain("flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between")
-    expect(src).toContain("flex min-w-0 flex-1 flex-wrap items-center gap-2")
+    expect(src).toContain("flex min-w-0 items-center justify-between gap-3")
+    expect(src).toContain("relative w-[220px] shrink-0")
+    expect(src).toContain("flex min-w-0 flex-1 items-center gap-2 overflow-x-auto no-scrollbar")
     expect(src).toContain("inline-flex shrink-0 items-center gap-2")
-    expect(src).not.toContain("flex min-w-0 flex-1 flex-nowrap items-center gap-2")
+    expect(src).not.toContain("flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between")
     expect(src).not.toContain('\n            筛选\n')
   })
 
@@ -63,6 +70,10 @@ describe('KG snapshots page layout', () => {
     expect(src).toContain('kgApi.getGraph')
     expect(src).toContain('SnapshotGraphCanvas')
     expect(src).toContain('data-testid="kg-snapshot-graph-canvas"')
+    expect(src).toContain('layoutSnapshotStudioNodes')
+    expect(src).toContain('layout={studioLayout}')
+    expect(src).toContain('isDenseGraph')
+    expect(src).toContain('showNodeLabel')
     expect(src).toContain('搜索节点 / 关系')
     expect(src).toContain('图谱视图')
     expect(src).toContain('表格视图')

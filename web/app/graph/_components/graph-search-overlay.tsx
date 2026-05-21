@@ -23,7 +23,7 @@ export function GraphSearchOverlay({
   if (!open) return null
 
   return (
-    <div className="pointer-events-auto absolute left-1/2 top-1/2 w-full max-w-md -translate-x-1/2 -translate-y-1/2">
+    <div className="pointer-events-auto w-full min-w-[280px] max-w-md">
       <div className="relative">
         <SearchInput
           ref={inputRef}

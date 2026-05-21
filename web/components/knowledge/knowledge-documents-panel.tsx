@@ -719,13 +719,13 @@ export function KnowledgeDocumentsPanel({
 
       <div
         className={cn(
-          'flex min-h-0 flex-col overflow-hidden rounded-[24px] border border-transparent bg-white/66 shadow-[0_18px_44px_-40px_rgba(37,99,235,0.30)] ring-1 ring-white/75 dark:bg-card/55 dark:ring-border/50',
+          'flex min-h-0 flex-col overflow-hidden rounded-[22px] border border-slate-200/70 bg-[#F6FAFF]/72 shadow-[0_16px_36px_-32px_rgba(37,99,235,0.24),0_0_0_1px_rgba(255,255,255,0.72)] dark:border-border/50 dark:bg-card/35',
           embedded && !compactEmptyInventory && 'h-full flex-1',
           compactEmptyInventory && 'flex-none',
           embedded ? (!compactEmptyInventory && 'h-full') : 'min-h-[560px]'
         )}
       >
-        <div className="relative overflow-hidden border-b border-sky-100/45 bg-[radial-gradient(circle_at_14%_0%,rgba(37,99,235,0.08),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.88),rgba(243,248,255,0.62))] px-4 pb-2 pt-3.5 dark:border-border/60 dark:bg-background/60">
+        <div className="relative overflow-hidden border-b border-slate-200/60 bg-[radial-gradient(circle_at_14%_0%,rgba(37,99,235,0.035),transparent_34%),linear-gradient(180deg,rgba(248,251,255,0.96),rgba(239,246,255,0.58))] px-4 pb-2 pt-3.5 dark:border-border/60 dark:bg-background/45">
           <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(14,165,233,0.42),transparent)]" />
           <div className="pointer-events-none absolute right-8 top-4 h-20 w-40 rounded-full bg-info/10 blur-3xl" />
           <div className="relative z-10 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -811,17 +811,17 @@ export function KnowledgeDocumentsPanel({
         <div
           className={cn(
             'flex min-h-0 flex-1 flex-col',
-            embedded && 'bg-[#F6FAFF]/60 p-5 dark:bg-background/15',
+            embedded && 'bg-transparent p-0 dark:bg-transparent',
             compactEmptyInventory && 'p-2'
           )}
         >
           <div
             className={cn(
-              'flex min-h-0 flex-1 flex-col overflow-hidden rounded-[22px] border border-sky-100/70 bg-white/92 shadow-[0_18px_42px_-34px_rgba(37,99,235,0.32)] dark:border-border/70 dark:bg-background/70',
+              'flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-0 bg-transparent shadow-none',
               compactEmptyInventory && 'flex-none'
             )}
           >
-            <div className="border-b border-sky-100/70 bg-[linear-gradient(180deg,rgba(248,251,255,0.94),rgba(240,247,255,0.78))] px-3 py-2.5 dark:border-border/60 dark:bg-muted/[0.16]">
+            <div className="border-b border-slate-200/60 bg-[linear-gradient(180deg,rgba(248,251,255,0.86),rgba(241,247,255,0.52))] px-3 py-2.5 dark:border-border/60 dark:bg-muted/[0.12]">
               {inventoryToolbar}
               {opsOpen ? (
                 <div className="mt-2.5 rounded-[16px] border border-sky-100/70 bg-white/88 p-2 shadow-[0_14px_34px_-30px_rgba(37,99,235,0.28)] dark:border-border/70 dark:bg-background/70">
