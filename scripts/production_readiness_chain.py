@@ -15,7 +15,7 @@ import os
 import sys
 import time
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
@@ -24,6 +24,7 @@ import requests
 
 TENANT_ID = "00000000-0000-0000-0000-000000000000"
 USER_ID = "production-readiness"
+UTC = timezone.utc
 
 
 @dataclass(frozen=True)
