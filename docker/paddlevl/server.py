@@ -10,6 +10,7 @@ from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
+from starlette.concurrency import run_in_threadpool
 
 app = FastAPI(title="mimirq-paddlevl", version="0.2.0")
 
@@ -29,6 +30,7 @@ def _run_doc_parser(
     out_dir: Path,
     pipeline_version: str,
     device: str,
+    timeout_sec: int,
 ) -> None:
     """
     Run PaddleOCR doc_parser (PaddleOCR-VL pipeline) to produce Markdown/JSON/images outputs.
@@ -52,14 +54,21 @@ def _run_doc_parser(
     # Keep logs readable and avoid broken unicode in some terminals.
     env.setdefault("PYTHONIOENCODING", "utf-8")
 
-    proc = subprocess.run(  # noqa: S603
-        cmd,
-        check=False,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        env=env,
-    )
+    try:
+        proc = subprocess.run(  # noqa: S603
+            cmd,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            env=env,
+            timeout=max(30, int(timeout_sec or 0)),
+        )
+    except subprocess.TimeoutExpired as exc:
+        out = (exc.stdout or "")
+        if isinstance(out, bytes):
+            out = out.decode("utf-8", errors="ignore")
+        raise TimeoutError(f"doc_parser timed out after {timeout_sec}s: {str(out)[-2000:]}") from exc
     if proc.returncode != 0:
         out = (proc.stdout or "").strip()
         raise RuntimeError(f"doc_parser failed (exit={proc.returncode}): {out[-2000:]}")
@@ -93,6 +102,10 @@ async def convert(
 
     pipeline_version = (pipeline_version or os.environ.get("PADDLEOCR_PIPELINE_VERSION") or "v1.5").strip() or "v1.5"
     device = (device or os.environ.get("PADDLEOCR_DEVICE") or "cpu").strip() or "cpu"
+    try:
+        timeout_sec = int((os.environ.get("PADDLEOCR_PIPELINE_TIMEOUT_SEC") or "1800").strip() or "1800")
+    except Exception:
+        timeout_sec = 1800
 
     with tempfile.TemporaryDirectory(prefix="mimirq_paddlevl_") as tmp:
         tmp_path = Path(tmp)
@@ -103,7 +116,16 @@ async def convert(
         output_root.mkdir(parents=True, exist_ok=True)
 
         try:
-            _run_doc_parser(pdf_path=pdf_path, out_dir=output_root, pipeline_version=pipeline_version, device=device)
+            await run_in_threadpool(
+                _run_doc_parser,
+                pdf_path=pdf_path,
+                out_dir=output_root,
+                pipeline_version=pipeline_version,
+                device=device,
+                timeout_sec=timeout_sec,
+            )
+        except TimeoutError as exc:
+            raise HTTPException(status_code=504, detail=str(exc)[:2000]) from exc
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=str(exc)[:2000]) from exc
 

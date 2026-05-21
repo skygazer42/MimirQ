@@ -79,3 +79,59 @@ async def test_kg_search_attaches_path_renderings_to_event_results(monkeypatch: 
     assert renderings.get("schema") == "mimirq.kg_path_renderings.v1"
     assert "PLC-7 [Device]" in str(renderings.get("path_string") or "")
     assert "PLC Temperature Alarm" in str(renderings.get("reasoning_chain") or "")
+
+
+@pytest.mark.asyncio
+async def test_kg_search_skips_expand_for_low_confidence_global(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.rag.kg.search.searcher as searcher_mod
+    from app.core.config import settings
+    from app.rag.kg.search.config import SearchConfig
+
+    monkeypatch.setattr(settings, "KG_COMMUNITY_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "KG_SEARCH_METRICS_ENABLED", False, raising=False)
+
+    searcher = searcher_mod.KGSearcher()
+
+    async def _fake_recall(_config):  # noqa: ANN001
+        return SimpleNamespace(
+            key_final=[{"entity_id": "e-1", "name": "QUIC", "type": "concept", "weight": 0.8}],
+            event_ids=[f"ev-{idx}" for idx in range(12)],
+            clues=[],
+            event_scores={f"ev-{idx}": 1.0 - idx * 0.01 for idx in range(12)},
+            event_hops={f"ev-{idx}": 1 for idx in range(12)},
+            query_vector=[0.1],
+            relation_debug={},
+        )
+
+    async def _unexpected_expand(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        raise AssertionError("low-confidence global search should not run multi-hop expand")
+
+    class _FakeReranker:
+        async def arerank_kg(self, **kwargs):  # noqa: ANN003
+            candidates = list(kwargs.get("candidates") or [])
+            assert len(candidates) == 12
+            return SimpleNamespace(
+                items=[{"id": "ev-0", "title": "QUIC handshake", "summary": "Handshake event.", "score": 0.9}],
+                clues=[],
+                stats={},
+            )
+
+    monkeypatch.setattr(searcher.recall_searcher, "search", _fake_recall, raising=True)
+    monkeypatch.setattr(searcher.expand_searcher, "expand", _unexpected_expand, raising=True)
+    monkeypatch.setattr(searcher_mod, "get_kg_reranker", lambda _strategy: _FakeReranker(), raising=True)
+
+    out = await searcher._search_impl(
+        SearchConfig(
+            query="QUIC transport handshake",
+            tenant_id=UUID(int=1),
+            dataset_id=UUID(int=2),
+            account_id="u",
+            query_mode="global",
+            query_mode_confidence="low",
+            query_mode_reason_codes=["dataset_scope_no_doc_ids"],
+        )
+    )
+
+    stats = out.get("stats") or {}
+    assert stats.get("expand_skipped") is True
+    assert stats.get("expand_skipped_reason") == "low_confidence_global_budget"

@@ -220,6 +220,9 @@ async def kg_search(
                             getattr(settings, "KG_SEARCH_MAX_RERANK_CANDIDATES", 0) or 0
                         ),
                         "KG_SEARCH_QUERY_MODE": str(resolved_mode),
+                        "KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS": int(
+                            getattr(settings, "KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS", 0) or 0
+                        ),
                     },
                 )
                 cached, _age_ms = kg_search_cache.get(cache_key, ttl_sec=ttl_sec)
