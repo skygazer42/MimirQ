@@ -136,9 +136,10 @@ make up-qianfanocr
 ```env
 QIANFAN_OCR_ENABLED=true
 QIANFAN_OCR_API_URL=http://mimirq-qianfanocr:2090/convert
-# 包装服务上游（示例）
-QIANFAN_OCR_SERVER_URL=http://host.docker.internal:8000/v1
-QIANFAN_OCR_MODEL=baidu/Qianfan-OCR
+# 包装服务上游（百度千帆在线 OCR）
+QIANFAN_OCR_SERVER_URL=https://qianfan.baidubce.com/v2
+QIANFAN_OCR_MODEL=deepseek-ocr
+QIANFAN_OCR_SERVER_API_KEY=your-qianfan-api-key
 ```
 
 ### (可选) 启用 TextIn xParse（外部 API 文档解析）

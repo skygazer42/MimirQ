@@ -45,16 +45,32 @@ _MAX_CONCURRENT_JOBS = max(1, _get_int_env("QIANFAN_OCR_MAX_CONCURRENT_JOBS", 1)
 _PAGE_CONCURRENCY = max(1, _get_int_env("QIANFAN_OCR_PAGE_CONCURRENCY", 1))
 _PDF_DPI = max(72, _get_int_env("QIANFAN_OCR_PDF_DPI", 200))
 _TIMEOUT_SEC = max(10.0, _get_float_env("QIANFAN_OCR_REQUEST_TIMEOUT_SEC", 120.0))
-_MODEL = (os.environ.get("QIANFAN_OCR_MODEL") or "baidu/Qianfan-OCR").strip() or "baidu/Qianfan-OCR"
 _SERVER_URL = (os.environ.get("QIANFAN_OCR_SERVER_URL") or "").strip()
-_SERVER_API_KEY = (os.environ.get("QIANFAN_OCR_SERVER_API_KEY") or "").strip()
+_DEFAULT_MODEL = "deepseek-ocr" if "qianfan.baidubce.com" in _SERVER_URL else "baidu/Qianfan-OCR"
+_MODEL = (os.environ.get("QIANFAN_OCR_MODEL") or _DEFAULT_MODEL).strip() or _DEFAULT_MODEL
+_SERVER_API_KEY = (
+    os.environ.get("QIANFAN_OCR_SERVER_API_KEY")
+    or os.environ.get("QIANFAN_API_KEY")
+    or os.environ.get("QIANFAN_API_TOKEN")
+    or ""
+).strip()
 _MAX_TOKENS = max(256, _get_int_env("QIANFAN_OCR_MAX_TOKENS", 4096))
 _TEMPERATURE = float(_get_float_env("QIANFAN_OCR_TEMPERATURE", 0.0))
 _DEFAULT_LAYOUT_AS_THOUGHT = _get_bool_env("QIANFAN_OCR_LAYOUT_AS_THOUGHT", False)
 _LAYOUT_TRIGGER = (os.environ.get("QIANFAN_OCR_LAYOUT_TRIGGER") or "").strip()
+_DEFAULT_MARKDOWN_PROMPT = "Convert the document to markdown with correct reading order. Keep tables in HTML and formulas in $$...$$."
+_QIANFAN_ONLINE_PROMPT = "OCR this image."
+
+
+def _default_prompt_for_server(server_url: str) -> str:
+    if "qianfan.baidubce.com" in (server_url or ""):
+        return _QIANFAN_ONLINE_PROMPT
+    return _DEFAULT_MARKDOWN_PROMPT
+
+
 _PROMPT = (
     os.environ.get("QIANFAN_OCR_PROMPT")
-    or "Convert the document to markdown with correct reading order. Keep tables in HTML and formulas in $$...$$."
+    or _default_prompt_for_server(_SERVER_URL)
 ).strip()
 _STRIP_THINK_TAGS = _get_bool_env("QIANFAN_OCR_STRIP_THINK_TAGS", True)
 
@@ -71,8 +87,10 @@ def _build_api_url() -> str:
         raise RuntimeError("QIANFAN_OCR_SERVER_URL is empty")
     if base.endswith("/chat/completions"):
         return base
-    if base.endswith("/v1"):
+    if base.endswith("/v1") or base.endswith("/v2"):
         return f"{base}/chat/completions"
+    if "qianfan.baidubce.com" in base:
+        return f"{base}/v2/chat/completions"
     return f"{base}/v1/chat/completions"
 
 

@@ -119,7 +119,7 @@ def write_fixture_pdf(path: Path, *, pages: int = 2) -> None:
                 f"/Contents {content_obj_no} 0 R >>"
             ).encode()
         )
-        escaped = "\\n".join(f"({_pdf_escape(line)}) Tj T*" for line in lines)
+        escaped = "\n".join(f"({_pdf_escape(line)}) Tj T*" for line in lines)
         stream = f"BT /F1 12 Tf 72 740 Td 16 TL {escaped} ET".encode()
         objects.append(b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n" + stream + b"\nendstream")
     objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
