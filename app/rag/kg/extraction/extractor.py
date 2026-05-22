@@ -75,6 +75,18 @@ _DEFAULT_RELATION_PREDICATES: tuple[str, ...] = (
 )
 
 
+def _release_idle_transaction(session) -> None:  # noqa: ANN001
+    """Release read-only DB transactions before long LLM/vector work."""
+    try:
+        session.expunge_all()
+    except Exception as exc:
+        logger.debug("Ignoring non-critical KG session cleanup failure: %s", exc)
+    try:
+        session.rollback()
+    except Exception as exc:
+        logger.debug("Ignoring non-critical KG session cleanup failure: %s", exc)
+
+
 def _normalize_prompt_selector_value(value: object) -> str:
     if value is None:
         return ""
@@ -429,6 +441,7 @@ class EventExtractor:
 
             chunks_to_process: list[DocumentChunk] = [c for c in resolved_chunks if c.id not in skipped_chunk_ids]
             chunk_id_to_pos = {c.id: i for i, c in enumerate(resolved_chunks)}
+            _release_idle_transaction(session)
 
             def _build_sections(target: DocumentChunk) -> list[DocumentChunk]:
                 if context_window <= 0:

@@ -287,3 +287,138 @@ async def test_kg_recall_uses_lexical_events_when_embeddings_and_entity_recall_m
 
     assert out.query_vector == []
     assert str(event_id) in list(out.event_ids or [])
+
+
+@pytest.mark.asyncio
+async def test_kg_recall_uses_lexical_events_when_vector_event_recall_misses(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Vector providers can miss multi-term phrases; scoped lexical event recall still covers KG search."""
+    from app.core import config as config_mod
+
+    monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
+    monkeypatch.setattr(config_mod.settings, "KG_SEARCH_VECTOR_RECALL_ENABLED", True, raising=False)
+
+    from app.rag.kg.search.config import SearchConfig
+    from app.rag.kg.search.recall import RecallSearcher
+
+    tenant_id = UUID(int=1)
+    dataset_id = UUID(int=8)
+    event_id = UUID(int=456)
+
+    import app.rag.kg.search.recall as recall_mod
+
+    monkeypatch.setattr(recall_mod, "get_session", lambda: type("_S", (), {"close": lambda _self: None})(), raising=True)
+    monkeypatch.setattr(recall_mod.AliasRepository, "match_aliases", lambda *_a, **_k: [], raising=True)
+    monkeypatch.setattr(recall_mod.EntityRepository, "search_similar", lambda *_a, **_k: [], raising=True)
+    monkeypatch.setattr(recall_mod.EntityRepository, "search_lexical", lambda *_a, **_k: [], raising=True)
+    monkeypatch.setattr(recall_mod.EventRepository, "search_events_by_entities", lambda *_a, **_k: [], raising=True)
+    monkeypatch.setattr(recall_mod.EventRepository, "search_similar_by_content", lambda *_a, **_k: [], raising=True)
+    monkeypatch.setattr(
+        recall_mod.EventRepository,
+        "search_events_lexical",
+        lambda *_a, **_k: [
+            {
+                "event_id": str(event_id),
+                "title": "QUIC transport handshake",
+                "summary": "QUIC connection setup and transport behavior",
+                "similarity": 0.9,
+                "method": "lexical_match",
+            }
+        ],
+        raising=True,
+    )
+
+    class _Ev:
+        def __init__(self) -> None:
+            self.id = event_id
+            self.title = "QUIC transport handshake"
+            self.summary = "QUIC connection setup and transport behavior"
+            self.content = "QUIC connection setup and transport behavior"
+            self.content_vector = None
+
+    monkeypatch.setattr(recall_mod.EventRepository, "get_events_by_ids", lambda *_a, **_k: [_Ev()], raising=True)
+    monkeypatch.setattr(recall_mod.EventRepository, "get_event_entities", lambda *_a, **_k: {}, raising=True)
+
+    async def _embedding(_text: str) -> list[float]:
+        await yield_control()
+        return [0.1, 0.2, 0.3]
+
+    searcher = RecallSearcher()
+    monkeypatch.setattr(searcher.processor, "generate_embedding", _embedding, raising=True)
+
+    cfg = SearchConfig(query="QUIC transport handshake", tenant_id=tenant_id, dataset_id=dataset_id, account_id="demo")
+    out = await searcher.search(cfg)
+
+    assert out.query_vector == [0.1, 0.2, 0.3]
+    assert str(event_id) in list(out.event_ids or [])
+
+
+@pytest.mark.asyncio
+async def test_low_confidence_dataset_kg_query_uses_lexical_before_embedding(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Dataset-scoped factoid KG search should avoid slow embedding calls when lexical events already match."""
+    from app.core import config as config_mod
+
+    monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
+    monkeypatch.setattr(config_mod.settings, "KG_SEARCH_VECTOR_RECALL_ENABLED", True, raising=False)
+
+    from app.rag.kg.search.config import SearchConfig
+    from app.rag.kg.search.recall import RecallSearcher
+
+    tenant_id = UUID(int=1)
+    dataset_id = UUID(int=8)
+    event_id = UUID(int=456)
+
+    import app.rag.kg.search.recall as recall_mod
+
+    monkeypatch.setattr(recall_mod, "get_session", lambda: type("_S", (), {"close": lambda _self: None})(), raising=True)
+    monkeypatch.setattr(recall_mod.AliasRepository, "match_aliases", lambda *_a, **_k: [], raising=True)
+    monkeypatch.setattr(recall_mod.EntityRepository, "search_similar", lambda *_a, **_k: [], raising=True)
+    monkeypatch.setattr(recall_mod.EntityRepository, "search_lexical", lambda *_a, **_k: [], raising=True)
+    monkeypatch.setattr(recall_mod.EventRepository, "search_events_by_entities", lambda *_a, **_k: [], raising=True)
+    monkeypatch.setattr(recall_mod.EventRepository, "search_similar_by_content", lambda *_a, **_k: [], raising=True)
+    monkeypatch.setattr(
+        recall_mod.EventRepository,
+        "search_events_lexical",
+        lambda *_a, **_k: [
+            {
+                "event_id": str(event_id),
+                "title": "QUIC transport handshake",
+                "summary": "QUIC connection setup and transport behavior",
+                "similarity": 0.9,
+                "method": "lexical_match",
+            }
+        ],
+        raising=True,
+    )
+
+    class _Ev:
+        def __init__(self) -> None:
+            self.id = event_id
+            self.title = "QUIC transport handshake"
+            self.summary = "QUIC connection setup and transport behavior"
+            self.content = "QUIC connection setup and transport behavior"
+            self.content_vector = None
+
+    monkeypatch.setattr(recall_mod.EventRepository, "get_events_by_ids", lambda *_a, **_k: [_Ev()], raising=True)
+    monkeypatch.setattr(recall_mod.EventRepository, "get_event_entities", lambda *_a, **_k: {}, raising=True)
+
+    searcher = RecallSearcher()
+    monkeypatch.setattr(
+        searcher.processor,
+        "generate_embedding",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("lexical-first hit should skip embeddings")),
+        raising=True,
+    )
+
+    cfg = SearchConfig(
+        query="QUIC transport handshake",
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        account_id="demo",
+        query_mode="global",
+        query_mode_confidence="low",
+        query_mode_reason_codes=["dataset_scope_no_doc_ids"],
+    )
+    out = await searcher.search(cfg)
+
+    assert out.query_vector == []
+    assert str(event_id) in list(out.event_ids or [])

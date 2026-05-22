@@ -166,6 +166,11 @@ class RecallSearcher:
                 query_mode_reason_codes=list(getattr(config, "query_mode_reason_codes", []) or []),
             )
             max_events = int(mode_overrides.get("max_events") or config.recall.max_events)
+            mode_reason_codes = [str(x) for x in (mode_overrides.get("reason_codes") or []) if str(x).strip()]
+            prefer_lexical_first = (
+                "low_confidence_global_budget" in set(mode_reason_codes)
+                and (config.dataset_id is not None or config.document_ids is not None)
+            )
             max_candidates = max(0, int(getattr(settings, "KG_SEARCH_MAX_RERANK_CANDIDATES", 0) or 0))
             if max_candidates > 0:
                 max_events = min(max_events, max_candidates)
@@ -224,7 +229,22 @@ class RecallSearcher:
                 if getattr(config, "vector_recall_enabled", None) is not None
                 else bool(getattr(settings, "KG_SEARCH_VECTOR_RECALL_ENABLED", True))
             )
-            if vector_recall_enabled:
+
+            lexical_first_event_results: list[dict] = []
+            if prefer_lexical_first:
+                try:
+                    lexical_first_event_results = event_repo.search_events_lexical(
+                        query=str(config.query or ""),
+                        tenant_id=tenant_id,
+                        k=config.recall.vector_candidates,
+                        document_ids=config.document_ids,
+                        dataset_id=config.dataset_id,
+                        account_id=config.account_id,
+                    )
+                except Exception:
+                    lexical_first_event_results = []
+
+            if vector_recall_enabled and not (prefer_lexical_first and lexical_first_event_results):
                 try:
                     query_vec = await self.processor.generate_embedding(expanded_query)
                 except Exception:
@@ -760,7 +780,7 @@ class RecallSearcher:
                 event_ids_from_relation_entities = list(rel_event_ids)[: config.rerank.max_key_recall_results]
 
             # === Step3: query -> events (vector) ===
-            content_results: list[dict] = []
+            content_results: list[dict] = list(lexical_first_event_results or [])
             if vector_recall_enabled and query_vec:
                 try:
                     content_results = event_repo.search_similar_by_content(
@@ -773,7 +793,11 @@ class RecallSearcher:
                     )
                 except Exception:
                     content_results = []
-            if not content_results and not query_vec:
+            if not content_results:
+                # Vector recall can legitimately miss compositional user queries
+                # (for example "QUIC transport handshake") even when scoped KG
+                # rows contain matching terms. Keep the fallback scope-aware so
+                # a weak vector hit never broadens dataset/document access.
                 try:
                     content_results = event_repo.search_events_lexical(
                         query=str(config.query or ""),

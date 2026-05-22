@@ -434,7 +434,7 @@ async def retry_document_processing(
     else:
         if file_path is not None:
             background_tasks.add_task(
-                documents_module.document_processor.process_document,
+                documents_module.run_document_processing_limited,
                 file_path,
                 document_id,
                 tenant_id,
@@ -454,7 +454,7 @@ async def retry_document_processing(
                         destination=temp_path,
                         max_bytes=int(getattr(documents_module.settings, "MAX_FILE_SIZE", 0) or 0),
                     )
-                    await documents_module.document_processor.process_document(
+                    await documents_module.run_document_processing_limited(
                         file_path=temp_path,
                         document_id=document_id,
                         tenant_id=tenant_id,

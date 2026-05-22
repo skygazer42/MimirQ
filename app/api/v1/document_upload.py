@@ -490,7 +490,7 @@ async def upload_document(
         db.refresh(db_document)
     else:
         background_tasks.add_task(
-            documents_module.document_processor.process_document,
+            documents_module.run_document_processing_limited,
             file_path,
             file_id,
             tenant_id,
@@ -1193,7 +1193,7 @@ async def upload_documents_batch(
                         db.refresh(db_document)
                     else:
                         background_tasks.add_task(
-                            documents_module.document_processor.process_document,
+                            documents_module.run_document_processing_limited,
                             file_path,
                             file_id,
                             tenant_id,
@@ -1571,7 +1571,7 @@ async def upload_documents_batch(
                     db.refresh(db_document)
                 else:
                     background_tasks.add_task(
-                        documents_module.document_processor.process_document,
+                        documents_module.run_document_processing_limited,
                         file_path,
                         file_id,
                         tenant_id,

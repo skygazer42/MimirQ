@@ -151,6 +151,9 @@ class Settings(BaseSettings):
     # - Task queue is off by default: keeps API compatibility; when enabled,
     #   workers handle document parsing/indexing asynchronously.
     TASK_QUEUE_ENABLED: bool = False
+    # When TASK_QUEUE_ENABLED=false, API background tasks process documents
+    # in-process. Keep this bounded so parser/KG work cannot exhaust DB pools.
+    API_DOCUMENT_BACKGROUND_MAX_CONCURRENCY: int = 2
     REDIS_URL: str = "redis://localhost:6379/0"
     # Arq worker Redis connection retries.
     # Used to reduce crash loops on cold start when Redis isn't ready yet.
@@ -1007,6 +1010,8 @@ class Settings(BaseSettings):
     # Persistent lexical fallback (Postgres FTS / pg_trgm).
     # Helps reduce false negatives for numbers, codes, and exact phrases.
     LEXICAL_DB_ENABLED: bool = True
+    # Hybrid/MMR modes use lexical DB as a fallback by default; keyword mode remains lexical-first.
+    LEXICAL_DB_HYBRID_FALLBACK_ONLY: bool = True
     # In keyword-only mode, lexical DB is the primary keyword channel by default.
     # BM25 stays available as an opt-in secondary channel for recall comparison/back-compat.
     RETRIEVAL_KEYWORD_BM25_SECONDARY_ENABLED: bool = False

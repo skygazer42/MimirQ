@@ -123,3 +123,37 @@ def test_run_live_parser_preview_smokes_marks_failure_when_segments_missing(tmp_
 
     assert runner.results[-1].ok is False
     assert "segments" in runner.results[-1].note
+
+
+def test_embedding_drift_snapshot_uses_long_timeout() -> None:
+    mod = _load_module()
+
+    class FakeRunner:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+
+        def probe(self, method: str, path_template: str, path: str, expected: list[int], **kwargs: object) -> bool:
+            self.calls.append(
+                {
+                    "method": method,
+                    "path_template": path_template,
+                    "path": path,
+                    "expected": expected,
+                    "kwargs": kwargs,
+                }
+            )
+            return True
+
+    runner = FakeRunner()
+
+    mod.call_embedding_drift_snapshot(runner, timeout=2.0)  # type: ignore[arg-type]
+
+    assert runner.calls == [
+        {
+            "method": "GET",
+            "path_template": "/api/v1/observability/embedding-drift/snapshot",
+            "path": "/api/v1/observability/embedding-drift/snapshot",
+            "expected": [200, 400, 503],
+            "kwargs": {"timeout": 10.0},
+        }
+    ]
