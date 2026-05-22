@@ -366,6 +366,7 @@ def _sanitize_retriever_debug(dbg: dict[str, Any] | None) -> dict[str, Any] | No
         out["timing"] = {
             "vector_ms": float(timing.get("vector_ms") or 0.0),
             "bm25_ms": float(timing.get("bm25_ms") or 0.0),
+            "lexical_ms": float(timing.get("lexical_ms") or 0.0),
             "fusion_ms": float(timing.get("fusion_ms") or 0.0),
         }
 

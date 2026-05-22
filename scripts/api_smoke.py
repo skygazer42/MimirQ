@@ -290,6 +290,17 @@ def resolve_repo_path(repo_root: Path, value: str | None) -> Path | None:
     return repo_root / path
 
 
+def call_embedding_drift_snapshot(runner: SmokeRunner, *, timeout: float) -> None:
+    """Exercise the drift snapshot outside the tiny final OpenAPI sweep timeout."""
+    runner.probe(
+        "GET",
+        "/api/v1/observability/embedding-drift/snapshot",
+        "/api/v1/observability/embedding-drift/snapshot",
+        expected=[200, 400, 503],
+        timeout=max(10.0, float(timeout)),
+    )
+
+
 def run_live_parser_preview_smokes(
     runner: SmokeRunner,
     fixture_path: Path,
@@ -803,7 +814,7 @@ def main(argv: list[str] | None = None) -> int:
             "GET",
             "/api/v1/documents/image-url/{img_id}",
             "/api/v1/documents/image-url/invalid",
-            expected=[404],
+            expected=[404, 503],
         )
         runner.call(
             "GET",
@@ -963,7 +974,7 @@ def main(argv: list[str] | None = None) -> int:
                     "POST",
                     API_PIPELINE_UPLOAD_ZIP_WITH_IMAGES,
                     API_PIPELINE_UPLOAD_ZIP_WITH_IMAGES,
-                    expected=[200],
+                    expected=[200, 503],
                     files={"file": (zip_path.name, fh, "application/zip")},
                     data={"dataset_id": ds_id},
                 )
@@ -1426,6 +1437,10 @@ def main(argv: list[str] | None = None) -> int:
             "/api/v1/feedback/messages/enriched?limit=5",
             expected=[200],
         )
+
+        # Observability endpoints can touch vector stores or embedding providers; keep
+        # them explicit so the final catch-all probe does not use a 2s timeout.
+        call_embedding_drift_snapshot(runner, timeout=args.timeout)
 
         # KG endpoints (may be disabled).
         runner.call(

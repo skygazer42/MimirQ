@@ -46,7 +46,7 @@ _engine_kwargs = _build_engine_kwargs(settings.DATABASE_URL)
 engine = create_engine(settings.DATABASE_URL, **_engine_kwargs)
 
 # Session factory.
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
 
 # ORM Base.
 Base = declarative_base()

@@ -211,6 +211,25 @@ from app.types.pipeline import PipelineOptions
 
 logger = get_logger("api.documents")
 
+_background_processing_semaphores: dict[int, tuple[int, asyncio.Semaphore]] = {}
+
+
+def _get_background_processing_semaphore() -> asyncio.Semaphore:
+    limit = max(1, int(getattr(settings, "API_DOCUMENT_BACKGROUND_MAX_CONCURRENCY", 2) or 2))
+    loop_id = id(asyncio.get_running_loop())
+    cached = _background_processing_semaphores.get(loop_id)
+    if cached is None or cached[0] != limit:
+        sem = asyncio.Semaphore(limit)
+        _background_processing_semaphores[loop_id] = (limit, sem)
+        return sem
+    return cached[1]
+
+
+async def run_document_processing_limited(*args: Any, **kwargs: Any) -> Any:
+    sem = _get_background_processing_semaphore()
+    async with sem:
+        return await document_processor.process_document(*args, **kwargs)
+
 __all__ = [
     "DBDatasetPrecheckScanRun",
     "SessionLocal",
@@ -1491,7 +1510,7 @@ async def _ingest_url_upload_request(
     else:
         if background_tasks is not None:
             background_tasks.add_task(
-                document_processor.process_document,
+                run_document_processing_limited,
                 final_path,
                 file_id,
                 tenant_id,
@@ -1900,7 +1919,7 @@ async def _ingest_local_html_request(
     else:
         if background_tasks is not None:
             background_tasks.add_task(
-                document_processor.process_document,
+                run_document_processing_limited,
                 file_path,
                 file_id,
                 tenant_id,

@@ -2846,7 +2846,7 @@ class HybridRetriever(BaseRetriever):
         # Best-effort per-query debug metrics (low overhead, no external deps).
         # `_get_relevant_documents` will embed these into `_last_debug_metrics`.
         channel_metrics: dict[str, Any] = {
-            "timing": {"vector_ms": 0.0, "colbert_ms": 0.0, "bm25_ms": 0.0, "fusion_ms": 0.0},
+            "timing": {"vector_ms": 0.0, "colbert_ms": 0.0, "bm25_ms": 0.0, "lexical_ms": 0.0, "fusion_ms": 0.0},
             "counts": {
                 "vector_candidates": 0,
                 "colbert_candidates": 0,
@@ -2863,6 +2863,7 @@ class HybridRetriever(BaseRetriever):
         vector_elapsed_ms = 0.0
         colbert_elapsed_ms = 0.0
         bm25_elapsed_ms = 0.0
+        lexical_elapsed_ms = 0.0
         colbert_used = False
         colbert_candidates = 0
         colpali_results: list[dict[str, Any]] = []
@@ -2885,10 +2886,6 @@ class HybridRetriever(BaseRetriever):
                 partition_keys=partition_keys,
                 entity_candidates=entity_candidates,
             )
-        # Only user/request filters should trigger filter-overfetch. The dataset
-        # boundary is injected below as a normal scope and should not make every
-        # dataset-scoped retrieval pay the open-scope 4x candidate cost.
-        metadata_filter_requested = bool(isinstance(full_metadata_filter, dict) and full_metadata_filter)
         # Dataset scope is a first-class retrieval boundary. Push it down via metadata_filter so:
         # - vector backends can apply it in their scalar expr/where clauses (when supported)
         # - BM25 can filter early and avoid "top_k filled by other datasets" trimming losses
@@ -3224,8 +3221,11 @@ class HybridRetriever(BaseRetriever):
 
         bm25_results: list[dict[str, Any]] = []
         lexical_results: list[dict[str, Any]] = []
+        lexical_run_reason = "not_run"
+        lexical_hybrid_fallback_only = bool(getattr(settings, "LEXICAL_DB_HYBRID_FALLBACK_ONLY", True))
         if retrieval_mode == "keyword":
             if want_lexical:
+                t0 = time.perf_counter()
                 try:
                     lexical_results = self._search_lexical_db(
                         query=query,
@@ -3234,9 +3234,13 @@ class HybridRetriever(BaseRetriever):
                         tenant_id=tenant_id,
                         metadata_filter=bm25_filter,
                     )
+                    lexical_run_reason = "keyword_primary"
                 except Exception as exc:
                     logger.warning(LEXICAL_DB_SEARCH_FAILED_LOG, exc)
                     lexical_results = []
+                    lexical_run_reason = "error"
+                finally:
+                    lexical_elapsed_ms += (time.perf_counter() - t0) * 1000
             if want_bm25:
                 t0 = time.perf_counter()
                 try:
@@ -3264,8 +3268,17 @@ class HybridRetriever(BaseRetriever):
                 finally:
                     bm25_elapsed_ms += (time.perf_counter() - t0) * 1000
 
-            # 2b) Persistent lexical fallback (Postgres FTS / pg_trgm)
-            if want_lexical:
+            # 2b) Persistent lexical fallback (Postgres FTS / pg_trgm).
+            #
+            # Hybrid/MMR usually already has dense vector + in-memory BM25 coverage.
+            # Running pg_trgm on every query is expensive on large datasets, so keep it
+            # as a recall safety net unless explicitly configured to run in parallel.
+            primary_candidate_count = len(vector_results or []) + len(bm25_results or [])
+            should_run_lexical = bool(want_lexical) and (
+                not lexical_hybrid_fallback_only or primary_candidate_count < max(1, int(top_k or 0))
+            )
+            if should_run_lexical:
+                t0 = time.perf_counter()
                 try:
                     lexical_results = self._search_lexical_db(
                         query=query,
@@ -3274,9 +3287,15 @@ class HybridRetriever(BaseRetriever):
                         tenant_id=tenant_id,
                         metadata_filter=bm25_filter,
                     )
+                    lexical_run_reason = "hybrid_parallel" if not lexical_hybrid_fallback_only else "hybrid_fallback"
                 except Exception as exc:
                     logger.warning(LEXICAL_DB_SEARCH_FAILED_LOG, exc)
                     lexical_results = []
+                    lexical_run_reason = "error"
+                finally:
+                    lexical_elapsed_ms += (time.perf_counter() - t0) * 1000
+            elif want_lexical:
+                lexical_run_reason = "skipped_primary_candidates_sufficient"
 
         # 2c) Optional sparse channel (SPLADE-style)
         sparse_results: list[dict[str, Any]] = []
@@ -3329,6 +3348,7 @@ class HybridRetriever(BaseRetriever):
             finally:
                 bm25_elapsed_ms += (time.perf_counter() - t0) * 1000
             try:
+                t0 = time.perf_counter()
                 lexical_results = self._search_lexical_db(
                     query=query,
                     top_k=fetch_k,
@@ -3336,9 +3356,13 @@ class HybridRetriever(BaseRetriever):
                     tenant_id=tenant_id,
                     metadata_filter=bm25_filter,
                 )
+                lexical_run_reason = "vector_fallback"
             except Exception as exc:
                 logger.warning(LEXICAL_DB_SEARCH_FAILED_LOG, exc)
                 lexical_results = []
+                lexical_run_reason = "error"
+            finally:
+                lexical_elapsed_ms += (time.perf_counter() - t0) * 1000
             if want_sparse:
                 try:
                     sparse_results = self._search_sparse(
@@ -3442,6 +3466,7 @@ class HybridRetriever(BaseRetriever):
                 timing["vector_ms"] = round(float(vector_elapsed_ms), 2)
                 timing["colbert_ms"] = round(float(colbert_elapsed_ms), 2)
                 timing["bm25_ms"] = round(float(bm25_elapsed_ms), 2)
+                timing["lexical_ms"] = round(float(lexical_elapsed_ms), 2)
 
             counts = channel_metrics.get("counts")
             if isinstance(counts, dict):
@@ -3518,7 +3543,10 @@ class HybridRetriever(BaseRetriever):
                     },
                     "lexical_db": {
                         "enabled": bool(want_lexical) and bool(lexical_db_enabled),
+                        "used": bool(lexical_results),
                         "candidates": len(lexical_results or []),
+                        "run_reason": lexical_run_reason,
+                        "hybrid_fallback_only": bool(lexical_hybrid_fallback_only),
                         "fts_config": str(getattr(settings, "LEXICAL_DB_FTS_CONFIG", "simple") or "simple"),
                         "trgm_enabled": bool(getattr(settings, "LEXICAL_DB_TRGM_ENABLED", True)),
                         "pg_trgm_available": self._lexical_pg_trgm_available,
@@ -3555,6 +3583,7 @@ class HybridRetriever(BaseRetriever):
                     timing["vector_ms"] = round(float(vector_elapsed_ms), 2)
                     timing["colbert_ms"] = round(float(colbert_elapsed_ms), 2)
                     timing["bm25_ms"] = round(float(bm25_elapsed_ms), 2)
+                    timing["lexical_ms"] = round(float(lexical_elapsed_ms), 2)
                 counts = channel_metrics.get("counts")
                 if isinstance(counts, dict):
                     counts["vector_candidates"] = int(len(vector_results or []))
@@ -4869,6 +4898,7 @@ class HybridRetriever(BaseRetriever):
             debug["timing"] = {
                 "vector_ms": float(timing_src.get("vector_ms") or 0.0),
                 "bm25_ms": float(timing_src.get("bm25_ms") or 0.0),
+                "lexical_ms": float(timing_src.get("lexical_ms") or 0.0),
                 "fusion_ms": float(timing_src.get("fusion_ms") or 0.0),
             }
             debug["counts"] = {
@@ -4876,7 +4906,7 @@ class HybridRetriever(BaseRetriever):
                 "bm25_candidates": int(counts_src.get("bm25_candidates") or 0),
             }
         except (TypeError, ValueError, AttributeError):
-            debug["timing"] = {"vector_ms": 0.0, "bm25_ms": 0.0, "fusion_ms": 0.0}
+            debug["timing"] = {"vector_ms": 0.0, "bm25_ms": 0.0, "lexical_ms": 0.0, "fusion_ms": 0.0}
             debug["counts"] = {"vector_candidates": 0, "bm25_candidates": 0}
         # Diversity caps meta is computed inside `_hybrid_search` / `_apply_document_diversity`.
         # Keep it as a small numeric-only object for downstream diagnostics (PII-safe).

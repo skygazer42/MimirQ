@@ -119,3 +119,92 @@ def test_keyword_mode_can_run_bm25_as_secondary_after_lexical(monkeypatch) -> No
     assert channels["keyword_strategy"]["bm25_used"] is True
     assert channels["counts"]["lexical_candidates"] == 1
     assert channels["counts"]["bm25_candidates"] == 1
+
+
+def test_hybrid_mode_skips_lexical_db_when_primary_channels_are_sufficient(monkeypatch) -> None:  # noqa: ANN001
+    monkeypatch.setattr(settings, "LEXICAL_DB_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "LEXICAL_DB_HYBRID_FALLBACK_ONLY", True, raising=False)
+    monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", True, raising=False)
+
+    retriever = HybridRetriever(tenant_id=uuid4(), account_id="acct")
+    calls: list[str] = []
+
+    class _StubVectorStore:
+        def search(self, **_kwargs):  # noqa: ANN003
+            calls.append("vector")
+            return [_bm25_hit("doc-vector-1"), _bm25_hit("doc-vector-2")]
+
+    monkeypatch.setattr("app.rag.retriever.get_vector_store", lambda: _StubVectorStore(), raising=True)
+    monkeypatch.setattr(
+        retriever,
+        "_search_bm25",
+        lambda **_kwargs: calls.append("bm25") or [_bm25_hit("doc-bm25-1"), _bm25_hit("doc-bm25-2")],
+        raising=True,
+    )
+    monkeypatch.setattr(
+        retriever,
+        "_search_lexical_db",
+        lambda **_kwargs: calls.append("lexical") or [_lexical_hit("doc-lexical")],
+        raising=True,
+    )
+
+    results = retriever._hybrid_search(
+        query="release notes",
+        top_k=3,
+        score_threshold=0.0,
+        tenant_id=retriever.tenant_id,
+        retrieval_mode="hybrid",
+    )
+
+    assert calls == ["vector", "bm25"]
+    assert len(results) == 3
+
+    channels = retriever._last_channel_metrics
+    assert channels["lexical_db"]["enabled"] is True
+    assert channels["lexical_db"]["used"] is False
+    assert channels["lexical_db"]["run_reason"] == "skipped_primary_candidates_sufficient"
+    assert channels["timing"]["lexical_ms"] == 0.0
+
+
+def test_hybrid_mode_uses_lexical_db_when_primary_channels_are_insufficient(monkeypatch) -> None:  # noqa: ANN001
+    monkeypatch.setattr(settings, "LEXICAL_DB_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "LEXICAL_DB_HYBRID_FALLBACK_ONLY", True, raising=False)
+    monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", True, raising=False)
+
+    retriever = HybridRetriever(tenant_id=uuid4(), account_id="acct")
+    calls: list[str] = []
+
+    class _StubVectorStore:
+        def search(self, **_kwargs):  # noqa: ANN003
+            calls.append("vector")
+            return []
+
+    monkeypatch.setattr("app.rag.retriever.get_vector_store", lambda: _StubVectorStore(), raising=True)
+    monkeypatch.setattr(
+        retriever,
+        "_search_bm25",
+        lambda **_kwargs: calls.append("bm25") or [],
+        raising=True,
+    )
+    monkeypatch.setattr(
+        retriever,
+        "_search_lexical_db",
+        lambda **_kwargs: calls.append("lexical") or [_lexical_hit("doc-lexical")],
+        raising=True,
+    )
+
+    results = retriever._hybrid_search(
+        query="release notes",
+        top_k=3,
+        score_threshold=0.0,
+        tenant_id=retriever.tenant_id,
+        retrieval_mode="hybrid",
+    )
+
+    assert calls == ["vector", "bm25", "lexical"]
+    assert len(results) == 1
+
+    channels = retriever._last_channel_metrics
+    assert channels["lexical_db"]["used"] is True
+    assert channels["lexical_db"]["run_reason"] == "hybrid_fallback"
+    assert channels["counts"]["lexical_candidates"] == 1
