@@ -25,6 +25,10 @@
   - 之前固定 2 秒容易把真实云模型的偶发慢响应误判为不可用
   - 新参数：`--llm-probe-timeout`
 
+- [x] RAG load test 支持错误率和 P95 门禁
+  - 入库、检索、聊天任一阶段出现错误都会返回非零
+  - `--max-ingest-p95-ms`、`--max-retrieve-p95-ms`、`--max-chat-p95-ms` 可按机器配置启用
+
 - [ ] 服务器长跑留存基线
   - `smoke`：3 份入库、12 次检索、4 次聊天
   - `server`：20 份入库、80 次检索、20 次聊天
@@ -90,7 +94,7 @@ python scripts/rag_pipeline_quality_suite.py --run --profile full \
 - [ ] API smoke 无失败
 - [ ] production readiness 无失败，且聊天答案有引用或明确降级原因
 - [ ] chunking strategy matrix 的 failures 为空
-- [ ] RAG load test 错误率为 0；server profile 下检索 P95 和聊天 P95 进入报告
+- [x] RAG load test 错误率为 0；server profile 下检索 P95 和聊天 P95 进入报告
 - [ ] KG regression gate 达到 Hit/MRR/Recall 阈值
 - [ ] answer quality gate 通过当前阈值
 - [ ] parser live matrix 不出现空 Markdown；heavy parser 超时只记 warning，不阻断 core 发布
