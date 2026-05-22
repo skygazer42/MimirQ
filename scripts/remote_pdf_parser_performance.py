@@ -110,6 +110,25 @@ def summarize_body(body: Any) -> dict[str, Any]:
     }
 
 
+def _normalize_backend(value: Any) -> str:
+    return str(value or "").strip().lower().replace("-", "_")
+
+
+def classify_result(status: int, summary: dict[str, Any], requested_backend: str, min_markdown_chars: int) -> str:
+    if status == 0:
+        return "network_or_timeout"
+    if not (200 <= status < 300):
+        return "http_error"
+    if int(summary.get("markdown_chars") or 0) < min_markdown_chars:
+        return "low_output"
+
+    requested = _normalize_backend(requested_backend)
+    resolved = _normalize_backend(summary.get("backend"))
+    if requested and requested != "auto" and resolved and requested != resolved:
+        return f"resolved_backend_mismatch:{resolved}"
+    return "ok"
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     artifact_dir = Path(args.artifact_dir or f"artifacts/pdf-performance/remote-{time.strftime('%Y%m%d-%H%M%S')}").resolve()
     artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -126,11 +145,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     for backend in backends:
         status, body, elapsed = api.parse_preview(pdf_path, backend)
         summary = summarize_body(body)
-        ok = 200 <= status < 300 and int(summary.get("markdown_chars") or 0) >= args.min_markdown_chars
+        failure_class = classify_result(status, summary, backend, args.min_markdown_chars)
+        ok = failure_class == "ok"
         result = {
             "backend_requested": backend,
             "status_code": status,
             "ok": ok,
+            "failure_class": failure_class,
             "elapsed_sec": round(elapsed, 3),
             **summary,
         }
@@ -161,6 +182,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     for item in results:
         lines.append(
             f"- {item['backend_requested']}: ok={item['ok']} status={item['status_code']} "
+            f"class={item.get('failure_class')} resolved={item.get('backend')} "
             f"elapsed={item['elapsed_sec']}s chars={item.get('markdown_chars')} "
             f"pages={item.get('pdf_page_count')} images={item.get('images')}"
         )
