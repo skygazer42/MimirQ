@@ -83,6 +83,9 @@ def test_settings_get_includes_url_ingest_and_governance(monkeypatch):  # noqa: 
     monkeypatch.setattr(settings, "MINERU_BACKEND", "vlm-http-client", raising=False)
     monkeypatch.setattr(settings, "MINERU_LOCAL_SERVER_URL", "http://mineru.local:30001", raising=False)
     monkeypatch.setattr(settings, "MINERU_VL_SERVER", "http://mineru-vl.local:30002", raising=False)
+    monkeypatch.setattr(settings, "MAGIC_PDF_API_URL", "http://mimirq-magicpdf:2095/convert", raising=False)
+    monkeypatch.setattr(settings, "MAGIC_PDF_REQUEST_TIMEOUT_SEC", 901, raising=False)
+    monkeypatch.setattr(settings, "MAGIC_PDF_MAX_CONCURRENT_JOBS", 1, raising=False)
 
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_get_db
@@ -139,6 +142,11 @@ def test_settings_get_includes_url_ingest_and_governance(monkeypatch):  # noqa: 
     assert mineru.get("backend") == "vlm-http-client"
     assert mineru.get("local_server_url") == "http://mineru.local:30001"
     assert mineru.get("vl_server") == "http://mineru-vl.local:30002"
+
+    magicpdf = body.get("magicpdf") or {}
+    assert magicpdf.get("api_url") == "http://mimirq-magicpdf:2095/convert"
+    assert magicpdf.get("request_timeout_sec") == 901
+    assert magicpdf.get("max_concurrent_jobs") == 1
 
 
 def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN001
@@ -214,6 +222,19 @@ def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN
             "local_server_url": "http://mineru.local:30001",
             "vl_server": "http://mineru-vl.local:30002",
         },
+        "magicpdf": {
+            "api_url": "http://mimirq-magicpdf:2095/convert",
+            "request_timeout_sec": 901,
+            "max_concurrent_jobs": 1,
+            "cli": "magic-pdf",
+            "method": "auto",
+            "lang": "",
+            "debug": False,
+            "timeout_sec": 600,
+            "models_dir": "",
+            "device_mode": "cpu",
+            "keep_artifacts": False,
+        },
     }
     res = client.put("/api/v1/settings", json=payload)
     assert res.status_code == 200, res.text
@@ -248,6 +269,9 @@ def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN
     assert "MINERU_BACKEND" in updated
     assert "MINERU_LOCAL_SERVER_URL" in updated
     assert "MINERU_VL_SERVER" in updated
+    assert "MAGIC_PDF_API_URL" in updated
+    assert "MAGIC_PDF_REQUEST_TIMEOUT_SEC" in updated
+    assert "MAGIC_PDF_MAX_CONCURRENT_JOBS" in updated
 
     # Verify env file is written.
     env_text = (tmp_path / "test.env").read_text(encoding="utf-8")
@@ -282,6 +306,9 @@ def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN
     assert "MINERU_BACKEND=vlm-http-client" in env_text
     assert "MINERU_LOCAL_SERVER_URL=http://mineru.local:30001" in env_text
     assert "MINERU_VL_SERVER=http://mineru-vl.local:30002" in env_text
+    assert "MAGIC_PDF_API_URL=http://mimirq-magicpdf:2095/convert" in env_text
+    assert "MAGIC_PDF_REQUEST_TIMEOUT_SEC=901" in env_text
+    assert "MAGIC_PDF_MAX_CONCURRENT_JOBS=1" in env_text
 
     # Verify runtime apply updated in-memory settings (best-effort).
     assert int(settings.CHUNK_MIN_CHARS) == 67
@@ -315,6 +342,9 @@ def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN
     assert str(settings.MINERU_BACKEND) == "vlm-http-client"
     assert str(settings.MINERU_LOCAL_SERVER_URL) == "http://mineru.local:30001"
     assert str(settings.MINERU_VL_SERVER) == "http://mineru-vl.local:30002"
+    assert str(settings.MAGIC_PDF_API_URL) == "http://mimirq-magicpdf:2095/convert"
+    assert int(settings.MAGIC_PDF_REQUEST_TIMEOUT_SEC) == 901
+    assert int(settings.MAGIC_PDF_MAX_CONCURRENT_JOBS) == 1
 
 
 def test_settings_status_probes_paddlevl_health(monkeypatch):  # noqa: ANN001
@@ -372,6 +402,49 @@ def test_settings_status_probes_paddlevl_health(monkeypatch):  # noqa: ANN001
     qianfan = parsers.get("qianfan_ocr") or {}
     assert qianfan.get("enabled") is True
     assert qianfan.get("available") is True
+
+
+def test_settings_status_marks_magicpdf_service_available_without_local_cli_models(monkeypatch):  # noqa: ANN001
+    import app.api.v1.settings as settings_module
+    from app.api.v1.settings import get_system_status
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings_module, "_ensure_settings_readable", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(settings, "MAGIC_PDF_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "MAGIC_PDF_API_URL", "http://mimirq-magicpdf:2095/convert", raising=False)
+    monkeypatch.setattr(settings, "MAGIC_PDF_CLI", "missing-magic-pdf", raising=False)
+    monkeypatch.setattr(settings, "MAGIC_PDF_MODELS_DIR", "", raising=False)
+
+    import app.core.database as db_module
+
+    class _DummySession:  # noqa: D401
+        def execute(self, *_args, **_kwargs):  # noqa: ANN001
+            return None
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(db_module, "SessionLocal", lambda: _DummySession(), raising=True)
+
+    import pymilvus
+
+    monkeypatch.setattr(pymilvus.connections, "connect", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(pymilvus.connections, "disconnect", lambda *_args, **_kwargs: None, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
+    app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
+    app.get("/api/v1/settings/status")(get_system_status)
+    client = TestClient(app)
+
+    res = client.get("/api/v1/settings/status")
+    assert res.status_code == 200, res.text
+    magicpdf = ((res.json().get("parsers") or {}).get("magicpdf") or {})
+
+    assert magicpdf.get("enabled") is True
+    assert magicpdf.get("available") is True
+    assert magicpdf.get("message") == "configured (service)"
 
 
 def test_llm_api_base_defaults_follow_runtime_settings(monkeypatch):  # noqa: ANN001

@@ -14,12 +14,17 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Any
 
+import requests
 from langchain_core.documents import Document
 
 from app.core.config import settings
 from app.parsing.utils.cli import resolve_cli_command
+from app.parsing.utils.markdown_response import extract_markdown_response_text
 from app.rag.core.logging import get_logger
+
+from .service_url_fallback import build_docker_service_url_candidates
 
 logger = get_logger("parsing.magicpdf")
 
@@ -35,6 +40,11 @@ MAGIC_PDF_REQUIRED_MODEL_FILES = (
     "OCR/paddleocr_torch/ch_PP-OCRv3_det_infer.pth",
     "OCR/paddleocr_torch/ch_PP-OCRv5_rec_infer.pth",
 )
+MAGIC_PDF_SERVICE_HOSTNAMES = {"mimirq-magicpdf"}
+
+
+def magicpdf_service_configured(configured_url: str | None = None) -> bool:
+    return bool((configured_url if configured_url is not None else getattr(settings, "MAGIC_PDF_API_URL", "") or "").strip())
 
 
 def _has_required_magicpdf_models(models_dir: Path) -> bool:
@@ -115,6 +125,9 @@ def resolve_magicpdf_models_dir(configured: str | None = None) -> Path | None:
 class MagicPDFParser:
     def __init__(self) -> None:
         self._cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
+        self._api_url = (getattr(settings, "MAGIC_PDF_API_URL", "") or "").strip()
+        self._request_timeout_sec = float(getattr(settings, "MAGIC_PDF_REQUEST_TIMEOUT_SEC", 600) or 600)
+        self._session = requests.Session()
 
     @staticmethod
     def required_model_files() -> tuple[str, ...]:
@@ -142,6 +155,107 @@ class MagicPDFParser:
         if method not in {"auto", "ocr", "txt"}:
             raise ValueError("MAGIC_PDF_METHOD must be one of: auto, ocr, txt")
         return method
+
+    def _candidate_api_urls(self) -> list[str]:
+        return build_docker_service_url_candidates(
+            self._api_url,
+            service_hostnames=MAGIC_PDF_SERVICE_HOSTNAMES,
+        )
+
+    def _post_service_multipart(self, *, file_path: Path, document_id: str | None) -> requests.Response:
+        file_bytes = file_path.read_bytes()
+        content_type = "application/pdf" if file_path.suffix.lower() == ".pdf" else "application/octet-stream"
+        files = {"file": (file_path.name, file_bytes, content_type)}
+        data = {
+            "method": self._resolve_method(),
+            "debug": str(bool(getattr(settings, "MAGIC_PDF_DEBUG", False))).lower(),
+            "device_mode": (getattr(settings, "MAGIC_PDF_DEVICE_MODE", "") or "cuda").strip().lower() or "cuda",
+            "keep_artifacts": str(bool(getattr(settings, "MAGIC_PDF_KEEP_ARTIFACTS", False))).lower(),
+        }
+        lang = (getattr(settings, "MAGIC_PDF_LANG", "") or "").strip()
+        if lang:
+            data["lang"] = lang
+        if document_id:
+            data["document_id"] = str(document_id)
+
+        candidate_urls = self._candidate_api_urls()
+        last_error: Exception | None = None
+        for index, url in enumerate(candidate_urls):
+            try:
+                return self._session.post(url, files=files, data=data, timeout=self._request_timeout_sec)
+            except requests.RequestException as exc:
+                last_error = exc
+                if index == len(candidate_urls) - 1:
+                    raise
+                logger.warning(
+                    "[magicpdf] request to %s failed (%s); retrying fallback %s",
+                    url,
+                    exc.__class__.__name__,
+                    candidate_urls[index + 1],
+                )
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("MagicPDF service parser requires MAGIC_PDF_API_URL.")
+
+    @staticmethod
+    def _extract_service_markdown(data: Any) -> str:
+        return extract_markdown_response_text(data)
+
+    def _parse_service(
+        self,
+        file_path: Path,
+        *,
+        dataset_id: str | None,
+        document_id: str | None,
+    ) -> list[Document]:
+        if not self._api_url:
+            raise RuntimeError("MagicPDF service parser requires MAGIC_PDF_API_URL.")
+
+        logger.info("[magicpdf] parsing %s via service", file_path.name)
+        resp = self._post_service_multipart(file_path=file_path, document_id=document_id)
+        if int(getattr(resp, "status_code", 0) or 0) != 200:
+            raise RuntimeError(f"MagicPDF service API error {resp.status_code}: {(resp.text or '')[:500]}")
+
+        data: Any = {}
+        markdown_text = ""
+        ctype = str(resp.headers.get("content-type") or "").lower()
+        if "application/json" in ctype:
+            try:
+                data = resp.json()
+            except Exception:
+                data = json.loads((resp.text or "").strip() or "{}")
+            markdown_text = self._extract_service_markdown(data)
+        else:
+            markdown_text = resp.text or ""
+
+        if not str(markdown_text or "").strip():
+            raise RuntimeError("MagicPDF service returned empty Markdown.")
+
+        method = self._resolve_method()
+        if isinstance(data, dict):
+            method = str(data.get("method") or method)
+
+        metadata: dict[str, Any] = {
+            "source": str(file_path.name),
+            "file_type": "pdf",
+            "parser_backend": "magicpdf",
+            "magicpdf_method": method,
+            "magicpdf_mode": "service",
+        }
+        if dataset_id:
+            metadata["dataset_id"] = str(dataset_id)
+        if isinstance(data, dict):
+            if data.get("asset_base_dir"):
+                metadata["asset_base_dir"] = str(data["asset_base_dir"])
+            if data.get("artifact_dir"):
+                metadata["artifact_dir"] = str(data["artifact_dir"])
+            if data.get("elapsed_sec") is not None:
+                try:
+                    metadata["magicpdf_elapsed_sec"] = float(data["elapsed_sec"])
+                except (TypeError, ValueError):
+                    metadata["magicpdf_elapsed_sec"] = data["elapsed_sec"]
+
+        return [Document(page_content=markdown_text, metadata=metadata)]
 
     def _ensure_tools_config(self, artifact_root: Path) -> Path:
         """
@@ -213,6 +327,9 @@ class MagicPDFParser:
         file_path = Path(file_path)
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
+
+        if self._api_url:
+            return self._parse_service(file_path, dataset_id=dataset_id, document_id=document_id)
 
         cli = self._ensure_cli()
         method = self._resolve_method()

@@ -1,7 +1,7 @@
 import pytest
 
-from app.core.config import settings
 import app.parsing.routing as routing
+from app.core.config import settings
 from app.parsing.routing import choose_pdf_backend, should_attempt_pdf_fallback
 
 
@@ -194,6 +194,29 @@ def test_choose_pdf_backend_scanned_prefers_magicpdf_when_available(monkeypatch:
     assert choose_pdf_backend(quality, None) == "magicpdf"
 
 
+def test_choose_pdf_backend_scanned_prefers_magicpdf_service_when_configured(monkeypatch: pytest.MonkeyPatch):
+    _set_flags(
+        monkeypatch,
+        MARKITDOWN_ENABLED=False,
+        MINERU_ENABLED=False,
+        MINERU_API_TOKEN="",
+        MINERU_LOCAL_SERVER_URL="",
+        DEEPDOC_ENABLED=False,
+        DOCLING_ENABLED=False,
+        ETL4LLM_ENABLED=False,
+        MAGIC_PDF_ENABLED=True,
+        MAGIC_PDF_API_URL="http://mimirq-magicpdf:2095/convert",
+        MAGIC_PDF_CLI="missing-magic-pdf",
+        MAGIC_PDF_MODELS_DIR="",
+    )
+    monkeypatch.setattr(routing, "resolve_cli_command", lambda _cmd: None)
+    monkeypatch.setattr(routing, "resolve_magicpdf_models_dir", lambda _configured=None: None)
+
+    quality = {"score": 0.2, "is_scanned": True}
+
+    assert choose_pdf_backend(quality, None) == "magicpdf"
+
+
 def test_choose_pdf_backend_scanned_skips_magicpdf_without_models(monkeypatch: pytest.MonkeyPatch):
     import shutil
 
@@ -205,6 +228,7 @@ def test_choose_pdf_backend_scanned_skips_magicpdf_without_models(monkeypatch: p
         MINERU_LOCAL_SERVER_URL="",
         DEEPDOC_ENABLED=False,
         MAGIC_PDF_ENABLED=True,
+        MAGIC_PDF_API_URL="",
         MAGIC_PDF_CLI="magic-pdf",
     )
     monkeypatch.setattr(shutil, "which", lambda _cmd: "/usr/bin/magic-pdf")

@@ -46,6 +46,7 @@ from app.parsing.diagnostics import build_parse_failure_diagnostics
 from app.parsing.enrich.image_caption import add_image_captions
 from app.parsing.enrich.image_ocr import add_image_ocr_blocks
 from app.parsing.factory import parser_factory
+from app.parsing.parsers.magic_pdf_parser import magicpdf_service_configured, resolve_magicpdf_models_dir
 from app.parsing.processors.cross_page_merge import merge_cross_page_items
 from app.parsing.processors.parse_quality_gate import apply_parse_quality_gate_metadata
 from app.parsing.processors.vlm_correction import maybe_correct_markdown_pages
@@ -53,7 +54,6 @@ from app.parsing.quality.competition import compute_competition_matrix_score, se
 from app.parsing.quality.document_quality import score_document_parse_quality
 from app.parsing.quality.reading_order import score_reading_order
 from app.parsing.quality.text_quality import score_parsed_text_quality
-from app.parsing.parsers.magic_pdf_parser import resolve_magicpdf_models_dir
 from app.parsing.routing import should_attempt_pdf_fallback
 from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
 from app.parsing.utils.cli import resolve_cli_command
@@ -523,12 +523,15 @@ def _build_pdf_fallback_candidates() -> list[str]:
     if bool(getattr(settings, "DOCLING_ENABLED", False)):
         candidates.append("docling")
 
-    # MagicPDF is a CLI-backed local parser; require both CLI and model cache.
+    # MagicPDF prefers service mode; local CLI remains a fallback.
     try:
         if bool(getattr(settings, "MAGIC_PDF_ENABLED", False)):
-            cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
-            if resolve_cli_command(cli) and resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", "")):
+            if magicpdf_service_configured(getattr(settings, "MAGIC_PDF_API_URL", "")):
                 candidates.append("magicpdf")
+            else:
+                cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
+                if resolve_cli_command(cli) and resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", "")):
+                    candidates.append("magicpdf")
     except Exception as exc:
         logger.debug("Ignoring non-critical parsing router fallback failure: %s", exc)
 

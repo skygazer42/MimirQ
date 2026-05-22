@@ -18,7 +18,6 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-
 DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000"
 DEFAULT_BACKENDS = (
     "basic,deepdoc,docling,magicpdf,markitdown,"
@@ -165,7 +164,18 @@ def summarize_body(body: Any) -> dict[str, Any]:
     }
 
 
-def classify_failure(status: int, body: Any, summary: dict[str, Any], min_markdown_chars: int) -> str:
+def _normalize_backend(value: Any) -> str:
+    return str(value or "").strip().lower().replace("-", "_")
+
+
+def classify_failure(
+    status: int,
+    body: Any,
+    summary: dict[str, Any],
+    min_markdown_chars: int,
+    *,
+    requested_backend: str = "",
+) -> str:
     text = json.dumps(body, ensure_ascii=False, default=str) if not isinstance(body, str) else body
     lowered = text.lower()
     if status == 0:
@@ -178,6 +188,11 @@ def classify_failure(status: int, body: Any, summary: dict[str, Any], min_markdo
         return "http_error"
     if int(summary.get("markdown_chars") or 0) < min_markdown_chars:
         return "low_output"
+
+    requested = _normalize_backend(requested_backend)
+    resolved = _normalize_backend(summary.get("resolved_backend") or summary.get("backend"))
+    if requested and requested != "auto" and resolved and requested != resolved:
+        return f"resolved_backend_mismatch:{resolved}"
     return "ok"
 
 
@@ -207,7 +222,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     for backend in backends:
         status, body, elapsed = api.parse_preview(pdf_path, backend)
         summary = summarize_body(body)
-        failure_class = classify_failure(status, body, summary, args.min_markdown_chars)
+        failure_class = classify_failure(status, body, summary, args.min_markdown_chars, requested_backend=backend)
         ok = failure_class == "ok"
         status_entry = parser_status.get(backend) if isinstance(parser_status.get(backend), dict) else {}
         result = {
