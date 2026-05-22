@@ -76,6 +76,7 @@
 - 新增 `docker/magicpdf/` FastAPI 服务，提供 `GET /health` 和 `POST /convert`，容器内调用 `magic-pdf` CLI。
 - 新增 Docker profile：`mimirq-magicpdf`，服务地址为 `http://mimirq-magicpdf:2095/convert`。
 - 服务镜像切到 CUDA PyTorch 运行时；GPU 服务器默认应使用 `MAGIC_PDF_DEVICE_MODE=cuda`，避免服务化后仍落到 CPU。
+- 服务镜像进一步固定到 `torch 2.6.0 + CUDA 12.4`，因为 MagicPDF 1.3.x 官方兼容 `torch 2.2~2.6` 且排除 `2.5`；这也避免了构建时被 `pip` 拉起另一套 `cu13` torch 依赖。
 - `/health` 在 `cuda` 模式下检查 `torch.cuda.is_available()`，防止容器 healthy 但实际不可用 GPU。
 - 新增配置项：`MAGIC_PDF_API_URL`、`MAGIC_PDF_REQUEST_TIMEOUT_SEC`、`MAGIC_PDF_MAX_CONCURRENT_JOBS`。
 - 后端 `MagicPDFParser` 优先走 HTTP 服务模式；未配置服务 URL 时继续回退本地 CLI 模式。

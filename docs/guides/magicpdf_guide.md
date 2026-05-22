@@ -31,6 +31,8 @@ MAGIC_PDF_KEEP_ARTIFACTS=false
 `mimirq-magicpdf` 镜像使用 CUDA PyTorch 运行时；如果服务器有 NVIDIA GPU，
 不要把 `MAGIC_PDF_DEVICE_MODE` 留在 `cpu`，否则会复现“服务起来了但解析很慢”的问题。
 `/health` 会在 `cuda` 模式下检查 `torch.cuda.is_available()`，CUDA 不可用时服务不会被标记为 healthy。
+服务镜像当前固定到 `torch 2.6 + CUDA 12.4`，因为 MagicPDF 1.3.x 官方兼容区间是
+`torch 2.2~2.6`，并明确排除了 `2.5`。
 
 3. 重启 API/worker，让它们读取新的服务 URL：
 
