@@ -71,7 +71,11 @@ def ensure_local_model_config() -> Path | None:
 
 def main() -> None:
     ensure_local_model_config()
-    os.execvp("mineru-api", ["mineru-api", "--host", "0.0.0.0", "--port", "8000"])
+    args = ["mineru-api", "--host", "0.0.0.0", "--port", "8000"]
+    allow_http_client = (os.environ.get("MINERU_API_ALLOW_PUBLIC_HTTP_CLIENT") or "1").strip().lower()
+    if allow_http_client in {"1", "true", "yes", "on"}:
+        args.append("--allow-public-http-client")
+    os.execvp("mineru-api", args)
 
 
 if __name__ == "__main__":

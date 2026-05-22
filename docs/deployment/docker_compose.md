@@ -51,7 +51,8 @@ LLM_MODEL_HEAVY=qwen3-max
 | KG 知识抽取 | `KG_ENABLED=true`、可用 `LLM_API_KEY/LLM_API_BASE/LLM_MODEL`、主栈 Milvus；如需事件/实体向量，保持 `EVENT_VECTOR_ENABLED=true` / `ENTITY_VECTOR_ENABLED=true` | 上传时传 `kg_enabled=true`，等待 `/api/v1/kg/stats?document_ids=...` 出现 events/entities，并检查 Milvus `kg_events` / `kg_entities` collection 有数据 |
 | LlamaIndex 分块 | `LLAMA_INDEX_ENABLED=true`，上传/工作台选择 `chunk_strategy=llama_index` | 用真实上传或 `/documents/preview` 验证 chunk 不因 metadata 过长失败 |
 | MagicPDF 本地解析 | `MAGIC_PDF_ENABLED=true`、`magic-pdf` CLI、PDF-Extract-Kit 模型缓存（默认复用 `/opt/mimirq-model-cache`） | `scripts/check_parsers.py` 应显示 `magicpdf ... configured (models: ...)`，再做真实 PDF 预览/上传 |
-| MinerU 本地 | `MINERU_LOCAL_SERVER_URL=http://mimirq-mineru:8000`，`--profile mineru` 启动本地服务 | 先单独启动 `mimirq-mineru`，健康后再跑 `parser_backend=mineru` 预览 |
+| MinerU 本地 pipeline | `MINERU_LOCAL_SERVER_URL=http://mimirq-mineru:8000`，`MINERU_BACKEND=pipeline`，`--profile mineru` 启动本地服务 | 先单独启动 `mimirq-mineru`，健康后再跑 `parser_backend=mineru` 预览 |
+| MinerU 本地 VLM | `MINERU_BACKEND=vlm-http-client`，`MINERU_VL_SERVER=http://mimirq-mineru-vlm:30000`，`MINERU_API_ALLOW_PUBLIC_HTTP_CLIENT=1`，同时启用 `--profile mineru --profile mineru-vlm` | 先检查 `mimirq-mineru-vlm` 健康和 `nvidia-smi` 显存占用，再跑大 PDF 预览；MinerU API 不要直接暴露公网 |
 | MinerU 在线 API | `MINERU_API_TOKEN`；如需强制在线路径，不能同时配置 `MINERU_LOCAL_SERVER_URL` | 临时清空本地 URL 后用 `parser_backend=mineru` 做预览；注意外部 API token/额度/队列状态 |
 | ETL4LLM / Marker / PaddleOCR-VL | 分别配置 `*_API_URL`，并按需启动 `docker/docker-compose.parsers.yml` 对应 profile | 显存紧张时分批启动，测完一个 profile 就 `docker compose ... stop <service>` |
 | TextIn xParse | `TEXTIN_ENABLED=true`、`TEXTIN_API_URL`、`TEXTIN_APP_ID`、`TEXTIN_SECRET_CODE` | 只有 APP ID/Secret 都存在时才做真实 `parser_backend=textin` 预览；缺凭证时诊断会显示 missing |
