@@ -18,7 +18,6 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-
 DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000"
 
 

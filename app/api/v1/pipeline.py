@@ -4,7 +4,6 @@ Lightweight parsing and hierarchical chunk preview APIs:
 - /pipeline/chunk-preview: hierarchical Markdown chunking (paragraph/sentence) with highlight offsets
 """
 import asyncio
-from app.rag.core.logging import get_logger
 import json
 import re
 import shutil
@@ -71,7 +70,7 @@ from app.models.document import DocumentParsedContent
 from app.models.governance_profile import GovernanceProfile as DBGovernanceProfile
 from app.parsing.backends import normalize_parser_backend
 from app.parsing.factory import ParserFactory
-from app.parsing.parsers.magic_pdf_parser import resolve_magicpdf_models_dir
+from app.parsing.parsers.magic_pdf_parser import magicpdf_service_configured, resolve_magicpdf_models_dir
 from app.parsing.preprocess.file_preprocessor import preprocess_file
 from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
 from app.parsing.utils.cli import resolve_cli_command
@@ -79,6 +78,7 @@ from app.parsing.utils.zip_processor import zip_image_processor
 from app.rag.chunking import chunker_factory, hierarchical_chunk_markdown
 from app.rag.chunking.recommendations import decorate_chunk_strategy_note
 from app.rag.core.errors import ConfigError
+from app.rag.core.logging import get_logger
 from app.rag.llm.factory import create_llm_client
 from app.rag.llm.models import LLMMessage, LLMRole
 from app.rag.preprocessing.boilerplate import remove_markdown_boilerplate
@@ -1085,6 +1085,8 @@ async def get_pipeline_capabilities(
     def magicpdf_available() -> tuple[bool, str | None]:
         if not bool(getattr(settings, "MAGIC_PDF_ENABLED", False)):
             return False, "MAGIC_PDF_ENABLED=false"
+        if magicpdf_service_configured(getattr(settings, "MAGIC_PDF_API_URL", "")):
+            return True, None
         cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
         if not resolve_cli_command(cli):
             return False, f"MagicPDF CLI not found: {cli} (try activating the env or set MAGIC_PDF_CLI to full path)"

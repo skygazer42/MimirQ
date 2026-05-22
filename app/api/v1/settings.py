@@ -398,6 +398,9 @@ class MinerUConfig(BaseModel):
 
 class MagicPDFConfig(BaseModel):
     """MagicPDF (magic-pdf) config."""
+    api_url: str = ""
+    request_timeout_sec: int = 600
+    max_concurrent_jobs: int = 1
     cli: str = "magic-pdf"
     method: str = "auto"  # auto | ocr | txt
     lang: str = ""
@@ -754,6 +757,16 @@ def _apply_runtime_settings(env_vars: dict[str, str], updated_keys: list[str]) -
         settings.PADDLE_VL_MODE = env_vars["PADDLE_VL_MODE"]
 
     # MagicPDF
+    if "MAGIC_PDF_API_URL" in updated_keys and "MAGIC_PDF_API_URL" in env_vars:
+        settings.MAGIC_PDF_API_URL = env_vars["MAGIC_PDF_API_URL"]
+    if "MAGIC_PDF_REQUEST_TIMEOUT_SEC" in updated_keys and "MAGIC_PDF_REQUEST_TIMEOUT_SEC" in env_vars:
+        settings.MAGIC_PDF_REQUEST_TIMEOUT_SEC = _parse_int(
+            env_vars["MAGIC_PDF_REQUEST_TIMEOUT_SEC"], default=getattr(settings, "MAGIC_PDF_REQUEST_TIMEOUT_SEC", 600)
+        )
+    if "MAGIC_PDF_MAX_CONCURRENT_JOBS" in updated_keys and "MAGIC_PDF_MAX_CONCURRENT_JOBS" in env_vars:
+        settings.MAGIC_PDF_MAX_CONCURRENT_JOBS = _parse_int(
+            env_vars["MAGIC_PDF_MAX_CONCURRENT_JOBS"], default=getattr(settings, "MAGIC_PDF_MAX_CONCURRENT_JOBS", 1)
+        )
     if "MAGIC_PDF_CLI" in updated_keys and "MAGIC_PDF_CLI" in env_vars:
         settings.MAGIC_PDF_CLI = env_vars["MAGIC_PDF_CLI"]
     if "MAGIC_PDF_METHOD" in updated_keys and "MAGIC_PDF_METHOD" in env_vars:
@@ -1047,6 +1060,9 @@ async def get_settings(
             page_count=int(getattr(settings, "TEXTIN_PAGE_COUNT", 0) or 0),
         ),
         magicpdf=MagicPDFConfig(
+            api_url=str(getattr(settings, "MAGIC_PDF_API_URL", "") or ""),
+            request_timeout_sec=int(getattr(settings, "MAGIC_PDF_REQUEST_TIMEOUT_SEC", 600) or 600),
+            max_concurrent_jobs=int(getattr(settings, "MAGIC_PDF_MAX_CONCURRENT_JOBS", 1) or 1),
             cli=getattr(settings, "MAGIC_PDF_CLI", "magic-pdf") or "magic-pdf",
             method=getattr(settings, "MAGIC_PDF_METHOD", "auto") or "auto",
             lang=getattr(settings, "MAGIC_PDF_LANG", "") or "",
@@ -1414,6 +1430,9 @@ async def update_settings(
 
         if request.magicpdf:
             mp = request.magicpdf
+            env_vars["MAGIC_PDF_API_URL"] = _sanitize_env_value("MAGIC_PDF_API_URL", mp.api_url)
+            env_vars["MAGIC_PDF_REQUEST_TIMEOUT_SEC"] = str(max(1, int(mp.request_timeout_sec or 0)))
+            env_vars["MAGIC_PDF_MAX_CONCURRENT_JOBS"] = str(max(1, int(mp.max_concurrent_jobs or 1)))
             env_vars["MAGIC_PDF_CLI"] = _sanitize_env_value("MAGIC_PDF_CLI", mp.cli)
             env_vars["MAGIC_PDF_METHOD"] = _sanitize_env_value("MAGIC_PDF_METHOD", mp.method)
             env_vars["MAGIC_PDF_LANG"] = _sanitize_env_value("MAGIC_PDF_LANG", mp.lang)
@@ -1424,6 +1443,9 @@ async def update_settings(
             env_vars["MAGIC_PDF_KEEP_ARTIFACTS"] = str(bool(mp.keep_artifacts)).lower()
             updated_keys.extend(
                 [
+                    "MAGIC_PDF_API_URL",
+                    "MAGIC_PDF_REQUEST_TIMEOUT_SEC",
+                    "MAGIC_PDF_MAX_CONCURRENT_JOBS",
                     "MAGIC_PDF_CLI",
                     "MAGIC_PDF_METHOD",
                     "MAGIC_PDF_LANG",
@@ -1815,20 +1837,28 @@ async def get_system_status(
     }
 
     magicpdf_enabled = bool(getattr(settings, "MAGIC_PDF_ENABLED", False))
+    magicpdf_api_url = (getattr(settings, "MAGIC_PDF_API_URL", "") or "").strip()
     magicpdf_cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
     magicpdf_cli_ok = bool(resolve_cli_command(magicpdf_cli))
     magicpdf_models_dir = resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", ""))
     if not magicpdf_enabled:
         magicpdf_message = "disabled"
+        magicpdf_available = False
+    elif magicpdf_api_url:
+        magicpdf_message = "configured (service)"
+        magicpdf_available = True
     elif not magicpdf_cli_ok:
         magicpdf_message = f"missing cli: {magicpdf_cli}"
+        magicpdf_available = False
     elif magicpdf_models_dir is None:
         magicpdf_message = "missing models"
+        magicpdf_available = False
     else:
         magicpdf_message = f"configured (models: {magicpdf_models_dir})"
+        magicpdf_available = True
     parsers["magicpdf"] = {
         "enabled": magicpdf_enabled,
-        "available": bool(magicpdf_enabled and magicpdf_cli_ok and magicpdf_models_dir is not None),
+        "available": magicpdf_available,
         "message": magicpdf_message,
     }
 

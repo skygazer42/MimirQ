@@ -247,8 +247,11 @@ class ParserFactory:
         if not bool(getattr(settings, "MAGIC_PDF_ENABLED", False)):
             return False
         try:
-            from app.parsing.parsers.magic_pdf_parser import resolve_magicpdf_models_dir
+            from app.parsing.parsers.magic_pdf_parser import magicpdf_service_configured, resolve_magicpdf_models_dir
             from app.parsing.utils.cli import resolve_cli_command
+
+            if magicpdf_service_configured(getattr(settings, "MAGIC_PDF_API_URL", "")):
+                return True
 
             cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
             return bool(
@@ -493,8 +496,8 @@ class ParserFactory:
             if not self._magicpdf_runtime_ready():
                 raise ValueError(
                     "MagicPDF parser is not available. "
-                    "Install the magic-pdf CLI and mount PDF-Extract-Kit models "
-                    "(or set MAGIC_PDF_MODELS_DIR)."
+                    "Configure MAGIC_PDF_API_URL for the service mode, or install the magic-pdf CLI "
+                    "and mount PDF-Extract-Kit models (or set MAGIC_PDF_MODELS_DIR)."
                 )
             return "magicpdf"
 

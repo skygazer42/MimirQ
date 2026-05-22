@@ -79,9 +79,12 @@ def _magicpdf_status(
     enabled: bool,
     cli_path: str | None,
     models_dir: Path | None,
+    api_url: str = "",
 ) -> str:
     if not enabled:
         return "disabled"
+    if api_url.strip():
+        return "configured (service)"
     if not cli_path:
         return _MISSING_CLI
     if not models_dir:
@@ -92,7 +95,7 @@ def _magicpdf_status(
 def main() -> int:
     from app.core.config import settings
     from app.core.jwt_inspect import format_unix_ts_utc, try_get_jwt_exp
-    from app.parsing.parsers.magic_pdf_parser import resolve_magicpdf_models_dir
+    from app.parsing.parsers.magic_pdf_parser import magicpdf_service_configured, resolve_magicpdf_models_dir
     from app.parsing.utils.cli import resolve_cli_command
 
     rows: list[tuple[str, str, str]] = []
@@ -227,6 +230,7 @@ def main() -> int:
                 enabled=bool(getattr(settings, "MAGIC_PDF_ENABLED", False)),
                 cli_path=str(cli_path) if cli_path else None,
                 models_dir=magicpdf_models_dir,
+                api_url=getattr(settings, "MAGIC_PDF_API_URL", "") if magicpdf_service_configured(getattr(settings, "MAGIC_PDF_API_URL", "")) else "",
             ),
         )
     )

@@ -91,6 +91,20 @@ Evidence target:
 Evidence target:
 - `artifacts/server-integration-verification/<timestamp>/remote-report.json`
 
+### P0 - Product Quality Backlog To Track In This Task
+
+This task also tracks the next quality pass across the product surface. Do not split these into isolated one-off checks unless the evidence is still linked back here.
+
+| Area | Required follow-up | Acceptance evidence |
+| --- | --- | --- |
+| Parsing | Serviceize MagicPDF instead of relying on API-container local CLI; keep parser tests serial for heavy GPU backends; record requested/resolved backend mismatches as failures. | MagicPDF service health + real PDF parse report; parser matrix with `basic`, `markitdown`, `deepdoc`, `docling`, `mineru`, `etl4llm`, `marker`, `paddle_vl`, `olmocr`, `textin`, `qianfan_ocr`, `magicpdf`. |
+| Chunking | Re-run product-relevant chunk strategies on real parsed outputs, not only synthetic preview text; include PDF, Markdown, Office, HTML, and long-document cases. | Chunk report with count, coverage, overlap waste, empty chunks, average length, and persisted metadata checks. |
+| KG | Revisit KG event density and sampling policy on real long documents; compare baseline RAG vs KG-assisted RAG before increasing extraction volume. | KG matrix with events/entities/links, extraction latency, query latency, graph size, and answer-quality comparison. |
+| Prompt | Validate main answer prompt, KG extraction prompt, judge prompt, and test-set generation prompt with low-cost model defaults first. | Prompt matrix with citations, refusal behavior, JSON/structured-output validity, cost/latency, and failure examples. |
+| Knowledge Base | Test knowledge inventory, dataset isolation, document lifecycle, parsed-content view, citations, cross-dataset retrieval boundaries, and delete/purge cleanup. | End-to-end knowledge-base report proving upload -> parse -> chunks -> retrieve/chat -> delete/purge without orphan vector/KG/object assets. |
+| Governance | Verify governance profiles/rules before and after chunking, including PII, secrets, duplicate/noise cleanup, HTML/table normalization, and quarantine triggers. | Governance matrix with before/after text, audit records, quarantine state, and retrieval impact. |
+| Admin/Permissions | Test admin-only settings, dataset/document permissions, group/ACL paths, access graph export/summary, and denial behavior for non-admin users. | Permission report with allowed/denied cases, no cross-tenant leakage, and settings endpoints requiring the intended role. |
+
 ## Current Known Evidence
 
 - Local backend health is green on `127.0.0.1:8000`.
@@ -111,6 +125,8 @@ Evidence target:
   The first 12-document run exposed a deployment issue: running API/worker containers were older than `/data/MimirQ` and still used the ARQ default 3 tries, leaving 2 documents pending after retry exhaustion.
   Rebuilt containers now report document max tries 80, KG max tries 80, retry defer 30s, and `/health` is healthy.
   The rerun completed 12/12 documents and 12/12 KG extracts; average extraction was 8.329s, P95 14.868s, max 14.928s. KG stats returned 12 events, 39 entities, 156 links in 0.153s; KG search returned 200 in 0.408s.
+- Large-PDF parser verification added an important parser-design follow-up:
+  MagicPDF should move to a standalone service like Marker/Paddle-VL/OLMOCR because the API-container local CLI mode is fragile in Docker deployment. Serviceization details are tracked in `plans/magicpdf-serviceization-plan-2026-05-23.md`.
 - `scripts/production_readiness_chain.py` is not portable on the remote host/container as-is: the host lacks `python-docx`, and the API container lacks `requests`.
   The live service passed through `scripts/remote_api_chain_smoke.py`, which uses only the standard library.
 
@@ -122,3 +138,4 @@ Evidence target:
 - 2026-05-22 13:57: Remote API chain passed end to end with parser, ingestion, chunk preview, KG, RAG retrieval, and chat.
 - 2026-05-22 14:30: Remote chunk/governance matrix passed: 15/15 chunk strategies and 6/6 governance preview cases.
 - 2026-05-22 15:30: Remote KG scale guard passed after API/worker image rebuild: 12 documents completed, 12 KG extracts succeeded, stats/search endpoints returned 200.
+- 2026-05-23 03:10: Added product quality backlog to keep parser serviceization, KG density, chunking, prompts, knowledge-base lifecycle, governance, and admin/permission checks under this same server verification task.

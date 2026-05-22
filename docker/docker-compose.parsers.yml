@@ -6,6 +6,7 @@
 #   docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile mineru up -d --build
 #   docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile mineru --profile mineru-vlm up -d --build
 #   docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile olmocr up -d --build
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile magicpdf up -d --build
 #   docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile qianfanocr up -d --build
 #
 # For local backend development (infra only):
@@ -204,6 +205,47 @@ services:
       timeout: 20s
       retries: 3
 
+  # MagicPDF PDF -> Markdown parser service (optional; GPU-first service, CPU only when explicitly configured).
+  # Then set `MAGIC_PDF_ENABLED=true` and `MAGIC_PDF_API_URL=http://mimirq-magicpdf:2095/convert` in the root .env.
+  mimirq-magicpdf:
+    profiles: ["magicpdf"]
+    build:
+      context: ./magicpdf
+    restart: unless-stopped
+    hostname: mimirq-magicpdf
+    gpus: all
+    ports:
+      - "2095:2095"
+    environment:
+      TZ: Asia/Shanghai
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
+      MAGIC_PDF_MAX_CONCURRENT_JOBS: ${MAGIC_PDF_MAX_CONCURRENT_JOBS:-1}
+      MAGIC_PDF_PIPELINE_TIMEOUT_SEC: ${MAGIC_PDF_PIPELINE_TIMEOUT_SEC:-600}
+      MAGIC_PDF_CLI: ${MAGIC_PDF_CLI:-magic-pdf}
+      MAGIC_PDF_MODELS_DIR: ${MAGIC_PDF_MODELS_DIR:-/opt/mimirq-model-cache}
+      MAGIC_PDF_DEVICE_MODE: ${MAGIC_PDF_DEVICE_MODE:-cuda}
+      MAGIC_PDF_FORMULA_ENABLED: ${MAGIC_PDF_FORMULA_ENABLED:-false}
+      MAGIC_PDF_ARTIFACT_ROOT: ${MAGIC_PDF_ARTIFACT_ROOT:-/tmp/magicpdf-artifacts}
+    volumes:
+      - mineru_cache:/opt/mimirq-model-cache:ro
+      - magicpdf_cache:/root/.cache
+    networks:
+      default:
+        aliases:
+          - mimirq-magicpdf
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import json, urllib.request; data=json.loads(urllib.request.urlopen('http://localhost:2095/health').read()); raise SystemExit(0 if data.get('ok') else 1)",
+        ]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
   # Qianfan-OCR wrapper service (optional; calls an OpenAI-compatible vision endpoint).
   # Then set `QIANFAN_OCR_ENABLED=true` and `QIANFAN_OCR_API_URL=http://mimirq-qianfanocr:2090/convert` in the root .env.
   mimirq-qianfanocr:
@@ -248,3 +290,4 @@ volumes:
   paddlevl_cache:
   mineru_cache:
   olmocr_cache:
+  magicpdf_cache:

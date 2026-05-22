@@ -76,6 +76,15 @@ def test_textin_status_reports_configured_only_with_url_and_credentials() -> Non
 def test_magicpdf_status_requires_cli_and_models(tmp_path: Path) -> None:
     mod = _load_module()
     assert (
+        mod._magicpdf_status(  # type: ignore[attr-defined]
+            enabled=True,
+            api_url="http://mimirq-magicpdf:2095/convert",
+            cli_path=None,
+            models_dir=None,
+        )
+        == "configured (service)"
+    )
+    assert (
         mod._magicpdf_status(enabled=True, cli_path=None, models_dir=tmp_path)  # type: ignore[attr-defined]
         == "missing cli"
     )

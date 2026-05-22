@@ -1748,13 +1748,18 @@ class Settings(BaseSettings):
     LIBREOFFICE_TIMEOUT_SEC: int = 300
     # MagicPDF (magic-pdf) local parser (optional; heavy dependencies)
     MAGIC_PDF_ENABLED: bool = False
+    # Preferred production mode: external MagicPDF HTTP sidecar.
+    MAGIC_PDF_API_URL: str = ""
+    MAGIC_PDF_REQUEST_TIMEOUT_SEC: int = 600
+    MAGIC_PDF_MAX_CONCURRENT_JOBS: int = 1
+    # Local CLI fallback (kept for development/debug deployments).
     MAGIC_PDF_CLI: str = "magic-pdf"
     MAGIC_PDF_METHOD: str = "auto"  # auto | ocr | txt
     MAGIC_PDF_LANG: str = ""  # optional PaddleOCR language code, e.g. "ch"
     MAGIC_PDF_DEBUG: bool = False
     MAGIC_PDF_TIMEOUT_SEC: int = 600
     MAGIC_PDF_MODELS_DIR: str = ""
-    MAGIC_PDF_DEVICE_MODE: str = "cpu"  # cpu | cuda
+    MAGIC_PDF_DEVICE_MODE: str = ""  # service default cuda; local CLI fallback default cpu
     MAGIC_PDF_FORMULA_ENABLED: bool = False
     MAGIC_PDF_KEEP_ARTIFACTS: bool = False
     # MagicPDF upstream config file path override (env var name used by magic-pdf).
