@@ -29,7 +29,7 @@ COPY requirements.txt ./requirements.txt
 RUN python -m pip install --upgrade pip setuptools wheel && \
     python -m pip install -r requirements.txt && \
     python -m pip install torchvision==0.21.0 && \
-    python -m pip install magic-pdf==1.3.12
+    python -m pip install "magic-pdf[full]==1.3.12"
 
 COPY server.py ./server.py
 
