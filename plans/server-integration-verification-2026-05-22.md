@@ -1,0 +1,102 @@
+# MimirQ Server Integration Verification Plan
+
+Date: 2026-05-22
+Scope: local host and remote/server deployment verification for parser, chunking, governance, knowledge inventory, KG, RAG, prompts, and Docker/env wiring.
+
+## Success Criteria
+
+- Backend and dependency health is green on the active environment: PostgreSQL, Milvus, Redis, uploads path, and configured parser services.
+- Root `.env` is the single source for runtime configuration; Docker does not maintain divergent parser/model settings.
+- Each parser backend reports either true success with the requested backend or a clear unavailable status. No explicit parser request may silently fall back to `basic`.
+- Parser, governance, chunking, knowledge ingestion, KG extraction/search, RAG retrieval/chat, and prompt-backed workflows are tested with real files and real API responses.
+- Speed evidence exists for the main production path: parse time, chunk time, ingestion completion, RAG retrieval latency, KG query latency, and end-to-end answer latency.
+- Test artifacts are written under `artifacts/` and summarize pass/fail with enough detail to reproduce.
+- Code changes are committed with a Lore-style commit after fixes and verification.
+
+## Work Plan
+
+### P0 - Environment and Config Baseline
+
+- Verify local git state, current commit, and uncommitted files.
+- Verify backend health and dependency health.
+- Verify `.env` active model settings use the intended low-cost model first.
+- Verify Docker env usage references root `.env` instead of a separate divergent file.
+
+Evidence target:
+- Command output captured in `artifacts/server-integration-verification/`.
+
+### P0 - Parser Matrix Correctness
+
+- Test explicit parser backends: `basic`, `markitdown`, `docling`, `mineru`, `magicpdf`, `paddle_vl`, `textin`.
+- Mark each backend as one of:
+  - `pass`: returned backend matches requested backend and produced segments
+  - `unavailable`: configuration/service unavailable and API says so clearly
+  - `fail`: error, timeout, or silent fallback
+- Fix silent fallback for explicit parser requests.
+- Keep `auto` mode fallback behavior intact.
+
+Evidence target:
+- `artifacts/parser-matrix/<timestamp>/report.json`
+- Focused tests covering explicit parser fallback behavior
+
+### P1 - Chunking Matrix
+
+- Test every production chunking strategy with Markdown, PDF-derived text, HTML, DOCX, XLSX/CSV, and long text samples.
+- Verify chunk count, coverage, overlap, empty chunk count, and persisted metadata.
+
+Evidence target:
+- `artifacts/chunking-strategy-matrix/<timestamp>/report.json`
+
+### P1 - Governance Matrix
+
+- Test conservative governance, noise removal, PII/secret masking, profile application, quarantine trigger, and governance-to-chunk transition.
+- Verify before/after content and audit records are real backend records.
+
+Evidence target:
+- `artifacts/governance-matrix/<timestamp>/report.json`
+
+### P1 - Knowledge and RAG Matrix
+
+- Ingest a mixed corpus into one dataset and one cross-dataset scope.
+- Verify inventory filters, dataset isolation, chunk retrieval, citation correctness, and no cross-dataset leakage.
+- Measure retrieval P50/P95 and answer latency.
+
+Evidence target:
+- `artifacts/rag-matrix/<timestamp>/report.json`
+
+### P1 - KG Matrix
+
+- Verify KG extraction is bounded by sampling/event limits rather than unbounded extraction.
+- Test KG search, KG-assisted recall, graph snapshot/query endpoints, and degraded behavior when KG is disabled.
+- Measure KG query latency and graph size.
+
+Evidence target:
+- `artifacts/kg-matrix/<timestamp>/report.json`
+
+### P2 - Prompt Workflows
+
+- Verify RAG answer prompt, KG extraction prompt, LLM-as-Judge prompt, and test-set generation prompt on real data.
+- Confirm outputs are stored or surfaced where product flows expect them.
+
+Evidence target:
+- `artifacts/prompt-matrix/<timestamp>/report.json`
+
+### P2 - Remote Server / Docker Verification
+
+- Pull latest code on `/data/MimirQ`.
+- Apply root `.env` from the local source of truth.
+- Restart Docker services without preserving stale containers.
+- Run the same parser, chunking, governance, RAG, and KG smoke tests against the server endpoint.
+
+Evidence target:
+- `artifacts/server-integration-verification/<timestamp>/remote-report.json`
+
+## Current Known Evidence
+
+- Local backend health is green on `127.0.0.1:8000`.
+- Latest committed production readiness run exists at `artifacts/production-readiness/rerun-20260522-121334`.
+- Parser matrix still needs action: previous live parser smoke found `docling` and `magicpdf` returning `basic`, and `paddle_vl` unavailable.
+
+## Execution Log
+
+- 2026-05-22 12:57: Plan created. Next action: reproduce and fix explicit parser fallback behavior.
